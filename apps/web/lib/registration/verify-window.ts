@@ -18,11 +18,12 @@ import { loadVerifyRegistrationWindowSkill } from './skill';
  * types rather than a promise in a prompt.
  *
  * Two gates stand between a model reading and a founder alert:
- *   1. CORROBORATION — the quote the model read the dates out of, and the text that
- *      supplied their YEAR, must both appear in the fetched page. A fabricated date
- *      cannot survive a check that looks for it in the source, and a prior-year date
- *      cannot survive a check that the page states that year (M1's stale-year trap,
- *      made structural).
+ *   1. CORROBORATION — every date arrives bound to its own verbatim quote, and the
+ *      quote, the section it sits in and the text that supplied its YEAR must all
+ *      appear in the fetched page, with the date's numbers the ones its quote prints.
+ *      A fabricated date cannot survive a check that looks for it in the source, and a
+ *      prior-year date cannot survive a check that the page states that year (M1's
+ *      stale-year trap, made structural).
  *   2. THE CONFIDENCE FLOOR — below it the answer is "couldn't verify", never a
  *      guess and never an alarm. A shaky reading that disagrees with the stored row
  *      is not a discrepancy; it is a reading we do not trust.
@@ -40,21 +41,39 @@ export const MIN_VERIFY_CONFIDENCE = 0.7;
 // truncated answer that surfaced as "extract_failed". No finite ceiling makes
 // truncation impossible while those fields are unbounded; forceToolJson's
 // stop_reason guard is the real fix, this is headroom over observed ~600-tok reads.
-const MAX_TOKENS = 2048;
+// Exported so the eval sends the ceiling production sends.
+export const EXTRACTION_MAX_TOKENS = 2048;
+
+/** The wall clock a date with no printed time is anchored at: the start of that local
+ * day, which asserts no time the page did not print. */
+export const DATE_ONLY_WALL_CLOCK = '00:00';
 
 /** Why a page yielded no dates for the cycle asked about. Each is a real, common
- * state of a municipal page — none of them is an error. */
+ * state of a municipal page — none of them is an error. `no_year_stated` is no longer
+ * an extraction answer (a yearless date is a partial date now); it stays here because
+ * stored readings carry it. */
 export type UnfoundReason =
   | 'announced_later'
   | 'different_cycle_only'
   | 'no_year_stated'
   | 'not_published';
 
-/** A date as the page prints it: a local calendar day, and a wall-clock time only
- * where the page actually publishes one. */
+/** The slot the model put an opening in — its eligibility verdict. */
+export type AiDateKind = 'preview' | 'resident_open' | 'general_open' | 'unclassified_open';
+
+/** A date as the page prints it: the verbatim words it was read from, a local calendar
+ * day, and a wall-clock time only where the page actually publishes one. */
 export interface PublishedDate {
+  quote: string;
   date: string;
   time: string | null;
+}
+
+/** A printed date whose year (or day) the page does not establish. It is a quote, never
+ * a date field. */
+export interface PartialRegistrationDate {
+  kind: AiDateKind;
+  quote: string;
 }
 
 /** What the page says, as read by the skill — before any comparison. */
@@ -64,10 +83,17 @@ export interface ExtractedWindow {
   cycleOnPage: string | null;
   /** The page text that supplies the YEAR for these dates. The stale-year anchor. */
   yearEvidence: string | null;
+  evidence: string | null;
   preview: PublishedDate | null;
   residentOpen: PublishedDate | null;
   generalOpen: PublishedDate | null;
-  evidence: string | null;
+  /** An opening the page attaches no eligibility label to. */
+  unclassifiedOpen: PublishedDate | null;
+  partialDates: readonly PartialRegistrationDate[];
+  /** IANA zone the page states, with the page words that state it. Unchecked here. */
+  timeZone: string | null;
+  timeZoneEvidence: string | null;
+  note: string | null;
   confidence: number;
 }
 
@@ -109,7 +135,9 @@ export type UnverifiedReason =
    * what it said is not evidence for a value nobody read off it. */
   | 'inferred_unconfirmed'
   | 'fetch_failed'
-  | 'extract_failed';
+  | 'extract_failed'
+  /** The page printed dates for the cycle, but none with a year (or day) it states. */
+  | 'incomplete_date';
 
 /**
  * The three outcomes, and the whole contract of this module.
@@ -129,15 +157,22 @@ export type VerifyOutcome =
  * that local day — the seed's own convention, and the only reading that asserts no
  * time the town did not print.
  */
-export function publishedInstant(published: PublishedDate): Date {
-  return zonedLocalInstant(published.date, published.time ?? '00:00', REGISTRATION_TIME_ZONE);
+export function publishedInstant(published: Omit<PublishedDate, 'quote'>): Date {
+  return zonedLocalInstant(
+    published.date,
+    published.time ?? DATE_ONLY_WALL_CLOCK,
+    REGISTRATION_TIME_ZONE,
+  );
 }
 
 /** Fold away the differences an HTML strip and a re-typed quote legitimately
- * introduce — case, unicode dashes and quotes, runs of whitespace — while keeping
- * every digit and letter. A wrong DATE cannot survive this; a re-typed dash can. */
-function normalize(text: string): string {
+ * introduce — Unicode composition and width (NFKC: a decomposed accent, a no-break
+ * space, a full-width digit), case, dashes and quotes, runs of whitespace — while
+ * keeping every digit and letter. Applied to BOTH sides of every quote check. A wrong
+ * DATE cannot survive this; a re-typed dash can. */
+export function normalizeQuote(text: string): string {
   return text
+    .normalize('NFKC')
     .toLowerCase()
     .replace(/[‐-―−]/g, '-')
     .replace(/[‘’‛]/g, "'")
@@ -151,16 +186,92 @@ function yearsIn(text: string): Set<string> {
   return new Set(text.match(/\b(19|20)\d{2}\b/g) ?? []);
 }
 
+/** Every complete date a reading carries, in slot order. */
+export function completeDates(extracted: ExtractedWindow): PublishedDate[] {
+  return [
+    extracted.preview,
+    extracted.residentOpen,
+    extracted.generalOpen,
+    extracted.unclassifiedOpen,
+  ].filter((published): published is PublishedDate => published !== null);
+}
+
+/** A digit run in this range is a printed year and can only be read as one. */
+const YEAR_RUN = /^(19|20)\d{2}$/;
+
+/**
+ * Whether the numbers a quote prints are exactly this date's numbers, in any language.
+ *
+ * Only the digits are checked, so a French, Spanish or Japanese quote verifies the same
+ * way an English one does, with no month or weekday tables. Every ASCII digit run in the
+ * (normalised) quote must be consumed exactly once by one of: the day (required), the
+ * month number, a four-digit year (which must be this date's year), the hour (required
+ * when the date has a time; 13-23 may be printed on a 12-hour clock), and the minute —
+ * which must be the run straight after the hour, and is absent when it is zero and the
+ * page prints none (`9 a.m.`, `9 h`). A leftover run fails the date: a time on a
+ * date-only reading, a second date in the quote.
+ *
+ * Known residuals, all fail-closed or caught by the eval's exact equality: a spelled-out
+ * month and AM/PM are not checked; a day/hour swap at minute zero with both numbers
+ * under 24 is not caught; `noon`, spelled-out numbers and non-ASCII digit systems fail.
+ */
+function quoteStatesDate(published: PublishedDate): boolean {
+  const runs = (normalizeQuote(published.quote).match(/\d+/g) ?? []).map((text) => ({
+    text,
+    value: Number(text),
+  }));
+  const [year, month, day] = published.date.split('-').map(Number);
+  const clock = published.time?.split(':').map(Number) ?? null;
+
+  const dateConsumes = (rest: typeof runs): boolean => {
+    let dayFound = false;
+    let monthFound = false;
+    let yearFound = false;
+    // Greedy is a complete search: a run fits the day and the month only when the two
+    // values are equal, and then the roles are interchangeable.
+    for (const run of rest) {
+      if (YEAR_RUN.test(run.text)) {
+        if (yearFound || run.value !== year) return false;
+        yearFound = true;
+      } else if (!dayFound && run.value === day) {
+        dayFound = true;
+      } else if (!monthFound && run.value === month) {
+        monthFound = true;
+      } else {
+        return false;
+      }
+    }
+    return dayFound;
+  };
+
+  if (clock === null) return dateConsumes(runs);
+  const [hour, minute] = clock as [number, number];
+  return runs.some((run, index) => {
+    const hourMatches =
+      run.value === hour ||
+      (hour >= 13 && run.value === hour - 12) ||
+      (hour === 0 && run.value === 12);
+    if (!hourMatches) return false;
+    const next = runs[index + 1];
+    const minuteRun = minute !== 0 || next?.value === 0 ? next : undefined;
+    if (minute !== 0 && minuteRun?.value !== minute) return false;
+    const used = new Set([index, ...(minuteRun ? [index + 1] : [])]);
+    return dateConsumes(runs.filter((_, i) => !used.has(i)));
+  });
+}
+
 /**
  * Whether a reading is backed by the fetched page. Binary, like the civic hours
  * gate: there is no partial credit for a date that is nearly in the source.
  *
  * Checks, in the order they can fail:
- *   - the quote the dates were read from appears in the page;
- *   - the text supplying the year appears in the page;
- *   - that text actually states the year every published date claims.
+ *   - the section the dates were read from appears in the page;
+ *   - every date's own quote, complete or partial, appears in the page;
+ *   - the text supplying the year, when given, appears in the page — and it is required,
+ *     and must state each complete date's year, as soon as there is a complete date;
+ *   - each complete date's numbers are the ones its quote prints.
  *
- * The last one is the stale-year trap made structural. A model that rolls last
+ * The year check is the stale-year trap made structural. A model that rolls last
  * year's table forward has to produce a year the page does not state for that
  * cycle, and cannot.
  */
@@ -170,19 +281,25 @@ export function corroborationFailure(
 ): 'uncorroborated' | null {
   if (!extracted.found) return null;
 
-  const page = normalize(pageText);
-  const evidence = extracted.evidence;
-  const yearEvidence = extracted.yearEvidence;
-  if (!evidence || !yearEvidence) return 'uncorroborated';
-  if (!page.includes(normalize(evidence))) return 'uncorroborated';
-  if (!page.includes(normalize(yearEvidence))) return 'uncorroborated';
+  const page = normalizeQuote(pageText);
+  const onPage = (quote: string | null) =>
+    quote !== null && quote.trim() !== '' && page.includes(normalizeQuote(quote));
 
-  const statedYears = yearsIn(yearEvidence);
-  for (const published of [extracted.preview, extracted.residentOpen, extracted.generalOpen]) {
-    if (published && !statedYears.has(published.date.slice(0, 4))) {
+  if (!onPage(extracted.evidence)) return 'uncorroborated';
+  const complete = completeDates(extracted);
+  const quotes = [...complete, ...extracted.partialDates].map((published) => published.quote);
+  if (!quotes.every(onPage)) return 'uncorroborated';
+
+  const yearEvidence = extracted.yearEvidence;
+  if (yearEvidence !== null && !onPage(yearEvidence)) return 'uncorroborated';
+  if (complete.length > 0) {
+    if (yearEvidence === null) return 'uncorroborated';
+    const statedYears = yearsIn(normalizeQuote(yearEvidence));
+    if (complete.some((published) => !statedYears.has(published.date.slice(0, 4)))) {
       return 'uncorroborated';
     }
   }
+  if (!complete.every(quoteStatesDate)) return 'uncorroborated';
   return null;
 }
 
@@ -210,6 +327,17 @@ export function compareWindow(stored: StoredWindow, extracted: ExtractedWindow):
   if (extracted.confidence < MIN_VERIFY_CONFIDENCE) {
     return { kind: 'unverified', reason: 'low_confidence' };
   }
+  if (completeDates(extracted).length === 0 && extracted.partialDates.length > 0) {
+    return { kind: 'unverified', reason: 'incomplete_date' };
+  }
+
+  // An opening the page leaves unlabelled is compared as the general open, exactly as
+  // it was before the model could say it was unlabelled; the VIL-347 rule below then
+  // decides whether it is really the resident morning.
+  const labelled = {
+    ...extracted,
+    generalOpen: extracted.generalOpen ?? extracted.unclassifiedOpen,
+  };
 
   // VIL-347 · A PAGE THAT STATES ONE UNLABELLED DATE. Some municipalities tier a cycle on
   // their course pages and print a single date on the page a parent is actually sent to:
@@ -227,12 +355,12 @@ export function compareWindow(stored: StoredWindow, extracted: ExtractedWindow):
   // `matched` field, so it cannot quiet a row whose resident date is wrong — that row
   // matches nothing and reports its diff exactly as before.
   const reading =
-    extracted.residentOpen === null &&
-    extracted.generalOpen !== null &&
+    labelled.residentOpen === null &&
+    labelled.generalOpen !== null &&
     stored.residentOpenAt !== null &&
-    publishedInstant(extracted.generalOpen).getTime() === stored.residentOpenAt.getTime()
-      ? { ...extracted, residentOpen: extracted.generalOpen, generalOpen: null }
-      : extracted;
+    publishedInstant(labelled.generalOpen).getTime() === stored.residentOpenAt.getTime()
+      ? { ...labelled, residentOpen: labelled.generalOpen, generalOpen: null }
+      : labelled;
 
   const matched: VerifyField[] = [];
   const diffs: FieldDiff[] = [];
@@ -283,8 +411,12 @@ export function withoutInferredEvidence(
 
 // ── the model read ───────────────────────────────────────────────────────────
 
-const publishedDateSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+const publishedDateSchema = z.strictObject({
+  quote: z.string().trim().min(1),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
   time: z
     .string()
     .regex(/^\d{2}:\d{2}$/)
@@ -293,82 +425,118 @@ const publishedDateSchema = z.object({
 
 /** The model has two ways of saying "no date for this field": a plain `null`, and
  * a present object whose date is null (`{date:null,time:null}`) — it flip-flops
- * between them run to run. Both mean the same absence; collapse the object form to
- * `null` at the parse boundary so the rest of the module keeps its one invariant:
- * a PublishedDate always carries a real date, and absence is `null` (compareWindow's
- * `=== null` skip and publishedInstant both depend on it). */
-const nullableWindowDate = z.preprocess(
-  (value) =>
-    value && typeof value === 'object' && (value as { date?: unknown }).date == null ? null : value,
-  publishedDateSchema.nullable(),
-);
+ * between them run to run. Both mean the same absence when there is no quote, so the
+ * object form collapses to `null` at the parse boundary. A `{date:null}` WITH a quote
+ * is not absence: it is a printed date whose year (or day) the page does not establish,
+ * and it survives as a partial date (toExtractedWindow). */
+const nullableWindowDate = z.preprocess((value) => {
+  if (!value || typeof value !== 'object') return value;
+  const { date, quote } = value as { date?: unknown; quote?: unknown };
+  return date == null && (typeof quote !== 'string' || quote.trim() === '') ? null : value;
+}, publishedDateSchema.nullable());
 
-const extractionSchema = z.object({
-  found: z.boolean(),
-  reason: z
-    .enum(['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published'])
-    .nullable(),
+const extractionSchema = z.strictObject({
   cycle_on_page: z.string().nullable(),
+  evidence: z.string().nullable(),
   year_evidence: z.string().nullable(),
+  time_zone_evidence: z.string().nullable(),
+  time_zone: z.string().nullable(),
+  eligibility_evidence: z.string().nullable(),
   preview: nullableWindowDate,
   resident_open: nullableWindowDate,
   general_open: nullableWindowDate,
-  evidence: z.string().nullable(),
+  unclassified_open: nullableWindowDate,
+  note: z.string().nullable(),
+  found: z.boolean(),
+  reason: z.enum(['announced_later', 'different_cycle_only', 'not_published']).nullable(),
   confidence: z.number().min(0).max(1),
 });
 
 /** What the MODEL sees. Hand-written alongside the Zod schema above, which is what
- * validates what comes back — the same split the civic hours parser uses. */
+ * validates what comes back — the same split the civic hours parser uses. Property
+ * order is the order the model writes in: every quote and the eligibility reasoning
+ * come before the slots they justify, and the slots before the verdict fields. */
 export const EXTRACTION_JSON_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
-    found: { type: 'boolean' },
-    reason: {
-      type: ['string', 'null'],
-      enum: ['announced_later', 'different_cycle_only', 'no_year_stated', 'not_published', null],
-    },
     cycle_on_page: { type: ['string', 'null'] },
+    evidence: {
+      type: ['string', 'null'],
+      description: 'Verbatim page text of the section the dates were read from.',
+    },
     year_evidence: {
       type: ['string', 'null'],
-      description: 'Verbatim page text stating the YEAR these dates belong to.',
+      description: 'Verbatim page text stating the YEAR of every complete date.',
+    },
+    time_zone_evidence: {
+      type: ['string', 'null'],
+      description: 'Verbatim page text naming the time zone or the place the program is in.',
+    },
+    time_zone: {
+      type: ['string', 'null'],
+      description: 'IANA time zone that time_zone_evidence establishes; null without it.',
+    },
+    eligibility_evidence: {
+      type: ['string', 'null'],
+      description: 'Which label the page attaches to each opening, with the quoted label.',
     },
     preview: { $ref: '#/$defs/publishedDate' },
     resident_open: { $ref: '#/$defs/publishedDate' },
     general_open: { $ref: '#/$defs/publishedDate' },
-    evidence: {
+    unclassified_open: { $ref: '#/$defs/publishedDate' },
+    note: {
       type: ['string', 'null'],
-      description: 'Verbatim page text the dates were read from.',
+      description: 'What the date fields cannot say, such as a year the page never states.',
+    },
+    found: { type: 'boolean' },
+    reason: {
+      type: ['string', 'null'],
+      enum: ['announced_later', 'different_cycle_only', 'not_published', null],
     },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
   },
   required: [
-    'found',
-    'reason',
     'cycle_on_page',
+    'evidence',
     'year_evidence',
+    'time_zone_evidence',
+    'time_zone',
+    'eligibility_evidence',
     'preview',
     'resident_open',
     'general_open',
-    'evidence',
+    'unclassified_open',
+    'note',
+    'found',
+    'reason',
     'confidence',
   ],
   $defs: {
     publishedDate: {
       type: ['object', 'null'],
+      additionalProperties: false,
       properties: {
-        date: { type: 'string', description: 'YYYY-MM-DD' },
+        quote: {
+          type: 'string',
+          description: 'The shortest verbatim page text stating this date and its time.',
+        },
+        date: {
+          type: ['string', 'null'],
+          description: 'YYYY-MM-DD, or null when the page does not establish the year or day',
+        },
         time: {
           type: ['string', 'null'],
           description: '24-hour HH:MM, or null when the page publishes no time',
         },
       },
-      required: ['date', 'time'],
+      required: ['quote', 'date', 'time'],
     },
   },
 } as const;
 
 /** The user-message payload. Exported so the eval sends the model byte-identical
- * input to what production sends (the eval replicates, never imports). */
+ * input to what production sends (the eval imports it). */
 export function extractionInput(
   window: Pick<StoredWindow, 'municipality' | 'programDomain' | 'cycleLabel'>,
   pageText: string,
@@ -398,15 +566,30 @@ export function parseExtraction(raw: unknown): ExtractedWindow {
 
 /** Normalise the skill's snake_case answer into the module's shape. */
 export function toExtractedWindow(value: z.infer<typeof extractionSchema>): ExtractedWindow {
+  const slots = [
+    ['preview', value.preview],
+    ['resident_open', value.resident_open],
+    ['general_open', value.general_open],
+    ['unclassified_open', value.unclassified_open],
+  ] as const;
+  const complete = (slot: z.infer<typeof publishedDateSchema> | null): PublishedDate | null =>
+    slot?.date ? { quote: slot.quote, date: slot.date, time: slot.time } : null;
   return {
     found: value.found,
     reason: value.reason,
     cycleOnPage: value.cycle_on_page,
     yearEvidence: value.year_evidence,
-    preview: value.preview,
-    residentOpen: value.resident_open,
-    generalOpen: value.general_open,
     evidence: value.evidence,
+    preview: complete(value.preview),
+    residentOpen: complete(value.resident_open),
+    generalOpen: complete(value.general_open),
+    unclassifiedOpen: complete(value.unclassified_open),
+    partialDates: slots.flatMap(([kind, slot]) =>
+      slot && slot.date === null ? [{ kind, quote: slot.quote }] : [],
+    ),
+    timeZone: value.time_zone,
+    timeZoneEvidence: value.time_zone_evidence,
+    note: value.note,
     confidence: value.confidence,
   };
 }
@@ -433,20 +616,22 @@ export async function extractPublishedWindow(
     toolDescription: 'Return the registration dates this page publishes for the named cycle.',
     inputJsonSchema: EXTRACTION_JSON_SCHEMA,
     schema: extractionSchema,
-    maxTokens: MAX_TOKENS,
+    maxTokens: EXTRACTION_MAX_TOKENS,
   });
   return toExtractedWindow(value);
 }
 
 /**
  * Whether a reading is one we may act on at all: corroborated by the page, above
- * the confidence floor, and actually a find. The discovery leg's gate — the verify
- * leg additionally runs `compareWindow`, which applies the same floor.
+ * the confidence floor, and actually a find with at least one complete date — a
+ * reading of yearless dates alone has no date to publish. The discovery leg's gate —
+ * the verify leg additionally runs `compareWindow`, which applies the same floor.
  */
 export function isTrustworthyFind(pageText: string, extracted: ExtractedWindow): boolean {
   return (
     extracted.found &&
     extracted.confidence >= MIN_VERIFY_CONFIDENCE &&
+    completeDates(extracted).length > 0 &&
     corroborationFailure(pageText, extracted) === null
   );
 }

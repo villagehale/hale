@@ -1,11 +1,14 @@
+import { strictToolSchema } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import {
+  EXTRACTION_JSON_SCHEMA,
   type ExtractedWindow,
   type StoredWindow,
   type VerifyField,
   type VerifyOutcome,
   compareWindow,
   corroborationFailure,
+  isTrustworthyFind,
   parseExtraction,
   publishedInstant,
   withoutInferredEvidence,
@@ -48,10 +51,15 @@ function extracted(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
     reason: null,
     cycleOnPage: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
     yearEvidence: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
-    preview: { date: '2026-08-03', time: null },
-    residentOpen: null,
-    generalOpen: { date: '2026-08-11', time: '06:30' },
     evidence: 'Register starting Aug. 11 at 6:30 AM',
+    preview: { quote: 'Aug, 3', date: '2026-08-03', time: null },
+    residentOpen: null,
+    generalOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+    unclassifiedOpen: null,
+    partialDates: [],
+    timeZone: null,
+    timeZoneEvidence: null,
+    note: null,
     confidence: 0.95,
     ...overrides,
   };
@@ -106,7 +114,7 @@ describe('compareWindow — confirmed', () => {
       toronto,
       extracted({
         preview: null,
-        residentOpen: { date: '2026-06-05', time: '07:00' },
+        residentOpen: { quote: 'June 5, 2026, at 7 a.m.', date: '2026-06-05', time: '07:00' },
         generalOpen: null,
       }),
     );
@@ -178,8 +186,8 @@ describe('compareWindow — a page that states one unlabelled date', () => {
       extracted({
         cycleOnPage: '2027 Winter Programs',
         yearEvidence: '2027 Winter Programs',
-        preview: { date: '2027-01-05', time: null },
-        generalOpen: { date: '2027-01-12', time: '09:00' },
+        preview: { quote: 'Jan. 5', date: '2027-01-05', time: null },
+        generalOpen: { quote: 'Jan. 12 at 9 a.m.', date: '2027-01-12', time: '09:00' },
         evidence: 'Registration opens Jan. 12 at 9 a.m.',
       }),
     );
@@ -190,8 +198,8 @@ describe('compareWindow — a page that states one unlabelled date', () => {
     const outcome = compareWindow(
       tiered(),
       extracted({
-        residentOpen: { date: '2026-08-11', time: '06:30' },
-        generalOpen: { date: '2026-08-12', time: '06:30' },
+        residentOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+        generalOpen: { quote: 'Aug. 12 at 6:30 AM', date: '2026-08-12', time: '06:30' },
       }),
     );
     expect(outcome).toEqual({
@@ -252,7 +260,7 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     const outcome = compareWindow(
       stored,
       extracted({
-        generalOpen: { date: '2026-08-18', time: '06:30' },
+        generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
         evidence: 'Register starting Aug. 18 at 6:30 AM',
       }),
     );
@@ -274,7 +282,9 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     // minutes it is the whole thing.
     const outcome = compareWindow(
       markhamStored(),
-      extracted({ generalOpen: { date: '2026-08-11', time: '07:00' } }),
+      extracted({
+        generalOpen: { quote: 'Aug. 11 at 7:00 AM', date: '2026-08-11', time: '07:00' },
+      }),
     );
     expect(outcome.kind).toBe('discrepancy');
     if (outcome.kind !== 'discrepancy') throw new Error('expected a discrepancy');
@@ -286,7 +296,9 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     // change to tell a human about — not something to write in silently.
     const outcome = compareWindow(
       markhamStored(),
-      extracted({ residentOpen: { date: '2026-08-04', time: '06:30' } }),
+      extracted({
+        residentOpen: { quote: 'Aug. 4 at 6:30 AM', date: '2026-08-04', time: '06:30' },
+      }),
     );
     expect(outcome.kind).toBe('discrepancy');
     if (outcome.kind !== 'discrepancy') throw new Error('expected a discrepancy');
@@ -302,7 +314,9 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
   it('never returns a field the caller could apply — the outcome is diffs, not a patch', () => {
     const outcome = compareWindow(
       markhamStored(),
-      extracted({ generalOpen: { date: '2026-08-18', time: '06:30' } }),
+      extracted({
+        generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+      }),
     );
     // Structural guard on rule "NEVER auto-change": there is no `apply`, no
     // `newRow`, no `openAt` on a discrepancy outcome — nothing a careless caller
@@ -323,7 +337,10 @@ describe('compareWindow — a guess is never a verification', () => {
     // not verify; it never means we found a problem.
     const outcome = compareWindow(
       markhamStored(),
-      extracted({ confidence: 0.3, generalOpen: { date: '2026-09-01', time: '06:30' } }),
+      extracted({
+        confidence: 0.3,
+        generalOpen: { quote: 'Sep. 1 at 6:30 AM', date: '2026-09-01', time: '06:30' },
+      }),
     );
     expect(outcome).toEqual({ kind: 'unverified', reason: 'low_confidence' });
   });
@@ -362,14 +379,19 @@ describe('compareWindow — a guess is never a verification', () => {
 describe('parseExtraction — {date:null} is the same absence as null', () => {
   // A full, valid model answer; each case overrides only the `preview` field.
   const RAW = {
-    found: true,
-    reason: null,
     cycle_on_page: '2026 Fall Programs',
+    evidence: 'Register starting Aug. 11 at 6:30 AM',
     year_evidence: '2026 Fall Programs',
+    time_zone_evidence: null,
+    time_zone: null,
+    eligibility_evidence: null,
     preview: null,
     resident_open: null,
     general_open: null,
-    evidence: 'Register starting Aug. 11 at 6:30 AM',
+    unclassified_open: null,
+    note: null,
+    found: true,
+    reason: null,
     confidence: 0.9,
   };
 
@@ -383,12 +405,26 @@ describe('parseExtraction — {date:null} is the same absence as null', () => {
   });
 
   it('keeps a real published date (positive control)', () => {
-    const parsed = parseExtraction({ ...RAW, preview: { date: '2026-08-03', time: null } });
-    expect(parsed.preview).toEqual({ date: '2026-08-03', time: null });
+    const parsed = parseExtraction({
+      ...RAW,
+      preview: { quote: 'Aug, 3', date: '2026-08-03', time: null },
+    });
+    expect(parsed.preview).toEqual({ quote: 'Aug, 3', date: '2026-08-03', time: null });
+  });
+
+  it('keeps a QUOTED {date:null} as a partial date, never as a date field', () => {
+    const parsed = parseExtraction({
+      ...RAW,
+      unclassified_open: { quote: 'August 11', date: null, time: null },
+    });
+    expect(parsed.unclassifiedOpen).toBeNull();
+    expect(parsed.partialDates).toEqual([{ kind: 'unclassified_open', quote: 'August 11' }]);
   });
 
   it('still rejects a malformed date — the collapse is not a catch-all', () => {
-    expect(() => parseExtraction({ ...RAW, preview: { date: 'August 3', time: null } })).toThrow();
+    expect(() =>
+      parseExtraction({ ...RAW, preview: { quote: 'August 3', date: 'August 3', time: null } }),
+    ).toThrow();
   });
 });
 
@@ -416,7 +452,7 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
       corroborationFailure(
         PAGE,
         extracted({
-          generalOpen: { date: '2025-08-11', time: '06:30' },
+          generalOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2025-08-11', time: '06:30' },
         }),
       ),
     ).toBe('uncorroborated');
@@ -438,6 +474,8 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
         extracted({
           yearEvidence: '2026 Fall Programs',
           evidence: 'Register starting Aug. 11 - 6:30 AM',
+          preview: null,
+          generalOpen: { quote: 'Aug. 11 - 6:30 AM', date: '2026-08-11', time: '06:30' },
         }),
       ),
     ).toBeNull();
@@ -458,5 +496,200 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
         }),
       ),
     ).toBeNull();
+  });
+});
+
+describe('corroborationFailure — every date is bound to its own quote', () => {
+  const PAGE =
+    '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ' +
+    'Register starting Aug. 11 at 6:30 AM. You will have 48 hours to decide.';
+  const general = (quote: string, date: string, time: string | null) =>
+    extracted({ generalOpen: { quote, date, time } });
+
+  it('refuses a date whose quote is not on the page', () => {
+    expect(corroborationFailure(PAGE, general('Sep. 2 at 6:30 AM', '2026-08-11', '06:30'))).toBe(
+      'uncorroborated',
+    );
+  });
+
+  it('accepts the same date quoted from the page (control)', () => {
+    expect(
+      corroborationFailure(PAGE, general('Aug. 11 at 6:30 AM', '2026-08-11', '06:30')),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['another day', '2026-08-12', '06:30'],
+    ['another hour', '2026-08-11', '07:30'],
+    ['another minute', '2026-08-11', '06:45'],
+    ['the day and the hour swapped', '2026-08-06', '11:30'],
+    ['no time, when the quote prints one', '2026-08-11', null],
+  ] as const)('refuses a date that disagrees with its own quote: %s', (_name, date, time) => {
+    expect(corroborationFailure(PAGE, general('Aug. 11 at 6:30 AM', date, time))).toBe(
+      'uncorroborated',
+    );
+  });
+
+  it('refuses a date whose quote prints another year', () => {
+    const page = `${PAGE} Last season: Aug. 11, 2025 at 6:30 AM.`;
+    expect(
+      corroborationFailure(page, general('Aug. 11, 2025 at 6:30 AM', '2026-08-11', '06:30')),
+    ).toBe('uncorroborated');
+  });
+
+  it.each([
+    ['an afternoon clock', 'Register starting Aug. 11 at 6:30 PM.', 'Aug. 11 at 6:30 PM', '18:30'],
+    ['a printed zero minute', 'Register starting Aug. 22 9:00 a.m.', 'Aug. 22 9:00 a.m.', '09:00'],
+  ] as const)('accepts %s (control)', (_name, sentence, quote, time) => {
+    const date = quote.includes('22') ? '2026-08-22' : '2026-08-11';
+    expect(
+      corroborationFailure(
+        `2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ${sentence}`,
+        extracted({ evidence: sentence, generalOpen: { quote, date, time } }),
+      ),
+    ).toBeNull();
+  });
+
+  it('accepts digits the page prints full-width or behind a no-break space', () => {
+    const page =
+      '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. Register starting Aug.\u00a0１１ at 6:30 AM.';
+    expect(
+      corroborationFailure(page, general('Aug. 11 at 6:30 AM', '2026-08-11', '06:30')),
+    ).toBeNull();
+  });
+});
+
+describe('corroborationFailure — a quote must state ONE date', () => {
+  const PAGE =
+    'Fall 2026 Registration Schedule | Fall swimming lessons | Aug. 12 | Aug. 20 7 a.m. | Aug. 22 9 a.m.';
+  const resident = (quote: string) =>
+    extracted({
+      yearEvidence: 'Fall 2026 Registration Schedule',
+      evidence: 'Fall swimming lessons | Aug. 12 | Aug. 20 7 a.m. | Aug. 22 9 a.m.',
+      preview: null,
+      generalOpen: null,
+      residentOpen: { quote, date: '2026-08-22', time: '09:00' },
+    });
+
+  it('refuses a quote that spans two dates', () => {
+    expect(corroborationFailure(PAGE, resident('Aug. 20 7 a.m. | Aug. 22 9 a.m.'))).toBe(
+      'uncorroborated',
+    );
+  });
+
+  it("accepts the date's own cell (control)", () => {
+    expect(corroborationFailure(PAGE, resident('Aug. 22 9 a.m.'))).toBeNull();
+  });
+});
+
+describe('corroborationFailure — year evidence is required only for a complete date', () => {
+  const PAGE = 'Fall Programs. Preview August 4. Register August 11.';
+  const partialOnly = extracted({
+    yearEvidence: null,
+    evidence: 'Preview August 4. Register August 11.',
+    preview: null,
+    generalOpen: null,
+    partialDates: [
+      { kind: 'preview', quote: 'August 4' },
+      { kind: 'unclassified_open', quote: 'August 11' },
+    ],
+  });
+
+  it('accepts yearless dates kept as partials with no year evidence', () => {
+    expect(corroborationFailure(PAGE, partialOnly)).toBeNull();
+  });
+
+  it('refuses a complete date with no year evidence (control)', () => {
+    expect(
+      corroborationFailure(
+        PAGE,
+        extracted({
+          ...partialOnly,
+          generalOpen: { quote: 'August 11', date: '2026-08-11', time: null },
+        }),
+      ),
+    ).toBe('uncorroborated');
+  });
+});
+
+describe('EXTRACTION_JSON_SCHEMA', () => {
+  it('stays grammar-expressible, with reasoning before verdicts and no no_year_stated', () => {
+    expect(strictToolSchema(EXTRACTION_JSON_SCHEMA as never)).not.toBeNull();
+    const keys = Object.keys(EXTRACTION_JSON_SCHEMA.properties);
+    expect(keys.indexOf('eligibility_evidence')).toBeLessThan(keys.indexOf('general_open'));
+    expect(keys.indexOf('evidence')).toBeLessThan(keys.indexOf('found'));
+    expect(keys.indexOf('time_zone_evidence')).toBeLessThan(keys.indexOf('time_zone'));
+    expect(EXTRACTION_JSON_SCHEMA.properties.reason.enum).not.toContain('no_year_stated');
+    expect(EXTRACTION_JSON_SCHEMA.properties.reason.enum).toContain('announced_later');
+  });
+});
+
+describe('compareWindow — an unlabelled opening is compared as before (VIL-347)', () => {
+  const tiered = (overrides: Partial<StoredWindow> = {}) =>
+    markhamStored({
+      residentOpenAt: new Date('2026-08-11T06:30:00-04:00'),
+      openAt: new Date('2026-08-12T06:30:00-04:00'),
+      ...overrides,
+    });
+  const unlabelled = extracted({
+    generalOpen: null,
+    unclassifiedOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+  });
+
+  it('reads it as the resident date when that is what it matches', () => {
+    expect(compareWindow(tiered(), unlabelled)).toEqual({
+      kind: 'confirmed',
+      fields: ['previewAt', 'residentOpenAt'],
+    });
+  });
+
+  it('still reports it against the general open when it matches neither', () => {
+    const outcome = compareWindow(
+      tiered({ residentOpenAt: new Date('2026-08-10T06:30:00-04:00') }),
+      unlabelled,
+    );
+    if (outcome.kind !== 'discrepancy')
+      throw new Error(`expected a discrepancy, got ${outcome.kind}`);
+    expect(outcome.diffs.map((diff) => diff.field)).toEqual(['openAt']);
+  });
+
+  it('is incomplete_date when the page carried only yearless dates', () => {
+    expect(
+      compareWindow(
+        markhamStored(),
+        extracted({
+          preview: null,
+          generalOpen: null,
+          partialDates: [{ kind: 'unclassified_open', quote: 'Aug. 11' }],
+        }),
+      ),
+    ).toEqual({ kind: 'unverified', reason: 'incomplete_date' });
+  });
+});
+
+describe('isTrustworthyFind — a find needs a complete date', () => {
+  const PAGE = 'Fall Programs. Preview August 4. Register August 11, 2026.';
+  const partialOnly = extracted({
+    yearEvidence: null,
+    evidence: 'Preview August 4.',
+    preview: null,
+    generalOpen: null,
+    partialDates: [{ kind: 'preview', quote: 'August 4' }],
+    confidence: 0.9,
+  });
+
+  it('refuses a corroborated reading of yearless dates alone', () => {
+    expect(corroborationFailure(PAGE, partialOnly)).toBeNull();
+    expect(isTrustworthyFind(PAGE, partialOnly)).toBe(false);
+  });
+
+  it('accepts one complete corroborated date (control)', () => {
+    const complete = extracted({
+      ...partialOnly,
+      yearEvidence: 'August 11, 2026',
+      evidence: 'Register August 11, 2026.',
+      generalOpen: { quote: 'August 11, 2026', date: '2026-08-11', time: null },
+    });
+    expect(isTrustworthyFind(PAGE, complete)).toBe(true);
   });
 });

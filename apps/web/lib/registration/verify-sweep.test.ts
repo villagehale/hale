@@ -33,6 +33,10 @@ const MARKHAM_PAGE =
   '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ' +
   'Register starting Aug. 11 at 6:30 AM.';
 
+/** The same page after the town moved the open a week: a discrepancy has to be a date
+ * the page actually states, or the per-date gate refuses it before any comparison. */
+const MOVED_PAGE = MARKHAM_PAGE.replace('Aug. 11', 'Aug. 18');
+
 function storedWindow(overrides: Partial<StoredWindow> = {}): StoredWindow {
   return {
     id: 'win-markham',
@@ -55,10 +59,15 @@ function reading(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
     reason: null,
     cycleOnPage: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
     yearEvidence: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
-    preview: { date: '2026-08-03', time: null },
-    residentOpen: null,
-    generalOpen: { date: '2026-08-11', time: '06:30' },
     evidence: 'Register starting Aug. 11 at 6:30 AM',
+    preview: { quote: 'Aug, 3', date: '2026-08-03', time: null },
+    residentOpen: null,
+    generalOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+    unclassifiedOpen: null,
+    partialDates: [],
+    timeZone: null,
+    timeZoneEvidence: null,
+    note: null,
     confidence: 0.95,
     ...overrides,
   };
@@ -148,10 +157,11 @@ describe('runRegistrationVerifySweep — an inferred field is not evidence (VIL-
 describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
   it('does not touch the row, not even verified_at, and reports the discrepancy', async () => {
     const h = harness({
+      fetchPage: vi.fn(async () => MOVED_PAGE),
       extract: vi.fn(async () =>
         reading({
-          generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
+          generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+          evidence: 'Register starting Aug. 18 at 6:30 AM',
         }),
       ),
     });
@@ -214,7 +224,7 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
     const h = harness({
       extract: vi.fn(async () =>
         reading({
-          generalOpen: { date: '2026-09-08', time: '06:30' },
+          generalOpen: { quote: 'Sep. 8 at 6:30 AM', date: '2026-09-08', time: '06:30' },
           evidence: 'Register starting Sep. 8 at 6:30 AM',
         }),
       ),
@@ -329,14 +339,14 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
       loadWindows: async () => [storedWindow(), moved, unreadable],
       fetchPage: vi.fn(async (url: string) => {
         if (url === 'https://example.test/dead') throw new Error('HTTP 503');
-        return MARKHAM_PAGE;
+        return url === moved.sourceUrl ? MOVED_PAGE : MARKHAM_PAGE;
       }),
       extract: vi.fn(async (cycle: CycleIdentity) =>
         cycle.cycleLabel === moved.cycleLabel
           ? reading({
               cycleOnPage: moved.cycleLabel,
-              generalOpen: { date: '2026-08-18', time: '06:30' },
-              evidence: 'Register starting Aug. 11 at 6:30 AM',
+              generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+              evidence: 'Register starting Aug. 18 at 6:30 AM',
             })
           : reading(),
       ),
@@ -368,10 +378,11 @@ describe('runRegistrationVerifySweep — the run leaves its outcomes behind', ()
       recordRun: vi.fn(async () => {
         throw new Error('relation "registration_verify_runs" does not exist');
       }),
+      fetchPage: vi.fn(async () => MOVED_PAGE),
       extract: vi.fn(async () =>
         reading({
-          generalOpen: { date: '2026-08-18', time: '06:30' },
-          evidence: 'Register starting Aug. 11 at 6:30 AM',
+          generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+          evidence: 'Register starting Aug. 18 at 6:30 AM',
         }),
       ),
     });
@@ -401,7 +412,11 @@ describe('runRegistrationVerifySweep — the discovery leg', () => {
           cycleOnPage: 'Fall 2026',
           yearEvidence: 'Fall 2026 registration starts Wednesday, August 12 at 7 a.m.',
           preview: null,
-          generalOpen: { date: '2026-08-12', time: '07:00' },
+          generalOpen: {
+            quote: 'Wednesday, August 12 at 7 a.m.',
+            date: '2026-08-12',
+            time: '07:00',
+          },
           evidence: 'Fall 2026 registration starts Wednesday, August 12 at 7 a.m.',
         }),
       ),
