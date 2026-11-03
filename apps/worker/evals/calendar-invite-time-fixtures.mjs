@@ -8,7 +8,9 @@
 // expectMatch is the skill (packages/agent/skills/calendar-invite-time.md):
 // an hour named without a minute is minute zero, so "10 h" does not match
 // 10:30; a minute the text does name must be 30, including "10 h 30";
-// a different weekday does not match.
+// a different weekday does not match. One case starts on the hour (10:00 AM,
+// `2026-07-23T14:00:00.000Z`), so an hour named in Chinese with no minute matches:
+// the other side of "10 h" against 10:30.
 
 const STARTS = {
   year: 2026,
@@ -61,5 +63,14 @@ export const CALENDAR_INVITE_TIME_FIXTURES = [
     language: 'en',
     text: 'Swim class on Friday, July 23 at 10:30 AM. [[link]]',
     expectMatch: false,
+  },
+  {
+    id: 'correct-zh-on-the-hour',
+    ...SHARED,
+    when: 'Thu, Jul 23 at 10:00 AM',
+    starts: { ...STARTS, minute: 0 },
+    language: 'zh',
+    text: '周四上午10点 Swim class。[[link]]',
+    expectMatch: true,
   },
 ];
