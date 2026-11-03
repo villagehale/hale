@@ -6,6 +6,10 @@
  * (rule #1).
  */
 const GOOGLE_SCOPE_COPY: Record<string, { label: string; readOnly: boolean }> = {
+  'https://www.googleapis.com/auth/calendar.events.owned.readonly': {
+    label: 'Calendar',
+    readOnly: true,
+  },
   'https://www.googleapis.com/auth/calendar.readonly': { label: 'Calendar', readOnly: true },
   'https://www.googleapis.com/auth/gmail.readonly': { label: 'Mail', readOnly: true },
   'https://www.googleapis.com/auth/drive.readonly': { label: 'Files', readOnly: true },

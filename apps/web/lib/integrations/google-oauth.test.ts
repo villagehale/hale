@@ -46,7 +46,10 @@ describe('buildGoogleAuthUrl', () => {
         'scope',
       );
     expect(scopeOf('gcal')).toBe(
-      'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
+    );
+    expect(scopeOf('gcal')?.split(' ')).not.toContain(
+      'https://www.googleapis.com/auth/calendar.readonly',
     );
     expect(scopeOf('gmail')).toBe(
       'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.profile',

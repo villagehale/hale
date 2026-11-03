@@ -28,13 +28,13 @@ import {
   GOOGLE_PROFILE_SCOPE,
   connectorRedirectUri,
   exchangeCodeForTokens,
+  requestedConnectorScopes,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
 import {
   ensurePushWatchAfterConnect,
   googleJsonClient,
 } from '~/lib/integrations/google-push-runtime';
-import { grantedWriteScopesAllowed } from '~/lib/integrations/google-write-flag';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
@@ -187,20 +187,18 @@ export async function GET(req: NextRequest) {
     grantedAccessToken = tokens.accessToken;
     // Granular consent lets the user deselect the scope, and a provider bug could
     // broaden it: the grant must contain EXACTLY what this connector needs and
-    // nothing outside the readonly universe — otherwise store nothing (a stored
+    // nothing its consent did not ask for — otherwise store nothing (a stored
     // 'active' connection whose token 403s would error-flap forever; a broader
     // one would silently hold power we never asked the parent to consent to).
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
-    // Profile is optional. The two write scopes are optional too, and only when
-    // this user was armed (global flag, or their id on the allowlist): a parent
-    // who deselects calendar.events still connects, and a grant that carries
-    // them for anyone else is broader than what we asked and is stored nowhere.
-    // gmail.send is never in this set.
+    // Allowed is exactly what this connector's consent asked for, from the same
+    // function the consent URL is built with, plus the optional profile. Another
+    // connector's scope, or a write scope this user was not armed for on this
+    // connector, is broader than we asked and is stored nowhere.
     const allowed = new Set<string>([
-      ...Object.values(CONNECTOR_SCOPES).flat(),
+      ...requestedConnectorScopes(bound.provider, process.env, bound.userId),
       GOOGLE_PROFILE_SCOPE,
-      ...grantedWriteScopesAllowed(process.env, bound.userId),
     ]);
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
