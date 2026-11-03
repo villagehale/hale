@@ -65,6 +65,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     location: null,
     googleEventId: null,
     createdBy: null,
+    kidVerdict: null,
     ...over,
   };
 }
@@ -169,6 +170,7 @@ describe('runReminderCron — Phase A converge', () => {
       googleEventId: 'ev-swim',
       createdBy: 'p1',
       childId: null,
+      kidVerdict: 'kid',
     });
     const hale = liveEvent({ id: 'hale-1', title: 'Checkup', childId: 'c1' });
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
@@ -393,6 +395,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     childId: null,
     googleEventId: 'ev-swim',
     createdBy: 'p1',
+    kidVerdict: 'kid',
   });
   const placement = liveEvent();
   const events = new Map<string, LiveEvent>([
@@ -517,6 +520,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     childId: null,
     googleEventId: 'ev-late',
     createdBy: 'p1',
+    kidVerdict: 'kid',
     startsAt: new Date('2026-07-25T05:00:00Z'),
   });
   const heldRow = () =>
