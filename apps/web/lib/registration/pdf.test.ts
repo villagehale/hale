@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS } from './fetch';
-import { MAX_PDF_PAGES, registrationPdfText } from './pdf';
+import { MAX_PDF_PAGES, PDF_READ_MEMORY_POLL_MS, registrationPdfText } from './pdf';
 import { registrationPdfFixture, registrationPdfFlateFixture } from './pdf-fixture.test-helper';
 
 const TWO_PAGE_GUIDE = [
@@ -11,12 +11,15 @@ const TWO_PAGE_GUIDE = [
 // "[PDF page n]\n" marker and the trailing newline.
 const CHARS_PER_TEXT_PAGE = 3_053;
 const FLATE_BOMB_INFLATED_BYTES = 128 * 1024 * 1024;
-// Calibrated: a two-page read grows RSS by ~18 MiB; this bomb grows it by ~965 MiB within
+// Calibrated: the largest legal read stays under the ceiling; this bomb grows it by ~965 MiB within
 // 3 s even after the deadline test has already raised the process's RSS high-water mark,
 // which freed-and-reused pages hide from a smaller bomb (128 MiB grows only ~36 MiB then).
 const MEMORY_BOMB_INFLATED_BYTES = 512 * 1024 * 1024;
 const MEMORY_CEILING_BYTES = 128 * 1024 * 1024;
 const MICROS_PER_MS = 1_000;
+// 100 pages of this stay just under MAX_PAGE_TEXT_CHARS once page markers are added.
+const LARGEST_LEGAL_PAGE_CHARS = 1_900;
+const DENSE_MEMORY_POLL_MS = 1;
 
 function cpuMicros(usage: NodeJS.CpuUsage): number {
   return usage.user + usage.system;
@@ -94,7 +97,11 @@ describe('local registration PDF text extraction', () => {
     });
 
     it('is killed at the deadline, and burns no CPU after the kill', async () => {
-      const budget = { timeoutMs: 400, maxRssGrowthBytes: Number.MAX_SAFE_INTEGER };
+      const budget = {
+        timeoutMs: 400,
+        maxRssGrowthBytes: Number.MAX_SAFE_INTEGER,
+        memoryPollMs: PDF_READ_MEMORY_POLL_MS,
+      };
       expect(flateBomb.byteLength).toBeLessThanOrEqual(MAX_PAGE_BYTES);
 
       const started = performance.now();
@@ -117,7 +124,11 @@ describe('local registration PDF text extraction', () => {
     }, 30_000);
 
     it('is killed when memory grows past the ceiling, long before the deadline', async () => {
-      const budget = { timeoutMs: 20_000, maxRssGrowthBytes: MEMORY_CEILING_BYTES };
+      const budget = {
+        timeoutMs: 20_000,
+        maxRssGrowthBytes: MEMORY_CEILING_BYTES,
+        memoryPollMs: PDF_READ_MEMORY_POLL_MS,
+      };
       expect(memoryBomb.byteLength).toBeLessThanOrEqual(MAX_PAGE_BYTES);
 
       const started = performance.now();
@@ -127,9 +138,16 @@ describe('local registration PDF text extraction', () => {
       });
       expect(performance.now() - started).toBeLessThan(5_000);
 
+      // The largest read the page and text ceilings allow, sampled every millisecond, so the
+      // check runs dozens of times against an instance whose RSS is already far past the
+      // ceiling: only growth since the read began may count.
+      expect(process.memoryUsage.rss()).toBeGreaterThan(MEMORY_CEILING_BYTES);
+      const largestLegalRead = registrationPdfFixture(
+        Array(MAX_PDF_PAGES).fill('y'.repeat(LARGEST_LEGAL_PAGE_CHARS)),
+      );
       await expect(
-        registrationPdfText(registrationPdfFixture(TWO_PAGE_GUIDE), budget),
-      ).resolves.toContain('Winter registration begins November 10, 2026');
+        registrationPdfText(largestLegalRead, { ...budget, memoryPollMs: DENSE_MEMORY_POLL_MS }),
+      ).resolves.toContain(`[PDF page ${MAX_PDF_PAGES}]`);
     }, 30_000);
   });
 });

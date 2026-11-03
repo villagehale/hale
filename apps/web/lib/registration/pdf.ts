@@ -48,9 +48,10 @@ type WorkerMessage =
  */
 export async function registrationPdfText(
   bytes: Uint8Array,
-  budget: { timeoutMs: number; maxRssGrowthBytes: number } = {
+  budget: { timeoutMs: number; maxRssGrowthBytes: number; memoryPollMs: number } = {
     timeoutMs: PAGE_FETCH_TIMEOUT_MS,
     maxRssGrowthBytes: MAX_PDF_READ_RSS_GROWTH_BYTES,
+    memoryPollMs: PDF_READ_MEMORY_POLL_MS,
   },
 ): Promise<string> {
   if (bytes.byteLength > MAX_PAGE_BYTES) throw new RegistrationPdfError('pdf_read_budget', 'bytes');
@@ -85,7 +86,7 @@ export async function registrationPdfText(
         if (process.memoryUsage.rss() - baselineRss > budget.maxRssGrowthBytes) {
           settle(() => reject(new RegistrationPdfError('pdf_read_budget', 'memory')));
         }
-      }, PDF_READ_MEMORY_POLL_MS);
+      }, budget.memoryPollMs);
       worker.on('message', (message: WorkerMessage) => {
         if ('kind' in message && message.kind === 'reader_loaded') {
           readerLoaded = true;

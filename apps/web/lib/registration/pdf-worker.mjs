@@ -5,8 +5,9 @@ import { parentPort, workerData } from 'node:worker_threads';
 const { bytes, maxPages, maxTextChars } = workerData;
 
 let getDocument;
+let VerbosityLevel;
 try {
-  ({ getDocument } = await import('unpdf/pdfjs'));
+  ({ getDocument, VerbosityLevel } = await import('unpdf/pdfjs'));
 } catch (error) {
   parentPort.postMessage({
     ok: false,
@@ -26,6 +27,7 @@ async function read() {
     useSystemFonts: false,
     disableFontFace: true,
     stopAtErrors: true,
+    verbosity: VerbosityLevel.ERRORS,
   });
   try {
     const pdf = await loadingTask.promise;
