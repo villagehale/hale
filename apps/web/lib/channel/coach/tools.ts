@@ -674,7 +674,6 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         ...(args.parentUserId ? { parentUserId: args.parentUserId } : {}),
         title: input.title,
         startsAt: startsAt.toISOString(),
-        timeZone,
         now,
         ...(args.audience ? { audience: args.audience } : {}),
         ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),

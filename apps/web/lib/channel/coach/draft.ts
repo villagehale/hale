@@ -3,11 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
 import { and, eq, inArray } from 'drizzle-orm';
-import {
-  calendarInstantsEqual,
-  calendarTitlesEqual,
-  matchingCalendarAddId,
-} from '~/lib/channel/calendar-ask';
+import { matchingCalendarAddId } from '~/lib/channel/calendar-ask';
 import { standingCalendarOfferId } from '~/lib/integrations/email-alert-offer';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
@@ -81,8 +77,7 @@ export interface ChannelDraftPort {
     parentUserId?: string;
     title: string;
     startsAt: string;
-    timeZone?: string;
-    now?: Date;
+    now: Date;
     /** A group ask must not collapse into a private 1:1 offer. */
     audience?: 'direct' | 'group';
     groupChatId?: string;
@@ -131,10 +126,10 @@ async function groupDraftIdsForChat(
 /**
  * The drafted add for this occasion, or the offer that already asked it.
  *
- * A minute-off clock on the same local day is the draft already waiting (VIL-525).
- * An exact instant is the fallback when the caller has no zone. A standing offer
- * is the ask that already went out, so the same occasion does not mint a second
- * draft and is not asked again.
+ * A minute-off clock is the draft already waiting (VIL-525); hours apart is not.
+ * A standing offer is the ask that already went out, so the same occasion does not
+ * mint a second draft and is not asked again. Offers are per parent: a private ask
+ * with no parent cannot look, and says so.
  */
 export async function findPendingIdenticalCalendarAdd(
   database: Database,
@@ -143,8 +138,7 @@ export async function findPendingIdenticalCalendarAdd(
     parentUserId?: string;
     title: string;
     startsAt: string;
-    timeZone?: string;
-    now?: Date;
+    now: Date;
     audience?: 'direct' | 'group';
     groupChatId?: string;
   },
@@ -183,24 +177,20 @@ export async function findPendingIdenticalCalendarAdd(
       )
     : null;
   const candidates = groupIds ? shaped.filter((row) => groupIds.has(row.id)) : shaped;
-  if (input.timeZone) {
-    const hit = matchingCalendarAddId(candidates, {
-      title: input.title,
-      startsAt: input.startsAt,
-    });
-    if (hit) return hit;
-  } else {
-    const hit = candidates.find(
-      (row) =>
-        row.occasion !== null &&
-        calendarTitlesEqual(row.occasion.title, input.title) &&
-        calendarInstantsEqual(row.occasion.startsAt, input.startsAt),
-    );
-    if (hit) return hit.id;
-  }
+  const hit = matchingCalendarAddId(candidates, {
+    title: input.title,
+    startsAt: input.startsAt,
+  });
+  if (hit) return hit;
   // A 1:1 offer is private. A group ask cannot answer it, so it must still draft.
   if (groupAsk) return null;
-  if (!input.parentUserId || !input.timeZone || !input.now) return null;
+  if (!input.parentUserId) {
+    console.info(
+      { familyId: input.familyId, outcome: 'standing_offer_unchecked', reason: 'no_parent' },
+      'texted calendar add: standing offer not checked',
+    );
+    return null;
+  }
   return standingCalendarOfferId(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,

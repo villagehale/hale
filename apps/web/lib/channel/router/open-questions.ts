@@ -699,8 +699,6 @@ export interface OpenQuestionSources {
       /** The occasion, so a matching calendar draft is the same question. */
       title?: string;
       startsAt?: string;
-      /** The parent's zone, so a same-day draft is the ask already sent. */
-      timeZone?: string;
     }>
   >;
   /**
@@ -962,11 +960,7 @@ export function createOpenQuestionReader(
               reviewerApproved: action.reviewerApproved,
               occasion: action.occasion ?? null,
             })),
-            {
-              title: offer.title,
-              startsAt: offer.startsAt,
-              timeZone: offer.timeZone ?? 'UTC',
-            },
+            { title: offer.title, startsAt: offer.startsAt },
           );
           if (unapprovedIds.length > 0) {
             for (const id of unapprovedIds) hiddenDrafts.add(id);

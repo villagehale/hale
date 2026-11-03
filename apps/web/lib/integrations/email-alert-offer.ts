@@ -362,7 +362,6 @@ async function supersedeUnapprovedCalendarAdds(
       ),
     )
     .limit(20);
-  const timeZone = await parentTimeZone(database, input.parentUserId);
   const ids = unapprovedCalendarAddIds(
     rows.map((row) => ({
       id: row.id,
@@ -370,7 +369,7 @@ async function supersedeUnapprovedCalendarAdds(
       reviewerApproved: row.reviewerVerdict === 'approved',
       occasion: occasionFromPayload(row.payload),
     })),
-    { title: input.title, startsAt: input.startsAt.toISOString(), timeZone },
+    { title: input.title, startsAt: input.startsAt.toISOString() },
   );
   for (const id of ids) {
     await database.transaction(async (tx) => {

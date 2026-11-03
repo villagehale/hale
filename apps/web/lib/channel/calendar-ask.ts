@@ -143,23 +143,6 @@ export function pairedDraftForCalendarNo(
 }
 
 /**
- * The same local calendar day in `timeZone`. A minute off the sentence is the same
- * day. Thursday and Sunday are not, even when the title is.
- */
-export function calendarSameLocalDay(left: string, right: string, timeZone: string): boolean {
-  const a = new Date(left);
-  const b = new Date(right);
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return false;
-  const day = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return day.format(a) === day.format(b);
-}
-
-/**
  * The pending `calendar_add` this ask is already about, or null.
  *
  * A new ask matches a standing offer or a pending draft only on a close clock.
@@ -199,7 +182,7 @@ export function unapprovedCalendarAddIds(
     reviewerApproved: boolean;
     occasion: { title: string; startsAt: string } | null;
   }[],
-  offer: { title: string; startsAt: string; timeZone: string },
+  offer: { title: string; startsAt: string },
 ): string[] {
   const titled = drafts.filter(
     (draft) =>

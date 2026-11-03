@@ -986,7 +986,6 @@ describe('a coach offer is the calendar, not the sentence', () => {
         parentUserId: family.parentUserId,
         title: TITLE,
         startsAt: minuteOff.toISOString(),
-        timeZone: 'America/Toronto',
         now: NOW,
       }),
     ).toBe(actionId);
@@ -1020,7 +1019,6 @@ describe('a coach offer is the calendar, not the sentence', () => {
         parentUserId: family.parentUserId,
         title: TITLE,
         startsAt: STARTS_AT.toISOString(),
-        timeZone: 'America/Toronto',
         now: NOW,
       }),
     ).toBe(actionId);
@@ -1066,6 +1064,61 @@ describe('a coach offer is the calendar, not the sentence', () => {
     expect(draft?.state).toBe('drafted_for_approval');
   });
 
+  it('a morning offer is not the ask for the same title that afternoon, so that ask drafts', async () => {
+    const morning = new Date('2026-10-10T13:00:00.000Z');
+    const offerId = await seedOffer({ title: 'Gymnastics', startsAt: morning });
+    const ask = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      title: 'Gymnastics',
+      now: NOW,
+    };
+
+    await expect(
+      findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        startsAt: new Date(morning.getTime() + 60_000).toISOString(),
+      }),
+    ).resolves.toBe(offerId);
+    await expect(
+      findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        startsAt: new Date(morning.getTime() + 7 * 3_600_000).toISOString(),
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('names the unchecked standing offer when a private ask has no parent', async () => {
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const ask = {
+      familyId: family.familyId,
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      now: NOW,
+    };
+    try {
+      await expect(
+        findPendingIdenticalCalendarAdd(db.database, {
+          ...ask,
+          parentUserId: family.parentUserId,
+        }),
+      ).resolves.toBe(offerId);
+      expect(info).not.toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'standing_offer_unchecked' }),
+        expect.any(String),
+      );
+
+      await expect(findPendingIdenticalCalendarAdd(db.database, ask)).resolves.toBeNull();
+      expect(info).toHaveBeenCalledWith(
+        { familyId: family.familyId, outcome: 'standing_offer_unchecked', reason: 'no_parent' },
+        expect.any(String),
+      );
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   it('a NO declines the hidden unapproved add, so the next turn does not list it', async () => {
     const actionId = await seedDraftedAction({
       title: TITLE,
@@ -1108,7 +1161,6 @@ describe('a coach offer is the calendar, not the sentence', () => {
       parentUserId: family.parentUserId,
       title: TITLE,
       startsAt: STARTS_AT.toISOString(),
-      timeZone: 'America/Toronto',
       now: NOW,
       audience: 'group' as const,
       groupChatId: 'chat-family',
@@ -1219,13 +1271,13 @@ describe('a coach offer is the calendar, not the sentence', () => {
     expect(minted).toBe(0);
   });
 
-  it('a NO clears the private draft and the group draft of that offer', async () => {
+  it('a NO clears every private draft of that offer', async () => {
     const privateId = await seedDraftedAction({
       title: TITLE,
       startsAt: STARTS_AT.toISOString(),
       reviewerVerdict: 'pending',
     });
-    const groupId = await seedDraftedAction({
+    const secondId = await seedDraftedAction({
       title: TITLE,
       startsAt: new Date(STARTS_AT.getTime() + 60_000).toISOString(),
       reviewerVerdict: 'pending',
@@ -1247,7 +1299,7 @@ describe('a coach offer is the calendar, not the sentence', () => {
       polarity: 'no',
       confidence: 'high',
     });
-    expect(declined).toEqual(expect.arrayContaining([privateId, groupId]));
+    expect(declined).toEqual(expect.arrayContaining([privateId, secondId]));
 
     const verdict = await reply('no', { resolved: reading(offerId, 'no') });
     expect(verdict.claimed).toBe(true);

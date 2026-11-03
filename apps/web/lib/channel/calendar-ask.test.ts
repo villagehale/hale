@@ -278,9 +278,7 @@ describe('matchingCalendarAddId', () => {
 });
 
 describe('unapprovedCalendarAddIds', () => {
-  const zone = 'America/Toronto';
-
-  it('retires the lone same-title draft when the start is the same local day', () => {
+  it('retires the lone same-title draft when the clock is a minute off', () => {
     expect(
       unapprovedCalendarAddIds(
         [
@@ -291,7 +289,7 @@ describe('unapprovedCalendarAddIds', () => {
             occasion: { title: 'Trunk or Treat', startsAt: '2026-10-08T16:00:00.000Z' },
           },
         ],
-        { title: 'Trunk or Treat', startsAt: '2026-10-08T16:01:00.000Z', timeZone: zone },
+        { title: 'Trunk or Treat', startsAt: '2026-10-08T16:01:00.000Z' },
       ),
     ).toEqual(['a-1']);
   });
@@ -307,7 +305,7 @@ describe('unapprovedCalendarAddIds', () => {
             occasion: { title: 'Gymnastics', startsAt: '2026-10-10T20:00:00.000Z' },
           },
         ],
-        { title: 'Gymnastics', startsAt: '2026-10-10T13:00:00.000Z', timeZone: zone },
+        { title: 'Gymnastics', startsAt: '2026-10-10T13:00:00.000Z' },
       ),
     ).toEqual([]);
   });
@@ -323,7 +321,7 @@ describe('unapprovedCalendarAddIds', () => {
             occasion: { title: 'Gymnastics', startsAt: '2026-10-11T16:00:00.000Z' },
           },
         ],
-        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z', timeZone: zone },
+        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z' },
       ),
     ).toEqual([]);
   });

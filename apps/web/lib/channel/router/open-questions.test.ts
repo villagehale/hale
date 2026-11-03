@@ -270,7 +270,6 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           askedAt: T0,
           title: 'Trunk or Treat',
           startsAt: '2026-10-31T19:01:00.000Z',
-          timeZone: 'America/Toronto',
         },
       ],
       eveningCheckIn: async () => null,
@@ -321,7 +320,6 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           askedAt: T0,
           title: 'Gymnastics',
           startsAt: '2026-10-10T13:00:00.000Z',
-          timeZone: 'America/Toronto',
         },
       ],
       eveningCheckIn: async () => null,
@@ -344,6 +342,62 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
     expect(questions.find((question) => question.id === 'offer-morning')?.declinesActionId).toBe(
       undefined,
     );
+  });
+
+  it('pairs an offer with its draft by the clock alone, never by a UTC day', async () => {
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [
+        {
+          actionId: 'minute-off-next-utc-day',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt: '2026-11-01T00:00:30.000Z' },
+        },
+        {
+          actionId: 'same-utc-day-hours-earlier',
+          actionType: 'calendar_add',
+          reviewerApproved: false,
+          occasion: { title: 'Gymnastics', startsAt: '2026-10-31T17:00:00.000Z' },
+        },
+      ],
+      introOptInOpen: async () => false,
+      introProposal: async () => null,
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [
+        {
+          id: 'offer-late',
+          summary: 'An offer to put Gymnastics on your week',
+          subject: 'putting Gymnastics on your week',
+          askedAt: T0,
+          title: 'Gymnastics',
+          startsAt: '2026-10-31T23:59:30.000Z',
+        },
+      ],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    expect(questions.filter((question) => question.kind === 'approval').map((q) => q.id)).toEqual([
+      'same-utc-day-hours-earlier',
+    ]);
+    expect(questions.find((question) => question.id === 'offer-late')?.declinesActionIds).toEqual([
+      'minute-off-next-utc-day',
+    ]);
   });
 
   it('declines every private draft of the occasion and leaves the group-drafted one to the group', async () => {
@@ -386,7 +440,6 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           askedAt: T0,
           title: 'Gymnastics',
           startsAt,
-          timeZone: 'America/Toronto',
         },
       ],
       eveningCheckIn: async () => null,
@@ -434,7 +487,6 @@ function calendarReader(approvals: unknown[], startsAt: string) {
         askedAt: T0,
         title: 'Gymnastics',
         startsAt,
-        timeZone: 'America/Toronto',
       },
     ],
     eveningCheckIn: async () => null,
