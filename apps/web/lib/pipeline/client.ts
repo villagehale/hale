@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type HaleStage, traceAnthropic } from '~/lib/analytics/llm-trace';
+import { type NonGoogleClearance, assertClearance } from './provider-clearance';
 
 /**
  * The shared Anthropic client for the inbound pipeline (classify/draft/review).
@@ -83,10 +84,14 @@ export function budgetedAnthropic(
   return traceAnthropic(new Anthropic({ apiKey, ...budget }), trace);
 }
 
+/** A non-Anthropic transport (VIL-556): built only for a minted clearance, checked
+ * before the key is read or the client exists. */
 export function budgetedAiGateway(
   budget: AnthropicBudget,
+  clearance: NonGoogleClearance,
   trace: { stage?: HaleStage } = {},
 ): Anthropic {
+  assertClearance(clearance);
   const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_KEY ?? process.env.JEV_KEY;
   if (!apiKey) throw new Error('AI_GATEWAY_API_KEY is not set');
   return traceAnthropic(
