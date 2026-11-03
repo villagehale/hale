@@ -2,7 +2,11 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type CrisisRegion, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
-import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
+import {
+  type ReplyLanguage,
+  acceptReplyLanguage,
+  certainLanguageHint,
+} from '~/lib/channel/language';
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -19,9 +23,10 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * not read it, so its verdict is dropped.
  *
  * The same read routes a crisis (#868, Sloane 2026-10-14): an emergency or a
- * mental-health crisis in any wording comes back as `crisis_*` with the model's own
- * reply pointing to emergency or crisis help. One call per inbound covers both, and
- * {@link readTurnOnce} shares it across every seam that asks within one turn.
+ * mental-health crisis in any wording comes back as `crisis_*`. The reader only
+ * classifies a crisis; its text is never sent. The said-line writer answers from facts
+ * (deliverCrisisReply). One call per inbound covers both, and {@link readTurnOnce}
+ * shares it across every seam that asks within one turn.
  */
 
 const MAX_TOKENS = 400;
@@ -45,10 +50,16 @@ const INTENTS = [
   'none',
 ] as const;
 
-export interface OptOutReading {
+/** What a seam that only routes may see: no reply text, so it cannot send one. */
+export interface OptOutIntentReading {
   intent: OptOutIntent;
-  /** Model-written reply: the stop/start confirmation, or the crisis reply. Empty for none. */
+}
+
+export interface OptOutReading extends OptOutIntentReading {
+  /** Model-written stop/start confirmation. Empty for every other reading, crisis included. */
   confirmation: string;
+  /** The language the text is written in, as the reader read it. Absent or null: it named none. */
+  language?: ReplyLanguage | null;
 }
 
 export interface OptOutReadInput {
@@ -56,7 +67,7 @@ export interface OptOutReadInput {
   language: ReplyLanguage | null;
   /**
    * Canada or the US when Hale already knows it. Never inferred from the
-   * language of the text. The crisis reply weaves that region's line in.
+   * language of the text. The reader is handed that region's crisis lines as facts.
    */
   region?: CrisisRegion | null;
 }
@@ -69,6 +80,7 @@ export interface OptOutReader {
 const outputSchema = z.object({
   intent: z.enum(INTENTS),
   verbatim: z.string(),
+  language: z.string(),
   confirmation: z.string(),
 });
 
@@ -77,17 +89,18 @@ const outputJsonSchema = {
   properties: {
     intent: { type: 'string', enum: [...INTENTS] },
     verbatim: { type: 'string' },
+    language: { type: 'string' },
     confirmation: { type: 'string' },
   },
-  required: ['intent', 'verbatim', 'confirmation'],
+  required: ['intent', 'verbatim', 'language', 'confirmation'],
 } as const;
 
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
 export function optOutUserMessage(input: OptOutReadInput): string {
   // A hint only when certain; the sender's words decide the reply's language (#868).
   // The reader has not classified yet, so every turn gets the mental facts:
-  // the 988 line for a known region, or both 988 lines, plus 911. A physical
-  // emergency is narrowed to 911-only facts after the intent is known.
+  // the 988 line for a known region, or both 988 lines, plus 911. It never writes
+  // them: the crisis writer is handed its own facts once the intent is known.
   return JSON.stringify({
     text: input.text,
     languageHint: certainLanguageHint(input.language),
@@ -95,26 +108,27 @@ export function optOutUserMessage(input: OptOutReadInput): string {
   });
 }
 
-/** Structural checks only: echo must match. A crisis reading with no reply is kept
- * (the caller ends the turn and logs it) — the routing still stands. */
+/** Structural checks only: echo must match. Only a stop or a start keeps the reader's
+ * text; a crisis reading keeps its routing and drops the text, which is never sent. */
 export function acceptOptOutReading(
   value: z.infer<typeof outputSchema>,
   text: string,
 ): OptOutReading | null {
   if (value.verbatim !== text) return null;
   const confirmation = value.confirmation.trim();
+  const language = acceptReplyLanguage(value.language);
   // VIL-477: "Hale, leave this group" is its own reading only while Hale can leave
   // (LINQ_GROUP_LEAVE_ENABLED). Dark, it stays the stop it always was, so the dark
   // path is unchanged; lit, it is not a stop and the group turn handles the leave.
   if (value.intent === 'leave_group') {
     return linqGroupLeaveEnabled()
-      ? { intent: 'leave_group', confirmation: '' }
-      : { intent: 'stop', confirmation };
+      ? { intent: 'leave_group', confirmation: '', language }
+      : { intent: 'stop', confirmation, language };
   }
-  if (value.intent === 'none' || value.intent === 'identity') {
-    return { intent: value.intent, confirmation: '' };
+  if (value.intent === 'stop' || value.intent === 'start') {
+    return { intent: value.intent, confirmation, language };
   }
-  return { intent: value.intent, confirmation };
+  return { intent: value.intent, confirmation: '', language };
 }
 
 export function createOptOutReader(
@@ -164,7 +178,7 @@ export function createOptOutReader(
 
 /** Test and dry-run double: never calls a model. */
 export const optOutReaderIdle: OptOutReader = {
-  read: async () => ({ intent: 'none', confirmation: '' }),
+  read: async () => ({ intent: 'none', confirmation: '', language: null }),
 };
 
 const turnReads = new WeakMap<object, Promise<OptOutReading | null>>();
@@ -181,41 +195,45 @@ export function readTurnOnce(
   if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
   const cached = turnReads.get(turn);
   if (cached) return cached;
-  const read = readTextOnce(reader, input);
+  const read = readReplyOnce(reader, input);
   turnReads.set(turn, read);
   return read;
 }
 
-/** Seams that see only the words (the friend voice, its judge) share the turn's read
- * by text for a minute, so one inbound is still one model call (#868). Keyed by the
- * region too: the reading carries that region's crisis line, so a family elsewhere
- * sending the same words gets its own read. A seam that asks with no region reads only
- * the intent, which the region does not change, so it reuses any live read of the words. */
+/** Reads shared by text for a minute, so one inbound is still one model call (#868). */
 const textReads = new Map<
   string,
   { at: number; text: string; read: Promise<OptOutReading | null> }
 >();
 const TEXT_READ_TTL_MS = 60_000;
 
-export function readTextOnce(
-  reader: OptOutReader | null | undefined,
-  input: OptOutReadInput,
-): Promise<OptOutReading | null> {
-  if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
+function liveTextReads(): typeof textReads {
   const now = Date.now();
   for (const [key, entry] of textReads) {
     if (now - entry.at > TEXT_READ_TTL_MS) textReads.delete(key);
   }
-  const region = input.region ?? null;
-  const key = JSON.stringify([region, input.text]);
-  const hit =
-    textReads.get(key) ??
-    (region === null
-      ? [...textReads.values()].find((entry) => entry.text === input.text)
-      : undefined);
+  return textReads;
+}
+
+/**
+ * The read whose stop/start confirmation may be sent. Keyed on the text, the language
+ * and the region, with no fallback, so a confirmation never crosses a language or a
+ * region. An explicit null region is its own key, distinct from a missing one.
+ */
+export function readReplyOnce(
+  reader: OptOutReader | null | undefined,
+  input: OptOutReadInput,
+): Promise<OptOutReading | null> {
+  if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
+  const key = JSON.stringify([
+    input.text,
+    input.language,
+    input.region === undefined ? 'region-unset' : input.region,
+  ]);
+  const hit = liveTextReads().get(key);
   if (hit) return hit.read;
   const read = reader.read(input);
-  textReads.set(key, { at: now, text: input.text, read });
+  textReads.set(key, { at: Date.now(), text: input.text, read });
   // A failed read is not remembered: the next ask reads again.
   void read.then((reading) => {
     if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);
@@ -223,8 +241,27 @@ export function readTextOnce(
   return read;
 }
 
+/**
+ * The intent alone, for seams that only route (the identity check, the friend voice,
+ * the Linq doors). Shared by text: any live read of the same words answers it, since
+ * neither the language nor the region changes the intent. Its type carries no
+ * confirmation, so no caller can send one.
+ */
+export async function readIntentOnce(
+  reader: OptOutReader | null | undefined,
+  input: Pick<OptOutReadInput, 'text' | 'language'>,
+): Promise<OptOutIntentReading | null> {
+  if (!reader || input.text.trim().length === 0) return null;
+  const live = [...liveTextReads().values()].find((entry) => entry.text === input.text);
+  const reading = await (live?.read ?? readReplyOnce(reader, input));
+  return reading ? { intent: reading.intent } : null;
+}
+
+/** The old name of {@link readIntentOnce}; router/route.ts (#1006's lane) still imports it. */
+export const readTextOnce = readIntentOnce;
+
 /** The model read this turn as "who is texting me / is this real" (#868: no regex). */
-export function isIdentityReading(reading: OptOutReading | null): boolean {
+export function isIdentityReading(reading: OptOutIntentReading | null): boolean {
   return reading?.intent === 'identity';
 }
 
@@ -238,7 +275,7 @@ export function isCrisisReading(
  * #868 · the one reader every surface shares when it was not handed its own: the intake
  * machine, the email doors, the Linq group door, the roster. keywords.ts is gone, so
  * "is this a stop or a start" is always this model read, cached per text by
- * {@link readTextOnce} so the router, intake and a door cost one call between them.
+ * {@link readIntentOnce} so the router, intake and a door cost one call between them.
  */
 let shared: OptOutReader | null = null;
 
@@ -257,7 +294,7 @@ export async function optOutIntentOf(
   text: string,
   reader: OptOutReader | null = null,
 ): Promise<'stop' | 'start' | null> {
-  const reading = await readTextOnce(reader ?? sharedOptOutReader(), { text, language: null });
+  const reading = await readIntentOnce(reader ?? sharedOptOutReader(), { text, language: null });
   return reading?.intent === 'stop' || reading?.intent === 'start' ? reading.intent : null;
 }
 

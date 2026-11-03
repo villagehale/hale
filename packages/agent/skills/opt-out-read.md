@@ -1,6 +1,6 @@
 ---
 name: opt-out-read
-whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), is in a crisis, or is asking who is texting them, in any wording and any language, and write the one reply.
+whenToUse: Any text from a parent or a number Hale texts. Decide whether the sender is asking Hale to stop texting them (or, after they stopped, to start again), is in a crisis, or is asking who is texting them, in any wording and any language, and write the stop or start reply.
 task: screen
 tools: []
 ---
@@ -9,12 +9,9 @@ tools: []
 
 You get one inbound text and, when certain, a `languageHint`. Every reply you
 write is in the language and script of the text itself; the hint never overrides
-the sender's own words. You also get `facts`: the crisis resources. When `facts.region` names Canada
-or the US, `crisisLine` is that country's line. When `facts.region` is null,
-Hale does not know the country, and both lines are given (`canadaCrisisLine`
-and `usCrisisLine`) along with `emergency`. The language of the text is not a
-country: never choose a line, or drop one, because of it. Weave `facts` only
-into a crisis confirmation. Any other reading ignores them.
+the sender's own words. You also get `facts`: the crisis resources Hale holds for
+this sender. You never write them: Hale writes any crisis reply itself, from
+checked facts.
 
 Decide what the sender is asking for about Hale texting them at all:
 
@@ -58,34 +55,15 @@ they can come back in their own words; for `leave_group`, write it the same way
 as a `stop` (it is only sent when Hale cannot leave the group). For `start`, say Hale is back. Ask nothing
 else.
 
-For `crisis_emergency`, `confirmation` is the one text Hale sends. Take it
-seriously. The whole reply is in the sender's own language and script,
-including what you call the line. The words are yours: there is no sentence
-to copy. This is a physical emergency: the only number is `facts.emergency`
-(911). Weave that in and tell them to call it now. Do not add a 988 line.
-Name no digits you were not given. Do not infer a country from the language
-they wrote in, and do not invent a number. Calm. No other topic. If you
-cannot write that text, `confirmation` is empty and nothing is sent.
-
-For `crisis_mental`, `confirmation` is the one text Hale sends. Take what they
-said seriously, and warmly. Stay with them: you are still in the conversation,
-not handing them a notice and leaving. The whole reply is in the sender's own
-language and script, including what you call the line. The words are yours:
-there is no sentence to copy. When `facts.region` names Canada or the US,
-weave in that `crisisLine` and `emergency`. When `facts.region` is null, both
-lines were given: weave in `canadaCrisisLine`, `usCrisisLine`, and
-`emergency`. The two share the number 988 but are two services: name each
-one, in the reply's language, with the country it serves, so the parent can
-tell which is theirs. Never merge them into one line, and never give one line
-a detail that only the other's fact states.
-The language they wrote in never chooses a line or drops one.
-The digits that were given appear as given. Name no digits you were not
-given. Do not invent a number or a line. Their gender is not known: where a
-language marks gender, word the reply so it carries none. Two or three short
-sentences. No lecture, no other topic. If you cannot write that text,
-`confirmation` is empty and nothing is sent.
+For `crisis_emergency` or `crisis_mental`, `confirmation` is an empty
+string: Hale writes that reply separately, from checked facts. Your job there is
+only to read it.
 
 When the reading is `identity` or `none`, `confirmation` is an empty string (Hale
 writes the who-we-are reply separately, from checked facts).
+
+Put the language the text is written in into `language`, as a short language
+tag (`en`, `fr`, `zh`, `ar`, `es`, `hi`), read from the words themselves. When
+the text has no language of its own (only an emoji or a number), leave it empty.
 
 Copy the text back exactly in `verbatim`.

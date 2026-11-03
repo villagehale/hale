@@ -102,6 +102,9 @@ const outputJsonSchema = {
   required: ['text'],
 } as const;
 
+/** The writer's tool schema, imported by the crisis-reply eval. */
+export const SAID_LINE_TOOL_SCHEMA = outputJsonSchema;
+
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
 export function saidLineUserMessage(input: SaidLineInput): string {
   return JSON.stringify({
@@ -270,12 +273,10 @@ export async function writeGroupConnectAsk(
 
 export type CrisisKind = 'emergency' | 'mental';
 
-/** 988 on a mental-health crisis, 911 on a physical emergency. Presence only. */
+/** 988 on a mental-health crisis, 911 on a physical emergency: the line the reply must carry. */
 export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly ['911'] {
   return kind === 'emergency' ? ['911'] : ['988'];
 }
-
-const CRISIS_DIGIT_SEPARATOR = String.raw`[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]`;
 
 // NFKC leaves native-script decimal digits (Arabic-Indic, Devanagari, Bengali, Thai...)
 // alone, so a reply in those scripts would not carry its 988 or 911. Unicode encodes
@@ -291,26 +292,23 @@ function asciiCrisisDigits(text: string): string {
   return text.normalize('NFKC').replace(/[^\P{Nd}0-9]/gu, (d) => String(decimalDigitValue(d)));
 }
 
-// Then any run of whitespace or separators between digits is dropped, so '9 8 8',
-// '9-8-8', '9.8.8', '９８８' and '٩٨٨' all read as 988.
-function foldCrisisDigits(text: string): string {
-  return asciiCrisisDigits(text).replace(
-    new RegExp(`(?<=\\d)${CRISIS_DIGIT_SEPARATOR}+(?=\\d)`, 'gu'),
-    '',
-  );
-}
-
-// Hours forms a crisis line may sit next to. Their digits are not another number.
+// Hours forms a crisis line may sit next to, matched after the digit fold. Their
+// digits are not another number.
 const CRISIS_HOURS_FORMS = [
   '24 heures sur 24',
   '24 h sur 24',
   '24h sur 24',
   '24 h/24',
   '24h/24',
+  '7 jours sur 7',
+  '7 j/7',
+  '7j/7',
   '24/7',
+  '24 horas',
   '24 h',
   '24h',
   '24小时',
+  '24 ساعة',
 ].sort((a, b) => b.length - a.length);
 
 const CRISIS_LINES: readonly string[] = [
@@ -337,9 +335,9 @@ function hoursFormEnd(ascii: string, at: number): number {
 }
 
 /**
- * Number tokens: maximal runs of digit groups joined by anything but a letter or a
- * line break, so a number is one token whatever separates its parts. A run of single
- * digits is one group ('9-8-8' is 988). There is no separator list to fall outside.
+ * The ONE tokenizer. Number tokens are maximal runs of digit groups joined by anything
+ * but a letter or a line break, so a number is one token whatever separates its parts.
+ * A run of single digits is one group ('9-8-8' and '9,8,8' are 988).
  */
 function crisisNumberTokens(text: string): CrisisDigitGroup[][] {
   const ascii = asciiCrisisDigits(text);
@@ -369,115 +367,122 @@ function tokenIsCrisisLinesOnly(token: readonly CrisisDigitGroup[]): boolean {
   return token.every((group) => group.hours || CRISIS_LINES.includes(group.digits));
 }
 
-/** Some token carries the required line, and every number in that token is a crisis line or hours. */
-export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
-  const tokens = crisisNumberTokens(text);
-  return crisisMustInclude(kind).every((digits) =>
-    tokens.some(
-      (token) =>
-        tokenIsCrisisLinesOnly(token) &&
-        token.some((group) => !group.hours && group.digits === digits),
-    ),
-  );
-}
-
 const LINK_SCHEME = /[a-z][a-z\d+.-]*:\/\/|\bwww\./i;
-const BARE_DOMAIN = /[\p{L}\d-]\.\p{L}{2,}(?![\p{L}\d])/iu;
+// A name, a dot, then a 2+ letter ending: written plainly, spaced on both sides, or
+// bracketed ('example[.]com').
+const DOMAIN_DOT = /[\p{L}\d-](?:\.|\s+\.\s+|\s*[[({]\s*\.\s*[\])}]\s*)\p{L}{2,}(?![\p{L}\d])/iu;
+// An ideographic full stop between Latin parts ('example。com'), but not a CJK sentence end.
+const IDEOGRAPHIC_DOMAIN_DOT = /[a-z\d-][\u3002\uff61][a-z]{2,}(?![a-z\d])/i;
 
-/** Any number that is not a crisis line or hours, or any link: not ours to hand a parent. */
-export function crisisTextHasOtherNumberOrLink(text: string): boolean {
+function crisisTextHasLink(text: string): boolean {
   const folded = text.normalize('NFKC');
-  if (LINK_SCHEME.test(folded) || BARE_DOMAIN.test(folded)) return true;
-  return crisisNumberTokens(text).some((token) => !tokenIsCrisisLinesOnly(token));
+  return LINK_SCHEME.test(folded) || DOMAIN_DOT.test(folded) || IDEOGRAPHIC_DOMAIN_DOT.test(folded);
 }
 
-/** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
-export function crisisTextHas988(text: string): boolean {
-  return foldCrisisDigits(text).includes('988');
-}
+export type CrisisViolation = 'missing_line' | 'emergency_988' | 'other_number' | 'link';
 
 /**
- * Emergency replies are 911 only: the required digit is present and the 988 line is not.
- * Mental replies need 988. Presence of the required number, not a wording judge.
+ * The one acceptance check for every crisis reply: the required line is present, an
+ * emergency carries no 988, no other number appears, and no link. Null: it may be sent.
  */
-export function crisisReplyAcceptable(kind: CrisisKind, text: string): boolean {
-  if (!crisisTextHasRequiredNumber(kind, text)) return false;
-  return kind === 'mental' || !crisisTextHas988(text);
+export function crisisReplyViolation(kind: CrisisKind, text: string): CrisisViolation | null {
+  const tokens = crisisNumberTokens(text);
+  const [required] = crisisMustInclude(kind);
+  const lineToken = tokens.some(
+    (token) =>
+      tokenIsCrisisLinesOnly(token) &&
+      token.some((group) => !group.hours && group.digits === required),
+  );
+  if (!lineToken) return 'missing_line';
+  const numbers = tokens.flat().filter((group) => !group.hours);
+  if (kind === 'emergency' && numbers.some((group) => group.digits === '988')) {
+    return 'emergency_988';
+  }
+  if (!tokens.every(tokenIsCrisisLinesOnly)) return 'other_number';
+  if (crisisTextHasLink(text)) return 'link';
+  return null;
 }
 
+/** Why the last draft was not sent, handed back to the writer as a fact on its one re-ask. */
+export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation, string>> = {
+  missing_line: 'the last draft did not carry the line in facts, so it was not sent',
+  emergency_988: 'the last draft carried 988, and an emergency reply carries 911 only',
+  other_number: 'the last draft carried a number that is not in facts, so it was not sent',
+  link: 'the last draft carried a link or web address, so it was not sent',
+};
+
 /**
- * The opt-out reader's crisis text, or the said-line writer when that text
- * cannot be sent: it lacks the line, or carries a number or link the facts never
- * gave. The reader saw the mental facts. A physical emergency is
- * narrowed here: 911 only, so a reply that also carries 988 is handed to
- * {@link writeCrisisLine}, which is given 911-only facts. Null when neither
- * can be sent: the writer pages #ops, and a writer reply that still misses
- * the check pages here. No fixed line.
+ * What the reader read on an emergency, as a fact. The writer no longer sees the
+ * parent's words, so it would otherwise word the emergency as an "if". No digits.
+ */
+export const EMERGENCY_SITUATION_FACT =
+  'they just told Hale someone is hurt or in danger right now';
+
+/**
+ * The crisis request: facts only. The parent's words never reach the writer, so an
+ * injected or invented number has no source; the reply language comes from what Hale
+ * already knows or the reader's language tag.
+ */
+export function crisisLineInput(
+  kind: CrisisKind,
+  region: CrisisRegion | null,
+  language: ReplyLanguage | null,
+  rejected?: CrisisViolation,
+): SaidLineInput {
+  return {
+    purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
+    language,
+    facts: {
+      ...crisisFactsForRegion(region, kind),
+      ...(kind === 'emergency' ? { situation: EMERGENCY_SITUATION_FACT } : {}),
+      ...(rejected ? { previousTextNotSent: CRISIS_VIOLATION_FACT[rejected] } : {}),
+    },
+  };
+}
+
+export type CrisisReplyOutcome =
+  | { status: 'sent'; body: string; attempts: 1 | 2 }
+  | { status: 'unanswered'; reason: 'no_writer' | 'write_failed' | CrisisViolation };
+
+/**
+ * Every crisis reply: the said-line writer, from facts only, through
+ * {@link crisisReplyViolation}. A failed check is re-asked once with the violation
+ * named as a fact. A second failure, a failed write, or no writer pages #ops and
+ * sends nothing (#868: there is no fixed crisis line).
  */
 export async function deliverCrisisReply(input: {
   kind: CrisisKind;
-  readerText: string;
-  parentWords: string;
-  where: string;
+  language: ReplyLanguage | null;
   region: CrisisRegion | null;
+  where: string;
   writer: SaidLineWriter | null | undefined;
-}): Promise<string | null> {
-  const fromReader = input.readerText.trim();
-  if (
-    fromReader.length > 0 &&
-    crisisReplyAcceptable(input.kind, fromReader) &&
-    !crisisTextHasOtherNumberOrLink(fromReader)
-  ) {
-    return fromReader;
-  }
-  const written = await writeCrisisLine(
-    input.writer,
-    input.kind,
-    input.parentWords,
-    input.where,
-    input.region,
-  );
-  if (written && crisisReplyAcceptable(input.kind, written)) return written;
-  if (written) logCrisisUnanswered(input.kind, input.where);
-  return null;
+}): Promise<CrisisReplyOutcome> {
+  const { kind, region, language, where, writer } = input;
+  const unanswered = (reason: 'no_writer' | 'write_failed' | CrisisViolation) => {
+    logCrisisUnanswered(kind, where, reason);
+    return { status: 'unanswered', reason } as const;
+  };
+  if (!writer) return unanswered('no_writer');
+  const first = await writer.write(crisisLineInput(kind, region, language));
+  if (!first) return unanswered('write_failed');
+  const firstViolation = crisisReplyViolation(kind, first);
+  if (firstViolation === null) return { status: 'sent', body: first, attempts: 1 };
+  const second = await writer.write(crisisLineInput(kind, region, language, firstViolation));
+  if (!second) return unanswered('write_failed');
+  const secondViolation = crisisReplyViolation(kind, second);
+  if (secondViolation === null) return { status: 'sent', body: second, attempts: 2 };
+  return unanswered(secondViolation);
 }
 
 /**
  * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
  * fall back on, anywhere). Never silent: an urgent, body-free log for #ops (rule #1).
  */
-export function logCrisisUnanswered(kind: CrisisKind, where: string): void {
+export function logCrisisUnanswered(kind: CrisisKind, where: string, reason: string): void {
   console.error(
-    { urgent: true, kind, where },
+    { urgent: true, kind, where, reason },
     'URGENT: crisis flagged, no reply sent - page #ops now',
   );
-}
-
-/**
- * The crisis reply in the model's words; the numbers are the checked facts. Null after
- * the urgent log when nothing could be written: the caller sends nothing.
- */
-export async function writeCrisisLine(
-  writer: SaidLineWriter | null | undefined,
-  kind: CrisisKind,
-  parentWords: string,
-  where: string,
-  region: CrisisRegion | null,
-): Promise<string | null> {
-  const facts: Record<string, SaidLineFact> = {
-    ...crisisFactsForRegion(region, kind),
-  };
-  const written = writer
-    ? await writer.write({
-        purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
-        language: null,
-        parentWords,
-        facts,
-        mustInclude: crisisMustInclude(kind),
-      })
-    : null;
-  if (!written) logCrisisUnanswered(kind, where);
-  return written;
 }
 
 function conveyFacts(input: SaidLineInput): ConveyFact[] | null {

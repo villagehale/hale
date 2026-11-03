@@ -2,6 +2,8 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import { EMERGENCY_SITUATION_FACT, type SaidLineInput } from '~/lib/channel/voice/said-line';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { IntakeCollected } from './extract';
 import {
@@ -707,37 +709,48 @@ describe('friend voice onboarding', () => {
     expect(calendar).toContain('/connect?t=');
     expect(calendar).toContain('to=gcal');
   });
-  it('routes a crisis through the model reader and sends its reply before any ask', async () => {
-    // #868: no token list and no fixed crisis line. The turn's reader routes the
-    // crisis and writes the reply; the fixture stands in for the model.
-    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', reply: string) => ({
-      read: async () => ({ intent, confirmation: reply }),
+  it('routes a crisis through the model reader; the writer answers from facts before any ask', async () => {
+    // Design B: the reader only classifies. Its own draft is never sent; the said-line
+    // writer writes from facts alone, in the language the reader read.
+    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', language: string) => ({
+      read: async () => ({
+        intent,
+        confirmation: 'Reader draft with room 5550100 (test fixture).',
+        language,
+      }),
     });
+    const calls: SaidLineInput[] = [];
     const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = crisisReader(
-      'crisis_emergency',
-      'Call 911 now. Emergency reply (test fixture).',
-    );
+    deps.optOutReader = crisisReader('crisis_emergency', 'en');
+    deps.saidLine = scriptedSaidLine(calls);
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual(['Call 911 now. Emergency reply (test fixture).']);
+    expect(transport.bodies()).toEqual([
+      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACT}`,
+    ]);
+    expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
+    expect(calls[0]).not.toHaveProperty('parentWords');
 
+    const mentalCalls: SaidLineInput[] = [];
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
-    deps2.optOutReader = crisisReader(
-      'crisis_mental',
-      'Call or text 988. Crisis line reply (test fixture).',
-    );
+    deps2.optOutReader = crisisReader('crisis_mental', 'fr');
+    deps2.saidLine = scriptedSaidLine(mentalCalls);
     const mental = await handleInboundSms(
       fake2.db,
-      inbound(transport2, 'i cant do this anymore'),
+      inbound(transport2, "je n'en peux plus"),
       deps2,
     );
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual(['Call or text 988. Crisis line reply (test fixture).']);
+    expect(transport2.bodies()).toHaveLength(1);
+    expect(transport2.bodies()[0]?.startsWith('[crisis_mental/fr]\n')).toBe(true);
+    expect(transport2.bodies()[0]).not.toContain('Reader draft');
+    expect(mentalCalls[0]?.language).toBe('fr');
+    expect(mentalCalls[0]).not.toHaveProperty('parentWords');
 
-    // A crisis whose reply came back empty still ends the turn: no onboarding ask.
+    // No writer wired: nothing is sent, and the turn still ends (no onboarding ask).
     const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
-    deps3.optOutReader = crisisReader('crisis_emergency', '');
+    deps3.optOutReader = crisisReader('crisis_emergency', 'en');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
     expect(transport3.bodies()).toEqual([]);
   });

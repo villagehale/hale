@@ -1,238 +1,193 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SaidLineWriter } from './said-line';
-import { deliverCrisisReply } from './said-line';
+import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
+import type { SaidLineInput, SaidLineWriter } from './said-line';
+import {
+  CRISIS_VIOLATION_FACT,
+  EMERGENCY_SITUATION_FACT,
+  acceptSaidLine,
+  deliverCrisisReply,
+} from './said-line';
 
 const PAGE = 'URGENT: crisis flagged, no reply sent - page #ops now';
 
-function recordingWriter(text: string | null): {
+/** The writer port, scripted: one reply per call, in order. Records every request. */
+function scriptedWriter(...replies: Array<string | null>): {
   writer: SaidLineWriter;
-  write: ReturnType<typeof vi.fn>;
+  calls: SaidLineInput[];
 } {
-  const write = vi.fn(async () => text);
-  return { writer: { write }, write };
+  const calls: SaidLineInput[] = [];
+  return {
+    calls,
+    writer: {
+      async write(input) {
+        calls.push(input);
+        return replies[calls.length - 1] ?? null;
+      },
+    },
+  };
 }
 
-describe('deliverCrisisReply', () => {
+describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('sends the reader text when a mental reply already contains 988', async () => {
-    const { writer, write } = recordingWriter('should not be asked');
+  it('writes from facts only: no parent words, the region line, the given language', async () => {
+    const { writer, calls } = scriptedWriter('Appelle ou texte le 988, à toute heure.');
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
+    const outcome = await deliverCrisisReply({
       kind: 'mental',
-      readerText: '  Call or text 988.  ',
-      parentWords: "je n'en peux plus",
+      language: 'fr',
+      region: 'CA',
       where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({
+      status: 'sent',
+      body: 'Appelle ou texte le 988, à toute heure.',
+      attempts: 1,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.purpose).toBe('crisis_mental');
+    expect(calls[0]?.language).toBe('fr');
+    expect(calls[0]?.facts).toEqual({ ...crisisFactsForRegion('CA', 'mental') });
+    expect(calls[0]).not.toHaveProperty('parentWords');
+    expect(calls[0]).not.toHaveProperty('recentParentWords');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('an emergency is written from 911-only facts and what the reader read, with no digits in it', async () => {
+    const { writer, calls } = scriptedWriter('Call 911 now.');
+    const outcome = await deliverCrisisReply({
+      kind: 'emergency',
+      language: null,
+      region: 'US',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'sent', body: 'Call 911 now.', attempts: 1 });
+    expect(calls[0]?.purpose).toBe('crisis_emergency');
+    expect(calls[0]?.facts).toEqual({ emergency: '911', situation: EMERGENCY_SITUATION_FACT });
+    expect(EMERGENCY_SITUATION_FACT).not.toMatch(/\p{Nd}/u);
+  });
+
+  it('a 9-8-8 reply passes the said-line structural check too: the line is checked once, by the crisis check', async () => {
+    const reply = 'Appelle ou texte le 9-8-8.';
+    const calls: SaidLineInput[] = [];
+    const writer: SaidLineWriter = {
+      async write(input) {
+        calls.push(input);
+        return acceptSaidLine(reply, input);
+      },
+    };
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: 'fr',
+      region: 'CA',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'sent', body: reply, attempts: 1 });
+    // Positive control: the same structural check refuses it when 988 is required verbatim.
+    expect(
+      acceptSaidLine(reply, { ...calls[0], mustInclude: ['988'] } as SaidLineInput),
+    ).toBeNull();
+  });
+
+  it('re-asks once with the violation named as a fact, and sends the second reply when it passes', async () => {
+    const { writer, calls } = scriptedWriter(
+      'Call or text 988, or the clinic on 555 0100.',
+      'Call or text 988, any time.',
+    );
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: 'en',
+      region: 'US',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'sent', body: 'Call or text 988, any time.', attempts: 2 });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.facts).not.toHaveProperty('previousTextNotSent');
+    expect(calls[1]?.facts).toEqual({
+      ...crisisFactsForRegion('US', 'mental'),
+      previousTextNotSent: CRISIS_VIOLATION_FACT.other_number,
+    });
+    expect(calls[1]).not.toHaveProperty('parentWords');
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('an emergency reply that carries 988 is re-asked with emergency_988 named', async () => {
+    const { writer, calls } = scriptedWriter('Call 911, or text 988.', 'Call 911 now.');
+    const outcome = await deliverCrisisReply({
+      kind: 'emergency',
+      language: null,
+      region: 'CA',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'sent', body: 'Call 911 now.', attempts: 2 });
+    expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.emergency_988);
+  });
+
+  it('two failed checks send nothing, page #ops once and name the last violation', async () => {
+    const { writer, calls } = scriptedWriter(
+      'Call or text 988 or see example.org',
+      'Call or text 988 or see example[.]org',
+    );
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: null,
       region: null,
-      writer,
-    });
-    expect(body).toBe('Call or text 988.');
-    expect(write).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-  });
-
-  it('sends the reader text when a mental reply spells the line 9-8-8', async () => {
-    const { writer, write } = recordingWriter('should not be asked');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'mental',
-      readerText: ' Appelle ou texte le 9-8-8. ',
-      parentWords: "je n'en peux plus",
       where: 'intake crisis',
-      region: 'CA',
       writer,
     });
-    expect(body).toBe('Appelle ou texte le 9-8-8.');
-    expect(write).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-  });
-
-  it('sends the reader text when an emergency reply already contains 911', async () => {
-    const { writer, write } = recordingWriter('should not be asked');
-    const body = await deliverCrisisReply({
-      kind: 'emergency',
-      readerText: 'Call 911 now.',
-      parentWords: 'he is not breathing',
-      where: 'intake crisis',
-      region: 'US',
-      writer,
-    });
-    expect(body).toBe('Call 911 now.');
-    expect(write).not.toHaveBeenCalled();
-  });
-
-  it('hands a mental reply without 988 to writeCrisisLine and sends that text', async () => {
-    const { writer, write } = recordingWriter('Text 988. I am here.');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'mental',
-      readerText: 'I am glad you told me.',
-      parentWords: "je n'en peux plus",
-      where: 'intake crisis',
-      region: 'CA',
-      writer,
-    });
-    expect(body).toBe('Text 988. I am here.');
-    expect(write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        purpose: 'crisis_mental',
-        parentWords: "je n'en peux plus",
-        mustInclude: ['988'],
-      }),
-    );
-    expect(error).not.toHaveBeenCalled();
-  });
-
-  it('narrows an emergency that also carries 988 to a 911-only rewrite', async () => {
-    const { writer, write } = recordingWriter('Call 911 now.');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'emergency',
-      readerText: 'Call 911, or text 988.',
-      parentWords: 'not breathing',
-      where: 'intake crisis',
-      region: 'CA',
-      writer,
-    });
-    expect(body).toBe('Call 911 now.');
-    expect(write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        purpose: 'crisis_emergency',
-        mustInclude: ['911'],
-        facts: { emergency: '911' },
-      }),
-    );
-    expect(error).not.toHaveBeenCalled();
-  });
-
-  it('sends nothing and pages when the emergency rewrite still carries 988', async () => {
-    const { writer } = recordingWriter('Call 911 or text 9-8-8.');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'emergency',
-      readerText: 'Text 988 and call 911.',
-      parentWords: 'not breathing',
-      where: 'intake crisis',
-      region: 'US',
-      writer,
-    });
-    expect(body).toBeNull();
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'link' });
+    expect(calls).toHaveLength(2);
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'intake crisis' }),
-      PAGE,
-    );
-  });
-
-  it('hands an emergency reply without 911 to writeCrisisLine and sends that text', async () => {
-    const { writer, write } = recordingWriter('Call 911.');
-    const body = await deliverCrisisReply({
-      kind: 'emergency',
-      readerText: 'Call or text 988.',
-      parentWords: 'not breathing',
-      where: 'intake crisis',
-      region: 'US',
-      writer,
-    });
-    expect(body).toBe('Call 911.');
-    expect(write).toHaveBeenCalledWith(
       expect.objectContaining({
-        purpose: 'crisis_emergency',
-        mustInclude: ['911'],
-        facts: { emergency: '911' },
-      }),
-    );
-  });
-
-  it('sends nothing and pages when writeCrisisLine cannot write', async () => {
-    const { writer } = recordingWriter(null);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'mental',
-      readerText: '',
-      parentWords: 'i want to end it',
-      where: 'intake crisis',
-      region: null,
-      writer,
-    });
-    expect(body).toBeNull();
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental' }),
-      PAGE,
-    );
-  });
-
-  it('sends nothing and pages when the handed-off reply still lacks the number', async () => {
-    const { writer } = recordingWriter('I am here with you.');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const body = await deliverCrisisReply({
-      kind: 'emergency',
-      readerText: 'Stay calm.',
-      parentWords: 'not breathing',
-      where: 'intake crisis',
-      region: null,
-      writer,
-    });
-    expect(body).toBeNull();
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'emergency', where: 'intake crisis' }),
-      PAGE,
-    );
-  });
-
-  it('hands a reader reply with another phone number to the writer, and sends a clean one as is', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const stray = recordingWriter('Call or text 988, any time.');
-    const strayBody = await deliverCrisisReply({
-      kind: 'mental',
-      readerText: 'Call or text 988, or the clinic on 555 0100.',
-      parentWords: 'i want to end it',
-      where: 'intake crisis',
-      region: 'US',
-      writer: stray.writer,
-    });
-    expect(strayBody).toBe('Call or text 988, any time.');
-    expect(stray.write).toHaveBeenCalledTimes(1);
-
-    const clean = recordingWriter('should not be asked');
-    const cleanBody = await deliverCrisisReply({
-      kind: 'mental',
-      readerText: 'Call or text 988, any time. 911 if you are in danger.',
-      parentWords: 'i want to end it',
-      where: 'intake crisis',
-      region: 'US',
-      writer: clean.writer,
-    });
-    expect(cleanBody).toBe('Call or text 988, any time. 911 if you are in danger.');
-    expect(clean.write).not.toHaveBeenCalled();
-  });
-
-  it('hands a reader reply with a link to the writer; with no writer text it sends nothing', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    for (const readerText of [
-      'Call or text 988, or chat at https://example.org/help.',
-      'Call or text 988 or visit www.example.org.',
-      'Call or text 988, or see example.org',
-    ]) {
-      const { writer, write } = recordingWriter(null);
-      const body = await deliverCrisisReply({
+        urgent: true,
         kind: 'mental',
-        readerText,
-        parentWords: 'i want to end it',
         where: 'intake crisis',
-        region: 'CA',
-        writer,
-      });
-      expect(body).toBeNull();
-      expect(write).toHaveBeenCalledTimes(1);
-    }
-    expect(error).toHaveBeenCalledTimes(3);
+        reason: 'link',
+      }),
+      PAGE,
+    );
+  });
+
+  it('a writer that returns nothing sends nothing and pages', async () => {
+    const { writer, calls } = scriptedWriter(null);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: null,
+      region: null,
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'write_failed' });
+    expect(calls).toHaveLength(1);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental', where: 'intake crisis' }),
+      expect.objectContaining({ urgent: true, kind: 'mental', reason: 'write_failed' }),
+      PAGE,
+    );
+  });
+
+  it('no writer wired is named and paged, never silent', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await deliverCrisisReply({
+      kind: 'emergency',
+      language: null,
+      region: null,
+      where: 'intake crisis',
+      writer: null,
+    });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer' });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
       PAGE,
     );
   });

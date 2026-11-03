@@ -19,7 +19,6 @@ import {
   handleLapsedInviteReply,
 } from '~/lib/channel/caregiver/route';
 import { readConsent } from '~/lib/channel/consent-reply';
-import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
@@ -127,7 +126,7 @@ import {
   type OptOutReading,
   isCrisisReading,
   isIdentityReading,
-  readTextOnce,
+  readIntentOnce,
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
@@ -1004,7 +1003,7 @@ async function offScriptReply(
   const identity = await identityChallengeReply(
     args.parentWords,
     deps.saidLine,
-    await readTextOnce(deps.optOutReader, {
+    await readIntentOnce(deps.optOutReader, {
       text: args.parentWords,
       language: null,
     }),
@@ -1016,19 +1015,16 @@ async function offScriptReply(
   const { numberOrigin: _origin, region: _region, ...composeArgs } = args;
   const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
-    // The answer model saw a crisis the reader did not. Still the model's words.
-    const written = await deps.saidLine?.write({
-      purpose: 'crisis_mental',
-      language: null,
-      parentWords: args.parentWords,
-      facts: { ...crisisFactsForRegion(args.region, 'mental') },
-      mustInclude: ['988'],
+    // The answer model saw a crisis the reader did not. The same facts-only writer and
+    // check as every crisis reply; a miss has already paged #ops.
+    const crisis = await deliverCrisisReply({
+      kind: 'mental',
+      language: args.language ?? null,
+      region: args.region ?? null,
+      where: 'intake answer crisis',
+      writer: deps.saidLine,
     });
-    if (!written) {
-      console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');
-      return HELD_SILENT;
-    }
-    return { body: written, source: 'safety' };
+    return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
     // #868: the 811 line is the model's words; the code checks both numbers are in it.
@@ -1263,7 +1259,7 @@ async function friendSpeak(
   const identityAsked =
     input.identityAsked ??
     isIdentityReading(
-      await readTextOnce(deps.optOutReader, {
+      await readIntentOnce(deps.optOutReader, {
         text: input.parentWords,
         language: input.language,
       }),
@@ -1332,12 +1328,12 @@ function friendFields(
 }
 
 /**
- * #868 · a crisis, routed and answered by the model. The turn's one reader call
- * (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an emergency or a
- * mental-health crisis in any wording and writes the reply. The reply goes out
- * only when it carries the required number (988 for mental, 911 for emergency).
- * A miss is handed to {@link deliverCrisisReply}'s said-line writer. If that
- * also fails, nothing is sent and #ops is paged. There is no fixed line.
+ * #868 · a crisis, routed by the model and answered by the model. The turn's one
+ * reader call (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an
+ * emergency or a mental-health crisis in any wording; it only classifies.
+ * {@link deliverCrisisReply} has the said-line writer answer from facts alone and
+ * sends only a reply that passes the one crisis check. If none does, nothing is
+ * sent and #ops is paged. There is no fixed line.
  * Null: not a crisis. `body` null: a crisis with nothing sendable — the turn
  * still ends there (no onboarding ask to a person in crisis).
  */
@@ -1363,15 +1359,16 @@ async function crisisReply(
   });
   if (!isCrisisReading(reading)) return null;
   const kind = reading.intent === 'crisis_emergency' ? 'emergency' : 'mental';
-  const body = await deliverCrisisReply({
+  // Facts only: the parent's words and the reader's own text never reach the reply.
+  // The language Hale already holds wins; else the language the reader read.
+  const crisis = await deliverCrisisReply({
     kind,
-    readerText: reading.confirmation,
-    parentWords: inbound.body,
-    where: 'intake crisis',
+    language: language ?? reading.language ?? null,
     region,
+    where: 'intake crisis',
     writer: deps.saidLine,
   });
-  return { body };
+  return { body: crisis.status === 'sent' ? crisis.body : null };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */

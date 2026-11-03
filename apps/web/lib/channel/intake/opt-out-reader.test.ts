@@ -3,28 +3,56 @@ import {
   type OptOutReader,
   acceptOptOutReading,
   optOutUserMessage,
-  readTextOnce,
+  readIntentOnce,
+  readReplyOnce,
 } from './opt-out-reader';
 
 describe('opt-out reader guards (structural, no model)', () => {
   it('drops a reading whose echo does not match the text', () => {
     expect(
-      acceptOptOutReading({ intent: 'stop', verbatim: 'stop', confirmation: 'ok' }, 'arrête'),
+      acceptOptOutReading(
+        { intent: 'stop', verbatim: 'stop', language: 'fr', confirmation: 'ok' },
+        'arrête',
+      ),
     ).toBeNull();
   });
 
-  it('keeps a stop with the model confirmation untouched', () => {
+  it('keeps a stop with the model confirmation untouched, and the language the reader read', () => {
     const r = acceptOptOutReading(
-      { intent: 'stop', verbatim: '别再发了', confirmation: ' 好 ' },
+      { intent: 'stop', verbatim: '别再发了', language: 'zh', confirmation: ' 好 ' },
       '别再发了',
     );
-    expect(r).toEqual({ intent: 'stop', confirmation: '好' });
+    expect(r).toEqual({ intent: 'stop', confirmation: '好', language: 'zh' });
   });
 
   it('none carries no confirmation', () => {
     expect(
-      acceptOptOutReading({ intent: 'none', verbatim: 'hi', confirmation: 'x' }, 'hi'),
-    ).toEqual({ intent: 'none', confirmation: '' });
+      acceptOptOutReading(
+        { intent: 'none', verbatim: 'hi', language: 'en', confirmation: 'x' },
+        'hi',
+      ),
+    ).toEqual({ intent: 'none', confirmation: '', language: 'en' });
+  });
+
+  it('a crisis reading never carries the reader text: the reader only classifies', () => {
+    for (const intent of ['crisis_mental', 'crisis_emergency'] as const) {
+      expect(
+        acceptOptOutReading(
+          { intent, verbatim: 'x', language: 'fr', confirmation: 'Appelle le 988.' },
+          'x',
+        ),
+      ).toEqual({ intent, confirmation: '', language: 'fr' });
+    }
+  });
+
+  it('the language is a tag or null, never a sentence', () => {
+    const read = (language: string) =>
+      acceptOptOutReading({ intent: 'none', verbatim: 'x', language, confirmation: '' }, 'x')
+        ?.language;
+    expect(read(' AR ')).toBe('ar');
+    expect(read('fr-ca')).toBe('fr-ca');
+    expect(read('')).toBeNull();
+    expect(read('the text is in French')).toBeNull();
   });
 
   it('sends the text, a language hint only when certain, and both lines when the region is unknown', () => {
@@ -47,7 +75,7 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(message.facts.emergency).toBe('911');
   });
 
-  it('passes the real line for the known region as facts to weave in', () => {
+  it('passes the real line for the known region as facts', () => {
     const canada = JSON.parse(
       optOutUserMessage({ text: "je n'en peux plus", language: 'fr', region: 'CA' }),
     );
@@ -63,68 +91,110 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(us.facts.crisisLine).toContain('988 Suicide & Crisis Lifeline');
     expect(us.facts.crisisLine).not.toContain('9-8-8 Suicide Crisis Helpline');
   });
+});
 
-  it('reads one text once, even when the router and intake hold different readers', async () => {
-    const calls: string[] = [];
-    const reader = (): OptOutReader => ({
-      read: async (input) => {
-        calls.push(input.text);
-        return { intent: 'none', confirmation: '' };
-      },
-    });
-    const text = `single-read ${Math.random()}`;
-    await readTextOnce(reader(), { text, language: 'en' });
-    await readTextOnce(reader(), { text, language: null });
-    expect(calls).toEqual([text]);
+/** A reader that answers in the language and region it was asked in, and counts its reads. */
+function countingReader(intent: 'stop' | 'identity' | 'crisis_mental' = 'stop') {
+  const calls: Array<{ language: string | null; region: string | null | undefined }> = [];
+  const reader: OptOutReader = {
+    read: async (input) => {
+      calls.push({ language: input.language, region: input.region });
+      return {
+        intent,
+        confirmation: `reply ${input.language}/${input.region === undefined ? 'unset' : input.region}`,
+        language: input.language,
+      };
+    },
+  };
+  return { reader, calls };
+}
+
+describe('reply-bearing read: keyed on text, language and region, no fallback', () => {
+  it('a CA read then a null-region read of the same text makes two reads', async () => {
+    const { reader, calls } = countingReader('crisis_mental');
+    const text = `ca then null ${Math.random()}`;
+    await readReplyOnce(reader, { text, language: null, region: 'CA' });
+    await readReplyOnce(reader, { text, language: null, region: null });
+    expect(calls).toEqual([
+      { language: null, region: 'CA' },
+      { language: null, region: null },
+    ]);
   });
 
-  it('two families in different regions sending the same words each get their own reading', async () => {
-    const reader: OptOutReader = {
-      read: async (input) => ({
-        intent: 'crisis_mental',
-        confirmation: `reading for ${input.region}`,
-      }),
-    };
-    const text = `same words ${Math.random()}`;
-    const canada = await readTextOnce(reader, { text, language: null, region: 'CA' });
-    const us = await readTextOnce(reader, { text, language: null, region: 'US' });
-    expect(canada?.confirmation).toBe('reading for CA');
-    expect(us?.confirmation).toBe('reading for US');
-    // Positive control: the same region still shares one read.
-    const canadaAgain = await readTextOnce(
-      { read: async () => ({ intent: 'none', confirmation: 'second read' }) },
-      { text, language: null, region: 'CA' },
+  it('an explicit null region is its own key, distinct from a missing one', async () => {
+    const { reader, calls } = countingReader();
+    const text = `null vs unset ${Math.random()}`;
+    await readReplyOnce(reader, { text, language: null, region: null });
+    await readReplyOnce(reader, { text, language: null });
+    expect(calls).toHaveLength(2);
+  });
+
+  it('the same text in two languages makes two reads, and a STOP confirmation never crosses languages', async () => {
+    const { reader, calls } = countingReader('stop');
+    const text = `two languages ${Math.random()}`;
+    const fr = await readReplyOnce(reader, { text, language: 'fr' });
+    const en = await readReplyOnce(reader, { text, language: 'en' });
+    expect(calls).toHaveLength(2);
+    expect(fr?.confirmation).toBe('reply fr/unset');
+    expect(en?.confirmation).toBe('reply en/unset');
+  });
+
+  it('positive control: the same text, language and region share one read', async () => {
+    const { reader, calls } = countingReader('stop');
+    const text = `same key ${Math.random()}`;
+    const first = await readReplyOnce(reader, { text, language: 'fr', region: 'CA' });
+    const again = await readReplyOnce(
+      { read: async () => ({ intent: 'none', confirmation: 'second', language: null }) },
+      { text, language: 'fr', region: 'CA' },
     );
-    expect(canadaAgain?.confirmation).toBe('reading for CA');
+    expect(calls).toHaveLength(1);
+    expect(again).toBe(first);
+  });
+});
+
+describe('intent-only read: shared by text, carries no confirmation', () => {
+  it('an intent-only read after a CA read makes one read and returns the intent alone', async () => {
+    const { reader, calls } = countingReader('stop');
+    const text = `intent after ca ${Math.random()}`;
+    await readReplyOnce(reader, { text, language: 'fr', region: 'CA' });
+    const intent = await readIntentOnce(reader, { text, language: null });
+    expect(calls).toHaveLength(1);
+    expect(intent).toEqual({ intent: 'stop' });
   });
 
-  it('a seam that asks without a region reuses the turn read made with one', async () => {
-    const calls: Array<string | null> = [];
-    const reader: OptOutReader = {
-      read: async (input) => {
-        calls.push(input.region ?? null);
-        return { intent: 'identity', confirmation: '' };
-      },
-    };
-    const text = `regionless reuse ${Math.random()}`;
-    await readTextOnce(reader, { text, language: 'en', region: 'CA' });
-    const regionless = await readTextOnce(reader, { text, language: null });
-    expect(regionless?.intent).toBe('identity');
-    expect(calls).toEqual(['CA']);
+  it('with no live read of the words, it reads once', async () => {
+    const { reader, calls } = countingReader('identity');
+    const text = `intent first ${Math.random()}`;
+    expect(await readIntentOnce(reader, { text, language: 'en' })).toEqual({ intent: 'identity' });
+    expect(await readIntentOnce(reader, { text, language: null })).toEqual({ intent: 'identity' });
+    expect(calls).toHaveLength(1);
   });
 });
 
 describe('VIL-477 leave_group reading', () => {
   const text = 'Hale can you please leave this group chat';
-  const value = { intent: 'leave_group' as const, verbatim: text, confirmation: 'ok, bye' };
+  const value = {
+    intent: 'leave_group' as const,
+    verbatim: text,
+    language: 'en',
+    confirmation: 'ok, bye',
+  };
   afterEach(() => vi.unstubAllEnvs());
   it('dark: stays the stop it always was', () => {
     vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', '');
-    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'stop', confirmation: 'ok, bye' });
+    expect(acceptOptOutReading(value, text)).toEqual({
+      intent: 'stop',
+      confirmation: 'ok, bye',
+      language: 'en',
+    });
   });
   it('lit: not a stop, no confirmation', () => {
     vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', 'true');
-    expect(acceptOptOutReading(value, text)).toEqual({ intent: 'leave_group', confirmation: '' });
+    expect(acceptOptOutReading(value, text)).toEqual({
+      intent: 'leave_group',
+      confirmation: '',
+      language: 'en',
+    });
   });
 });
 
@@ -134,8 +204,11 @@ describe('VIL-477 a temporary quiet ask is not a stop', () => {
     for (const lit of ['true', 'false']) {
       vi.stubEnv('LINQ_GROUP_LEAVE_ENABLED', lit);
       expect(
-        acceptOptOutReading({ intent: 'none' as const, verbatim: text, confirmation: 'x' }, text),
-      ).toEqual({ intent: 'none', confirmation: '' });
+        acceptOptOutReading(
+          { intent: 'none' as const, verbatim: text, language: 'en', confirmation: 'x' },
+          text,
+        ),
+      ).toEqual({ intent: 'none', confirmation: '', language: 'en' });
     }
     vi.unstubAllEnvs();
   });
@@ -151,23 +224,21 @@ describe('VIL-477 a temporary quiet ask is not a stop', () => {
   });
 });
 
-describe('crisis reply direction', () => {
-  it('tells the model to stay with them and weave the facts, and to send nothing if it cannot write', async () => {
+describe('crisis reading direction', () => {
+  it('the reader classifies a crisis and writes no crisis reply; it names the language it read', async () => {
     const { readFileSync } = await import('node:fs');
     const skill = readFileSync(
       new URL('../../../../../packages/agent/skills/opt-out-read.md', import.meta.url),
       'utf8',
     );
-    expect(skill).toMatch(/Stay with them/);
-    expect(skill).toMatch(/nothing is sent/);
-    expect(skill).toMatch(/Do not infer a country\s+from the language/);
-    expect(skill).toMatch(/The whole reply is in the sender's own/);
-    expect(skill).toMatch(/Do not add a 988 line/);
-    expect(skill).toMatch(/both\s+lines were given/);
-    expect(skill).not.toMatch(/no closing question/);
-    expect(skill).toMatch(/Name no digits you were not given/);
-    expect(skill).not.toMatch(/glad they told you/);
-    expect(skill).not.toMatch(/3114/);
+    expect(skill).toMatch(
+      /`crisis_emergency` or `crisis_mental`, `confirmation` is an empty\s+string/,
+    );
+    expect(skill).toMatch(/`language`/);
+    expect(skill).not.toMatch(/weave in that `crisisLine`/);
+    // Positive control: the crisis readings themselves are still taught.
+    expect(skill).toMatch(/- `crisis_emergency`: someone may be hurt/);
+    expect(skill).toMatch(/- `crisis_mental`: the sender may be in a mental-health crisis/);
     const saidLine = readFileSync(
       new URL('../../../../../packages/agent/skills/said-line.md', import.meta.url),
       'utf8',

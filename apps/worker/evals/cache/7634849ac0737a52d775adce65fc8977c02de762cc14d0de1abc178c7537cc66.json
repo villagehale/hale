@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The reply gives 911 as the emergency number, and it is in Arabic. But the reply text is garbled with mojibake (Ш§ШЄШµЩ„ instead of Arabic letters), so the parent would not be able to read it. It also has a minor mistranslated phrase (\"عن المصاب\" rendered oddly) and it omits the rule-based check, though the facts only require the emergency line. The core line is present, but the corrupted encoding makes the reply effectively unreadable, which fails the language and script requirement."
+  }
+}

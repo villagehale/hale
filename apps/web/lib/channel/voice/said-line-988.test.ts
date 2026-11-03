@@ -1,13 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  type CrisisKind,
-  crisisReplyAcceptable,
-  crisisTextHas988,
-  crisisTextHasOtherNumberOrLink,
-  deliverCrisisReply,
-} from './said-line';
+import { describe, expect, it } from 'vitest';
+import { type CrisisKind, crisisReplyViolation } from './said-line';
 
-describe('crisisTextHas988 digit variants', () => {
+// One acceptance check for every crisis reply (design B). Expectations are hand-written
+// from the rule: the required line is present, an emergency carries no 988, no other
+// number appears, and no link. Digit runs are fictional (555-01xx and similar).
+
+describe('the 988 line in any digit form', () => {
   it.each([
     ['plain', 'Call or text 988.'],
     ['hyphenated', 'Appelez le 9-8-8.'],
@@ -15,86 +13,50 @@ describe('crisisTextHas988 digit variants', () => {
     ['dotted', 'Call 9.8.8'],
     ['full-width', '请拨打９８８'],
     ['full-width spaced', '请拨打 ９ ８ ８'],
-    ['ideographic space', '９\u3000８\u3000８'],
-    ['non-breaking space', '9\u00a08\u00a08'],
-    ['en dash', '9\u20138\u20138'],
-    ['narrow nbsp', '9\u202f8\u202f8'],
-  ])('%s counts as 988', (_name, text) => {
-    expect(crisisTextHas988(text)).toBe(true);
+    ['ideographic space', '９　８　８'],
+    ['non-breaking space', '9 8 8'],
+    ['en dash', '9–8–8'],
+    ['narrow nbsp', '9 8 8'],
+  ])('%s carries the mental line', (_name, text) => {
+    expect(crisisReplyViolation('mental', text)).toBeNull();
+  });
+
+  it.each([
+    ['spaced', 'Call 911. Or 9 8 8.'],
+    ['full-width', '拨打911或９８８'],
+    ['comma-spelled after a word', '911, or 9,8,8'],
+    ['Arabic-Indic', 'اتصل بـ ٩١١ أو ٩٨٨'],
+  ])('an emergency reply with a %s 988 is refused as emergency_988', (_name, text) => {
+    expect(crisisReplyViolation('emergency', text)).toBe('emergency_988');
+  });
+
+  it('positive control: an emergency reply with 911 alone passes', () => {
+    expect(crisisReplyViolation('emergency', 'Call 911 now.')).toBeNull();
+    expect(crisisReplyViolation('emergency', 'Appelle le 9-1-1 maintenant.')).toBeNull();
   });
 
   it('does not invent 988 from unrelated digits', () => {
-    expect(crisisTextHas988('Call 911.')).toBe(false);
-    expect(crisisTextHas988('9 1 1')).toBe(false);
-    expect(crisisTextHas988('98 is the bus; 8 kids')).toBe(false);
-  });
-
-  it('an emergency reply carrying spaced or full-width 988 is not acceptable', () => {
-    expect(crisisReplyAcceptable('emergency', 'Call 911. Or 9 8 8.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', '拨打911或９８８')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Call 911 now.')).toBe(true);
+    expect(crisisReplyViolation('mental', 'Call 911.')).toBe('missing_line');
+    expect(crisisReplyViolation('mental', '9 1 1')).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call 911 now. 98 is the bus; 8 kids')).toBe(
+      'other_number',
+    );
   });
 });
 
-describe('crisisTextHasRequiredNumber through crisisReplyAcceptable', () => {
-  it.each([
-    ['mental, hyphenated 9-8-8', 'mental', 'Tu peux appeler ou texter le 9-8-8, à toute heure.'],
-    ['mental, full-width spaced', 'mental', '请拨打 ９ ８ ８'],
-    ['emergency, hyphenated 9-1-1', 'emergency', 'Appelle le 9-1-1 maintenant.'],
-    ['mental, plain 988', 'mental', 'Call or text 988.'],
-  ] as const)('%s carries the required number', (_name, kind, text) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(true);
-  });
-
-  it('still rejects a reply without the required number, or an emergency that leaks 988', () => {
-    expect(crisisReplyAcceptable('mental', 'Call 911 now.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Appelle le 9-1-1, ou le 9-8-8.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Call 9 1 2.')).toBe(false);
+describe('the required line', () => {
+  it('a reply without it is missing_line', () => {
+    expect(crisisReplyViolation('mental', 'I am here with you.')).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call or text 988.')).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call 9 1 2.')).toBe('missing_line');
   });
 
   it('a longer number that contains the digits is not the line', () => {
-    expect(crisisReplyAcceptable('mental', 'Appelle le 9-8-8 ou le 911.')).toBe(true);
-    expect(crisisReplyAcceptable('mental', 'Salle 4-988-12.')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Room 49881.')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Call 1988.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Ref 1-911-2.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Ref 19112.')).toBe(false);
-  });
-
-  it.each([
-    ['mental, 988 then hours', 'mental', 'Call or text 988 24/7.'],
-    ['mental, French hours', 'mental', 'Appelle le 988 24 h sur 24.'],
-    ['mental, Chinese hours', 'mental', '请拨打988 24小时'],
-    ['mental, 9-8-8 then hours', 'mental', 'Appelle ou texte le 9-8-8 24 h sur 24.'],
-    ['emergency, 911 then hours', 'emergency', 'Appelle le 911 24 h sur 24.'],
-  ] as const)('%s: a number after a space is not part of the line', (_name, kind, text) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(true);
-  });
-
-  it('a hyphen or dot that runs on into more digits still makes a longer number', () => {
-    expect(crisisReplyAcceptable('mental', 'Call or text 988 24/7.')).toBe(true);
-    expect(crisisReplyAcceptable('mental', 'Call 988-555-0100.')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Ref 4 988 12.')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Call 911.555.0100.')).toBe(false);
-  });
-
-  it('a space or slash that runs on into more digits makes a longer number too', () => {
-    expect(crisisReplyAcceptable('mental', 'Call 988 555 0100')).toBe(false);
-    expect(crisisReplyAcceptable('mental', '988/555/0100')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', '911 555 0100')).toBe(false);
-  });
-
-  it.each([
-    ['988 then 24/7', 'mental', '988 24/7'],
-    ['French 24 h', 'mental', 'Appelle le 988 24 h sur 24'],
-    ['Chinese comma then 24小时', 'mental', '拨打988，24小时'],
-    ['Chinese 全天', 'mental', '拨打988 全天'],
-    ['24 hours', 'mental', 'Call or text 988 24 hours a day'],
-    ['24 heures', 'mental', 'Le 988, 24 heures sur 24'],
-    ['24 horas', 'mental', 'Llama al 988 24 horas'],
-    ['24h', 'emergency', 'Appelle le 911 24h sur 24'],
-  ] as const)('%s: only listed hours text may follow the number', (_name, kind, text) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+    expect(crisisReplyViolation('mental', 'Appelle le 9-8-8 ou le 911.')).toBeNull();
+    for (const text of ['Salle 4-988-12.', 'Room 49881.', 'Call 1988.']) {
+      expect(crisisReplyViolation('mental', text)).toBe('missing_line');
+    }
+    expect(crisisReplyViolation('emergency', 'Ref 19112.')).toBe('missing_line');
   });
 });
 
@@ -103,129 +65,84 @@ describe('native-script digits', () => {
     ['Arabic-Indic', 'mental', 'اتصل على ٩٨٨'],
     ['Extended Arabic-Indic', 'mental', 'تماس با ۹۸۸'],
     ['Devanagari', 'mental', 'कृपया ९८८ पर कॉल करें'],
+    ['Thai', 'mental', 'โทร ๙๘๘'],
     ['Arabic-Indic 911', 'emergency', 'اتصل بـ ٩١١ الآن'],
   ] as const)('%s digits read as the line', (_name, kind, text) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+    expect(crisisReplyViolation(kind, text)).toBeNull();
   });
 
-  it('an emergency reply with Arabic-Indic 988 still leaks the 988 line', () => {
-    expect(crisisTextHas988('٩٨٨')).toBe(true);
-    expect(crisisReplyAcceptable('emergency', 'اتصل بـ ٩١١ أو ٩٨٨')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'اتصل بـ ٩١١')).toBe(false);
-  });
-});
-
-describe('separators before listed hours or the other crisis line', () => {
-  it.each([
-    ['en dash then hours', 'mental', 'Call or text 988 – 24/7, free and confidential.'],
-    ['hyphen then hours', 'mental', 'Call or text 988 - 24/7.'],
-    ['em dash then French hours', 'mental', 'Appelle le 9-8-8 — 24 heures sur 24.'],
-    ['emergency, hyphen then hours', 'emergency', 'Call 911 - 24/7.'],
-    ['French 24 h/24', 'mental', 'Appelle le 988 24 h/24.'],
-    ['988, a full stop, then 911', 'mental', 'Call or text 988. 911 if you are in danger.'],
-    ['988 slash 911', 'mental', 'Call 988 / 911 if in danger.'],
-    ['911 slash 988', 'mental', 'Call 911 / 988.'],
-    ['hours before the line', 'mental', 'Available 24/7 988'],
-  ] as const)('%s: the reply carries the line', (_name, kind, text) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(true);
-  });
-
-  it('listed hours or a crisis line that run on into more digits still make a longer number', () => {
-    expect(crisisReplyAcceptable('mental', 'Call 988 24h5550100')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Call 988 24/7555')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Call 988 / 911 555 0100')).toBe(false);
-    expect(crisisReplyAcceptable('mental', 'Ref 5 911 988')).toBe(false);
-    expect(crisisReplyAcceptable('emergency', 'Call 911 / 988.')).toBe(false);
+  it('a Bengali run-on is a longer number, not the line', () => {
+    expect(crisisReplyViolation('mental', 'Call 988 ৫৫৫ ০১০০')).toBe('missing_line');
+    expect(crisisReplyViolation('mental', 'Call 988 now, or ৫৫৫ ০১০০')).toBe('other_number');
   });
 });
 
-describe('every decimal digit script folds', () => {
-  it('Thai digits read as the line', () => {
-    expect(crisisReplyAcceptable('mental', 'โทร ๙๘๘')).toBe(true);
-  });
-
-  it('a Bengali run-on is a longer number', () => {
-    expect(crisisReplyAcceptable('mental', 'Call 988 ৫৫৫ ০১০০')).toBe(false);
-  });
-});
-
-// Hand-written expectations. `acceptable` is the required-line check alone
-// (crisisReplyAcceptable), the only check on the writer's reply: true when some number
-// token is the line with nothing but the other crisis line or listed hours beside it.
-// A letter or a line break ends a token. `sent` is the reader's reply through
-// deliverCrisisReply, which also refuses any other number. Digit runs are fictional
-// (555-01xx).
-const EVASION_TABLE: ReadonlyArray<
-  readonly [kind: CrisisKind, text: string, acceptable: boolean, sent: boolean]
-> = [
-  ['mental', '988 555 0100', false, false],
-  ['mental', '988/555/0100', false, false],
-  ['mental', '988,555,0100', false, false],
-  ['mental', '988:555:0100', false, false],
-  ['mental', "988'555'0100", false, false],
-  ['mental', '(988) 555-0100', false, false],
-  ['mental', '+1 988 555 0100', false, false],
-  ['emergency', '911 555 0100', false, false],
-  ['mental', '988 24/75', false, false],
-  ['emergency', '911 24/7-555-0100', false, false],
-  ['mental', '1988', false, false],
-  ['mental', 'Room 49881', false, false],
-  ['mental', 'Call 988~555~0100', false, false],
-  ['mental', '988x5550100', true, false],
-  ['mental', 'Call or text 988.\n555 0100', true, false],
-  ['mental', 'Call 988 or room 5550100', true, false],
-  ['mental', '988 24/7', true, true],
-  ['mental', 'Appelle le 988 24 h sur 24', true, true],
-  ['mental', '拨打988，24小时', true, true],
-  ['mental', '٩٨٨', true, true],
-  ['mental', '988. 911 if you are in danger', true, true],
-  ['mental', '988 / 911', true, true],
-  ['mental', 'Call or text 988.', true, true],
-  ['mental', 'Appelle ou texte le 9-8-8, 24 h/24.', true, true],
-  ['emergency', 'Appelle le 9-1-1 maintenant.', true, true],
+// Every crisis reply, whoever wrote it, goes through this one check. `pass` false
+// means that text is never sent.
+const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pass: boolean]> = [
+  // Round 3 rows; the reader-path column is now the only check.
+  ['mental', '988 555 0100', false],
+  ['mental', '988/555/0100', false],
+  ['mental', '988,555,0100', false],
+  ['mental', '988:555:0100', false],
+  ['mental', "988'555'0100", false],
+  ['mental', '(988) 555-0100', false],
+  ['mental', '+1 988 555 0100', false],
+  ['emergency', '911 555 0100', false],
+  ['mental', '988 24/75', false],
+  ['emergency', '911 24/7-555-0100', false],
+  ['mental', '1988', false],
+  ['mental', 'Room 49881', false],
+  ['mental', 'Call 988~555~0100', false],
+  ['mental', '988x5550100', false],
+  ['mental', 'Call or text 988.\n555 0100', false],
+  ['mental', 'Call 988 or room 5550100', false],
+  ['mental', 'Call 988-555-0100.', false],
+  ['mental', 'Ref 4 988 12.', false],
+  ['emergency', 'Call 911.555.0100.', false],
+  ['mental', 'Call 988 24h5550100', false],
+  ['mental', 'Call 988 24/7555', false],
+  ['mental', 'Call 988 / 911 555 0100', false],
+  ['mental', 'Ref 5 911 988', false],
+  ['emergency', 'Call 911 / 988.', false],
+  ['mental', '988 24/7', true],
+  ['mental', 'Appelle le 988 24 h sur 24', true],
+  ['mental', '拨打988，24小时', true],
+  ['mental', '٩٨٨', true],
+  ['mental', '988. 911 if you are in danger', true],
+  ['mental', '988 / 911', true],
+  ['mental', 'Call or text 988.', true],
+  ['mental', 'Appelle ou texte le 9-8-8, 24 h/24.', true],
+  ['emergency', 'Appelle le 9-1-1 maintenant.', true],
+  ['mental', 'Call or text 988 – 24/7, free and confidential.', true],
+  ['mental', 'Appelle le 9-8-8 — 24 heures sur 24.', true],
+  ['emergency', 'Call 911 - 24/7.', true],
+  ['mental', 'Available 24/7 988', true],
+  ['mental', 'Call or text 988 24 hours a day', true],
+  // Round 4: writer outputs that must not go out.
+  ['mental', '741741', false],
+  ['mental', 'Text 741741 or call 988.', false],
+  ['mental', 'Call or text 988, or see EXAMPLE.COM', false],
+  ['mental', 'Call or text 988, or see example。com', false],
+  ['mental', 'Call or text 988, or see example[.]com', false],
+  ['mental', 'Call or text 988, or see example . com', false],
+  // Round 4: hours forms a correct reply uses.
+  ['mental', 'Tu peux appeler ou texter le 988, 7 j/7.', true],
+  ['mental', 'Tu peux appeler ou texter le 988, 7j/7.', true],
+  ['mental', 'Appelle ou texte le 9-8-8, 24 h/24, 7 j/7.', true],
+  ['mental', 'Le 988 répond 24 heures sur 24, 7 jours sur 7.', true],
+  ['mental', 'اتصل أو أرسل رسالة إلى ٩٨٨، على مدار ٢٤ ساعة', true],
+  ['mental', 'Llama o escribe al 988, 24 horas.', true],
+  ['emergency', 'Llama al 911 ahora, 24 horas.', true],
 ];
 
-async function sentBody(
-  kind: CrisisKind,
-  readerText: string,
-  writerText: string | null,
-): Promise<string | null> {
-  vi.spyOn(console, 'error').mockImplementation(() => {});
-  return deliverCrisisReply({
-    kind,
-    readerText,
-    parentWords: 'parent words',
-    where: 'evasion table',
-    region: null,
-    writer: { write: vi.fn(async () => writerText) },
-  });
-}
-
 describe('evasion table', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it.each(EVASION_TABLE)('%s %j: required line %s', (kind, text, acceptable) => {
-    expect(crisisReplyAcceptable(kind, text)).toBe(acceptable);
+  it.each(EVASION_TABLE)('%s %j passes: %s', (kind, text, pass) => {
+    expect(crisisReplyViolation(kind, text) === null).toBe(pass);
   });
-
-  it.each(EVASION_TABLE)(
-    '%s %j: the writer reply goes out when the line is %s',
-    async (kind, text, acceptable) => {
-      expect(await sentBody(kind, '', text)).toBe(acceptable ? text : null);
-    },
-  );
-
-  it.each(EVASION_TABLE)(
-    '%s %j: the reader reply, acceptable %s, is sent %s',
-    async (kind, text, _acceptable, sent) => {
-      expect(await sentBody(kind, text, null)).toBe(sent ? text : null);
-    },
-  );
 });
 
-describe('links in the reader reply', () => {
-  afterEach(() => vi.restoreAllMocks());
-
+describe('links', () => {
   it.each([
     ['lowercase scheme', 'Call or text 988, or chat at https://example.org/help.'],
     ['www', 'Call or text 988 or visit www.example.org.'],
@@ -236,9 +153,11 @@ describe('links in the reader reply', () => {
     ['full-width scheme', 'Call 988 or see ＨＴＴＰＳ：／／ＥＸＡＭＰＬＥ．ＯＲＧ'],
     ['full-width www', 'Call 988 or see ｗｗｗ．ｅｘａｍｐｌｅ'],
     ['non-Latin domain', 'Call 988 or see пример.испытание'],
-  ])('%s: not sent', async (_name, text) => {
-    expect(crisisTextHasOtherNumberOrLink(text)).toBe(true);
-    expect(await sentBody('mental', text, null)).toBeNull();
+    ['ideographic full stop', 'Call 988 or see example。com'],
+    ['bracketed dot', 'Call 988 or see example[.]com'],
+    ['spaced dot', 'Call 988 or see example . com'],
+  ])('%s is a link', (_name, text) => {
+    expect(crisisReplyViolation('mental', text)).toBe('link');
   });
 
   it.each([
@@ -246,8 +165,7 @@ describe('links in the reader reply', () => {
     ['full stop then a sentence', 'Call 988. Then rest.'],
     ['Chinese full stop', '请拨打988。全天都有人接听。'],
     ['country abbreviation', 'In the U.S. and Canada, call or text 988.'],
-  ])('%s: sent as written', async (_name, text) => {
-    expect(crisisTextHasOtherNumberOrLink(text)).toBe(false);
-    expect(await sentBody('mental', text, null)).toBe(text);
+  ])('%s is not a link', (_name, text) => {
+    expect(crisisReplyViolation('mental', text)).toBeNull();
   });
 });
