@@ -353,7 +353,7 @@ describe('VIL-457 private aside', () => {
       '+14165550222',
       'Bao',
       'Leo',
-      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+      'Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic',
     );
     await join(ada, NOW);
     await join(bao, new Date(NOW.getTime() + 1000));
@@ -368,12 +368,12 @@ describe('VIL-457 private aside', () => {
     ]);
     expect(r.reads[0]?.families.map((f) => [f.ref, f.times])).toEqual([
       ['f1', ['Maya sees a speech therapist on Saturdays at 10am']],
-      ['f2', ['Leo has occupational therapy Saturday 10-11am at Bloorview']],
+      ['f2', ['Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic']],
     ]);
-    expect(JSON.stringify(r.reads[0]?.families[0])).not.toMatch(/Leo|Bloorview/);
+    expect(JSON.stringify(r.reads[0]?.families[0])).not.toMatch(/Leo|Maple Hollow/);
     expect(r.drafts[0]?.planTimes).toEqual(r.reads[0]?.planTimes);
     expect(r.drafts[0]?.ownTimes).toEqual([
-      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+      'Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic',
     ]);
     expect(JSON.stringify(r.drafts[0])).not.toMatch(/Maya|speech/);
   });
@@ -385,7 +385,7 @@ describe('clockBearingFacts', () => {
       clockBearingFacts([
         'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?',
         'Maya sees a speech therapist on Saturdays at 10am',
-        'Leo has occupational therapy Saturday 10-11am at Bloorview',
+        'Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic',
         'Zoé est en garde partagée, chez son père le samedi',
         'Natation, samedi 9h',
         'Receipt: Little Fins Swim, fall session, $240 charged to Visa ending 4411',
@@ -393,7 +393,7 @@ describe('clockBearingFacts', () => {
     ).toEqual([
       'Hale, on peut tous se retrouver au parc samedi à 9h, pour une heure ?',
       'Maya sees a speech therapist on Saturdays at 10am',
-      'Leo has occupational therapy Saturday 10-11am at Bloorview',
+      'Leo has occupational therapy Saturday 10-11am at Maple Hollow Clinic',
       'Natation, samedi 9h',
     ]);
   });
