@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { BrowserUseEngineThrew, type BrowserUseSignupResult } from './browser-use/engine';
 import { storeProviderSession } from './browser-use/vault';
@@ -32,6 +33,8 @@ vi.mock('./outcome-reply', async (importOriginal) => {
 
 const NOW = new Date('2026-09-29T15:00:00.000Z');
 const ORIGIN = 'http://127.0.0.1';
+// Invented: no Canadian postal code starts with Z.
+const POSTAL = 'Z9Z9Z9';
 
 const SAFE: PageSnapshot = {
   href: `${ORIGIN}/register`,
@@ -140,7 +143,7 @@ describe('authorized signup runner', () => {
     const seeded = await seedFamily(db.database);
     await db.database
       .update(schema.families)
-      .set({ postalCode: 'M5V2T6' })
+      .set({ postalCode: POSTAL })
       .where(eq(schema.families.id, seeded.familyId));
     const childId = await seedChild(
       db.database,
@@ -878,7 +881,7 @@ describe('authorized signup runner', () => {
     expect(result.outcome).toBe('consent_missing');
     expect(result.reply).toContain('outcome=consent_missing');
     expect(result.reply).not.toContain('Ada');
-    expect(result.reply).not.toContain('M5V2T6');
+    expect(result.reply).not.toContain(POSTAL);
     expect(result.reply).not.toContain('TODO-Design');
     expect(calls.opened).toBe(0);
     const rows = await db.database
@@ -917,7 +920,7 @@ describe('authorized signup runner', () => {
     );
     expect(result.outcome).toBe('consent_wider');
     expect(result.reply).not.toContain('Ada');
-    expect(result.reply).not.toContain('M5V2T6');
+    expect(result.reply).not.toContain(POSTAL);
     expect(result.reply).not.toContain('@');
     expect(calls.opened).toBe(0);
   });
@@ -1612,6 +1615,7 @@ describe('authorized signup runner', () => {
         seeded: { familyId: string; parentUserId: string },
         inGroup: boolean | null,
         channel: 'imessage' | 'sms' = 'imessage',
+        providerChatId: string | null = null,
       ): Promise<string> {
         const [row] = await db.database
           .insert(schema.channelMessages)
@@ -1624,6 +1628,7 @@ describe('authorized signup runner', () => {
             status: 'delivered',
             body: 'Yes, sign us up',
             inGroup,
+            providerChatId,
             sentAt: NOW,
           })
           .returning({ id: schema.channelMessages.id });
@@ -1741,6 +1746,124 @@ describe('authorized signup runner', () => {
         });
       });
 
+      /** Hale's earlier reply in `chatId`, appended to this parent's own 1:1 thread. */
+      async function repliedInOwnThread(
+        seeded: { familyId: string; parentUserId: string },
+        chatId: string,
+      ) {
+        const [conversation] = await db.database
+          .insert(schema.conversations)
+          .values({ familyId: seeded.familyId, noteKey: channelSmsNoteKey(seeded.parentUserId) })
+          .returning({ id: schema.conversations.id });
+        if (!conversation) throw new Error('repliedInOwnThread: no conversation');
+        await db.database.insert(schema.channelMessages).values({
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          channel: 'imessage',
+          direction: 'out',
+          category: 'reply',
+          status: 'delivered',
+          providerChatId: chatId,
+          relatedConversationId: conversation.id,
+          sentAt: NOW,
+        });
+      }
+
+      it("reads a null group bit from Hale's own records: the parent's 1:1 chat gets the details", async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        await repliedInOwnThread(seeded, 'chat-direct-vil558');
+        const outcomeWriter = echoOutcomeWriter();
+        const result = await runAuthorizedSignup(
+          db.database,
+          yes(seeded, await inboundYes(seeded, null, 'imessage', 'chat-direct-vil558')),
+          { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter },
+        );
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'needs_login',
+          link: REC,
+          linkIs: 'registration_page',
+          pack: await seededPack(seeded),
+        });
+        expect(outcomeWriter.facts[0]?.pack).toContainEqual({
+          slot: 'child_first_name',
+          value: 'Ada',
+        });
+        expect(result.deliverOnThread).toBe(true);
+        expect(result.reply).toBe(renderEcho(outcomeWriter.facts[0] as SignupOutcomeFacts));
+        expect(result.withheld).toBeUndefined();
+      });
+
+      it('reads a null group bit in a group Hale knows as the group, even beside a 1:1 thread', async () => {
+        const knownGroups = [
+          async (seeded: { familyId: string }, chatId: string) => {
+            await db.database
+              .update(schema.families)
+              .set({ linqGroupChatId: chatId })
+              .where(eq(schema.families.id, seeded.familyId));
+          },
+          async (seeded: { familyId: string }, chatId: string) => {
+            await db.database.insert(schema.linqGroupRosters).values({
+              chatId,
+              familyId: seeded.familyId,
+              source: 'new_group',
+              status: 'confirmed',
+            });
+          },
+        ];
+        for (const [index, markGroup] of knownGroups.entries()) {
+          const chatId = `chat-group-vil558-${index}`;
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          await repliedInOwnThread(seeded, chatId);
+          await markGroup(seeded, chatId);
+          const outcomeWriter = echoOutcomeWriter();
+          const result = await runAuthorizedSignup(
+            db.database,
+            yes(seeded, await inboundYes(seeded, null, 'imessage', chatId)),
+            { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter },
+          );
+          expect(outcomeWriter.facts[0]).toMatchObject({
+            outcome: 'needs_login',
+            link: REC,
+            linkIs: 'registration_page',
+          });
+          expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+          expect(JSON.stringify(outcomeWriter.facts[0])).not.toContain('Ada');
+          expect(result.deliverOnThread).toBe(true);
+          expect(result.withheld).toBeUndefined();
+        }
+      });
+
+      it('withholds the details from a null group bit it cannot place, and names why', async () => {
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+        try {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          const outcomeWriter = echoOutcomeWriter();
+          const result = await runAuthorizedSignup(
+            db.database,
+            yes(seeded, await inboundYes(seeded, null, 'imessage', 'chat-unknown-vil558')),
+            { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter },
+          );
+          expect(outcomeWriter.facts[0]).toMatchObject({
+            outcome: 'needs_login',
+            link: REC,
+            linkIs: 'registration_page',
+          });
+          expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+          expect(result).toMatchObject({ deliverOnThread: true, withheld: 'thread_unresolved' });
+          const named = info.mock.calls.filter(
+            (call) => call[1] === 'authorized signup: yes thread unresolved, details withheld',
+          );
+          expect(named).toEqual([
+            [
+              { outcome: 'thread_unresolved' },
+              'authorized signup: yes thread unresolved, details withheld',
+            ],
+          ]);
+        } finally {
+          info.mockRestore();
+        }
+      });
+
       it('never hands the live browser to the group; a 1:1 yes gets it with the minutes left', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         try {
@@ -1856,27 +1979,40 @@ describe('authorized signup runner', () => {
             },
             session: true,
           },
+          {
+            detail: 'spend_reserve_reached',
+            deps: { browserUseSignup: { run: vi.fn(async () => CHECKOUT) } },
+            session: true,
+            // Past the $25 reserve once a worst-case run is added (see the reserve cases above).
+            spentUsd: '20.500000',
+          },
         ] as const;
         for (const item of cases) {
           const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
           if (item.session) await withProviderSession(seeded, REC_HOST);
+          if ('spentUsd' in item) await setSpentUsd(seeded.familyId, item.spentUsd);
           const outcomeWriter = echoOutcomeWriter();
           const result = await runAuthorizedSignup(
             db.database,
             yes(seeded, await inboundYes(seeded, false)),
             { ...item.deps, outcomeWriter },
           );
+          expect(outcomeWriter.facts).toHaveLength(1);
           expect(outcomeWriter.facts[0]).toMatchObject({
             outcome: 'error',
             reason: item.detail,
+            confirmed: false,
             link: REC,
             linkIs: 'registration_page',
+            holdMinutes: null,
+            pack: await seededPack(seeded),
           });
           expect(outcomeWriter.facts[0]?.pack).toContainEqual({
             slot: 'child_first_name',
             value: 'Ada',
           });
-          expect(result.deliverOnThread).toBe(true);
+          expect(result).toMatchObject({ outcome: 'error', deliverOnThread: true });
+          expect(result.browserUse?.detail).toBe(item.detail);
         }
       });
 

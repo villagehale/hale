@@ -81,13 +81,13 @@ describe('signup outcome reply (mocked model)', () => {
 
   it('writes the assisted handoff from the pack and the page', async () => {
     const sample =
-      'This one needs you: https://www.toronto.ca/register — for Tue 4:30 have parent_first_name Test Parent ready.';
+      'This one needs you: https://register.example-rec.test/activity/42 — for Tue 4:30 have parent_first_name Test Parent ready.';
     const { client, requests } = mockModel([sample]);
     const text = await createSignupOutcomeWriter(() => client).write({
       ...BASE,
       outcome: 'assisted_handoff',
       reason: 'assisted_handoff',
-      link: 'https://www.toronto.ca/register',
+      link: 'https://register.example-rec.test/activity/42',
       prefilled: [],
       pack: [{ slot: 'parent_first_name', value: 'Test Parent' }],
     });
