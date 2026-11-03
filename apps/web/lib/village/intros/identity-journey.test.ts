@@ -185,7 +185,7 @@ describe('two nameless families get paired, named, and held for an intro channel
           read: async () => ({
             parentName: name === "I'm Dana" ? 'Dana' : 'Sam Lee',
             nameDeclined: false,
-            reply: null,
+            reply: 'MODEL RECEIPT',
           }),
         },
       );

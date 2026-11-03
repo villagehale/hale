@@ -1,5 +1,5 @@
 import type { Database } from '@hale/db';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type NameCaptureDeps,
   type NameCaptureWrite,
@@ -145,15 +145,65 @@ describe('handleNameCaptureReply', () => {
     expect(outcome.status).toBe('taken_back');
   });
 
-  it('still stores the name the model returned when the reply could not be written', async () => {
-    const { deps: d, captured } = deps({
-      read: async () => ({ parentName: 'Dana', nameDeclined: false, reply: null }),
+  describe('a read whose reply could not be written', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
     });
 
-    const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
+    const unsentLogs = (warn: ReturnType<typeof vi.spyOn>) =>
+      warn.mock.calls.filter((call) => call[1] === 'name capture: reply not sent');
 
-    expect(captured).toEqual(['Dana']);
-    expect(outcome).toEqual({ status: 'captured', reply: null });
+    it('still stores the name, sends nothing, and names the outcome captured_unsent', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { deps: d, captured } = deps({
+        read: async () => ({ parentName: 'Dana', nameDeclined: false, reply: null }),
+      });
+
+      const outcome = await handleNameCaptureReply(DB, turn("I'm Dana"), d);
+
+      expect(captured).toEqual(['Dana']);
+      expect(outcome).toEqual({ status: 'captured_unsent', reply: null });
+      expect(unsentLogs(warn)).toEqual([
+        [{ familyId: FAMILY, outcome: 'captured_unsent' }, 'name capture: reply not sent'],
+      ]);
+    });
+
+    it('a take-back stores nothing, sends nothing, and is named taken_back_unsent', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { deps: d, captured } = deps({
+        read: async () => ({
+          parentName: null,
+          nameDeclined: false,
+          nameTakenBack: true,
+          reply: null,
+        }),
+      });
+
+      const outcome = await handleNameCaptureReply(DB, turn('undo'), d);
+
+      expect(captured).toEqual([]);
+      expect(outcome).toEqual({ status: 'taken_back_unsent', reply: null });
+      expect(unsentLogs(warn)).toEqual([
+        [{ familyId: FAMILY, outcome: 'taken_back_unsent' }, 'name capture: reply not sent'],
+      ]);
+    });
+
+    it('a take-back with a reply is taken_back and logs no unsent outcome', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { deps: d } = deps({
+        read: async () => ({
+          parentName: null,
+          nameDeclined: false,
+          nameTakenBack: true,
+          reply: 'MODEL REPLY',
+        }),
+      });
+
+      const outcome = await handleNameCaptureReply(DB, turn('undo'), d);
+
+      expect(outcome).toEqual({ status: 'taken_back', reply: 'MODEL REPLY' });
+      expect(unsentLogs(warn)).toEqual([]);
+    });
   });
 
   it('falls through when the name ask is not open', async () => {

@@ -158,9 +158,12 @@ export type NameCaptureWrite = 'stored' | 'already_named';
 export type NameCaptureOutcome =
   | { status: 'declined_to_claim' }
   /** The model read a take-back: nothing was stored, and its reply goes out. */
-  | { status: 'taken_back'; reply: string | null }
-  /** `reply` is null when the model could not write the receipt: nothing is sent, #ops paged. */
-  | { status: 'captured'; reply: string | null };
+  | { status: 'taken_back'; reply: string }
+  /** A take-back whose reply could not be written: nothing stored, nothing sent. */
+  | { status: 'taken_back_unsent'; reply: null }
+  | { status: 'captured'; reply: string }
+  /** The name was stored, but its receipt could not be written: nothing is sent, #ops paged. */
+  | { status: 'captured_unsent'; reply: null };
 
 export interface NameCaptureInput {
   familyId: string;
@@ -236,7 +239,7 @@ export async function handleNameCaptureReply(
     nameConfirmed: read.nameConfirmed ?? null,
   });
   const tookBack = kept.nameTakenBack || kept.nameDeclined || kept.nameConfirmed === false;
-  if (tookBack) return { status: 'taken_back', reply: read.reply };
+  if (tookBack) return answered(input.familyId, 'taken_back', read.reply);
   const name = kept.parentName ? soleGivenName(kept.parentName) : null;
   if (!name) return { status: 'declined_to_claim' };
 
@@ -249,7 +252,18 @@ export async function handleNameCaptureReply(
   // message is something else — handing it to the coach is the only reading left.
   if (written === 'already_named') return { status: 'declined_to_claim' };
 
-  return { status: 'captured', reply: read.reply };
+  return answered(input.familyId, 'captured', read.reply);
+}
+
+function answered(
+  familyId: string,
+  status: 'taken_back' | 'captured',
+  reply: string | null,
+): NameCaptureOutcome {
+  if (reply !== null) return { status, reply };
+  const outcome = status === 'taken_back' ? 'taken_back_unsent' : 'captured_unsent';
+  console.warn({ familyId, outcome }, 'name capture: reply not sent');
+  return { status: outcome, reply: null };
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
