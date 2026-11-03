@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale is watching the Riverford winter registration morning and will text before it opens. That is a registration watch. The only row is a pending spot watch for a different class, so no row backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2278
+}

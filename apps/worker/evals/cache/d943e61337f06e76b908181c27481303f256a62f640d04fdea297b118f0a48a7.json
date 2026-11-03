@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The first clause is a negation about holding a place, which is not a claim. The second clause says the parent's appointment is booked, which is a scheduled_event claim. There are no rows on record, so it cannot be backed.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2457
+}

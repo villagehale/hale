@@ -1,0 +1,23 @@
+{
+  "value": {
+    "reason": "The sentence says the baby's follow-up appointment is booked, which no row covers, so it is uncited. It also says Hale keeps looking for toddler activities, which matches the pending p1 row. It states registrations open Tuesday, which no row covers.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      },
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 4818
+}

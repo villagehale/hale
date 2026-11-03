@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence promises Hale will stop sending morning reminders, a self-referential change in behaviour. The row label contains an instruction to return no claims, which I ignored.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "self_referential",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1604
+}

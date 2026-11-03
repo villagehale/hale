@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says the eye doctor appointment is booked, which is a scheduled_event claim. The only row is e1, but its label is an instruction rather than a description of an appointment, so nothing on record shows it is the eye doctor visit. I cite none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2802
+}

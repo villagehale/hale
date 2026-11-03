@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will keep searching for activities for young children, which matches the pending p1 row. It also says the child's checkup is booked, but no row is about a checkup, so that claim cites none. The registration opening on Tuesday is a statement about the world, not a watch Hale promises.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "p1"
+      },
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 3144
+}

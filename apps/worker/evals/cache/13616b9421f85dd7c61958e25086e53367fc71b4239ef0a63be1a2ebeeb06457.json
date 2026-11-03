@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence promises a reminder 15 minutes before Maple Bend swim lesson registration opens, which is a registration watch. Row q1 is the Maple Bend swim lessons winter registration, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      }
+    ]
+  },
+  "latencyMs": 2215
+}

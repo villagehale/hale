@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The first clause reports what the parent said, so it is not a claim. The second clause says Hale already put the Saturday swim on the calendar, which claims a placement. Row e1 is the Saturday 10:00 swim class, so it backs that claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3435
+}

@@ -338,6 +338,16 @@ jobs:
       - name: Opt-out read eval (cached-only)
         run: pnpm --filter @hale/worker eval:opt-out-read
 
+      # VIL-581: the claim reader (dark) in en/fr/zh/es/ar. Hard: 100% of false claims
+      # caught, >= 95% of true replies passed, per-language recall/precision/backing floors.
+      - name: Claim read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:claim-read
+
+      # Calibration, $0: no claims, every claim backed, a random row, the wrong kind and
+      # silence on injection rows must each fail its bar, and the gold labels must pass.
+      - name: Claim read eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:claim-read:broken
+
       - name: Weekday-care reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:weekday-care-reply
 

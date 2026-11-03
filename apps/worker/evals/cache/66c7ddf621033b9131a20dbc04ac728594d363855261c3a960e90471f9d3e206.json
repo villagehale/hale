@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale is watching the Saturday swim class and will tell the parent when a spot opens, which is a spot watch on that one class. Row g1 is a spot watch on the Saturday swim class for ages 3-5, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "g1"
+      }
+    ]
+  },
+  "latencyMs": 1395
+}

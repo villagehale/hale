@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 says Hale is writing before Riverford's winter registration opens, which implies it is watching that season. The only row is a spot watch on a Saturday swim class, not the town's season, so nothing backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 3563
+}

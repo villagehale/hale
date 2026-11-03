@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Saturday's swim class is booked, a placement claim. Row e1 is the swim lesson on Sat, Nov 7 at 10:00 AM, which matches the day.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 1652
+}

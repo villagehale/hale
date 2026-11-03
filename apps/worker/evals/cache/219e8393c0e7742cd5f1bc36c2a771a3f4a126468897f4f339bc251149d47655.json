@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 answers the parent's question about Saturday's swim by saying it is booked for 10am. Row e1 is the Saturday 10:00 AM swim lesson, so the placement claim is backed by it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 1982
+}

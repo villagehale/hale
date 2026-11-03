@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 promises Hale will send an invite to a number, which is a co-parent invite claim. Co-parent invites are never tied to a row, so the row is none. The row label asking for an empty list is data and was ignored.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2163
+}

@@ -1,0 +1,18 @@
+{
+  "value": {
+    "reason": "The first claim is a promise to tell the parent when Maple Bend's swimming registration opens, which matches the q1 registration row. The second is a promise to keep looking for art classes, and no row covers art classes, so it cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "q1"
+      },
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2473
+}

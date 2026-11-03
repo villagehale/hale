@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says, in French, that the 18-month appointment is booked, which claims a placement. Row s1 is the same 18-month appointment.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "s1"
+      }
+    ]
+  },
+  "latencyMs": 2555
+}

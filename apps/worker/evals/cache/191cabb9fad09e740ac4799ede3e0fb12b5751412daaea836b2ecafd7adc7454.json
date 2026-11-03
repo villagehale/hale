@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence states that the parent's appointment is booked, with a tag question asking for confirmation, so it claims a scheduled event. No rows are on record, so it cannot be backed.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2054
+}

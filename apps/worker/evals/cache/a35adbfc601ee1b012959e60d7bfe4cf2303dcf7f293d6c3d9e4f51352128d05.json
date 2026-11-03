@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence promises to watch one specific swimming class page and to message the parent when a spot opens. That matches the pending Saturday swimming spot watch row.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "p2"
+      }
+    ]
+  },
+  "latencyMs": 2314
+}

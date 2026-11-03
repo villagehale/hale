@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will look for art classes this week, which is a follow-up on finds it is still searching for. The only activity row is about a swimming class, so no row backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "activity_followup",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2162
+}

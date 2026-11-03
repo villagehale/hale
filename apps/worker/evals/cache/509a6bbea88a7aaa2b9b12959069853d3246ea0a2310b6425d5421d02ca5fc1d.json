@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The first clause attributes the 'already booked' claim to the parent, so it does not count. The second clause says Hale has added the Saturday swim class to the calendar, which is a scheduled_event claim about row e1, the Sat Nov 7 10:00 AM swim class.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "e1"
+      }
+    ]
+  },
+  "latencyMs": 3278
+}
