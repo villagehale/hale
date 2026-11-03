@@ -137,6 +137,25 @@ describe('reconcile — a sentence is backed only when every claim in it is', ()
     expect(reported.resolutions).toEqual([]);
   });
 
+  it('backs a true booking whose clause names only a time, and only on a matching row', () => {
+    const colon = 'Swim lessons at the pool: Saturday 10am is booked.';
+    expect(reasons(colon, view({ scheduledTitles: ['Swim lessons'] }))).toEqual([]);
+    expect(reasons(colon, view({ scheduledTitles: ['Dentist checkup'] }))).toEqual([
+      'no_scheduled_row',
+    ]);
+
+    const range = 'Swim class 10 - 11am is booked.';
+    expect(reasons(range, view({ scheduledTitles: ['Swim class'] }))).toEqual([]);
+    expect(reasons(range, view())).toEqual(['no_scheduled_row']);
+
+    expect(
+      reasons(
+        "I'll keep looking for toddler activities; Saturday 10am is booked.",
+        view({ ...promised, scheduledTitles: ['Toddler Tumble'] }),
+      ),
+    ).toEqual(['no_scheduled_row']);
+  });
+
   it('control: a lone registered follow-up passes', () => {
     expect(reasons("I'll keep looking for toddler activities.", view(promised))).toEqual([]);
   });

@@ -70,8 +70,8 @@ export interface StateClaim {
   kind: ClaimKind;
   /**
    * The claim's content words, lowercased — what a `scheduled_event` is matched on. They
-   * come from `clause`, or from the clauses it leans on when `clause` names nothing
-   * ("that's booked"), so an activity named elsewhere in the sentence cannot back the
+   * come from `clause`, plus the clauses it leans on when `clause` names nothing but a
+   * time ("that's booked", "Saturday 10am is booked"), so an activity named elsewhere in the sentence cannot back the
    * booking. Empty for the promise families, which are matched by KIND against the
    * ledger and never by their words.
    */
@@ -281,13 +281,17 @@ function promiseKindOf(span: string): PromiseKind | null {
  * word, a colon before a space) let a negation or a report reach on into the clauses after
  * it — "You said that, for Tuesday, the visit is booked" is all the parent's. HARD breaks
  * stop it, so "I can't hold a spot for you, but your visit is booked" still claims the
- * booking. `Nov 4, 2026`, `7:00`, `11/4` and `well-baby` are not breaks.
+ * booking. `Nov 4, 2026`, `7:00`, `11/4`, `10 - 11am` and `well-baby` are not breaks.
  *
  * This list is an evasion table, not a grammar: a connective outside it leaves two
  * clauses joined, which is never weaker than reading the whole sentence as one.
  */
 const CLAUSE_BREAK =
-  /,(?=\s+\D)|:(?=\s)|;|\s[-–—]\s|—|…|\.\.\.|&|(?<!\d)\/|\/(?!\d)|\b(?:and|but|plus|so|also|while|then)\b/gi;
+  /,(?=\s+\D)|:(?=\s)|;|(?<!\d)\s[-–]\s|\s[-–]\s(?!\d)|—|…|\.\.\.|&|(?<!\d)\/|\/(?!\d)|\b(?:and|but|plus|so|also|while|then)\b/gi;
+
+/** A word that says WHEN, not what: "Saturday 10am is booked" names no placement. */
+const TEMPORAL_WORD =
+  /^(?:\d.*|(?:mon|tues|wednes|thurs|fri|satur|sun)days?|tues|thur|thurs|january|february|march|april|june|july|august|sept|september|october|november|december|morning|afternoon|evening|tonight|noon)$/;
 const SOFT_BREAKS = new Set([',', ':']);
 
 /** Where Hale (or someone it is reporting) starts to speak. */
@@ -414,8 +418,8 @@ function promiseClaims(
  * nothing else is" claims the visit), or in an earlier clause reached through soft breaks
  * with no opener of its own in between; or the sentence's last clause ending in `?`.
  *
- * WORDS come from the clause. A clause that names nothing ("that's booked", "is booked")
- * leans on its neighbours, nearest first, and never across a clause where Hale starts
+ * WORDS come from the clause. A clause that names nothing, or only a time ("that's
+ * booked", "Saturday 10am is booked"), keeps its own words and leans on its neighbours, nearest first, and never across a clause where Hale starts
  * speaking — that clause is about something else. A neighbour that is itself a booking
  * is the same placement said twice ("Swim is booked, so you're all set"), so the walk
  * takes its words and stops.
@@ -463,8 +467,10 @@ function bookingClaims(
     if (governed(index, assertion.index)) return;
     if (asksLast && index === clauses.length - 1) return;
     const own = contentWords(clause.text);
-    const borrowed = own.length > 0 ? own : lean(index, -1);
-    const words = borrowed.length > 0 ? borrowed : lean(index, 1);
+    const namesSomething = own.some((word) => !TEMPORAL_WORD.test(word));
+    const backward = namesSomething ? [] : lean(index, -1);
+    const borrowed = namesSomething || backward.length > 0 ? backward : lean(index, 1);
+    const words = [...own, ...borrowed];
     placed.push({
       claim: { sentence, clause: clause.text, kind: 'scheduled_event', words: [...new Set(words)] },
       position: clause.start,

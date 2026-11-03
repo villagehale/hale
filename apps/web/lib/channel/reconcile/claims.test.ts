@@ -307,4 +307,60 @@ describe('extractStateClaims — every claim in a sentence', () => {
     expect(kinds(body)).toEqual(['activity_followup', 'scheduled_event']);
     expect(bookings(body)[0]?.words).toEqual([]);
   });
+
+  it('lets a booking clause that names only a time borrow its subject', () => {
+    const colon = bookings('Swim lessons at the pool: Saturday 10am is booked.');
+    expect(colon.map((claim) => claim.clause)).toEqual(['Saturday 10am is booked.']);
+    expect(new Set(colon[0]?.words)).toEqual(
+      new Set(['saturday', '10am', 'swim', 'lessons', 'pool']),
+    );
+
+    const promise = bookings("I'll keep looking for toddler activities; Saturday 10am is booked.");
+    expect(promise.map((claim) => claim.words)).toEqual([['saturday', '10am']]);
+  });
+
+  it('keeps a spaced time range inside one clause', () => {
+    const body = 'Swim class 10 - 11am is booked.';
+    expect(bookings(body).map((claim) => [claim.clause, claim.words])).toEqual([
+      [body, ['swim', 'class', '11am']],
+    ]);
+    expect(bookings('Swim runs at 4 - your visit is booked.').map((claim) => claim.clause)).toEqual(
+      ['your visit is booked.'],
+    );
+  });
+
+  it('cuts clauses from the original sentence when a quote sits before the booking', () => {
+    const found = bookings('Your "Toddler Tumble" pick is full, but the dentist is booked.');
+    expect(found.map((claim) => [claim.clause, claim.words])).toEqual([
+      ['the dentist is booked.', ['dentist']],
+    ]);
+  });
+
+  it('keeps a slashed date inside its clause', () => {
+    expect(bookings('Swim on 11/4 is booked.').map((claim) => claim.clause)).toEqual([
+      'Swim on 11/4 is booked.',
+    ]);
+  });
+
+  it('stops borrowing at the first neighbouring booking', () => {
+    expect(
+      bookings("Swim class at the pool, the dentist is booked, so you're all set.").map(
+        (claim) => claim.words,
+      ),
+    ).toEqual([['dentist'], ['dentist']]);
+  });
+
+  it('borrows forward when nothing before the booking names it', () => {
+    const found = bookings("That's booked: the swim class Saturday.");
+    expect(found).toHaveLength(1);
+    expect(new Set(found[0]?.words)).toEqual(new Set(['swim', 'class', 'saturday']));
+  });
+
+  it.each([
+    ['Your visit is booked with no copay.', ['scheduled_event']],
+    ["I can't make Tuesday, I'm guessing the swim class is booked.", ['scheduled_event']],
+    ["I'll text you, and I'm hoping registration opens Monday.", ['registration_watch']],
+  ])('reads %s as %j', (body, expected) => {
+    expect(kinds(body)).toEqual(expected);
+  });
 });
