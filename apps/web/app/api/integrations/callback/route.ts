@@ -40,6 +40,9 @@ import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integration
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
 export const runtime = 'nodejs';
 
+// The refused-grant scope lists come straight from Google's token response; bound them.
+const LOGGED_SCOPES_MAX = 10;
+
 /**
  * GET /api/integrations/callback — Google's redirect back after consent. The
  * provider-agnostic single callback: the signed `state` carries which
@@ -151,6 +154,17 @@ export async function GET(req: NextRequest) {
   if (bound.surface === 'text' && !textProvider) return back('invalid');
   const surface = bound.surface;
 
+  // The Drive consent door is closed, but a Drive state signed before the deploy still
+  // verifies for its TTL: refuse it before the code is exchanged, so Google issues no
+  // token and nothing is stored.
+  if (bound.provider === 'gdrive') {
+    console.info(
+      { familyId: bound.familyId, provider: bound.provider, outcome: 'connector_not_offered' },
+      'connector consent: no consent door for this connector - nothing exchanged, nothing stored',
+    );
+    return back('denied', surface, bound.provider);
+  }
+
   if (declined) {
     if (surface === 'text' && textProvider) {
       return textFailure('denied', textProvider, {
@@ -210,7 +224,13 @@ export async function GET(req: NextRequest) {
       const unexpected = scopes.filter((sc) => !allowed.has(sc));
       const grantStatus = missing.length > 0 && unexpected.length === 0 ? 'partial' : 'denied';
       console.info(
-        { familyId: bound.familyId, provider: bound.provider, grantStatus, unexpected, missing },
+        {
+          familyId: bound.familyId,
+          provider: bound.provider,
+          grantStatus,
+          unexpected: unexpected.slice(0, LOGGED_SCOPES_MAX),
+          missing: missing.slice(0, LOGGED_SCOPES_MAX),
+        },
         'connector grant: refused - nothing stored',
       );
       if (surface === 'text' && textProvider) {
