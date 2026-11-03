@@ -5,6 +5,7 @@ import {
   CRISIS_VIOLATION_FACT,
   EMERGENCY_SITUATION_FACT,
   acceptSaidLine,
+  crisisLineInput,
   deliverCrisisReply,
 } from './said-line';
 
@@ -50,10 +51,23 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(calls).toHaveLength(1);
     expect(calls[0]?.purpose).toBe('crisis_mental');
     expect(calls[0]?.language).toBe('fr');
-    expect(calls[0]?.facts).toEqual({ ...crisisFactsForRegion('CA', 'mental') });
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion('CA', 'mental'),
+      replyLanguage: 'français',
+    });
     expect(calls[0]).not.toHaveProperty('parentWords');
     expect(calls[0]).not.toHaveProperty('recentParentWords');
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it('names the reply language in its own script, so that script is in front of the writer', () => {
+    // Probe 11-03: with only the tag 'ar', 6 of 6 writer draws came back as mojibake;
+    // with the Arabic name of the language as a fact, 3 of 3 were Arabic.
+    expect(crisisLineInput('emergency', 'CA', 'ar').facts.replyLanguage).toBe('العربية');
+    expect(crisisLineInput('mental', 'CA', 'zh').facts.replyLanguage).toBe('中文');
+    expect(crisisLineInput('mental', 'CA', 'hi').facts.replyLanguage).toBe('हिन्दी');
+    expect(crisisLineInput('mental', 'CA', null).facts).not.toHaveProperty('replyLanguage');
+    expect(crisisLineInput('mental', 'CA', 'xx').facts).not.toHaveProperty('replyLanguage');
   });
 
   it('an emergency is written from 911-only facts and what the reader read, with no digits in it', async () => {
@@ -112,6 +126,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(calls[0]?.facts).not.toHaveProperty('previousTextNotSent');
     expect(calls[1]?.facts).toEqual({
       ...crisisFactsForRegion('US', 'mental'),
+      replyLanguage: 'English',
       previousTextNotSent: CRISIS_VIOLATION_FACT.other_number,
     });
     expect(calls[1]).not.toHaveProperty('parentWords');
@@ -129,6 +144,20 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call 911 now.', attempts: 2 });
     expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.emergency_988);
+  });
+
+  it('a reply with no letter of the reply language is re-asked with wrong_script named', async () => {
+    const { writer, calls } = scriptedWriter('Ш§ШЄШµЩ„ Ш§Щ„Ш¢Щ† 911.', 'اتصل بـ 911 الآن.');
+    const outcome = await deliverCrisisReply({
+      kind: 'emergency',
+      language: 'ar',
+      region: 'CA',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(outcome).toEqual({ status: 'sent', body: 'اتصل بـ 911 الآن.', attempts: 2 });
+    expect(calls[1]?.language).toBe('ar');
+    expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.wrong_script);
   });
 
   it('two failed checks send nothing, page #ops once and name the last violation', async () => {

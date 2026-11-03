@@ -296,6 +296,7 @@ function asciiCrisisDigits(text: string): string {
 // digits are not another number.
 const CRISIS_HOURS_FORMS = [
   '24 heures sur 24',
+  '24 hours',
   '24 h sur 24',
   '24h sur 24',
   '24 h/24',
@@ -309,7 +310,18 @@ const CRISIS_HOURS_FORMS = [
   '24h',
   '24小时',
   '24 ساعة',
+  '7 days',
+  '7 días',
+  '7天',
+  '7 أيام',
 ].sort((a, b) => b.length - a.length);
+
+// A form ending in a letter ends at a word boundary ('24 h' is not '24 hommes'). Han
+// has no spaces between words, so a form ending in Han does not.
+function hoursFormEndsWord(form: string): boolean {
+  const last = form.at(-1) ?? '';
+  return /\p{L}/u.test(last) && !/\p{Script=Han}/u.test(last);
+}
 
 const CRISIS_LINES: readonly string[] = [
   ...crisisMustInclude('mental'),
@@ -329,7 +341,10 @@ interface CrisisDigitGroup {
 function hoursFormEnd(ascii: string, at: number): number {
   for (const form of CRISIS_HOURS_FORMS) {
     const end = at + form.length;
-    if (ascii.slice(at, end).toLowerCase() === form && !/\d/.test(ascii[end] ?? '')) return end;
+    const next = ascii[end] ?? '';
+    if (ascii.slice(at, end).toLowerCase() !== form || /\d/.test(next)) continue;
+    if (hoursFormEndsWord(form) && /\p{L}/u.test(next)) continue;
+    return end;
   }
   return -1;
 }
@@ -374,18 +389,73 @@ const DOMAIN_DOT = /[\p{L}\d-](?:\.|\s+\.\s+|\s*[[({]\s*\.\s*[\])}]\s*)\p{L}{2,}
 // An ideographic full stop between Latin parts ('example。com'), but not a CJK sentence end.
 const IDEOGRAPHIC_DOMAIN_DOT = /[a-z\d-][\u3002\uff61][a-z]{2,}(?![a-z\d])/i;
 
+// Not domain dots: a Spanish doubled-letter plural ('EE.UU.'), and an ASCII full stop
+// ending a sentence before Chinese or Japanese when no Latin name sits before it.
+const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\d])/gu;
+const CJK_SENTENCE_DOT =
+  /(?<![^\P{L}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}][\p{Nd}-]*)\.(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu;
+
 function crisisTextHasLink(text: string): boolean {
-  const folded = text.normalize('NFKC');
+  const folded = text
+    .normalize('NFKC')
+    .replace(DOUBLED_PAIR_ABBREVIATION, ' ')
+    .replace(CJK_SENTENCE_DOT, ' ');
   return LINK_SCHEME.test(folded) || DOMAIN_DOT.test(folded) || IDEOGRAPHIC_DOMAIN_DOT.test(folded);
 }
 
-export type CrisisViolation = 'missing_line' | 'emergency_988' | 'other_number' | 'link';
+// Intl names a language's usual script; these tags name a writing system that spans
+// several Unicode scripts.
+const WRITING_SYSTEM_SCRIPTS: Readonly<Record<string, readonly string[]>> = {
+  Hans: ['Han'],
+  Hant: ['Han'],
+  Hanb: ['Han', 'Bopomofo'],
+  Jpan: ['Han', 'Hiragana', 'Katakana'],
+  Kore: ['Hangul', 'Han'],
+};
+
+/** The tag as an Intl locale, or null when it is not one Intl can read. */
+function replyLocale(language: ReplyLanguage | null): Intl.Locale | null {
+  if (!language) return null;
+  try {
+    return new Intl.Locale(language);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+}
+
+/** A letter of the reply language's script, or null when the tag names no known script. */
+function replyScriptLetter(language: ReplyLanguage | null): RegExp | null {
+  const script = replyLocale(language)?.maximize().script;
+  if (!script) return null;
+  const scripts = WRITING_SYSTEM_SCRIPTS[script] ?? [script];
+  try {
+    return new RegExp(`[${scripts.map((name) => `\\p{Script=${name}}`).join('')}]`, 'u');
+  } catch (err) {
+    // An ISO 15924 code the regex engine has no Unicode property for.
+    if (err instanceof SyntaxError) return null;
+    throw err;
+  }
+}
+
+export type CrisisViolation =
+  | 'missing_line'
+  | 'emergency_988'
+  | 'other_number'
+  | 'link'
+  | 'wrong_script';
 
 /**
  * The one acceptance check for every crisis reply: the required line is present, an
- * emergency carries no 988, no other number appears, and no link. Null: it may be sent.
+ * emergency carries no 988, no other number appears, no link, and the reply has a
+ * letter of its language's script (a mojibake or wrong-language draft is not sent).
+ * Null: it may be sent.
  */
-export function crisisReplyViolation(kind: CrisisKind, text: string): CrisisViolation | null {
+export function crisisReplyViolation(
+  kind: CrisisKind,
+  text: string,
+  language: ReplyLanguage | null,
+): CrisisViolation | null {
   const tokens = crisisNumberTokens(text);
   const [required] = crisisMustInclude(kind);
   const lineToken = tokens.some(
@@ -400,6 +470,8 @@ export function crisisReplyViolation(kind: CrisisKind, text: string): CrisisViol
   }
   if (!tokens.every(tokenIsCrisisLinesOnly)) return 'other_number';
   if (crisisTextHasLink(text)) return 'link';
+  const scriptLetter = replyScriptLetter(language);
+  if (scriptLetter && !scriptLetter.test(text)) return 'wrong_script';
   return null;
 }
 
@@ -409,6 +481,7 @@ export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation, string>> = 
   emergency_988: 'the last draft carried 988, and an emergency reply carries 911 only',
   other_number: 'the last draft carried a number that is not in facts, so it was not sent',
   link: 'the last draft carried a link or web address, so it was not sent',
+  wrong_script: 'the last draft was not written in the reply language, so it was not sent',
 };
 
 /**
@@ -417,6 +490,20 @@ export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation, string>> = 
  */
 export const EMERGENCY_SITUATION_FACT =
   'they just told Hale someone is hurt or in danger right now';
+
+/**
+ * The reply language's name in its own language ('العربية' for ar). With only the tag,
+ * the writer returned mojibake for Arabic (6 of 6 draws, 11-03); the name puts the
+ * script in front of it.
+ */
+function replyLanguageName(language: ReplyLanguage | null): string | null {
+  const locale = replyLocale(language);
+  if (!locale) return null;
+  const name = new Intl.DisplayNames([locale.baseName], { type: 'language', fallback: 'none' }).of(
+    locale.baseName,
+  );
+  return name ?? null;
+}
 
 /**
  * The crisis request: facts only. The parent's words never reach the writer, so an
@@ -429,15 +516,25 @@ export function crisisLineInput(
   language: ReplyLanguage | null,
   rejected?: CrisisViolation,
 ): SaidLineInput {
+  const languageName = replyLanguageName(language);
   return {
     purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
     language,
     facts: {
       ...crisisFactsForRegion(region, kind),
       ...(kind === 'emergency' ? { situation: EMERGENCY_SITUATION_FACT } : {}),
+      ...(languageName ? { replyLanguage: languageName } : {}),
       ...(rejected ? { previousTextNotSent: CRISIS_VIOLATION_FACT[rejected] } : {}),
     },
   };
+}
+
+/** The crisis reply's language: the one Hale already holds wins, else the one the reader read. */
+export function crisisReplyLanguage(
+  known: ReplyLanguage | null,
+  reading: { language?: ReplyLanguage | null } | null,
+): ReplyLanguage | null {
+  return known ?? reading?.language ?? null;
 }
 
 export type CrisisReplyOutcome =
@@ -465,11 +562,11 @@ export async function deliverCrisisReply(input: {
   if (!writer) return unanswered('no_writer');
   const first = await writer.write(crisisLineInput(kind, region, language));
   if (!first) return unanswered('write_failed');
-  const firstViolation = crisisReplyViolation(kind, first);
+  const firstViolation = crisisReplyViolation(kind, first, language);
   if (firstViolation === null) return { status: 'sent', body: first, attempts: 1 };
   const second = await writer.write(crisisLineInput(kind, region, language, firstViolation));
   if (!second) return unanswered('write_failed');
-  const secondViolation = crisisReplyViolation(kind, second);
+  const secondViolation = crisisReplyViolation(kind, second, language);
   if (secondViolation === null) return { status: 'sent', body: second, attempts: 2 };
   return unanswered(secondViolation);
 }

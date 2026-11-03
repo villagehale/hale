@@ -1,12 +1,20 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import { EMERGENCY_SITUATION_FACT, type SaidLineInput } from '~/lib/channel/voice/said-line';
+import {
+  EMERGENCY_SITUATION_FACT,
+  type SaidLineInput,
+  type SaidLineWriter,
+} from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { IntakeCollected } from './extract';
 import {
+  FakeAnswerComposer,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -110,6 +118,35 @@ function inbound(
   overrides: Partial<InboundMessage> = {},
 ): InboundMessage {
   return transport.inbound(PHONE, body, overrides);
+}
+
+/** An open session already past the first text, on this harness's number. */
+function seedSession(
+  fake: FakeDb,
+  over: {
+    state: string;
+    ladderLanguage?: string;
+    ladderNext?: string;
+    familyId?: string;
+    userId?: string;
+  },
+): void {
+  fake.db.insert(schema.smsIntakeSessions).values({
+    phoneHash: phoneBlindIndex(PHONE),
+    phoneEncrypted: encryptString(PHONE),
+    state: over.state,
+    dataEncrypted: encryptString(
+      JSON.stringify({
+        collected: EMPTY,
+        transcript: [{ direction: 'in', body: 'hi', at: NOW.toISOString() }],
+        ...(over.ladderLanguage ? { ladderLanguage: over.ladderLanguage } : {}),
+        ...(over.ladderNext ? { ladderNext: over.ladderNext } : {}),
+      }),
+    ),
+    createdAt: NOW,
+    familyId: over.familyId ?? null,
+    userId: over.userId ?? null,
+  });
 }
 
 beforeEach(() => {
@@ -726,7 +763,7 @@ describe('friend voice onboarding', () => {
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
     expect(transport.bodies()).toEqual([
-      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACT}`,
+      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACT}\nreplyLanguage=English`,
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
     expect(calls[0]).not.toHaveProperty('parentWords');
@@ -753,6 +790,19 @@ describe('friend voice onboarding', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
     expect(transport3.bodies()).toEqual([]);
+  });
+
+  it('a crisis reply is in the language Hale already holds, over the language the reader read', async () => {
+    const calls: SaidLineInput[] = [];
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, { state: 'awaiting_place', ladderLanguage: 'fr' });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'crisis_mental', confirmation: '', language: 'en' }),
+    };
+    deps.saidLine = scriptedSaidLine(calls);
+    await handleInboundSms(fake.db, inbound(transport, 'I cannot go on'), deps);
+    expect(calls.map((c) => [c.purpose, c.language])).toEqual([['crisis_mental', 'fr']]);
+    expect(transport.bodies()).toHaveLength(1);
   });
 
   it('accepts a US ZIP and still replies when a city name is not a place', async () => {
@@ -1355,5 +1405,71 @@ describe('#868 opt-out reader decides every turn, and a failed read holds the se
     deps.optOutHold = held.port;
     await handleInboundSms(fake.db, inbound(transport, 'hello again'), deps);
     expect(held.calls).toEqual(['release:true']);
+  });
+});
+
+describe('ladder: the answer model flags a mental-health crisis the reader did not', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f001';
+  const USER = '00000000-0000-4000-8000-00000000a001';
+
+  function ladder(reply: string | null): {
+    fake: FakeDb;
+    transport: FakeTransport;
+    deps: IntakeDeps;
+    calls: SaidLineInput[];
+    reads: () => number;
+  } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+    });
+    let reads = 0;
+    deps.optOutReader = {
+      read: async () => {
+        reads += 1;
+        return { intent: 'none', confirmation: '', language: 'ar' };
+      },
+    };
+    deps.answerComposer = new FakeAnswerComposer({ status: 'mental_crisis' });
+    const calls: SaidLineInput[] = [];
+    const writer: SaidLineWriter = {
+      async write(input) {
+        calls.push(input);
+        return reply;
+      },
+    };
+    deps.saidLine = writer;
+    return { fake, transport, deps, calls, reads: () => reads };
+  }
+
+  it('the writer answers from facts in the language the reader read, on the turn read', async () => {
+    const reply = 'اتصل أو أرسل رسالة إلى 988 الآن.';
+    const { fake, transport, deps, calls, reads } = ladder(reply);
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.purpose).toBe('crisis_mental');
+    expect(calls[0]?.language).toBe('ar');
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion(null, 'mental'),
+      replyLanguage: 'العربية',
+    });
+    expect(calls[0]).not.toHaveProperty('parentWords');
+    expect(transport.bodies()).toEqual([reply]);
+    expect(reads()).toBe(1);
+  });
+
+  it('a reply that fails the crisis check twice sends nothing and pages #ops', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder('Call 911.');
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(2);
+    expect(transport.bodies()).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'mental', reason: 'missing_line' }),
+      'URGENT: crisis flagged, no reply sent - page #ops now',
+    );
   });
 });

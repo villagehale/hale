@@ -52,7 +52,11 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { type SaidLineWriter, deliverCrisisReply } from '~/lib/channel/voice/said-line';
+import {
+  type SaidLineWriter,
+  crisisReplyLanguage,
+  deliverCrisisReply,
+} from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { recordCommitment } from '~/lib/commitments/ledger';
@@ -997,6 +1001,7 @@ async function offScriptReply(
     language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
+  turn: Inbound,
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
@@ -1016,11 +1021,19 @@ async function offScriptReply(
   const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. The same facts-only writer and
-    // check as every crisis reply; a miss has already paged #ops.
+    // check as every crisis reply; a miss has already paged #ops. The turn's one read
+    // still named the text's language.
+    const language = args.language ?? null;
+    const region = args.region ?? null;
+    const reading = await readTurnOnce(deps.optOutReader, turn, {
+      text: args.parentWords,
+      language,
+      region,
+    });
     const crisis = await deliverCrisisReply({
       kind: 'mental',
-      language: args.language ?? null,
-      region: args.region ?? null,
+      language: crisisReplyLanguage(language, reading),
+      region,
       where: 'intake answer crisis',
       writer: deps.saidLine,
     });
@@ -1360,10 +1373,9 @@ async function crisisReply(
   if (!isCrisisReading(reading)) return null;
   const kind = reading.intent === 'crisis_emergency' ? 'emergency' : 'mental';
   // Facts only: the parent's words and the reader's own text never reach the reply.
-  // The language Hale already holds wins; else the language the reader read.
   const crisis = await deliverCrisisReply({
     kind,
-    language: language ?? reading.language ?? null,
+    language: crisisReplyLanguage(language, reading),
     region,
     where: 'intake crisis',
     writer: deps.saidLine,
@@ -3216,6 +3228,7 @@ async function handleLadder(
         language,
       },
       deps,
+      inbound,
     );
     if (offScript) {
       if (offScript.body) {

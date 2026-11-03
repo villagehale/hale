@@ -18,7 +18,7 @@ describe('the 988 line in any digit form', () => {
     ['en dash', '9–8–8'],
     ['narrow nbsp', '9 8 8'],
   ])('%s carries the mental line', (_name, text) => {
-    expect(crisisReplyViolation('mental', text)).toBeNull();
+    expect(crisisReplyViolation('mental', text, null)).toBeNull();
   });
 
   it.each([
@@ -27,18 +27,18 @@ describe('the 988 line in any digit form', () => {
     ['comma-spelled after a word', '911, or 9,8,8'],
     ['Arabic-Indic', 'اتصل بـ ٩١١ أو ٩٨٨'],
   ])('an emergency reply with a %s 988 is refused as emergency_988', (_name, text) => {
-    expect(crisisReplyViolation('emergency', text)).toBe('emergency_988');
+    expect(crisisReplyViolation('emergency', text, null)).toBe('emergency_988');
   });
 
   it('positive control: an emergency reply with 911 alone passes', () => {
-    expect(crisisReplyViolation('emergency', 'Call 911 now.')).toBeNull();
-    expect(crisisReplyViolation('emergency', 'Appelle le 9-1-1 maintenant.')).toBeNull();
+    expect(crisisReplyViolation('emergency', 'Call 911 now.', null)).toBeNull();
+    expect(crisisReplyViolation('emergency', 'Appelle le 9-1-1 maintenant.', null)).toBeNull();
   });
 
   it('does not invent 988 from unrelated digits', () => {
-    expect(crisisReplyViolation('mental', 'Call 911.')).toBe('missing_line');
-    expect(crisisReplyViolation('mental', '9 1 1')).toBe('missing_line');
-    expect(crisisReplyViolation('emergency', 'Call 911 now. 98 is the bus; 8 kids')).toBe(
+    expect(crisisReplyViolation('mental', 'Call 911.', null)).toBe('missing_line');
+    expect(crisisReplyViolation('mental', '9 1 1', null)).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call 911 now. 98 is the bus; 8 kids', null)).toBe(
       'other_number',
     );
   });
@@ -46,17 +46,17 @@ describe('the 988 line in any digit form', () => {
 
 describe('the required line', () => {
   it('a reply without it is missing_line', () => {
-    expect(crisisReplyViolation('mental', 'I am here with you.')).toBe('missing_line');
-    expect(crisisReplyViolation('emergency', 'Call or text 988.')).toBe('missing_line');
-    expect(crisisReplyViolation('emergency', 'Call 9 1 2.')).toBe('missing_line');
+    expect(crisisReplyViolation('mental', 'I am here with you.', null)).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call or text 988.', null)).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Call 9 1 2.', null)).toBe('missing_line');
   });
 
   it('a longer number that contains the digits is not the line', () => {
-    expect(crisisReplyViolation('mental', 'Appelle le 9-8-8 ou le 911.')).toBeNull();
+    expect(crisisReplyViolation('mental', 'Appelle le 9-8-8 ou le 911.', null)).toBeNull();
     for (const text of ['Salle 4-988-12.', 'Room 49881.', 'Call 1988.']) {
-      expect(crisisReplyViolation('mental', text)).toBe('missing_line');
+      expect(crisisReplyViolation('mental', text, null)).toBe('missing_line');
     }
-    expect(crisisReplyViolation('emergency', 'Ref 19112.')).toBe('missing_line');
+    expect(crisisReplyViolation('emergency', 'Ref 19112.', null)).toBe('missing_line');
   });
 });
 
@@ -68,12 +68,12 @@ describe('native-script digits', () => {
     ['Thai', 'mental', 'โทร ๙๘๘'],
     ['Arabic-Indic 911', 'emergency', 'اتصل بـ ٩١١ الآن'],
   ] as const)('%s digits read as the line', (_name, kind, text) => {
-    expect(crisisReplyViolation(kind, text)).toBeNull();
+    expect(crisisReplyViolation(kind, text, null)).toBeNull();
   });
 
   it('a Bengali run-on is a longer number, not the line', () => {
-    expect(crisisReplyViolation('mental', 'Call 988 ৫৫৫ ০১০০')).toBe('missing_line');
-    expect(crisisReplyViolation('mental', 'Call 988 now, or ৫৫৫ ০১০০')).toBe('other_number');
+    expect(crisisReplyViolation('mental', 'Call 988 ৫৫৫ ০১০০', null)).toBe('missing_line');
+    expect(crisisReplyViolation('mental', 'Call 988 now, or ৫৫৫ ০১০০', null)).toBe('other_number');
   });
 });
 
@@ -134,11 +134,20 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['mental', 'اتصل أو أرسل رسالة إلى ٩٨٨، على مدار ٢٤ ساعة', true],
   ['mental', 'Llama o escribe al 988, 24 horas.', true],
   ['emergency', 'Llama al 911 ahora, 24 horas.', true],
+  // Round 4 fix: day-of-week forms; each hours form ends at a word boundary.
+  ['mental', 'Call or text 988, 24 hours a day, 7 days a week.', true],
+  ['mental', 'Llama o escribe al 988, las 24 horas, los 7 días de la semana.', true],
+  ['mental', '请拨打988，24小时，每周7天。', true],
+  ['mental', '请拨打988，24小时都有人接听。', true],
+  ['mental', 'اتصل بـ ٩٨٨ على مدار ٢٤ ساعة، ٧ أيام في الأسبوع', true],
+  ['mental', 'Call 988, 7 days 5550100', false],
+  ['mental', 'Call 988, 24 hommes', false],
+  ['mental', 'Call 988, 24 hiver', false],
 ];
 
 describe('evasion table', () => {
   it.each(EVASION_TABLE)('%s %j passes: %s', (kind, text, pass) => {
-    expect(crisisReplyViolation(kind, text) === null).toBe(pass);
+    expect(crisisReplyViolation(kind, text, null) === null).toBe(pass);
   });
 });
 
@@ -156,8 +165,11 @@ describe('links', () => {
     ['ideographic full stop', 'Call 988 or see example。com'],
     ['bracketed dot', 'Call 988 or see example[.]com'],
     ['spaced dot', 'Call 988 or see example . com'],
+    ['Latin name, Han ending', 'Call 988 or see example.中国'],
+    ['two-letter pair, no closing dot', 'Call 988 or see EX.CO'],
+    ['two-letter pair, then a domain', 'Call 988 or see EE.UU.com'],
   ])('%s is a link', (_name, text) => {
-    expect(crisisReplyViolation('mental', text)).toBe('link');
+    expect(crisisReplyViolation('mental', text, null)).toBe('link');
   });
 
   it.each([
@@ -165,7 +177,54 @@ describe('links', () => {
     ['full stop then a sentence', 'Call 988. Then rest.'],
     ['Chinese full stop', '请拨打988。全天都有人接听。'],
     ['country abbreviation', 'In the U.S. and Canada, call or text 988.'],
+    ['Spanish country abbreviation', 'En EE.UU., llama o escribe al 988.'],
+    ['ASCII full stop in Chinese', '请拨打988.你并不孤单。'],
   ])('%s is not a link', (_name, text) => {
-    expect(crisisReplyViolation('mental', text)).toBeNull();
+    expect(crisisReplyViolation('mental', text, null)).toBeNull();
+  });
+});
+
+// The writer was told a language. A reply with no letter of that language's script
+// (mojibake, or the wrong language) is not sent. Checked on model output only.
+const ARABIC_AS_CP1251 = 'Ш§ШЄШµЩ„ Ш§Щ„Ш¢Щ† ШЁШ§Щ„Ш±Щ‚Щ… 911.';
+const ARABIC_AS_LATIN1 = 'Ø§ØªØµÙ„ Ø§Ù„Ø¢Ù† 911.';
+
+describe('the reply is in the script of its language', () => {
+  it.each([
+    ['Arabic read as cp1251', 'emergency', ARABIC_AS_CP1251, 'ar'],
+    ['Arabic read as Latin-1', 'emergency', ARABIC_AS_LATIN1, 'ar'],
+    ['English for a Chinese reply', 'mental', 'Call or text 988.', 'zh'],
+    ['English for a Traditional Chinese reply', 'mental', 'Call or text 988.', 'zh-tw'],
+    ['English for a Hindi reply', 'mental', 'Call or text 988.', 'hi'],
+    ['Arabic for a French reply', 'mental', 'اتصل على ٩٨٨', 'fr'],
+  ] as const)('%s is wrong_script', (_name, kind, text, language) => {
+    expect(crisisReplyViolation(kind, text, language)).toBe('wrong_script');
+  });
+
+  it.each([
+    ['Arabic', 'emergency', 'اتصل بـ ٩١١ الآن', 'ar'],
+    [
+      'Arabic naming an English service',
+      'mental',
+      'اتصل أو أرسل إلى 988، 9-8-8 Suicide Crisis Helpline',
+      'ar',
+    ],
+    ['Chinese', 'mental', '请拨打988', 'zh'],
+    ['Traditional Chinese', 'mental', '請撥打988', 'zh-tw'],
+    ['Hindi', 'mental', 'कृपया ९८८ पर कॉल करें', 'hi'],
+    ['French', 'mental', 'Appelle ou texte le 9-8-8.', 'fr-ca'],
+  ] as const)('%s in its own script passes', (_name, kind, text, language) => {
+    expect(crisisReplyViolation(kind, text, language)).toBeNull();
+  });
+
+  it('no language, or one with no known script, is not checked', () => {
+    expect(crisisReplyViolation('emergency', ARABIC_AS_CP1251, null)).toBeNull();
+    expect(crisisReplyViolation('emergency', ARABIC_AS_CP1251, 'xx')).toBeNull();
+    // Positive control: the same text is refused once the language is known.
+    expect(crisisReplyViolation('emergency', ARABIC_AS_CP1251, 'ar')).toBe('wrong_script');
+  });
+
+  it('a number or link violation is still named first', () => {
+    expect(crisisReplyViolation('mental', 'Call 911.', 'zh')).toBe('missing_line');
   });
 });

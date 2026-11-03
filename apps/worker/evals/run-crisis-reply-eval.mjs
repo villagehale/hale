@@ -108,6 +108,7 @@ async function main() {
     SAID_LINE_MAX_TOKENS,
     SAID_LINE_TOOL_SCHEMA,
     acceptSaidLine,
+    crisisReplyLanguage,
     deliverCrisisReply,
     saidLineUserMessage,
   } = await importTs(SAID_LINE_SRC);
@@ -192,8 +193,8 @@ async function main() {
       console.info(`FAIL  ${f.id}  intent=${intent} expected=${EXPECT[f.kind]}`);
       continue;
     }
-    // Production's crisisReply: the language Hale holds wins (the same certain-only
-    // hint the reader got), else the language the reader read.
+    // The language Hale holds is the same certain-only hint the reader got; production's
+    // crisisReplyLanguage picks between it and the language the reader read.
     const sessionLanguage = f.language === 'fr' ? 'fr' : null;
     let attempt = 0;
     const writer = {
@@ -218,7 +219,7 @@ async function main() {
     };
     const outcome = await deliverCrisisReply({
       kind: f.kind,
-      language: sessionLanguage ?? reading.language ?? null,
+      language: crisisReplyLanguage(sessionLanguage, reading),
       region: f.region ?? null,
       where: `crisis-reply eval ${f.id}`,
       writer,
