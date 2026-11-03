@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, eq } from 'drizzle-orm';
@@ -11,9 +12,12 @@ import type {
   CalendarCancelOutcome,
   CalendarCancelRequest,
 } from '~/lib/loop/voice/calendar-cancel-voice';
-import type {
-  CalendarInviteVoiceOutcome,
-  CalendarInviteVoiceRequest,
+import {
+  type CalendarInviteTimeJudge,
+  type CalendarInviteVoice,
+  type CalendarInviteVoiceOutcome,
+  type CalendarInviteVoiceRequest,
+  createCalendarInviteVoice,
 } from '~/lib/loop/voice/calendar-invite-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -411,6 +415,90 @@ describe('the tap-to-add link a text-only family gets', () => {
     });
     expect(sms.calls.length).toBeGreaterThan(0);
     expect(sentTranscript().startsWith('Added -')).toBe(false);
+  });
+
+  /**
+   * The Preview's forced defer, run here instead: the REAL composer, renderer and
+   * dispatch, and a fake sms channel. Two ports are fakes. The writer's client returns
+   * this test's own words or fails; what a real model writes is the eval's job (rule #8).
+   * The time judge has its own cached eval. Each reason comes from the composer's code.
+   */
+  describe('VIL-515 · a deferred compose sends nothing through the real composer', () => {
+    function writer(fail: boolean): AgentClient {
+      const create = async (body: { messages: { content: string }[] }) => {
+        if (fail) throw new Error('writer unavailable');
+        const facts = JSON.parse(body.messages[0]?.content ?? '{}');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ text: `${facts.summary}, ${facts.when}. ${facts.linkSlot}` }),
+            },
+          ],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      };
+      return { messages: { create } } as unknown as AgentClient;
+    }
+
+    function realVoiceSender(voice: CalendarInviteVoice) {
+      return createCalendarInviteSender(db.database, {
+        channels: channels(),
+        renderer: loopTemplateRenderer,
+        inviteVoice: voice,
+        cancelVoice: { compose: async () => cancelOutcome },
+        now: () => NOON,
+      });
+    }
+
+    const judge = (answer: boolean | null): CalendarInviteTimeJudge => ({
+      matches: async () => answer,
+    });
+
+    it.each([
+      { reason: 'model_failed', writerFails: true, judged: true },
+      { reason: 'time_unjudged', writerFails: false, judged: null },
+      { reason: 'gate_exhausted', writerFails: false, judged: false },
+    ] as const)('$reason: nothing is sent and the reason is named', async (c) => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const voice = createCalendarInviteVoice(() => writer(c.writerFails), judge(c.judged));
+
+      const report = await realVoiceSender(voice).send({
+        familyId,
+        familyEventId,
+        method: 'REQUEST',
+      });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: c.reason }],
+      });
+      expect(sms.calls).toHaveLength(0);
+      expect(await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY)).toEqual([]);
+    });
+
+    it('positive control: the same wiring sends the filled line when the judge agrees', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const voice = createCalendarInviteVoice(() => writer(false), judge(true));
+
+      const report = await realVoiceSender(voice).send({
+        familyId,
+        familyEventId,
+        method: 'REQUEST',
+      });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+      });
+      expect(sentTranscript()).toMatch(
+        /^Swim class, Thu, Jul 23 at 10:30 AM\. https:\/\/app\.villagehale\.com\/api\/ics\/event\/\S+$/,
+      );
+      expect(await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY)).toHaveLength(1);
+    });
   });
 
   it('sends nothing and names compose_deferred when the composer defers (no fixed fallback)', async () => {
