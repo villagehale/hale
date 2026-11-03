@@ -260,8 +260,28 @@ describe('a delayed undo during name capture', () => {
     expect(spoken.body).toBe('What should I call you?');
   });
 
+  // Code wiring only, with a fake at the composer port.
+  it('a one-word name given instead of the held one is kept, and the greeting by it is sent', async () => {
+    const seen: string[] = [];
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          const reply = 'Got it, Robin. What city are you in?';
+          seen.push(reply);
+          return { reply, capture: { parentName: 'Robin', nameConfirmed: false } };
+        },
+      },
+      blank({ step: 'name_reply', parentWords: 'Robin', parentName: 'Bea' }),
+      { page: async () => undefined },
+    );
+    expect(seen).toHaveLength(1);
+    expect(spoken.body).toBe('Got it, Robin. What city are you in?');
+    expect(spoken.capture.parentName).toBe('Robin');
+    expect(spoken.capture.nameConfirmed).toBe(false);
+  });
+
   it('asks what to call them after a held name is turned down', () => {
-    // speakFriend sets nameTakenBack on the judge input when the model reads nameConfirmed false.
+    // speakFriend sets nameTakenBack on the judge input when the model reads nameConfirmed false and no name.
     const confirm = blank({
       ...asked,
       step: 'name_confirm',

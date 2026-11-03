@@ -1924,7 +1924,9 @@ export async function speakFriend(
       const judgeInput = {
         ...judgeInputFor(input, capture),
         nameTakenBack:
-          capture.nameTakenBack || capture.nameDeclined || capture.nameConfirmed === false,
+          capture.nameTakenBack ||
+          capture.nameDeclined ||
+          (capture.nameConfirmed === false && capture.parentName === null),
       };
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the

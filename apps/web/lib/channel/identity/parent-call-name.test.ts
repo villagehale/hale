@@ -139,21 +139,18 @@ describe('handleParentCallNameReply', () => {
     expect(fake.rows(schema.users).find((row) => row.id === USER_B)?.googleGivenName).toBe('Other');
   });
 
-  it('a turned-down held name is released, and the whole message is not stored as the name', async () => {
+  it('a one-word name given instead of the held one is stored, though it is the whole message', async () => {
     const fake = await seedConfirm('Bea');
     const outcome = await handleParentCallNameReply(
       fake.db,
-      { familyId: FAMILY_A, parentUserId: USER_A, body: 'non' },
-      voiceReading({
-        parentName: 'non',
-        nameConfirmed: false,
-        reply: 'What should I call you?',
-      }),
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'Robin' },
+      voiceReading({ parentName: 'Robin', nameConfirmed: false, reply: 'Got it, Robin.' }),
     );
-    expect(outcome).toEqual({ status: 'answered', reply: 'What should I call you?' });
-    const row = fake.rows(schema.users).find((user) => user.id === USER_A);
-    expect(row?.name).toBeNull();
-    expect(row?.googleGivenName).toBeNull();
+    expect(outcome).toEqual({ status: 'answered', reply: 'Got it, Robin.' });
+    expect(fake.rows(schema.users).find((row) => row.id === USER_A)).toMatchObject({
+      name: 'Robin',
+      googleGivenName: null,
+    });
   });
 
   it('a preference stores that name, not the Google one', async () => {

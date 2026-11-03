@@ -89,7 +89,6 @@ export async function readModelParentName(
   parentName: string | null;
   nameDeclined: boolean;
   nameTakenBack: boolean;
-  nameConfirmed: boolean | null;
   reply: string | null;
 }> {
   const spoken = await speakFriend(composer, nameAskVoiceInput(input.parentWords, input.language));
@@ -98,7 +97,6 @@ export async function readModelParentName(
     parentName: spoken.capture.parentName,
     nameDeclined: spoken.capture.nameDeclined,
     nameTakenBack: spoken.capture.nameTakenBack,
-    nameConfirmed: spoken.capture.nameConfirmed,
     reply,
   };
 }

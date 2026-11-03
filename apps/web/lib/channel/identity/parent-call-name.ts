@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
-import { foldMessage } from '~/lib/channel/intake/onboarding-turn';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
@@ -298,13 +297,7 @@ export async function handleParentCallNameReply(
   }
 
   const read = await voice.read({ ...input, heldName: held });
-  const readName = safeGivenName(read.parentName);
-  // The model turned the held name down and copied the whole message into the
-  // name field. That copy is the message, not a display name.
-  const preferred =
-    read.nameConfirmed === false && readName && sameNameMessage(readName, input.body)
-      ? null
-      : readName;
+  const preferred = safeGivenName(read.parentName);
   if (read.parentRole) {
     await storeParentRole(database, {
       familyId: input.familyId,
@@ -341,11 +334,6 @@ export async function handleParentCallNameReply(
     return { status: 'answered', reply: read.reply };
   }
   return { status: 'declined' };
-}
-
-function sameNameMessage(name: string, body: string): boolean {
-  const left = foldMessage(name);
-  return left.length > 0 && left === foldMessage(body);
 }
 
 async function readHeldGivenName(database: Database, userId: string): Promise<string | null> {

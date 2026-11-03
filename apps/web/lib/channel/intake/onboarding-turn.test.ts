@@ -11,6 +11,7 @@ import {
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
   dropTakeBackName,
+  foldMessage,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
@@ -59,13 +60,12 @@ describe('onboarding capture', () => {
     );
     expect(open.parentName).toBeNull();
     expect(open.nameDeclined).toBe(true);
-    const held = dropTakeBackName(
-      'non',
-      acceptOnboardingCapture({ parentName: 'non', nameConfirmed: false }),
+    const instead = dropTakeBackName(
+      'Robin',
+      acceptOnboardingCapture({ parentName: 'Robin', nameConfirmed: false }),
     );
-    expect(held.parentName).toBeNull();
-    expect(held.nameConfirmed).toBe(false);
-    expect(held.nameDeclined).toBe(false);
+    expect(instead.parentName).toBe('Robin');
+    expect(instead.nameConfirmed).toBe(false);
     const retracted = dropTakeBackName(
       'Undo',
       acceptOnboardingCapture({ parentName: 'Undo', nameTakenBack: true }),
@@ -75,6 +75,21 @@ describe('onboarding capture', () => {
     expect(retracted.nameTakenBack).toBe(true);
     const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
     expect(named.parentName).toBe('Dana');
+  });
+
+  it('folds quotes, end marks, accents, case and spaces, so a take-back is caught in any of them', () => {
+    expect(foldMessage('  « Béa. »  ')).toBe('bea');
+    expect(foldMessage('Pas   MAINTENANT!')).toBe('pas maintenant');
+    const shouted = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'annule', nameTakenBack: true }),
+    );
+    expect(shouted.parentName).toBeNull();
+    const other = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'Dana', nameTakenBack: true }),
+    );
+    expect(other.parentName).toBe('Dana');
   });
 
   it('a take-back does not close the name, and does not stick', () => {

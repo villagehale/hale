@@ -209,7 +209,7 @@ function acceptName(value: unknown): string | null {
 export function foldMessage(value: string): string {
   return value
     .trim()
-    .replace(/^["“«']+|["”»']+$/gu, '')
+    .replace(/^["“«']+\s*|\s*["”»']+$/gu, '')
     .replace(/[.!]+$/u, '')
     .normalize('NFD')
     .replace(/\p{M}+/gu, '')
@@ -218,12 +218,14 @@ export function foldMessage(value: string): string {
 }
 
 /**
- * The model says this message takes the name back, or turns a held name down.
- * If it also copied that whole message into `parentName`, the copy is not a
- * display name. This does not set `nameDeclined`: a take-back is not a lasting no.
+ * The model says this message takes the name back or refuses one. If it also
+ * copied that whole message into `parentName`, the copy is not a display name.
+ * A held name turned down (`nameConfirmed` false) is not such a read: "Robin"
+ * in reply to "can I call you Bea?" is the name they gave instead.
+ * This does not set `nameDeclined`: a take-back is not a lasting no.
  */
 export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
-  const tookBack = capture.nameTakenBack || capture.nameDeclined || capture.nameConfirmed === false;
+  const tookBack = capture.nameTakenBack || capture.nameDeclined;
   if (!tookBack || !capture.parentName) return capture;
   if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
   return { ...capture, parentName: null };

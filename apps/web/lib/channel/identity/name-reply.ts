@@ -178,8 +178,6 @@ export interface NameCaptureRead {
   nameDeclined: boolean;
   /** This message retracts the name. Not a lasting no. */
   nameTakenBack?: boolean;
-  /** A held name turned down. The open ask usually leaves this null. */
-  nameConfirmed?: boolean | null;
   /** The model's reply, or null when it could not be written. */
   reply: string | null;
 }
@@ -206,8 +204,8 @@ export interface NameCaptureDeps {
  * Claim one reply as the answer to a name ask.
  *
  * The reader runs only while the ask is open. Code stores only the `parentName`
- * the model returns. A take-back (`nameTakenBack`), a lasting no (`nameDeclined`),
- * or a held name turned down stores nothing and its reply stands. A take-back
+ * the model returns. A take-back (`nameTakenBack`) or a lasting no (`nameDeclined`)
+ * stores nothing and its reply stands. A take-back
  * does not set `nameDeclined`. Any other nameless read is declined so
  * the coach answers. The raw body is not parsed into a name here.
  */
@@ -236,9 +234,8 @@ export async function handleNameCaptureReply(
     parentName: read.parentName,
     nameDeclined: read.nameDeclined,
     nameTakenBack: read.nameTakenBack === true,
-    nameConfirmed: read.nameConfirmed ?? null,
   });
-  const tookBack = kept.nameTakenBack || kept.nameDeclined || kept.nameConfirmed === false;
+  const tookBack = kept.nameTakenBack || kept.nameDeclined;
   if (tookBack) return answered(input.familyId, 'taken_back', read.reply);
   const name = kept.parentName ? soleGivenName(kept.parentName) : null;
   if (!name) return { status: 'declined_to_claim' };
