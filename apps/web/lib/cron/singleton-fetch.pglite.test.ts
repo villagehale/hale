@@ -347,6 +347,38 @@ describe('the per-drain expiry sweep', () => {
     expect(stuckRow.rows[0]).toEqual({ state: 'retry', due_later: true });
     expect(await jobRows([live])).toEqual([{ state: 'completed', retry_count: 0 }]);
   });
+
+  /**
+   * The drain's inbound fetch must be the key-skipping claim, not pg-boss's own. With a
+   * live turn holding one parent's key and that parent's next text the oldest due row,
+   * pg-boss's fetch lands on the held key, swallows the 23505 and returns nothing, so
+   * the drain would stop and the other parent would wait (the 2026-09-17 shape).
+   */
+  it('claims past a key a live drain holds, through the production wiring', async () => {
+    const [heldParent, freeParent] = PARENTS as [string, string];
+    const held = await sendTurn(heldParent);
+    await makeDue();
+    const peer = await bindInboundQueue(boss).fetch(QUEUE, { batchSize: 1 });
+    expect(peer.map((job) => job.id)).toEqual([held]);
+    const heldNext = await sendTurn(heldParent);
+    const free = await sendTurn(freeParent);
+    await makeDue();
+
+    const handled: string[] = [];
+    const channelMessage = vi.fn(async (job: { parent_user_id: string }) => {
+      handled.push(job.parent_user_id);
+    });
+    const summary = await drainHotQueues(drainDeps(channelMessage));
+
+    expect(handled).toEqual([freeParent]);
+    expect(summary.processed).toBe(1);
+    expect(summary.expiredActive).toBe(0);
+    expect(await jobRows([held, heldNext, free])).toEqual([
+      { state: 'active', retry_count: 0 },
+      { state: 'created', retry_count: 0 },
+      { state: 'completed', retry_count: 0 },
+    ]);
+  });
 });
 
 /**
@@ -458,6 +490,49 @@ describe('a claim that loses to another drain', () => {
     const logged = JSON.stringify(claimLogs);
     for (const id of Object.values(ids)) expect(logged).not.toContain(id);
     for (const parent of [PARENT_A, PARENT_B, PARENT_C]) expect(logged).not.toContain(parent);
+    warn.mockRestore();
+  });
+
+  /**
+   * No peer at all: every claim raises 23505 (an index that disagrees with the SELECT's
+   * NOT EXISTS), so no row ever goes active and NOT EXISTS never skips a key. The only
+   * thing that ends the loop is the SELECT's exclusion of keys already lost this fetch.
+   * The port counts statements and throws at a ceiling, so a regression fails here
+   * instead of hanging the suite.
+   */
+  it('stays finite under a persistent unique violation with no real peer', async () => {
+    const ids = await twoTextsEach();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const raw = boss.getDb();
+    const CEILING = 50;
+    let statements = 0;
+    let claims = 0;
+    let lastExcluded: unknown;
+    const port: QueueSql = {
+      async executeSql(text, values) {
+        statements += 1;
+        if (statements > CEILING) throw new Error(`claim loop ran past ${CEILING} statements`);
+        if (/^select\b/i.test(text.trimStart())) {
+          lastExcluded = [...(values[1] as string[])];
+          return raw.executeSql(text, values);
+        }
+        claims += 1;
+        throw Object.assign(new Error('duplicate key'), { code: '23505' });
+      },
+    };
+
+    const result = await fetchSingletonSkippingHeldKeys(port, 'pgboss', QUEUE, 1);
+
+    expect(result.jobs).toEqual([]);
+    expect(result.claimConflicts).toBe(3);
+    // One SELECT and one lost claim per distinct key, then the SELECT that finds none.
+    expect(claims).toBe(3);
+    expect(statements).toBe(7);
+    expect(lastExcluded).toEqual([PARENT_A, PARENT_B, PARENT_C].map((p) => channelSmsNoteKey(p)));
+    expect(await stateOf(Object.values(ids))).toEqual(Object.values(ids).map(() => 'created'));
+    expect(warn.mock.calls.filter((call) => call[1] === CLAIM_LOST)).toEqual([
+      [{ queue: QUEUE, claimConflicts: 3 }, CLAIM_LOST],
+    ]);
     warn.mockRestore();
   });
 });
