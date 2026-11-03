@@ -30,6 +30,7 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
@@ -270,7 +271,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
   deferredReasons: {
     channelMessageId: string;
     reason?: string;
-    providerFailure?: 'billing' | 'auth';
+    providerFailure?: IncidentFailure;
   }[];
   unanswered: { channelMessageId: string; reason: string }[];
   failed: { channelMessageId: string; reason: string }[];
@@ -282,7 +283,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     deferredReasons: [] as {
       channelMessageId: string;
       reason?: string;
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     }[],
     unanswered: [] as { channelMessageId: string; reason: string }[],
     failed: [] as { channelMessageId: string; reason: string }[],
@@ -300,7 +301,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordDeferred(input: {
       channelMessageId: string;
       reason?: string;
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     }) {
       ledger.deferred.push(input.channelMessageId);
       ledger.deferredReasons.push({
