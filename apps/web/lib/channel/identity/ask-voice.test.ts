@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  type IdentityAskRequest,
-  MAX_ASK_CHARS,
-  MAX_TAIL_ASK_CHARS,
-  askCharCap,
-  identityAskRefusals,
-  identityAskUserMessage,
-} from './ask-voice';
+import { type IdentityAskRequest, identityAskRefusals, identityAskUserMessage } from './ask-voice';
 
 /**
  * The gates, tested directly. What Hale actually SAYS is the eval's job against real
@@ -20,18 +13,12 @@ const INTRO_NAME: IdentityAskRequest = { reason: 'introduction', missing: ['name
 const INTRO_EMAIL: IdentityAskRequest = { reason: 'introduction', missing: ['email'] };
 const INTRO_BOTH: IdentityAskRequest = { reason: 'introduction', missing: ['name', 'email'] };
 
-describe('the character budget', () => {
-  /**
-   * The consent turn is ONE text: the fixed acknowledgment, a space, and the composed
-   * ask. This is the arithmetic that keeps it one segment, pinned rather than trusted —
-   * an edit to either side that pushes it over doubles what every intake costs to send.
-   */
-
-  it('gives the standalone intros ask the whole segment', () => {
-    expect(askCharCap(INTRO_BOTH)).toBe(MAX_ASK_CHARS);
-    expect(askCharCap(START)).toBe(MAX_TAIL_ASK_CHARS);
-    // #868: the fixed consent ack is gone, so the tail ask gets the whole segment.
-    expect(MAX_TAIL_ASK_CHARS).toBe(MAX_ASK_CHARS);
+describe('length is not a gate (VIL-537)', () => {
+  it('sends an ask longer than one SMS segment', () => {
+    const body = `What name should I use for you? ${'Please text it back. '.repeat(12)}`;
+    expect(body.length).toBeGreaterThan(160);
+    expect(identityAskRefusals(body, START)).toEqual([]);
+    expect(identityAskRefusals(`${body} I need it for the introduction.`, INTRO_NAME)).toEqual([]);
   });
 });
 

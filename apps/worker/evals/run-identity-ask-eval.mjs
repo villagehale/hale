@@ -106,29 +106,11 @@ const MAX_TOKENS = 128;
 
 // ── the composer's gates, replicated from ask-voice.ts ───────────────────────
 
-const MAX_ASK_CHARS = 160;
-
-/**
- * The consent acknowledgment the `getting_started` ask is appended to, and the tail budget
- * it leaves. Replicated from apps/web/lib/channel/intake/copy.ts for the alias reason
- * above — and asserted against the real constant by ask-voice.test.ts, which pins
- * `ASSENT_ACK.length + 1 + MAX_TAIL_ASK_CHARS === MAX_ASK_CHARS`. If the ack is ever
- * reworded, that test fails first and this line has to follow.
- */
-const ASSENT_ACK =
-  "Done - you're covered. I only text when something actually matters, and STOP always works.";
-const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS - ASSENT_ACK.length - 1;
-
 const LINK_SHAPE = /https?:\/\/|www\./i;
-
-function askCharCap(request) {
-  return request.reason === 'getting_started' ? MAX_TAIL_ASK_CHARS : MAX_ASK_CHARS;
-}
 
 function identityAskRefusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
-  if (body.length > askCharCap(request)) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   // Mirrors the `not_a_sentence` gate: the ask is appended after a full stop, so a clause
@@ -257,9 +239,7 @@ async function main() {
   console.log(
     `identity-ask eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
-  console.log(
-    `corpus: ${fixtures.length} asks | tail budget ${MAX_TAIL_ASK_CHARS} chars, standalone ${MAX_ASK_CHARS}\n`,
-  );
+  console.log(`corpus: ${fixtures.length} asks | no character cap (VIL-537)\n`);
 
   const results = [];
   for (const fixture of fixtures) {
@@ -324,16 +304,14 @@ async function main() {
   console.log('--- asks ---');
   for (const r of results) {
     const tag = r.failures.length === 0 ? 'PASS' : 'FAIL';
-    const cap = askCharCap(r.fixture.request);
     console.log(
-      `${tag}  ${r.fixture.id.padEnd(24)} [${String(r.body.length).padStart(3)}/${cap}] "${r.body.slice(0, 80)}"`,
+      `${tag}  ${r.fixture.id.padEnd(24)} [${String(r.body.length).padStart(3)}] "${r.body.slice(0, 80)}"`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
 
   const GATE_NAMES = [
     'empty',
-    'over_char_cap',
     'not_gsm7',
     'carries_link',
     'too_many_questions',

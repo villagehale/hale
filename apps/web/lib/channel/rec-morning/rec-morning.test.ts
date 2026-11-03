@@ -24,10 +24,6 @@ const COLD_START_ASK = 'cold start ask (test fixture)';
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
 
-/** Same ceiling as intake/answer.ts MAX_REPLY_CHARS — kept local so this spec does not
- * pull the model composer (and @hale/agent) into a copy test. */
-const INTAKE_MAX_REPLY_CHARS = 300;
-
 /** 10 a.m. on the morning these lines were re-derived: Brampton's non-resident swim
  * date is still to come, Toronto's non-resident date is still to come, and every
  * other GTA fall cycle has gone. */
@@ -592,7 +588,7 @@ describe('rec-morning SMS · what a derived line may never do', () => {
     }
   });
 
-  it('stays GSM-7, inside two segments, and inside the intake cap, at every boundary', () => {
+  it('stays GSM-7 and inside two segments at every boundary', () => {
     for (const city of ALL_HELLO_CITIES) {
       for (const now of boundaryInstants()) {
         for (const line of linesFor(city, now)) {
@@ -601,10 +597,6 @@ describe('rec-morning SMS · what a derived line may never do', () => {
           expect(smsEncoding(line), where).toBe('gsm7');
           expect(smsSegments(line), where).toBeLessThanOrEqual(2);
           expect(line, where).toContain(townLabel(city));
-          // The intake reply appends Hale's longest outstanding ask and THROWS over cap.
-          expect(`${line} ${COLD_START_ASK}`.length, where).toBeLessThanOrEqual(
-            INTAKE_MAX_REPLY_CHARS,
-          );
         }
       }
     }
@@ -638,7 +630,7 @@ describe('rec-morning SMS · budgets and the intake return', () => {
     }
   });
 
-  it("answers mid-signup, returns to Hale's ask, and stays inside the intake cap", () => {
+  it("answers mid-signup and does not copy Hale's pending ask", () => {
     const texts = [
       'When does Toronto swim registration open?',
       'when is Toronto fall recreation registration?',
@@ -656,7 +648,6 @@ describe('rec-morning SMS · budgets and the intake return', () => {
     for (const text of texts) {
       const body = intake(text);
       expect(body, text).not.toContain(WATCH_OFFER_ASK);
-      expect(body.length, text).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
       expect(smsEncoding(body), text).toBe('gsm7');
     }
 

@@ -108,12 +108,9 @@ function withViolations(base, violations) {
 
 const PLAN_MAX_TOKENS = 2048;
 const NOTE_MAX_TOKENS = 400;
-/** Mirrors MAX_PLAN_SEGMENTS / MIN_PLAN_MESSAGES / MAX_PLAN_MESSAGES in compose.ts. */
-const MAX_PLAN_SEGMENTS = 3;
+/** Mirrors MIN_PLAN_MESSAGES / MAX_PLAN_MESSAGES in compose.ts. Length is not a gate (VIL-537). */
 const MIN_PLAN_MESSAGES = 2;
 const MAX_PLAN_MESSAGES = 3;
-/** Mirrors MAX_NOTE_SEGMENTS in note.ts. */
-const MAX_NOTE_SEGMENTS = 2;
 /** Mirrors DOSING_SHAPE / LINK_SHAPE / NAMED_PERSON in compose.ts. */
 const DOSING_SHAPE = /\b\d+(?:\.\d+)?\s?(?:mg|ml|mcg|milligrams?|millilitres?|milliliters?)\b/i;
 const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
@@ -253,7 +250,7 @@ function firstNameToken(name) {
 }
 
 /** Every sendability failure the runtime would raise, in its own vocabulary. */
-function sendFailures(messages, smsSegments, maxSegments, { allowMany, playbook }) {
+function sendFailures(messages, { allowMany, playbook }) {
   const failures = [];
   if (allowMany && (messages.length < MIN_PLAN_MESSAGES || messages.length > MAX_PLAN_MESSAGES)) {
     failures.push(`wrong_shape:${messages.length} messages`);
@@ -261,9 +258,6 @@ function sendFailures(messages, smsSegments, maxSegments, { allowMany, playbook 
   const sirenAllowed = sanctionsTheHealthLine(playbook);
   for (const [index, body] of messages.entries()) {
     if (body === '') failures.push(`empty:${index}`);
-    if (smsSegments(body) > maxSegments) {
-      failures.push(`over_budget:${index} (${smsSegments(body)} segments)`);
-    }
     if (LINK_SHAPE.test(body)) failures.push(`carries_link:${index}`);
     if (DOSING_SHAPE.test(body)) failures.push(`carries_dosing:${index}`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {
@@ -303,9 +297,8 @@ function citationFailures(text, playbook) {
  * the judge. Mixing them would have the eval retrying until the corpus was satisfied,
  * which is grading a loop this code does not have.
  */
-function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
+function runtimeViolations(flat, playbook, checkInDays, isPlan) {
   const violations = [];
-  const maxSegments = isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS;
   const sirenAllowed = sanctionsTheHealthLine(playbook);
 
   if (isPlan && (flat.length < MIN_PLAN_MESSAGES || flat.length > MAX_PLAN_MESSAGES)) {
@@ -315,14 +308,6 @@ function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
   }
   flat.forEach((body, index) => {
     const label = isPlan ? `Message ${index + 1}` : 'The message';
-    const limit = maxSegments * 153;
-    if (smsSegments(body) > maxSegments) {
-      violations.push(
-        isPlan
-          ? `${label} is ${body.length} characters, ${body.length - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`
-          : `${label} is ${body.length} characters, ${body.length - limit} over the ${limit} limit. Shorten it.`,
-      );
-    }
     if (LINK_SHAPE.test(body)) violations.push(`${label} contains a link or a web address.`);
     if (DOSING_SHAPE.test(body)) violations.push(`${label} names a dose.`);
     if (HEALTH_LINE_SHAPE.test(body) && !sirenAllowed) {
@@ -552,19 +537,14 @@ async function main() {
       flat = messages.map(flatten).filter((body) => body !== '');
       if (messages.some((body) => MARKDOWN_SHAPE.test(body))) markdownSeen.add(fixture.id);
 
-      violations = runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan);
+      violations = runtimeViolations(flat, playbook, checkInDays, isPlan);
       if (violations.length === 0) break;
     }
     const whole = flat.join(' ');
-    const failures = sendFailures(
-      flat,
-      smsSegments,
-      isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS,
-      {
-        allowMany: isPlan,
-        playbook,
-      },
-    );
+    const failures = sendFailures(flat, {
+      allowMany: isPlan,
+      playbook,
+    });
     if (markdownSeen.has(fixture.id)) failures.push('markdown');
     failures.push(...citationFailures(whole, playbook));
 

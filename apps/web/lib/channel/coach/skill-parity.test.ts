@@ -159,7 +159,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
 
     expect(skill.meta.task).toBe('converse');
     expect(skill.meta.tools).toEqual([]);
-    expect(skill.instructions).toContain('ceiling');
-    expect(skill.instructions).toContain('Do not cut a sentence in half');
+    expect(skill.instructions).toContain('no character ceiling');
+    expect(skill.instructions).toContain('do not cut a sentence in half');
   });
 });

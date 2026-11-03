@@ -6,9 +6,6 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import type { GmailDraftOperation } from '~/lib/integrations/gmail-draft-service';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
-/** One text. A notice that needs two segments was explaining itself. */
-export const MAX_NOTICE_CHARS = 160;
-
 /** The first failure is told what it did wrong. The second failure sends nothing. */
 export const MAX_NOTICE_ATTEMPTS = 2;
 
@@ -48,7 +45,6 @@ export function noticeProblems(raw: string): string[] {
   const text = plainText(raw);
   const problems: string[] = [];
   if (!text) problems.push('empty');
-  if (text.length > MAX_NOTICE_CHARS) problems.push('too_long');
   if (text && !isGsm7(text)) problems.push('not_gsm7');
   if (LINK_SHAPE.test(text)) problems.push('link');
   if (KEYWORD_YES.test(text)) problems.push('keyword_yes');

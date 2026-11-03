@@ -1156,51 +1156,28 @@ describe('the body must be sendable', () => {
    * than SEVEN UCS-2 segments, so a gate that had been left counting characters would wave
    * this through.
    */
-  it('falls closed when a UCS-2 body runs past the UCS-2 segment ceiling', async () => {
-    const log = quiet();
+  it('sends a long UCS-2 body instead of the safety line (VIL-537)', async () => {
+    const answer = '宝宝发烧的时候要多喝水多休息。'.repeat(27);
     const out = await createMedicalComposer(
       makeClient({
         sanitize: sanitizeResult({ ...OK_SANITIZE, language: 'zh' }),
         ground: groundResult(2),
         compose: composeResult({
-          answer: '宝宝发烧的时候要多喝水多休息。'.repeat(27),
+          answer,
           triage: '有疑问可拨打811，紧急情况请拨打911。',
         }),
       }),
     ).answer('raw message');
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
-    // Closed by the SEGMENT gate, not for missing triage: the triage names both numbers.
-    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
-    expect(reasons).toContain('unsendable');
-    log.mockRestore();
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('811');
+    expect(out.reply).toContain('911');
+    expect(out.reply.length).toBeGreaterThan(300);
   });
 
-  /**
-   * THE OTHER HALF OF THE SAME GUARD, and the reason the fixed line now has a French
-   * twin at all.
-   *
-   * French is not excluded from this lane the way Chinese is — GSM-7 carries é è à ù, so
-   * an accented French answer CAN ship, and one that happens to avoid the rest of the
-   * accents does. What it cannot carry is â ê î ô û ç, and the single likeliest word in a
-   * French triage sentence is "hôpital". So the gate closes on French often but not
-   * always, unpredictably, on the wording of one clause — which is exactly why the
-   * fallback had to stop being English-only. Same fail-closed, same reason, same `fixed`
-   * source; what changed is that the words are in the parent's language and both numbers
-   * survive.
-   *
-   * CHINESE IS DIFFERENT AND STAYS EXCLUDED: it is UCS-2 by nature, so a Chinese safety
-   * line could never pass the GSM-7 authoring gate every string in copy.ts is held to.
-   * That is a decision about the segment budget, not a translation.
-   */
-  it('asks the moment writer in the language the parent used when French cannot ship', async () => {
-    const log = quiet();
-    const seen: Seen[] = [];
+  it('sends a long French answer instead of the moment line (VIL-537)', async () => {
     const parent = 'Ma fille de deux mois fait de la fievre, je dois faire quoi';
     const french = {
-      // ô makes the body UCS-2 (~67 chars/segment); repeated past the ceiling it throws
-      // unsendable/over_segment_cap — the surviving fail-closed path now that the
-      // encoding gate is gone and an in-budget French answer legitimately ships.
       answer:
         'Une fièvre chez un bébé de moins de trois mois demande un avis à l’hôpital tout de suite. '.repeat(
           8,
@@ -1208,22 +1185,18 @@ describe('the body must be sendable', () => {
       triage: "Composez le 911 ou allez à l'hôpital; le 811 répond aux questions.",
     };
     const out = await createMedicalComposer(
-      makeClient(
-        {
-          sanitize: sanitizeResult(OK_SANITIZE),
-          ground: groundResult(2),
-          compose: composeResult(french),
-        },
-        seen,
-      ),
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(french),
+      }),
     ).answer(parent);
 
-    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
-    expect(seen.at(-1)?.userMessage).toContain(parent);
-    // Closed by the SEGMENT ceiling (UCS-2 over-budget), not for missing triage.
-    const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
-    expect(reasons).toContain('unsendable');
-    log.mockRestore();
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('hôpital');
+    expect(out.reply).toContain('811');
+    expect(out.reply).toContain('911');
+    expect(out.reply).not.toBe(MOMENT_FALLBACK);
   });
 
   /**
@@ -1248,22 +1221,21 @@ describe('the body must be sendable', () => {
     expect(out.replySource).toBe('web_grounded');
   });
 
-  it('falls closed when the composed body runs past the segment ceiling', async () => {
-    const log = quiet();
+  it('sends a long English body instead of the safety line (VIL-537)', async () => {
     const long = {
       answer: `${'a very long clause about the illness '.repeat(20)}`,
       triage: 'Call 811 for nurse advice; go to the ER or call 911 if breathing gets hard.',
     };
-    expect(
-      await createMedicalComposer(
-        makeClient({
-          sanitize: sanitizeResult(OK_SANITIZE),
-          ground: groundResult(2),
-          compose: composeResult(long),
-        }),
-      ).answer('raw message'),
-    ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
-    log.mockRestore();
+    const out = await createMedicalComposer(
+      makeClient({
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(long),
+      }),
+    ).answer('raw message');
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('811');
+    expect(out.reply.length).toBeGreaterThan(300);
   });
 
   it('positive control: a GSM-7 body within the ceiling ships', async () => {

@@ -2,8 +2,6 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -29,10 +27,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * is told. That loop is the reason a cheap tier is enough here: the model is not trusted
  * to be right, it is measured, and it gets to try again.
  */
-
-/** One text. 160 GSM-7 characters is a single segment, and a check-in that costs two is
- * a check-in that was trying to say something else as well. */
-export const MAX_ASK_CHARS = 160;
 
 /** Three attempts, then defer. A model that has been told its exact violation twice and
  * still fails is not going to be argued into it on the fourth try — and the sweep runs
@@ -68,7 +62,6 @@ export type FollowupVoiceRequest =
  */
 export type AskRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'not_one_question'
@@ -80,7 +73,6 @@ export type AskRefusal =
 export function refusals(body: string, request: FollowupVoiceRequest): AskRefusal[] {
   const found: AskRefusal[] = [];
   if (body === '') return ['empty'];
-  if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
@@ -191,16 +183,14 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
  * VIL-366 · the booked-activity ask is the locked sentence, not a model line.
  *
  * Intro and daycare stay on the composer below. An activity title that fails the
- * same refusals, or that blows one GSM-7 segment with the full opt-out on it,
- * defers — the claim stays unspent. The model is not called either way.
+ * same refusals defers — the claim stays unspent. Length does not. The follow-up
+ * model is not called either way; the how-it-went line is its own writer.
  */
 export async function lockedActivityFollowup(activity: string): Promise<FollowupVoiceOutcome> {
   const body = await howItWentAsk(activity);
   if (!body) return deferred('gate_exhausted', 'language');
   const problems = refusals(body, { kind: 'activity', activity });
-  if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {
-    return deferred('gate_exhausted', problems.join('+') || 'segment');
-  }
+  if (problems.length > 0) return deferred('gate_exhausted', problems.join('+'));
   return { status: 'composed', body };
 }
 

@@ -3,7 +3,6 @@ import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
-  MAX_REPLY_CHARS,
   createIntakeAnswerComposer,
   intakeAnswerContext,
   readPair,
@@ -88,10 +87,17 @@ describe('intake answer · what may not go out', () => {
   it('refuses an invented time and sends an accented reply', () => {
     expect(problems('Clinics near you open at 9:30 most days.')).toContain('invented_fact');
     expect(problems('OHIP covers it — free every year.')).not.toContain('not_gsm7');
-    // The cap is on the JOINED body, because that is what a carrier bills: a long half
-    // riding behind a short one is a message that sends perfectly well.
-    expect(problems('x'.repeat(MAX_REPLY_CHARS), RETURN)).toContain('over_char_cap');
-    expect(problems('x'.repeat(MAX_REPLY_CHARS - RETURN.length - 1), RETURN)).toEqual([]);
+  });
+
+  it('sends a reply longer than 300 characters — length is the model’s judgment (VIL-537)', () => {
+    // The Nov 1 preview threw this pair away (`over_char_cap`) and the script stood,
+    // which told the parent Hale could not pull up options that the finder had.
+    const answer = 'x'.repeat(400);
+    expect(problems(answer, RETURN)).toEqual([]);
+    expect(readPair({ answer, returnLine: RETURN }, INPUT)).toEqual({
+      status: 'answered',
+      body: `${answer} ${RETURN}`,
+    });
   });
 
   it('refuses a claim of being human unless it says what Hale actually is', () => {

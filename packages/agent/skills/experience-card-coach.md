@@ -13,7 +13,7 @@ When the answer is one venue's page — one place, even when that page lists sev
 
 When the answer compares different venues or different pages, do not call it. Cite each ref and stop.
 
-`title` is the card's line, in your own words and the parent's language: what it is, and when or where if you know them. At most 64 characters. No URL. You never write the page's address. One card this turn; if you call it twice, the last call is the one that sends.
+`title` is the card's line, in your own words and the parent's language: what it is, and when or where if you know them. No URL. You never write the page's address. One card this turn; if you call it twice, the last call is the one that sends.
 
 # Short find, real page only
 

@@ -65,6 +65,17 @@ describe('official-page · not posted yet when search cannot ground a date', () 
     // #868: no fixed fallback; null hands the turn to the model's not_posted line.
     expect(empty).toBeNull();
   });
+
+  it('keeps a grounded answer past 300 characters, including a long second sentence (VIL-537)', () => {
+    const first = `Hamilton swim registration opens September 8 at 7:00 a.m. ${'detail '.repeat(40)}`;
+    const second = `Non-residents follow on September 15 at 9:00 a.m. ${'more '.repeat(20)}`;
+    const notes = `${first.trim()} ${second.trim()}`;
+    const body = officialPageReplyFromNotes(notes, COLD_START_ASK);
+    expect(body).not.toBeNull();
+    expect(body?.length).toBeGreaterThan(300);
+    expect(body).toContain('September 8');
+    expect(body).toContain('September 15');
+  });
 });
 
 describe('official-page · what may be searched', () => {

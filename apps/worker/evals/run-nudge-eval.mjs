@@ -51,11 +51,8 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const NUDGE_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'nudge-voice.md');
 
 const MAX_TOKENS = 300;
-/** Mirrors MAX_NUDGE_SEGMENTS in apps/web/lib/channel/nudge/nudge-voice.ts. */
+/** Mirrors MAX_NUDGE_SEGMENTS. Telemetry only: length is not a send gate (VIL-537). */
 const MAX_PAYLOAD_SEGMENTS = 2;
-/** The copy contract's hard ceiling. Tighter than the radar's three: this message
- * interrupted someone. */
-const MAX_SENTENCES = 2;
 
 // ── replicated: the composer's context shape (nudge-voice.ts nudgeVoiceContext) ──
 // The model sees the nudge's FACTS and nothing else — no candidate uuid, no window id.
@@ -225,13 +222,6 @@ function fabrications(message, context) {
   return [...new Set(offenders)];
 }
 
-function countSentences(message) {
-  return message
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0).length;
-}
-
 function checkMessage(fixture, message, judgeScore) {
   if (fixture.expect.neverComposes) {
     return message === null
@@ -250,16 +240,6 @@ function checkMessage(fixture, message, judgeScore) {
   }
   if (message.includes('?')) {
     failures.push('asks a question in an unprompted text (nothing here needs an answer)');
-  }
-
-  const segments = smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`);
-  if (segments > MAX_PAYLOAD_SEGMENTS) {
-    failures.push(`payload is ${segments} SMS segments > ${MAX_PAYLOAD_SEGMENTS}`);
-  }
-
-  const sentences = countSentences(message);
-  if (sentences > MAX_SENTENCES) {
-    failures.push(`${sentences} sentences > ${MAX_SENTENCES}`);
   }
 
   const lower = message.toLowerCase();
@@ -421,7 +401,7 @@ async function main() {
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
-  console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
+  console.log(`over the old segment budget:  ${overBudget.length}  (telemetry, not a gate)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required)`);
   console.log(
     `messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`,
@@ -442,7 +422,6 @@ async function main() {
     accuracy === 1 &&
     fabricating.length === 0 &&
     leaked.length === 0 &&
-    overBudget.length === 0 &&
     asking.length === 0 &&
     optingOut.length === 0;
 

@@ -75,8 +75,6 @@ up with a detail, you do not have one — the warmth has to come from the senten
 Every one of these is checked mechanically after you write. A message that fails is
 thrown away.
 
-- **160 characters, all in.** This is one text. Shorter is better; most good versions
-  of this are under 80.
 - **EXACTLY ONE question mark.** One question, asked once. A second `?` anywhere in
   the body is a refusal - including a rhetorical one. ZERO is a refusal too, and that is
   the easier one to trip: "Wondering if you ever met up - either way is fine." is a

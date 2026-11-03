@@ -102,9 +102,6 @@ already agreed to, so write it from their side.
 
 ## Shape
 
-- 160 characters, hard ceiling, and shorter is better. Over it costs two segments
-  and is refused. A `getting_started` ask has a much tighter budget still — it is
-  the tail of an existing message — and it is refused the same way if it overruns.
 - At most ONE question mark. A statement that ends in an instruction is often the
   better message. Two question marks turns one ask into an interrogation and is
   refused. Zero is fine when the sentence still plainly asks.
@@ -130,7 +127,7 @@ already agreed to, so write it from their side.
 
 There is no model version of either message in this file, and the absence is the
 point. The shape is small enough to specify completely — one or two clauses, one
-question mark at most, a character ceiling, the required word — and a skill that
+question mark at most, the required word — and a skill that
 specifies a message that tightly AND shows a good sentence has not given an
 example, it has given the answer. The sibling skill that used to quote one line
 got that line back, every time, with two or three words moved around.

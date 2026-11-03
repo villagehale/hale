@@ -90,8 +90,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'intro-voice.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
-const OPT_OUT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'opt-out.ts');
 
 /** Mirrors MAX_TOKENS in voice.ts. */
 const MAX_TOKENS = 256;
@@ -130,9 +128,6 @@ function introAskUserMessage(request, rejected = []) {
 
 // ── the composer's introAskRefusals(), replicated from voice.ts ──────────────
 
-/** Mirrors MAX_INTRO_SEGMENTS. */
-const MAX_INTRO_SEGMENTS = 2;
-
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /** Mirrors KEYWORD_INSTRUCTION. The instruction, never the word: "yes" and "no" are
@@ -140,11 +135,6 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
  * the CASL line is appended by the gate, not written by this composer. */
 const KEYWORD_INSTRUCTION =
   /\b(reply|respond|text|send|type)\b[^.?!]{0,20}\b(yes|no|y\b|n\b|intro|intros)\b/i;
-
-/** Bound in main() once the real modules load — the segment counter and the compliance
- * line the send appends, not copies. */
-let smsSegmentsRef = () => 1;
-let maxIntroAskChars = 0;
 
 function containsPossessive(lowerBody, possessive) {
   const noun = possessive
@@ -162,8 +152,6 @@ function stripAll(body, fragment) {
 function introAskRefusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
-  if (body.length > maxIntroAskChars) found.push('over_char_cap');
-  if (smsSegmentsRef(body) > MAX_INTRO_SEGMENTS) found.push('over_segment_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
@@ -194,8 +182,6 @@ function introAskRefusals(body, request) {
 
 const GATE_NAMES = [
   'empty',
-  'over_char_cap',
-  'over_segment_cap',
   'not_gsm7',
   'carries_link',
   'too_many_questions',
@@ -388,12 +374,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
-  const { OPT_OUT_LINE } = await tsImport(OPT_OUT_SRC, import.meta.url);
-  smsSegmentsRef = smsSegments;
-  // Mirrors MAX_INTRO_ASK_CHARS — derived exactly as voice.ts derives it, off the real
-  // compliance line, so a reworded opt-out moves this cap without anybody editing it.
-  maxIntroAskChars = 306 - (OPT_OUT_LINE.length + 2);
 
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
@@ -406,7 +386,7 @@ async function main() {
     `intro-voice eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
   );
   console.log(
-    `corpus: ${INTRO_VOICE_FIXTURES.length} asks | budget ${maxIntroAskChars} chars / ${MAX_INTRO_SEGMENTS} segments\n`,
+    `corpus: ${INTRO_VOICE_FIXTURES.length} asks | no character cap (VIL-537)\n`,
   );
 
   const results = [];
@@ -485,7 +465,7 @@ async function main() {
   for (const r of results) {
     const tag = r.failures.length === 0 ? 'PASS' : 'FAIL';
     console.log(
-      `${tag}  ${r.fixture.id.padEnd(30)} [${String(r.body.length).padStart(3)}/${maxIntroAskChars}] "${r.body}"`,
+      `${tag}  ${r.fixture.id.padEnd(30)} [${String(r.body.length).padStart(3)}] "${r.body}"`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }

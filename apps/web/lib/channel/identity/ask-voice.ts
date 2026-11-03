@@ -29,16 +29,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * function takes, not in what the prose promises.
  */
 
-/** One text. The intros ask is a message of its own, so it gets the whole segment. */
-export const MAX_ASK_CHARS = 160;
-
-/**
- * The `getting_started` ask once rode on the end of a fixed consent ack. That ack is
- * gone (#868: no fixed lines), so the ask is a message of its own and gets the
- * whole segment, same as the intros ask.
- */
-export const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS;
-
 /** Three attempts, then defer. A model told its exact violation twice will not be argued
  * into it on the fourth try, and both callers have a cheaper place to retry. */
 export const MAX_COMPOSE_ATTEMPTS = 3;
@@ -81,7 +71,6 @@ export interface IdentityAskRequest {
  */
 export type IdentityAskRefusal =
   | 'empty'
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'too_many_questions'
@@ -92,15 +81,10 @@ export type IdentityAskRefusal =
   | 'carries_address'
   | 'invented_number';
 
-/** The ceiling this request is judged against — the tail budget when the ask is being
- * appended to the acknowledgment, the whole segment when it stands alone. */
-export function askCharCap(request: IdentityAskRequest): number {
-  return request.reason === 'getting_started' ? MAX_TAIL_ASK_CHARS : MAX_ASK_CHARS;
-}
-
 /**
  * Every reason this body cannot go out — all of them, not the first, so one recompose
  * can fix everything the model got wrong rather than one thing per round trip.
+ * Length is not one of them (VIL-537).
  *
  * AT MOST one question mark, not exactly one. The sibling calendar ask learned this
  * live: the model wrote the better message as a statement ending in an instruction
@@ -115,7 +99,6 @@ export function identityAskRefusals(
 ): IdentityAskRefusal[] {
   const found: IdentityAskRefusal[] = [];
   if (body === '') return ['empty'];
-  if (body.length > askCharCap(request)) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
 

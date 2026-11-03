@@ -114,14 +114,12 @@ function flatten(text) {
 
 // ── the composer's refusals(), replicated from apology.ts ───────────────────
 
-const MAX_APOLOGY_CHARS = 160;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
-  if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
@@ -289,7 +287,6 @@ async function main() {
     r.failures.some((f) =>
       [
         'empty',
-        'over_char_cap',
         'not_gsm7',
         'carries_link',
         'not_one_sentence',

@@ -3,7 +3,6 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
@@ -167,13 +166,12 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded, free of the opt-out line,
- * and inside the segment budget. The budget still reserves the old line so a message
- * that used to fit still fits; the line itself is not appended. */
+/** Whether a composed message may be sent as-is: grounded, and free of the opt-out
+ * line the shell appends. Length is not a reason to drop it (VIL-537). */
 export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
   if (message.includes(NUDGE_OPT_OUT)) return false;
-  return smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
+  return true;
 }
 
 function joinNames(names: readonly string[]): string {
@@ -277,7 +275,6 @@ async function composeEmptySaturday(
   });
   if (!voice || !usableNudgeMessage(voice.message, nudge)) return null;
   const linked = withActivityLink(voice.message, nudge.url);
-  if (smsSegments(`${linked}\n\n${NUDGE_OPT_OUT}`) > MAX_NUDGE_SEGMENTS) return null;
   if (!linked.toLowerCase().includes(nudge.title.toLowerCase())) return null;
   return linked;
 }

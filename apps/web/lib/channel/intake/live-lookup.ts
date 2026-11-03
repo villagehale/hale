@@ -15,7 +15,6 @@ import { officialPageReturnLine } from './official-page';
  * search returned. Framework-only / model memory is not a path.
  */
 
-const INTAKE_MAX_REPLY_CHARS = 300;
 const MAX_SEARCHES = 2;
 const GROUND_MAX_TOKENS = 2048;
 
@@ -103,9 +102,10 @@ export function extractLiveLookupAnswer(notes: string): string | null {
   if (hits.length === 0) return null;
   let answer = hits[0] as string;
   const next = hits[1];
-  if (next !== undefined && `${answer} ${next}`.length <= 200) {
-    answer = `${answer} ${next}`;
-  }
+  // Both grounded sentences go out. Cutting the second for length, then dropping
+  // the reply past 300 characters, replaced a real source with "no current source"
+  // (VIL-537).
+  if (next !== undefined) answer = `${answer} ${next}`;
   return answer;
 }
 
@@ -113,10 +113,11 @@ export function notesGroundACurrentSource(notes: string): boolean {
   return extractLiveLookupAnswer(notes) !== null;
 }
 
-/** Null when the grounded text cannot go out as one plain SMS; the caller has the
- * model say it has no current source (#868: no fixed fallback line). */
+/** Null when the grounded text cannot go out as plain SMS; the caller has the
+ * model say it has no current source (#868: no fixed fallback line). Length is not
+ * a reason to drop it (VIL-537). */
 function sendableJoined(joined: string): string | null {
-  if (joined.length === 0 || joined.length > INTAKE_MAX_REPLY_CHARS) return null;
+  if (joined.length === 0) return null;
   if (smsEncoding(joined) !== 'gsm7') return null;
   if (/https?:\/\/|www\./i.test(joined)) return null;
   if (/\bi('?m| am) a therapists?\b/i.test(joined)) return null;

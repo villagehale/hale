@@ -22,7 +22,7 @@ The test: read the message aloud to the parent's partner. If it would be odd com
 
 Eleven of them. Ten were the register as first written; rule 11 was added when the evening lane's keyword handling proved that one of them was mechanical rather than stylistic.
 
-1. **Open with the fact, not the frame.** `Halton Hills fall registration opens Tue 7:00 a.m.` — never `Here's an update on…`, `Quick note:`, `Just letting you know`. The strongest thing Hale knows goes in the first clause, because a phone shows ~153 characters and every trim cuts from the end (`packages/agent/skills/activity-finder.md`).
+1. **Open with the fact, not the frame.** `Halton Hills fall registration opens Tue 7:00 a.m.` — never `Here's an update on…`, `Quick note:`, `Just letting you know`. The strongest thing Hale knows goes in the first clause. There is no character cap and no trim (`packages/agent/skills/voice-register.md`).
 
 2. **No label prefixes.** `Hale: ` in front of a message is a broadcast header. It survives in exactly one place — a message to someone who is **not** in a thread with Hale and has no way to know who is texting: `apps/web/lib/party/guest-copy.ts`. It is gone from the three that are not: the weekly-plan SMS, the caregiver plan SMS and the caregiver reminder SMS.
 
@@ -32,7 +32,7 @@ Eleven of them. Ten were the register as first written; rule 11 was added when t
 
 5. **One ask per message.** D14, and it is structural rather than stylistic: a parent's YES is matched against the draft, so a second question is one they have no way to answer (`packages/agent/skills/coach-channel-sms.md`; the ladder's own `apps/web/lib/registration/sequence/copy.ts`; the coach eval counts question marks).
 
-6. **Naming a child.** Their first name, freely, in their own parent's thread. **Never** a 13+ child's name in a composed message — stripped at the source, never redacted on the way out (`apps/web/lib/channel/checkin/sweep.ts`, `deriveStage`). Where a name will not fit or will not spell in GSM-7, the household loses the name and never the segment. Every other recipient goes through role redaction.
+6. **Naming a child.** Their first name, freely, in their own parent's thread. **Never** a 13+ child's name in a composed message — stripped at the source, never redacted on the way out (`apps/web/lib/channel/checkin/sweep.ts`, `deriveStage`). A name the parent uses is not dropped to keep a message short. Every other recipient goes through role redaction.
 
 7. **Dates and times.** The way a person says them: `Tue 7:00 a.m.`, `tomorrow`, `Saturday morning`. Family-local always. Never an ISO stamp, never a UTC offset, never `09/01`. The existing helpers are the only source — `formatWhenPhrase` wrapped in `asciiSpaces` (the wrapper exists because `Intl` emits a narrow no-break space, which is not GSM-7) and `localTimeLabel` (`apps/web/lib/loop/templates/reminder/core.ts`).
 
