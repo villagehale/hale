@@ -33,6 +33,22 @@ describe('deliverCrisisReply', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it('sends the reader text when a mental reply spells the line 9-8-8', async () => {
+    const { writer, write } = recordingWriter('should not be asked');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await deliverCrisisReply({
+      kind: 'mental',
+      readerText: ' Appelle ou texte le 9-8-8. ',
+      parentWords: "je n'en peux plus",
+      where: 'intake crisis',
+      region: 'CA',
+      writer,
+    });
+    expect(body).toBe('Appelle ou texte le 9-8-8.');
+    expect(write).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it('sends the reader text when an emergency reply already contains 911', async () => {
     const { writer, write } = recordingWriter('should not be asked');
     const body = await deliverCrisisReply({

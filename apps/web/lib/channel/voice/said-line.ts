@@ -275,19 +275,24 @@ export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly
   return kind === 'emergency' ? ['911'] : ['988'];
 }
 
+// NFKC folds full-width and other compatibility digits to ASCII; then any run of
+// whitespace or separators between digits is dropped, so '9 8 8', '9-8-8', '9.8.8'
+// and '９８８' all read as 988.
+function foldCrisisDigits(text: string): string {
+  return text.normalize('NFKC').replace(/(?<=\d)[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]+(?=\d)/gu, '');
+}
+
 export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
-  return crisisMustInclude(kind).every((digit) => text.includes(digit));
+  const folded = foldCrisisDigits(text);
+  // A bounded run: 1-866-988-0000 or 1988 is not the 988 line.
+  return crisisMustInclude(kind).every((digit) =>
+    new RegExp(`(?<!\\d)${digit}(?!\\d)`).test(folded),
+  );
 }
 
 /** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */
 export function crisisTextHas988(text: string): boolean {
-  // NFKC folds full-width and other compatibility digits to ASCII; then any run of
-  // whitespace or separators between digits is dropped, so '9 8 8', '9-8-8', '9.8.8'
-  // and '９８８' all read as 988.
-  const folded = text
-    .normalize('NFKC')
-    .replace(/(?<=\d)[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]+(?=\d)/gu, '');
-  return folded.includes('988');
+  return foldCrisisDigits(text).includes('988');
 }
 
 /**
