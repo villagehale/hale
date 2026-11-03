@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { foldMessage } from '~/lib/channel/intake/onboarding-turn';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
@@ -343,17 +344,8 @@ export async function handleParentCallNameReply(
 }
 
 function sameNameMessage(name: string, body: string): boolean {
-  const fold = (value: string) =>
-    value
-      .trim()
-      .replace(/^["“«']+|["”»']+$/gu, '')
-      .replace(/[.!]+$/u, '')
-      .normalize('NFD')
-      .replace(/\p{M}+/gu, '')
-      .toLowerCase()
-      .replace(/\s+/gu, ' ');
-  const left = fold(name);
-  return left.length > 0 && left === fold(body);
+  const left = foldMessage(name);
+  return left.length > 0 && left === foldMessage(body);
 }
 
 async function readHeldGivenName(database: Database, userId: string): Promise<string | null> {

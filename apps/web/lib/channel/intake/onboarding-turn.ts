@@ -205,7 +205,8 @@ function acceptName(value: unknown): string | null {
   return trimmed;
 }
 
-function foldMessage(value: string): string {
+/** One message or name, folded for an equality check: quotes, end marks, accents, case, spaces. */
+export function foldMessage(value: string): string {
   return value
     .trim()
     .replace(/^["“«']+|["”»']+$/gu, '')

@@ -212,18 +212,59 @@ describe('a delayed undo during name capture', () => {
     });
   });
 
-  it('does not treat the message as a foreign name until it is a take-back or another name is known', () => {
+  it('does not read an ordinary short answer as a name when a name is already known', () => {
+    const named = blank({ ...asked, step: 'email', parentWords: 'sure', parentName: 'Dana' });
+    expect(
+      judgeFriendReply('Sure thing. Want me to watch school email for the dates?', named),
+    ).toEqual({ ok: true });
+    expect(judgeFriendReply('Got it. Want me to watch school email, sure?', named)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('checks the draft against any take-back the model marked, whatever its length', () => {
+    const long = { ...asked, parentWords: 'actually scratch that for now', nameTakenBack: true };
+    expect(
+      judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long),
+    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+  });
+
+  it('does not treat the message as a foreign name until the model marks a take-back', () => {
     expect(judgeFriendReply("I'll undo that. What should I call you?", asked)).toEqual({
       ok: true,
     });
   });
 
+  it('a turned-down held name: speakFriend refuses a draft that calls them by the message', async () => {
+    const drafts = [
+      'Got it, I\'ll call you "non". What should I call you?',
+      'What should I call you?',
+    ];
+    const seen: string[] = [];
+    const spoken = await speakFriend(
+      {
+        async compose() {
+          const reply = drafts[seen.length] ?? '';
+          seen.push(reply);
+          return { reply, capture: { parentName: null, nameConfirmed: false } };
+        },
+      },
+      blank({ ...asked, step: 'name_confirm', parentWords: 'non', parentName: 'Bea' }),
+      { page: async () => undefined },
+    );
+    expect(seen).toHaveLength(2);
+    expect(spoken.source).not.toBe('unsent');
+    expect(spoken.body).toBe('What should I call you?');
+  });
+
   it('asks what to call them after a held name is turned down', () => {
+    // speakFriend sets nameTakenBack on the judge input when the model reads nameConfirmed false.
     const confirm = blank({
       ...asked,
       step: 'name_confirm',
       parentWords: 'non',
       parentName: 'Bea',
+      nameTakenBack: true,
     });
     expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
     expect(

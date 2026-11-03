@@ -38,8 +38,8 @@ import {
   checklistAfter,
   countRejectedScheduleAdds,
   dropTakeBackName,
+  foldMessage,
   mergeCaptures,
-  namesAChild,
   onboardingMissing,
 } from './onboarding-turn';
 
@@ -1317,38 +1317,20 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function foldName(value: string): string {
-  return value
-    .trim()
-    .replace(/^["“«']+|["”»']+$/gu, '')
-    .replace(/[.!]+$/u, '')
-    .normalize('NFD')
-    .replace(/\p{M}+/gu, '')
-    .toLowerCase()
-    .replace(/\s+/gu, ' ');
-}
-
 /**
- * The reply uses the parent's whole message as a name, and that message is not
- * the name already known. Quotes, a capital, or the end of a sentence mark it
- * as a name. No address-verb list.
+ * A fact check on Hale's draft, not a reading of the parent: the model has
+ * already marked this message as a take-back or a turned-down name
+ * (`nameTakenBack`), and the draft still uses that whole message as a name
+ * (quoted, capitalised, or ending a sentence). The parent's words are only the
+ * literal compared against; nothing here decides what they meant.
  */
 function replyAddressesByOtherName(reply: string, input: FriendVoiceInput): boolean {
+  if (!input.nameTakenBack) return false;
   const message = input.parentWords.trim().replace(/[.!]+$/u, '');
-  const folded = foldName(message);
-  const known = foldName(input.parentName ?? '');
-  if (folded.length < 2 || folded === known) return false;
-  // No name on file, and the model has not called this message a take-back:
-  // the message may be the introduction. A known name, or a take-back, makes
-  // using the message as a name a mismatch.
-  if (!known && !input.nameTakenBack) return false;
-  if (message.length > 40 || /[?\d]/u.test(message)) return false;
-  const words = message.split(/\s+/u);
-  if (words.length === 0 || words.length > 3) return false;
-  if (!words.every((word) => /^[\p{L}\p{M}][\p{L}\p{M}'’-]*$/u.test(word))) return false;
-  if (namesAChild(message, input.children ?? [])) return false;
+  const folded = foldMessage(message);
+  if (folded.length === 0) return false;
   for (const match of reply.matchAll(/["“«']\s*([^"”»']+?)\s*["”»']/gu)) {
-    if (foldName(match[1] ?? '') === folded) return true;
+    if (foldMessage(match[1] ?? '') === folded) return true;
   }
   const title = message.replace(/(^|\s)(\p{L})/gu, (_gap, space: string, letter: string) => {
     return `${space}${letter.toUpperCase()}`;
@@ -1364,7 +1346,7 @@ function replyAddressesByOtherName(reply: string, input: FriendVoiceInput): bool
         .trim()
         .split(/\s+/u)
         .at(-1) ?? '';
-    if (foldName(token) === folded) return true;
+    if (foldMessage(token) === folded) return true;
   }
   return false;
 }
