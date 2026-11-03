@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Single event 'PD Day' keeps its title as the event's name. Day (tomorrow, Monday) is true from Sunday evening, start 9:30 a.m. and end 12 p.m. are correct with right AM/PM, and the venue name Northside community centre is present. No address was given in the facts, so none is missing. Nothing invented, no travel or departure claims, no link, correct language, and bold is none, which is fine.",
+    "score": 5
+  }
+}

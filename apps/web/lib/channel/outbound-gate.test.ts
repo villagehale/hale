@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 import {
   type OutboundGatePorts,
@@ -10,6 +10,8 @@ import {
   type ProactiveSendKind,
   assertProactiveSendAllowed,
   holdStatus,
+  proactiveFloorOpensAt,
+  proactiveQuietNow,
 } from './outbound-gate.js';
 
 /**
@@ -279,6 +281,70 @@ describe('gate ordering', () => {
     const { calls, verdict } = callGate(MIDDAY, { recentSends: 1 });
     await verdict;
     expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
+  });
+});
+
+/**
+ * VIL-562 · the floor as one predicate, so a lane that is not a gate kind (the reminder
+ * run) meets the SAME window the gate applies. Times are hand-derived for Denver
+ * (MST, UTC-7, in November) against the 21:00 to 08:00 window.
+ */
+describe('proactiveQuietNow — the floor every unprompted text meets', () => {
+  const DENVER = 'America/Denver';
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('is closed from 21:00 to 08:00 local, and open either side', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    const at = (iso: string) => proactiveQuietNow({ now: new Date(iso), timeZone: DENVER });
+    expect(await at('2026-11-11T04:12:00Z')).toBe(true); // 21:12 MST
+    expect(await at('2026-11-11T03:12:00Z')).toBe(false); // 20:12 MST
+    expect(await at('2026-11-11T14:59:00Z')).toBe(true); // 07:59 MST
+    expect(await at('2026-11-11T15:00:00Z')).toBe(false); // 08:00 MST
+  });
+
+  it('starts at 20:00 for a Florida number once cadence is armed, reading the phone once', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const phone = vi.fn(async () => '+13055550101');
+    const quiet = await proactiveQuietNow({
+      now: new Date('2026-11-11T03:12:00Z'), // 20:12 MST
+      timeZone: DENVER,
+      phone,
+    });
+    expect(quiet).toBe(true);
+    expect(phone).toHaveBeenCalledTimes(1);
+  });
+
+  it('with cadence off, the same number at 20:12 is open and the phone is never read', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    const phone = vi.fn(async () => '+13055550101');
+    const quiet = await proactiveQuietNow({
+      now: new Date('2026-11-11T03:12:00Z'),
+      timeZone: DENVER,
+      phone,
+    });
+    expect(quiet).toBe(false);
+    expect(phone).not.toHaveBeenCalled();
+  });
+});
+
+describe('proactiveFloorOpensAt — when the floor next opens', () => {
+  it('is 08:00 local the next morning from a late evening', () => {
+    expect(
+      proactiveFloorOpensAt(new Date('2026-11-11T04:12:00Z'), 'America/Denver').toISOString(),
+    ).toBe('2026-11-11T15:00:00.000Z');
+  });
+
+  it('is 08:00 local the same morning from before dawn', () => {
+    expect(
+      proactiveFloorOpensAt(new Date('2026-11-11T13:00:00Z'), 'America/Denver').toISOString(),
+    ).toBe('2026-11-11T15:00:00.000Z');
+  });
+
+  it('lands on 08:00 standard time across the night the clocks go back', () => {
+    // 23:30 CDT on Oct 31; DST ends at 02:00 that night, so 08:00 CST is 14:00Z.
+    expect(
+      proactiveFloorOpensAt(new Date('2026-11-01T04:30:00Z'), 'America/Chicago').toISOString(),
+    ).toBe('2026-11-01T14:00:00.000Z');
   });
 });
 

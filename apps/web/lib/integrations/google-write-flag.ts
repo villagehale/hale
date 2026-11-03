@@ -48,21 +48,6 @@ export function googleWriteScopesEnabledFor(
   return googleWriteScopesAllowlist(env).has(userId);
 }
 
-/**
- * Scopes a stored grant may contain beyond the readonly connector set and the
- * optional profile scope. Empty unless this user is armed, so a grant that
- * carries either write scope for anyone else is still "broader than we asked"
- * and is stored nowhere. `gmail.send` is never in this set.
- */
-export function grantedWriteScopesAllowed(
-  env: WriteScopeEnv = process.env,
-  userId?: string | null,
-): readonly string[] {
-  return googleWriteScopesEnabledFor(userId, env)
-    ? [CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE]
-    : [];
-}
-
 export function grantIncludesScope(
   scopes: readonly string[] | null | undefined,
   scope: string,

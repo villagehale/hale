@@ -1,5 +1,6 @@
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
-import { type OptOutReading, isIdentityReading } from './opt-out-reader';
+import { type NumberOrigin, numberOriginFact } from './number-origin';
+import { type OptOutIntentReading, isIdentityReading } from './opt-out-reader';
 
 /**
  * VIL-333 — an identity or distrust challenge ("who is this", "is this a scam", a
@@ -51,7 +52,10 @@ export type IdentityChallengeReply =
 export async function identityChallengeReply(
   body: string,
   writer: SaidLineWriter | null | undefined,
-  reading: OptOutReading | null,
+  reading: OptOutIntentReading | null,
+  /** How Hale has this number, read from the family's record only once this is a
+   * challenge (#919). Absent or null: no such fact, and the writer does not guess. */
+  numberOrigin?: () => Promise<NumberOrigin | null>,
 ): Promise<IdentityChallengeReply> {
   // #868: the turn reader decides, in any language. No pattern list.
   if (!isIdentityReading(reading)) return { challenge: false };
@@ -59,11 +63,13 @@ export async function identityChallengeReply(
     console.error('identity challenge: no line writer - nothing sent');
     return { challenge: true, body: null };
   }
+  const origin = numberOrigin ? await numberOrigin().catch(() => null) : null;
+  const howWeGotYourNumber = numberOriginFact(origin);
   const written = await writer.write({
     purpose: 'identity',
     language: null,
     parentWords: body,
-    facts: { ...IDENTITY_FACTS },
+    facts: { ...IDENTITY_FACTS, ...(howWeGotYourNumber ? { howWeGotYourNumber } : {}) },
     mustInclude: [IDENTITY_FACTS.website, IDENTITY_FACTS.contactEmail],
   });
   return { challenge: true, body: written };

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "sáquenme de esta lista, no quiero recibir nada más",
+    "language": "es",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "Listo, te saco de la lista y no te voy a escribir más. Si quieres volver, solo escríbeme aquí y te vuelvo a agregar."
+  },
+  "latencyMs": 1766
+}

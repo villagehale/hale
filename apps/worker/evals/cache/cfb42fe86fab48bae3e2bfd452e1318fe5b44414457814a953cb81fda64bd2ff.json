@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "c'est qui? c'est une arnaque?",
+    "language": "fr",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": ""
+  },
+  "latencyMs": 1151
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Hale says it is watching the Tuesday gymnastics class for an opening, which is a spot watch on one class. The only row is a Saturday swimming class, so nothing on record backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "spot_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1680
+}

@@ -21,6 +21,7 @@ import {
   type CalendarAlertSweep,
   type CalendarChange,
   type PriorStart,
+  __setCalendarAlertFixedCopyRetiredForTests,
   alertParentForCalendarChanges,
   calendarAlertDedupeKey,
   calendarSeriesAlertDedupeKey,
@@ -172,13 +173,89 @@ beforeEach(async () => {
   INTEGRATION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('CALENDAR_ALERT_ENABLED', 'true');
+  // The legacy suite below exercises the retired fixed-copy sentence; VIL-527 proves prod.
+  __setCalendarAlertFixedCopyRetiredForTests(false);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  __setCalendarAlertFixedCopyRetiredForTests(true);
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
+  beforeEach(() => __setCalendarAlertFixedCopyRetiredForTests(true));
+
+  const ADULT: CalendarChange = {
+    ...TIMED,
+    eventId: 'ev-adult',
+    title: 'Barton / Alan',
+  };
+
+  it('sends no fixed template text, not even for a timed event in the window', async () => {
+    const h = harness();
+    await expect(sweep(h)).resolves.toEqual(['fixed_copy_retired']);
+    expect(h.transport.sent).toEqual([]);
+    expect(h.threaded).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+  });
+
+  it('skips an adult meeting — nothing reaches the parent', async () => {
+    const h = harness();
+    await expect(sweep(h, { changes: [ADULT] })).resolves.toEqual(['fixed_copy_retired']);
+    expect(h.transport.sent.map((m) => m.body).join(' ')).not.toContain('on your calendar');
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('does not re-mint the same event across re-syncs and edits (12:24 x3 + 14:21)', async () => {
+    const h = harness();
+    for (const updated of [
+      '2026-09-16T16:24:00.000Z',
+      '2026-09-16T16:24:30.000Z',
+      '2026-09-16T16:24:50.000Z',
+      '2026-09-16T18:21:00.000Z',
+    ]) {
+      await sweep(h, { changes: [{ ...ADULT, updated }] });
+    }
+    expect(h.transport.sent).toEqual([]);
+    await expect(ledgerRows()).resolves.toEqual([]);
+    // Still remembered, so nothing later reads as a first sighting.
+    await expect(snapshotOf('ev-adult')).resolves.toMatchObject({ pendingSince: null });
+  });
+
+  it('retires a text the old path still owed instead of re-offering it', async () => {
+    __setCalendarAlertFixedCopyRetiredForTests(false);
+    const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
+    await sweep(held);
+    const before = await snapshotOf(TIMED.eventId);
+    __setCalendarAlertFixedCopyRetiredForTests(true);
+    const h = harness();
+    const result = await sweepBoth(h, { changes: [] });
+    // Reported: the empty sweep names the text it dropped (connector summary counts it).
+    expect(result.reoffers).toEqual(['fixed_copy_retired']);
+    expect(h.transport.sent).toEqual([]);
+    expect(before?.pendingSince).not.toBeNull();
+    // Audited: one immutable row per dropped text — enums only, never the title.
+    const audit = (await auditRows()).filter(
+      (row) => row.actionTaken === 'calendar_alert_debt_retired',
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actor: 'system',
+      targetTable: 'calendar_event_snapshots',
+      targetId: `${INTEGRATION}:${TIMED.eventId}`,
+      after: { reason: 'fixed_copy_retired' },
+    });
+    expect(JSON.stringify(audit[0]?.after)).not.toContain(TIMED.title);
+    // Nothing left to retire: the next empty sweep reports and audits nothing.
+    await expect(sweepBoth(harness(), { changes: [] })).resolves.toMatchObject({ reoffers: [] });
+    await expect(snapshotOf(TIMED.eventId)).resolves.toMatchObject({
+      pendingSince: null,
+      heldTitle: null,
+    });
+  });
 });
 
 describe('alertParentForCalendarChanges', () => {

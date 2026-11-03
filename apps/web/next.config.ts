@@ -101,6 +101,8 @@ const config: NextConfig = {
       '../worker/src/anthropic/client.ts',
       '../../packages/agent/skills/**',
       '../../node_modules/playwright-core/**',
+      './lib/registration/pdf-worker.mjs',
+      '../../node_modules/unpdf/**',
     ],
   },
   webpack: (config) => {

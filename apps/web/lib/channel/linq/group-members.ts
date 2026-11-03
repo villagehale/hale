@@ -1,6 +1,5 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { householdTimezone } from '~/lib/channel/household-timezone';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
@@ -8,7 +7,6 @@ import { isParentRole } from '~/lib/channel/role-scope';
 import { speak } from '~/lib/channel/spoken-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { linqGroupMembersEnabled, linqGroupWelcomeVoiceEnabled } from './config';
@@ -20,10 +18,12 @@ type LinqGroupMemberRole = 'parent' | 'co_parent' | 'other_family' | 'caregiver'
 /**
  * VIL-398 — seats in a claimed household Linq group.
  *
- * Off unless `LINQ_GROUP_MEMBERS_ENABLED` is exactly `true`. A parent add, or
- * Hale when Linq names no actor, seats the phone and sends one welcome. Hale
- * adding someone still seats them. A named stranger does not. Removal unseats.
- * A phone already in another family is refused. There is no member cap.
+ * Off unless `LINQ_GROUP_MEMBERS_ENABLED` is exactly `true`. Only a named household
+ * parent's add seats, and only a person this family already holds: a verified channel
+ * and a family role here, written through a door that took a parent's recorded grant
+ * (VIL-582). That seat gets one welcome. An add with no named actor, by Hale, or by a
+ * stranger seats nobody; neither does an add of a phone the family does not hold.
+ * Removal unseats. A phone already in another family is refused. There is no member cap.
  */
 
 /**
@@ -93,9 +93,9 @@ export function classifyParticipantAdd(input: {
 }): { kind: AddActorKind; seat: boolean; welcome: boolean } {
   const actorPhone = input.actorHandle ? normalizePhoneE164(input.actorHandle) : null;
   const unnamed = !actorPhone || actorPhone === input.participantPhone;
-  if (unnamed) return { kind: 'unnamed', seat: true, welcome: true };
+  if (unnamed) return { kind: 'unnamed', seat: false, welcome: false };
   if (input.actorIsHouseholdParent) return { kind: 'parent', seat: true, welcome: true };
-  if (input.isFromMe || input.actorIsHale) return { kind: 'hale', seat: true, welcome: false };
+  if (input.isFromMe || input.actorIsHale) return { kind: 'hale', seat: false, welcome: false };
   return { kind: 'other', seat: false, welcome: false };
 }
 
@@ -107,6 +107,7 @@ export type SeatParticipantResult =
   | { outcome: 'group_unclaimed' }
   | { outcome: 'group_member_refused'; reason: 'other_family' | 'actor' | 'other_chat' }
   | { outcome: 'group_member_already' }
+  | { outcome: 'seat_needs_parent_grant' }
   | { outcome: 'group_member_seated'; role: LinqGroupMemberRole; notice: SeatNotice };
 
 type SendGroup = (notice: { chatId: string; text: string }) => Promise<{
@@ -150,29 +151,13 @@ async function familyRoleOf(
   return rows.find((row) => row.familyId === familyId && row.userId === userId)?.role ?? null;
 }
 
-function groupRoleFor(familyRole: string | null, hasCoParent: boolean): LinqGroupMemberRole {
+function groupRoleFor(familyRole: string): LinqGroupMemberRole {
   if (familyRole === 'primary_parent') return 'parent';
   if (familyRole === 'co_parent') return 'co_parent';
   if (familyRole === 'nanny' || familyRole === 'babysitter' || familyRole === 'service') {
     return 'caregiver';
   }
-  if (familyRole === 'grandparent' || familyRole === 'extended') return 'other_family';
-  return hasCoParent ? 'other_family' : 'co_parent';
-}
-
-function familyRoleForSeat(role: LinqGroupMemberRole): 'co_parent' | 'extended' | 'service' | null {
-  if (role === 'co_parent') return 'co_parent';
-  if (role === 'other_family') return 'extended';
-  if (role === 'caregiver') return 'service';
-  return null;
-}
-
-async function familyHasCoParent(database: Database, familyId: string): Promise<boolean> {
-  const rows = await database
-    .select({ role: schema.familyMembers.role, familyId: schema.familyMembers.familyId })
-    .from(schema.familyMembers)
-    .where(eq(schema.familyMembers.familyId, familyId));
-  return rows.some((row) => row.familyId === familyId && row.role === 'co_parent');
+  return 'other_family';
 }
 
 async function liveSeats(database: Database) {
@@ -224,94 +209,6 @@ async function actorIsHouseholdParent(
       (row.role === 'parent' || row.role === 'co_parent'),
   );
   return seat ? { parent: true, userId: seat.userId } : { parent: false, userId: null };
-}
-
-async function provisionMember(
-  database: Database,
-  input: {
-    familyId: string;
-    phone: string;
-    role: LinqGroupMemberRole;
-    invitedByUserId: string | null;
-    chatId: string;
-    now: Date;
-  },
-): Promise<string> {
-  const phoneHash = phoneBlindIndex(input.phone);
-  const familyRole = familyRoleForSeat(input.role);
-  return database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx
-      .insert(schema.users)
-      .values({
-        externalAuthId: `sms:${phoneHash}`,
-        email: null,
-        name: null,
-        timezone: await householdTimezone(tx, input.familyId),
-      })
-      .onConflictDoNothing({ target: schema.users.externalAuthId });
-    const [user] = await tx
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.externalAuthId, `sms:${phoneHash}`))
-      .limit(1);
-    if (!user) throw new Error('linq group member: users insert returned no row');
-
-    if (familyRole) {
-      await tx
-        .insert(schema.familyMembers)
-        .values({
-          familyId: input.familyId,
-          userId: user.id,
-          role: familyRole,
-          invitedByUserId: input.invitedByUserId,
-        })
-        .onConflictDoNothing();
-    }
-
-    if (input.role === 'co_parent') {
-      await tx
-        .insert(schema.loopPrefs)
-        .values({ userId: user.id, loopChannel: 'sms' })
-        .onConflictDoNothing({ target: schema.loopPrefs.userId });
-      await tx.insert(schema.linqGroupOnboarding).values({
-        familyId: input.familyId,
-        userId: user.id,
-        providerChatId: input.chatId,
-        step: 'awaiting_name',
-        createdAt: input.now,
-        updatedAt: input.now,
-      });
-    }
-
-    const [consent] = await tx
-      .insert(schema.consentRecords)
-      .values({
-        userId: user.id,
-        familyId: input.familyId,
-        consentType: 'sms_service_messages',
-        granted: true,
-        consentScope: 'linq_group_member',
-        policyVersion: POLICY_VERSION,
-        evidence: {
-          interpretation: 'a household parent added this number to the family group',
-          channel: 'imessage',
-        },
-      })
-      .returning({ id: schema.consentRecords.id });
-    if (!consent) throw new Error('linq group member: consent insert returned no row');
-
-    await tx.insert(schema.parentChannels).values({
-      userId: user.id,
-      familyId: input.familyId,
-      kind: 'sms',
-      phoneE164Encrypted: encryptString(input.phone),
-      phoneE164Hash: phoneHash,
-      verifiedAt: input.now,
-      consentRecordId: consent.id,
-    });
-    return user.id;
-  });
 }
 
 async function sendOnce(
@@ -378,9 +275,19 @@ async function sendOnce(
   }
 }
 
+function notSeated<T extends Exclude<SeatParticipantResult, { outcome: 'group_member_seated' }>>(
+  result: T,
+): T {
+  console.info(
+    { outcome: result.outcome, reason: 'reason' in result ? result.reason : undefined },
+    'linq group member: not seated',
+  );
+  return result;
+}
+
 /**
- * Seat the person Linq added. Hale (`isFromMe`, or no named actor) seats too.
- * A household parent, or Hale when Linq names nobody, gets one welcome.
+ * Seat the person a named household parent added, when this family already holds them.
+ * Every other add is a named outcome with its audit row and no seat.
  */
 export async function seatParticipantAdded(
   database: Database,
@@ -395,11 +302,11 @@ export async function seatParticipantAdded(
     voice?: GroupOnboardingComposer;
   },
 ): Promise<SeatParticipantResult> {
-  if (!linqGroupMembersEnabled()) return { outcome: 'flag_off' };
+  if (!linqGroupMembersEnabled()) return notSeated({ outcome: 'flag_off' });
   const phone = seatablePhone(input.participantHandle);
-  if (!phone) return { outcome: 'ignored' };
+  if (!phone) return notSeated({ outcome: 'ignored' });
   const familyId = await familyIdForChat(database, input.chatId);
-  if (!familyId) return { outcome: 'group_unclaimed' };
+  if (!familyId) return notSeated({ outcome: 'group_unclaimed' });
 
   const actor = await actorIsHouseholdParent(database, familyId, input.actorHandle);
   const actorPhone = input.actorHandle ? normalizePhoneE164(input.actorHandle) : null;
@@ -419,7 +326,7 @@ export async function seatParticipantAdded(
       targetId: familyId,
       after: { reason: 'actor' },
     });
-    return { outcome: 'group_member_refused', reason: 'actor' };
+    return notSeated({ outcome: 'group_member_refused', reason: 'actor' });
   }
 
   const existing = await resolveVerifiedChannelByPhone(database, phone);
@@ -432,7 +339,7 @@ export async function seatParticipantAdded(
       targetId: familyId,
       after: { reason: 'other_family' },
     });
-    return { outcome: 'group_member_refused', reason: 'other_family' };
+    return notSeated({ outcome: 'group_member_refused', reason: 'other_family' });
   }
 
   const hash = phoneBlindIndex(phone);
@@ -447,26 +354,27 @@ export async function seatParticipantAdded(
       targetId: live.id,
       after: { reason: live.familyId !== familyId ? 'other_family' : 'other_chat' },
     });
-    return {
+    return notSeated({
       outcome: 'group_member_refused',
       reason: live.familyId !== familyId ? 'other_family' : 'other_chat',
-    };
+    });
   }
-  if (live) return { outcome: 'group_member_already' };
+  if (live) return notSeated({ outcome: 'group_member_already' });
 
   const familyRole = existing ? await familyRoleOf(database, familyId, existing.userId) : null;
-  const hasCoParent = await familyHasCoParent(database, familyId);
-  const role = groupRoleFor(familyRole, hasCoParent);
-  const userId =
-    existing?.userId ??
-    (await provisionMember(database, {
+  if (!existing || !familyRole) {
+    await database.insert(schema.auditLog).values({
       familyId,
-      phone,
-      role,
-      invitedByUserId: actor.userId,
-      chatId: input.chatId,
-      now: input.now,
-    }));
+      actor: actor.userId ?? 'system',
+      actionTaken: 'linq_group_member_refused',
+      targetTable: 'linq_group_members',
+      targetId: familyId,
+      after: { reason: 'seat_needs_parent_grant' },
+    });
+    return notSeated({ outcome: 'seat_needs_parent_grant' });
+  }
+  const role = groupRoleFor(familyRole);
+  const userId = existing.userId;
 
   const [inserted] = await database
     .insert(schema.linqGroupMembers)
