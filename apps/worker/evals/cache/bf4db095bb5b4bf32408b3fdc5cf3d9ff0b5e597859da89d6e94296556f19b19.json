@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "Para el sábado, ¿a qué hora empieza la clase de natación?",
+    "confirmation": ""
+  },
+  "latencyMs": 879
+}

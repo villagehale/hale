@@ -250,3 +250,7 @@ export async function optOutIntentOf(
   const reading = await readTextOnce(reader ?? sharedOptOutReader(), { text, language: null });
   return reading?.intent === 'stop' || reading?.intent === 'start' ? reading.intent : null;
 }
+
+/** The reader's request shape, imported by the opt-out-read and crisis-reply evals. */
+export const OPT_OUT_READ_TOOL_SCHEMA = outputJsonSchema;
+export const OPT_OUT_READ_MAX_TOKENS = MAX_TOKENS;

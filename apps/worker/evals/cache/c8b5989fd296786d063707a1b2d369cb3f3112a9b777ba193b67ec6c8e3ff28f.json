@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "孩子从楼梯上摔下来了，叫不醒",
+    "confirmation": "这是紧急情况。请立即拨打911，不要等待。在等待救援时，请保持孩子平躺，不要随意移动他的头颈，并留意他的呼吸。"
+  },
+  "latencyMs": 3858
+}

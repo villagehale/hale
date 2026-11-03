@@ -1,8 +1,9 @@
 // Opt-out reader eval (#868).
 //
 // Subject: the production opt-out reader request (skill `opt-out-read`, the
-// lane its frontmatter names, the same user payload and tool schema as
-// apps/web/lib/channel/intake/opt-out-reader.ts). Grade:
+// lane its frontmatter names). The user payload, tool schema and max tokens are
+// imported from apps/web/lib/channel/intake/opt-out-reader.ts, not copied; the
+// tool name and description below are still hand copies. Grade:
 //   - intent: the returned label must equal the fixture's (a structured field,
 //     not word matching);
 //   - confirmation (stop/start rows): a judge model only, median of three,
@@ -11,18 +12,21 @@
 //
 // Usage (from apps/worker):
 //   node evals/run-opt-out-read-eval.mjs --preflight
+//   node evals/run-opt-out-read-eval.mjs --dry
 //   node evals/run-opt-out-read-eval.mjs --cached-only
 //
 // --cached-only exits on the first miss and writes nothing. Do not record from CI.
 
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tsImport } from 'tsx/esm/api';
+import { pathToFileURL } from 'node:url';
+import { register } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
   REPO_ROOT,
   cachedToolCall,
+  dryReportLine,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -34,24 +38,14 @@ import { OPT_OUT_FIXTURES } from './opt-out-read-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'opt-out-read.md');
-const CRISIS_RESOURCES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'crisis-resources.ts');
-const SUBJECT_MAX_TOKENS = 400; // MAX_TOKENS in opt-out-reader.ts
+const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
+const READER_SRC = join(WEB_ROOT, 'lib', 'channel', 'intake', 'opt-out-reader.ts');
 const JUDGE_MAX_TOKENS = 4096;
 const HAIKU_IN = 1;
 const HAIKU_OUT = 5;
 
-const TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    intent: {
-      type: 'string',
-      enum: ['stop', 'start', 'crisis_emergency', 'crisis_mental', 'identity', 'none'],
-    },
-    verbatim: { type: 'string' },
-    confirmation: { type: 'string' },
-  },
-  required: ['intent', 'verbatim', 'confirmation'],
-};
+register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
+const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const JUDGE_SYSTEM = `You grade one text message a family assistant sent back after a person
 asked it to stop texting them (or to start again). You get their message, its language,
@@ -62,14 +56,6 @@ nothing else and sells nothing. Score 1 when it argues, guilt-trips, asks a ques
 the conversation going, or answers in another language. There is no required wording;
 judge meaning only.`;
 
-async function loadSkill() {
-  const raw = await readFile(SKILL, 'utf8');
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!m) throw new Error('opt-out-read.md: no frontmatter');
-  const task = m[1].match(/^task:\s*(\S+)/m)?.[1];
-  return { task, instructions: m[2].trim() };
-}
-
 function laneModel(task, ids) {
   // packages/agent/src/model.ts: screen/answer/speak/triage/acknowledge -> Haiku.
   if (['screen', 'answer', 'speak', 'triage', 'acknowledge'].includes(task)) return ids.haiku;
@@ -79,7 +65,10 @@ function laneModel(task, ids) {
 async function main() {
   const cachedOnly = process.argv.includes('--cached-only');
   const preflight = process.argv.includes('--preflight');
-  const skill = await loadSkill();
+  const agent = await importTs(AGENT_SRC);
+  const { OPT_OUT_READ_MAX_TOKENS, OPT_OUT_READ_TOOL_SCHEMA, optOutUserMessage } =
+    await importTs(READER_SRC);
+  const skill = await agent.loadSkill(SKILL);
   const replyRows = OPT_OUT_FIXTURES.filter(
     (f) => f.expect !== 'none' && f.expect !== 'identity',
   ).length;
@@ -89,10 +78,10 @@ async function main() {
     const subjIn = Math.ceil((skill.instructions.length + 300) / 4);
     const judgeIn = Math.ceil((JUDGE_SYSTEM.length + 400) / 4);
     const subj =
-      subjectCalls * ((subjIn / 1e6) * HAIKU_IN + (SUBJECT_MAX_TOKENS / 1e6) * HAIKU_OUT);
+      subjectCalls * ((subjIn / 1e6) * HAIKU_IN + (OPT_OUT_READ_MAX_TOKENS / 1e6) * HAIKU_OUT);
     const judge = judgeCalls * ((judgeIn / 1e6) * HAIKU_IN + (JUDGE_MAX_TOKENS / 1e6) * HAIKU_OUT);
     console.info(
-      `opt-out-read preflight | lane=${skill.task} fixtures=${subjectCalls} subject calls=${subjectCalls} judge calls=${judgeCalls}`,
+      `opt-out-read preflight | lane=${skill.meta.task} fixtures=${subjectCalls} subject calls=${subjectCalls} judge calls=${judgeCalls}`,
     );
     console.info(
       `worst case (every call hits max_tokens): subject $${subj.toFixed(4)} + judge $${judge.toFixed(4)} = $${(subj + judge).toFixed(4)}`,
@@ -100,9 +89,8 @@ async function main() {
     return;
   }
   const ids = await readModelIds();
-  const model = laneModel(skill.task, ids);
-  const lane = (await tsImport(AGENT_SRC, import.meta.url)).pickLane(skill.task);
-  const { crisisFactsForRegion } = await tsImport(CRISIS_RESOURCES, import.meta.url);
+  const model = laneModel(skill.meta.task, ids);
+  const lane = agent.pickLane(skill.meta.task);
   const getClient = lazyAnthropic();
   const cost = makeCost();
   const judge = makeJudge(
@@ -126,17 +114,17 @@ async function main() {
         model,
         lane,
         system: skill.instructions,
-        // optOutUserMessage: a hint only when certain (French), else null.
-        // Region is unknown here, so facts are both 988 lines and 911, as production sends.
-        userMessage: JSON.stringify({
+        // A language hint only when certain (French). Region is unknown here, so the
+        // facts are both 988 lines and 911, as production sends.
+        userMessage: optOutUserMessage({
           text: f.text,
-          languageHint: f.language === 'fr' ? 'fr' : null,
-          facts: crisisFactsForRegion(null, 'mental'),
+          language: f.language === 'fr' ? 'fr' : null,
+          region: null,
         }),
         toolName: 'opt_out',
         toolDescription: 'Return whether the sender asked Hale to stop or start texting.',
-        toolSchema: TOOL_SCHEMA,
-        maxTokens: SUBJECT_MAX_TOKENS,
+        toolSchema: OPT_OUT_READ_TOOL_SCHEMA,
+        maxTokens: OPT_OUT_READ_MAX_TOKENS,
         cachedOnly,
         getClient,
         cost,
@@ -164,6 +152,10 @@ async function main() {
     const ok = verdict.score >= JUDGE_MIN && out.confirmation.trim().length > 0;
     if (!ok) failed += 1;
     console.info(`${ok ? 'PASS' : 'FAIL'}  ${f.id}  intent=${intent} judge:${verdict.score}`);
+  }
+  if (isDryRun()) {
+    console.log(dryReportLine('opt-out-read', [judge.plan]));
+    return;
   }
   if (failed > 0) process.exit(1);
 }

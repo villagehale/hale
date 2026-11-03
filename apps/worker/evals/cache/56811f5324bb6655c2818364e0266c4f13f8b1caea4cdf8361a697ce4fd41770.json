@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "stop texting me",
+    "confirmation": "Got it, I won't text you again. If you ever want me back, just message me and say so."
+  },
+  "latencyMs": 2284
+}

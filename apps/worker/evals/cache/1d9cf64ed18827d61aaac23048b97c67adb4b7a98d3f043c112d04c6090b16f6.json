@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "who gave you this number?? leave me alone",
+    "confirmation": "Got it, Hale won't text you again. If you ever want to hear from us, just text us back whatever you'd like to say and we'll pick it up from there."
+  },
+  "latencyMs": 2809
+}
