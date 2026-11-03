@@ -797,13 +797,17 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
         },
       });
       return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
-        (result) => ({ result, enqueued: made.enqueued }),
+        (result) => ({ result, enqueued: made.enqueued, marked: made.marked, audited: made.audited }),
       );
     };
 
     // 20:12 for a 21:00 event: inside a Florida number's floor, which opens after it starts.
     const florida = await run('+14075550100');
     expect(florida.enqueued).toEqual([]);
+    expect(florida.marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'quiet_hours' }]);
+    expect(florida.audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'quiet_hours' },
+    ]);
     expect(florida.result).toMatchObject({ fired: 0, suppressed: 1 });
     expect(phones).toEqual(['p1']);
 
