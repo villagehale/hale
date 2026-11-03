@@ -1,0 +1,329 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SPOT_PORTAL_HOSTS } from '~/lib/channel/spots/url';
+import { StructuredOutputError } from '~/lib/pipeline/structured';
+import { registrationWindowFixture } from '~/lib/testing/registration-source';
+import { RegistrationPageRedirect } from './page';
+import { registrationPdfFixture } from './pdf-fixture.test-helper';
+import {
+  type RegistrationReaderPorts,
+  createRegistrationReader,
+  readRegistrationWindows,
+  windowReadTarget,
+} from './read';
+import { type ExtractedWindow, extractionInput } from './verify-window';
+
+/**
+ * The live reader, driven through its two ports: `fetchBody` (bytes) and `extract` (a
+ * hand-built extraction answer — a parse-boundary input, not a mocked model; model
+ * quality is the registration-verify eval's job, hard rule #8).
+ */
+
+const NOW = new Date('2026-10-10T12:00:00Z');
+const PAGE = 'Riverbend Aquatics. Public registration opens October 20, 2026 at 9 a.m.';
+const ZONE_SENTENCE = 'Pool hours are Eastern Time.';
+
+function extraction(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
+  return {
+    found: true,
+    reason: null,
+    cycleOnPage: 'Fall 2026',
+    yearEvidence: 'October 20, 2026',
+    evidence: 'Public registration opens October 20, 2026 at 9 a.m.',
+    preview: null,
+    residentOpen: null,
+    generalOpen: { quote: 'October 20, 2026 at 9 a.m.', date: '2026-10-20', time: '09:00' },
+    unclassifiedOpen: null,
+    partialDates: [],
+    timeZone: 'America/New_York',
+    timeZoneEvidence: 'Eastern Time',
+    note: null,
+    confidence: 0.95,
+    ...overrides,
+  };
+}
+
+function ports(
+  body: Uint8Array | (() => Promise<Uint8Array>),
+  extract: RegistrationReaderPorts['extract'] = async () => extraction(),
+) {
+  const fetchBody = vi.fn(typeof body === 'function' ? body : async () => body);
+  const extractSpy = vi.fn(extract);
+  return { fetchBody, extract: extractSpy };
+}
+
+const html = (text: string) => Buffer.from(`<html><body><p>${text}</p></body></html>`);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('the zone comes from the page or the portal, never from the caller', () => {
+  const window = registrationWindowFixture({ cycleLabel: 'Fall 2026' });
+
+  it('reads a page with neither a zone quote nor a portal zone as unverified', async () => {
+    const reader = createRegistrationReader(
+      ports(html(PAGE), async () => extraction({ timeZone: null, timeZoneEvidence: null })),
+    );
+
+    const reading = await reader(windowReadTarget(window), NOW);
+
+    expect(reading).toMatchObject({ status: 'unverified', reason: 'unknown_time_zone' });
+    expect(reading).not.toHaveProperty('dates');
+    expect(await readRegistrationWindows([window], reader, NOW, null)).toEqual([]);
+  });
+
+  it('verifies the same window once the page names its zone (control)', async () => {
+    const reader = createRegistrationReader(ports(html(`${PAGE} ${ZONE_SENTENCE}`)));
+
+    const [live] = await readRegistrationWindows([window], reader, NOW, null);
+
+    expect(live?.reading).toMatchObject({ status: 'verified', timeZone: 'America/New_York' });
+    expect(live?.openAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+  });
+});
+
+describe('a PerfectMind course page', () => {
+  const RAW = readFileSync(
+    join(__dirname, '../channel/spots/fixtures/open-window-open-markham.html'),
+  );
+  const HOST = 'cityofmarkham.perfectmind.com';
+  const COURSE_URL = `https://${HOST}/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&courseId=961140fe-0866-460f-9973-7c42cbe0a928`;
+  const target = { ...windowReadTarget(registrationWindowFixture()), sourceUrl: COURSE_URL };
+
+  it("reads deterministically, in the portal's own zone, with every date backed by the bytes", async () => {
+    const p = ports(RAW, async () => {
+      throw new Error('the course page must not reach the model');
+    });
+
+    const reading = await createRegistrationReader(p)(target, NOW);
+
+    expect(reading).toMatchObject({
+      status: 'verified',
+      reader: 'perfectmind',
+      timeZone: SPOT_PORTAL_HOSTS[HOST]?.timeZone,
+      dates: [
+        { kind: 'resident_open', date: '2026-08-11', time: '06:30' },
+        { kind: 'member_open', date: '2026-08-12', time: '06:30' },
+        { kind: 'general_open', date: '2026-08-12', time: '06:30' },
+      ],
+    });
+    if (reading.status !== 'verified') throw new Error('expected verified');
+    const raw = RAW.toString('utf8');
+    for (const date of reading.dates) {
+      expect(date.evidence.length).toBeGreaterThan(0);
+      for (const quote of date.evidence) expect(raw).toContain(quote);
+    }
+    expect(p.extract).not.toHaveBeenCalled();
+  });
+
+  it('sends the same bytes from a non-portal host to the model (control)', async () => {
+    const p = ports(RAW, async () => extraction({ found: false, reason: 'not_published' }));
+    await createRegistrationReader(p)({ ...target, sourceUrl: 'https://example.org/x' }, NOW);
+    expect(p.extract).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a PDF source, and failed reads that never fall back', () => {
+  const stored = registrationWindowFixture({
+    cycleLabel: 'Fall 2026',
+    openAt: new Date('2026-01-01T00:00:00Z'),
+  });
+
+  it('reads the PDF text through pdf.ts and verifies from it', async () => {
+    const p = ports(
+      registrationPdfFixture([
+        'Public registration opens October 20, 2026 at 9 a.m.',
+        ZONE_SENTENCE,
+      ]),
+    );
+
+    const [live] = await readRegistrationWindows([stored], createRegistrationReader(p), NOW, null);
+
+    const [, pageText] = p.extract.mock.calls[0] ?? [];
+    expect(pageText).toContain('[PDF page 1]');
+    expect(pageText).not.toContain('%PDF-');
+    expect(live?.reading.status).toBe('verified');
+    expect(live?.openAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+  });
+
+  it.each([
+    ['an unreadable PDF', async () => Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
+    ['a PDF with no text', async () => registrationPdfFixture(['']), 'pdf_no_text'],
+    [
+      'a redirect',
+      async () => {
+        throw new RegistrationPageRedirect('https://example.net/queue');
+      },
+      'redirected',
+    ],
+    [
+      'a failed fetch',
+      async () => {
+        throw new Error('registration page: status or size refusal');
+      },
+      'fetch_failed',
+    ],
+  ] as const)('names %s and keeps no stored date', async (_name, body, reason) => {
+    const p = ports(body, async () => {
+      throw new Error('a failed read must not reach the model');
+    });
+    const reader = createRegistrationReader(p);
+
+    const reading = await reader(windowReadTarget(stored), NOW);
+
+    expect(reading).toMatchObject({ status: 'unreadable', reason });
+    expect(reading).not.toHaveProperty('dates');
+    expect(await readRegistrationWindows([stored], reader, NOW, null)).toEqual([]);
+    expect(p.extract).not.toHaveBeenCalled();
+  });
+});
+
+describe('an unsafe URL', () => {
+  const base = windowReadTarget(registrationWindowFixture());
+
+  it('is refused before any fetch', async () => {
+    const p = ports(html(PAGE));
+    const reading = await createRegistrationReader(p)(
+      { ...base, sourceUrl: 'https://127.0.0.1/x' },
+      NOW,
+    );
+    expect(reading).toMatchObject({ status: 'unreadable', reason: 'unsafe_url' });
+    expect(p.fetchBody).toHaveBeenCalledTimes(0);
+  });
+
+  it('fetches a public one (control)', async () => {
+    const p = ports(html(PAGE));
+    await createRegistrationReader(p)({ ...base, sourceUrl: 'https://example.org/x' }, NOW);
+    expect(p.fetchBody).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a resident-only date applies only to a family resolved to that one town', () => {
+  const window = registrationWindowFixture({ municipality: 'markham', cycleLabel: 'Fall 2026' });
+  const reader = () =>
+    createRegistrationReader(
+      ports(html(`Residents register October 20, 2026 at 9 a.m. ${ZONE_SENTENCE}`), async () =>
+        extraction({
+          evidence: 'Residents register October 20, 2026 at 9 a.m.',
+          generalOpen: null,
+          residentOpen: {
+            quote: 'October 20, 2026 at 9 a.m.',
+            date: '2026-10-20',
+            time: '09:00',
+          },
+        }),
+      ),
+    );
+
+  it('drops the window for an area that spans two towns, and for no area at all', async () => {
+    expect(await readRegistrationWindows([window], reader(), NOW, 'L4J')).toEqual([]);
+    expect(await readRegistrationWindows([window], reader(), NOW, null)).toEqual([]);
+  });
+
+  it("keeps it, from the live reading, for a family in that town's only area (control)", async () => {
+    const live = await readRegistrationWindows([window], reader(), NOW, 'L3R');
+    expect(live).toHaveLength(1);
+    expect(live[0]?.openAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+    expect(live[0]?.residentOpenAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+  });
+});
+
+describe('data minimisation', () => {
+  it('hands the model the cycle identity and the page text, and nothing else', async () => {
+    const p = ports(html(`${PAGE} ${ZONE_SENTENCE}`));
+    const target = windowReadTarget(
+      registrationWindowFixture({ cycleLabel: 'Fall 2026', residentOpenAt: new Date() }),
+    );
+
+    await createRegistrationReader(p)(target, NOW);
+
+    const [cycle, pageText] = p.extract.mock.calls[0] ?? [];
+    if (!cycle || pageText === undefined) throw new Error('expected one extract call');
+    expect(Object.keys(cycle).sort()).toEqual(['cycleLabel', 'municipality', 'programDomain']);
+    expect(Object.keys(JSON.parse(extractionInput(cycle, pageText))).sort()).toEqual([
+      'cycle_label',
+      'municipality',
+      'page_text',
+      'program_domain',
+    ]);
+  });
+});
+
+describe('a failed model read', () => {
+  const target = windowReadTarget(registrationWindowFixture());
+
+  it('is named extract_failed when the structured-output seam refuses the reply', async () => {
+    const reader = createRegistrationReader(
+      ports(html(PAGE), async () => {
+        throw new StructuredOutputError(
+          'registration_read',
+          'truncated',
+          'max_tokens',
+          null,
+          'truncated',
+        );
+      }),
+    );
+    expect(await reader(target, NOW)).toMatchObject({
+      status: 'unreadable',
+      reason: 'extract_failed',
+    });
+  });
+
+  it('is NOT masked when the failure is a deploy bug (control)', async () => {
+    const reader = createRegistrationReader(
+      ports(html(PAGE), async () => {
+        throw new Error('skill missing');
+      }),
+    );
+    await expect(reader(target, NOW)).rejects.toThrow('skill missing');
+  });
+});
+
+describe('logging', () => {
+  it('logs each read once, with ids and outcome names only', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const NEEDLE = 'Lane four is reserved for the Otter group.';
+    const p = ports(html(`${PAGE} ${ZONE_SENTENCE} ${NEEDLE}`));
+    const reader = createRegistrationReader(p);
+    const target = {
+      ...windowReadTarget(registrationWindowFixture({ cycleLabel: 'Heron cycle label' })),
+      sourceUrl: 'https://example.org/x?term=winter',
+    };
+
+    await reader(target, NOW);
+
+    expect(p.extract.mock.calls[0]?.[1]).toContain(NEEDLE);
+    expect(info).toHaveBeenCalledTimes(1);
+    const [payload] = info.mock.calls[0] ?? [];
+    expect(Object.keys(payload).sort()).toEqual(
+      ['host', 'municipality', 'outcome', 'programDomain', 'reader', 'reason'].sort(),
+    );
+    expect(payload).toMatchObject({ host: 'example.org', outcome: 'verified', reason: null });
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).not.toContain(NEEDLE);
+    expect(logged).not.toContain('Heron cycle label');
+    expect(logged).not.toContain('/x?');
+
+    await reader(target, NOW);
+    expect(info).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the cache lives inside one reader', () => {
+  it('fetches a shared URL once per reader, extracts per cycle, and a new reader fetches again', async () => {
+    const p = ports(html(`${PAGE} ${ZONE_SENTENCE}`));
+    const target = windowReadTarget(registrationWindowFixture({ cycleLabel: 'Fall 2026' }));
+    const reader = createRegistrationReader(p);
+
+    await reader(target, NOW);
+    await reader(target, NOW);
+    await reader({ ...target, cycleLabel: 'Winter 2027' }, NOW);
+    expect([p.fetchBody.mock.calls.length, p.extract.mock.calls.length]).toEqual([1, 2]);
+
+    await createRegistrationReader(p)(target, NOW);
+    expect(p.fetchBody).toHaveBeenCalledTimes(2);
+  });
+});
