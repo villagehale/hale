@@ -88,7 +88,10 @@
     "prompts:push": "node scripts/sync-prompts.mjs push",
     "prompts:pull": "node scripts/sync-prompts.mjs pull",
     "prompts:check": "node scripts/sync-prompts.mjs check",
-    "eval:opt-out-read": "node evals/run-opt-out-read-eval.mjs --cached-only"
+    "eval:opt-out-read": "node evals/run-opt-out-read-eval.mjs --cached-only",
+    "eval:claim-read": "node evals/run-claim-read-eval.mjs --cached-only",
+    "eval:claim-read:broken": "node evals/run-claim-read-eval.mjs --broken",
+    "eval:claim-read:dry": "node evals/run-claim-read-eval.mjs --dry"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",
