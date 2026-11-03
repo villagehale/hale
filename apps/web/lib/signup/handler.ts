@@ -52,7 +52,7 @@ export function authorizedSignupHandler(
       if (!result.claimed) return { claimed: false };
       return {
         claimed: true,
-        outcome: result.outcome,
+        outcome: result.unsent ?? result.outcome,
         reply: result.deliverOnThread ? result.reply : null,
         templateKey: AUTHORIZED_SIGNUP_TEMPLATE_KEY,
       };

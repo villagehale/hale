@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "unsub pls",
+    "language": "en",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "Got it, Hale won't text you again. If you want to hear from us later, just text us back in your own words and we'll be back."
+  },
+  "latencyMs": 1161
+}

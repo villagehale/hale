@@ -27,6 +27,16 @@ describe('identityChallengeReply · the turn reader decides, in any language (#8
     });
   });
 
+  it('takes the intent-only reading the router shares, with no reader text in it', async () => {
+    const reply = await identityChallengeReply('who is this', scriptedSaidLine(), {
+      intent: 'identity',
+    });
+    expect(reply.challenge).toBe(true);
+    expect(
+      await identityChallengeReply('who is this', scriptedSaidLine(), { intent: 'none' }),
+    ).toEqual({ challenge: false });
+  });
+
   it('no reading (reader down) is not a challenge: nothing is guessed from words', async () => {
     expect(await identityChallengeReply('who are you?', scriptedSaidLine(), null)).toEqual({
       challenge: false,

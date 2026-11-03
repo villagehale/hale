@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "孩子从楼梯上摔下来了，叫不醒",
+    "language": "zh",
+    "situation": "unresponsive",
+    "who": "child",
+    "confirmation": ""
+  },
+  "latencyMs": 1767
+}

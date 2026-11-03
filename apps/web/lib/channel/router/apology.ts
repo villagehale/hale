@@ -2,7 +2,10 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { classifyTurnFailure } from './smoke-alarm';
 
@@ -154,10 +157,11 @@ export type ApologyOutcome =
       status: 'unavailable';
       reason: ApologyFallback;
       /**
-       * Set when the call itself was a billing or auth failure. The provider's
-       * message stays off this object: a request echo can carry a parent's words.
+       * Set when the call itself was an incident-class failure (INCIDENT_FAILURES).
+       * The provider's message stays off this object: a request echo can carry a
+       * parent's words.
        */
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     };
 
 export interface TurnApology {

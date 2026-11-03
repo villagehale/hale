@@ -52,7 +52,11 @@ import {
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import {
+  type SaidLineWriter,
+  crisisReplyLanguage,
+  deliverCrisisReply,
+} from '~/lib/channel/voice/said-line';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { recordCommitment } from '~/lib/commitments/ledger';
@@ -81,7 +85,12 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { deriveDateOfBirth, parseIntakePostal, summarizeChildren } from './derive';
+import {
+  crisisRegionForPlace,
+  deriveDateOfBirth,
+  parseIntakePostal,
+  summarizeChildren,
+} from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import { firstTouchLocationCardEnabled } from './first-touch-flag';
 import { type FirstTouchPlace, placeFromVenue } from './first-touch-place';
@@ -121,7 +130,7 @@ import {
   type OptOutReading,
   isCrisisReading,
   isIdentityReading,
-  readTextOnce,
+  readIntentOnce,
   readTurnOnce,
   sharedOptOutReader,
 } from './opt-out-reader';
@@ -472,6 +481,7 @@ export async function handleInboundSms(
     const reading = await readTurnOnce(reader, inbound, {
       text: inbound.body,
       language: session?.ladderLanguage ?? null,
+      region: crisisRegionForSession(session),
     });
     await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
@@ -984,18 +994,21 @@ async function offScriptReply(
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
+    /** Canada or the US when a postal token already says so. Never guessed. */
+    region?: 'CA' | 'US' | null;
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
     language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
+  turn: Inbound,
 ): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
   const identity = await identityChallengeReply(
     args.parentWords,
     deps.saidLine,
-    await readTextOnce(deps.optOutReader, {
+    await readIntentOnce(deps.optOutReader, {
       text: args.parentWords,
       language: null,
     }),
@@ -1004,21 +1017,30 @@ async function offScriptReply(
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
-  const { numberOrigin: _origin, ...composeArgs } = args;
+  const { numberOrigin: _origin, region: _region, ...composeArgs } = args;
   const outcome = await deps.answerComposer.compose(composeArgs);
   if (outcome.status === 'mental_crisis') {
-    // The answer model saw a crisis the reader did not. Still the model's words.
-    const written = await deps.saidLine?.write({
-      purpose: 'crisis_mental',
-      language: null,
-      parentWords: args.parentWords,
-      facts: { crisisLine: '988 (call or text, Canada and US)', emergency: '911' },
+    // The answer model saw a crisis the reader did not. The same facts-only writer and
+    // check as every crisis reply; a miss has already paged #ops. The turn's one read
+    // still named the text's language.
+    const language = args.language ?? null;
+    const region = args.region ?? null;
+    const reading = await readTurnOnce(deps.optOutReader, turn, {
+      text: args.parentWords,
+      language,
+      region,
     });
-    if (!written) {
-      console.error('intake crisis: answer model flagged a crisis, no reply written - page #ops');
-      return HELD_SILENT;
-    }
-    return { body: written, source: 'safety' };
+    const crisis = await deliverCrisisReply({
+      kind: 'mental',
+      language: crisisReplyLanguage(language, reading),
+      region,
+      // The answer model flagged this, not the reader: no situation or who was read.
+      situation: null,
+      who: null,
+      where: 'intake answer crisis',
+      writer: deps.saidLine,
+    });
+    return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
     // #868: the 811 line is the model's words; the code checks both numbers are in it.
@@ -1253,7 +1275,7 @@ async function friendSpeak(
   const identityAsked =
     input.identityAsked ??
     isIdentityReading(
-      await readTextOnce(deps.optOutReader, {
+      await readIntentOnce(deps.optOutReader, {
         text: input.parentWords,
         language: input.language,
       }),
@@ -1322,32 +1344,49 @@ function friendFields(
 }
 
 /**
- * #868 · a crisis, routed and answered by the model. The turn's one reader call
- * (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an emergency or a
- * mental-health crisis in any wording and writes the reply that points to
- * emergency or crisis help. Null: not a crisis. `body` null: a crisis whose reply
- * came back empty — the turn still ends there (no onboarding ask to a person in
- * crisis) and the miss is logged loudly for #ops.
+ * #868 · a crisis, routed by the model and answered by the model. The turn's one
+ * reader call (opt-out-reader.ts, shared by {@link readTurnOnce}) decides an
+ * emergency or a mental-health crisis in any wording; it only classifies.
+ * {@link deliverCrisisReply} has the said-line writer answer from facts alone and
+ * sends only a reply that passes the one crisis check. If none does, nothing is
+ * sent and #ops is paged. There is no fixed line.
+ * Null: not a crisis. `body` null: a crisis with nothing sendable — the turn
+ * still ends there (no onboarding ask to a person in crisis).
  */
+function crisisRegionForSession(session: IntakeSession | null): 'CA' | 'US' | null {
+  if (!session) return null;
+  return crisisRegionForPlace([
+    session.collected.postalCode,
+    session.firstTouch?.place?.postalCode,
+    session.firstTouch?.place?.areaCoarse,
+  ]);
+}
+
 async function crisisReply(
   inbound: Inbound,
   language: ReplyLanguage | null,
+  region: 'CA' | 'US' | null,
   deps: IntakeDeps,
 ): Promise<{ body: string | null } | null> {
   const reading = await readTurnOnce(deps.optOutReader, inbound, {
     text: inbound.body,
     language,
+    region,
   });
   if (!isCrisisReading(reading)) return null;
-  const body = reading.confirmation.trim();
-  if (body.length === 0) {
-    console.error(
-      { intent: reading.intent },
-      'intake crisis: the model routed a crisis but wrote no reply - nothing sent, page #ops',
-    );
-    return { body: null };
-  }
-  return { body };
+  const kind = reading.intent === 'crisis_emergency' ? 'emergency' : 'mental';
+  // Facts only: the parent's words and the reader's own text never reach the reply.
+  const crisis = await deliverCrisisReply({
+    kind,
+    language: crisisReplyLanguage(language, reading),
+    region,
+    // Absent on a reading built without one (a test double): no situation was read.
+    situation: reading.situation ?? null,
+    who: reading.who ?? null,
+    where: 'intake crisis',
+    writer: deps.saidLine,
+  });
+  return { body: crisis.status === 'sent' ? crisis.body : null };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1628,7 +1667,7 @@ async function friendOnboardingTurn(
   let language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (safety) {
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
@@ -2103,7 +2142,7 @@ async function friendColdTurn(
   }
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
@@ -3125,7 +3164,7 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  const safety = await crisisReply(inbound, language, deps);
+  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
@@ -3169,7 +3208,7 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  const crisis = await crisisReply(inbound, language, deps);
+  const crisis = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
   if (crisis) {
     if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -3190,10 +3229,12 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
+        region: crisisRegionForSession(session),
         numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },
       deps,
+      inbound,
     );
     if (offScript) {
       if (offScript.body) {
@@ -3548,8 +3589,10 @@ async function restartFromReader(
   if (args.providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
   const body = args.confirmation.trim();
   if (body.length === 0) {
+    // Empty, or withheld for a number or link (the reader logged which): re-enrolled,
+    // and the outcome says nothing went out (rule #11), as the stop path does.
     console.error('opt-out reader: start read with no confirmation - re-enrolled, nothing sent');
-    return { status: 'restarted', ack: 'sent' };
+    return { status: 'restarted', ack: 'voice_unsent' };
   }
   let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
   try {
