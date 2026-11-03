@@ -2,18 +2,20 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import { BrowserUseEngineThrew } from './browser-use/engine';
+import { BrowserUseEngineThrew, type BrowserUseSignupResult } from './browser-use/engine';
 import { storeProviderSession } from './browser-use/vault';
-import { SHAREABLE_SIGNUP_FIELDS } from './consent';
+import { SHAREABLE_SIGNUP_FIELDS, signupProviderHost } from './consent';
 import { authorizedSignupHandler } from './handler';
 import type { LinkWalletApi } from './link/client';
+import type { SignupOutcomeFacts } from './outcome-reply';
+import { signupInfoPack } from './pack';
 import {
   BROWSER_USE_REGISTRATION_RESERVE_USD,
   BROWSER_USE_RUN_ALLOWANCE_USD,
   runAuthorizedSignup,
 } from './run';
-import { browserUseRegistrationSpendUsd, recordSignupOffer } from './store';
-import { echoOutcomeWriter, stubConsentReader } from './test-models';
+import { browserUseRegistrationSpendUsd, loadSignupIdentity, recordSignupOffer } from './store';
+import { echoOutcomeWriter, renderEcho, stubConsentReader } from './test-models';
 import type { PageSnapshot, SignupBrowser, SignupPage } from './types';
 
 // The consent read and the reply are model calls. Tests stand in for both (no live calls).
@@ -1148,11 +1150,14 @@ describe('authorized signup runner', () => {
       vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     });
 
-    async function withProviderSession(seeded: { familyId: string; parentUserId: string }) {
+    async function withProviderSession(
+      seeded: { familyId: string; parentUserId: string },
+      providerHost = 'anc.ca.apm.activecommunities.com',
+    ) {
       const result = await storeProviderSession(db.database, {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
-        providerHost: 'anc.ca.apm.activecommunities.com',
+        providerHost,
         storageState: {
           cookies: [{ name: 'JSESSIONID', value: 'c', domain: '.activecommunities.com' }],
         },
@@ -1184,9 +1189,9 @@ describe('authorized signup runner', () => {
       expect(result).toMatchObject({
         claimed: true,
         outcome: 'reached_checkout',
-        reply: null,
-        deliverOnThread: false,
+        deliverOnThread: true,
       });
+      expect(result.reply).toContain('outcome=reached_checkout');
       expect(result.browserUse?.liveViewUrl).toBe(CHECKOUT.liveViewUrl);
       expect(calls.opened).toBe(0);
       const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
@@ -1596,6 +1601,506 @@ describe('authorized signup runner', () => {
       });
       expect(run).not.toHaveBeenCalled();
       expect(calls.opened).toBe(1);
+    });
+
+    describe('a parent who says yes always hears what happened (VIL-558)', () => {
+      const REC = 'https://register.example-rec.test/activity/42';
+      const REC_HOST = signupProviderHost(new URL(REC).hostname);
+      const LIVE = CHECKOUT.liveViewUrl;
+
+      async function inboundYes(
+        seeded: { familyId: string; parentUserId: string },
+        inGroup: boolean | null,
+        channel: 'imessage' | 'sms' = 'imessage',
+      ): Promise<string> {
+        const [row] = await db.database
+          .insert(schema.channelMessages)
+          .values({
+            familyId: seeded.familyId,
+            parentUserId: seeded.parentUserId,
+            channel,
+            direction: 'in',
+            category: 'reply',
+            status: 'delivered',
+            body: 'Yes, sign us up',
+            inGroup,
+            sentAt: NOW,
+          })
+          .returning({ id: schema.channelMessages.id });
+        if (!row) throw new Error('inboundYes: insert returned no row');
+        return row.id;
+      }
+
+      async function seededPack(seeded: { familyId: string; parentUserId: string }) {
+        const [child] = await db.database
+          .select({ id: schema.children.id })
+          .from(schema.children)
+          .where(eq(schema.children.familyId, seeded.familyId));
+        if (!child) throw new Error('seededPack: no child');
+        const identity = await loadSignupIdentity(db.database, {
+          familyId: seeded.familyId,
+          childId: child.id,
+          parentUserId: seeded.parentUserId,
+          now: NOW,
+        });
+        if (!identity) throw new Error('seededPack: no identity');
+        return signupInfoPack(identity);
+      }
+
+      async function reportAudit(familyId: string): Promise<Record<string, unknown>> {
+        const rows = await db.database
+          .select({ after: schema.auditLog.after })
+          .from(schema.auditLog)
+          .where(eq(schema.auditLog.familyId, familyId));
+        const report = rows
+          .map((row) => row.after as Record<string, unknown>)
+          .find((after) => after.step === 'report');
+        if (!report) throw new Error('reportAudit: no report row');
+        return report;
+      }
+
+      function engineSays(overrides: Partial<BrowserUseSignupResult>) {
+        return vi.fn(async (): Promise<BrowserUseSignupResult> => ({ ...CHECKOUT, ...overrides }));
+      }
+
+      it('speaks needs_login on a 1:1 yes: the link, the prepared details, no run', async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        const messageId = await inboundYes(seeded, false);
+        const run = vi.fn(async () => CHECKOUT);
+        const outcomeWriter = echoOutcomeWriter();
+        const result = await runAuthorizedSignup(db.database, yes(seeded, messageId), {
+          browserUseSignup: { run },
+          outcomeWriter,
+        });
+        const pack = await seededPack(seeded);
+        expect(pack).toContainEqual({ slot: 'child_first_name', value: 'Ada' });
+        expect(outcomeWriter.facts).toHaveLength(1);
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'needs_login',
+          reason: 'no_provider_session',
+          confirmed: false,
+          link: REC,
+          linkIs: 'registration_page',
+          audience: 'direct',
+          holdMinutes: null,
+          sessionLabel: 'Tue 4:30',
+          pack,
+        });
+        expect(result).toMatchObject({
+          claimed: true,
+          outcome: 'needs_login',
+          deliverOnThread: true,
+        });
+        expect(result.reply).toBe(renderEcho(outcomeWriter.facts[0] as SignupOutcomeFacts));
+        expect(result.browserUse?.detail).toBe('no_provider_session');
+        expect(run).not.toHaveBeenCalled();
+      });
+
+      it('gives a yes typed in the co-parent group only the public link, never the details', async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        const groupId = await inboundYes(seeded, true);
+        const outcomeWriter = echoOutcomeWriter();
+        const result = await runAuthorizedSignup(db.database, yes(seeded, groupId), {
+          browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+          outcomeWriter,
+        });
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'needs_login',
+          link: REC,
+          linkIs: 'registration_page',
+          audience: 'group',
+        });
+        expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+        expect(JSON.stringify(outcomeWriter.facts[0])).not.toContain('Ada');
+        expect(result.deliverOnThread).toBe(true);
+      });
+
+      it('treats a thread it cannot identify as the group: unknown id, or no group bit on iMessage', async () => {
+        for (const messageId of ['msg-not-a-row', null] as const) {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          const id = messageId ?? (await inboundYes(seeded, null, 'imessage'));
+          const outcomeWriter = echoOutcomeWriter();
+          await runAuthorizedSignup(db.database, yes(seeded, id), {
+            browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+            outcomeWriter,
+          });
+          expect(outcomeWriter.facts[0]?.outcome).toBe('needs_login');
+          expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+        }
+        // Positive control: SMS has no group, so a null bit there is a 1:1.
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        const smsId = await inboundYes(seeded, null, 'sms');
+        const outcomeWriter = echoOutcomeWriter();
+        await runAuthorizedSignup(db.database, yes(seeded, smsId), {
+          browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+          outcomeWriter,
+        });
+        expect(outcomeWriter.facts[0]?.pack).toContainEqual({
+          slot: 'child_first_name',
+          value: 'Ada',
+        });
+      });
+
+      it('never hands the live browser to the group; a 1:1 yes gets it with the minutes left', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        try {
+          const t = new Date('2026-10-05T12:00:00.000Z');
+          vi.setSystemTime(t);
+          const holdExpiresAt = new Date(t.getTime() + 10 * 60_000);
+
+          const inGroup = await familyWithOffer({ ageMonths: 36, url: REC });
+          await withProviderSession(inGroup, REC_HOST);
+          const groupWriter = echoOutcomeWriter();
+          const groupResult = await runAuthorizedSignup(
+            db.database,
+            yes(inGroup, await inboundYes(inGroup, true)),
+            {
+              browserUseSignup: { run: engineSays({ holdExpiresAt }) },
+              outcomeWriter: groupWriter,
+            },
+          );
+          expect(groupWriter.facts[0]).toMatchObject({
+            outcome: 'reached_checkout',
+            link: REC,
+            linkIs: 'registration_page',
+            holdMinutes: null,
+          });
+          expect(groupWriter.facts[0]?.pack ?? []).toEqual([]);
+          expect(groupResult.reply).not.toContain('fixture-live-view-token');
+
+          const direct = await familyWithOffer({ ageMonths: 36, url: REC });
+          await withProviderSession(direct, REC_HOST);
+          const directWriter = echoOutcomeWriter();
+          const directResult = await runAuthorizedSignup(
+            db.database,
+            yes(direct, await inboundYes(direct, false)),
+            {
+              browserUseSignup: { run: engineSays({ holdExpiresAt }) },
+              outcomeWriter: directWriter,
+            },
+          );
+          expect(directWriter.facts[0]).toMatchObject({
+            outcome: 'reached_checkout',
+            reason: null,
+            link: LIVE,
+            linkIs: 'live_browser',
+            holdMinutes: 10,
+          });
+          expect(directWriter.facts[0]?.pack ?? []).toEqual([]);
+          expect(directResult).toMatchObject({ deliverOnThread: true });
+          expect(directResult.reply).toContain('fixture-live-view-token');
+          expect(await audits(direct.familyId)).not.toContain('fixture-live-view-token');
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('sends private facts after a 1:1 yes on that thread, never through the family group', async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        await db.database
+          .update(schema.families)
+          .set({ linqGroupChatId: 'group-chat-vil558' })
+          .where(eq(schema.families.id, seeded.familyId));
+        await withProviderSession(seeded, REC_HOST);
+        const deliverGroup = vi.fn(async () => 'sent' as const);
+        const result = await runAuthorizedSignup(
+          db.database,
+          yes(seeded, await inboundYes(seeded, false)),
+          { browserUseSignup: { run: engineSays({}) }, deliverGroup },
+        );
+        expect(deliverGroup).not.toHaveBeenCalled();
+        expect(result.deliverOnThread).toBe(true);
+        expect(result.reply).toContain('fixture-live-view-token');
+
+        // Positive control: an outcome with nothing private keeps the family's group door.
+        const other = await familyWithOffer({ ageMonths: 36, url: REC });
+        await db.database
+          .update(schema.families)
+          .set({ linqGroupChatId: 'group-chat-vil558-b' })
+          .where(eq(schema.families.id, other.familyId));
+        await withProviderSession(other, REC_HOST);
+        const groupSpy = vi.fn(async () => 'sent' as const);
+        const outcomeWriter = echoOutcomeWriter();
+        const soldOut = await runAuthorizedSignup(
+          db.database,
+          yes(other, await inboundYes(other, false)),
+          {
+            browserUseSignup: {
+              run: engineSays({ outcome: 'sold_out', liveViewUrl: null }),
+            },
+            deliverGroup: groupSpy,
+            outcomeWriter,
+          },
+        );
+        expect(groupSpy).toHaveBeenCalledTimes(1);
+        expect(soldOut.outcome).toBe('sold_out');
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'sold_out',
+          reason: null,
+          audience: 'group',
+        });
+        expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+      });
+
+      it('speaks every absent-engine outcome with its reason and the details on a 1:1 yes', async () => {
+        const cases = [
+          { detail: 'not_configured', deps: { browserUseSignup: null }, session: true },
+          {
+            detail: 'engine_threw',
+            deps: {
+              browserUseSignup: {
+                run: vi.fn(async () => {
+                  throw new Error('runner failure');
+                }),
+              },
+            },
+            session: true,
+          },
+        ] as const;
+        for (const item of cases) {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          if (item.session) await withProviderSession(seeded, REC_HOST);
+          const outcomeWriter = echoOutcomeWriter();
+          const result = await runAuthorizedSignup(
+            db.database,
+            yes(seeded, await inboundYes(seeded, false)),
+            { ...item.deps, outcomeWriter },
+          );
+          expect(outcomeWriter.facts[0]).toMatchObject({
+            outcome: 'error',
+            reason: item.detail,
+            link: REC,
+            linkIs: 'registration_page',
+          });
+          expect(outcomeWriter.facts[0]?.pack).toContainEqual({
+            slot: 'child_first_name',
+            value: 'Ada',
+          });
+          expect(result.deliverOnThread).toBe(true);
+        }
+      });
+
+      it('speaks a rush with the open time and the details to have ready', async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        await withProviderSession(seeded, REC_HOST);
+        const outcomeWriter = echoOutcomeWriter();
+        const result = await runAuthorizedSignup(
+          db.database,
+          yes(seeded, await inboundYes(seeded, false)),
+          {
+            browserUseSignup: {
+              run: engineSays({
+                outcome: 'rush',
+                detail: 'waiting_room',
+                liveViewUrl: null,
+                opensAt: '7:00 AM',
+              }),
+            },
+            outcomeWriter,
+          },
+        );
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'rush',
+          reason: 'waiting_room',
+          link: REC,
+          linkIs: 'registration_page',
+          rush: { signal: 'waiting_room', opensAt: '7:00 AM' },
+        });
+        expect(outcomeWriter.facts[0]?.pack).toContainEqual({
+          slot: 'child_first_name',
+          value: 'Ada',
+        });
+        expect(result.deliverOnThread).toBe(true);
+      });
+
+      it('claims a sign-up only with a confirmation number; without one it is unconfirmed', async () => {
+        vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
+        const wallet = {
+          kind: 'stripe_link_agent_wallet' as const,
+          api: linkApiStub(),
+          approvalWindowMinutes: 5,
+        };
+        const paid = async (confirmationNumber: string | null) => {
+          const seeded = await familyWithOffer({
+            ageMonths: 36,
+            url: REC,
+            approvedPriceCents: 9800,
+          });
+          await withProviderSession(seeded, REC_HOST);
+          const outcomeWriter = echoOutcomeWriter();
+          await runAuthorizedSignup(db.database, yes(seeded, await inboundYes(seeded, false)), {
+            browserUseSignup: {
+              run: engineSays({
+                outcome: 'completed',
+                liveViewUrl: null,
+                confirmationNumber,
+                amountChargedCents: 9800,
+              }),
+            },
+            paymentWallet: { forParent: async () => ({ wallet, skipped: null }) },
+            checkSpendingCap: async () => ({ ok: true, reason: 'within cap' }),
+            outcomeWriter,
+          });
+          return outcomeWriter.facts[0];
+        };
+        const confirmed = await paid('R-55120');
+        expect(confirmed).toMatchObject({
+          outcome: 'completed',
+          confirmed: true,
+          link: '',
+          linkIs: null,
+        });
+        expect(JSON.stringify(confirmed)).not.toContain('R-55120');
+        const unconfirmed = await paid(null);
+        expect(unconfirmed).toMatchObject({
+          outcome: 'needs_human',
+          reason: 'unconfirmed',
+          confirmed: false,
+          link: REC,
+        });
+        expect(unconfirmed?.pack ?? []).toEqual([]);
+      });
+
+      it('hands a captcha to the parent on the live browser, without the details', async () => {
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        await withProviderSession(seeded, REC_HOST);
+        const outcomeWriter = echoOutcomeWriter();
+        await runAuthorizedSignup(db.database, yes(seeded, await inboundYes(seeded, false)), {
+          browserUseSignup: {
+            run: engineSays({ outcome: 'needs_human', detail: 'captcha' }),
+          },
+          outcomeWriter,
+        });
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'needs_human',
+          reason: 'captcha',
+          link: LIVE,
+          linkIs: 'live_browser',
+        });
+        expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+      });
+
+      it('names an unwritten reply and sends nothing; logs carry the outcome name only', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          const result = await runAuthorizedSignup(
+            db.database,
+            yes(seeded, await inboundYes(seeded, false)),
+            {
+              browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+              outcomeWriter: { write: async () => null },
+            },
+          );
+          expect(result).toMatchObject({
+            claimed: true,
+            outcome: 'needs_login',
+            reply: null,
+            deliverOnThread: false,
+            unsent: 'reply_unwritten',
+          });
+          const named = warn.mock.calls.filter(
+            (call) => call[1] === 'authorized signup: outcome reply unwritten',
+          );
+          expect(named).toEqual([
+            [{ outcome: 'needs_login' }, 'authorized signup: outcome reply unwritten'],
+          ]);
+          const logged = JSON.stringify(named);
+          expect(logged).not.toContain(seeded.familyId);
+          expect(logged).not.toContain('example-rec');
+          expect(logged).not.toContain('Ada');
+          expect(await reportAudit(seeded.familyId)).toMatchObject({
+            outcome: 'needs_login',
+            replied: false,
+          });
+
+          // Positive control: a written reply is not named unsent, and the audit says replied.
+          const spoken = await familyWithOffer({ ageMonths: 36, url: REC });
+          const ok = await runAuthorizedSignup(
+            db.database,
+            yes(spoken, await inboundYes(spoken, false)),
+            {
+              browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+              outcomeWriter: echoOutcomeWriter(),
+            },
+          );
+          expect(ok.unsent).toBeUndefined();
+          expect(ok.deliverOnThread).toBe(true);
+          expect(await reportAudit(spoken.familyId)).toMatchObject({ replied: true });
+        } finally {
+          warn.mockRestore();
+        }
+      });
+
+      it('gives the router a reply for a claimed yes, or names the turn unwritten', async () => {
+        vi.stubEnv('BROWSER_USE_API_KEY', '');
+        const turn = (seeded: { familyId: string; parentUserId: string }, messageId: string) => ({
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          conversationId: 'conv-vil558',
+          body: 'Yes, sign us up',
+          now: NOW,
+          send: async () => {
+            throw new Error('handler must not send a 1:1 itself');
+          },
+          resolved: null,
+          openQuestions: async () => [],
+          inboundChannelMessageId: messageId,
+        });
+        const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+        await withProviderSession(seeded, REC_HOST);
+        const outcomeWriter = echoOutcomeWriter();
+        const verdict = await authorizedSignupHandler({ outcomeWriter }).handle(
+          db.database,
+          turn(seeded, await inboundYes(seeded, false)),
+        );
+        expect(verdict.claimed).toBe(true);
+        if (!verdict.claimed) return;
+        expect(outcomeWriter.facts[0]).toMatchObject({
+          outcome: 'error',
+          reason: 'not_configured',
+        });
+        expect(verdict.outcome).toBe('error');
+        expect(verdict.reply).toBe(renderEcho(outcomeWriter.facts[0] as SignupOutcomeFacts));
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          const silent = await familyWithOffer({ ageMonths: 36, url: REC });
+          await withProviderSession(silent, REC_HOST);
+          const unwritten = await authorizedSignupHandler({
+            outcomeWriter: { write: async () => null },
+          }).handle(db.database, turn(silent, await inboundYes(silent, false)));
+          expect(unwritten).toMatchObject({
+            claimed: true,
+            outcome: 'reply_unwritten',
+            reply: null,
+          });
+        } finally {
+          warn.mockRestore();
+        }
+      });
+
+      it("writes in the parent's language: their texted locale, else the family's", async () => {
+        const languageFor = async (locale: string | null, texted: boolean) => {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          if (locale !== null) {
+            await db.database
+              .update(schema.users)
+              .set({ locale })
+              .where(eq(schema.users.id, seeded.parentUserId));
+          }
+          const messageId = texted ? await inboundYes(seeded, false) : 'msg-untexted';
+          const outcomeWriter = echoOutcomeWriter();
+          await runAuthorizedSignup(db.database, yes(seeded, messageId), {
+            browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+            outcomeWriter,
+          });
+          return outcomeWriter.facts[0]?.language;
+        };
+        expect(await languageFor('fr', true)).toBe('fr');
+        expect(await languageFor('en-CA', true)).toBe('en-ca');
+        expect(await languageFor('fr', false)).toBe('en');
+      });
     });
   });
 });

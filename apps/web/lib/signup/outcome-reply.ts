@@ -21,8 +21,20 @@ export interface SignupOutcomeFacts {
   confirmed: boolean;
   sessionLabel: string | null;
   link: string;
+  /**
+   * What `link` opens: the provider's own registration page, or a browser Hale left
+   * open on the provider's site holding the page or cart. Null when `link` is ''.
+   */
+  linkIs: 'registration_page' | 'live_browser' | null;
+  /** Minutes the provider said it holds the cart, for `live_browser` only. 0 = it may have run out. */
+  holdMinutes: number | null;
+  /** Who reads the text: the one parent in a 1:1 thread, or the co-parent group. */
+  audience: 'direct' | 'group';
   prefilled: readonly string[];
-  /** Assisted handoff only: the parent's prepared details to have ready (slot and value). */
+  /**
+   * A hand-back where the parent fills the registration form: the parent's prepared
+   * details to have ready (slot and value). Only after a yes in a 1:1 thread.
+   */
   pack?: readonly { slot: string; value: string }[];
   rush: { signal: string; opensAt: string | null; prefillSlots: readonly string[] } | null;
   /** Clarifying question from the consent read, when the parent was unclear. */
@@ -34,8 +46,10 @@ export interface SignupOutcomeWriter {
   write(facts: SignupOutcomeFacts): Promise<string | null>;
 }
 
-const MAX_CHARS = 480;
 export const SIGNUP_OUTCOME_TOOL = 'signup_outcome_reply';
+export const SIGNUP_OUTCOME_TOOL_DESCRIPTION =
+  'Write the one text the parent sees about this sign-up.';
+export const SIGNUP_OUTCOME_MAX_TOKENS = 300;
 export const signupOutcomeSchema = z.object({ text: z.string() });
 export const SIGNUP_OUTCOME_TOOL_SCHEMA = {
   type: 'object',
@@ -50,7 +64,6 @@ export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts)
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (tidy.length > MAX_CHARS) out.push('too long');
   const urls = tidy.match(URL_PATTERN) ?? [];
   if (facts.link) {
     if (!tidy.includes(facts.link)) out.push('missing the hand-off link');
@@ -61,6 +74,14 @@ export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts)
     out.push('contains a link');
   }
   return out;
+}
+
+/** The user turn the writer sends: the facts, and why the last draft could not leave. */
+export function signupOutcomeUserMessage(
+  facts: SignupOutcomeFacts,
+  violation: string | null,
+): string {
+  return JSON.stringify({ facts, violation });
 }
 
 function unwritten(reason: string, detail?: string): null {
@@ -93,12 +114,12 @@ export function createSignupOutcomeWriter(
             client: resolved,
             lane: pickLane(skill.meta.task),
             system: skill.instructions,
-            userMessage: JSON.stringify({ facts, violation: note }),
+            userMessage: signupOutcomeUserMessage(facts, note),
             toolName: SIGNUP_OUTCOME_TOOL,
-            toolDescription: 'Write the one text the parent sees about this sign-up.',
+            toolDescription: SIGNUP_OUTCOME_TOOL_DESCRIPTION,
             inputJsonSchema: SIGNUP_OUTCOME_TOOL_SCHEMA,
             schema: signupOutcomeSchema,
-            maxTokens: 300,
+            maxTokens: SIGNUP_OUTCOME_MAX_TOKENS,
           });
           const violations = signupOutcomeViolations(value.text, facts);
           if (violations.length === 0) return value.text.replace(/\s+/g, ' ').trim();
