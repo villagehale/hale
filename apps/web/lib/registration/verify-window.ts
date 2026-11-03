@@ -205,43 +205,56 @@ const YEAR_RUN = /^(19|20)\d{2}$/;
  * Only the digits are checked, so a French, Spanish or Japanese quote verifies the same
  * way an English one does, with no month or weekday tables. Every ASCII digit run in the
  * (normalised) quote must be consumed exactly once by one of: the day (required), the
- * month number, a four-digit year (which must be this date's year), the hour (required
- * when the date has a time; 13-23 may be printed on a 12-hour clock), and the minute —
- * which must be the run straight after the hour, and is absent when it is zero and the
- * page prints none (`9 a.m.`, `9 h`). A leftover run fails the date: a time on a
- * date-only reading, a second date in the quote.
+ * month number — which must be printed beside the day run, with at most one non-space
+ * character between them (`11/06`, `6月11`), so that the hour in `June 11 at 6 a.m.`
+ * cannot pass as the month of a date-only reading — a four-digit year (which must be
+ * this date's year), the hour (required when the date has a time; 13-23 may be printed
+ * on a 12-hour clock), and the minute — which must be the run straight after the hour,
+ * and is absent when it is zero and the page prints none (`9 a.m.`, `9 h`). A leftover
+ * run fails the date: a time on a date-only reading, a second date in the quote.
  *
  * Known residuals, all fail-closed or caught by the eval's exact equality: a spelled-out
  * month and AM/PM are not checked; a day/hour swap at minute zero with both numbers
- * under 24 is not caught; `noon`, spelled-out numbers and non-ASCII digit systems fail.
+ * under 24 is not caught; a day/month swap in an all-numeric date with both numbers
+ * 12 or under (`11/08/2026`) is not caught; `noon`, spelled-out numbers and non-ASCII
+ * digit systems fail.
  */
 function quoteStatesDate(published: PublishedDate): boolean {
-  const runs = (normalizeQuote(published.quote).match(/\d+/g) ?? []).map((text) => ({
-    text,
-    value: Number(text),
+  const quote = normalizeQuote(published.quote);
+  const runs = Array.from(quote.matchAll(/\d+/g), (match) => ({
+    text: match[0],
+    value: Number(match[0]),
+    start: match.index,
+    end: match.index + match[0].length,
   }));
+  type Run = (typeof runs)[number];
+  const besideEachOther = (a: Run, b: Run): boolean => {
+    const [first, second] = a.start < b.start ? [a, b] : [b, a];
+    return quote.slice(first.end, second.start).replace(/\s/g, '').length <= 1;
+  };
   const [year, month, day] = published.date.split('-').map(Number);
   const clock = published.time?.split(':').map(Number) ?? null;
 
   const dateConsumes = (rest: typeof runs): boolean => {
-    let dayFound = false;
-    let monthFound = false;
+    let dayRun: Run | null = null;
+    let monthRun: Run | null = null;
     let yearFound = false;
     // Greedy is a complete search: a run fits the day and the month only when the two
-    // values are equal, and then the roles are interchangeable.
+    // values are equal, and then the roles are interchangeable (adjacency is symmetric).
     for (const run of rest) {
       if (YEAR_RUN.test(run.text)) {
         if (yearFound || run.value !== year) return false;
         yearFound = true;
-      } else if (!dayFound && run.value === day) {
-        dayFound = true;
-      } else if (!monthFound && run.value === month) {
-        monthFound = true;
+      } else if (dayRun === null && run.value === day) {
+        dayRun = run;
+      } else if (monthRun === null && run.value === month) {
+        monthRun = run;
       } else {
         return false;
       }
     }
-    return dayFound;
+    if (dayRun === null) return false;
+    return monthRun === null || besideEachOther(dayRun, monthRun);
   };
 
   if (clock === null) return dateConsumes(runs);

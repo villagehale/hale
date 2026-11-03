@@ -506,8 +506,8 @@ describe('corroborationFailure — every date is bound to its own quote', () => 
   const general = (quote: string, date: string, time: string | null) =>
     extracted({ generalOpen: { quote, date, time } });
 
-  it('refuses a date whose quote is not on the page', () => {
-    expect(corroborationFailure(PAGE, general('Sep. 2 at 6:30 AM', '2026-08-11', '06:30'))).toBe(
+  it('refuses a date whose quote is not on the page, though its numbers agree', () => {
+    expect(corroborationFailure(PAGE, general('Aug. 11 at 6:30 PM', '2026-08-11', '18:30'))).toBe(
       'uncorroborated',
     );
   });
@@ -528,6 +528,34 @@ describe('corroborationFailure — every date is bound to its own quote', () => 
     expect(corroborationFailure(PAGE, general('Aug. 11 at 6:30 AM', date, time))).toBe(
       'uncorroborated',
     );
+  });
+
+  describe('a month number counts only where it is printed beside the day', () => {
+    const dateOnly = (sentence: string, quote: string) =>
+      corroborationFailure(
+        `2026 Fall Programs. ${sentence}`,
+        extracted({
+          yearEvidence: '2026 Fall Programs',
+          evidence: sentence,
+          preview: null,
+          generalOpen: { quote, date: '2026-06-11', time: null },
+        }),
+      );
+
+    it('refuses a date-only reading of a quote that prints an hour equal to the month', () => {
+      expect(dateOnly('Register starting June 11 at 6 a.m.', 'June 11 at 6 a.m.')).toBe(
+        'uncorroborated',
+      );
+    });
+
+    it.each([
+      ['ISO', 'Register starting 2026-06-11.', '2026-06-11'],
+      ['day first', 'Register starting 11/06/2026.', '11/06/2026'],
+      ['month first', 'Register starting 06/11/2026.', '06/11/2026'],
+      ['CJK', '受付開始 2026年6月11日', '2026年6月11日'],
+    ] as const)('accepts a numeric month beside the day: %s (control)', (_name, sentence, quote) => {
+      expect(dateOnly(sentence, quote)).toBeNull();
+    });
   });
 
   it('refuses a date whose quote prints another year', () => {
