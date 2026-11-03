@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS } from './fetch';
 import { MAX_PDF_PAGES, PDF_READ_MEMORY_POLL_MS, registrationPdfText } from './pdf';
 import { registrationPdfFixture, registrationPdfFlateFixture } from './pdf-fixture.test-helper';
@@ -136,6 +136,49 @@ describe('local registration PDF text extraction', () => {
       refused('pdf_read_budget', 'bytes'),
     );
     expect(await outcomes(inFlight)).toEqual(['read', 'read']);
+  });
+
+  it('logs a refusal and a busy reader by name only, never any page text', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const guide = registrationPdfFixture(TWO_PAGE_GUIDE);
+      const reads = [registrationPdfText(guide), registrationPdfText(guide)];
+      await expect(registrationPdfText(guide)).resolves.toEqual({
+        outcome: 'busy',
+        reason: 'pdf_readers_busy',
+      });
+      expect(info).toHaveBeenCalledTimes(1);
+      expect(info).toHaveBeenLastCalledWith(
+        { outcome: 'busy', reason: 'pdf_readers_busy' },
+        'registration pdf: busy',
+      );
+      await Promise.all(reads);
+
+      await expect(registrationPdfText(registrationPdfFixture(['']))).resolves.toEqual(
+        refused('pdf_no_text', null),
+      );
+      expect(info).toHaveBeenCalledTimes(2);
+      expect(info).toHaveBeenLastCalledWith(
+        { reason: 'pdf_no_text', limit: null },
+        'registration pdf: refused',
+      );
+      await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES + 1))).resolves.toEqual(
+        refused('pdf_read_budget', 'bytes'),
+      );
+      expect(info).toHaveBeenCalledTimes(3);
+      expect(info).toHaveBeenLastCalledWith(
+        { reason: 'pdf_read_budget', limit: 'bytes' },
+        'registration pdf: refused',
+      );
+
+      const logged = JSON.stringify(info.mock.calls);
+      expect(logged).toContain('pdf_readers_busy');
+      for (const part of ['Winter registration', 'Preview August', '[PDF page']) {
+        expect(logged).not.toContain(part);
+      }
+    } finally {
+      info.mockRestore();
+    }
   });
 
   describe('a small file whose content stream inflates past every ceiling', () => {

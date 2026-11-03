@@ -307,6 +307,58 @@ describe('outcome logging', () => {
     expect(logged).not.toContain('program=kids');
   });
 
+  it.each([
+    ['https://u:pw-canary@example.org/a/b?program=kids#frag', 'credential_link', 'example.org'],
+    ['https://example.org/a/b?token=tok-canary#frag', 'credential_link', 'example.org'],
+    ['https://example.org/a/b#/cb?password=pw-canary', 'credential_link', 'example.org'],
+    ['https://example.org/a/b?session=fall-canary', 'ambiguous_query_key', 'example.org'],
+    ['http://example.org/a/b?program=kids', 'not_https', 'example.org'],
+    ['https://example.org:8443/a/b', 'nonstandard_port', 'example.org'],
+    ['https://localhost/a/b?program=kids', 'non_public_host', 'localhost'],
+    ['not a url /a/b', 'malformed_url', null],
+  ])(
+    'logs a refusal of %s before any fetch as %s and its host, never the URL',
+    async (url, reason, host) => {
+      await expect(createRegistrationPageBytesFetch()(url)).resolves.toEqual({
+        outcome: 'refused',
+        reason,
+      });
+      expect(network.request).not.toHaveBeenCalled();
+      expect(info).toHaveBeenCalledTimes(1);
+      expect(info).toHaveBeenCalledWith(
+        { outcome: 'refused', reason, host },
+        'registration page: not fetched',
+      );
+      const logged = JSON.stringify(info.mock.calls);
+      expect(logged).toContain(reason);
+      for (const part of ['/a/b', 'canary', 'program', 'frag', 'u:']) {
+        expect(logged).not.toContain(part);
+      }
+    },
+  );
+
+  it('logs a busy host by outcome and host only, never the URL', async () => {
+    const fetchPage = createRegistrationPageBytesFetch();
+    const started = [fetchPage('https://example.org/x'), fetchPage('https://example.org/x')];
+    try {
+      await expect(fetchPage('https://example.org/a/b?program=kids#frag')).resolves.toEqual({
+        outcome: 'busy',
+        reason: 'host_busy',
+      });
+      expect(info).toHaveBeenCalledTimes(1);
+      expect(info).toHaveBeenCalledWith(
+        { outcome: 'busy', reason: 'host_busy', host: 'example.org' },
+        'registration page: not fetched',
+      );
+      const logged = JSON.stringify(info.mock.calls);
+      expect(logged).toContain('example.org');
+      for (const part of ['/a/b', 'program', 'frag']) expect(logged).not.toContain(part);
+    } finally {
+      for (const { respond } of opened) respond(response(404));
+      await Promise.all(started);
+    }
+  });
+
   it('logs nothing for a fetched page', async () => {
     const fetchPage = createRegistrationPageBytesFetch();
     const fetched = fetchPage('https://example.org/course');
