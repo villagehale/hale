@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { type RecordAgentRunInput, recordAgentRun } from '~/lib/agent-run';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -234,8 +235,11 @@ export interface ReminderRunDeps {
   client: AgentClient | null;
   /** The family's language tag, for the model-written reminder. */
   loadLanguage: (db: Database, familyId: string) => Promise<ReplyLanguage>;
-  /** Writes the whole reminder from facts, or null (nothing is sent). */
+  /** Writes the whole reminder from facts, or names why it could not (VIL-563). */
   composeText: typeof composeReminderTexts;
+  /** VIL-563 · one agent_runs row per writer attempt, so a reminder outage is visible to
+   * the failed-run backstop. */
+  recordAgentRun: (db: Database, input: RecordAgentRunInput) => Promise<void>;
   /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
    * (rule #1) the voice stage hands the model and the template later renders. */
   loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
@@ -494,6 +498,9 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
       return row?.primaryLanguage ?? 'en';
     },
     composeText: composeReminderTexts,
+    recordAgentRun: async (db, input) => {
+      await recordAgentRun(db, input);
+    },
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
     loadPrefs: (db, userId) => loadLoopPrefsView(userId, db),
     parentPhone: resolveSendablePhone,
@@ -531,6 +538,10 @@ export interface ReminderRunResult {
    * if it has. One whose event starts before the floor opens is suppressed 'quiet_hours'
    * instead, and counted in `suppressed`. */
   heldQuietHours: number;
+  /** VIL-563 · due reminders left 'scheduled' because the writer could not be reached (a
+   * provider error, a skill that did not load, or an unexpected throw). Checked again at
+   * the next slot, like any held row. Only a refused draft is dropped ('unwritten'). */
+  heldComposeUnavailable: number;
   sendEnabled: boolean;
 }
 
@@ -815,6 +826,7 @@ export async function runReminderCron(
   let fired = 0;
   let firedLate = 0;
   let heldQuietHours = 0;
+  let heldComposeUnavailable = 0;
 
   for (const group of byRecipient.values()) {
     const parentUserId = group.parentUserId;
@@ -906,11 +918,12 @@ export async function runReminderCron(
       const deepLink = !caregiver && batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
 
       // The parent's reminder is written whole by the model from facts. No client, or a
-      // draft that could not be written, is NOTHING SENT and a logged, audited drop.
+      // draft the model could not write usably, is NOTHING SENT and a logged, audited drop.
+      // A writer that could not be reached is not the reminder's fault: it stays scheduled.
       let texts: string[] | null = null;
       let bold: string | null = null;
       if (!caregiver) {
-        const draft =
+        const composed =
           deps.client && nameLevel && language
             ? await deps.composeText(
                 deps.client,
@@ -925,11 +938,23 @@ export async function runReminderCron(
                   language,
                 }),
                 group.familyId,
+                (run) => deps.recordAgentRun(db, run),
               )
             : null;
-        texts = draft?.texts ?? null;
-        bold = draft?.bold ?? null;
-        if (texts === null) {
+        if (composed?.status === 'unavailable') {
+          console.error(
+            {
+              familyId: group.familyId,
+              offset: batch.offset,
+              events: batch.eventRefs.length,
+              cause: composed.cause,
+            },
+            'reminder: compose unavailable, held for the next slot',
+          );
+          heldComposeUnavailable += batch.eventRefs.length;
+          continue;
+        }
+        if (composed?.status !== 'written') {
           console.error(
             { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
             'reminder: no text written, nothing sent',
@@ -941,6 +966,8 @@ export async function runReminderCron(
           }
           continue;
         }
+        texts = composed.draft.texts;
+        bold = composed.draft.bold;
       }
 
       const caregiverPayload: CaregiverReminderPayload = {
@@ -1032,6 +1059,7 @@ export async function runReminderCron(
     heldNoKidVerdict,
     notScheduledNoKidVerdict,
     heldQuietHours,
+    heldComposeUnavailable,
     sendEnabled,
   };
 }

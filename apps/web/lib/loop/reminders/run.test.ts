@@ -1,15 +1,17 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
-import type { ReminderDraft } from './compose';
+import type { ReminderCompose } from './compose';
 import type { ReminderStatus, SuppressReason } from './schedule';
 
 // The model-written text is an injected port (deps.composeText): these tests drive the
-// WIRING (what facts it gets, nothing sent when it returns null), not the writing (that
-// is compose.test.ts + the cached eval).
-const composeText = vi.fn(
-  async () => ({ texts: ['Reminder text.'], bold: null }) as ReminderDraft | null,
-);
+// WIRING (what facts it gets, what each named outcome does), not the writing (that is
+// compose.test.ts + the cached eval).
+const written = (texts: string[], bold: string | null = null): ReminderCompose => ({
+  status: 'written',
+  draft: { texts, bold },
+});
+const composeText = vi.fn(async (): Promise<ReminderCompose> => written(['Reminder text.']));
 import {
   type ChannelSendJob,
   type DueReminder,
@@ -125,6 +127,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     loadNameLevel: async () => 'generic',
     loadPrefs: async () => DEFAULT_LOOP_PREFS,
     parentPhone: async () => null,
+    recordAgentRun: async () => {},
     ...over,
   };
   return { deps, enqueued, marked, reanchored, upserts, captured, audited };
@@ -132,7 +135,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 
 afterEach(() => {
   composeText.mockReset();
-  composeText.mockImplementation(async () => ({ texts: ['Reminder text.'], bold: null }));
+  composeText.mockImplementation(async () => written(['Reminder text.']));
 });
 
 describe('runReminderCron — Phase A converge', () => {
@@ -512,6 +515,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
         language: 'en',
       }),
       'fam-1',
+      expect.any(Function),
     );
     info.mockRestore();
   });
@@ -578,10 +582,7 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
 
   it('puts the written text on the payload, byte for byte', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
-    composeText.mockResolvedValue({
-      texts: ['heads up for tomorrow', 'Swim is at 10, until 11.'],
-      bold: null,
-    });
+    composeText.mockResolvedValue(written(['heads up for tomorrow', 'Swim is at 10, until 11.']));
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
@@ -614,12 +615,13 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
         ],
       }),
       expect.anything(),
+      expect.any(Function),
     );
   });
 
   it('VIL-474: carries the writer’s bold words onto the payload untouched', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
-    composeText.mockResolvedValue({ texts: ['Swim moved to 4:30 today.'], bold: '4:30' });
+    composeText.mockResolvedValue(written(['Swim moved to 4:30 today.'], '4:30'));
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
@@ -661,14 +663,15 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
         ],
       }),
       'fam-1',
+      expect.any(Function),
     );
   });
 
-  it('sends NOTHING when the text could not be written: suppressed unwritten, audited, logged', async () => {
+  it('sends NOTHING when the model refused to write it: suppressed unwritten, audited, logged', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    composeText.mockResolvedValue(null);
+    composeText.mockResolvedValue({ status: 'refused', refusals: ['empty'] });
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent(),
@@ -843,5 +846,30 @@ describe("runReminderCron — the parent's own window only narrows (VIL-562)", (
     const noBypass = await run(false);
     expect(noBypass.enqueued).toEqual([]);
     expect(noBypass.result).toMatchObject({ fired: 0, heldQuietHours: 1 });
+  });
+});
+
+describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('leaves the reminder scheduled when the writer could not be reached, and counts it', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    composeText.mockResolvedValue({ status: 'unavailable', cause: 'transient' });
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ familyId: 'fam-1', cause: 'transient' }),
+      'reminder: compose unavailable, held for the next slot',
+    );
+    error.mockRestore();
   });
 });

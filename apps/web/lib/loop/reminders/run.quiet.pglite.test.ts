@@ -52,7 +52,10 @@ function deps(): ReminderRunDeps {
     ...defaultReminderRunDeps(),
     scopeFamilies: (rows) => rows.filter((row) => row.familyId === familyId),
     client: {} as ReminderRunDeps['client'],
-    composeText: async () => ({ texts: ['test double: model-written reminder'], bold: null }),
+    composeText: async () => ({
+      status: 'written',
+      draft: { texts: ['test double: model-written reminder'], bold: null },
+    }),
     capture: (async () => 'sent') as unknown as ReminderRunDeps['capture'],
     enqueue: async (job) => {
       enqueued.push(job);

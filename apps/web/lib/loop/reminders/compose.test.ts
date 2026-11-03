@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { RecordAgentRunInput } from '~/lib/agent-run';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import {
   type ReminderFactEvent,
+  composeReminderTexts,
   isAllDay,
   localClockFact,
   relativeDay,
@@ -194,5 +198,162 @@ describe('reminderFacts — parking and what to bring (VIL-468)', () => {
     expect(event?.location).toBeNull();
     expect(event).not.toHaveProperty('parking');
     expect(event).not.toHaveProperty('bring');
+  });
+});
+
+/**
+ * VIL-563 · why nothing was written, named. A fake client stands at the AgentClient port
+ * (mechanics only, the structured.test.ts pattern): it answers in whichever shape the
+ * request asked for, or throws what the SDK throws. The wording is the eval's job.
+ */
+describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const USAGE = {
+    input_tokens: 1000,
+    output_tokens: 100,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  };
+  type Reply = { texts: string[] } | 'truncated' | unknown;
+
+  function apiError(status: number, type: string, message: string): unknown {
+    return Anthropic.APIError.generate(
+      status,
+      { type: 'error', error: { type, message } },
+      undefined,
+      { 'request-id': 'req_probe' },
+    );
+  }
+  const SERVER_ERROR = () => apiError(500, 'api_error', 'Internal server error');
+  const OVERLOADED = () => apiError(503, 'overloaded_error', 'Overloaded');
+  const USAGE_LIMIT = () =>
+    apiError(
+      400,
+      'invalid_request_error',
+      'You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC.',
+    );
+
+  function answer(request: { tools?: unknown[] }, input: { texts: string[] }): Anthropic.Message {
+    const content = request.tools
+      ? [{ type: 'tool_use', id: 'tu_0', name: 'reminder_texts', input }]
+      : [{ type: 'text', text: JSON.stringify(input) }];
+    return {
+      id: 'msg_test',
+      type: 'message',
+      role: 'assistant',
+      model: 'test',
+      stop_reason: request.tools ? 'tool_use' : 'end_turn',
+      stop_sequence: null,
+      usage: USAGE,
+      content,
+    } as unknown as Anthropic.Message;
+  }
+
+  function fakeClient(...replies: Reply[]) {
+    const create = vi.fn(async (request: { tools?: unknown[] }) => {
+      if (replies.length === 0) throw new Error('fake client: no reply left');
+      const next = replies.shift();
+      if (next === 'truncated') {
+        return {
+          ...answer(request, { texts: ['cut'] }),
+          stop_reason: 'max_tokens',
+          content: [{ type: 'text', text: '{"texts":["cu' }],
+        } as unknown as Anthropic.Message;
+      }
+      if (next && typeof next === 'object' && 'texts' in next) {
+        return answer(request, next as { texts: string[] });
+      }
+      throw next;
+    });
+    return { client: { messages: { create } } as unknown as AgentClient, create };
+  }
+
+  const near = reminderFacts({
+    events: [ev({ title: 'Toddler gym', startsAt: '2026-10-26T15:30:00Z', endsAt: null })],
+    children: [],
+    level: 'first_name',
+    timeZone: 'America/Chicago',
+    offset: '-PT1H',
+    now: new Date('2026-10-26T15:12:00Z'),
+    planLink: null,
+    language: 'en',
+  });
+
+  async function compose(...replies: Reply[]) {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, create } = fakeClient(...replies);
+    const runs: RecordAgentRunInput[] = [];
+    const outcome = await composeReminderTexts(client, near, 'fam-1', async (run) => {
+      runs.push(run);
+    });
+    return { outcome, runs, create };
+  }
+
+  it('a provider error on both attempts is unavailable, not refused, with a failed run per attempt', async () => {
+    const { outcome, runs, create } = await compose(SERVER_ERROR(), SERVER_ERROR());
+    expect(outcome).toEqual({ status: 'unavailable', cause: 'transient' });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(runs).toHaveLength(2);
+    for (const run of runs) {
+      expect(run).toMatchObject({
+        familyId: 'fam-1',
+        agentName: 'reminder-voice',
+        modelUsed: 'claude-sonnet-5-5',
+        status: 'failed',
+        promptTokens: 0,
+        completionTokens: 0,
+        costUsd: 0,
+      });
+    }
+  });
+
+  it('a usage limit stops at the first attempt: a second call cannot succeed', async () => {
+    const { outcome, runs, create } = await compose(USAGE_LIMIT(), { texts: ['unreached'] });
+    expect(outcome).toEqual({ status: 'unavailable', cause: 'usage_limit' });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(runs).toHaveLength(1);
+  });
+
+  it('two answers with a link nobody handed are refused, which is terminal', async () => {
+    const linked = { texts: ['Toddler gym soon, details at https://example.com/x'] };
+    const { outcome, runs } = await compose(linked, linked);
+    expect(outcome).toEqual({ status: 'refused', refusals: ['other_link'] });
+    expect(runs.map((run) => run.status)).toEqual(['failed', 'failed']);
+  });
+
+  it('a refused answer then a provider error is unavailable, so the reminder is not lost', async () => {
+    const linked = { texts: ['Toddler gym soon, details at https://example.com/x'] };
+    const { outcome } = await compose(linked, OVERLOADED());
+    expect(outcome).toEqual({ status: 'unavailable', cause: 'transient' });
+  });
+
+  it('two answers cut off at the token budget are refused: the model answered, unusably', async () => {
+    const { outcome } = await compose('truncated', 'truncated');
+    expect(outcome).toEqual({ status: 'refused', refusals: ['structured:truncated'] });
+  });
+
+  it('a throw that is not the provider is unavailable as unexpected, never a provider class', async () => {
+    const { outcome } = await compose(new TypeError('a bug'), new TypeError('a bug'));
+    expect(outcome).toEqual({ status: 'unavailable', cause: 'unexpected' });
+  });
+
+  it('positive control: a usable answer is written, with one completed, costed run', async () => {
+    const { outcome, runs, create } = await compose({ texts: ['Toddler gym at 10:30 AM.'] });
+    expect(outcome).toEqual({
+      status: 'written',
+      draft: { texts: ['Toddler gym at 10:30 AM.'], bold: null },
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(runs).toHaveLength(1);
+    // Sonnet at $2 in and $10 out per MTok: 1000 x 2 / 1e6 + 100 x 10 / 1e6.
+    expect(runs[0]).toMatchObject({
+      agentName: 'reminder-voice',
+      status: 'completed',
+      promptTokens: 1000,
+      completionTokens: 100,
+    });
+    expect(runs[0]?.costUsd).toBeCloseTo(0.003, 9);
   });
 });
