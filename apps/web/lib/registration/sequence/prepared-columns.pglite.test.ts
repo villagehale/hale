@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { loadClaimedWindowIds } from './claims.js';
 import { loadAwaitingSequence } from './reply.js';
 import { defaultSequenceRunDeps } from './run.js';
 
@@ -324,5 +325,173 @@ describe('loadAwaitingSequence · the horizon and the ordering', () => {
     );
 
     expect(awaiting?.state.openAt).toEqual(courseOpensAt);
+  });
+});
+
+/**
+ * VIL-423 · a watch on a link the parent sent, before any catalog window exists.
+ *
+ * The row says "this family is watching this URL" with no `registration_windows` parent,
+ * no open date yet, and a link longer than the PerfectMind SMS bound. Its identity is
+ * (family, course_url) among ACTIVE rows; the child is optional. All of that is DDL, so
+ * only a real database can prove it.
+ */
+describe('registration_sequences · a URL-owned watch', () => {
+  const LONG_URL = `https://registration.example.org/course?ref=${'a'.repeat(2048 - 44)}`;
+
+  let familyA: string;
+  let parentA: string;
+  let familyB: string;
+  let parentB: string;
+
+  beforeAll(async () => {
+    const a = await seedFamily(db.database, 'Watch Family A');
+    familyA = a.familyId;
+    parentA = a.parentUserId;
+    const b = await seedFamily(db.database, 'Watch Family B');
+    familyB = b.familyId;
+    parentB = b.parentUserId;
+  });
+
+  function parentOf(family: string): string {
+    return family === familyA ? parentA : family === familyB ? parentB : parentUserId;
+  }
+
+  /** window_id is omitted, so it is NULL: the row hangs off the link alone. */
+  async function insertUrlWatch(
+    family: string,
+    courseUrl: string | null,
+    extra: Record<string, string> = {},
+  ) {
+    const columns = ['family_id', 'parent_user_id', 'course_url', ...Object.keys(extra)];
+    const values = [
+      `'${family}'`,
+      `'${parentOf(family)}'`,
+      courseUrl === null ? 'NULL' : `'${courseUrl}'`,
+      ...Object.values(extra).map((value) => `'${value}'`),
+    ];
+    return db.exec(
+      `INSERT INTO registration_sequences (${columns.join(', ')}) VALUES (${values.join(', ')})`,
+    );
+  }
+
+  it('holds a 2048-character link with no window and no open date, and nothing longer or empty', async () => {
+    expect(LONG_URL.length).toBe(2048);
+
+    // Through the table object, so the Drizzle mirror and the .sql must agree.
+    const [watch] = await db.database
+      .insert(schema.registrationSequences)
+      .values({ familyId: familyA, windowId: null, parentUserId: parentA, courseUrl: LONG_URL })
+      .returning({
+        windowId: schema.registrationSequences.windowId,
+        courseUrl: schema.registrationSequences.courseUrl,
+        courseOpensAt: schema.registrationSequences.courseOpensAt,
+      });
+    expect(watch?.windowId).toBeNull();
+    expect(watch?.courseOpensAt).toBeNull();
+    expect(watch?.courseUrl?.length).toBe(2048);
+
+    await expect(insertUrlWatch(familyA, `${LONG_URL}b`)).rejects.toThrow(
+      /registration_sequences_course_url_length_check/,
+    );
+    await expect(insertUrlWatch(familyA, '')).rejects.toThrow(
+      /registration_sequences_course_url_length_check/,
+    );
+  });
+
+  it('is one active watch per family and link', async () => {
+    const URL_X = 'https://registration.example.org/c/identity';
+    await insertUrlWatch(familyA, URL_X);
+
+    await expect(insertUrlWatch(familyA, URL_X)).rejects.toThrow(
+      /registration_sequences_live_url_uniq/,
+    );
+
+    // Another family watching the same link is its own watch.
+    await expect(insertUrlWatch(familyB, URL_X)).resolves.toBeDefined();
+    // A window-bound row on the same link is outside the partial index.
+    const windowId = await seedWindow();
+    await expect(
+      db.exec(`
+        INSERT INTO registration_sequences (family_id, window_id, parent_user_id, course_url, course_opens_at)
+        VALUES ('${familyA}', '${windowId}', '${parentA}', '${URL_X}', '2026-08-12T10:30:00Z')
+      `),
+    ).resolves.toBeDefined();
+    // Once the first watch is answered for, it is no longer active, so a new one may start.
+    await db.exec(
+      `UPDATE registration_sequences SET outcome = 'registered' WHERE family_id = '${familyA}' AND window_id IS NULL AND course_url = '${URL_X}'`,
+    );
+    await expect(insertUrlWatch(familyA, URL_X)).resolves.toBeDefined();
+
+    // child_id is optional: every watch above was inserted without one.
+    const [childless] = await rows(
+      `SELECT count(*)::int AS n FROM registration_sequences WHERE course_url = '${URL_X}' AND window_id IS NULL AND child_id IS NULL`,
+    );
+    expect(childless).toEqual({ n: 3 });
+  });
+
+  it('must hang off a window or a link, and a date review needs the change it reviews', async () => {
+    await expect(insertUrlWatch(familyA, null)).rejects.toThrow(
+      /registration_sequences_target_check/,
+    );
+    // An anchor with no link on a URL-owned row: there is nothing to re-read it from.
+    await expect(
+      insertUrlWatch(familyA, null, { course_opens_at: '2026-08-12T10:30:00Z' }),
+    ).rejects.toThrow(/registration_sequences_target_check/);
+    await expect(
+      insertUrlWatch(familyA, 'https://registration.example.org/c/1', {
+        course_opens_at: '2026-08-12T10:30:00Z',
+      }),
+    ).resolves.toBeDefined();
+
+    const [event] = await db.database
+      .insert(schema.events)
+      .values({
+        familyId: familyA,
+        source: 'test',
+        eventType: 'registration_date_review',
+        dedupHash: `watch-date-review-${Math.random()}`,
+      })
+      .returning({ id: schema.events.id });
+    const [action] = await db.database
+      .insert(schema.actions)
+      .values({
+        eventId: event?.id as string,
+        familyId: familyA,
+        actionType: 'send_message',
+        payload: {},
+        userVisibleState: 'drafted_for_approval',
+        reviewerVerdict: 'approved',
+        draftedAt: new Date('2026-09-08T10:00:00.000Z'),
+      })
+      .returning({ id: schema.actions.id });
+    const actionId = action?.id as string;
+
+    await expect(
+      insertUrlWatch(familyA, 'https://registration.example.org/c/2', {
+        date_review_action_id: actionId,
+      }),
+    ).rejects.toThrow(/registration_sequences_date_review_check/);
+    await expect(
+      insertUrlWatch(familyA, 'https://registration.example.org/c/2', {
+        date_review_action_id: actionId,
+        pending_change: '{"kind":"later"}',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('claims no catalog window for the link-owned watch', async () => {
+    const family = await seedFamily(db.database, 'Watch Claims Family');
+    const windowId = await seedWindow();
+    await db.exec(`
+      INSERT INTO registration_sequences (family_id, window_id, parent_user_id)
+      VALUES ('${family.familyId}', '${windowId}', '${family.parentUserId}')
+    `);
+    await db.exec(`
+      INSERT INTO registration_sequences (family_id, parent_user_id, course_url)
+      VALUES ('${family.familyId}', '${family.parentUserId}', 'https://courses.example.net/claims')
+    `);
+
+    expect(await loadClaimedWindowIds(db.database, family.familyId)).toEqual(new Set([windowId]));
   });
 });

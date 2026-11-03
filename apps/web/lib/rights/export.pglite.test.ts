@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
 /**
@@ -164,5 +164,64 @@ describe('the evening check-in in a right-to-access copy', () => {
         closedReason: null,
       },
     ]);
+  });
+});
+
+/**
+ * VIL-423 · a watch on a link the parent sent has no catalog window behind it, so the
+ * preparation block must not assume one. A right-to-access copy that silently drops the
+ * one standing instruction Hale holds for a family is the PIPEDA failure; one that shows
+ * it to another family is the privacy failure. Both are queries, so both are proven here.
+ */
+describe('a link-owned registration watch in a right-to-access copy', () => {
+  it("is in its own family's copy, host only, and in no other family's", async () => {
+    const a = await seedFamily(db.database, 'Watch Export A');
+    const b = await seedFamily(db.database, 'Watch Export B');
+    await db.database.insert(schema.registrationSequences).values([
+      {
+        familyId: a.familyId,
+        parentUserId: a.parentUserId,
+        courseUrl: 'https://courses.example.net/term/swim?session=x7k2',
+        lastReadAt: new Date('2026-10-01T15:00:00Z'),
+        nextCheckAt: new Date('2026-10-02T15:00:00Z'),
+        updatedAt: new Date('2026-10-01T15:00:00Z'),
+      },
+      {
+        familyId: b.familyId,
+        parentUserId: b.parentUserId,
+        courseUrl: 'https://signup.example.com/class/42',
+      },
+    ]);
+
+    const docA = await assembleFamilyExport(db.database, a.familyId, {
+      actorUserId: a.parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(docA.registrationPreparation).toEqual([
+      {
+        municipality: null,
+        cycleLabel: null,
+        courseHost: 'courses.example.net',
+        courseOpensAt: null,
+        readinessReady: null,
+        lastReadAt: '2026-10-01T15:00:00.000Z',
+        nextCheckAt: '2026-10-02T15:00:00.000Z',
+        pausedAt: null,
+        hasPendingChange: false,
+        updatedAt: '2026-10-01T15:00:00.000Z',
+      },
+    ]);
+    const serializedA = JSON.stringify(docA);
+    expect(serializedA).not.toContain('session=x7k2');
+    expect(serializedA).not.toContain('/term/swim');
+
+    const docB = await assembleFamilyExport(db.database, b.familyId, {
+      actorUserId: b.parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(docB.registrationPreparation.map((entry) => entry.courseHost)).toEqual([
+      'signup.example.com',
+    ]);
+    expect(JSON.stringify(docB)).not.toContain('courses.example.net');
   });
 });

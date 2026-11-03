@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -11,6 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { actions } from './actions.js';
+import { children } from './children.js';
 import { registrationOutcomeEnum } from './enums.js';
 import { families } from './families.js';
 import { registrationWindows } from './registration-windows.js';
@@ -19,8 +21,8 @@ import { users } from './users.js';
 export const REGISTRATION_COURSE_URL_MAX_CHARS = 2048;
 
 /**
- * VIL-242 · M7 — one row per (family, registration window) that Hale has taken the
- * morning over for. The row IS the claim: while it exists, M4's proactive nudge defers
+ * VIL-242 · M7 — one row per registration window that Hale has taken the morning over
+ * for, or (VIL-423) one ACTIVE row per (family, course_url) for a link the parent sent. The row IS the claim: while it exists, M4's proactive nudge defers
  * this window to the sequence rather than announcing it a second time.
  *
  * WHAT IS DELIBERATELY NOT HERE:
@@ -53,10 +55,12 @@ export const registrationSequences = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
-    /** The M1 window this ladder serves. Cascades: a retired window has no sequence. */
-    windowId: uuid('window_id')
-      .notNull()
-      .references(() => registrationWindows.id, { onDelete: 'cascade' }),
+    /** The M1 window this ladder serves. Cascades: a retired window has no sequence.
+     * NULL for a link-owned watch (VIL-423): the parent sent a URL before any catalog
+     * row, or any date, existed. */
+    windowId: uuid('window_id').references(() => registrationWindows.id, {
+      onDelete: 'cascade',
+    }),
     /** The parent the legs are addressed to — one household, one thread (rule: ONE
      * message per family, never one per kid or per parent). */
     parentUserId: uuid('parent_user_id')
@@ -106,6 +110,20 @@ export const registrationSequences = pgTable(
      * "you told me the setup is done". Collapsing NULL into false would make silence read
      * as a refusal the parent never gave. */
     readinessReady: boolean('readiness_ready'),
+    /** VIL-423 · the child this watch is for, where the parent said. Optional. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
+    /** VIL-423 · what the last read of the page said, and when. */
+    lastReading: jsonb('last_reading').$type<Record<string, unknown>>(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+    /** VIL-423 · when the watch is next due a read. */
+    nextCheckAt: timestamp('next_check_at', { withTimezone: true }),
+    /** VIL-423 · a change the page showed that the parent has not yet confirmed. */
+    pendingChange: jsonb('pending_change').$type<Record<string, unknown>>(),
+    pausedAt: timestamp('paused_at', { withTimezone: true }),
+    /** VIL-423 · the card asking the parent about `pending_change`. */
+    dateReviewActionId: uuid('date_review_action_id').references(() => actions.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -114,14 +132,24 @@ export const registrationSequences = pgTable(
     // Either half alone is a lie the scheduler would act on: a link with no anchor is a
     // ladder with nothing to hang its legs from, and an anchor with no link is an instant
     // no send-time read can re-verify.
-    // 200 = apps/web/lib/channel/spots/url.ts MAX_URL_CHARS, pinned by url-check-consistency.test.ts
+    // That pairing binds window-bound rows only: a link-owned watch holds its URL before
+    // the page shows a date. The migration adds these CHECKs NOT VALID, which Drizzle's
+    // check() cannot express.
     courseUrlLengthCheck: check(
       'registration_sequences_course_url_length_check',
-      sql`${table.courseUrl} IS NULL OR length(${table.courseUrl}) <= 200`,
+      sql`${table.courseUrl} IS NULL OR length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}`,
     ),
     courseCheck: check(
       'registration_sequences_course_check',
-      sql`(${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)`,
+      sql`${table.windowId} IS NULL OR (${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)`,
+    ),
+    targetCheck: check(
+      'registration_sequences_target_check',
+      sql`${table.windowId} IS NOT NULL OR ${table.courseUrl} IS NOT NULL`,
+    ),
+    dateReviewCheck: check(
+      'registration_sequences_date_review_check',
+      sql`${table.dateReviewActionId} IS NULL OR ${table.pendingChange} IS NOT NULL`,
     ),
     // The claim's natural key: one ladder per family per window, and the anchor the
     // sweep's insert conflicts on so a double cron tick cannot mint two.
@@ -132,6 +160,17 @@ export const registrationSequences = pgTable(
     // The sweep's scan: every live sequence for a family, and the reply router's
     // lookup of the one window a family is currently being asked about.
     familyIdx: index('registration_sequences_family_idx').on(table.familyId, table.createdAt),
+    // VIL-423 · a link-owned watch's identity: one ACTIVE watch per family and link.
+    liveUrlUniq: uniqueIndex('registration_sequences_live_url_uniq')
+      .on(table.familyId, table.courseUrl)
+      .where(
+        sql`${table.windowId} IS NULL AND (${table.outcome} IS NULL OR ${table.outcome} = 'waitlisted')`,
+      ),
+    dueIdx: index('registration_sequences_check_idx')
+      .on(table.nextCheckAt)
+      .where(
+        sql`${table.nextCheckAt} IS NOT NULL AND (${table.outcome} IS NULL OR ${table.outcome} = 'waitlisted')`,
+      ),
   }),
 );
 
