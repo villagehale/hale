@@ -7,7 +7,7 @@ vi.mock('~/lib/pipeline/structured', () => ({
 
 // vitest.setup.ts already loaded the real module; load a fresh copy that sees the mock.
 vi.resetModules();
-const { createOptOutReader, readTextOnce } = await import('./opt-out-reader');
+const { createOptOutReader, readReplyOnce } = await import('./opt-out-reader');
 
 const STOP = { value: { intent: 'stop', verbatim: 'leave me be', confirmation: 'Okay, done.' } };
 
@@ -47,15 +47,16 @@ describe('#868 opt-out reader: one retry, then null', () => {
     const reader = {
       read: async () => {
         calls += 1;
-        return calls === 1 ? null : { intent: 'none' as const, confirmation: '' };
+        return calls === 1 ? null : { intent: 'none' as const, confirmation: '', language: null };
       },
     };
     const text = `retry-cache ${Math.random()}`;
-    expect(await readTextOnce(reader, { text, language: null })).toBeNull();
+    expect(await readReplyOnce(reader, { text, language: null })).toBeNull();
     await Promise.resolve();
-    expect(await readTextOnce(reader, { text, language: null })).toEqual({
+    expect(await readReplyOnce(reader, { text, language: null })).toEqual({
       intent: 'none',
       confirmation: '',
+      language: null,
     });
     expect(calls).toBe(2);
   });
