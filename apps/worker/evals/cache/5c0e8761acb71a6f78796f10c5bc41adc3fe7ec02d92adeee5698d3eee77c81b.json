@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the Saturday 9:30 session is not yet signed up, gives the registration link, and makes no retry promise, login-failure claim, or personal details. Audience is group, language zh, and no pack is present; it matches the facts closely.",
+    "score": 5
+  }
+}

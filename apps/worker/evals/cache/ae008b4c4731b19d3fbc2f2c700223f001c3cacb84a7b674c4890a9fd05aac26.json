@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states payment was not approved, nothing is paid or confirmed, gives the exact live link, notes the ~5 minute hold, uses no personal details, makes no retry promise, and is in Chinese as required.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up was not finished and nothing is confirmed, gives the link exactly, lists only the provided pack values, uses tu for a direct audience in French, and makes no promise of retry or follow-up. Minor: 'pour l'instant' slightly hints at later change but is not a promise.",
+    "score": 5
+  }
+}

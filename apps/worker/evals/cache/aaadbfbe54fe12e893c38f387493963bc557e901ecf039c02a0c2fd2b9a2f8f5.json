@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says Hale could not complete sign-up for the Saturday 9:30 session, gives the registration link as registration_page, lists only the provided pack values, makes no retry promise, and is in Chinese as required. It uses direct-audience 你 and is plain and warm. Minor point: it does not say the child is not signed up, but it does clearly state Hale could not finish it, so facts are preserved.",
+    "score": 5
+  }
+}

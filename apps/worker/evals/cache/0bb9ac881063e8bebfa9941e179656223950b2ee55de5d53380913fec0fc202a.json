@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says sign-up not done, no login attempted, child not registered, directs parent to the registration link with pack values; language zh matches; no retry promise. Minor: uses '报上名' and mixed punctuation but acceptable.",
+    "score": 5
+  }
+}

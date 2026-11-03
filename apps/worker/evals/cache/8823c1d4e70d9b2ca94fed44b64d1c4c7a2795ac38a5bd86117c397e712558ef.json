@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the registration is confirmed (\"est confirmée\") when facts show confirmed is false and reason is unconfirmed, so it claims a sign-up succeeded that Hale could not verify. It should say Hale could not confirm it and point the parent to check the link. Tone and language are otherwise fine, but this is a serious factual error.",
+    "score": 1
+  }
+}

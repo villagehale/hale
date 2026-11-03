@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French with tu for a direct audience, correctly states the captcha blocked sign-up and confirmed is false, carries the live link exactly, says the parent finishes in the open browser without inventing a time limit (holdMinutes null), lists no personal details, and makes no promise to retry or follow up. Minor: 'toi seul peux faire' is slightly stiff but accurate.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states nothing is booked (confirmed false), gives the registration link exactly as provided with linkIs registration_page, lists only the pack values present, uses no system talk or retry promises, and is in English as required.",
+    "score": 5
+  }
+}
