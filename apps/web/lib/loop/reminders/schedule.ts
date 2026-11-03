@@ -115,7 +115,10 @@ export type SuppressReason =
   | 'kid_relevance_backfill'
   /** The parent's reminder text could not be written by the model (or no model client
    * is configured). Nothing is sent: there is no fallback copy. */
-  | 'unwritten';
+  | 'unwritten'
+  /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
+   * starts, so it can never be sent in time. */
+  | 'quiet_hours';
 
 export type ReminderDecision =
   | { action: 'fire' }

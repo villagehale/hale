@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts at all. It mentions \"Jour de congé at 3:00\" and calls tomorrow a day off with breathing room, but the facts give two timed events: Parent & Tot Skate (10:30-11:20 AM, Mold-Masters SportsPlex, 221 Guelph St) and Toddler Storytime (1:30-2:00 PM, Georgetown Branch, 9 Church St), both for Léa. Both events are missing, with all their starts, ends, venue names and addresses. An invented event and time (3:00, no AM/PM) are present, and implying an open day with breathing room is a fact failure when events have start times. Bold is none, which is fine.",
+    "score": 1
+  }
+}

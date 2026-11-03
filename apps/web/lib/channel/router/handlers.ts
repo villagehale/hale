@@ -301,11 +301,15 @@ export function connectorLinkHandler(
       const language = await familySpeechLanguage(database, ctx.familyId);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
+      const provider = target === 'both' ? 'both' : asTextConnectProvider(target);
+      if (!provider) {
+        log.error(
+          { familyId: ctx.familyId, provider: target, outcome: 'connector_not_offered' },
+          'connector link: no consent door for this connector - nothing minted, nothing sent',
+        );
+        return { claimed: true, outcome: 'connector_not_offered', reply: null };
+      }
       if (await familyGroupTurn(database, ctx)) {
-        const provider = target === 'both' ? 'both' : asTextConnectProvider(target);
-        if (!provider) {
-          return { claimed: true, outcome: 'group_link_withheld', reply: null };
-        }
         const outcome = await textFreshConnectorLink(
           database,
           { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider, now: ctx.now },
@@ -324,7 +328,7 @@ export function connectorLinkHandler(
           reply: null,
         };
       }
-      if (target === 'both') {
+      if (provider === 'both') {
         const outcome = await offerConnectorLinks(database, {
           familyId: ctx.familyId,
           parentUserId: ctx.parentUserId,
@@ -366,7 +370,7 @@ export function connectorLinkHandler(
       const outcome = await offerConnectorLink(database, {
         familyId: ctx.familyId,
         parentUserId: ctx.parentUserId,
-        provider: target,
+        provider,
         now: ctx.now,
       });
       switch (outcome.status) {
@@ -374,7 +378,7 @@ export function connectorLinkHandler(
           // #868: the model writes the text around the one link.
           const reply = await writeConnectorLink(saidLine, {
             language,
-            provider: target,
+            provider,
             url: outcome.url,
           });
           if (!reply) {

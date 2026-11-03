@@ -13,7 +13,8 @@ import { eq } from 'drizzle-orm';
  * what "claimed" means. Every row counts, whatever state it is in — a shortlist still
  * waiting for approval has already sent (or will send) the heads-up that would
  * otherwise have been M4's, and a declined one is a family who said no to this window,
- * which is not an invitation to announce it again through a different door.
+ * which is not an invitation to announce it again through a different door. A link-owned
+ * watch (window_id NULL) claims no catalog window.
  */
 export async function loadClaimedWindowIds(
   database: Database,
@@ -23,5 +24,5 @@ export async function loadClaimedWindowIds(
     .select({ windowId: schema.registrationSequences.windowId })
     .from(schema.registrationSequences)
     .where(eq(schema.registrationSequences.familyId, familyId));
-  return new Set(rows.map((row) => row.windowId));
+  return new Set(rows.flatMap((row) => (row.windowId === null ? [] : [row.windowId])));
 }

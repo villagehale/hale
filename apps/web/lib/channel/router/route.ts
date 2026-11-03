@@ -42,6 +42,7 @@ import {
   IDENTITY_CHALLENGE_TEMPLATE_KEY,
   identityChallengeReply,
 } from '~/lib/channel/intake/identity-challenge';
+import { readNumberOrigin } from '~/lib/channel/intake/number-origin';
 import { type OptOutReader, readTextOnce } from '~/lib/channel/intake/opt-out-reader';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-decision';
@@ -106,7 +107,10 @@ import {
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
 import { reportTurnFailures } from '~/lib/monitoring/failure-page';
-import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -1191,6 +1195,7 @@ async function routeChannelMessageInner(
     turn.body,
     deps.saidLine,
     await readTextOnce(deps.turnReader, { text: turn.body, language: null }),
+    () => readNumberOrigin(deps.database, { familyId: turn.familyId, userId: turn.parentUserId }),
   );
   if (identity.challenge) {
     // #868: the model writes the disclosure. A failed write sends nothing.
@@ -2593,8 +2598,8 @@ type FailedTurnDisposition =
   | {
       outcome: 'deferred';
       reason: TurnDeferralReason;
-      /** Billing or auth on the provider call that deferred the turn. */
-      providerFailure?: 'billing' | 'auth';
+      /** The incident class (INCIDENT_FAILURES) of the provider call that deferred the turn. */
+      providerFailure?: IncidentFailure;
       log: object;
     };
 

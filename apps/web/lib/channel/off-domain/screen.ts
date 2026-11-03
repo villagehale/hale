@@ -10,6 +10,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
+import { clearForNonAnthropic } from '~/lib/pipeline/provider-clearance';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -274,18 +275,26 @@ export function createInboundLaneScreen(
         return openTheGate('skill_unavailable');
       }
 
-      if (
+      // The text is the parent's own inbound words, not read from any Google API, so it
+      // is cleared for the candidate (VIL-556). A refusal would be logged by the
+      // clearance and fall through to Haiku below.
+      const decision =
         (deps.modelMode ??
           parseModelMode(process.env.HALE_INBOUND_SCREEN_MODEL_MODE, 'off-domain screen')) ===
         'candidate'
-      ) {
+          ? await clearForNonAnthropic({ kind: 'parent_text' }, 'off-domain screen')
+          : null;
+      if (decision && 'cleared' in decision) {
         try {
-          const result = await (deps.evaluateChoice ?? evaluateJevChoice)({
-            state: { text },
-            question: 'reading',
-            instructions: skill.instructions,
-            criteria: JEV_CRITERIA,
-          });
+          const result = await (deps.evaluateChoice ?? evaluateJevChoice)(
+            {
+              state: { text },
+              question: 'reading',
+              instructions: skill.instructions,
+              criteria: JEV_CRITERIA,
+            },
+            decision.cleared,
+          );
           if (meetsJevConfidence(result, 0.4, 0.1)) return toReading(JEV_CHOICES[result.choice]);
           recordModelFallback('off-domain screen candidate', 'low_confidence');
         } catch (error) {

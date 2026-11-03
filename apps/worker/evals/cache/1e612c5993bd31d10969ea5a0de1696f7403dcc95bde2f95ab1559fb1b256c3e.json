@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Arrêtez de m'écrire s'il vous plaît",
+    "language": "fr",
+    "situation": "none",
+    "confirmation": "D'accord, je ne vous écrirai plus. Si vous voulez reprendre, écrivez-moi simplement quelque chose comme « reprends » ou « recommence »."
+  },
+  "latencyMs": 2008
+}

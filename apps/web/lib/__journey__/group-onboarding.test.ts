@@ -14,6 +14,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 
 /**
  * GROUP ONBOARDING V2, END TO END — Hale is added to a family's existing group chat.
@@ -191,6 +192,9 @@ function door() {
       if (text === "I'm his dad") {
         return { kind: 'role', role: 'parent', parentRole: 'father', relation: null };
       }
+      if (text === "I'm his mom") {
+        return { kind: 'role', role: 'parent', parentRole: 'mother', relation: null };
+      }
       if (text === 'grandma here') {
         return { kind: 'role', role: 'grandparent', parentRole: null, relation: null };
       }
@@ -308,6 +312,18 @@ async function groupTemplateKeys() {
 describe('group onboarding v2 — Hale joins a family group', () => {
   it('asks who is who, seats on the reply, keeps the group gated, and honours a STOP in the group', async () => {
     const household = await seedHousehold();
+    for (const [phone, role] of [
+      [DAD, 'co_parent'],
+      [GRAN, 'grandparent'],
+    ] as const) {
+      await recordSeatGrant(db.database, {
+        familyId: household.familyId,
+        parentUserId: household.primaryId,
+        phoneE164: phone,
+        role,
+        now: NOW,
+      });
+    }
     const wire = linq();
     const { post, jobs } = door();
 
@@ -493,6 +509,18 @@ describe('group onboarding v2 — Hale joins a family group', () => {
 
   it("never names a teen or their event in the group, while a younger child's event still goes", async () => {
     const household = await seedHousehold();
+    for (const [phone, role] of [
+      [DAD, 'co_parent'],
+      [GRAN, 'grandparent'],
+    ] as const) {
+      await recordSeatGrant(db.database, {
+        familyId: household.familyId,
+        parentUserId: household.primaryId,
+        phoneE164: phone,
+        role,
+        now: NOW,
+      });
+    }
     await db.database
       .insert(schema.children)
       .values({ familyId: household.familyId, name: 'Kestrel', dateOfBirth: '2012-05-01' });
@@ -524,5 +552,25 @@ describe('group onboarding v2 — Hale joins a family group', () => {
     expect(kidLine).toContain('swim lessons');
     expect(wire.groupText().join('\n')).not.toContain('Kestrel');
     expect(wire.groupText().join('\n')).not.toMatch(/hockey/i);
+  });
+
+  it('labels a parent claim from a number no household parent granted, and seats nobody', async () => {
+    const household = await seedHousehold();
+    linq([HALE, PARENT, FRIEND]);
+    const { post } = door();
+
+    await post(participant('participant.added', HALE));
+    const claim = await post(groupMessage(FRIEND, "I'm his mom", 'in-claim'));
+    expect(claim).toMatchObject({ outcome: 'seat_needs_parent_grant' });
+    expect((await rosterState()).statusOf(FRIEND)).toBe('refused');
+    expect(
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, household.familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(await userIdFor(FRIEND)).toBeNull();
+    // Positive control: the roster ask itself was ledgered, and nothing confirmed a role.
+    expect(await groupTemplateKeys()).toEqual(['linq:roster_ask']);
   });
 });

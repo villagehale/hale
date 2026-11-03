@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { dryClient, parseFloodLineFlags } from './flood-line-flags.mjs';
+import { noClient, parseEvalFlags } from './lib/eval-flags.mjs';
 
 const RUNNER = join(dirname(fileURLToPath(import.meta.url)), 'run-flood-line-eval.mjs');
 const KEYLESS = Object.fromEntries(
@@ -20,17 +20,18 @@ describe('flood-line eval flags', () => {
     [['--cached-only'], 'cached-only'],
     [['--live'], 'live'],
   ])('%j is mode %s', (args, mode) => {
-    expect(parseFloodLineFlags(args)).toBe(mode);
+    expect(parseEvalFlags(args)).toBe(mode);
   });
 
   it('refuses an unknown flag, no flag, or two modes', () => {
-    expect(() => parseFloodLineFlags(['--dyr'])).toThrow(/unknown flag/);
-    expect(() => parseFloodLineFlags([])).toThrow(/exactly one mode/);
-    expect(() => parseFloodLineFlags(['--dry', '--live'])).toThrow(/exactly one mode/);
+    expect(() => parseEvalFlags(['--dyr'])).toThrow(/unknown flag/);
+    expect(() => parseEvalFlags([])).toThrow(/exactly one mode/);
+    expect(() => parseEvalFlags(['--dry', '--live'])).toThrow(/exactly one mode/);
+    expect(() => parseEvalFlags(['--dry', '--dry'])).toThrow(/exactly one mode/);
   });
 
-  it('the dry client throws instead of calling a model', () => {
-    expect(() => dryClient()).toThrow(/--dry/);
+  it('a non-live client throws instead of calling a model', () => {
+    expect(() => noClient('flood-line')()).toThrow(/outside --live/);
   });
 
   it('the runner exits 2 on an unknown flag before any spend cap or client', () => {

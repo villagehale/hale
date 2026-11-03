@@ -113,7 +113,7 @@ function captureRunDeps(): () => ReminderRunDeps {
   return () => ({
     ...defaultReminderRunDeps(),
     client: {} as AgentClient,
-    composeText: async () => ({ texts: [MODEL_TEXT], bold: null }),
+    composeText: async () => ({ status: 'written', draft: { texts: [MODEL_TEXT], bold: null } }),
     capture: (async () => undefined) as unknown as ReminderRunDeps['capture'],
     // The queue hop, in-process: the same parse and dispatch the drain runs.
     enqueue: async (job: unknown) => {

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 promises to watch the Riverford winter registration morning and text before it opens. That is a registration watch. The only row is a spot watch for a Saturday swim class, which is a different thing, so the claim is cited to none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2469
+}

@@ -83,6 +83,8 @@ export function scopeReminderDepsToFamily(
 ): ReminderRunDeps {
   return {
     ...deps,
+    // Already one allowlist-free, all-synthetic family: the env allowlist does not apply.
+    scopeFamilies: (rows) => [...rows],
     selectReminderParents: async (db) =>
       (await deps.selectReminderParents(db)).filter((p) => p.familyId === familyId),
     selectReminderCaregivers: async (db) =>

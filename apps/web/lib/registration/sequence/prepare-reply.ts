@@ -726,7 +726,6 @@ export async function approvedShortlistAskedOf(
   const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       window: schema.registrationWindows,
       areaCoarse: schema.families.areaCoarse,
@@ -751,7 +750,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.window.id, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }

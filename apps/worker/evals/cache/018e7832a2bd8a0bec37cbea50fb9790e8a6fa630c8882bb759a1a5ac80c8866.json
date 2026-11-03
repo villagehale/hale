@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text matches facts: needs_login with no_provider_session, not confirmed, says Hale tried nothing and the parent signs up at the registration link, which is carried exactly. Uses vous for group audience in French, no personal details, no retry promise, no login-failure claim. Clear and plain.",
+    "score": 5
+  }
+}
