@@ -63,8 +63,10 @@ jobs:
     name: Workspace lint, typecheck, test, build
     runs-on: ubuntu-latest
     # Chromium install plus the authorized-signup sandbox (local mock forms)
-    # sits on top of the workspace suite and the production build.
-    timeout-minutes: 25
+    # sits on top of the workspace suite and the production build. The job
+    # ran 23-24 minutes on 2026-11-03, and a 25-minute limit cancelled a
+    # green run mid-build; 40 leaves headroom until the suite is split.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
