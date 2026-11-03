@@ -371,7 +371,7 @@ export const REMINDER_FIXTURES = [
       "Fake family, in French. Swim tomorrow 17 h to 17 h 45; the VENUE CHANGED from Mold-Masters SportsPlex, 221 Guelph St to Piscine Centennial, 5 Lake Rd. CHANGED FACT: the text must give the new venue name and address and make clear it changed. BOLD CHECK: bold on the new venue is right; no bold at all scores at most 3; bold on anything else scores at most 3.",
   },
   // VIL-550 · the hourly tick sends a T-1h anywhere from 0 to 60 minutes out; this one goes
-  // out 18 minutes before the start, the prod case.
+  // out 18 minutes before the start, the reported case.
   {
     id: 'en-near-term-18-min',
     args: args({

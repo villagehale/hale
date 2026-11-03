@@ -46,7 +46,7 @@ beforeEach(async () => {
     .where(eq(schema.users.id, parentUserId));
   await db.database.insert(schema.familyEvents).values({
     familyId,
-    title: 'Story time',
+    title: 'Puppet Club',
     startsAt: new Date('2026-10-27T15:00:00Z'), // 10:00 CDT on Tuesday
     source: 'placement',
   });
@@ -144,7 +144,7 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
 
     const back = await runReminderCron(
       db.database,
-      deps(client({ texts: ['Story time tomorrow at 10:00 AM.'] })),
+      deps(client({ texts: ['Puppet Club tomorrow at 10:00 AM.'] })),
       NEXT_TICK,
     );
     expect(back).toMatchObject({ fired: 1, heldComposeUnavailable: 0 });
@@ -154,7 +154,7 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
   });
 
   it('positive control: two refused drafts drop it as unwritten, with an audit row', async () => {
-    const linked = { texts: ['Story time tomorrow, see https://example.com/x'] };
+    const linked = { texts: ['Puppet Club tomorrow, see https://example.com/x'] };
     const result = await runReminderCron(db.database, deps(client(linked, linked)), EVENING_TICK);
     expect(result).toMatchObject({ fired: 0, suppressed: 1, heldComposeUnavailable: 0 });
     expect(await eveningBefore()).toEqual({ status: 'suppressed', suppressReason: 'unwritten' });

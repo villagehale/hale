@@ -280,7 +280,7 @@ export const BROKEN_CASES = [
       'then storytime for Léa at the library, 1:30 to 2:15',
     ].join('\n'),
   },
-  // VIL-550 · the prod bug: every fact right, but "in about an hour" for an event 18
+  // VIL-550 · the reported wording: every fact right, but "in about an hour" for an event 18
   // minutes away. Must fail on the wrong relative time alone.
   {
     fixtureId: 'en-near-term-18-min',
