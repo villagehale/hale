@@ -612,7 +612,7 @@ describe('the occasion claim', () => {
   });
 
   it('T12: migration 0203 applies a second time over itself', async () => {
-    await expect(db.applyMigration('0203_email_alert_occasions.sql')).resolves.toBeUndefined();
+    await expect(db.applyMigration('0198_email_alert_occasions.sql')).resolves.toBeUndefined();
     const result = await db.client.query<{ name: string | null }>(
       "select to_regclass('email_alert_occasions')::text as name",
     );
