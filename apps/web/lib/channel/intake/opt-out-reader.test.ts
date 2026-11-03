@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { strictToolSchema } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CRISIS_SITUATIONS } from '~/lib/channel/crisis-resources';
+import { CRISIS_SITUATIONS, CRISIS_WHO } from '~/lib/channel/crisis-resources';
 import {
   OPT_OUT_READ_TOOL_SCHEMA,
   type OptOutReader,
@@ -9,6 +10,7 @@ import {
   optOutUserMessage,
   readIntentOnce,
   readReplyOnce,
+  textReadCacheSnapshot,
 } from './opt-out-reader';
 
 describe('opt-out reader guards (structural, no model)', () => {
@@ -51,7 +53,13 @@ describe('opt-out reader guards (structural, no model)', () => {
           },
           'x',
         ),
-      ).toEqual({ intent, confirmation: '', language: 'fr', situation: 'unresponsive' });
+      ).toEqual({
+        intent,
+        confirmation: '',
+        language: 'fr',
+        situation: 'unresponsive',
+        who: 'unknown',
+      });
     }
   });
 
@@ -60,9 +68,25 @@ describe('opt-out reader guards (structural, no model)', () => {
       acceptOptOutReading({ intent: 'none', verbatim: 'x', language, confirmation: '' }, 'x')
         ?.language;
     expect(read(' AR ')).toBe('ar');
-    expect(read('fr-ca')).toBe('fr-ca');
     expect(read('')).toBeNull();
     expect(read('the text is in French')).toBeNull();
+  });
+
+  it('the language is one of a closed list of supported tags; anything else is null', () => {
+    const read = (language: string) =>
+      acceptOptOutReading({ intent: 'none', verbatim: 'x', language, confirmation: '' }, 'x')
+        ?.language;
+    for (const tag of ['en', 'fr', 'es', 'zh', 'zh-Hans', 'zh-Hant', 'ar', 'hi', 'pa']) {
+      expect(read(tag)).toBe(tag);
+    }
+    expect(read(' ZH-HANT ')).toBe('zh-Hant');
+    // A region on a supported language keeps the language and drops the subtag.
+    expect(read('fr-ca')).toBe('fr');
+    expect(read('en-call5550')).toBe('en');
+    // An open subtag never reaches the writer, and an unlisted language is null.
+    expect(read('xx')).toBeNull();
+    expect(read('tlh')).toBeNull();
+    expect(read('xx-callnow')).toBeNull();
   });
 
   it('sends the text, a language hint only when certain, and both lines when the region is unknown', () => {
@@ -186,6 +210,81 @@ describe('crisis situation: a closed enum, validated in code', () => {
   });
 });
 
+describe('who is in danger: a closed enum, validated in code', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const crisis = (who: string | undefined) =>
+    acceptOptOutReading(
+      {
+        intent: 'crisis_emergency',
+        verbatim: 'x',
+        language: 'en',
+        situation: 'unresponsive',
+        confirmation: '',
+        ...(who === undefined ? {} : { who }),
+      },
+      'x',
+    );
+
+  it('keeps every listed value as read', () => {
+    for (const who of ['child', 'adult', 'self', 'unknown']) {
+      expect(crisis(who)?.who).toBe(who);
+    }
+    expect([...CRISIS_WHO]).toEqual(['child', 'adult', 'self', 'unknown']);
+  });
+
+  it('a value not in the list becomes unknown, named in the log, and never reaches the writer', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(crisis('my son, call 555 0100')?.who).toBe('unknown');
+    expect(warn).toHaveBeenCalledWith(
+      { reason: 'who_unknown' },
+      'opt-out reader: who is in danger not in the list - the writer gets unknown',
+    );
+  });
+
+  it('a missing value becomes unknown, under its own name', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(crisis(undefined)?.who).toBe('unknown');
+    expect(warn).toHaveBeenCalledWith(
+      { reason: 'who_missing' },
+      'opt-out reader: who is in danger not in the list - the writer gets unknown',
+    );
+  });
+
+  it('a reading that is not a crisis carries no who, whatever the model wrote', () => {
+    const r = acceptOptOutReading(
+      { intent: 'stop', verbatim: 'x', language: 'en', who: 'child', confirmation: 'ok' },
+      'x',
+    );
+    expect(r).toEqual({ intent: 'stop', confirmation: 'ok', language: 'en' });
+  });
+
+  it('the tool schema asks for it as a required closed enum, and still compiles to the strict grammar', () => {
+    const { properties, required } = OPT_OUT_READ_TOOL_SCHEMA;
+    expect(properties.who).toEqual({ type: 'string', enum: ['child', 'adult', 'self', 'unknown'] });
+    expect(required).toContain('who');
+    const grammar = strictToolSchema(
+      OPT_OUT_READ_TOOL_SCHEMA as unknown as Parameters<typeof strictToolSchema>[0],
+    ) as { properties: Record<string, unknown>; required: string[] } | null;
+    expect(grammar?.properties.who).toEqual(properties.who);
+    expect(grammar?.required).toContain('who');
+  });
+
+  it('the skill teaches every value by name', async () => {
+    const { readFileSync } = await import('node:fs');
+    const skill = readFileSync(
+      new URL('../../../../../packages/agent/skills/opt-out-read.md', import.meta.url),
+      'utf8',
+    );
+    expect(skill).toContain('`who`');
+    for (const who of CRISIS_WHO) {
+      expect(skill).toContain(`\`${who}\``);
+    }
+  });
+});
+
 describe('stop/start confirmation: no number, no link (written from raw parent text)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -250,6 +349,33 @@ describe('text-read cache is bounded', () => {
     expect(calls).toHaveLength(TEXT_READ_MAX_ENTRIES + 1);
     await readReplyOnce(reader, { text: `bound ${run} 0`, language: null });
     expect(calls).toHaveLength(TEXT_READ_MAX_ENTRIES + 2);
+  });
+});
+
+describe('text-read cache holds no parent text', () => {
+  it('keys on a sha256 of the text, language and region; the raw words are in no key or entry', async () => {
+    const { reader, calls } = countingReader('crisis_mental');
+    const words = `cachedwordsprobe${Math.random().toString(36).slice(2)}`;
+    await readReplyOnce(reader, { text: words, language: 'fr', region: 'CA' });
+    await readReplyOnce(reader, { text: words, language: 'en', region: 'CA' });
+    const snapshot = textReadCacheSnapshot();
+    expect(calls).toHaveLength(2);
+    const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+    const textKey = sha(words);
+    // Positive control: both reads are in the cache, so the absence below is not an empty cache.
+    const mine = snapshot.filter((entry) => entry.textKey === textKey);
+    expect(mine).toHaveLength(2);
+    for (const entry of snapshot) {
+      expect(entry.key).toMatch(/^[0-9a-f]{64}$/);
+      expect(entry.textKey).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(new Set(mine.map((entry) => entry.key)).size).toBe(2);
+    expect(JSON.stringify(snapshot)).not.toContain('cachedwordsprobe');
+    // The intent-only read still finds the live read of the same words: no third read.
+    expect(await readIntentOnce(reader, { text: words, language: null })).toEqual({
+      intent: 'crisis_mental',
+    });
+    expect(calls).toHaveLength(2);
   });
 });
 

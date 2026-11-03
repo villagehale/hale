@@ -111,3 +111,11 @@ export const CRISIS_SITUATIONS = [
 ] as const;
 
 export type CrisisSituation = (typeof CRISIS_SITUATIONS)[number];
+
+/**
+ * Who is in danger, as the reader read it, as a closed list. The writer gets it as a
+ * fact so the reply can name the child (or the parent) without seeing the parent's words.
+ */
+export const CRISIS_WHO = ['child', 'adult', 'self', 'unknown'] as const;
+
+export type CrisisWho = (typeof CRISIS_WHO)[number];

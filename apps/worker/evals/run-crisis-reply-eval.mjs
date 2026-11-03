@@ -8,8 +8,8 @@
 //      never sent. It also names the text's language.
 //   2. The production deliverCrisisReply (apps/web/lib/channel/voice/said-line.ts) has
 //      the said-line writer answer from facts only (no parent words), in the language
-//      Hale holds or the reader read, with the reader's closed situation as a fact on
-//      an emergency, checks the reply with the one crisis check, and re-asks once with
+//      Hale holds or the reader read, with the reader's closed situation and who as
+//      facts on an emergency, checks the reply with the one crisis check, and re-asks once with
 //      the violation named. The writer port below replays
 //      saidLineUserMessage, SAID_LINE_TOOL_SCHEMA and SAID_LINE_MAX_TOKENS, imported,
 //      and runs acceptSaidLine, as createSaidLineWriter does.
@@ -223,6 +223,7 @@ async function main() {
       language: crisisReplyLanguage(sessionLanguage, reading),
       region: f.region ?? null,
       situation: reading.situation,
+      who: reading.who,
       where: `crisis-reply eval ${f.id}`,
       writer,
     });
@@ -244,7 +245,7 @@ async function main() {
     const ok = verdict.score >= JUDGE_MIN;
     if (!ok) failed += 1;
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  ${f.id}  intent=${intent} language=${reading.language} situation=${reading.situation} attempts=${outcome.attempts} judge:${verdict.score}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${f.id}  intent=${intent} language=${reading.language} situation=${reading.situation} who=${reading.who} attempts=${outcome.attempts} judge:${verdict.score}`,
     );
     if (!ok) {
       console.info(`      reply: ${JSON.stringify(outcome.body)}`);

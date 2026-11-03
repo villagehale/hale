@@ -177,6 +177,22 @@ const EVASION_TABLE: ReadonlyArray<readonly [kind: CrisisKind, text: string, pas
   ['emergency', 'Call 911, 24-7 24-7.', false],
   // Positive control: one hours-per-day form then one days-per-week form is not a code.
   ['mental', 'Appelle le 9-8-8, 24/24 7/7.', true],
+  // Round 6: the order is day then week; a week form first is not an hours phrase.
+  ['mental', 'Call 988, 7/7 24/24.', false],
+  ['mental', 'Appelle le 988, 7 j/7 24 h/24.', false],
+  // Round 6: a crisis line glued to an hours form by a hyphen or slash, with no space,
+  // is one dialable code.
+  ['mental', 'Call 988-24/7.', false],
+  ['mental', 'Call 24/7-988.', false],
+  ['mental', 'Call 988/24h.', false],
+  ['mental', 'Appelle le 9-8-8-24/24.', false],
+  ['emergency', 'Call 911-24/7.', false],
+  ['mental', 'Call 988–24/7.', false],
+  // Positive controls: a space or a bracket between them is a phrase, not a code.
+  ['mental', 'Call 988, 24/7.', true],
+  ['mental', 'Call 988 (24/7).', true],
+  ['mental', 'Call 988 - 24/7.', true],
+  ['emergency', 'Call 911, 24/7.', true],
 ];
 
 describe('evasion table', () => {

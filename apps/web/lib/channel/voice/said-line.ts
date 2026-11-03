@@ -7,6 +7,7 @@ import { GOOGLE_UNVERIFIED_APP_FACT } from '~/lib/channel/connect/text-connect';
 import {
   type CrisisRegion,
   type CrisisSituation,
+  type CrisisWho,
   crisisFactsForRegion,
 } from '~/lib/channel/crisis-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
@@ -367,6 +368,8 @@ interface CrisisDigitGroup {
   hours: HoursFormMatch | null;
   /** Built from single digits only, so the next single digit joins it. */
   spelled: boolean;
+  /** What sits between this group and the one before it in the token ('' when first). */
+  gap: string;
 }
 
 function hoursFormAt(ascii: string, at: number): HoursFormMatch | null {
@@ -397,12 +400,13 @@ function crisisNumberTokens(text: string): CrisisDigitGroup[][] {
     const single = match[0].length === 1 && !hours;
     const token = tokens.at(-1);
     const prev = token?.at(-1);
-    if (!token || TOKEN_BREAK.test(ascii.slice(lastEnd, at))) {
-      tokens.push([{ digits: match[0], hours, spelled: single }]);
+    const gap = ascii.slice(lastEnd, at);
+    if (!token || TOKEN_BREAK.test(gap)) {
+      tokens.push([{ digits: match[0], hours, spelled: single, gap: '' }]);
     } else if (single && prev?.spelled) {
       prev.digits += match[0];
     } else {
-      token.push({ digits: match[0], hours, spelled: single });
+      token.push({ digits: match[0], hours, spelled: single, gap });
     }
     lastEnd = at + match[0].length;
   }
@@ -417,10 +421,24 @@ function tokenHoursFormsStandAlone(token: readonly CrisisDigitGroup[]): boolean 
   return CRISIS_DAY_FORMS.includes(day.form) && CRISIS_WEEK_FORMS.includes(week.form);
 }
 
+// A hyphen or slash alone, with no space, joins a line and an hours form into one
+// dialable code ('988-24/7' dials 988247); a space or a bracket keeps them a phrase.
+const GLUED_GAP = /^[\p{Pd}/]+$/u;
+
+/** A crisis line and an hours form written as one code, in either order. */
+function tokenGluesLineToHours(token: readonly CrisisDigitGroup[]): boolean {
+  return token.some((group, i) => {
+    const before = token[i - 1];
+    if (!before || !GLUED_GAP.test(group.gap)) return false;
+    return Boolean(before.hours) !== Boolean(group.hours);
+  });
+}
+
 function tokenIsCrisisLinesOnly(token: readonly CrisisDigitGroup[]): boolean {
   return (
     token.every((group) => group.hours || CRISIS_LINES.includes(group.digits)) &&
-    tokenHoursFormsStandAlone(token)
+    tokenHoursFormsStandAlone(token) &&
+    !tokenGluesLineToHours(token)
   );
 }
 
@@ -559,24 +577,58 @@ export const CRISIS_VIOLATION_FACT: Readonly<Record<CrisisViolation | 'write_fai
   wrong_script: 'the last draft was not written in the reply language, so it was not sent',
 };
 
+/** The person in danger, from the reader's closed `who`. "Someone" read as a stranger (zh, 11-03). */
+const EMERGENCY_WHO_PHRASES: Readonly<Record<CrisisWho, string>> = {
+  child: 'their child',
+  adult: 'an adult who is with them',
+  self: 'the parent who is texting',
+  unknown: 'a person (Hale was not told who)',
+};
+
+const EMERGENCY_WHAT_PHRASES: Readonly<Record<CrisisSituation, (person: string) => string>> = {
+  not_breathing: (person) => `${person} is not breathing or is struggling to breathe`,
+  choking: (person) => `${person} is choking`,
+  poisoning_or_overdose: (person) =>
+    `${person} may have swallowed something harmful or taken too much of a medicine or drug`,
+  injury_or_bleeding: (person) => `${person} is injured or bleeding`,
+  unresponsive: (person) => `${person} is not responding or cannot be woken`,
+  fire: (person) => `there is a fire and ${person} may be in danger`,
+  violence_or_threat: (person) => `${person} is being hurt or threatened by another person`,
+  self_harm: (person) => `${person} has hurt themselves and may be in danger`,
+  other: (person) => `${person} is hurt or in danger`,
+};
+
 /**
- * What the reader read happening on an emergency, as a fact. The writer never sees the
- * parent's words, so without it the reply is a generic "call 911". One fixed fact per
- * closed situation: no digits, no link, nothing from the parent's text.
+ * What the reader read happening on an emergency, and to whom, as a fact. The writer
+ * never sees the parent's words, so without it the reply is a generic "call 911". Built
+ * from two closed values only: no digits, no link, nothing from the parent's text.
  */
-export const EMERGENCY_SITUATION_FACTS: Readonly<Record<CrisisSituation, string>> = {
+export function emergencySituationFact(situation: CrisisSituation, who: CrisisWho): string {
+  return `they just told Hale ${EMERGENCY_WHAT_PHRASES[situation](EMERGENCY_WHO_PHRASES[who])}, right now`;
+}
+
+/**
+ * The first thing to do, one per closed situation, as a fact the writer words. The 911
+ * dispatcher leads: no medical instruction of Hale's own.
+ */
+export const EMERGENCY_FIRST_STEP_FACTS: Readonly<Record<CrisisSituation, string>> = {
   not_breathing:
-    'they just told Hale someone is not breathing or is struggling to breathe, right now',
-  choking: 'they just told Hale someone is choking right now',
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+  choking:
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do',
   poisoning_or_overdose:
-    'they just told Hale someone may have swallowed something harmful or taken too much of a medicine or drug, right now',
-  injury_or_bleeding: 'they just told Hale someone is injured or bleeding right now',
-  unresponsive: 'they just told Hale someone is not responding or cannot be woken, right now',
-  fire: 'they just told Hale there is a fire right now',
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do',
+  injury_or_bleeding:
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do until help arrives',
+  unresponsive:
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+  fire: 'get out and away from the fire first, then call 911 and stay on the line with the 911 dispatcher',
   violence_or_threat:
-    'they just told Hale someone is being hurt or threatened by another person right now',
-  self_harm: 'they just told Hale someone has hurt themselves and may be in danger right now',
-  other: 'they just told Hale someone is hurt or in danger right now',
+    'get to a safe place if they can and call 911; the 911 dispatcher will tell them what to do',
+  self_harm:
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do until help arrives',
+  other:
+    'call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do until help arrives',
 };
 
 /**
@@ -603,18 +655,23 @@ export function crisisLineInput(
   region: CrisisRegion | null,
   language: ReplyLanguage | null,
   situation: CrisisSituation | null,
+  who: CrisisWho | null,
   rejected?: CrisisViolation | 'write_failed',
 ): SaidLineInput {
   const languageName = replyLanguageName(language);
+  const read = situation ?? 'other';
   return {
     purpose: kind === 'emergency' ? 'crisis_emergency' : 'crisis_mental',
     language,
     facts: {
       ...crisisFactsForRegion(region, kind),
-      // A mental-health reply's facts are its lines; what happened changes only what an
-      // emergency reply says first. No situation read is the generic emergency.
+      // A mental-health reply's facts are its lines; what happened, and to whom, changes
+      // only what an emergency reply says first. Nothing read is the generic emergency.
       ...(kind === 'emergency'
-        ? { situation: EMERGENCY_SITUATION_FACTS[situation ?? 'other'] }
+        ? {
+            situation: emergencySituationFact(read, who ?? 'unknown'),
+            firstStep: EMERGENCY_FIRST_STEP_FACTS[read],
+          }
         : {}),
       ...(languageName ? { replyLanguage: languageName } : {}),
       ...(rejected ? { previousTextNotSent: CRISIS_VIOLATION_FACT[rejected] } : {}),
@@ -647,23 +704,25 @@ export async function deliverCrisisReply(input: {
   region: CrisisRegion | null;
   /** What the reader read happening; null when no crisis reading named one. */
   situation: CrisisSituation | null;
+  /** Who the reader read is in danger; null when no crisis reading named one. */
+  who: CrisisWho | null;
   where: string;
   writer: SaidLineWriter | null | undefined;
 }): Promise<CrisisReplyOutcome> {
-  const { kind, region, language, situation, where, writer } = input;
+  const { kind, region, language, situation, who, where, writer } = input;
   if (!writer) {
     logCrisisUnanswered(kind, where, 'no_writer');
     return { status: 'unanswered', reason: 'no_writer' };
   }
   const first = checkCrisisDraft(
     kind,
-    await writer.write(crisisLineInput(kind, region, language, situation)),
+    await writer.write(crisisLineInput(kind, region, language, situation, who)),
     language,
   );
   if ('body' in first) return { status: 'sent', body: first.body, attempts: 1 };
   const second = checkCrisisDraft(
     kind,
-    await writer.write(crisisLineInput(kind, region, language, situation, first.reason)),
+    await writer.write(crisisLineInput(kind, region, language, situation, who, first.reason)),
     language,
   );
   if ('body' in second) return { status: 'sent', body: second.body, attempts: 2 };

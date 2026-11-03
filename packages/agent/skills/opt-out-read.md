@@ -68,6 +68,12 @@ hurting or threatening them), `self_harm` (hurting themselves, or thinking of
 ending their life), or `other`. When more than one fits, pick the one most
 dangerous right now. For every other reading, `situation` is `none`.
 
+For `crisis_emergency` or `crisis_mental`, also put in `who` the one value that
+names who is in danger, read from the meaning in any language: `child` (a child
+or baby, theirs or one in their care), `adult` (another adult), `self` (the
+sender themselves), or `unknown` (the text does not say). For every other
+reading, `who` is `unknown`.
+
 When the reading is `identity` or `none`, `confirmation` is an empty string (Hale
 writes the who-we-are reply separately, from checked facts).
 

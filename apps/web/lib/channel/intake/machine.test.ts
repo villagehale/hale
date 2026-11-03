@@ -25,6 +25,7 @@ import {
 } from './fakes';
 import type { IntentReading } from './intent';
 import { type IntakeDeps, handleInboundSms } from './machine';
+import { acceptOptOutReading } from './opt-out-reader';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
@@ -552,6 +553,52 @@ describe('intake · CASL keywords', () => {
     expect(result).toEqual({ status: 'restarted', ack: 'sent' });
     expect(transport.bodies().at(-1)).toBe(SCRIPTED_START_CONFIRMATION);
     expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
+  });
+
+  /** Rule #11: a start whose confirmation was withheld (it carried a number) still
+   * re-enrols, and the outcome names that nothing went out instead of claiming 'sent'. */
+  it('START whose confirmation was withheld re-enrols and names voice_unsent, sending nothing', async () => {
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f4';
+    const userId = '00000000-0000-4000-8000-0000000000u4';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'primary_parent' } as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    deps.optOutReader = {
+      read: async (input) =>
+        acceptOptOutReading(
+          {
+            intent: 'start',
+            verbatim: input.text,
+            language: 'en',
+            confirmation: 'Welcome back! Questions? Call 555 0100.',
+          },
+          input.text,
+        ),
+    };
+    const before = transport.bodies().length;
+
+    // Its own words: the text-read cache is shared, and other tests read 'START'.
+    const result = await text(fake, transport, deps, 'ok you can text me again, withheld case');
+
+    expect(result).toEqual({ status: 'restarted', ack: 'voice_unsent' });
+    expect(transport.bodies()).toHaveLength(before);
+    expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      { intent: 'start', reason: 'other_number' },
+      'opt-out reader: confirmation carried a number or link - not sent',
+    );
+    error.mockRestore();
   });
 
   it('never routes a keyword through the model', async () => {

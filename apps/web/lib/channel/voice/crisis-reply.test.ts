@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CRISIS_SITUATIONS, crisisFactsForRegion } from '~/lib/channel/crisis-resources';
+import {
+  CRISIS_SITUATIONS,
+  CRISIS_WHO,
+  crisisFactsForRegion,
+} from '~/lib/channel/crisis-resources';
 import type { SaidLineInput, SaidLineWriter } from './said-line';
 import {
   CRISIS_VIOLATION_FACT,
-  EMERGENCY_SITUATION_FACTS,
+  EMERGENCY_FIRST_STEP_FACTS,
   acceptSaidLine,
   crisisLineInput,
   deliverCrisisReply,
+  emergencySituationFact,
 } from './said-line';
 
 const PAGE = 'URGENT: crisis flagged, no reply sent - page #ops now';
@@ -41,6 +46,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'fr',
       region: 'CA',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -64,11 +70,17 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
   it('names the reply language in its own script, so that script is in front of the writer', () => {
     // Probe 11-03: with only the tag 'ar', 6 of 6 writer draws came back as mojibake;
     // with the Arabic name of the language as a fact, 3 of 3 were Arabic.
-    expect(crisisLineInput('emergency', 'CA', 'ar', null).facts.replyLanguage).toBe('العربية');
-    expect(crisisLineInput('mental', 'CA', 'zh', null).facts.replyLanguage).toBe('中文');
-    expect(crisisLineInput('mental', 'CA', 'hi', null).facts.replyLanguage).toBe('हिन्दी');
-    expect(crisisLineInput('mental', 'CA', null, null).facts).not.toHaveProperty('replyLanguage');
-    expect(crisisLineInput('mental', 'CA', 'xx', null).facts).not.toHaveProperty('replyLanguage');
+    expect(crisisLineInput('emergency', 'CA', 'ar', null, null).facts.replyLanguage).toBe(
+      'العربية',
+    );
+    expect(crisisLineInput('mental', 'CA', 'zh', null, null).facts.replyLanguage).toBe('中文');
+    expect(crisisLineInput('mental', 'CA', 'hi', null, null).facts.replyLanguage).toBe('हिन्दी');
+    expect(crisisLineInput('mental', 'CA', null, null, null).facts).not.toHaveProperty(
+      'replyLanguage',
+    );
+    expect(crisisLineInput('mental', 'CA', 'xx', null, null).facts).not.toHaveProperty(
+      'replyLanguage',
+    );
   });
 
   it('an emergency is written from 911-only facts and what the reader read, with no digits in it', async () => {
@@ -78,6 +90,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: null,
       region: 'US',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -85,7 +98,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(calls[0]?.purpose).toBe('crisis_emergency');
     expect(calls[0]?.facts).toEqual({
       emergency: '911',
-      situation: EMERGENCY_SITUATION_FACTS.other,
+      situation: emergencySituationFact('other', 'unknown'),
+      firstStep: EMERGENCY_FIRST_STEP_FACTS.other,
     });
   });
 
@@ -96,18 +110,22 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'fr',
       region: 'CA',
       situation: 'poisoning_or_overdose',
+      who: null,
       where: 'intake crisis',
       writer,
     });
     expect(outcome.status).toBe('sent');
     expect(calls[0]?.facts).toEqual({
       emergency: '911',
-      situation: EMERGENCY_SITUATION_FACTS.poisoning_or_overdose,
+      situation: emergencySituationFact('poisoning_or_overdose', 'unknown'),
+      firstStep: EMERGENCY_FIRST_STEP_FACTS.poisoning_or_overdose,
       replyLanguage: 'français',
     });
     expect(calls[0]).not.toHaveProperty('parentWords');
-    const texts = CRISIS_SITUATIONS.map((situation) => EMERGENCY_SITUATION_FACTS[situation]);
-    expect(new Set(texts).size).toBe(CRISIS_SITUATIONS.length);
+    const texts = CRISIS_SITUATIONS.flatMap((situation) =>
+      CRISIS_WHO.map((who) => emergencySituationFact(situation, who)),
+    );
+    expect(new Set(texts).size).toBe(CRISIS_SITUATIONS.length * CRISIS_WHO.length);
     for (const text of texts) {
       expect(text).not.toMatch(/\p{Nd}/u);
       expect(text).not.toMatch(/:\/\/|www\.|\.[a-z]{2,}\b/i);
@@ -116,8 +134,76 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect('call 911').toMatch(/\p{Nd}/u);
   });
 
-  it('a mental-health request is unchanged by the situation: its facts are the lines', () => {
-    expect(crisisLineInput('mental', 'US', 'en', 'self_harm').facts).toEqual({
+  it('the person in danger is the reader\'s closed who, never a bare "someone"', async () => {
+    const { writer, calls } = scriptedWriter('请马上拨打911。');
+    await deliverCrisisReply({
+      kind: 'emergency',
+      language: 'zh',
+      region: 'CA',
+      situation: 'unresponsive',
+      who: 'child',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(calls[0]?.facts.situation).toBe(emergencySituationFact('unresponsive', 'child'));
+    const named: Record<(typeof CRISIS_WHO)[number], string> = {
+      child: 'their child',
+      adult: 'an adult',
+      self: 'the parent who is texting',
+      unknown: 'Hale was not told who',
+    };
+    for (const situation of CRISIS_SITUATIONS) {
+      for (const who of CRISIS_WHO) {
+        const fact = emergencySituationFact(situation, who);
+        expect(fact).toContain(named[who]);
+        expect(fact).not.toMatch(/\bsomeone\b/i);
+        // Every other who's wording is absent, so the fact names one person only.
+        for (const other of CRISIS_WHO.filter((w) => w !== who)) {
+          expect(fact).not.toContain(named[other]);
+        }
+      }
+    }
+    // Positive control: the absence check above does catch the old wording.
+    expect('they just told Hale someone is choking right now').toMatch(/\bsomeone\b/i);
+  });
+
+  it('every situation has one code-owned first step: dispatcher-led, no other number, no link', () => {
+    expect(Object.keys(EMERGENCY_FIRST_STEP_FACTS).sort()).toEqual([...CRISIS_SITUATIONS].sort());
+    for (const situation of CRISIS_SITUATIONS) {
+      const step = EMERGENCY_FIRST_STEP_FACTS[situation];
+      expect(step).toContain('911');
+      expect(step).toContain('dispatcher');
+      expect(step.replaceAll('911', '')).not.toMatch(/\p{Nd}/u);
+      expect(step).not.toMatch(/:\/\/|www\.|\.[a-z]{2,}\b/i);
+    }
+    expect(EMERGENCY_FIRST_STEP_FACTS.not_breathing).toContain('CPR');
+    expect(EMERGENCY_FIRST_STEP_FACTS.unresponsive).toContain('CPR');
+    // Positive control: the digit check sees a number other than 911.
+    expect('call 911 or 555 0100'.replaceAll('911', '')).toMatch(/\p{Nd}/u);
+  });
+
+  it('the re-ask keeps who, the situation and the first step, and adds only the reason', async () => {
+    const { writer, calls } = scriptedWriter('Call 911, or text 988.', 'Call 911 now.');
+    await deliverCrisisReply({
+      kind: 'emergency',
+      language: 'en',
+      region: 'US',
+      situation: 'choking',
+      who: 'child',
+      where: 'intake crisis',
+      writer,
+    });
+    expect(calls[1]?.facts).toEqual({
+      emergency: '911',
+      situation: emergencySituationFact('choking', 'child'),
+      firstStep: EMERGENCY_FIRST_STEP_FACTS.choking,
+      replyLanguage: 'English',
+      previousTextNotSent: CRISIS_VIOLATION_FACT.emergency_988,
+    });
+  });
+
+  it('a mental-health request is unchanged by the situation and who: its facts are the lines', () => {
+    expect(crisisLineInput('mental', 'US', 'en', 'self_harm', 'self').facts).toEqual({
       ...crisisFactsForRegion('US', 'mental'),
       replyLanguage: 'English',
     });
@@ -137,6 +223,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'fr',
       region: 'CA',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -158,6 +245,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'en',
       region: 'US',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -180,6 +268,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: null,
       region: 'CA',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -194,6 +283,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'ar',
       region: 'CA',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -213,6 +303,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: null,
       region: null,
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -238,6 +329,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'en',
       region: 'US',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -261,6 +353,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: 'en',
       region: 'US',
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -276,6 +369,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: null,
       region: null,
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer,
     });
@@ -295,6 +389,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       language: null,
       region: null,
       situation: null,
+      who: null,
       where: 'intake crisis',
       writer: null,
     });

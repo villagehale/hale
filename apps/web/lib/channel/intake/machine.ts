@@ -1034,8 +1034,9 @@ async function offScriptReply(
       kind: 'mental',
       language: crisisReplyLanguage(language, reading),
       region,
-      // The answer model flagged this, not the reader: no situation was read.
+      // The answer model flagged this, not the reader: no situation or who was read.
       situation: null,
+      who: null,
       where: 'intake answer crisis',
       writer: deps.saidLine,
     });
@@ -1381,6 +1382,7 @@ async function crisisReply(
     region,
     // Absent on a reading built without one (a test double): no situation was read.
     situation: reading.situation ?? null,
+    who: reading.who ?? null,
     where: 'intake crisis',
     writer: deps.saidLine,
   });
@@ -3587,8 +3589,10 @@ async function restartFromReader(
   if (args.providerAnswered) return { status: 'restarted', ack: 'provider_answered' };
   const body = args.confirmation.trim();
   if (body.length === 0) {
+    // Empty, or withheld for a number or link (the reader logged which): re-enrolled,
+    // and the outcome says nothing went out (rule #11), as the stop path does.
     console.error('opt-out reader: start read with no confirmation - re-enrolled, nothing sent');
-    return { status: 'restarted', ack: 'sent' };
+    return { status: 'restarted', ack: 'voice_unsent' };
   }
   let sent: Awaited<ReturnType<typeof sendResolvingNewChat>>;
   try {

@@ -1,10 +1,13 @@
+import { createHash } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import {
   CRISIS_SITUATIONS,
+  CRISIS_WHO,
   type CrisisRegion,
   type CrisisSituation,
+  type CrisisWho,
   crisisFactsForRegion,
 } from '~/lib/channel/crisis-resources';
 import {
@@ -68,6 +71,8 @@ export interface OptOutReading extends OptOutIntentReading {
   language?: ReplyLanguage | null;
   /** What the reader read happening, on a crisis reading only. Absent: not a crisis. */
   situation?: CrisisSituation;
+  /** Who the reader read is in danger, on a crisis reading only. Absent: not a crisis. */
+  who?: CrisisWho;
 }
 
 export interface OptOutReadInput {
@@ -87,13 +92,14 @@ export interface OptOutReader {
 
 const SITUATIONS = [...CRISIS_SITUATIONS, 'none'] as const;
 
-// `situation` is a plain optional string here, not an enum: an unknown or missing value
-// must not fail the read (that would drop a stop or a crisis), so code validates it.
+// `situation` and `who` are plain optional strings here, not enums: an unknown or missing
+// value must not fail the read (that would drop a stop or a crisis), so code validates them.
 const outputSchema = z.object({
   intent: z.enum(INTENTS),
   verbatim: z.string(),
   language: z.string(),
   situation: z.string().optional(),
+  who: z.string().optional(),
   confirmation: z.string(),
 });
 
@@ -104,9 +110,10 @@ const outputJsonSchema = {
     verbatim: { type: 'string' },
     language: { type: 'string' },
     situation: { type: 'string', enum: [...SITUATIONS] },
+    who: { type: 'string', enum: [...CRISIS_WHO] },
     confirmation: { type: 'string' },
   },
-  required: ['intent', 'verbatim', 'language', 'situation', 'confirmation'],
+  required: ['intent', 'verbatim', 'language', 'situation', 'who', 'confirmation'],
 } as const;
 
 /** The user-turn payload. Shared with the evals, which replay this request shape. */
@@ -137,6 +144,37 @@ function crisisSituation(value: string | undefined): CrisisSituation {
   return 'other';
 }
 
+function whoFallbackReason(value: string | undefined): string {
+  return value === undefined ? 'who_missing' : 'who_unknown';
+}
+
+function crisisWho(value: string | undefined): CrisisWho {
+  const listed = CRISIS_WHO.find((who) => who === value);
+  if (listed) return listed;
+  console.warn(
+    { reason: whoFallbackReason(value) },
+    'opt-out reader: who is in danger not in the list - the writer gets unknown',
+  );
+  return 'unknown';
+}
+
+/**
+ * The languages a reader's tag may name, as a closed list: the tag reaches the crisis
+ * writer, so an open tag's subtags would be text the parent's words chose. A region or
+ * other subtag on a listed language keeps the language ('fr-ca' is 'fr'). Anything else
+ * is null, and the language Hale already holds decides.
+ */
+const READER_LANGUAGES = ['en', 'fr', 'es', 'zh', 'zh-Hans', 'zh-Hant', 'ar', 'hi', 'pa'] as const;
+
+function readerLanguage(value: string): ReplyLanguage | null {
+  const tag = acceptReplyLanguage(value);
+  if (!tag) return null;
+  const listed = READER_LANGUAGES.find((language) => language.toLowerCase() === tag);
+  if (listed) return listed;
+  const base = tag.split('-')[0];
+  return READER_LANGUAGES.find((language) => language === base) ?? null;
+}
+
 /**
  * The reader wrote the confirmation while reading the parent's raw words. Its job is to
  * say stop or start, so a number or link in it is not sent; the stop or start itself
@@ -160,7 +198,7 @@ export function acceptOptOutReading(
   text: string,
 ): OptOutReading | null {
   if (value.verbatim !== text) return null;
-  const language = acceptReplyLanguage(value.language);
+  const language = readerLanguage(value.language);
   // VIL-477: "Hale, leave this group" is its own reading only while Hale can leave
   // (LINQ_GROUP_LEAVE_ENABLED). Dark, it stays the stop it always was, so the dark
   // path is unchanged; lit, it is not a stop and the group turn handles the leave.
@@ -182,6 +220,7 @@ export function acceptOptOutReading(
       confirmation: '',
       language,
       situation: crisisSituation(value.situation),
+      who: crisisWho(value.who),
     };
   }
   return { intent: value.intent, confirmation: '', language };
@@ -256,11 +295,18 @@ export function readTurnOnce(
   return read;
 }
 
-/** Reads shared by text for a minute, so one inbound is still one model call (#868). */
-const textReads = new Map<
-  string,
-  { at: number; text: string; read: Promise<OptOutReading | null> }
->();
+interface TextRead {
+  at: number;
+  /** sha256 of the text alone, so an intent-only read finds it without the words. */
+  textKey: string;
+  read: Promise<OptOutReading | null>;
+}
+
+/**
+ * Reads shared by text for a minute, so one inbound is still one model call (#868).
+ * Keys are hashes: a parent's crisis text never sits in memory as a key.
+ */
+const textReads = new Map<string, TextRead>();
 const TEXT_READ_TTL_MS = 60_000;
 /** A memory bound, not a send rule: past it the oldest read is dropped and read again if asked. */
 export const TEXT_READ_MAX_ENTRIES = 500;
@@ -273,10 +319,11 @@ function liveTextReads(): typeof textReads {
   return textReads;
 }
 
-function rememberTextRead(
-  key: string,
-  entry: { at: number; text: string; read: Promise<OptOutReading | null> },
-): void {
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function rememberTextRead(key: string, entry: TextRead): void {
   // A Map iterates in insertion order, so the first key is the oldest read.
   while (textReads.size >= TEXT_READ_MAX_ENTRIES) {
     const oldest = textReads.keys().next().value as string;
@@ -295,15 +342,17 @@ export function readReplyOnce(
   input: OptOutReadInput,
 ): Promise<OptOutReading | null> {
   if (!reader || input.text.trim().length === 0) return Promise.resolve(null);
-  const key = JSON.stringify([
-    input.text,
-    input.language,
-    input.region === undefined ? 'region-unset' : input.region,
-  ]);
+  const key = sha256(
+    JSON.stringify([
+      input.text,
+      input.language,
+      input.region === undefined ? 'region-unset' : input.region,
+    ]),
+  );
   const hit = liveTextReads().get(key);
   if (hit) return hit.read;
   const read = reader.read(input);
-  rememberTextRead(key, { at: Date.now(), text: input.text, read });
+  rememberTextRead(key, { at: Date.now(), textKey: sha256(input.text), read });
   // A failed read is not remembered: the next ask reads again.
   void read.then((reading) => {
     if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);
@@ -322,9 +371,15 @@ export async function readIntentOnce(
   input: Pick<OptOutReadInput, 'text' | 'language'>,
 ): Promise<OptOutIntentReading | null> {
   if (!reader || input.text.trim().length === 0) return null;
-  const live = [...liveTextReads().values()].find((entry) => entry.text === input.text);
+  const textKey = sha256(input.text);
+  const live = [...liveTextReads().values()].find((entry) => entry.textKey === textKey);
   const reading = await (live?.read ?? readReplyOnce(reader, input));
   return reading ? { intent: reading.intent } : null;
+}
+
+/** The text-read cache as tests see it: keys and text hashes, never the reads. */
+export function textReadCacheSnapshot(): Array<{ key: string; textKey: string }> {
+  return [...textReads].map(([key, entry]) => ({ key, textKey: entry.textKey }));
 }
 
 /** The old name of {@link readIntentOnce}; router/route.ts (#1006's lane) still imports it. */

@@ -4,9 +4,10 @@ import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
 import {
-  EMERGENCY_SITUATION_FACTS,
+  EMERGENCY_FIRST_STEP_FACTS,
   type SaidLineInput,
   type SaidLineWriter,
+  emergencySituationFact,
 } from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -753,23 +754,25 @@ describe('friend voice onboarding', () => {
       intent: 'crisis_emergency' | 'crisis_mental',
       language: string,
       situation?: 'not_breathing',
+      who?: 'child',
     ) => ({
       read: async () => ({
         intent,
         confirmation: 'Reader draft with room 5550100 (test fixture).',
         language,
         ...(situation ? { situation } : {}),
+        ...(who ? { who } : {}),
       }),
     });
     const calls: SaidLineInput[] = [];
     const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = crisisReader('crisis_emergency', 'en', 'not_breathing');
+    deps.optOutReader = crisisReader('crisis_emergency', 'en', 'not_breathing', 'child');
     deps.saidLine = scriptedSaidLine(calls);
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    // The situation the reader read reaches the writer as its closed fact.
+    // The situation and who the reader read reach the writer as closed facts.
     expect(transport.bodies()).toEqual([
-      `[crisis_emergency/en]\nemergency=911\nsituation=${EMERGENCY_SITUATION_FACTS.not_breathing}\nreplyLanguage=English`,
+      `[crisis_emergency/en]\nemergency=911\nsituation=${emergencySituationFact('not_breathing', 'child')}\nfirstStep=${EMERGENCY_FIRST_STEP_FACTS.not_breathing}\nreplyLanguage=English`,
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
     expect(calls[0]).not.toHaveProperty('parentWords');
