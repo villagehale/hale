@@ -936,12 +936,14 @@ export async function recordParentAssent(
  * this because a who's-who reply, a Linq add or "the second person in the chat" is at
  * most the person's own yes, never the household's.
  *
- * A standing invite is `accepted`, or `awaiting_caregiver_reply` still open and inside
- * its clock: the only states reached after a grant row was written. The state alone is
- * not proof (the legacy `identity_noted` seat moves a grant-less invite to `accepted`),
- * so the grant's own audit row, written in the grant's transaction with this invite's
- * id, binds person and role to it. A join-link grant names no phone and never matches.
- * The inviter must still be a parent here.
+ * A standing invite is `awaiting_caregiver_reply` still open and inside its clock, or
+ * `accepted` while the person it seated still holds that role here: a departure or an
+ * unseat ends the membership and leaves the invite `accepted`, and a former member's
+ * old grant is not a new one. The state alone is not proof (the legacy `identity_noted`
+ * seat moves a grant-less invite to `accepted`), so the grant's own audit row, written
+ * in the grant's transaction with this invite's id, binds person and role to it. A
+ * join-link grant names no phone and never matches. The inviter must still be a parent
+ * here.
  */
 export async function recordedSeatGrant(
   database: Database,
@@ -954,6 +956,7 @@ export async function recordedSeatGrant(
       state: schema.caregiverInvites.state,
       expiresAt: schema.caregiverInvites.expiresAt,
       closedAt: schema.caregiverInvites.closedAt,
+      caregiverUserId: schema.caregiverInvites.caregiverUserId,
     })
     .from(schema.caregiverInvites)
     .where(
@@ -973,9 +976,24 @@ export async function recordedSeatGrant(
     }))
     .filter((row) => row.open || row.state === 'accepted')
     .sort((a, b) => Number(b.open) - Number(a.open));
+  const holdsRole = async (userId: string | null): Promise<boolean> => {
+    if (!userId) return false;
+    const [held] = await database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, input.familyId),
+          eq(schema.familyMembers.userId, userId),
+          eq(schema.familyMembers.role, input.role),
+        ),
+      );
+    return Boolean(held);
+  };
   const grantVerb =
     input.role === 'co_parent' ? 'co_parent_access_granted' : 'caregiver_access_granted';
   for (const invite of standing) {
+    if (!invite.open && !(await holdsRole(invite.caregiverUserId))) continue;
     const [granted] = await database
       .select({ id: schema.auditLog.id })
       .from(schema.auditLog)

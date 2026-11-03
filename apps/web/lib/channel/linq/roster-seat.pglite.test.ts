@@ -1,9 +1,18 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
+import {
+  INVITE_SILENCE_MS,
+  acceptInvite,
+  closeInviteOnGroupSeat,
+  loadOpenInviteByPhone,
+  recordedSeatGrant,
+} from '~/lib/channel/caregiver/invites';
+import type { AddRole } from '~/lib/channel/caregiver/parse';
+import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { type ListChatHandles, startGroupRoster } from './roster';
@@ -644,6 +653,337 @@ describe('seatConfirmedMember without a parent grant', () => {
       now: NOW,
     });
     expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+});
+
+/**
+ * VIL-582: a grant opens a seat only while it still stands. Each case first proves the
+ * grant counted (the positive control), then ends it the way the household would, and the
+ * same claim gets the label and no seat.
+ */
+describe('seatConfirmedMember with a grant that no longer stands', () => {
+  const LATER = new Date(NOW.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+  async function grantFor(familyId: string, phone: string, role: AddRole, now = NOW) {
+    return recordedSeatGrant(db.database, {
+      familyId,
+      phoneE164Hash: phoneBlindIndex(phone),
+      role,
+      now,
+    });
+  }
+
+  async function activeChannels(phone: string) {
+    return db.database
+      .select({ id: schema.parentChannels.id })
+      .from(schema.parentChannels)
+      .where(
+        and(
+          eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(phone)),
+          isNull(schema.parentChannels.revokedAt),
+        ),
+      );
+  }
+
+  it('does not reseat a co-parent who left the household', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: DAD,
+      role: 'co_parent',
+      now: NOW,
+    });
+    const invite = await loadOpenInviteByPhone(db.database, DAD, NOW);
+    if (invite?.role !== 'co_parent') throw new Error('no open co-parent invite');
+    const accepted = await acceptCoParentInvite(db.database, {
+      invite,
+      verbatimReply: 'yes',
+      now: NOW,
+    });
+    if (accepted.outcome !== 'seated') throw new Error(`accept: ${accepted.outcome}`);
+    expect(await grantFor(familyId, DAD, 'co_parent', LATER)).not.toBeNull();
+
+    await departCoParent(db.database, {
+      familyId,
+      actorUserId: accepted.coParentUserId,
+      now: NOW,
+    });
+    expect(await activeChannels(DAD)).toEqual([]);
+    await askedRoster([PARENT, DAD]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(DAD)).id,
+      reading: { role: 'parent', parentRole: 'father' },
+      verbatimReply: "I'm the dad",
+      now: LATER,
+    });
+
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(await activeChannels(DAD)).toEqual([]);
+    expect(
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+  });
+
+  it('does not reseat a grandparent a parent took out of the group', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+    const seated = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+    if (seated.outcome !== 'seated') throw new Error('not seated');
+    expect(await grantFor(familyId, GRAN, 'grandparent', LATER)).not.toBeNull();
+    await unseatCaregiverSeat(db.database, {
+      familyId,
+      userId: seated.userId,
+      chatId: CHAT,
+      via: 'participant_removed',
+      now: NOW,
+    });
+
+    // Added back to the group and asked again: the who's-who leaves the member 'asked'.
+    await db.database
+      .update(schema.linqGroupRosterMembers)
+      .set({ status: 'asked', askedAt: LATER })
+      .where(eq(schema.linqGroupRosterMembers.phoneE164Hash, phoneBlindIndex(GRAN)));
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: LATER,
+    });
+
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(
+      await db.database
+        .select()
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, seated.userId)),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.linqGroupMembers)
+        .where(isNull(schema.linqGroupMembers.removedAt)),
+    ).toEqual([]);
+  });
+
+  it('seats a grandparent who accepted 1:1 and still holds the role, without a second acceptance', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
+    if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
+    await acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW });
+    await askedRoster([PARENT, GRAN]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: LATER,
+    });
+
+    expect(result).toMatchObject({ outcome: 'seated', role: 'grandparent' });
+    const acceptances = await db.database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'caregiver_invite_accepted'));
+    expect(acceptances).toEqual([{ targetId: inviteId }]);
+  });
+
+  it('does not count a grant once its inviter is no longer a parent here', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+    expect(await grantFor(familyId, GRAN, 'grandparent')).not.toBeNull();
+    await db.database
+      .update(schema.familyMembers)
+      .set({ role: 'nanny' })
+      .where(eq(schema.familyMembers.userId, parentUserId));
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+
+  it('does not count an invite the invitee let lapse', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+    const lapsed = new Date(NOW.getTime() + INVITE_SILENCE_MS + 1);
+    expect(await grantFor(familyId, GRAN, 'grandparent', NOW)).not.toBeNull();
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: lapsed,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+
+  it('does not count an awaiting invite that was closed', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+    expect(await grantFor(familyId, GRAN, 'grandparent')).not.toBeNull();
+    await db.database
+      .update(schema.caregiverInvites)
+      .set({ closedAt: NOW })
+      .where(eq(schema.caregiverInvites.id, inviteId));
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+
+  it.each([
+    'declined',
+    'expired',
+    'superseded',
+    'superseded_by_join',
+    'superseded_by_enrollment',
+    'seat_taken',
+  ] as const)(
+    'does not count a granted invite that ended %s, even for its own member',
+    async (state) => {
+      const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+      const inviteId = await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId,
+        phoneE164: GRAN,
+        role: 'grandparent',
+        now: NOW,
+      });
+      const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
+      if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
+      await acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW });
+      await askedRoster([PARENT, GRAN]);
+      expect(await grantFor(familyId, GRAN, 'grandparent')).not.toBeNull();
+      await db.database
+        .update(schema.caregiverInvites)
+        .set({ state, closedAt: NOW })
+        .where(eq(schema.caregiverInvites.id, inviteId));
+
+      const result = await seatConfirmedMember(db.database, {
+        rosterMemberId: (await memberFor(GRAN)).id,
+        reading: { role: 'grandparent', parentRole: null },
+        verbatimReply: "I'm grandma",
+        now: NOW,
+      });
+      expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    },
+  );
+
+  it('does not let one caregiver role grant open another', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'nanny',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+    expect(await grantFor(familyId, GRAN, 'nanny')).not.toBeNull();
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+});
+
+describe('closeInviteOnGroupSeat', () => {
+  it('leaves an invite that was already accepted as it was, with no second acceptance', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
+    if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
+    const { caregiverUserId } = await acceptInvite(db.database, {
+      invite,
+      verbatimReply: 'yes',
+      now: NOW,
+    });
+    const later = new Date(NOW.getTime() + 60_000);
+
+    await closeInviteOnGroupSeat(db.database, {
+      inviteId,
+      role: 'grandparent',
+      familyId,
+      seatedUserId: parentUserId,
+      now: later,
+    });
+
+    const [row] = await db.database
+      .select({
+        state: schema.caregiverInvites.state,
+        caregiverUserId: schema.caregiverInvites.caregiverUserId,
+        closedAt: schema.caregiverInvites.closedAt,
+      })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(row).toEqual({ state: 'accepted', caregiverUserId, closedAt: NOW });
+    const acceptances = await db.database
+      .select({ actor: schema.auditLog.actor })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'caregiver_invite_accepted'));
+    expect(acceptances).toEqual([{ actor: caregiverUserId }]);
   });
 });
 
