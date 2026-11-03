@@ -35,6 +35,15 @@ describe('registration page network boundary', () => {
     'https://example.com/a#state=1;access_token=x',
     'https://example.com/a#/cb/id_token=x',
     'https://example.com/a#newpassword=x',
+    // One malformed escape must not leave the rest of the fragment encoded.
+    'https://example.com/a#%zz&pass%77ord=x',
+    'https://example.com/a#%zz&jsession%69d=x',
+    'https://example.com/a#%zz&client%5Fsecret=x',
+    'https://example.com/a#pass%77ord%3Dx',
+    'https://example.com/a#a=%ff%26jsessionid=x',
+    // A hash route's '?' delimits a key from the exact set, not only a suffix match.
+    'https://example.com/a#/cb?jsessionid=x',
+    'https://example.com/a#/cb?client_secret=x',
     'https://example.com/reg;jsessionid=1',
     'https://u:p@example.com/a',
     'http://u:p@example.com/?session=fall',
@@ -64,6 +73,8 @@ describe('registration page network boundary', () => {
     ['https://localhost./a', 'non_public_host'],
     ['https://intranet./a', 'non_public_host'],
     ['https://printer.local./a', 'non_public_host'],
+    ['https://localhost../a', 'non_public_host'],
+    ['https://intranet../a', 'non_public_host'],
     ['https://localhost/?session=1', 'non_public_host'],
     ['not a url', 'malformed_url'],
   ])('refuses %s as %s', (url, reason) => {
@@ -87,6 +98,7 @@ describe('registration page network boundary', () => {
     'https://example.com/a#/program?season=fall&id=4',
     'https://example.com/a;b/c',
     'https://example.com./a',
+    'https://example.com/a#%zz&season=fall',
   ])('allows the ordinary link %s', (url) => {
     expect(registrationPageUrl(url)).toEqual({ outcome: 'allowed', url });
   });

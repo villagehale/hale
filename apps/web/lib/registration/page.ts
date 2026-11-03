@@ -112,12 +112,17 @@ function isCredentialKey(raw: string): boolean {
   return CREDENTIAL_KEYS.has(key) || CREDENTIAL_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix));
 }
 
+/** Run by run, so one malformed `%zz` or stray byte cannot leave the rest of the text encoded. */
 function decoded(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
-  }
+  return text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return run.replace(/%([0-7][0-9a-f])/gi, (_, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)),
+      );
+    }
+  });
 }
 
 /** Keys of `k=v` parts only: a bare `;b` path part has no key. */
@@ -150,7 +155,7 @@ function carriesCredential(url: URL): boolean {
 
 /** The parser already lowercases; `example.org.` and `example.org` are one host. */
 function normalisedHost(url: URL): string {
-  return url.hostname.replace(/\.$/, '');
+  return url.hostname.replace(/\.+$/, '');
 }
 
 function isNonPublicHost(url: URL): boolean {
