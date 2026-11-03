@@ -984,3 +984,111 @@ function pollAwareFetch(): {
     urls: () => urls,
   };
 }
+
+/**
+ * VIL-582 security P2: the grant is read before the seat's transaction, so the seat
+ * re-reads it inside, with the invite row locked. A grant that ended in between rolls
+ * the seat back.
+ */
+describe('a co-parent seat whose grant ends between the read and the seat', () => {
+  /** The same database, with `before` run once, as the first transaction opens. */
+  function interleaved(before: () => Promise<void>): TestDb['database'] {
+    const target = db.database;
+    let fired = false;
+    return new Proxy(target, {
+      get(object, property) {
+        if (property === 'transaction') {
+          return async (...args: Parameters<typeof target.transaction>) => {
+            if (!fired) {
+              fired = true;
+              await before();
+            }
+            return object.transaction(...args);
+          };
+        }
+        const value = Reflect.get(object, property, object);
+        return typeof value === 'function' ? value.bind(object) : value;
+      },
+    });
+  }
+
+  async function grantedInClaimedGroup() {
+    const seeded = await seedHousehold();
+    const inviteId = await grantCoparent(seeded);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    return { ...seeded, inviteId };
+  }
+
+  it('seats nobody when the invite closes in between', async () => {
+    const { inviteId } = await grantedInClaimedGroup();
+    const closing = interleaved(async () => {
+      await db.database
+        .update(schema.caregiverInvites)
+        .set({ state: 'declined', closedAt: NOW })
+        .where(eq(schema.caregiverInvites.id, inviteId));
+    });
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      closing,
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(
+      await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(COPARENT_PHONE))),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+    expect(wire.groupTexts()).toEqual([]);
+  });
+
+  it('seats through the same interleaving when nothing changes the grant', async () => {
+    await grantedInClaimedGroup();
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      interleaved(async () => {}),
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
+  });
+
+  it('seats nobody from a message with no words, even with the grant held', async () => {
+    await grantedInClaimedGroup();
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-photo', senderHandle: COPARENT_PHONE, text: '', mediaCount: 1 }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(
+      await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+  });
+});
