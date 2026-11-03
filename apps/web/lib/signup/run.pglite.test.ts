@@ -1793,6 +1793,86 @@ describe('authorized signup runner', () => {
         expect(unresolvedLines()).toEqual([[{ outcome: 'thread_unresolved' }, UNRESOLVED_LINE]]);
       });
 
+      it('sends nothing to the writer when the private door is held, and still audits the turn', async () => {
+        async function familyWithGroupAndYes(chatId: string) {
+          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
+          await db.database
+            .update(schema.families)
+            .set({ linqGroupChatId: chatId })
+            .where(eq(schema.families.id, seeded.familyId));
+          return { seeded, messageId: await inboundYes(seeded, false) };
+        }
+        // A 1:1 yes carries the pack, which never goes to the group; with no thread the
+        // parent opened, that door is held.
+        const held = await familyWithGroupAndYes('group-chat-vil558-held');
+        const heldWriter = echoOutcomeWriter();
+        const result = await runAuthorizedSignup(
+          db.database,
+          { ...yes(held.seeded, held.messageId), existingThread: false },
+          { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter: heldWriter },
+        );
+        expect(heldWriter.facts).toEqual([]);
+        expect(result).toMatchObject({
+          claimed: true,
+          outcome: 'needs_login',
+          reply: null,
+          deliverOnThread: false,
+        });
+        expect(result.unsent).toBeUndefined();
+        expect(await reportAudit(held.seeded.familyId)).toMatchObject({
+          outcome: 'needs_login',
+          door: 'held',
+          replied: false,
+        });
+
+        // Positive control: the same 1:1 yes on the thread the parent opened reaches the writer.
+        const open = await familyWithGroupAndYes('group-chat-vil558-open');
+        const openWriter = echoOutcomeWriter();
+        await runAuthorizedSignup(db.database, yes(open.seeded, open.messageId), {
+          browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+          outcomeWriter: openWriter,
+        });
+        expect(openWriter.facts).toHaveLength(1);
+        expect(openWriter.facts[0]?.pack).toEqual(await seededPack(open.seeded));
+      });
+
+      it('names the withheld details in the browser_use audit row, and only when withheld', async () => {
+        async function browserUseAudit(familyId: string): Promise<Record<string, unknown>> {
+          const rows = await db.database
+            .select({ after: schema.auditLog.after })
+            .from(schema.auditLog)
+            .where(eq(schema.auditLog.familyId, familyId));
+          const row = rows
+            .map((item) => item.after as Record<string, unknown>)
+            .find((after) => after.step === 'browser_use');
+          if (!row) throw new Error('browserUseAudit: no browser_use row');
+          return row;
+        }
+        const unplaced = await familyWithOffer({ ageMonths: 36, url: REC });
+        await runAuthorizedSignup(
+          db.database,
+          yes(unplaced, await inboundYes(unplaced, null, 'imessage', 'chat-unknown-vil558')),
+          {
+            browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+            outcomeWriter: echoOutcomeWriter(),
+          },
+        );
+        expect(await browserUseAudit(unplaced.familyId)).toMatchObject({
+          outcome: 'needs_login',
+          withheld: 'thread_unresolved',
+        });
+
+        // Negative control: a 1:1 yes withholds nothing, so its row names nothing withheld.
+        const direct = await familyWithOffer({ ageMonths: 36, url: REC });
+        await runAuthorizedSignup(db.database, yes(direct, await inboundYes(direct, false)), {
+          browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+          outcomeWriter: echoOutcomeWriter(),
+        });
+        const directRow = await browserUseAudit(direct.familyId);
+        expect(directRow).toMatchObject({ outcome: 'needs_login' });
+        expect(directRow).not.toHaveProperty('withheld');
+      });
+
       it("withholds the details when a valid id is not this family's own inbound yes", async () => {
         const unplaced: Array<
           (seeded: { familyId: string; parentUserId: string }) => Promise<string>

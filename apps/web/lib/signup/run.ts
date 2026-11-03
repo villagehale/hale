@@ -652,6 +652,8 @@ async function runBrowserUseBranch(
         now: input.now,
       });
     }
+    const thread = await yesThread(database, input);
+    const withheld = thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {};
     await writeAudit(database, input, ctx.offerId, {
       step: 'browser_use',
       outcome: handoff.outcome,
@@ -666,6 +668,7 @@ async function runBrowserUseBranch(
       costUsd: handoff.costUsd,
       sessionCostUsd: handoff.sessionCostUsd,
       host: ctx.host,
+      ...withheld,
     });
     const rush: RushHandoff | null =
       handoff.outcome === 'rush'
@@ -676,7 +679,6 @@ async function runBrowserUseBranch(
             prefill: signupInfoPack(ctx.identity),
           }
         : null;
-    const thread = await yesThread(database, input);
     if (thread === 'unresolved') {
       console.info(
         { outcome: 'thread_unresolved' },
@@ -693,7 +695,7 @@ async function runBrowserUseBranch(
     return {
       ...(await replyFor(database, input, deps, door, facts)),
       browserUse: handoff,
-      ...(thread === 'unresolved' ? { withheld: 'thread_unresolved' as const } : {}),
+      ...withheld,
     };
   };
 
@@ -1095,38 +1097,42 @@ async function replyFor(
         : rawFacts.reason,
   };
   const writer = deps.outcomeWriter ?? defaultOutcomeWriter();
-  const line: string | null = await writer.write({
-    outcome: facts.outcome,
-    reason: facts.reason,
-    confirmed: checked.confirmed,
-    sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
-    link: facts.link,
-    linkIs: facts.linkIs ?? (facts.link ? 'registration_page' : null),
-    holdMinutes: facts.holdMinutes ?? null,
-    audience: door.kind === 'group' || facts.inGroup === true ? 'group' : 'direct',
-    prefilled: facts.prefilled,
-    ...(facts.pack
-      ? {
-          pack: facts.pack.map((item) => ({
-            slot: item.slot,
-            value: collapseSignupFact(item.value),
-          })),
-        }
-      : {}),
-    rush: facts.rush
-      ? {
-          signal: facts.rush.signal,
-          opensAt: facts.rush.opensAt,
-          prefillSlots: facts.rush.prefill.map((item) => item.slot),
-        }
-      : null,
-    question: facts.question ?? null,
-    language: await readNoticeLanguage(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-      now: input.now,
-    }),
-  });
+  // A held turn sends nothing, so the pack and the live view never go to the model.
+  const line: string | null =
+    door.kind === 'held'
+      ? null
+      : await writer.write({
+          outcome: facts.outcome,
+          reason: facts.reason,
+          confirmed: checked.confirmed,
+          sessionLabel: facts.sessionLabel ? collapseSignupFact(facts.sessionLabel) : null,
+          link: facts.link,
+          linkIs: facts.linkIs ?? (facts.link ? 'registration_page' : null),
+          holdMinutes: facts.holdMinutes ?? null,
+          audience: door.kind === 'group' || facts.inGroup === true ? 'group' : 'direct',
+          prefilled: facts.prefilled,
+          ...(facts.pack
+            ? {
+                pack: facts.pack.map((item) => ({
+                  slot: item.slot,
+                  value: collapseSignupFact(item.value),
+                })),
+              }
+            : {}),
+          rush: facts.rush
+            ? {
+                signal: facts.rush.signal,
+                opensAt: facts.rush.opensAt,
+                prefillSlots: facts.rush.prefill.map((item) => item.slot),
+              }
+            : null,
+          question: facts.question ?? null,
+          language: await readNoticeLanguage(database, {
+            familyId: input.familyId,
+            parentUserId: input.parentUserId,
+            now: input.now,
+          }),
+        });
   await writeAudit(database, input, facts.offerId, {
     step: 'report',
     outcome: facts.outcome,
