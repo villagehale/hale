@@ -30,7 +30,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { BROKEN_ASIDE, GROUP_PRIVATE_ASIDE_FIXTURES } from './group-private-aside-fixtures.mjs';
 import { estimateTokens, noClient, parseEvalArgsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
-import { brokenRouter, routingFailure } from './lib/group-private-aside-gates.mjs';
+import {
+  brokenCalibrated,
+  brokenRouter,
+  controlRuns,
+  routingFailure,
+} from './lib/group-private-aside-gates.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -131,13 +136,9 @@ function selectCases(only, mode) {
   const fixtures = only
     ? GROUP_PRIVATE_ASIDE_FIXTURES.filter((f) => only.includes(f.id))
     : GROUP_PRIVATE_ASIDE_FIXTURES;
-  const runBroken = mode === 'broken' || !only || only.includes(BROKEN_ASIDE.fixture);
+  const runBroken = controlRuns({ mode, only, controlFixture: BROKEN_ASIDE.fixture });
   return { fixtures, runBroken };
 }
-
-/** A case where texting every family is wrong, so the broken router must fail its routing. */
-const overSendingIsWrong = (fixture) =>
-  routingFailure(fixture.sendTo, brokenRouter(fixture)) !== null;
 
 async function main() {
   const { mode, only } = parseEvalArgsOrExit(
@@ -237,7 +238,7 @@ async function main() {
 
   // The broken case, judged in every mode: it must FAIL the judge.
   let brokenCaught = true;
-  let brokenScore = 'skipped (--only)';
+  let brokenScore = null;
   if (runBroken) {
     const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
     const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
@@ -253,22 +254,19 @@ async function main() {
     for (const f of r.failures) console.log(`      · ${f}`);
   }
   console.log(
-    `${brokenCaught ? 'PASS' : 'FAIL'}  ${BROKEN_ASIDE.id.padEnd(34)} (must be failed by the judge) judge:${brokenScore}`,
+    `${brokenCaught ? 'PASS' : 'FAIL'}  ${BROKEN_ASIDE.id.padEnd(34)} (must be failed by the judge) judge:${brokenScore ?? 'skipped (--only)'}`,
   );
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
   const allPass = brokenCaught && results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  // Calibration PASS iff the routing gate caught the over-sending router on every selected
-  // case where that is wrong (and there is at least one), and the judge caught the leak text.
-  const mustFail = fixtures.filter(overSendingIsWrong).map((f) => f.id);
-  const routingCaught =
-    mustFail.length > 0 &&
-    mustFail.every((id) =>
-      results.find((r) => r.id === id).failures.some((f) => f.startsWith('sendTo:')),
-    );
-  const calibrated = routingCaught && brokenCaught;
+  const calibrated = brokenCalibrated({
+    fixtures,
+    results,
+    controlScore: brokenScore,
+    judgeMin: JUDGE_MIN,
+  });
   console.log(`broken-mode calibration (must fail): ${calibrated ? 'PASS' : 'FAIL'}`);
   process.exit(calibrated ? 0 : 1);
 }
