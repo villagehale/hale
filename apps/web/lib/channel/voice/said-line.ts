@@ -382,11 +382,12 @@ export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boo
 }
 
 const LINK_SCHEME = /[a-z][a-z\d+.-]*:\/\/|\bwww\./i;
-const BARE_DOMAIN = /[\p{L}\d-]\.[a-z]{2,}(?![\p{L}\d])/u;
+const BARE_DOMAIN = /[\p{L}\d-]\.\p{L}{2,}(?![\p{L}\d])/iu;
 
 /** Any number that is not a crisis line or hours, or any link: not ours to hand a parent. */
 export function crisisTextHasOtherNumberOrLink(text: string): boolean {
-  if (LINK_SCHEME.test(text) || BARE_DOMAIN.test(text.normalize('NFKC'))) return true;
+  const folded = text.normalize('NFKC');
+  if (LINK_SCHEME.test(folded) || BARE_DOMAIN.test(folded)) return true;
   return crisisNumberTokens(text).some((token) => !tokenIsCrisisLinesOnly(token));
 }
 

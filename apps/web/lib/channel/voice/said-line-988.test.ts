@@ -3,6 +3,7 @@ import {
   type CrisisKind,
   crisisReplyAcceptable,
   crisisTextHas988,
+  crisisTextHasOtherNumberOrLink,
   deliverCrisisReply,
 } from './said-line';
 
@@ -148,58 +149,105 @@ describe('every decimal digit script folds', () => {
   });
 });
 
-// Hand-written expectations: a reader reply is sent only when every number in it is a
-// crisis line or a listed hours form. Each row goes through deliverCrisisReply, the
-// seam a parent's crisis reply actually passes. Digit runs are fictional (555-01xx).
-describe('evasion table: the reader reply carries the crisis line and nothing longer', () => {
+// Hand-written expectations. `acceptable` is the required-line check alone
+// (crisisReplyAcceptable), the only check on the writer's reply: true when some number
+// token is the line with nothing but the other crisis line or listed hours beside it.
+// A letter or a line break ends a token. `sent` is the reader's reply through
+// deliverCrisisReply, which also refuses any other number. Digit runs are fictional
+// (555-01xx).
+const EVASION_TABLE: ReadonlyArray<
+  readonly [kind: CrisisKind, text: string, acceptable: boolean, sent: boolean]
+> = [
+  ['mental', '988 555 0100', false, false],
+  ['mental', '988/555/0100', false, false],
+  ['mental', '988,555,0100', false, false],
+  ['mental', '988:555:0100', false, false],
+  ['mental', "988'555'0100", false, false],
+  ['mental', '(988) 555-0100', false, false],
+  ['mental', '+1 988 555 0100', false, false],
+  ['emergency', '911 555 0100', false, false],
+  ['mental', '988 24/75', false, false],
+  ['emergency', '911 24/7-555-0100', false, false],
+  ['mental', '1988', false, false],
+  ['mental', 'Room 49881', false, false],
+  ['mental', 'Call 988~555~0100', false, false],
+  ['mental', '988x5550100', true, false],
+  ['mental', 'Call or text 988.\n555 0100', true, false],
+  ['mental', 'Call 988 or room 5550100', true, false],
+  ['mental', '988 24/7', true, true],
+  ['mental', 'Appelle le 988 24 h sur 24', true, true],
+  ['mental', '拨打988，24小时', true, true],
+  ['mental', '٩٨٨', true, true],
+  ['mental', '988. 911 if you are in danger', true, true],
+  ['mental', '988 / 911', true, true],
+  ['mental', 'Call or text 988.', true, true],
+  ['mental', 'Appelle ou texte le 9-8-8, 24 h/24.', true, true],
+  ['emergency', 'Appelle le 9-1-1 maintenant.', true, true],
+];
+
+async function sentBody(
+  kind: CrisisKind,
+  readerText: string,
+  writerText: string | null,
+): Promise<string | null> {
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  return deliverCrisisReply({
+    kind,
+    readerText,
+    parentWords: 'parent words',
+    where: 'evasion table',
+    region: null,
+    writer: { write: vi.fn(async () => writerText) },
+  });
+}
+
+describe('evasion table', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  async function readerTextSent(kind: CrisisKind, readerText: string): Promise<boolean> {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const write = vi.fn(async () => null);
-    const body = await deliverCrisisReply({
-      kind,
-      readerText,
-      parentWords: 'parent words',
-      where: 'evasion table',
-      region: null,
-      writer: { write },
-    });
-    expect(write).toHaveBeenCalledTimes(body === null ? 1 : 0);
-    return body === readerText;
-  }
+  it.each(EVASION_TABLE)('%s %j: required line %s', (kind, text, acceptable) => {
+    expect(crisisReplyAcceptable(kind, text)).toBe(acceptable);
+  });
+
+  it.each(EVASION_TABLE)(
+    '%s %j: the writer reply goes out when the line is %s',
+    async (kind, text, acceptable) => {
+      expect(await sentBody(kind, '', text)).toBe(acceptable ? text : null);
+    },
+  );
+
+  it.each(EVASION_TABLE)(
+    '%s %j: the reader reply, acceptable %s, is sent %s',
+    async (kind, text, _acceptable, sent) => {
+      expect(await sentBody(kind, text, null)).toBe(sent ? text : null);
+    },
+  );
+});
+
+describe('links in the reader reply', () => {
+  afterEach(() => vi.restoreAllMocks());
 
   it.each([
-    ['mental', '988 555 0100'],
-    ['mental', '988/555/0100'],
-    ['mental', '988,555,0100'],
-    ['mental', '988:555:0100'],
-    ['mental', "988'555'0100"],
-    ['mental', '(988) 555-0100'],
-    ['mental', '+1 988 555 0100'],
-    ['emergency', '911 555 0100'],
-    ['mental', '988 24/75'],
-    ['emergency', '911 24/7-555-0100'],
-    ['mental', '1988'],
-    ['mental', 'Room 49881'],
-    ['mental', '988x5550100'],
-    ['mental', 'Call 988~555~0100'],
-    ['mental', 'Call or text 988.\n555 0100'],
-  ] as const)('%s %j is not sent', async (kind, text) => {
-    expect(await readerTextSent(kind, text)).toBe(false);
+    ['lowercase scheme', 'Call or text 988, or chat at https://example.org/help.'],
+    ['www', 'Call or text 988 or visit www.example.org.'],
+    ['bare domain', 'Call or text 988, or see example.org'],
+    ['uppercase domain', 'Call 988 or visit EXAMPLE.COM'],
+    ['mixed-case domain', 'Call 988 or visit Example.Org now'],
+    ['uppercase country domain', 'call 988 EXAMPLE.CA'],
+    ['full-width scheme', 'Call 988 or see ＨＴＴＰＳ：／／ＥＸＡＭＰＬＥ．ＯＲＧ'],
+    ['full-width www', 'Call 988 or see ｗｗｗ．ｅｘａｍｐｌｅ'],
+    ['non-Latin domain', 'Call 988 or see пример.испытание'],
+  ])('%s: not sent', async (_name, text) => {
+    expect(crisisTextHasOtherNumberOrLink(text)).toBe(true);
+    expect(await sentBody('mental', text, null)).toBeNull();
   });
 
   it.each([
-    ['mental', '988 24/7'],
-    ['mental', 'Appelle le 988 24 h sur 24'],
-    ['mental', '拨打988，24小时'],
-    ['mental', '٩٨٨'],
-    ['mental', '988. 911 if you are in danger'],
-    ['mental', '988 / 911'],
-    ['mental', 'Call or text 988.'],
-    ['mental', 'Appelle ou texte le 9-8-8, 24 h/24.'],
-    ['emergency', 'Appelle le 9-1-1 maintenant.'],
-  ] as const)('%s %j is sent', async (kind, text) => {
-    expect(await readerTextSent(kind, text)).toBe(true);
+    ['abbreviation', 'If you are thinking of ending it, e.g. tonight, call or text 988.'],
+    ['full stop then a sentence', 'Call 988. Then rest.'],
+    ['Chinese full stop', '请拨打988。全天都有人接听。'],
+    ['country abbreviation', 'In the U.S. and Canada, call or text 988.'],
+  ])('%s: sent as written', async (_name, text) => {
+    expect(crisisTextHasOtherNumberOrLink(text)).toBe(false);
+    expect(await sentBody('mental', text, null)).toBe(text);
   });
 });
