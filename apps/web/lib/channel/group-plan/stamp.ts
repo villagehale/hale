@@ -1,6 +1,10 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import type { ChannelDraftPort } from '~/lib/channel/coach/draft';
+import { and, eq, or, sql } from 'drizzle-orm';
+import {
+  CHANNEL_AUDIT_ACTION,
+  type ChannelDraftPort,
+  calendarDraftOrigins,
+} from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 
 /**
@@ -34,24 +38,12 @@ export type RecordGroupPlanOrigin = (origin: GroupPlanOrigin) => Promise<GroupPl
 
 export function groupPlanDraftPort(
   inner: ChannelDraftPort,
-  turn: {
-    audience: 'direct' | 'group';
-    conversationId: string;
-    groupChatId?: string | null;
-  },
+  turn: { audience: 'direct' | 'group'; conversationId: string },
   recordOrigin: RecordGroupPlanOrigin,
 ): ChannelDraftPort {
   if (turn.audience !== 'group') return inner;
-  const pendingIdentical = inner.pendingIdentical;
   return {
-    pendingIdentical: pendingIdentical
-      ? (input) =>
-          pendingIdentical({
-            ...input,
-            audience: 'group',
-            ...(turn.groupChatId ? { groupChatId: turn.groupChatId } : {}),
-          })
-      : undefined,
+    pendingIdentical: inner.pendingIdentical?.bind(inner),
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;
@@ -136,7 +128,11 @@ export async function groupPlanChatId(
   return typeof chatId === 'string' ? chatId : null;
 }
 
-/** Every action a turn in this family group chat drafted (`group_plan.drafted`). */
+/**
+ * Every draft whose origin is this group chat (VIL-525), which is the group's list of
+ * approvals. It includes a chat that is not the household group: a draft made there is
+ * answered there, though its placement still gets 1:1 invites.
+ */
 export async function groupPlanActionIds(
   database: Database,
   input: { familyId: string; chatId: string },
@@ -148,30 +144,34 @@ export async function groupPlanActionIds(
       and(
         eq(schema.auditLog.familyId, input.familyId),
         eq(schema.auditLog.targetTable, 'actions'),
-        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
-        sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+        or(
+          and(
+            eq(schema.auditLog.actionTaken, CHANNEL_AUDIT_ACTION),
+            sql`${schema.auditLog.after}->'origin'->>'chatId' = ${input.chatId}`,
+          ),
+          and(
+            eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+            sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+          ),
+        ),
       ),
     );
-  return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));
+  const ids = [...new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])))];
+  const origins = await calendarDraftOrigins(database, input.familyId, ids);
+  return new Set(
+    ids.filter((id) => {
+      const origin = origins.get(id);
+      return origin?.surface === 'group' && origin.chatId === input.chatId;
+    }),
+  );
 }
 
-/** Which of these actions a family group chat turn drafted, in any chat. */
+/** Which of these actions a group chat turn drafted, in any chat (VIL-525). */
 export async function groupDraftedActionIds(
   database: Database,
   familyId: string,
   actionIds: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  if (actionIds.length === 0) return new Set();
-  const rows = await database
-    .select({ targetId: schema.auditLog.targetId })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.familyId, familyId),
-        eq(schema.auditLog.targetTable, 'actions'),
-        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
-        inArray(schema.auditLog.targetId, [...actionIds]),
-      ),
-    );
-  return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));
+  const origins = await calendarDraftOrigins(database, familyId, actionIds);
+  return new Set(actionIds.filter((id) => origins.get(id)?.surface === 'group'));
 }

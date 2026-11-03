@@ -52,9 +52,9 @@ export interface PendingAction {
    */
   occasion?: { title: string; startsAt: string };
   /**
-   * VIL-525. A family group chat turn drafted it (`group_plan.drafted`). A private
-   * 1:1 calendar offer is never this draft: its NO must not cancel the group's plan
-   * and its YES must not approve it.
+   * VIL-525. A group chat turn drafted it: its recorded origin is a group, in any
+   * chat. A private 1:1 calendar offer is never this draft: its NO must not cancel
+   * the group's plan and its YES must not approve it.
    */
   groupPlan?: true;
 }

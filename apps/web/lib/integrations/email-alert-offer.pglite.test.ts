@@ -48,6 +48,7 @@ const NOW = new Date('2026-09-17T15:00:00.000Z');
 /** Inside the reminder scheduler's 8-day horizon, and a Saturday morning in Toronto. */
 const STARTS_AT = new Date('2026-09-19T13:00:00.000Z');
 const TITLE = 'Picture day';
+const PRIVATE = { surface: 'private' } as const;
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -987,9 +988,11 @@ describe('a coach offer is the calendar, not the sentence', () => {
         parentUserId: family.parentUserId,
         title: TITLE,
         startsAt: minuteOff.toISOString(),
+        childId: null,
         now: NOW,
+        origin: PRIVATE,
       }),
-    ).toBe(actionId);
+    ).toEqual({ outcome: 'already_pending', id: actionId });
 
     const channelMessageId = await sentOut(NOW);
     await expect(coach({ title: TITLE, startsAt: minuteOff, channelMessageId })).resolves.toBe(
@@ -1020,9 +1023,11 @@ describe('a coach offer is the calendar, not the sentence', () => {
         parentUserId: family.parentUserId,
         title: TITLE,
         startsAt: STARTS_AT.toISOString(),
+        childId: null,
         now: NOW,
+        origin: PRIVATE,
       }),
-    ).toBe(actionId);
+    ).toEqual({ outcome: 'already_pending', id: actionId });
   });
 
   it('does not treat Saturday afternoon as the Saturday morning offer', async () => {
@@ -1072,7 +1077,9 @@ describe('a coach offer is the calendar, not the sentence', () => {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       title: 'Gymnastics',
+      childId: null,
       now: NOW,
+      origin: PRIVATE,
     };
 
     await expect(
@@ -1080,44 +1087,13 @@ describe('a coach offer is the calendar, not the sentence', () => {
         ...ask,
         startsAt: new Date(morning.getTime() + 60_000).toISOString(),
       }),
-    ).resolves.toBe(offerId);
+    ).resolves.toEqual({ outcome: 'already_asked', id: offerId });
     await expect(
       findPendingIdenticalCalendarAdd(db.database, {
         ...ask,
         startsAt: new Date(morning.getTime() + 7 * 3_600_000).toISOString(),
       }),
-    ).resolves.toBeNull();
-  });
-
-  it('names the unchecked standing offer when a private ask has no parent', async () => {
-    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    const ask = {
-      familyId: family.familyId,
-      title: TITLE,
-      startsAt: STARTS_AT.toISOString(),
-      now: NOW,
-    };
-    try {
-      await expect(
-        findPendingIdenticalCalendarAdd(db.database, {
-          ...ask,
-          parentUserId: family.parentUserId,
-        }),
-      ).resolves.toBe(offerId);
-      expect(info).not.toHaveBeenCalledWith(
-        expect.objectContaining({ outcome: 'standing_offer_unchecked' }),
-        expect.any(String),
-      );
-
-      await expect(findPendingIdenticalCalendarAdd(db.database, ask)).resolves.toBeNull();
-      expect(info).toHaveBeenCalledWith(
-        { familyId: family.familyId, outcome: 'standing_offer_unchecked', reason: 'no_parent' },
-        expect.any(String),
-      );
-    } finally {
-      info.mockRestore();
-    }
+    ).resolves.toEqual({ outcome: 'none' });
   });
 
   it('a NO declines the hidden unapproved add, so the next turn does not list it', async () => {
@@ -1156,43 +1132,23 @@ describe('a coach offer is the calendar, not the sentence', () => {
   });
 
   it('a private offer does not stop a group ask from drafting', async () => {
-    await seedOffer({ title: TITLE, startsAt: STARTS_AT });
-    const unscoped = {
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const ask = {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       title: TITLE,
       startsAt: STARTS_AT.toISOString(),
+      childId: null,
       now: NOW,
     };
-    const asked = { ...unscoped, audience: 'group' as const, groupChatId: 'chat-family' };
-    expect(await findPendingIdenticalCalendarAdd(db.database, asked)).toBeNull();
     expect(
-      await findPendingIdenticalCalendarAdd(db.database, { ...asked, audience: 'direct' }),
-    ).toEqual(expect.any(String));
-
-    const record = vi.fn(async () => 'recorded' as const);
-    const port = groupPlanDraftPort(
-      {
-        pendingIdentical: (input) => findPendingIdenticalCalendarAdd(db.database, input),
-        draft: async () => ({ actionId: 'group-add' }),
-      },
-      { audience: 'group', conversationId: 'c-group', groupChatId: 'chat-family' },
-      record,
-    );
-    // The group port scopes the ask itself, even when the caller did not.
-    expect(await port.pendingIdentical?.(unscoped)).toBeNull();
-    await expect(
-      port.draft({
-        familyId: family.familyId,
-        actor: family.parentUserId,
-        actionType: 'calendar_add',
-        payload: { title: TITLE, startsAt: STARTS_AT.toISOString() },
-        rationale: 'the group asked',
-        teenContent: false,
+      await findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        origin: { surface: 'group', chatId: 'chat-family' },
       }),
-    ).resolves.toEqual({ actionId: 'group-add' });
-    expect(record).toHaveBeenCalledWith(
-      expect.objectContaining({ actionId: 'group-add', conversationId: 'c-group' }),
+    ).toEqual({ outcome: 'none' });
+    expect(await findPendingIdenticalCalendarAdd(db.database, { ...ask, origin: PRIVATE })).toEqual(
+      { outcome: 'already_asked', id: offerId },
     );
   });
 
@@ -1219,20 +1175,24 @@ describe('a coach offer is the calendar, not the sentence', () => {
     let minted = 0;
     const port = groupPlanDraftPort(
       {
-        pendingIdentical: (input) => findPendingIdenticalCalendarAdd(db.database, input),
+        pendingIdentical: (input) =>
+          findPendingIdenticalCalendarAdd(db.database, {
+            ...input,
+            parentUserId: family.parentUserId,
+            now: NOW,
+            origin: { surface: 'group', chatId: 'chat-family' },
+          }),
         draft: async () => {
           minted += 1;
           return { actionId: 'third' };
         },
       },
-      { audience: 'group', conversationId: 'c-group', groupChatId: 'chat-family' },
+      { audience: 'group', conversationId: 'c-group' },
       async () => 'recorded',
     );
     const tools = buildChannelCoachTools({
       familyId: family.familyId,
       parentUserId: family.parentUserId,
-      audience: 'group',
-      groupChatId: 'chat-family',
       reader: {
         timeZone: async () => 'America/Chicago',
         weekPlanSummary: async () => null,
@@ -1291,7 +1251,9 @@ describe('a coach offer is the calendar, not the sentence', () => {
       parentUserId: family.parentUserId,
       title: TITLE,
       startsAt: STARTS_AT.toISOString(),
+      childId: null,
       now: NOW,
+      origin: PRIVATE,
     };
     const approvalIds = async (surface: 'direct' | 'group') =>
       (
@@ -1305,14 +1267,15 @@ describe('a coach offer is the calendar, not the sentence', () => {
         .filter((question) => question.kind === 'approval')
         .map((question) => question.id);
 
-    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toBeNull();
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toEqual({
+      outcome: 'none',
+    });
     expect(
       await findPendingIdenticalCalendarAdd(db.database, {
         ...privateAsk,
-        audience: 'group',
-        groupChatId: 'chat-family',
+        origin: { surface: 'group', chatId: 'chat-family' },
       }),
-    ).toBe(groupId);
+    ).toEqual({ outcome: 'already_pending', id: groupId });
     expect(await approvalIds('direct')).toEqual([]);
     expect(await approvalIds('group')).toEqual([groupId]);
 
@@ -1322,20 +1285,18 @@ describe('a coach offer is the calendar, not the sentence', () => {
       reviewerVerdict: 'pending',
     });
     expect(await approvalIds('direct')).toEqual([privateId]);
-    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toBe(privateId);
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toEqual({
+      outcome: 'already_pending',
+      id: privateId,
+    });
   });
 
   describe('through the production coach ports', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
     async function proposeAdd(turn: { audience: 'direct' | 'group'; groupChatId?: string }) {
-      // Built, never called: a draft that reaches the model fails on this fetch.
+      // Built, never called: a draft that reaches the reviewer stops at a closed local
+      // port. A stubbed global fetch does not reach the SDK's transport.
       vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
-      vi.stubGlobal('fetch', async () => {
-        throw new Error('email-alert-offer.pglite.test: this test makes no network calls');
-      });
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'http://127.0.0.1:9');
       await db.database
         .update(schema.users)
         .set({ timezone: 'America/Chicago' })

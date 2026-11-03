@@ -71,7 +71,7 @@ import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/s
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
-import { productionChannelDraftPort } from './draft';
+import { draftOriginForTurn, productionChannelDraftPort } from './draft';
 import {
   type ExperienceCardIntent,
   augmentCoachSkillForExperienceCards,
@@ -687,7 +687,11 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // VIL-443: a calendar_add drafted in the family group records that origin, so its
         // placement is reported back to the group. Code writes it; the model never sees it.
         draftPort: groupPlanDraftPort(
-          productionChannelDraftPort(database, anthropicClient(), turn.now),
+          productionChannelDraftPort(database, anthropicClient(), {
+            now: turn.now,
+            parentUserId: turn.parentUserId,
+            origin: draftOriginForTurn(turn),
+          }),
           turn,
           productionRecordGroupPlanOrigin(database),
         ),
@@ -731,8 +735,6 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
             revokeAutonomyForKind({ ...input, policyVersion: POLICY_VERSION }, database),
         },
         parentUserId: turn.parentUserId,
-        audience: turn.audience,
-        groupChatId: turn.groupChatId,
         now: turn.now,
         activitySignup: midActivitySignupToolEnabled()
           ? {

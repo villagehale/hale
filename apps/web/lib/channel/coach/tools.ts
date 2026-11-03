@@ -284,9 +284,6 @@ export interface ChannelCoachToolArgs {
   autonomySwitchOff?: AutonomySwitchOffPorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
-  /** Group asks must not dedupe against a private 1:1 calendar offer. */
-  audience?: 'direct' | 'group';
-  groupChatId?: string | null;
   now: Date;
 }
 
@@ -671,17 +668,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       }
       const already = await draftPort.pendingIdentical?.({
         familyId,
-        ...(args.parentUserId ? { parentUserId: args.parentUserId } : {}),
         title: input.title,
         startsAt: startsAt.toISOString(),
-        now,
-        ...(args.audience ? { audience: args.audience } : {}),
-        ...(args.groupChatId ? { groupChatId: args.groupChatId } : {}),
+        childId: input.childId ?? null,
       });
-      if (already) {
+      if (already?.outcome === 'already_pending' || already?.outcome === 'already_asked') {
         return {
           drafted: true as const,
-          actionId: already,
+          actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
         };
