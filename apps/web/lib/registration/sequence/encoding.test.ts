@@ -29,6 +29,8 @@ describe('hasEncodingCorruption', () => {
     ['mixed with a real ’', 'd’aprĂšs'],
     ['one garbled word in clean text', 'Inscription en aoÃ»t'],
     ['garbled word glued to clean text by an emoji', 'aoÃ»t🎉été'],
+    ['garbled word beside a correct accented word', 'Café prêt : dÃ©but'],
+    ['correct accent, then an emoji, then a garbled word', 'é🎉dÃ©but'],
   ])('holds UTF-8 read back through a legacy charset: %s', (_name, message) => {
     expect(hasEncodingCorruption(message)).toBe(true);
   });
