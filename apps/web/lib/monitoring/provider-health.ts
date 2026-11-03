@@ -10,10 +10,10 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
  * by hand hours later. Nothing watched the provider.
  *
  * One cheap call BEFORE each LLM cron's per-family fan-out answers "can we reach the
- * model at all?". A billing/auth answer aborts the window with a distinct outcome
+ * model at all?". An INCIDENT_FAILURES answer aborts the window with a distinct outcome
  * instead of producing N identical per-family failures, and pages the founder once.
  *
- * FAIL-OPEN BY CONSTRUCTION, not by a kill switch. Only `billing` and `auth` abort;
+ * FAIL-OPEN BY CONSTRUCTION, not by a kill switch. Only the INCIDENT_FAILURES classes abort;
  * every other failure — including anything unexpected thrown inside the probe itself —
  * classifies as `transient` and the window runs as before. So the worst a bug in this
  * file can do is post a useless #ops alert; it can never be the reason a family's brief
@@ -30,7 +30,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
  * What the provider said, in the only shapes that change what we do:
  *  - `billing`     the account cannot pay (credit balance exhausted / payment required)
  *  - `auth`        the key is wrong, revoked, or lacks permission
- *  - `usage_limit` the account hit its configured API usage limit (VIL-552, 2026-10-31)
+ *  - `usage_limit` the account hit an Anthropic spend limit (org, workspace or monthly tier cap) (VIL-552)
  *  - `quota`       rate limited (429) — real, but usually a burst
  *  - `transient`   everything else: 5xx, overload, network, and anything unrecognised
  *
@@ -58,21 +58,43 @@ export type SendWindow =
  * plain 400 whose only distinguishing mark is this text. */
 const BILLING_MARKERS = ['credit balance', 'billing', 'purchase credits', 'payment'];
 
-/** Provider text, not parent text: Anthropic refuses every call on an account past its
- * configured limit with a 400 `invalid_request_error` whose message says "You have
- * reached your specified API usage limits". */
-const USAGE_LIMIT_MARKER = 'usage limit';
-const USAGE_LIMIT_ERROR_TYPE = 'invalid_request_error';
+/** Anthropic's three spend-limit refusals (platform.claude.com/docs/en/api/rate-limits,
+ * read 2026-11-03): the org limit, the workspace limit, and the monthly tier cap. Provider
+ * text and codes, never parent text. The tier cap is told apart from an ordinary 429 by
+ * its error_code only. */
+const SPEND_LIMIT_REFUSALS = [
+  {
+    status: 400,
+    type: 'invalid_request_error',
+    messagePrefix: 'You have reached your specified API usage limits',
+  },
+  {
+    status: 400,
+    type: 'invalid_request_error',
+    messagePrefix: 'You have reached your specified workspace API usage limits',
+  },
+  { status: 429, type: 'rate_limit_error', errorCode: 'enforced_spend_limit_reached' },
+] as const;
 
-/** The usage-limit 400, read from the SDK's structured response body only — never the
- * composed `err.message`, so a wrapper that quotes something cannot classify. */
+/** A spend-limit refusal only when one frame matches one whole row exactly: numeric
+ * status, `error.error.type`, and the exact-case message prefix or `details.error_code`.
+ * Read from the structured response body only — never the composed `err.message`, so a
+ * wrapper that quotes something cannot classify. Anything looser fails open. */
 function isUsageLimitError(err: unknown): boolean {
-  const body = (err as { error?: { error?: { type?: unknown; message?: unknown } } } | null)?.error
-    ?.error;
-  return (
-    body?.type === USAGE_LIMIT_ERROR_TYPE &&
-    typeof body.message === 'string' &&
-    body.message.toLowerCase().includes(USAGE_LIMIT_MARKER)
+  const frame = err as {
+    status?: unknown;
+    error?: {
+      error?: { type?: unknown; message?: unknown; details?: { error_code?: unknown } | null };
+    };
+  } | null;
+  const body = frame?.error?.error;
+  return SPEND_LIMIT_REFUSALS.some(
+    (shape) =>
+      frame?.status === shape.status &&
+      body?.type === shape.type &&
+      ('messagePrefix' in shape
+        ? typeof body.message === 'string' && body.message.startsWith(shape.messagePrefix)
+        : body.details?.error_code === shape.errorCode),
   );
 }
 
@@ -108,13 +130,14 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
   if (status === 401 || status === 403) {
     return 'auth';
   }
+  // Before quota: the tier spend cap is a 429 that never clears on its own. Before
+  // billing: a usage-limit message that also points at "Plans & Billing" still needs the
+  // usage-limit remedy, not a top-up.
+  if (isUsageLimitError(err)) {
+    return 'usage_limit';
+  }
   if (status === 429) {
     return 'quota';
-  }
-  // Before billing: a usage-limit message that also points at "Plans & Billing" still
-  // needs the usage-limit remedy, not a top-up.
-  if (status === 400 && isUsageLimitError(err)) {
-    return 'usage_limit';
   }
   if (status === 400 || status === 402) {
     const detail = providerFailureDetail(err).toLowerCase();
@@ -173,11 +196,16 @@ const PROBE_INPUT = '.';
 
 export async function probeProviderHealth(client: AgentClient): Promise<ProviderHealth> {
   try {
-    await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: PROBE_INPUT }],
-    });
+    // No SDK retry: it retries every 429, and the tier spend cap is a 429 that keeps
+    // refusing until the 1st — one refused call is the whole answer.
+    await client.messages.create(
+      {
+        model: HAIKU_MODEL,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: PROBE_INPUT }],
+      },
+      { maxRetries: 0 },
+    );
     return { ok: true };
   } catch (err) {
     return { ok: false, failure: classifyProviderFailure(err), detail: providerFailureDetail(err) };
@@ -297,7 +325,7 @@ const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
   billing: 'the account cannot pay — an exhausted credit balance or a declined payment.',
   auth: 'the API key is rejected — wrong, revoked, or missing a permission.',
   usage_limit:
-    'the account hit its configured API usage limit; every call is refused until it is raised or resets.',
+    'the account hit an Anthropic spend limit (org, workspace or monthly tier cap); every call is refused until it is raised or resets.',
   quota: 'rate limited.',
   transient: 'a temporary provider fault.',
 };
@@ -306,7 +334,7 @@ const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
   billing: 'top up at console.anthropic.com → Plans & Billing, then re-run the window.',
   auth: 'check ANTHROPIC_API_KEY in the Vercel production environment, then re-run the window.',
   usage_limit:
-    'raise the usage limit in the Anthropic console (Limits), or wait for the reset time the provider names above; then re-run the window.',
+    'raise the org or workspace spend limit in the Anthropic console (Limits) — for the monthly tier cap, move up a tier — or wait for the reset time the provider names above; then re-run the window.',
   quota: 'no action if it clears on its own; raise the rate limit if it does not.',
   transient: 'no action — the next window retries.',
 };
