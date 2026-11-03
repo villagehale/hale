@@ -249,3 +249,79 @@ describe('a wall clock the zone skips', () => {
     expect(anchors(result)).toEqual({ general_open: '2027-03-14T07:30:00.000Z' });
   });
 });
+
+describe('the confidence floor and the calendar', () => {
+  const PAGE = (day: number) =>
+    `Winter 2026. Public registration opens Feb ${day}, 2026 at 9 a.m. Pool hours are Eastern Time.`;
+  const reading = (day: number, confidence: number) =>
+    extracted({
+      cycleOnPage: 'Winter 2026',
+      evidence: `Public registration opens Feb ${day}, 2026 at 9 a.m.`,
+      yearEvidence: `Feb ${day}, 2026`,
+      generalOpen: {
+        quote: `Feb ${day}, 2026 at 9 a.m.`,
+        date: `2026-02-${day}`,
+        time: '09:00',
+      },
+      confidence,
+    });
+
+  it('refuses a reading below the floor, however well it quotes the page', () => {
+    const result = normalizeExtractedRegistration(reading(28, 0.5), PAGE(28), SOURCE);
+    expect(result).toMatchObject({ status: 'unverified', reason: 'low_confidence' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it('verifies the same reading at the floor (control)', () => {
+    expect(anchors(normalizeExtractedRegistration(reading(28, 0.7), PAGE(28), SOURCE))).toEqual({
+      general_open: '2026-02-28T14:00:00.000Z',
+    });
+  });
+
+  it('refuses a day the calendar does not have, even when the page prints it', () => {
+    const result = normalizeExtractedRegistration(reading(31, 0.95), PAGE(31), SOURCE);
+    expect(result).toMatchObject({ status: 'unverified', reason: 'invalid_date' });
+    expect(result).not.toHaveProperty('dates');
+  });
+});
+
+describe('a not-found answer', () => {
+  it.each([
+    ['the reason the model gave', 'announced_later', 'announced_later'],
+    ['a named outcome when it gave none, never a guessed reason', null, 'no_reason_given'],
+  ] as const)('carries %s', (_name, reason, expected) => {
+    expect(
+      normalizeExtractedRegistration(
+        extracted({ found: false, reason, cycleOnPage: null }),
+        'Fall programs are coming soon.',
+        SOURCE,
+      ),
+    ).toMatchObject({ status: 'unverified', reason: expected });
+  });
+});
+
+describe('the zone must be a named IANA region, not a fixed offset', () => {
+  const PAGE =
+    'Fall 2026. Public registration opens August 11, 2026 at 9 a.m. Pool hours are Eastern Time.';
+  const reading = (timeZone: string) =>
+    extracted({
+      evidence: 'Public registration opens August 11, 2026 at 9 a.m.',
+      yearEvidence: 'August 11, 2026',
+      generalOpen: { quote: 'August 11, 2026 at 9 a.m.', date: '2026-08-11', time: '09:00' },
+      timeZone,
+      timeZoneEvidence: 'Eastern Time',
+    });
+
+  it.each(['EST', '+05:00', '-04:00', 'Etc/GMT+5'])('refuses %s', (zone) => {
+    expect(normalizeExtractedRegistration(reading(zone), PAGE, SOURCE)).toMatchObject({
+      status: 'unverified',
+      reason: 'unknown_time_zone',
+    });
+  });
+
+  it('accepts the region whose summer clock is an hour off EST (control)', () => {
+    expect(
+      anchors(normalizeExtractedRegistration(reading('America/New_York'), PAGE, SOURCE)),
+    ).toEqual({ general_open: '2026-08-11T13:00:00.000Z' });
+  });
+});

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resolveRepoFile } from '~/lib/coach/resolve-repo-file';
 import { SPOT_PORTAL_HOSTS } from '~/lib/channel/spots/url';
 import { StructuredOutputError } from '~/lib/pipeline/structured';
 import { registrationWindowFixture } from '~/lib/testing/registration-source';
@@ -12,7 +14,14 @@ import {
   readRegistrationWindows,
   windowReadTarget,
 } from './read';
-import { type ExtractedWindow, extractionInput } from './verify-window';
+import { type ExtractedWindow, extractionInput, parseExtraction } from './verify-window';
+
+// The deploy bundle, faked at the file system: pass-through unless a test says the
+// PDF worker file is missing from it.
+vi.mock('~/lib/coach/resolve-repo-file', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/coach/resolve-repo-file')>();
+  return { resolveRepoFile: vi.fn(actual.resolveRepoFile) };
+});
 
 /**
  * The live reader, driven through its two ports: `fetchBody` (bytes) and `extract` (a
@@ -180,6 +189,30 @@ describe('a PDF source, and failed reads that never fall back', () => {
   });
 });
 
+describe('a PDF reader that is missing from the deploy', () => {
+  const pdf = registrationPdfFixture(['Public registration opens October 20, 2026 at 9 a.m.']);
+  const target = windowReadTarget(registrationWindowFixture());
+
+  it('is named pdf_reader_fault, not a fault in the city\'s PDF', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(resolveRepoFile).mockImplementationOnce(() => {
+      throw new Error('resolveRepoFile: could not locate the PDF worker');
+    });
+    const p = ports(pdf);
+    expect(await createRegistrationReader(p)(target, NOW)).toMatchObject({
+      status: 'unreadable',
+      reason: 'pdf_reader_fault',
+    });
+    expect(p.extract).not.toHaveBeenCalled();
+  });
+
+  it('reads the same PDF once the worker is there (control)', async () => {
+    const p = ports(pdf);
+    await createRegistrationReader(p)(target, NOW);
+    expect(p.extract.mock.calls[0]?.[1]).toContain('October 20, 2026');
+  });
+});
+
 describe('an unsafe URL', () => {
   const base = windowReadTarget(registrationWindowFixture());
 
@@ -266,6 +299,41 @@ describe('a failed model read', () => {
         );
       }),
     );
+    expect(await reader(target, NOW)).toMatchObject({
+      status: 'unreadable',
+      reason: 'extract_failed',
+    });
+  });
+
+  it.each([
+    [
+      'the schema refuses the reply (an empty quote)',
+      () =>
+        parseExtraction({
+          cycle_on_page: 'Fall 2026',
+          evidence: 'Public registration opens October 20, 2026 at 9 a.m.',
+          year_evidence: 'October 20, 2026',
+          time_zone_evidence: 'Eastern Time',
+          time_zone: 'America/New_York',
+          eligibility_evidence: null,
+          preview: null,
+          resident_open: null,
+          general_open: { quote: '', date: '2026-10-20', time: '09:00' },
+          unclassified_open: null,
+          note: null,
+          found: true,
+          reason: null,
+          confidence: 0.95,
+        }),
+    ],
+    [
+      'the API refuses the call',
+      () => {
+        throw new Anthropic.APIError(529, { type: 'error' }, 'overloaded', undefined);
+      },
+    ],
+  ] as const)('is named extract_failed when %s', async (_name, reply) => {
+    const reader = createRegistrationReader(ports(html(PAGE), async () => reply()));
     expect(await reader(target, NOW)).toMatchObject({
       status: 'unreadable',
       reason: 'extract_failed',

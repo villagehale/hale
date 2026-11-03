@@ -42,6 +42,7 @@ export interface LiveRegistrationDate {
 
 export type UnverifiedReadingReason =
   | UnfoundReason
+  | 'no_reason_given'
   | 'no_dates_for_cycle'
   | 'low_confidence'
   | 'uncorroborated'
@@ -137,11 +138,18 @@ function everyClockExists(dates: readonly LiveRegistrationDate[], timeZone: stri
   );
 }
 
+/** An IANA region id (Area/Location). Offsets (`+05:00`), the fixed-offset legacy ids
+ * (`EST`, `MST`) and `Etc/` zones are refused: none of them observes daylight time, so
+ * a model that answers `EST` for "Eastern" would put every summer date an hour off. */
+const IANA_REGION = /^[A-Z][A-Za-z_]*(\/[A-Za-z0-9_+-]+)+$/;
+
 /** The zone the page itself states: a quote that is on the page, naming a real IANA
- * zone. Anything else is no zone at all — never a guessed one. */
+ * region. Anything else is no zone at all — never a guessed one. The quote is checked
+ * only for being on the page; that it names this zone is the model's reading. */
 function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | null {
   const { timeZone, timeZoneEvidence } = extracted;
   if (!timeZone || !timeZoneEvidence?.trim()) return null;
+  if (!IANA_REGION.test(timeZone) || timeZone.startsWith('Etc/')) return null;
   if (!normalizeQuote(pageText).includes(normalizeQuote(timeZoneEvidence))) return null;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone });
@@ -167,7 +175,9 @@ export function normalizeExtractedRegistration(
     partialDates: readonly PartialRegistrationDate[] = [],
   ): LiveRegistrationReading => ({ ...base, status: 'unverified', reason, partialDates });
 
-  if (!extracted.found) return unverified(extracted.reason ?? 'not_published');
+  if (!extracted.found) {
+    return unverified(extracted.reason === null ? 'no_reason_given' : extracted.reason);
+  }
   if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
 
   const slots = [
