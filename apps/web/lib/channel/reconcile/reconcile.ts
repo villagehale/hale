@@ -126,7 +126,8 @@ export interface ReconcileVerdict {
   resolutions: readonly ClaimResolution[];
   /** The subset that could not be backed. Empty means the body may go on the wire. */
   refused: readonly Extract<ClaimResolution, { status: 'refused' }>[];
-  /** The rows the caller must write once the send lands. */
+  /** The rows the caller must write once the send lands — only those whose sentence has
+   * no refused claim, because only those sentences are sent. */
   mints: readonly RegistrationWatchMint[];
 }
 
@@ -194,7 +195,7 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
       return { claim, status: 'matched', matchedBy: 'open_commitment' };
     }
     // A WATCHED COURSE PAGE IS A WATCH (VIL-337), but only of the sentence it is
-    // actually about. `kindOf` reads every "I'll text you before X opens" as
+    // actually about. The extractor reads every "I'll text you before X opens" as
     // `registration_watch`, so the town's whole season and one full class arrive here as
     // the same kind — and a page in Markham says nothing about when Markham's fall
     // registration goes live. Matching on the kind alone would have handed a 60-day
@@ -268,14 +269,21 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
 
 export function reconcile(claims: readonly StateClaim[], view: ReconcileView): ReconcileVerdict {
   const resolutions = claims.map((claim) => resolveOne(claim, view));
+  const refused = resolutions.filter(
+    (resolution): resolution is Extract<ClaimResolution, { status: 'refused' }> =>
+      resolution.status === 'refused',
+  );
+  // A sentence is backed only when every claim in it is. One refused claim cuts the
+  // whole sentence, and a watch minted on a sentence the parent never reads is a row
+  // with no promise behind it.
+  const cut = new Set(refused.map((resolution) => resolution.claim.sentence));
   return {
     resolutions,
-    refused: resolutions.filter(
-      (resolution): resolution is Extract<ClaimResolution, { status: 'refused' }> =>
-        resolution.status === 'refused',
-    ),
+    refused,
     mints: resolutions.flatMap((resolution) =>
-      resolution.status === 'minted' ? [resolution.mint] : [],
+      resolution.status === 'minted' && !cut.has(resolution.claim.sentence)
+        ? [resolution.mint]
+        : [],
     ),
   };
 }

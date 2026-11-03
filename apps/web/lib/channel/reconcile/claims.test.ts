@@ -189,3 +189,122 @@ describe('claimsNoLedgerCanBack', () => {
     expect(extractStateClaims((await coParentInviteSentAck('them', 'en')) ?? '')).toEqual([]);
   });
 });
+
+describe('extractStateClaims — every claim in a sentence', () => {
+  const claimsOf = (body: string) => extractStateClaims(body);
+  const bookings = (body: string) =>
+    claimsOf(body).filter((claim) => claim.kind === 'scheduled_event');
+
+  it('checks the booking that shares a sentence with a follow-up promise', () => {
+    const body =
+      "Registration opens Tuesday, and I'll keep looking for toddler activities; your well-baby visit is booked.";
+    expect(kinds(body)).toEqual(['activity_followup', 'scheduled_event']);
+    const [booking] = bookings(body);
+    expect(booking?.clause).toBe('your well-baby visit is booked.');
+    expect(booking?.words).toEqual(['baby', 'visit']);
+    expect(booking?.sentence).toBe(body);
+  });
+
+  it('reads both claims when the booking comes first', () => {
+    expect(
+      kinds(
+        "Your well-baby visit is booked; I'll keep looking for toddler activities, and registration opens Tuesday.",
+      ),
+    ).toEqual(['scheduled_event', 'activity_followup']);
+  });
+
+  it.each([
+    ', ',
+    '; ',
+    ' - ',
+    ' — ',
+    ': ',
+    ' and ',
+    ' but ',
+    ' plus ',
+    ' so ',
+    ' also ',
+    ' while ',
+    ' then ',
+    ' & ',
+    ' / ',
+    '… ',
+    '... ',
+  ])('splits a booking off a promise across %j', (join) => {
+    const body = `I'll keep looking for toddler activities${join}your well-baby visit is booked.`;
+    expect(kinds(body)).toEqual(['activity_followup', 'scheduled_event']);
+    expect(bookings(body)[0]?.words).toEqual(['baby', 'visit']);
+  });
+
+  it('gives each booking in a sentence its own words', () => {
+    const body = 'Swim is booked, and the dentist is booked.';
+    const found = bookings(body);
+    expect(found.map((claim) => claim.words)).toEqual([['swim'], ['dentist']]);
+    expect(found.map((claim) => claim.sentence)).toEqual([body, body]);
+  });
+
+  it('scopes a negation, a "nothing" and a tag question to the clause they govern', () => {
+    expect(kinds("I can't hold a spot for you, but your well-baby visit is booked.")).toEqual([
+      'scheduled_event',
+    ]);
+    expect(kinds('Nothing new on swim yet, but your well-baby visit is booked.')).toEqual([
+      'scheduled_event',
+    ]);
+    expect(kinds('Your well-baby visit is booked, right?')).toEqual(['scheduled_event']);
+  });
+
+  it('reads a second promise in the same sentence', () => {
+    expect(
+      kinds("I'll text you when registration opens, and I'll keep looking for swim classes."),
+    ).toEqual(['registration_watch', 'activity_followup']);
+    expect(kinds("I can't hold a spot, but I'll keep looking for swim classes.")).toEqual([
+      'activity_followup',
+    ]);
+    expect(kinds("You said Tuesday is busy, and I'll keep looking for swim classes.")).toEqual([
+      'activity_followup',
+    ]);
+  });
+
+  it.each([
+    ['You said the visit is booked.', []],
+    ['You said that, for Tuesday, the visit is booked.', []],
+    ["I can't confirm that, for Tuesday, the visit is booked.", []],
+    ["Nothing's booked until you call the clinic.", []],
+    ['So the dentist is booked for Tuesday?', []],
+    ['Your note said "swim, and the visit, are booked" so I left it.', []],
+    ["I can't watch a site and ping you when registration opens.", []],
+    ["I'll text you about the swim class when a spot opens.", ['registration_watch']],
+    ["I'm watching that swim class, and I'll text you when a spot opens.", ['registration_watch']],
+  ])('control: %s stays as it reads today', (body, expected) => {
+    expect(kinds(body)).toEqual(expected);
+  });
+
+  it('control: keeps a clock time, a dated comma and a slashed date inside one clause', () => {
+    expect(claimsOf('Swim at 9:30 on Nov 4, 2026 is booked.').map((c) => c.words)).toEqual([
+      ['swim', '2026'],
+    ]);
+    expect(claimsOf('Swim on 11/4 is booked.').map((c) => c.words)).toEqual([['swim']]);
+  });
+
+  it('lets a booking clause that names nothing borrow from its neighbours', () => {
+    const appositive = claimsOf('Your well-baby visit, Tuesday at 10, is booked.');
+    expect(appositive.map((claim) => claim.kind)).toEqual(['scheduled_event']);
+    expect(appositive[0]?.clause).toBe('is booked.');
+    expect(new Set(appositive[0]?.words)).toEqual(new Set(['tuesday', 'baby', 'visit']));
+
+    const anaphora = claimsOf("Toddler Tumble on Saturday at 10 - that's booked.");
+    expect(anaphora.map((claim) => claim.kind)).toEqual(['scheduled_event']);
+    expect(new Set(anaphora[0]?.words)).toEqual(new Set(['toddler', 'tumble', 'saturday']));
+
+    expect(bookings("Swim is booked, so you're all set.").map((claim) => claim.words)).toEqual([
+      ['swim'],
+      ['swim'],
+    ]);
+  });
+
+  it('never borrows words from a promise clause', () => {
+    const body = "I'll keep looking for toddler activities - that's booked.";
+    expect(kinds(body)).toEqual(['activity_followup', 'scheduled_event']);
+    expect(bookings(body)[0]?.words).toEqual([]);
+  });
+});

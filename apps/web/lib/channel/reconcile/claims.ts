@@ -57,22 +57,31 @@ export interface StateClaim {
   /**
    * The sentence exactly as it appears in the body. It is the SPAN, not a paraphrase,
    * because a lane that cannot re-ask has one honest move left: drop the sentence and
-   * send what survives. That only works if the string can be found again.
+   * send what survives. That only works if the string can be found again. Several claims
+   * may share one sentence, and the sentence is sendable only if every one of them is
+   * backed.
    */
   sentence: string;
+  /**
+   * This claim's own span inside `sentence`, verbatim: the booking's clause, or the
+   * promise's segment (the whole sentence when only the whole-sentence reading made it).
+   */
+  clause: string;
   kind: ClaimKind;
   /**
-   * The claim's content words, lowercased — what a `scheduled_event` is matched on.
-   * Empty for the promise families, which are matched by KIND against the ledger and
-   * never by their words.
+   * The claim's content words, lowercased — what a `scheduled_event` is matched on. They
+   * come from `clause`, or from the clauses it leans on when `clause` names nothing
+   * ("that's booked"), so an activity named elsewhere in the sentence cannot back the
+   * booking. Empty for the promise families, which are matched by KIND against the
+   * ledger and never by their words.
    */
   words: readonly string[];
 }
 
 /**
  * Sentence-ish. SMS bodies are two segments of plain ASCII, so terminal punctuation and
- * newlines are the whole grammar; a dash-joined clause stays with its sentence because
- * "I'm watching that morning and I'll text you before it goes live" is one claim.
+ * newlines are the whole grammar. The sentence is the span a lane drops; a dash-joined
+ * clause stays inside it, and what each clause claims is read separately below.
  *
  * A CAPITAL LETTER IS REQUIRED after the break, and that is not tidiness. Every
  * registration leg Hale sends contains "7:00 a.m.", and a naive split on `.` shatters it
@@ -208,11 +217,16 @@ function contentWords(sentence: string): string[] {
   ];
 }
 
-/** Everything inside double quotes is somebody else's sentence. Removed before the
+/** Everything inside double quotes is somebody else's sentence. Blanked before the
  * first-person patterns run, so `Your note said "I'll sign her up Monday"` reads as the
- * report it is. Single quotes are left alone — `I'll` contains one. */
+ * report it is. Single quotes are left alone — `I'll` contains one.
+ *
+ * Blanked with spaces of EQUAL LENGTH, so an offset into the result is an offset into the
+ * sentence: clauses are found on this copy and cut from the original. Splitting first
+ * would cut inside `"swim, and the visit, are booked"` and leave halves that no longer
+ * hold a matched quote pair, turning the parent's quoted words into Hale's claim. */
 function withoutQuotedSpans(sentence: string): string {
-  return sentence.replace(/["“”][^"“”]*["“”]/g, ' ');
+  return sentence.replace(/["“”][^"“”]*["“”]/g, (quoted) => ' '.repeat(quoted.length));
 }
 
 /** Hale says it has invited someone, or that it is about to. Negation is already out. */
@@ -224,17 +238,28 @@ function isCoParentInviteClaim(text: string): boolean {
   return /\b(?:invite|invitation)\b/i.test(text);
 }
 
-function kindOf(sentence: string): ClaimKind | null {
+type PromiseKind = Exclude<ClaimKind, 'scheduled_event'>;
+
+/**
+ * Which promise a stretch of text makes, if any. The families are RIVAL READINGS OF ONE
+ * PROMISE VERB, which is why the first match wins: "I'm watching that summer camp page
+ * and I'll text you the moment a spot opens" is one watch, not a watch plus a follow-up.
+ * A booking assertion is not a reading of a promise verb, so it is not in here — it is
+ * read clause by clause in {@link extractStateClaims}, whatever this returns.
+ */
+function promiseKindOf(span: string): PromiseKind | null {
   // A question is a proposal, not a claim. "Want me to watch that morning?" asks for
   // permission Hale does not yet have, and refusing it would refuse the honest move.
-  if (sentence.trimEnd().endsWith('?')) return null;
+  if (span.trimEnd().endsWith('?')) return null;
 
-  const text = withoutQuotedSpans(sentence);
+  const text = withoutQuotedSpans(span);
   if (REPORTED_SPEECH.test(text)) return null;
   if (FIRST_PERSON_NEGATED.test(text)) return null;
   // Before the other first-person families. "I'll send an invite" also contains a
   // notify verb, and classifying it as a watch or a follow-up would let a ledger
-  // row about something else back a text to a stranger.
+  // row about something else back a text to a stranger. A sentence that holds an invite
+  // and anything else still carries this claim, and it is always refused, so no row
+  // about the other thing can back the sentence.
   if (isCoParentInviteClaim(text)) return 'co_parent_invite';
 
   const speaks = FIRST_PERSON_FUTURE.test(text) || FIRST_PERSON_PROGRESSIVE.test(text);
@@ -248,15 +273,210 @@ function kindOf(sentence: string): ClaimKind | null {
     }
     if (RETURN_VERB.test(text) && ACTIVITY_SUBJECT.test(text)) return 'activity_followup';
   }
-  const assertion = SCHEDULED_ASSERTION.exec(text);
-  if (assertion && !NEGATIVE_SUBJECT.test(text.slice(0, assertion.index + 2))) {
-    return 'scheduled_event';
-  }
   return null;
 }
 
 /**
- * Every claim this body makes, in the order it makes them.
+ * Where one clause of a sentence ends and the next begins. SOFT breaks (a comma before a
+ * word, a colon before a space) let a negation or a report reach on into the clauses after
+ * it — "You said that, for Tuesday, the visit is booked" is all the parent's. HARD breaks
+ * stop it, so "I can't hold a spot for you, but your visit is booked" still claims the
+ * booking. `Nov 4, 2026`, `7:00`, `11/4` and `well-baby` are not breaks.
+ *
+ * This list is an evasion table, not a grammar: a connective outside it leaves two
+ * clauses joined, which is never weaker than reading the whole sentence as one.
+ */
+const CLAUSE_BREAK =
+  /,(?=\s+\D)|:(?=\s)|;|\s[-–—]\s|—|…|\.\.\.|&|(?<!\d)\/|\/(?!\d)|\b(?:and|but|plus|so|also|while|then)\b/gi;
+const SOFT_BREAKS = new Set([',', ':']);
+
+/** Where Hale (or someone it is reporting) starts to speak. */
+const OPENERS = [
+  FIRST_PERSON_FUTURE,
+  FIRST_PERSON_PROGRESSIVE,
+  FIRST_PERSON_NEGATED,
+  REPORTED_SPEECH,
+].map((pattern) => new RegExp(pattern.source, `${pattern.flags}g`));
+
+/** A clause whose words take the clauses it governs out of Hale's mouth. */
+const FRAMES = [REPORTED_SPEECH, FIRST_PERSON_NEGATED, NEGATIVE_SUBJECT];
+
+const KIND_ORDER: readonly ClaimKind[] = [
+  'registration_watch',
+  'activity_followup',
+  'scheduled_event',
+  'self_referential',
+  'co_parent_invite',
+];
+
+interface Clause {
+  start: number;
+  end: number;
+  /** The break before this clause was hard. */
+  hardBefore: boolean;
+  /** Blanked of quoted spans: what the patterns read. */
+  masked: string;
+  /** Verbatim: what the claim carries and its words come from. */
+  text: string;
+}
+
+function clausesOf(sentence: string, masked: string): Clause[] {
+  const clauses: Clause[] = [];
+  let cursor = 0;
+  let hard = false;
+  const close = (end: number) => {
+    const raw = sentence.slice(cursor, end);
+    if (raw.trim() === '') return;
+    const start = cursor + (raw.length - raw.trimStart().length);
+    const stop = cursor + raw.trimEnd().length;
+    clauses.push({
+      start,
+      end: stop,
+      hardBefore: hard,
+      masked: masked.slice(start, stop),
+      text: sentence.slice(start, stop),
+    });
+    hard = false;
+  };
+  for (const found of masked.matchAll(CLAUSE_BREAK)) {
+    close(found.index);
+    if (!SOFT_BREAKS.has(found[0])) hard = true;
+    cursor = found.index + found[0].length;
+  }
+  close(sentence.length);
+  return clauses;
+}
+
+function openerStarts(masked: string): number[] {
+  const starts = new Set<number>();
+  for (const pattern of OPENERS) {
+    for (const found of masked.matchAll(pattern)) starts.add(found.index);
+  }
+  return [...starts].sort((a, b) => a - b);
+}
+
+interface Placed {
+  claim: StateClaim;
+  position: number;
+}
+
+/**
+ * The promises a sentence makes. One opener means one promise verb, read over the whole
+ * sentence exactly as before. A second opener in a later clause starts a second promise —
+ * "I'll text you when registration opens, and I'll keep looking for swim classes" owes
+ * two rows — and each segment carries its own exemptions, so "I can't hold a spot, but
+ * I'll keep looking" still makes the second promise. The whole-sentence reading is kept,
+ * so this set only ever grows. Kinds are deduplicated because promises are matched by
+ * kind and never by words: two of one kind get the same verdict.
+ */
+function promiseClaims(
+  sentence: string,
+  clauses: readonly Clause[],
+  openers: readonly number[],
+): Placed[] {
+  const openerClauses = [
+    ...new Set(
+      openers.map((at) => clauses.findIndex((clause) => at >= clause.start && at < clause.end)),
+    ),
+  ].filter((index) => index >= 0);
+  const cuts = [0, ...openerClauses.slice(1).map((index) => (clauses[index] as Clause).start)];
+  const segments =
+    cuts.length > 1 ? cuts.map((start, i) => ({ start, end: cuts[i + 1] ?? sentence.length })) : [];
+  const readings = [
+    ...segments.map((segment) => ({
+      ...segment,
+      kind: promiseKindOf(sentence.slice(segment.start, segment.end)),
+    })),
+    { start: 0, end: sentence.length, kind: promiseKindOf(sentence) },
+  ];
+  const placed = new Map<PromiseKind, Placed>();
+  for (const reading of readings) {
+    if (reading.kind === null || placed.has(reading.kind)) continue;
+    placed.set(reading.kind, {
+      claim: {
+        sentence,
+        clause: sentence.slice(reading.start, reading.end).trim(),
+        kind: reading.kind,
+        words: [],
+      },
+      position: openers.find((at) => at >= reading.start && at < reading.end) ?? reading.start,
+    });
+  }
+  return [...placed.values()];
+}
+
+/**
+ * The booking assertions a sentence makes, one claim per clause that holds one, whatever
+ * the promise reading says.
+ *
+ * EXEMPT only where something governs the clause: a report, a negation or a "nothing" in
+ * the clause itself (a "nothing" only before the assertion — "Your visit is booked,
+ * nothing else is" claims the visit), or in an earlier clause reached through soft breaks
+ * with no opener of its own in between; or the sentence's last clause ending in `?`.
+ *
+ * WORDS come from the clause. A clause that names nothing ("that's booked", "is booked")
+ * leans on its neighbours, nearest first, and never across a clause where Hale starts
+ * speaking — that clause is about something else. A neighbour that is itself a booking
+ * is the same placement said twice ("Swim is booked, so you're all set"), so the walk
+ * takes its words and stops.
+ */
+function bookingClaims(
+  sentence: string,
+  clauses: readonly Clause[],
+  openers: readonly number[],
+): Placed[] {
+  const holdsOpener = (index: number) => {
+    const clause = clauses[index] as Clause;
+    return openers.some((at) => at >= clause.start && at < clause.end);
+  };
+  const asserts = (index: number) => SCHEDULED_ASSERTION.test((clauses[index] as Clause).masked);
+  const framed = (index: number) =>
+    FRAMES.some((frame) => frame.test((clauses[index] as Clause).masked));
+
+  const governed = (index: number, assertionAt: number) => {
+    const own = (clauses[index] as Clause).masked;
+    if (REPORTED_SPEECH.test(own) || FIRST_PERSON_NEGATED.test(own)) return true;
+    if (NEGATIVE_SUBJECT.test(own.slice(0, assertionAt + 2))) return true;
+    for (let earlier = index - 1; earlier >= 0; earlier -= 1) {
+      const next = clauses[earlier + 1] as Clause;
+      if (next.hardBefore || holdsOpener(earlier + 1)) return false;
+      if (framed(earlier)) return true;
+    }
+    return false;
+  };
+
+  const lean = (index: number, step: -1 | 1) => {
+    const words: string[] = [];
+    for (let other = index + step; other >= 0 && other < clauses.length; other += step) {
+      if (holdsOpener(other)) break;
+      words.push(...contentWords((clauses[other] as Clause).text));
+      if (asserts(other)) break;
+    }
+    return words;
+  };
+
+  const asksLast = sentence.trimEnd().endsWith('?');
+  const placed: Placed[] = [];
+  clauses.forEach((clause, index) => {
+    const assertion = SCHEDULED_ASSERTION.exec(clause.masked);
+    if (!assertion) return;
+    if (governed(index, assertion.index)) return;
+    if (asksLast && index === clauses.length - 1) return;
+    const own = contentWords(clause.text);
+    const borrowed = own.length > 0 ? own : lean(index, -1);
+    const words = borrowed.length > 0 ? borrowed : lean(index, 1);
+    placed.push({
+      claim: { sentence, clause: clause.text, kind: 'scheduled_event', words: [...new Set(words)] },
+      position: clause.start,
+    });
+  });
+  return placed;
+}
+
+/**
+ * Every claim this body makes, in the order it makes them — EVERY claim in a sentence,
+ * not the first one found. A sentence that pairs a real follow-up with a booking nothing
+ * backs carries both, and reconcile refuses the sentence on the booking.
  *
  * An empty array is the ordinary answer and means exactly what it says: nothing in here
  * asserts a row. It does NOT mean the message is true — only that nothing in it is this
@@ -265,13 +485,18 @@ function kindOf(sentence: string): ClaimKind | null {
 export function extractStateClaims(body: string): StateClaim[] {
   const claims: StateClaim[] = [];
   for (const sentence of sentencesOf(body)) {
-    const kind = kindOf(sentence);
-    if (kind === null) continue;
-    claims.push({
-      sentence,
-      kind,
-      words: kind === 'scheduled_event' ? contentWords(sentence) : [],
-    });
+    const masked = withoutQuotedSpans(sentence);
+    const clauses = clausesOf(sentence, masked);
+    const openers = openerStarts(masked);
+    const placed = [
+      ...promiseClaims(sentence, clauses, openers),
+      ...bookingClaims(sentence, clauses, openers),
+    ].sort(
+      (a, b) =>
+        a.position - b.position ||
+        KIND_ORDER.indexOf(a.claim.kind) - KIND_ORDER.indexOf(b.claim.kind),
+    );
+    claims.push(...placed.map(({ claim }) => claim));
   }
   return claims;
 }
