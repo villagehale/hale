@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Accurately states the login wall, that the sign-up is not done (confirmed false), gives the live browser link with the ~8 minute window (linkIs live_browser, holdMinutes 8), includes no personal details (pack absent), makes no retry promise, and is in English with a warm plain tone.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Accurately states the captcha step needs the parent, gives the exact link (linkIs live_browser, holdMinutes null so no time limit stated), notes not confirmed, no personal details, no retry promise, zh language. Minor: mentions 'the slot' in terms consistent with facts; fully compliant.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states the captcha blocked confirmation, signup not confirmed, parent finishes in the open browser at the exact link, no holdMinutes so no time limit given, no personal details, no retry promise, French with tu for direct audience. Minor: says 'une étape que toi seul peux faire' which is fine. Solid.",
+    "score": 5
+  }
+}

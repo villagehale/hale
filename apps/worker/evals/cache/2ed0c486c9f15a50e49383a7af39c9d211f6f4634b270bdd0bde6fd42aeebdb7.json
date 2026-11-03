@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly says nothing is booked, gives the registration link exactly, and lists the pack details (child and parent names, parent email) that are provided. No retry promise, no technical detail, language is en, tone is plain and warm.",
-    "score": 5
-  }
-}

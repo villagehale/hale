@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states payment was not approved, nothing paid, spot not confirmed; link carried exactly; browser open for about 5 minutes matches holdMinutes; no personal details; no held/reserved hint; no promise to retry; in English, direct audience, plain and warm. Minor: 'I've left a browser window open' is fine. Scores high.",
+    "score": 5
+  }
+}

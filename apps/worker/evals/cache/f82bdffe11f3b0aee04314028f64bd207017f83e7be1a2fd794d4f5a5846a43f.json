@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says a login was tried and failed, which is explicitly forbidden for reason no_provider_session. It also omits that Hale cannot complete sign-ups on this site and fails to tell the parent the child is not signed up; it does carry the correct link and is in English, but the login claim is a serious factual error.",
+    "score": 1
+  }
+}

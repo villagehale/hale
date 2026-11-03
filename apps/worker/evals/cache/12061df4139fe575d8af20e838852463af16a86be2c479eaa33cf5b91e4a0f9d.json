@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text states the session is full, carries the link exactly, is in English for a direct audience, and makes no hint of a reopening spot or promise to retry. However, it lists a name and email (Lena Ferreira, sam@example.test) even though pack is absent, which violates the privacy rule.",
+    "score": 2
+  }
+}

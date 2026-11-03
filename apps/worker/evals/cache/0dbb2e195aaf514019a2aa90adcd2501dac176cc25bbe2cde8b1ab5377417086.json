@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up could not be confirmed, does not claim signed up or failed, carries the exact registration_page link, names no personal details (no pack), makes no retry promise, and is in English as required. Minor: it does not state the parent is not signed up, but it also does not imply a held spot, so it stays accurate.",
+    "score": 5
+  }
+}

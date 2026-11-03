@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately says checkout was reached, nothing is paid or confirmed, the live browser link is given exactly, and the 12-minute window matches holdMinutes. No personal details, no hint of a held spot, no promise to retry, and it is in English for a direct audience. Tone is plain and warm.",
+    "score": 5
+  }
+}

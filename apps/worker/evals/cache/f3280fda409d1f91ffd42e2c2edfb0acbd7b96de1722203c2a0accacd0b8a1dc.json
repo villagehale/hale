@@ -1,6 +1,6 @@
 {
   "value": {
-    "text": "很遗憾,周六上午9:30这一场已经没有名额了,所以这次没能报上名。如果想再看看有没有别的场次或有人退出,可以到报名页面查看:https://register.example-rec.test/activity/42"
+    "text": "很抱歉,周六上午9:30这一场已经没有名额了,所以这次没能报上。如果你想再看看有没有其他场次,可以在报名页面查看:https://register.example-rec.test/activity/42"
   },
-  "latencyMs": 1789
+  "latencyMs": 1588
 }

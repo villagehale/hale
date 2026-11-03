@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts match: outcome completed, confirmed true, session sam. 9 h 30, no link, no personal details. Text says the spot is reserved, which is allowed since confirmed is true. Uses tu for a direct audience in French, no promises of follow-up, no invented details. Minor: 'la place est réservée' is fine as confirmed. Tone is warm and short.",
+    "score": 5
+  }
+}

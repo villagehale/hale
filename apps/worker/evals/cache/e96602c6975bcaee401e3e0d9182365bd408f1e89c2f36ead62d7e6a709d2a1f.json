@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says nothing is booked, gives the registration link (linkIs registration_page, so no browser hold claim), includes the pack values present in facts, makes no retry promise, and is in English as required. Facts and privacy are correct; tone is plain and friendly.",
+    "score": 5
+  }
+}

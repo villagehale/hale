@@ -1,6 +1,6 @@
 {
   "value": {
-    "text": "Sorry, the Sat 9:30 AM session is sold out, so there's no spot left to sign up for. If you'd like to check the other options, the registration page is here: https://register.example-rec.test/activity/42"
+    "text": "Unfortunately the Sat 9:30 AM session is sold out, so there wasn't a spot left to sign up for. If you want to double-check or look at other options, the provider's registration page is here: https://register.example-rec.test/activity/42"
   },
-  "latencyMs": 1420
+  "latencyMs": 1383
 }

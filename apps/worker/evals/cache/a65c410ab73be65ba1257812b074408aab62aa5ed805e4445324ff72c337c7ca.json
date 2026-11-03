@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly states the session is not booked (confirmed false), gives the registration link exactly as linkIs registration_page, names no personal details, makes no retry promise, does not claim a login failed, and is in English, short and plain.",
-    "score": 5
-  }
-}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text accurately says Hale reached the payment step, gives the exact live browser link, notes 12 minutes, and states the sign-up is not confirmed until paid. However, it says the spot may stop being reserved after 12 minutes, which hints a spot is held before payment, contrary to the fact that the open browser holds no spot. Otherwise it uses tu correctly, lists no personal details, and makes no retry promise.",
+    "score": 3
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text states that a login was tried and failed, but the reason is no_provider_session, so no login was attempted. This is a fabricated fact. It also omits that Hale cannot complete sign-ups on this site and does not mention the pack details to have ready. The link is correct and the text is in English and warm, but the invented login claim is a serious error.",
-    "score": 1
-  }
-}

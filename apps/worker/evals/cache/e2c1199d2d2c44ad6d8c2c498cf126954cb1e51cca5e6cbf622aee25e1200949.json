@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly states payment was not approved, nothing paid, spot not booked, gives the live browser link exactly, notes the ~5 minute hold, lists no personal details, makes no retry promise, and is in English as required.",
-    "score": 5
-  }
-}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text is accurate: login failed, sign-up not done (confirmed false), link carried exactly, live browser with 8 minutes stated, no pack/personal details, no retry promise, language zh matches. Minor: it says 'Hale没能登录到你的账号' which matches login_wall reason; overall clean and warm.",
-    "score": 5
-  }
-}

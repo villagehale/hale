@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states payment was not approved, nothing was paid, and the sign-up is not confirmed; it carries the exact live browser link and the ~5 minute window matching holdMinutes. It uses tu for a direct audience in French, names no child or personal details, makes no promise to retry, and does not claim a spot is held. Minor: 'fenêtre ouverte' phrasing is fine and plain. Overall accurate and compliant.",
+    "score": 5
+  }
+}

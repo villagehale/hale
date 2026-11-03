@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The text says the sign-up is all booked and paid, but confirmed is false and outcome is reached_checkout, so claiming booked and paid is a false completion claim. It also omits the instruction to finish payment in the open browser within about 12 minutes, which the facts require.",
-    "score": 1
-  }
-}

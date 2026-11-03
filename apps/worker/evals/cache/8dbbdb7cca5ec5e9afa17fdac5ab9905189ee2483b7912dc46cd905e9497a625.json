@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up is unconfirmed, does not claim it succeeded or failed, carries the registration_page link exactly, gives no personal details, no retry promise, and is in Chinese as required for direct audience. Minor: wording 先别当作已经报上了 is clear and warm enough.",
+    "score": 5
+  }
+}

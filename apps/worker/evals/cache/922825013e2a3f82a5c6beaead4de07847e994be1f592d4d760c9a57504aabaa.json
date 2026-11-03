@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states the session isn't booked (confirmed false), gives the registration link exactly as provided with linkIs registration_page, makes no login-failure claim, lists no personal details, no retry promise, and is in English as required. Clear and concise for a group audience.",
+    "score": 5
+  }
+}

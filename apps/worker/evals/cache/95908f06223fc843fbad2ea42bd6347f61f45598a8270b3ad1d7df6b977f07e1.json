@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly states the signup is not done (confirmed false), gives the link exactly, uses vous for group audience in French, lists no personal details, makes no retry promise, and does not claim a login failed. Plain and clear; minor wording about 'rien essayé' is accurate to the no_provider_session reason.",
-    "score": 5
-  }
-}

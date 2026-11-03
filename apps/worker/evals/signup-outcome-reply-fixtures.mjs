@@ -20,6 +20,8 @@ const PACK = [
 
 const NO_PACK = 'There is no pack: the text names no child and lists no personal details.';
 const NO_RETRY = 'No promise that Hale will retry, keep watching or follow up.';
+const NO_HELD_SPOT =
+  'Never says or hints that a spot is held or reserved: the open browser holds no spot before payment.';
 
 /** One case per outcome. `facts` omits sessionLabel and language, set per language. */
 const CASES = [
@@ -103,7 +105,7 @@ const CASES = [
       linkIs: 'live_browser',
       holdMinutes: 12,
     },
-    watchFor: `Says Hale got to the payment step and the parent pays in the open browser at the link, within about 12 minutes. Never says it is booked or paid. ${NO_PACK} ${NO_RETRY}`,
+    watchFor: `Says Hale got to the payment step and the parent pays in the open browser at the link, within about 12 minutes. Never says it is booked or paid. ${NO_HELD_SPOT} ${NO_PACK} ${NO_RETRY}`,
   },
   {
     id: 'needs-human-captcha-live',
@@ -133,7 +135,7 @@ const CASES = [
       link: REC,
       linkIs: 'registration_page',
     },
-    watchFor: `Says the session is full. The link is the provider's page. ${NO_PACK} ${NO_RETRY}`,
+    watchFor: `Says the session is full. The link is the provider's page. No hint that a spot in this session may still open up (a cancellation, someone dropping out). ${NO_PACK} ${NO_RETRY}`,
   },
   {
     id: 'waitlist',
@@ -154,7 +156,7 @@ const CASES = [
       linkIs: 'live_browser',
       holdMinutes: 5,
     },
-    watchFor: `Says the payment was not approved so nothing was paid, and the parent can pay in the open browser at the link within about 5 minutes. Never says booked. ${NO_PACK} ${NO_RETRY}`,
+    watchFor: `Says the payment was not approved so nothing was paid, and the parent can pay in the open browser at the link within about 5 minutes. Never says booked. ${NO_HELD_SPOT} ${NO_PACK} ${NO_RETRY}`,
   },
   {
     id: 'completed-confirmed',
@@ -231,6 +233,25 @@ export const SIGNUP_OUTCOME_REPLY_BROKEN = [
     fixtureId: 'en-sold-out',
     text: `Sat 9:30 AM is full. For next time, have Lena Ferreira and sam@example.test ready: ${REC}`,
     breaks: 'lists personal details on an outcome with no pack',
+  },
+  // The next three are drafts the writer produced and an earlier judge passed (verifier, PR #1009).
+  {
+    id: 'implies-held-spot',
+    fixtureId: 'fr-reached-checkout-live',
+    text: `Je suis arrivé jusqu'au paiement pour la séance du sam. 9 h 30, mais c'est à toi de payer. Je t'ai laissé une fenêtre ouverte sur le site, avec la page prête : ${LIVE}. Termine le paiement là-bas dans les 12 minutes, sinon la place risque de ne plus être réservée. Tant que tu n'as pas payé, l'inscription n'est pas confirmée.`,
+    breaks: 'implies the spot is reserved before payment',
+  },
+  {
+    id: 'says-spot-held',
+    fixtureId: 'en-payment-not-approved-live',
+    text: `The payment for the Sat 9:30 AM session wasn't approved, so nothing was paid and the spot isn't booked yet. I left a browser window open on the provider's site where you can pay and finish the sign-up. It's held for about 5 minutes: ${LIVE}`,
+    breaks: 'says something is held for 5 minutes, read as the spot, before payment',
+  },
+  {
+    id: 'sold-out-may-open',
+    fixtureId: 'zh-sold-out',
+    text: `很遗憾,周六上午9:30这一场已经没有名额了,所以这次没能报上名。如果想再看看有没有别的场次或有人退出,可以到报名页面查看:${REC}`,
+    breaks: 'hints a spot in a sold-out session may still open up',
   },
   {
     id: 'unconfirmed-says-signed-up',
