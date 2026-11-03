@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { closeInviteOnGroupSeat, recordedSeatGrant } from '~/lib/channel/caregiver/invites';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { householdTimezone } from '~/lib/channel/household-timezone';
@@ -837,8 +838,10 @@ async function primaryParentId(database: Database, familyId: string): Promise<st
 }
 
 /**
- * Seat the second real person in a claimed Linq group. No prior phone.
- * A legacy `identity_noted` invite for this number is closed when one exists.
+ * Seat the second real person in a claimed Linq group, only when a household parent
+ * recorded a co-parent grant for that phone through the 1:1 invite (VIL-582); that
+ * invite closes `accepted` with the seat. A legacy `identity_noted` invite for this
+ * number is closed when one exists.
  */
 export async function seatAppearingCoparent(
   database: Database,
@@ -850,7 +853,9 @@ export async function seatAppearingCoparent(
     verbatim: string;
     now: Date;
   },
-): Promise<{ status: 'seated'; userId: string } | { status: 'refused' }> {
+): Promise<
+  { status: 'seated'; userId: string } | { status: 'refused' } | { status: 'needs_parent_grant' }
+> {
   const phone = realHumanPhone(input.phoneE164);
   if (!phone) return { status: 'refused' };
   if (await familyHasCoParent(database, input.familyId)) return { status: 'refused' };
@@ -861,6 +866,16 @@ export async function seatAppearingCoparent(
   // A live note for a different household stays on that household.
   if (noted && noted.familyId !== input.familyId) return { status: 'refused' };
   const phoneHash = phoneBlindIndex(phone);
+  const grant = await recordedSeatGrant(database, {
+    familyId: input.familyId,
+    phoneE164Hash: phoneHash,
+    role: 'co_parent',
+    now: input.now,
+  });
+  if (!grant) {
+    console.info({ outcome: 'seat_needs_parent_grant' }, 'linq group co-parent: not seated');
+    return { status: 'needs_parent_grant' };
+  }
   const userId = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     await tx
@@ -922,6 +937,15 @@ export async function seatAppearingCoparent(
       verifiedAt: input.now,
       consentRecordId: consent.id,
     });
+    if (grant.open) {
+      await closeInviteOnGroupSeat(tx, {
+        inviteId: grant.inviteId,
+        role: 'co_parent',
+        familyId: input.familyId,
+        seatedUserId: user.id,
+        now: input.now,
+      });
+    }
 
     await tx.insert(schema.linqGroupOnboarding).values({
       familyId: input.familyId,

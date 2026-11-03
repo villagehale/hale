@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
@@ -889,7 +890,14 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
   });
 
   it('seats a member on their own reply in the group, and does not hand that reply to the coach', async () => {
-    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: UNKNOWN_A,
+      role: 'grandparent',
+      now: NOW,
+    });
     const { deps, sends, jobs } = door(handlesOk([PARENT, UNKNOWN_A]).list);
     await handleLinqInboundRequest(signed(addedMe()), deps);
 
@@ -923,20 +931,25 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     expect(roles).toEqual([{ role: 'primary_parent' }]);
     expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
 
+    // VIL-582: with V2 off, an add that names no actor and carries no parent grant
+    // still seats nobody.
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const dark = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
-    expect(await dark.json()).toMatchObject({ outcome: 'group_coparent_seated' });
+    expect((await dark.json()).outcome).not.toBe('group_coparent_seated');
     expect(
-      (
-        await db.database
-          .select({ role: schema.familyMembers.role })
-          .from(schema.familyMembers)
-          .where(eq(schema.familyMembers.familyId, familyId))
-      )
-        .map((row) => row.role)
-        .sort(),
-    ).toEqual(['co_parent', 'primary_parent']);
-    expect(sends).toHaveLength(2);
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(UNKNOWN_B))),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+    expect(sends).toHaveLength(1);
   });
 
   it('claims a new group from the phrase and asks who is who instead of seating the first phone', async () => {

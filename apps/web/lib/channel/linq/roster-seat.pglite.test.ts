@@ -3,7 +3,9 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { type ListChatHandles, startGroupRoster } from './roster';
 import { declineRosterMember, seatConfirmedMember, unseatCaregiverSeat } from './roster-seat';
 
@@ -21,6 +23,7 @@ const DAD = '+14165550131';
 const GRAN = '+14165550132';
 const NANNY = '+14165550133';
 const OTHER_PARENT = '+14165550141';
+const GUEST = '+14165550151';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
 const CHAT = 'chat-family-group';
 
@@ -123,7 +126,14 @@ async function verbs(familyId: string) {
 
 describe('seatConfirmedMember', () => {
   it('seats a dad as co_parent on his own words, with that reply as the consent', async () => {
-    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: DAD,
+      role: 'co_parent',
+      now: NOW,
+    });
     await askedRoster([PARENT, DAD, GRAN]);
     const dad = await memberFor(DAD);
 
@@ -217,7 +227,14 @@ describe('seatConfirmedMember', () => {
   });
 
   it('seats a grandparent in the scoped grandparent role, with caregiver consent and no parent rights', async () => {
-    await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
     await askedRoster([PARENT, GRAN]);
     const gran = await memberFor(GRAN);
 
@@ -268,7 +285,14 @@ describe('seatConfirmedMember', () => {
   });
 
   it('seats a nanny as a caregiver and confirms the roster once nobody is left to answer', async () => {
-    await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: NANNY,
+      role: 'nanny',
+      now: NOW,
+    });
     await askedRoster([PARENT, NANNY]);
 
     const seated = await seatConfirmedMember(db.database, {
@@ -280,7 +304,8 @@ describe('seatConfirmedMember', () => {
     expect(seated).toMatchObject({ outcome: 'seated', role: 'nanny', groupRole: 'caregiver' });
     const [consent] = await db.database
       .select({ consentScope: schema.consentRecords.consentScope })
-      .from(schema.consentRecords);
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.consentType, 'caregiver_scoped_messages'));
     expect(consent?.consentScope).toBe('caregiver:nanny');
     expect(await rosterStatus()).toEqual({ status: 'confirmed', confirmedAt: NOW });
   });
@@ -376,6 +401,252 @@ describe('seatConfirmedMember', () => {
   });
 });
 
+async function refusedAudits(familyId: string) {
+  return (await verbs(familyId))
+    .filter((row) => row.actionTaken === 'linq_group_member_refused')
+    .map((row) => row.after);
+}
+
+/**
+ * VIL-582: a who's-who reply is the claimant's own yes and nothing more. A seat needs the
+ * household parent's recorded grant for that phone and that role; without it the reply
+ * only labels the person, on the audit row, and writes no seat.
+ */
+describe('seatConfirmedMember without a parent grant', () => {
+  it('labels a stranger who claims the empty co-parent seat and writes no seat rows', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    await askedRoster([PARENT, GUEST]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GUEST)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: "I'm Mila's mom",
+      now: NOW,
+    });
+
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select({ id: schema.parentChannels.id })
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.familyId, familyId)),
+    ).toHaveLength(1);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect(await db.database.select().from(schema.loopPrefs)).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.externalAuthId, `sms:${phoneBlindIndex(GUEST)}`)),
+    ).toEqual([]);
+    expect(await memberFor(GUEST)).toMatchObject({ status: 'refused', userId: null });
+    expect(await refusedAudits(familyId)).toEqual([
+      { reason: 'seat_needs_parent_grant', claimedRole: 'co_parent', via: 'own_reply' },
+    ]);
+  });
+
+  it('labels a grandparent claim with no grant and writes no caregiver seat', async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    await askedRoster([PARENT, GRAN]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentType, 'caregiver_scoped_messages')),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.parentChannels)).toHaveLength(1);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect(await refusedAudits(familyId)).toEqual([
+      { reason: 'seat_needs_parent_grant', claimedRole: 'grandparent', via: 'own_reply' },
+    ]);
+  });
+
+  it('seats the same co-parent claim once the parent recorded a grant, and closes that invite', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GUEST,
+      role: 'co_parent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GUEST]);
+
+    const seated = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GUEST)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: "I'm Mila's mom",
+      now: NOW,
+    });
+
+    expect(seated).toMatchObject({ outcome: 'seated', role: 'co_parent', groupRole: 'co_parent' });
+    if (seated.outcome !== 'seated') throw new Error('not seated');
+    const [membership] = await db.database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, seated.userId));
+    expect(membership?.role).toBe('co_parent');
+    const channels = await db.database
+      .select({ verifiedAt: schema.parentChannels.verifiedAt })
+      .from(schema.parentChannels)
+      .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(GUEST)));
+    expect(channels).toEqual([{ verifiedAt: NOW }]);
+    const [consent] = await db.database
+      .select({
+        consentScope: schema.consentRecords.consentScope,
+        evidence: schema.consentRecords.evidence,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.userId, seated.userId));
+    expect(consent?.consentScope).toBe('linq_group_role_reply');
+    expect((consent?.evidence as { verbatimReply?: string }).verbatimReply).toBe("I'm Mila's mom");
+
+    const [invite] = await db.database
+      .select({
+        state: schema.caregiverInvites.state,
+        caregiverUserId: schema.caregiverInvites.caregiverUserId,
+        closedAt: schema.caregiverInvites.closedAt,
+      })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite).toEqual({ state: 'accepted', caregiverUserId: seated.userId, closedAt: NOW });
+    const accepted = await db.database
+      .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'co_parent_invite_accepted'));
+    expect(accepted).toEqual([
+      { targetId: inviteId, after: { role: 'co_parent', via: 'linq_group' } },
+    ]);
+    expect(await loadOpenInviteByPhone(db.database, GUEST, NOW)).toBeNull();
+  });
+
+  it('seats a grandparent with a caregiver grant and closes that invite as a caregiver invite', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+
+    const seated = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandma",
+      now: NOW,
+    });
+
+    expect(seated).toMatchObject({ outcome: 'seated', role: 'grandparent' });
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state, closedAt: schema.caregiverInvites.closedAt })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite).toEqual({ state: 'accepted', closedAt: NOW });
+    const accepted = await db.database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'caregiver_invite_accepted'));
+    expect(accepted).toEqual([{ targetId: inviteId }]);
+  });
+
+  it('binds the grant to the phone it was recorded for', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: NANNY,
+      role: 'nanny',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN, NANNY]);
+
+    const impostor = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(GRAN)).id,
+      reading: { role: 'nanny', parentRole: null },
+      verbatimReply: "I'm the nanny",
+      now: NOW,
+    });
+    expect(impostor).toEqual({ outcome: 'seat_needs_parent_grant' });
+
+    const nanny = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(NANNY)).id,
+      reading: { role: 'nanny', parentRole: null },
+      verbatimReply: "I'm the nanny",
+      now: NOW,
+    });
+    expect(nanny).toMatchObject({ outcome: 'seated', role: 'nanny' });
+  });
+
+  it('binds the grant to the role it was recorded for', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: DAD,
+      role: 'co_parent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, DAD]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(DAD)).id,
+      reading: { role: 'grandparent', parentRole: null },
+      verbatimReply: "I'm grandpa",
+      now: NOW,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+  });
+
+  it('does not read an accepted invite with no recorded grant as a grant', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await db.database.insert(schema.caregiverInvites).values({
+      familyId,
+      invitedByUserId: parentUserId,
+      role: 'co_parent',
+      displayName: 'Noted number',
+      phoneE164Encrypted: encryptString(DAD),
+      phoneE164Hash: phoneBlindIndex(DAD),
+      state: 'accepted',
+      expiresAt: NOW,
+      closedAt: NOW,
+    });
+    await askedRoster([PARENT, DAD]);
+
+    const result = await seatConfirmedMember(db.database, {
+      rosterMemberId: (await memberFor(DAD)).id,
+      reading: { role: 'parent', parentRole: 'father' },
+      verbatimReply: "I'm his dad",
+      now: NOW,
+    });
+    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  });
+});
+
 describe('declineRosterMember', () => {
   it('writes no seat, user or consent for "not family", and audits the decline', async () => {
     const { familyId } = await seedHousehold(PARENT, 'Parent');
@@ -413,7 +684,14 @@ describe('declineRosterMember', () => {
 
 describe('unseatCaregiverSeat', () => {
   it('takes back a group-granted grandparent seat and withdraws its consent', async () => {
-    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
     await askedRoster([PARENT, GRAN]);
     const seated = await seatConfirmedMember(db.database, {
       rosterMemberId: (await memberFor(GRAN)).id,
@@ -473,7 +751,14 @@ describe('unseatCaregiverSeat', () => {
   });
 
   it('leaves a co-parent to the departure flow', async () => {
-    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: DAD,
+      role: 'co_parent',
+      now: NOW,
+    });
     await askedRoster([PARENT, DAD]);
     const seated = await seatConfirmedMember(db.database, {
       rosterMemberId: (await memberFor(DAD)).id,
