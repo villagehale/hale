@@ -31,10 +31,10 @@ describe('backfillApplyDecision', () => {
     });
   });
 
-  it('the mirror is not wired yet, so the script refuses an apply today', () => {
+  it('the mirror honours kid verdicts, so the script allows an apply', () => {
     expect(
       backfillApplyDecision({ apply: true, revert: false }, CALENDAR_MIRROR_HONOURS_KID_VERDICTS)
         .outcome,
-    ).toBe('mirror_not_wired');
+    ).toBe('allowed');
   });
 });

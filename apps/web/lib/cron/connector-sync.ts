@@ -24,6 +24,7 @@ import {
 } from '~/lib/integrations/calendar-alert';
 import {
   type CalendarMirrorCounts,
+  type CalendarMirrorKidJudge,
   emptyCalendarMirrorCounts,
   reconcileCalendarMirrors,
 } from '~/lib/integrations/calendar-mirror';
@@ -223,6 +224,8 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
   };
   // One bounded notes reader per sweep: per-read timeout + sweep-wide read/time budget.
   const readNotes = boundEventNotesReader(createEventNotesReader(eventNotesClient));
+  // One kid-judge deadline per sweep, measured from the same start as the notes budget.
+  const kidJudgeDeadline = new Date(Date.now() + KID_JUDGE_SWEEP_BUDGET_MS);
   const base: BaseSyncDeps = {
     googleFetch: googleGetFetch,
     enqueue,
@@ -233,7 +236,8 @@ export function connectorSyncDeps(database: Database, queue: PgBoss): RunConnect
     alertGmailEnvelopes: (batch) => alertGmailSweep(database, batch),
     alertCalendarChanges: (batch) => alertCalendarSweep(database, batch),
     detectTravelBookings: (batch) => detectTravelSweep(database, batch),
-    mirrorCalendarWindow: (batch) => mirrorCalendarWindow(database, batch, readNotes),
+    mirrorCalendarWindow: (batch) =>
+      mirrorCalendarWindow(database, batch, readNotes, kidJudgeDeadline),
   };
   return {
     listConnections: () => listActiveConnectorConnections(database),
@@ -331,11 +335,17 @@ function travelDetectPorts(
  * timezone means no local midnight to place anything on, and the lane switch off means
  * nothing may be mirrored: each absence is logged and the window is held, so mirrors
  * already written stay in place (rule #11).
+ *
+ * VIL-548: every candidate goes through the kid judge before it is written. With no model
+ * key the judge runs on stored verdicts only (a parent's "that's mine" and verdicts already
+ * judged for the same input); that absence is logged here and each item it leaves unjudged
+ * is counted as `unjudgedNoJudge`.
  */
 async function mirrorCalendarWindow(
   database: Database,
   batch: CalendarMirrorBatch,
   readNotes: EventNotesReader,
+  kidJudgeDeadline: Date,
 ): Promise<CalendarMirrorCounts> {
   if (!laneEnabled('parent_calendar_mirror')) {
     console.info(
@@ -365,6 +375,16 @@ async function mirrorCalendarWindow(
     );
     return emptyCalendarMirrorCounts('no_timezone');
   }
+  let kidJudge: CalendarMirrorKidJudge;
+  if (process.env.ANTHROPIC_API_KEY) {
+    kidJudge = { mode: 'model', client: kidJudgeClient(), deadline: kidJudgeDeadline };
+  } else {
+    console.info(
+      { integrationId: batch.connection.id },
+      'calendar mirror: no kid judge client, stored verdicts only',
+    );
+    kidJudge = { mode: 'stored_only' };
+  }
   return reconcileCalendarMirrors(database, {
     familyId: batch.connection.familyId,
     userId,
@@ -374,7 +394,30 @@ async function mirrorCalendarWindow(
     now: batch.now,
     trustWindow: batch.trustWindow,
     readNotes,
+    kidJudge,
   });
+}
+
+/**
+ * VIL-548 · the kid judge's wire budget: the notes reader's, for the same reason. No SDK
+ * retry (the judge's own one retry, without thinking, is the retry) and a short timeout, so
+ * one started judge call is at most two asks of 20s.
+ */
+const KID_JUDGE_CLIENT_OPTIONS = { timeout: 20_000, maxRetries: 0 } as const;
+/**
+ * Past this much sweep time no new kid-judge call starts; the rest come back
+ * `judge_deferred` (counted `unjudged`) and are judged next sweep. An infrastructure bound,
+ * not a send cadence. The judge checks it only before starting a call, so the worst case is
+ * 90s + one in-flight call (2 asks x 20s) = 130s. The notes reads after it share the same
+ * sweep start (90s + 20s), so no model call starts after 90s and the last ends by 130s,
+ * leaving ~170s of the connector-sync route's maxDuration 300 for Google and DB I/O.
+ */
+export const KID_JUDGE_SWEEP_BUDGET_MS = 90_000;
+let kidJudgeAnthropic: AgentClient | undefined;
+/** Lazy: built only once a key is known to be set (budgetedAnthropic throws without one). */
+function kidJudgeClient(): AgentClient {
+  kidJudgeAnthropic ??= budgetedAnthropic(KID_JUDGE_CLIENT_OPTIONS, { stage: 'classify_event' });
+  return kidJudgeAnthropic;
 }
 
 /** No SDK retry and a short wire timeout: the per-hash failure cap is the retry policy. */

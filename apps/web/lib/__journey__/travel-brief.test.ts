@@ -339,6 +339,9 @@ function syncDeps(subject: string, recorded: ReturnType<typeof model>): SyncDeps
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: false,
     }),
     detectTravelBookings: async (batch) =>

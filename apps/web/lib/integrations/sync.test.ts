@@ -119,6 +119,9 @@ function stubDeps(overrides: Partial<Parameters<typeof syncConnection>[1]> = {})
         removed: 0,
         alreadyKnown: 0,
         skipped: 0,
+        notKid: 0,
+        unjudged: 0,
+        unjudgedNoJudge: 0,
         held: !batch.trustWindow && batch.items.length === 0,
       };
     },
@@ -282,7 +285,16 @@ describe('syncConnection — Calendar', () => {
         body: { items: [], nextSyncToken: 'SYNC-2' },
       },
     ]).fetchImpl;
-    const counts = { mirrored: 0, updated: 0, removed: 0, alreadyKnown: 0, skipped: 0 };
+    const counts = {
+      mirrored: 0,
+      updated: 0,
+      removed: 0,
+      alreadyKnown: 0,
+      skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
+    };
 
     const held = stubDeps({
       googleFetch: calendarPage,

@@ -84,12 +84,12 @@ export interface BackfillCounts {
 const BACKFILL_REASON: SuppressReason = 'kid_relevance_backfill';
 
 /**
- * Whether the calendar mirror leaves a verdict-dropped copy dropped. It does not yet: a
- * soft-deleted mirror row whose event is still on the parent's Google Calendar reads as a
- * change, so the next connector sync writes it back live with its title and place. Flipped
- * in the same change that teaches the mirror to read the verdict.
+ * Whether the calendar mirror leaves a verdict-dropped copy dropped. It does (VIL-548): the
+ * mirror judges every candidate before it writes it, so an adult or unsure copy an apply
+ * drops is not written back by the next connector sync, and a live one is dropped by the
+ * sync itself.
  */
-export const CALENDAR_MIRROR_HONOURS_KID_VERDICTS = false;
+export const CALENDAR_MIRROR_HONOURS_KID_VERDICTS = true;
 
 export type BackfillApplyDecision =
   | { outcome: 'allowed' }

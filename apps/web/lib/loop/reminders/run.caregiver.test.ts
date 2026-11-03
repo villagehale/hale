@@ -51,6 +51,7 @@ function event(over: Partial<LiveEvent> = {}): LiveEvent {
     location: 'Stouffville Public School',
     googleEventId: null,
     createdBy: null,
+    kidVerdict: null,
     ...over,
   };
 }

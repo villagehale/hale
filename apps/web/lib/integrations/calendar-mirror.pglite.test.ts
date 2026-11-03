@@ -1,8 +1,10 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { defaultReminderRunDeps, runReminderCron } from '~/lib/loop/reminders/run';
+import { kidForAllClient, scriptedKidClient } from '~/lib/testing/kid-judge-client';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
-import { reconcileCalendarMirrors } from './calendar-mirror';
+import { type CalendarMirrorKidJudge, reconcileCalendarMirrors } from './calendar-mirror';
 import {
   EVENT_NOTES_FAILED,
   EVENT_NOTES_MAX_FAILED_READS,
@@ -20,6 +22,8 @@ let db: TestDb;
 const NOW = new Date('2026-10-03T16:00:00.000Z');
 const SWIM_START = new Date('2026-10-04T15:00:00.000Z');
 const TZ = 'America/Toronto';
+const INPUT_KEY = Buffer.alloc(32, 7).toString('base64');
+const NO_DEADLINE = new Date('2099-01-01T00:00:00.000Z');
 
 let family: { familyId: string; parentUserId: string };
 let integrationId: string;
@@ -33,8 +37,17 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // The kid judge hashes its input with a keyed blind index; the scripted client answers
+  // on the non-streaming path.
+  process.env.APP_ENCRYPTION_KEY = INPUT_KEY;
+  process.env.HALE_LLM_NO_STREAM = '1';
   family = await seedFamily(db.database);
   integrationId = await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function swim(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -65,6 +78,8 @@ function reconcile(
     now: NOW,
     trustWindow,
     ...(readNotes ? { readNotes } : {}),
+    // Not about the kid gate: every event is the kids', as every mirror was before it.
+    kidJudge: { mode: 'model', client: kidForAllClient(), deadline: NO_DEADLINE },
   });
 }
 
@@ -547,6 +562,9 @@ describe('reconcileCalendarMirrors', () => {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: true,
       heldReason: 'untrusted_window',
     });
@@ -571,5 +589,341 @@ describe('reconcileCalendarMirrors', () => {
     expect(new Set(live.map((row) => row.createdBy))).toEqual(
       new Set([family.parentUserId, coparent.id]),
     );
+  });
+});
+
+/**
+ * VIL-548. A mirror is written only for an event the kid judge (or the parent) says is
+ * about the kids, and the reminder cron schedules nothing for any other. The judge, its
+ * verdict table, the mirror and the reminder run are all real; only the model is scripted
+ * at the AgentClient port. Every name and title is invented.
+ */
+describe('reconcileCalendarMirrors - the kid gate (VIL-548)', () => {
+  const KID_TZ = 'America/Denver';
+  const LESSON_START = new Date('2026-10-05T16:00:00.000Z');
+  const LESSON_END = new Date('2026-10-05T17:00:00.000Z');
+  const REVIEW_START = new Date('2026-10-05T19:00:00.000Z');
+  const EARLIER = new Date('2026-10-01T12:00:00.000Z');
+  let juniperId: string;
+
+  beforeEach(async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    await db.database
+      .update(schema.users)
+      .set({ timezone: KID_TZ })
+      .where(eq(schema.users.id, family.parentUserId));
+    const [child] = await db.database
+      .insert(schema.children)
+      .values({ familyId: family.familyId, name: 'Juniper', dateOfBirth: '2022-03-01' })
+      .returning({ id: schema.children.id });
+    juniperId = child?.id ?? '';
+  });
+
+  function lesson(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'ev-lesson',
+      status: 'confirmed',
+      summary: 'Juniper swim lesson',
+      start: { dateTime: LESSON_START.toISOString() },
+      end: { dateTime: LESSON_END.toISOString() },
+      ...overrides,
+    };
+  }
+
+  function review(): Record<string, unknown> {
+    return {
+      id: 'ev-review',
+      status: 'confirmed',
+      summary: 'Quarterly budget review',
+      start: { dateTime: REVIEW_START.toISOString() },
+      end: { dateTime: '2026-10-05T20:00:00.000Z' },
+    };
+  }
+
+  const JUDGE_RULES = {
+    'Juniper swim lesson': { verdict: 'kid' as const, childName: 'Juniper' },
+    'Quarterly budget review': { verdict: 'adult' as const },
+  };
+
+  function model(client: ReturnType<typeof scriptedKidClient>['client']): CalendarMirrorKidJudge {
+    return { mode: 'model', client, deadline: NO_DEADLINE };
+  }
+
+  function gate(
+    items: readonly Record<string, unknown>[],
+    kidJudge: CalendarMirrorKidJudge,
+    trustWindow = true,
+  ) {
+    return reconcileCalendarMirrors(db.database, {
+      familyId: family.familyId,
+      userId: family.parentUserId,
+      integrationId,
+      items,
+      timeZone: KID_TZ,
+      now: NOW,
+      trustWindow,
+      kidJudge,
+    });
+  }
+
+  /** The shipped reminder deps, narrowed to this test's family. */
+  function reminderDeps() {
+    return {
+      ...defaultReminderRunDeps(),
+      scopeFamilies: <T extends { familyId: string }>(list: readonly T[]) =>
+        list.filter((row) => row.familyId === family.familyId),
+    };
+  }
+
+  function verdicts() {
+    return db.database
+      .select()
+      .from(schema.kidRelevanceVerdicts)
+      .where(eq(schema.kidRelevanceVerdicts.familyId, family.familyId));
+  }
+
+  function reminders() {
+    return db.database
+      .select()
+      .from(schema.eventReminders)
+      .where(eq(schema.eventReminders.familyId, family.familyId));
+  }
+
+  async function seedMirror(values: {
+    eventId: string;
+    title: string;
+    startsAt: Date;
+    endsAt?: Date;
+    deletedAt?: Date;
+    kidVerdictId?: string;
+  }): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.familyEvents)
+      .values({
+        familyId: family.familyId,
+        title: values.title,
+        startsAt: values.startsAt,
+        endsAt: values.endsAt ?? null,
+        source: 'parent',
+        createdBy: family.parentUserId,
+        googleEventId: values.eventId,
+        integrationId,
+        deletedAt: values.deletedAt ?? null,
+        kidVerdictId: values.kidVerdictId ?? null,
+      })
+      .returning({ id: schema.familyEvents.id });
+    if (!row) throw new Error('mirror seed returned no row');
+    return row.id;
+  }
+
+  async function seedScheduledReminders(eventRef: string) {
+    await db.database.insert(schema.eventReminders).values(
+      (['-P1D', '-PT1H'] as const).map((offset) => ({
+        familyId: family.familyId,
+        eventRef,
+        parentUserId: family.parentUserId,
+        offset,
+        fireAt: new Date(LESSON_START.getTime() - 60 * 60_000),
+        status: 'scheduled' as const,
+      })),
+    );
+  }
+
+  async function seedVerdict(values: {
+    itemKey: string;
+    verdict: 'kid' | 'adult';
+    decidedBy: 'parent' | 'model';
+  }): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.kidRelevanceVerdicts)
+      .values({
+        familyId: family.familyId,
+        source: 'google_calendar',
+        integrationId,
+        itemKey: values.itemKey,
+        inputHash: 'an-earlier-input',
+        verdict: values.verdict,
+        decidedBy: values.decidedBy,
+      })
+      .returning({ id: schema.kidRelevanceVerdicts.id });
+    if (!row) throw new Error('verdict seed returned no row');
+    return row.id;
+  }
+
+  it('T1: an adult event is not mirrored and schedules no reminder; the kid event in the same window schedules both', async () => {
+    const { client } = scriptedKidClient(JUDGE_RULES);
+
+    const counts = await gate([lesson(), review()], model(client));
+
+    expect(counts).toMatchObject({ mirrored: 1, notKid: 1, unjudged: 0, unjudgedNoJudge: 0 });
+    const stored = await rows();
+    expect(stored).toHaveLength(1);
+    const kidVerdict = (await verdicts()).find((row) => row.verdict === 'kid');
+    expect(kidVerdict).toBeDefined();
+    expect(stored[0]).toMatchObject({
+      googleEventId: 'ev-lesson',
+      kidVerdictId: kidVerdict?.id,
+      childId: juniperId,
+      deletedAt: null,
+    });
+    expect(stored.some((row) => row.googleEventId === 'ev-review')).toBe(false);
+    expect(stored.some((row) => row.title.toLowerCase().includes('budget'))).toBe(false);
+
+    const result = await runReminderCron(db.database, reminderDeps(), NOW);
+
+    const scheduled = await reminders();
+    expect(scheduled.map((row) => [row.eventRef, row.offset]).sort()).toEqual(
+      [
+        [stored[0]?.id, '-P1D'],
+        [stored[0]?.id, '-PT1H'],
+      ].sort(),
+    );
+    expect(result.notScheduledNoKidVerdict).toBe(0);
+  });
+
+  it('T2: a judge failure writes nothing, schedules nothing, and names the outcome in counts only', async () => {
+    const { client, calls } = scriptedKidClient('throw');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const counts = await gate([lesson()], model(client));
+
+    expect(counts).toMatchObject({ mirrored: 0, notKid: 0, unjudged: 1, unjudgedNoJudge: 0 });
+    expect(await rows()).toEqual([]);
+    // A failure is never a verdict: nothing is stored for it.
+    expect(await verdicts()).toEqual([]);
+    // Positive control: the judge was really asked, its first attempt and its one retry.
+    expect(calls).toHaveLength(2);
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ unjudged: 1, judge: 'model' }),
+      'calendar mirror: kid gate',
+    );
+    const logged = JSON.stringify([...info.mock.calls, ...error.mock.calls]);
+    expect(logged).toContain('calendar mirror: kid gate');
+    expect(logged).not.toContain('swim');
+    expect(logged).not.toContain('ev-lesson');
+    const gateLog = info.mock.calls.find((call) => call[1] === 'calendar mirror: kid gate');
+    expect(JSON.stringify(gateLog)).not.toContain(family.familyId);
+    expect(JSON.stringify(gateLog)).not.toContain(integrationId);
+
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    expect(await reminders()).toEqual([]);
+  });
+
+  it('T3: a live copy judged adult is dropped once, audited as not_kid, and its reminders are cancelled', async () => {
+    const reviewId = await seedMirror({
+      eventId: 'ev-review',
+      title: 'Quarterly budget review',
+      startsAt: REVIEW_START,
+    });
+    await seedScheduledReminders(reviewId);
+    const lessonId = await seedMirror({
+      eventId: 'ev-lesson',
+      title: 'Juniper swim lesson',
+      startsAt: LESSON_START,
+      endsAt: LESSON_END,
+    });
+    const { client } = scriptedKidClient(JUDGE_RULES);
+
+    const counts = await gate([lesson(), review()], model(client), true);
+
+    expect(counts).toMatchObject({ removed: 1, notKid: 1, mirrored: 0 });
+    const byId = new Map((await rows()).map((row) => [row.id, row]));
+    expect(byId.get(reviewId)).toMatchObject({ deletedAt: NOW, title: '' });
+    const kidVerdict = (await verdicts()).find((row) => row.verdict === 'kid');
+    // Control: the kid copy judged in the same call stays live and becomes linked.
+    expect(byId.get(lessonId)).toMatchObject({
+      deletedAt: null,
+      kidVerdictId: kidVerdict?.id,
+      childId: juniperId,
+    });
+    const removed = (await audits()).filter((row) => row.actionTaken === 'calendar_mirror_removed');
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toMatchObject({
+      targetId: reviewId,
+      after: { source: 'parent', reason: 'not_kid' },
+    });
+    // The link-only change to the kid copy is bookkeeping, not an audited change.
+    expect((await audits()).map((row) => row.actionTaken)).toEqual(['calendar_mirror_removed']);
+
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    const reviewReminders = (await reminders()).filter((row) => row.eventRef === reviewId);
+    expect(reviewReminders.map((row) => row.status)).toEqual(['cancelled', 'cancelled']);
+  });
+
+  it('T4: a copy the parent disowned stays dropped, with no judge call and no audit row', async () => {
+    const verdictId = await seedVerdict({
+      itemKey: 'ev-review',
+      verdict: 'adult',
+      decidedBy: 'parent',
+    });
+    const reviewId = await seedMirror({
+      eventId: 'ev-review',
+      title: '',
+      startsAt: REVIEW_START,
+      deletedAt: EARLIER,
+    });
+    const judged = scriptedKidClient({ 'Quarterly budget review': { verdict: 'kid' } });
+
+    const counts = await gate([review()], model(judged.client), true);
+
+    expect(counts).toMatchObject({ notKid: 1, removed: 0, mirrored: 0, updated: 0 });
+    expect(judged.calls).toHaveLength(0);
+    const [row] = await rows();
+    expect(row).toMatchObject({ id: reviewId, title: '', deletedAt: EARLIER });
+    expect(await audits()).toEqual([]);
+
+    // Control: with the parent's word gone and the model saying kid, the restore path
+    // still exists.
+    await db.database
+      .delete(schema.kidRelevanceVerdicts)
+      .where(eq(schema.kidRelevanceVerdicts.id, verdictId));
+    const restored = await gate([review()], model(judged.client), true);
+    expect(restored).toMatchObject({ notKid: 0, updated: 1 });
+    expect(judged.calls).toHaveLength(1);
+    const [live] = await rows();
+    expect(live).toMatchObject({ id: reviewId, deletedAt: null, title: 'Quarterly budget review' });
+    expect((await audits()).map((audit) => audit.actionTaken)).toEqual(['calendar_mirror_added']);
+  });
+
+  it('T5: a held judgement keeps the copy with its old title, clears its stale link, and holds its reminders', async () => {
+    const verdictId = await seedVerdict({
+      itemKey: 'ev-lesson',
+      verdict: 'kid',
+      decidedBy: 'model',
+    });
+    const lessonId = await seedMirror({
+      eventId: 'ev-lesson',
+      title: 'Juniper swim lesson',
+      startsAt: LESSON_START,
+      endsAt: LESSON_END,
+      kidVerdictId: verdictId,
+    });
+    await seedScheduledReminders(lessonId);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = scriptedKidClient('throw');
+
+    const counts = await gate(
+      [lesson({ summary: 'Juniper swim lesson at the new pool' })],
+      model(client),
+      true,
+    );
+
+    expect(counts).toMatchObject({ unjudged: 1, removed: 0, updated: 0, mirrored: 0 });
+    const [row] = await db.database
+      .select()
+      .from(schema.familyEvents)
+      .where(eq(schema.familyEvents.id, lessonId));
+    expect(row).toMatchObject({
+      deletedAt: null,
+      title: 'Juniper swim lesson',
+      kidVerdictId: null,
+    });
+
+    const result = await runReminderCron(db.database, reminderDeps(), NOW);
+    expect((await reminders()).map((r) => r.status)).toEqual(['scheduled', 'scheduled']);
+    expect(result.notScheduledNoKidVerdict).toBe(2);
   });
 });
