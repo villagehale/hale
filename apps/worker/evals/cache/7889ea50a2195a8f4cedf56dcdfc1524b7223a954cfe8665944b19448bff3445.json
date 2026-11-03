@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is 'Piano lesson' (钢琴课), kept as the name of the event. The text gives today evening (今晚), start 7:00, end 8:00, \"一小时后上课\" which matches minutesUntilStart of 60, and the venue name 'Ms. Chen studio' as given. The facts give no address, so none is missing and none was invented. No link was included, which is fine. The evening is correct, with no AM/PM error. The text is entirely in Chinese apart from the place name left as given, and nothing was invented. Bold is none, which is fine.",
+    "score": 5
+  }
+}

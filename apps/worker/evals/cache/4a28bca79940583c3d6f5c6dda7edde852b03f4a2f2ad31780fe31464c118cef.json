@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is 'an appointment' on Mon, Oct 26, 4:45-5:45 PM. The text instead names it 'Jour de congé' at 3:00, an invented title that appears nowhere in the facts, with a wrong start time (3:00 versus 4:45 PM) and no AM/PM. It omits the 4:45 PM start and the 5:45 PM end. It also says tomorrow is a day off with 'breathing room', implying the family has nothing to be at when a timed appointment exists. Bold is none, which is fine, but the facts are badly wrong.",
+    "score": 1
+  }
+}

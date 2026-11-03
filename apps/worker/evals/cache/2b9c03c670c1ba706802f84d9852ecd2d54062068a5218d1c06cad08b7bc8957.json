@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts. The only event is Natation (swimming), tomorrow 5:00-5:45 PM at Piscine Centennial, 5 Lake Rd, with the venue changed from Mold-Masters SportsPlex. The text instead mentions an event \"Jour de congé at 3:00\" that is not in the facts, and says tomorrow is a day off with \"breathing room\", which wrongly implies the family has nothing to be at. It omits the swim, its start and end times, the new venue name and address, and the venue change. It is also in English, not French, and has no bold on the new venue.",
+    "score": 1
+  }
+}

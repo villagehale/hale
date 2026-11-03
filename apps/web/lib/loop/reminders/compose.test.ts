@@ -64,6 +64,8 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
           allDay: false,
           start: '3:00 PM',
           end: '4:00 PM',
+          // Sun 6:00 PM to Mon 3:00 PM is 21 hours.
+          minutesUntilStart: 1260,
           location: 'Georgetown library',
           changed: null,
         },
@@ -93,6 +95,7 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
       allDay: true,
       start: null,
       end: null,
+      minutesUntilStart: null,
       location: null,
       changed: null,
     });
@@ -133,6 +136,47 @@ describe('reminderFacts — the facts the model writes the whole text from', () 
     expect(
       relativeDay(new Date('2026-11-01T15:00:00Z'), new Date('2026-10-31T22:00:00Z'), TZ),
     ).toBe('tomorrow');
+  });
+});
+
+/**
+ * VIL-550 · the writer said "about an hour" for an event 18 minutes away: the hourly tick
+ * sends a T-1h anywhere from 0 to 60 minutes before the start. It gets the exact minutes,
+ * so its words can match the clock. Chicago is CDT (UTC-5) before Nov 1.
+ */
+describe('reminderFacts — minutesUntilStart, the exact gap the writer phrases (VIL-550)', () => {
+  const CHICAGO = 'America/Chicago';
+  const at = (now: string, over: Partial<ReminderFactEvent> = {}) =>
+    reminderFacts({
+      events: [
+        ev({ title: 'Toddler gym', startsAt: '2026-10-26T15:30:00Z', endsAt: null, ...over }),
+      ],
+      children: [],
+      level: 'first_name',
+      timeZone: CHICAGO,
+      offset: '-PT1H',
+      now: new Date(now),
+      planLink: null,
+      language: 'en',
+    });
+
+  it('is 18 for a 10:30 AM event at the 10:12 AM tick', () => {
+    const facts = at('2026-10-26T15:12:00Z');
+    expect(facts.now.time).toBe('10:12 AM');
+    expect(facts.events[0]).toMatchObject({ start: '10:30 AM', minutesUntilStart: 18 });
+  });
+
+  it('is 60 an hour out, and rounds to the nearest whole minute', () => {
+    expect(at('2026-10-26T14:30:00Z').events[0]?.minutesUntilStart).toBe(60);
+    expect(at('2026-10-26T15:12:30Z').events[0]?.minutesUntilStart).toBe(18);
+  });
+
+  it('is null for an all-day item, which has no clock start', () => {
+    const allDay = at('2026-10-25T22:00:00Z', {
+      startsAt: '2026-10-26T05:00:00Z',
+      endsAt: '2026-10-27T05:00:00Z',
+    });
+    expect(allDay.events[0]).toMatchObject({ allDay: true, minutesUntilStart: null });
   });
 });
 

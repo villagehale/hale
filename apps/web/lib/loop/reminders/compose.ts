@@ -44,6 +44,10 @@ export interface ReminderEventFacts {
   start: string | null;
   /** Family-local end with AM/PM, null when unknown or all-day. */
   end: string | null;
+  /** VIL-550 · whole minutes from the send moment to `start`, null for an all-day item.
+   * The hourly tick sends a T-1h anywhere from 0 to 60 minutes out, so this, never the
+   * offset, is how soon it is. */
+  minutesUntilStart: number | null;
   /** Where, from the parent's own calendar. Null for a private event or none. */
   location: string | null;
   /**
@@ -60,7 +64,7 @@ export interface ReminderEventFacts {
 }
 
 export interface ReminderFacts {
-  /** "-P1D" the evening-before reminder, "-PT1H" about an hour out. */
+  /** "-P1D" the evening-before reminder, "-PT1H" the one shortly before it starts. */
   offset: '-P1D' | '-PT1H';
   /** The send moment, family-local. */
   now: { date: string; time: string };
@@ -212,6 +216,7 @@ export function reminderFacts(args: {
         allDay,
         start: allDay ? null : localClockFact(start, timeZone),
         end: allDay || !end ? null : localClockFact(end, timeZone),
+        minutesUntilStart: allDay ? null : Math.round((start.getTime() - now.getTime()) / 60_000),
         location: hidden ? null : event.location?.trim() || null,
         changed: changedFact(event.change, timeZone, hidden),
         ...logisticsFacts(hidden ? null : event.notes),
