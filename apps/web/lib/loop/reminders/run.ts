@@ -5,6 +5,7 @@ import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { proactiveFloorOpensAt, proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -12,10 +13,16 @@ import {
   isParentRole,
   roleAllows,
 } from '~/lib/channel/role-scope';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
 import { type CaregiverSeat, selectCaregiverSeats } from '~/lib/loop/caregiver-audience';
-import { type ChildNameLevel, loadLoopPrefsView } from '~/lib/loop/prefs';
+import {
+  type ChildNameLevel,
+  type LoopPrefsView,
+  deliverableNow,
+  loadLoopPrefsView,
+} from '~/lib/loop/prefs';
 import { loopSendEnabled } from '~/lib/loop/send';
 import { CAREGIVER_REMINDER_TEMPLATE_KEY } from '~/lib/loop/templates/caregiver/keys';
 import type { CaregiverReminderPayload } from '~/lib/loop/templates/caregiver/payload';
@@ -55,8 +62,11 @@ import {
  *  B. FIRE — for every due row, re-read the LIVE event and classify at send time. This
  *     check-at-send is THE trust gate: a cancelled/moved/started event can never nag,
  *     regardless of whether the converge hook ran. Firing rows batch per parent (T-24h
- *     merges the evening, T-1h stays glanceable) and enqueue onto the A2 channel.send
- *     queue — which enforces prefs/quiet/cap/consent/ledger/audit + the mirror legs.
+ *     merges the evening, T-1h stays glanceable). A batch that falls inside the proactive
+ *     quiet floor or the recipient's own window is held here, before anything is written
+ *     (VIL-562): the dispatch's own quiet check comes after the row is marked 'sent', so
+ *     a hold there is a lost reminder. The rest enqueue onto the A2 channel.send queue,
+ *     which enforces prefs/cap/consent/ledger/audit + the mirror legs.
  *
  * Compose-not-send: the whole SEND stays dark behind LOOP_SEND_ENABLED (mirroring
  * send.ts). When off, the run still converges + classifies (exercising the pipeline)
@@ -229,6 +239,11 @@ export interface ReminderRunDeps {
   /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
    * (rule #1) the voice stage hands the model and the template later renders. */
   loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
+  /** VIL-562 · the recipient's own quiet window and urgent-bypass toggle. */
+  loadPrefs: (db: Database, userId: string) => Promise<LoopPrefsView>;
+  /** VIL-562 · the recipient's sendable number, read only while proactive cadence is
+   * armed (the Florida and Oklahoma 20:00 start), exactly as the outbound gate reads it. */
+  parentPhone: (db: Database, userId: string) => Promise<string | null>;
 }
 
 function sqlExcluded(column: string) {
@@ -480,6 +495,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     },
     composeText: composeReminderTexts,
     loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
+    loadPrefs: (db, userId) => loadLoopPrefsView(userId, db),
+    parentPhone: resolveSendablePhone,
   };
 }
 
@@ -508,6 +525,12 @@ export interface ReminderRunResult {
   /** VIL-548 · reminder rows not created for a mirrored Google event that does not link to
    * a `kid` verdict. They are created on the first run after the mirror judges it kid. */
   notScheduledNoKidVerdict: number;
+  /** VIL-562 · due reminders left 'scheduled' because the proactive floor or the
+   * recipient's own window is closed and the floor opens before the event starts. Checked
+   * again at the next slot: sent late if the event has not started, suppressed 'started'
+   * if it has. One whose event starts before the floor opens is suppressed 'quiet_hours'
+   * instead, and counted in `suppressed`. */
+  heldQuietHours: number;
   sendEnabled: boolean;
 }
 
@@ -791,6 +814,7 @@ export async function runReminderCron(
   const sendEnabled = loopSendEnabled();
   let fired = 0;
   let firedLate = 0;
+  let heldQuietHours = 0;
 
   for (const group of byRecipient.values()) {
     const parentUserId = group.parentUserId;
@@ -816,6 +840,9 @@ export async function runReminderCron(
       !caregiver && sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
     const language =
       !caregiver && sendEnabled && deps.client ? await deps.loadLanguage(db, group.familyId) : null;
+    // VIL-562 · read once per recipient, and only once a batch could be sent.
+    let prefs: LoopPrefsView | undefined;
+    let floorClosed: boolean | undefined;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;
@@ -847,6 +874,30 @@ export async function runReminderCron(
       // Compose-not-send: only reach real families once the founder flips the flag, and
       // never pay for a text that will not be sent.
       if (!sendEnabled) continue;
+
+      // VIL-562 · the SAME floor every unprompted text meets; no reminder class may claim
+      // urgency past it. Their own window can only narrow it: their urgent-bypass toggle
+      // lets a T-1h cross that window, never the floor.
+      prefs ??= await deps.loadPrefs(db, parentUserId);
+      floorClosed ??= await proactiveQuietNow({
+        now,
+        timeZone: group.timezone,
+        phone: () => deps.parentPhone(db, parentUserId),
+      });
+      const timeSensitive = offsetUrgency(batch.offset) === 'time_sensitive';
+      if (floorClosed || !deliverableNow(prefs, now, group.timezone, timeSensitive)) {
+        const floorOpensAt = floorClosed ? proactiveFloorOpensAt(now, group.timezone) : null;
+        for (const ref of batch.eventRefs) {
+          const r = rowByRef.get(ref);
+          if (!r) continue;
+          if (floorOpensAt && floorOpensAt.getTime() >= r.startsAt.getTime()) {
+            await drop({ id: r.reminderId, familyId: r.familyId, offset: r.offset }, 'quiet_hours');
+          } else {
+            heldQuietHours += 1;
+          }
+        }
+        continue;
+      }
 
       // Rule #6: no deep link on the glanceable T-1h; /plan on the evening-before T-24h.
       // Never for a caregiver on either offset — /plan is behind an account they do not
@@ -965,6 +1016,10 @@ export async function runReminderCron(
     );
   }
 
+  if (heldQuietHours > 0) {
+    console.info({ heldQuietHours }, 'reminder: held for quiet hours, checked again next slot');
+  }
+
   return {
     converged,
     due: due.length,
@@ -976,6 +1031,7 @@ export async function runReminderCron(
     notScheduledLaneOff,
     heldNoKidVerdict,
     notScheduledNoKidVerdict,
+    heldQuietHours,
     sendEnabled,
   };
 }

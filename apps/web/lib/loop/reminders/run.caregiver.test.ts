@@ -112,6 +112,8 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
       bold: null,
     }),
     loadNameLevel: async () => 'first_name',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
     ...over,
   };
   return { deps, enqueued, marked, upserts, captures, audited };

@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
 import type { ReminderDraft } from './compose';
 import type { ReminderStatus, SuppressReason } from './schedule';
 
@@ -122,6 +123,8 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     loadLanguage: async () => 'en',
     composeText: composeText as unknown as ReminderRunDeps['composeText'],
     loadNameLevel: async () => 'generic',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
     ...over,
   };
   return { deps, enqueued, marked, reanchored, upserts, captured, audited };
@@ -482,9 +485,9 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const client = {} as AgentClient;
-    // 07:00 EDT on the event's own day: the evening slot passed 13 h ago, the 10:00 event
-    // is 3 h off.
-    const relightAt = new Date('2026-07-25T11:00:00Z');
+    // 08:12 EDT on the event's own day, the first tick after the quiet floor opens: the
+    // evening slot passed 14 h ago, the 10:00 event is under 2 h off.
+    const relightAt = new Date('2026-07-25T12:12:00Z');
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [
         dueRow({ id: 'r-day-before', eventRef: 'gcal-1', offset: '-P1D', fireAt: T1D_FIRE }),
@@ -504,7 +507,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
       client,
       expect.objectContaining({
         offset: '-P1D',
-        now: { date: 'Saturday, July 25, 2026', time: '7:00 AM' },
+        now: { date: 'Saturday, July 25, 2026', time: '8:12 AM' },
         events: [expect.objectContaining({ date: 'Saturday, July 25, 2026', start: '10:00 AM' })],
         language: 'en',
       }),
@@ -530,8 +533,8 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    // 21:00 EDT: the slot passed 3 h ago and the event starts in 4 h.
-    const relightAt = new Date('2026-07-25T01:00:00Z');
+    // 20:00 EDT, before the quiet floor: the slot passed 2 h ago and the event starts in 5 h.
+    const relightAt = new Date('2026-07-25T00:00:00Z');
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [heldRow()],
       loadEvent: async () => lateNight,
@@ -714,5 +717,131 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
 
     expect(loadNameLevel).not.toHaveBeenCalled();
     expect(composeText).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * VIL-562 · a reminder is an unprompted text, so it meets the SAME proactive floor
+ * (21:00 to 08:00 local) every other one does, BEFORE anything is written or sent. Denver
+ * in November is MST (UTC-7); every instant below is hand-derived from that.
+ */
+describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () => {
+  const DENVER = 'America/Denver';
+  afterEach(() => vi.unstubAllEnvs());
+
+  function armed() {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  }
+
+  function t1h(startsAt: string, over: Partial<ReminderRunDeps> = {}) {
+    const start = new Date(startsAt);
+    return makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ timezone: DENVER, fireAt: new Date(start.getTime() - 60 * 60_000) }),
+      ],
+      loadEvent: async () => liveEvent({ startsAt: start }),
+      ...over,
+    });
+  }
+
+  it('drops, with an audit row, a T-1h due at 21:12 for a 22:00 event: the floor opens after it starts', async () => {
+    armed();
+    const { deps, enqueued, marked, audited } = t1h('2026-11-11T05:00:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T04:12:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(composeText).not.toHaveBeenCalled();
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'quiet_hours' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'quiet_hours' },
+    ]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldQuietHours: 0 });
+  });
+
+  it('holds, untouched, a T-1h due at 07:40 for an 08:30 event: the floor opens first', async () => {
+    armed();
+    const { deps, enqueued, marked, audited } = t1h('2026-11-11T15:30:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T14:40:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(composeText).not.toHaveBeenCalled();
+    expect(marked).toEqual([]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldQuietHours: 1 });
+  });
+
+  it('positive control: sends a T-1h due at 20:12 for a 21:00 event, the floor still open', async () => {
+    armed();
+    const { deps, enqueued, marked } = t1h('2026-11-11T04:00:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T03:12:00Z'));
+
+    expect(enqueued).toHaveLength(1);
+    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
+  });
+});
+
+describe("runReminderCron — the parent's own window only narrows (VIL-562)", () => {
+  const DENVER = 'America/Denver';
+  afterEach(() => vi.unstubAllEnvs());
+
+  function armed() {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  }
+
+  it('holds an evening-before reminder at 18:12 when their window starts at 17:30, bypass or not', async () => {
+    armed();
+    // A 10:00 MST event on the 11th: its evening-before slot is 18:00 MST on the 10th.
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ timezone: DENVER, offset: '-P1D', fireAt: new Date('2026-11-11T01:00:00Z') }),
+      ],
+      loadEvent: async () => liveEvent({ startsAt: new Date('2026-11-11T17:00:00Z') }),
+      loadPrefs: async () => ({
+        ...DEFAULT_LOOP_PREFS,
+        quietHoursStart: '17:30:00',
+        quietHoursEnd: '07:30:00',
+        urgentBypassQuietHours: true,
+      }),
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T01:12:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldQuietHours: 1 });
+  });
+
+  it('lets their urgent-bypass toggle cross their own 20:00 window for a T-1h, and holds it when off', async () => {
+    armed();
+    // A 21:00 MST event; the T-1h is due at 20:00 and runs at 20:12, before the floor.
+    const run = (urgentBypassQuietHours: boolean) => {
+      const made = makeDeps({
+        loadDueReminders: async () => [
+          dueRow({ timezone: DENVER, fireAt: new Date('2026-11-11T03:00:00Z') }),
+        ],
+        loadEvent: async () => liveEvent({ startsAt: new Date('2026-11-11T04:00:00Z') }),
+        loadPrefs: async () => ({
+          ...DEFAULT_LOOP_PREFS,
+          quietHoursStart: '20:00:00',
+          quietHoursEnd: '07:30:00',
+          urgentBypassQuietHours,
+        }),
+      });
+      return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
+        (result) => ({ result, enqueued: made.enqueued }),
+      );
+    };
+
+    const bypass = await run(true);
+    expect(bypass.enqueued).toHaveLength(1);
+    expect(bypass.result).toMatchObject({ fired: 1, heldQuietHours: 0 });
+
+    const noBypass = await run(false);
+    expect(noBypass.enqueued).toEqual([]);
+    expect(noBypass.result).toMatchObject({ fired: 0, heldQuietHours: 1 });
   });
 });
