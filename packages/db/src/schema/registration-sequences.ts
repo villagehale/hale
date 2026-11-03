@@ -18,12 +18,15 @@ import { families } from './families.js';
 import { registrationWindows } from './registration-windows.js';
 import { users } from './users.js';
 
+/** The DB check counts this in bytes (octet_length), because the live-watch unique index
+ * is a btree on the raw link; a serialized URL is ASCII, so for one bytes = characters. */
 export const REGISTRATION_COURSE_URL_MAX_CHARS = 2048;
 
 /**
  * VIL-242 · M7 — one row per registration window that Hale has taken the morning over
- * for, or (VIL-423) one ACTIVE row per (family, course_url) for a link the parent sent. The row IS the claim: while it exists, M4's proactive nudge defers
- * this window to the sequence rather than announcing it a second time.
+ * for, or (VIL-423) one ACTIVE row per (family, course_url) for a link the parent sent.
+ * The row IS the claim: while it exists, M4's proactive nudge defers this window to the
+ * sequence rather than announcing it a second time.
  *
  * WHAT IS DELIBERATELY NOT HERE:
  *
@@ -137,7 +140,7 @@ export const registrationSequences = pgTable(
     // check() cannot express.
     courseUrlLengthCheck: check(
       'registration_sequences_course_url_length_check',
-      sql`${table.courseUrl} IS NULL OR length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}`,
+      sql`${table.courseUrl} IS NULL OR octet_length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}`,
     ),
     courseCheck: check(
       'registration_sequences_course_check',

@@ -399,6 +399,29 @@ describe('registration_sequences · a URL-owned watch', () => {
     );
   });
 
+  it('bounds the link in bytes, so a raw multibyte link is refused by name, never by the index', async () => {
+    const PREFIX = 'https://x.example.org/';
+    // 2048 characters, three bytes each past the prefix: inside a character bound, over
+    // the 2704-byte btree row limit of live_url_uniq. Varied, because Postgres compresses
+    // a long index key and one repeated character would shrink under the limit.
+    const WIDE = `${PREFIX}${Array.from({ length: 2048 - PREFIX.length }, (_, i) =>
+      String.fromCodePoint(0x4e00 + ((i * 7919) % 20000)),
+    ).join('')}`;
+    // 2048 bytes exactly: the prefix plus two-byte characters.
+    const FITS = `${PREFIX}${'\u00e9'.repeat((2048 - PREFIX.length) / 2)}`;
+    expect([WIDE.length, Buffer.byteLength(WIDE)]).toEqual([2048, 6100]);
+    expect(Buffer.byteLength(FITS)).toBe(2048);
+
+    await expect(insertUrlWatch(familyA, WIDE)).rejects.toThrow(
+      /registration_sequences_course_url_length_check/,
+    );
+    await expect(insertUrlWatch(familyA, `${FITS}\u00e9`)).rejects.toThrow(
+      /registration_sequences_course_url_length_check/,
+    );
+    // Positive control: a multibyte link at the byte bound is stored.
+    await expect(insertUrlWatch(familyA, FITS)).resolves.toBeDefined();
+  });
+
   it('is one active watch per family and link', async () => {
     const URL_X = 'https://registration.example.org/c/identity';
     await insertUrlWatch(familyA, URL_X);

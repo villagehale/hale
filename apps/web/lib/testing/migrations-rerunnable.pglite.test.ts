@@ -118,7 +118,7 @@ describe('0204 watch storage', () => {
     // with a link and no date is still refused.
     const window = await db.client.query<{ id: string }>(`
         INSERT INTO registration_windows (municipality, program_domain, cycle_label, open_at, source_url, verified_at)
-        VALUES ('markham', 'rec_program', 'Replay', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
+        VALUES ('sample_town', 'rec_program', 'Replay', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
         RETURNING id
       `);
     await expect(
@@ -135,6 +135,15 @@ describe('0204 watch storage', () => {
     expect(constraints.rows).toEqual(
       NOT_VALID.map((conname) => ({ conname, convalidated: false })),
     );
+
+    const indexes = await db.client.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'registration_sequences' AND indexname = ANY($1) ORDER BY indexname",
+      [['registration_sequences_check_idx', 'registration_sequences_live_url_uniq']],
+    );
+    expect(indexes.rows).toEqual([
+      { indexname: 'registration_sequences_check_idx' },
+      { indexname: 'registration_sequences_live_url_uniq' },
+    ]);
   });
 
   it('applies over a legacy empty link, which VALIDATE would then refuse', async () => {
@@ -143,7 +152,7 @@ describe('0204 watch storage', () => {
     const { familyId, parentUserId } = await seedFamily(db.database, 'Legacy Family');
     const window = await db.client.query<{ id: string }>(`
         INSERT INTO registration_windows (municipality, program_domain, cycle_label, open_at, source_url, verified_at)
-        VALUES ('markham', 'rec_program', 'Legacy', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
+        VALUES ('sample_town', 'rec_program', 'Legacy', '2026-08-11T10:30:00Z', 'https://example.test/window', '2026-09-01T00:00:00Z')
         RETURNING id
       `);
     // Valid under 0110/0111: a non-NULL link (empty) paired with a date, length 0 <= 200.

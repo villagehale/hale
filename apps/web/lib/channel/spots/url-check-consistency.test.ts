@@ -10,7 +10,8 @@ const DRIZZLE = path.join(ROOT, 'packages/db/drizzle');
 /** The DB bound on registration_sequences.course_url started as the app's MAX_URL_CHARS
  * (the PerfectMind SMS bound) and was widened to REGISTRATION_COURSE_URL_MAX_CHARS once a
  * watch could hold any public course link. Each number is written twice; this keeps each
- * pair the same number. */
+ * pair the same number. The widened bound counts BYTES: the live-watch unique index is a
+ * btree on the raw text, and a btree row tops out at 2704 bytes. */
 describe('course_url length bound', () => {
   it('0111 bounds course_url at the spots MAX_URL_CHARS', () => {
     const source = readFileSync(
@@ -27,7 +28,20 @@ describe('course_url length bound', () => {
     expect(file).toMatch(/^\d{4}_registration_live_watch_storage\.sql$/);
     const source = readFileSync(path.join(DRIZZLE, file as string), 'utf8');
     expect(source).toContain(
-      `length("course_url") BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+      `octet_length("course_url") BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+    );
+  });
+
+  it('the Drizzle mirror spells the same bound and the window-scoped pairing', () => {
+    const source = readFileSync(
+      path.join(ROOT, 'packages/db/src/schema/registration-sequences.ts'),
+      'utf8',
+    );
+    expect(source).toContain(
+      'octet_length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}',
+    );
+    expect(source).toContain(
+      '${table.windowId} IS NULL OR (${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)',
     );
   });
 });

@@ -41,10 +41,13 @@ END $$;
 --> statement-breakpoint
 
 -- 2048 = REGISTRATION_COURSE_URL_MAX_CHARS, pinned by url-check-consistency.test.ts.
+-- Counted in BYTES: live_url_uniq below is a btree on the raw text, whose row limit is
+-- 2704 bytes, so a character bound would let a multibyte link past this named check and
+-- into an unnamed index error. A serialized URL is ASCII, so for it bytes = characters.
 DO $$ BEGIN
   ALTER TABLE "registration_sequences" DROP CONSTRAINT IF EXISTS "registration_sequences_course_url_length_check";
   ALTER TABLE "registration_sequences" ADD CONSTRAINT "registration_sequences_course_url_length_check"
-    CHECK ("course_url" IS NULL OR length("course_url") BETWEEN 1 AND 2048) NOT VALID;
+    CHECK ("course_url" IS NULL OR octet_length("course_url") BETWEEN 1 AND 2048) NOT VALID;
 END $$;
 --> statement-breakpoint
 
