@@ -1,5 +1,4 @@
 import { fragment, readCourseModel } from '~/lib/channel/spots/availability';
-import { zonedLocalInstant } from '~/lib/plan/spine';
 import type { RegistrationPdfRefusal } from './pdf';
 import { isBookMe4ErrorPage, readCourseFacts } from './sequence/prepare';
 import {
@@ -91,10 +90,8 @@ function validCalendarDate(date: string, time: string | null): boolean {
   return time === null || /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
 }
 
-/** The instant a local wall clock names in `timeZone`, or null when that zone skips the
- * clock (a DST gap): the round trip through the zone must land on the same clock. */
-function wallClockInstant(date: string, time: string, timeZone: string): Date | null {
-  const at = zonedLocalInstant(date, time, timeZone);
+/** The wall clock `timeZone` shows at `at`, read as if it were UTC (epoch ms). */
+function wallClockAsUtc(at: number, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -105,8 +102,22 @@ function wallClockInstant(date: string, time: string, timeZone: string): Date | 
     hourCycle: 'h23',
   }).formatToParts(at);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
-  const landed = `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`;
-  return landed === `${date} ${time}` ? at : null;
+  return Date.parse(
+    `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00Z`,
+  );
+}
+
+/**
+ * The instant a local wall clock names in `timeZone`, or null when that zone skips the
+ * clock (a DST gap). Two passes of "subtract the zone's offset at the current guess"
+ * land on the right side of a transition whatever zone the server runs in; the round
+ * trip must then show the same clock, or the clock does not exist.
+ */
+function wallClockInstant(date: string, time: string, timeZone: string): Date | null {
+  const target = Date.parse(`${date}T${time}:00Z`);
+  let at = target;
+  for (let pass = 0; pass < 2; pass++) at = target - (wallClockAsUtc(at, timeZone) - at);
+  return wallClockAsUtc(at, timeZone) === target ? new Date(at) : null;
 }
 
 /** The instant a verified date opens at. A date with no printed time anchors at the
