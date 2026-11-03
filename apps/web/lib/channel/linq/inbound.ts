@@ -1112,13 +1112,15 @@ async function claimGroupFromTrigger(
   }
 
   // VIL-582: the claiming parent's words are not the other handle's, so it is labelled only.
-  if (
-    accepted &&
-    linqGroupCoparentEnabled() &&
-    firstSeatableHandle(message.otherHandles, message.senderHandle)
-  ) {
+  const appearing =
+    accepted && linqGroupCoparentEnabled()
+      ? firstSeatableHandle(message.otherHandles, message.senderHandle)
+      : null;
+  if (appearing) {
     await labelAppearingCoparent(deps.database, {
       familyId: mapped.familyId,
+      chatId: message.chatId,
+      handle: appearing,
       via: 'second_handle',
     });
   }
@@ -1597,9 +1599,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     const familyId = await familyIdForClaimedChat(deps.database, signal.chatId);
     if (familyId) {
       // VIL-582: an add carries none of the person's own words, so it is labelled only.
-      await labelAppearingCoparent(deps.database, { familyId, via: 'participant_added' });
-      await deps.countOutcome('ignored');
-      return json({ outcome: 'seat_needs_own_reply' });
+      const label = await labelAppearingCoparent(deps.database, {
+        familyId,
+        chatId: signal.chatId,
+        handle: signal.participantHandle,
+        via: 'participant_added',
+      });
+      if (label.status === 'needs_own_reply') {
+        await deps.countOutcome('ignored');
+        return json({ outcome: 'seat_needs_own_reply' });
+      }
     }
   }
   if (signal.event === 'reaction.added' && signal.senderHandle && signal.chatId) {

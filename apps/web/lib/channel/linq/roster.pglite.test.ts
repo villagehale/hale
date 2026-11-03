@@ -1007,7 +1007,7 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
         consents: [],
       });
       expect(await labels(familyId)).toEqual([
-        { reason: 'seat_needs_own_reply', via: 'participant_added' },
+        { reason: 'seat_needs_own_reply', via: 'participant_added', chatId: CHAT },
       ]);
 
       const own = await handleLinqInboundRequest(
@@ -1057,8 +1057,33 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
         consents: [],
       });
       expect(await labels(familyId)).toEqual([
-        { reason: 'seat_needs_own_reply', via: 'second_handle' },
+        { reason: 'seat_needs_own_reply', via: 'second_handle', chatId: CHAT },
       ]);
+    });
+
+    it('labels nobody for an add that could never be the co-parent seat', async () => {
+      const { familyId, userId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: CHAT });
+      await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId: userId,
+        phoneE164: UNKNOWN_B,
+        role: 'co_parent',
+        now: NOW,
+      });
+      const { deps } = door();
+
+      for (const handle of [HALE, PARENT, OTHER_PARENT]) {
+        if (handle === OTHER_PARENT) {
+          await seedHousehold(OTHER_PARENT, 'Other');
+        }
+        const added = await handleLinqInboundRequest(signed(addedSomeone(handle)), deps);
+        expect((await added.json()).outcome).not.toBe('seat_needs_own_reply');
+      }
+      await seedPerson(familyId, COPARENT, 'Coparent', 'co_parent');
+      const taken = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
+      expect((await taken.json()).outcome).not.toBe('seat_needs_own_reply');
+
+      expect(await labels(familyId)).toEqual([]);
     });
   });
 

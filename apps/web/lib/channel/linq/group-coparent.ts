@@ -829,19 +829,34 @@ async function humansAllowClaim(
 /**
  * A Linq add, or a handle beside the parent who claimed the chat, carries none of that
  * person's own words, so it never seats them (VIL-582). The audit row is the label; their
- * own message in the chat is what can reach {@link seatAppearingCoparent}.
+ * own message in the chat is what can reach {@link seatAppearingCoparent}. Only someone
+ * who could hold the empty co-parent seat is labelled: Hale's line, a non-phone, a number
+ * already verified anywhere, or a family that has its co-parent is `refused` unlabelled.
  */
 export async function labelAppearingCoparent(
   database: Database,
-  input: { familyId: string; via: 'participant_added' | 'second_handle' },
-): Promise<{ status: 'needs_own_reply' }> {
+  input: {
+    familyId: string;
+    chatId: string;
+    handle: string;
+    via: 'participant_added' | 'second_handle';
+  },
+): Promise<{ status: 'needs_own_reply' } | { status: 'refused' }> {
+  const phone = realHumanPhone(input.handle);
+  if (
+    !phone ||
+    (await familyHasCoParent(database, input.familyId)) ||
+    (await resolveVerifiedChannelByPhone(database, phone))
+  ) {
+    return { status: 'refused' };
+  }
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: 'system',
     actionTaken: 'linq_group_member_refused',
     targetTable: 'linq_group_members',
     targetId: input.familyId,
-    after: { reason: 'seat_needs_own_reply', via: input.via },
+    after: { reason: 'seat_needs_own_reply', via: input.via, chatId: input.chatId },
   });
   console.info(
     { outcome: 'seat_needs_own_reply', via: input.via },
