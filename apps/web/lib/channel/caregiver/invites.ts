@@ -930,6 +930,26 @@ export async function recordParentAssent(
   return { status: 'ready', body };
 }
 
+export type SeatGrant = { inviteId: string; grantedByUserId: string; open: boolean };
+
+/** The grant a seat read before its transaction no longer stands inside it; the seat rolls back. */
+export class SeatGrantChangedError extends Error {
+  constructor() {
+    super('grant_changed_during_seat');
+    this.name = 'SeatGrantChangedError';
+  }
+}
+
+/** A seat transaction that threw {@link SeatGrantChangedError} has rolled back: null. */
+export async function unlessSeatGrantChanged<T>(seat: Promise<T>): Promise<T | null> {
+  try {
+    return await seat;
+  } catch (error) {
+    if (error instanceof SeatGrantChangedError) return null;
+    throw error;
+  }
+}
+
 /**
  * VIL-582 · a parent of `familyId` recorded a yes for THIS phone in THIS role through a
  * 1:1 invite, and that invite still stands. Null otherwise. The group seat paths read
@@ -944,11 +964,14 @@ export async function recordParentAssent(
  * in the grant's transaction with this invite's id, binds person and role to it. A
  * join-link grant names no phone and never matches. The inviter must still be a parent
  * here.
+ *
+ * Read inside a transaction, the invite rows stay locked until it ends, so a seat that
+ * re-reads its grant there cannot race a 1:1 close.
  */
 export async function recordedSeatGrant(
   database: Database,
   input: { familyId: string; phoneE164Hash: string; role: AddRole; now: Date },
-): Promise<{ inviteId: string; grantedByUserId: string; open: boolean } | null> {
+): Promise<SeatGrant | null> {
   const invites = await database
     .select({
       id: schema.caregiverInvites.id,
@@ -965,7 +988,8 @@ export async function recordedSeatGrant(
         eq(schema.caregiverInvites.phoneE164Hash, input.phoneE164Hash),
         eq(schema.caregiverInvites.role, input.role),
       ),
-    );
+    )
+    .for('update');
   const standing = invites
     .map((row) => ({
       ...row,
@@ -1026,12 +1050,13 @@ export async function recordedSeatGrant(
  * The group seat that just wrote this person's channel ends the invite it was granted
  * through: a number that owns an active channel has no open invite (see
  * {@link supersedeOpenInviteOnEnrollment}). `accepted`, because they took the role they
- * were invited to. MUST run inside the seat's transaction.
+ * were invited to. MUST run inside the seat's transaction. True when it closed the invite;
+ * false when it was no longer awaiting the invitee.
  */
 export async function closeInviteOnGroupSeat(
   tx: Database,
   input: { inviteId: string; role: AddRole; familyId: string; seatedUserId: string; now: Date },
-): Promise<void> {
+): Promise<boolean> {
   const closed = await tx
     .update(schema.caregiverInvites)
     .set({
@@ -1047,7 +1072,7 @@ export async function closeInviteOnGroupSeat(
       ),
     )
     .returning({ id: schema.caregiverInvites.id });
-  if (closed.length === 0) return;
+  if (closed.length === 0) return false;
   await tx.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: input.seatedUserId,
@@ -1056,6 +1081,7 @@ export async function closeInviteOnGroupSeat(
     targetId: input.inviteId,
     after: { role: input.role, via: 'linq_group' },
   });
+  return true;
 }
 
 /** Close an invite in a terminal state, with its audit row. */

@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, notInArray } from 'drizzle-orm';
-import { closeInviteOnGroupSeat, recordedSeatGrant } from '~/lib/channel/caregiver/invites';
+import {
+  SeatGrantChangedError,
+  closeInviteOnGroupSeat,
+  recordedSeatGrant,
+  unlessSeatGrantChanged,
+} from '~/lib/channel/caregiver/invites';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { storeParentRole } from '~/lib/channel/identity/parent-role';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
@@ -37,6 +42,7 @@ export type SeatOutcome =
   | { outcome: 'seated'; userId: string; role: SeatRole; groupRole: GroupSeatRole }
   | { outcome: 'seat_refused'; reason: SeatRefusal }
   | { outcome: 'seat_needs_parent_grant' }
+  | { outcome: 'grant_changed_during_seat' }
   | { outcome: 'member_not_asked' };
 
 /** A member nobody needs to hear from again; a roster of only these is `confirmed`. */
@@ -257,8 +263,17 @@ export async function seatConfirmedMember(
   });
   if (!grant) return labelWithoutSeat(database, member, role, input.now);
 
-  const userId = await database.transaction(async (rawTx) => {
+  const seat = database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    const held = await recordedSeatGrant(tx, {
+      familyId: member.familyId,
+      phoneE164Hash: member.phoneE164Hash,
+      role,
+      now: input.now,
+    });
+    if (held?.inviteId !== grant.inviteId || held.open !== grant.open) {
+      throw new SeatGrantChangedError();
+    }
     const externalAuthId = `sms:${member.phoneE164Hash}`;
     await tx
       .insert(schema.users)
@@ -334,14 +349,17 @@ export async function seatConfirmedMember(
         consentRecordId: consent.id,
       });
     }
-    if (grant.open) {
-      await closeInviteOnGroupSeat(tx, {
-        inviteId: grant.inviteId,
+    if (
+      held.open &&
+      !(await closeInviteOnGroupSeat(tx, {
+        inviteId: held.inviteId,
         role,
         familyId: member.familyId,
         seatedUserId,
         now: input.now,
-      });
+      }))
+    ) {
+      throw new SeatGrantChangedError();
     }
 
     let seatId: string | undefined;
@@ -403,6 +421,11 @@ export async function seatConfirmedMember(
     await settleRosterStatus(tx, member.rosterId, input.now);
     return seatedUserId;
   });
+  const userId = await unlessSeatGrantChanged(seat);
+  if (!userId) {
+    console.info({ outcome: 'grant_changed_during_seat' }, 'linq roster: not seated');
+    return { outcome: 'grant_changed_during_seat' };
+  }
 
   console.info({ outcome: 'seated', role }, 'linq roster: member seated on their own reply');
   return { outcome: 'seated', userId, role, groupRole };

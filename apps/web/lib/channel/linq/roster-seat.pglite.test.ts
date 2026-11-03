@@ -631,28 +631,195 @@ describe('seatConfirmedMember without a parent grant', () => {
     expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
   });
 
-  it('does not read an accepted invite with no recorded grant as a grant', async () => {
+  /**
+   * The legacy `identity_noted` seat leaves exactly this: an `accepted` invite whose member
+   * still holds the co-parent role, a verified channel, and no grant. Asked first, so the
+   * channel written after does not make the member `known`.
+   */
+  async function acceptedWithoutGrant() {
     const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
-    await db.database.insert(schema.caregiverInvites).values({
+    await askedRoster([PARENT, DAD]);
+    const [dad] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${phoneBlindIndex(DAD)}`, name: 'Dad' })
+      .returning({ id: schema.users.id });
+    const dadUserId = dad?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: dadUserId, role: 'co_parent' });
+    await db.database.insert(schema.parentChannels).values({
+      userId: dadUserId,
       familyId,
-      invitedByUserId: parentUserId,
-      role: 'co_parent',
-      displayName: 'Noted number',
+      kind: 'sms',
       phoneE164Encrypted: encryptString(DAD),
       phoneE164Hash: phoneBlindIndex(DAD),
-      state: 'accepted',
-      expiresAt: NOW,
-      closedAt: NOW,
+      verifiedAt: NOW,
     });
-    await askedRoster([PARENT, DAD]);
+    const [invite] = await db.database
+      .insert(schema.caregiverInvites)
+      .values({
+        familyId,
+        invitedByUserId: parentUserId,
+        role: 'co_parent',
+        displayName: 'Noted number',
+        phoneE164Encrypted: encryptString(DAD),
+        phoneE164Hash: phoneBlindIndex(DAD),
+        state: 'accepted',
+        caregiverUserId: dadUserId,
+        expiresAt: NOW,
+        closedAt: NOW,
+      })
+      .returning({ id: schema.caregiverInvites.id });
+    return { familyId, parentUserId, dadUserId, inviteId: invite?.id as string };
+  }
 
-    const result = await seatConfirmedMember(db.database, {
+  async function claimDad() {
+    return seatConfirmedMember(db.database, {
       rosterMemberId: (await memberFor(DAD)).id,
       reading: { role: 'parent', parentRole: 'father' },
       verbatimReply: "I'm his dad",
       now: NOW,
     });
-    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+  }
+
+  it('does not read an accepted invite whose member holds the role, with no grant audit row, as a grant', async () => {
+    const { familyId } = await acceptedWithoutGrant();
+
+    expect(
+      await recordedSeatGrant(db.database, {
+        familyId,
+        phoneE164Hash: phoneBlindIndex(DAD),
+        role: 'co_parent',
+        now: NOW,
+      }),
+    ).toBeNull();
+    expect(await claimDad()).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(await refusedAudits(familyId)).toEqual([
+      { reason: 'seat_needs_parent_grant', claimedRole: 'co_parent', via: 'own_reply' },
+    ]);
+  });
+
+  it('reads the same accepted invite as a grant once its own grant audit row is bound to it', async () => {
+    const { familyId, parentUserId, dadUserId, inviteId } = await acceptedWithoutGrant();
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: parentUserId,
+      actionTaken: 'co_parent_access_granted',
+      targetTable: 'caregiver_invites',
+      targetId: inviteId,
+      after: { role: 'co_parent' },
+    });
+
+    expect(
+      await recordedSeatGrant(db.database, {
+        familyId,
+        phoneE164Hash: phoneBlindIndex(DAD),
+        role: 'co_parent',
+        now: NOW,
+      }),
+    ).toEqual({ inviteId, grantedByUserId: parentUserId, open: false });
+    expect(await claimDad()).toMatchObject({ outcome: 'seated', userId: dadUserId });
+  });
+});
+
+/**
+ * VIL-582 security P2: the grant is read before the seat's transaction, so the seat
+ * re-reads it inside, with the invite row locked. A grant that ended in between rolls
+ * the seat back and names it.
+ */
+describe('seatConfirmedMember when the grant ends between the read and the seat', () => {
+  /** The same database, with `before` run just as the seat opens its transaction. */
+  function interleaved(before: () => Promise<void>): TestDb['database'] {
+    const target = db.database;
+    return new Proxy(target, {
+      get(object, property) {
+        if (property === 'transaction') {
+          return async (...args: Parameters<typeof target.transaction>) => {
+            await before();
+            return object.transaction(...args);
+          };
+        }
+        const value = Reflect.get(object, property, object);
+        return typeof value === 'function' ? value.bind(object) : value;
+      },
+    });
+  }
+
+  async function grantedGuest() {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GUEST,
+      role: 'co_parent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GUEST]);
+    return { familyId, inviteId };
+  }
+
+  it('rolls the seat back and names grant_changed_during_seat when the invite closes in between', async () => {
+    const { familyId, inviteId } = await grantedGuest();
+    const closing = interleaved(async () => {
+      await db.database
+        .update(schema.caregiverInvites)
+        .set({ state: 'declined', closedAt: NOW })
+        .where(eq(schema.caregiverInvites.id, inviteId));
+    });
+
+    const result = await seatConfirmedMember(closing, {
+      rosterMemberId: (await memberFor(GUEST)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: "I'm Mila's mom",
+      now: NOW,
+    });
+
+    expect(result).toEqual({ outcome: 'grant_changed_during_seat' });
+    expect(
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(GUEST))),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'linq_group_role_reply')),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.externalAuthId, `sms:${phoneBlindIndex(GUEST)}`)),
+    ).toEqual([]);
+    expect((await memberFor(GUEST)).status).toBe('asked');
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite?.state).toBe('declined');
+  });
+
+  it('seats through the same interleaving when nothing changes the grant', async () => {
+    await grantedGuest();
+    const untouched = interleaved(async () => {});
+
+    const result = await seatConfirmedMember(untouched, {
+      rosterMemberId: (await memberFor(GUEST)).id,
+      reading: { role: 'parent', parentRole: 'mother' },
+      verbatimReply: "I'm Mila's mom",
+      now: NOW,
+    });
+
+    expect(result).toMatchObject({ outcome: 'seated', role: 'co_parent' });
   });
 });
 
@@ -962,13 +1129,15 @@ describe('closeInviteOnGroupSeat', () => {
     });
     const later = new Date(NOW.getTime() + 60_000);
 
-    await closeInviteOnGroupSeat(db.database, {
-      inviteId,
-      role: 'grandparent',
-      familyId,
-      seatedUserId: parentUserId,
-      now: later,
-    });
+    expect(
+      await closeInviteOnGroupSeat(db.database, {
+        inviteId,
+        role: 'grandparent',
+        familyId,
+        seatedUserId: parentUserId,
+        now: later,
+      }),
+    ).toBe(false);
 
     const [row] = await db.database
       .select({
@@ -984,6 +1153,27 @@ describe('closeInviteOnGroupSeat', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'caregiver_invite_accepted'));
     expect(acceptances).toEqual([{ actor: caregiverUserId }]);
+  });
+
+  it('says it closed an invite that was still awaiting the invitee', async () => {
+    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+    const inviteId = await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+
+    expect(
+      await closeInviteOnGroupSeat(db.database, {
+        inviteId,
+        role: 'grandparent',
+        familyId,
+        seatedUserId: parentUserId,
+        now: NOW,
+      }),
+    ).toBe(true);
   });
 });
 
