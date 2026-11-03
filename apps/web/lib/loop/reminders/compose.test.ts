@@ -337,7 +337,12 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
 
   it('a provider error on both attempts is unavailable, not refused, with a failed run per attempt', async () => {
     const { outcome, runs, create } = await compose(SERVER_ERROR(), SERVER_ERROR());
-    expect(outcome).toEqual({ status: 'unavailable', cause: 'transient' });
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 500,
+      errorType: 'api_error',
+    });
     expect(create).toHaveBeenCalledTimes(2);
     expect(runs).toHaveLength(2);
     for (const run of runs) {
@@ -355,7 +360,12 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
 
   it('a usage limit stops at the first attempt: a second call cannot succeed', async () => {
     const { outcome, runs, create } = await compose(USAGE_LIMIT(), { texts: ['unreached'] });
-    expect(outcome).toEqual({ status: 'unavailable', cause: 'usage_limit' });
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'usage_limit',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
     expect(create).toHaveBeenCalledTimes(1);
     expect(runs).toHaveLength(1);
   });
@@ -370,7 +380,12 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
   it('a refused answer then a provider error is unavailable, so the reminder is not lost', async () => {
     const linked = { texts: ['Toddler gym soon, details at https://example.com/x'] };
     const { outcome } = await compose(linked, OVERLOADED());
-    expect(outcome).toEqual({ status: 'unavailable', cause: 'transient' });
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 503,
+      errorType: 'overloaded_error',
+    });
   });
 
   it('two answers cut off at the token budget are refused: the model answered, unusably', async () => {
@@ -380,7 +395,45 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
 
   it('a throw that is not the provider is unavailable as unexpected, never a provider class', async () => {
     const { outcome } = await compose(new TypeError('a bug'), new TypeError('a bug'));
-    expect(outcome).toEqual({ status: 'unavailable', cause: 'unexpected' });
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'unexpected',
+      httpStatus: null,
+      errorType: null,
+    });
+  });
+
+  it('two answers that fail the output schema are refused as schema: the model answered, unusably', async () => {
+    const { outcome, runs } = await compose({ texts: [] }, { texts: [] });
+    expect(outcome).toEqual({ status: 'refused', refusals: ['schema'] });
+    expect(runs.map((run) => run.status)).toEqual(['failed', 'failed']);
+  });
+
+  it("a 400 that quotes the request logs only the provider's status and error type, never its message", async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const quoting = () =>
+      apiError(400, 'invalid_request_error', 'messages.0.content: "Toddler gym" is not valid');
+    const { outcome } = await compose(quoting(), quoting());
+
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    const logged = [console.warn, console.error, console.info].flatMap(
+      (log) => vi.mocked(log).mock.calls,
+    );
+    // Positive control: the attempts were logged, with what tells a bad request from an outage.
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cause: 'transient',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
+      'reminder: compose failed',
+    );
+    expect(JSON.stringify(logged)).not.toContain('Toddler gym');
   });
 
   it('positive control: a usable answer is written, with one completed, costed run', async () => {

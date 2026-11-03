@@ -784,6 +784,34 @@ describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () 
     expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
     expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
   });
+
+  it("starts the floor at 20:00 for the recipient's Florida number, read for that recipient", async () => {
+    armed();
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const phones: string[] = [];
+    const run = (number: string) => {
+      const made = t1h('2026-11-11T04:00:00Z', {
+        parentPhone: async (_db, userId) => {
+          phones.push(userId);
+          return number;
+        },
+      });
+      return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
+        (result) => ({ result, enqueued: made.enqueued }),
+      );
+    };
+
+    // 20:12 for a 21:00 event: inside a Florida number's floor, which opens after it starts.
+    const florida = await run('+14075550100');
+    expect(florida.enqueued).toEqual([]);
+    expect(florida.result).toMatchObject({ fired: 0, suppressed: 1 });
+    expect(phones).toEqual(['p1']);
+
+    // Positive control: the same slot for a number elsewhere is outside the 21:00 floor.
+    const elsewhere = await run('+12065550100');
+    expect(elsewhere.enqueued).toHaveLength(1);
+    expect(elsewhere.result).toMatchObject({ fired: 1, suppressed: 0 });
+  });
 });
 
 describe("runReminderCron — the parent's own window only narrows (VIL-562)", () => {
@@ -855,7 +883,12 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
   it('leaves the reminder scheduled when the writer could not be reached, and counts it', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    composeText.mockResolvedValue({ status: 'unavailable', cause: 'transient' });
+    composeText.mockResolvedValue({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent(),
@@ -867,7 +900,13 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
     expect(audited).toEqual([]);
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ familyId: 'fam-1', cause: 'transient' }),
+      // The provider's status and type, so one line tells a 400 Hale caused from an outage.
+      expect.objectContaining({
+        familyId: 'fam-1',
+        cause: 'transient',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
       'reminder: compose unavailable, held for the next slot',
     );
     error.mockRestore();

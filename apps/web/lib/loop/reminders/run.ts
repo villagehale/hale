@@ -948,6 +948,8 @@ export async function runReminderCron(
               offset: batch.offset,
               events: batch.eventRefs.length,
               cause: composed.cause,
+              httpStatus: composed.httpStatus,
+              errorType: composed.errorType,
             },
             'reminder: compose unavailable, held for the next slot',
           );

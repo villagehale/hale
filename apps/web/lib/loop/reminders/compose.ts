@@ -13,7 +13,6 @@ import {
   type ProviderFailureClass,
   abortsSendWindow,
   classifyProviderFailure,
-  providerFailureDetail,
 } from '~/lib/monitoring/provider-health';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { SourceChange } from './change';
@@ -290,7 +289,24 @@ export interface ReminderDraft {
 export type ReminderCompose =
   | { status: 'written'; draft: ReminderDraft }
   | { status: 'refused'; refusals: string[] }
-  | { status: 'unavailable'; cause: ReminderUnavailableCause };
+  | ({ status: 'unavailable'; cause: ReminderUnavailableCause } & ProviderErrorShape);
+
+/** What the provider said went wrong, without what it quoted: its HTTP status and its
+ * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
+ * a 4xx can quote the request, and the request is the family's facts. Null when the
+ * provider never answered (a connection error, a bug, the skill file). */
+export interface ProviderErrorShape {
+  httpStatus: number | null;
+  errorType: string | null;
+}
+
+const NO_PROVIDER_ANSWER: ProviderErrorShape = { httpStatus: null, errorType: null };
+
+function providerErrorShape(err: unknown): ProviderErrorShape {
+  if (!(err instanceof Anthropic.APIError)) return NO_PROVIDER_ANSWER;
+  const type = (err.error as { error?: { type?: unknown } } | undefined)?.error?.type;
+  return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
+}
 
 export type ReminderUnavailableCause = ProviderFailureClass | 'skill_unavailable' | 'unexpected';
 
@@ -299,29 +315,23 @@ const REMINDER_AGENT = 'reminder-voice';
 type Attempt =
   | { kind: 'written'; draft: ReminderDraft }
   | { kind: 'refused'; refusals: string[] }
-  | { kind: 'unavailable'; cause: ProviderFailureClass | 'unexpected' };
+  | ({ kind: 'unavailable'; cause: ProviderFailureClass | 'unexpected' } & ProviderErrorShape);
 
 /** A thrown error, sorted by who failed: the model answering unusably, the provider, or
- * our own code. Logged with the provider's status and its own text (no family data), so
- * a 400 caused by Hale's request reads as that rather than as an outage. */
+ * our own code. Logged with the provider's status and error type only, so a 400 caused by
+ * Hale's request reads as that rather than as an outage, without the message it quoted. */
 function classifyThrow(err: unknown, familyId: string, attempt: number): Attempt {
   if (err instanceof StructuredOutputError) {
     return { kind: 'refused', refusals: [`structured:${err.outcome}`] };
   }
   if (err instanceof ZodError) return { kind: 'refused', refusals: ['schema'] };
   const cause = err instanceof Anthropic.APIError ? classifyProviderFailure(err) : 'unexpected';
+  const shape = providerErrorShape(err);
   console.warn(
-    {
-      familyId,
-      attempt,
-      cause,
-      status: err instanceof Anthropic.APIError ? (err.status ?? null) : null,
-      detail: cause === 'unexpected' ? null : providerFailureDetail(err),
-      err: err instanceof Error ? err.name : 'unknown',
-    },
+    { familyId, attempt, cause, ...shape, err: err instanceof Error ? err.name : 'unknown' },
     'reminder: compose failed',
   );
-  return { kind: 'unavailable', cause };
+  return { kind: 'unavailable', cause, ...shape };
 }
 
 /** The whole reminder as its texts, or the named reason there are none. Nothing written
@@ -342,11 +352,11 @@ export async function composeReminderTexts(
       { familyId, err: err instanceof Error ? err.name : 'unknown' },
       'reminder: skill load failed, nothing sent',
     );
-    return { status: 'unavailable', cause: 'skill_unavailable' };
+    return { status: 'unavailable', cause: 'skill_unavailable', ...NO_PROVIDER_ANSWER };
   }
   const lane = pickLane(skill.meta.task);
   const refusals: string[] = [];
-  let unavailable: ReminderUnavailableCause | null = null;
+  let unavailable: ({ cause: ReminderUnavailableCause } & ProviderErrorShape) | null = null;
   for (let attempt = 1; attempt <= REMINDER_MAX_ATTEMPTS; attempt += 1) {
     const startedAt = Date.now();
     let usage: Anthropic.Usage | null = null;
@@ -401,12 +411,16 @@ export async function composeReminderTexts(
     if (result.kind === 'written') return { status: 'written', draft: result.draft };
     if (result.kind === 'refused') refusals.push(...result.refusals);
     if (result.kind === 'unavailable') {
-      unavailable = result.cause;
+      unavailable = {
+        cause: result.cause,
+        httpStatus: result.httpStatus,
+        errorType: result.errorType,
+      };
       // An incident class fails for every call until a person acts; a second is waste.
       if (result.cause !== 'unexpected' && abortsSendWindow(result.cause)) break;
     }
   }
-  if (unavailable !== null) return { status: 'unavailable', cause: unavailable };
+  if (unavailable !== null) return { status: 'unavailable', ...unavailable };
   console.error({ familyId, outcome: 'reminder_unwritten' }, 'reminder: nothing sent');
   return { status: 'refused', refusals: [...new Set(refusals)] };
 }
