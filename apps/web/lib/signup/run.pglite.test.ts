@@ -863,7 +863,7 @@ describe('authorized signup runner', () => {
   it('hands back before a browser or a pack when the yes has no message id', async () => {
     const seeded = await familyWithOffer({
       ageMonths: 36,
-      url: 'https://www.toronto.ca/explore-enjoy/recreation/registrations',
+      url: 'https://register.example-city.test/recreation/registrations',
     });
     const { browser, calls } = browserFor(SAFE, { ...SAFE, confirmed: true });
     const result = await runAuthorizedSignup(
@@ -1132,7 +1132,7 @@ describe('authorized signup runner', () => {
       outcome: 'reached_checkout' as const,
       detail: 'none' as const,
       liveViewUrl: 'https://live.browser-use.com/s/fixture-live-view-token',
-      checkoutUrl: 'https://anc.ca.apm.activecommunities.com/toronto/checkout',
+      checkoutUrl: 'https://anc.ca.apm.activecommunities.com/exampleville/checkout',
       holdExpiresAt: new Date('2026-10-05T12:10:00.000Z'),
       cartTotalCents: 9800,
       confirmationNumber: null,
@@ -1144,7 +1144,8 @@ describe('authorized signup runner', () => {
       sessionCostUsd: null,
       browserId: null,
     };
-    const TORONTO = 'https://anc.ca.apm.activecommunities.com/toronto/activity/search/detail/123';
+    const ACTIVENET =
+      'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/123';
 
     beforeEach(async () => {
       // Each run holds its allowance against the shared $25 reserve; start every test clean.
@@ -1181,7 +1182,7 @@ describe('authorized signup runner', () => {
     }
 
     it('drives an ActiveNet host to checkout and returns the live view with no fixed copy', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       const { browser, calls } = browserFor(SAFE);
       const run = vi.fn(async () => CHECKOUT);
@@ -1198,7 +1199,7 @@ describe('authorized signup runner', () => {
       expect(result.browserUse?.liveViewUrl).toBe(CHECKOUT.liveViewUrl);
       expect(calls.opened).toBe(0);
       const [engineInput] = run.mock.calls[0] as unknown as [Record<string, unknown>];
-      expect(engineInput).toMatchObject({ registrationUrl: TORONTO });
+      expect(engineInput).toMatchObject({ registrationUrl: ACTIVENET });
       const [offer] = await db.database
         .select({ status: schema.authorizedSignupOffers.status })
         .from(schema.authorizedSignupOffers)
@@ -1214,7 +1215,7 @@ describe('authorized signup runner', () => {
       vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
       const seeded = await familyWithOffer({
         ageMonths: 36,
-        url: TORONTO,
+        url: ACTIVENET,
         approvedPriceCents: 9800,
       });
       await withProviderSession(seeded);
@@ -1256,7 +1257,7 @@ describe('authorized signup runner', () => {
       vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
       const seeded = await familyWithOffer({
         ageMonths: 36,
-        url: TORONTO,
+        url: ACTIVENET,
         approvedPriceCents: 9800,
       });
       await withProviderSession(seeded);
@@ -1277,7 +1278,7 @@ describe('authorized signup runner', () => {
       vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
       const seeded = await familyWithOffer({
         ageMonths: 36,
-        url: TORONTO,
+        url: ACTIVENET,
         approvedPriceCents: 60000,
       });
       await withProviderSession(seeded);
@@ -1297,7 +1298,7 @@ describe('authorized signup runner', () => {
       vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
       const seeded = await familyWithOffer({
         ageMonths: 36,
-        url: TORONTO,
+        url: ACTIVENET,
         approvedPriceCents: 9800,
       });
       await withProviderSession(seeded);
@@ -1318,7 +1319,7 @@ describe('authorized signup runner', () => {
     });
 
     it('keeps payment off without its own flag', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       const forParent = vi.fn();
       const run = vi.fn(async () => CHECKOUT);
@@ -1333,7 +1334,7 @@ describe('authorized signup runner', () => {
     });
 
     it('hands a Browser Use rush to the parent with the open time, the link and the prefill', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       const run = vi.fn(async () => ({
         ...CHECKOUT,
@@ -1352,14 +1353,14 @@ describe('authorized signup runner', () => {
       expect(result.rush).toMatchObject({
         signal: 'waiting_room',
         opensAt: '7:00 AM',
-        link: TORONTO,
+        link: ACTIVENET,
       });
       expect(result.rush?.prefill).toContainEqual({ slot: 'child_first_name', value: 'Ada' });
       expect(await audits(seeded.familyId)).not.toContain('Ada');
     });
 
     it('does not start the engine on a bare yes', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       const run = vi.fn(async () => CHECKOUT);
       const result = await runAuthorizedSignup(
@@ -1375,7 +1376,7 @@ describe('authorized signup runner', () => {
       vi.stubEnv('BROWSER_USE_SIGNUP_PAYMENT_ENABLED', 'true');
       const seeded = await familyWithOffer({
         ageMonths: 36,
-        url: TORONTO,
+        url: ACTIVENET,
         approvedPriceCents: 9800,
       });
       await withProviderSession(seeded);
@@ -1410,7 +1411,7 @@ describe('authorized signup runner', () => {
     });
 
     it('returns needs_login without calling Browser Use when no session was captured', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       const run = vi.fn(async () => CHECKOUT);
       const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-2'), {
         browserUseSignup: { run },
@@ -1429,7 +1430,7 @@ describe('authorized signup runner', () => {
     }
 
     it('stops before Browser Use once the $25 registration reserve cannot cover a worst-case run', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       // 20.5 spent + 5 allowance (3 signup + 1 payment + 1 browser/proxy) would pass 25.
       await setSpentUsd(seeded.familyId, '20.500000');
@@ -1445,7 +1446,7 @@ describe('authorized signup runner', () => {
     });
 
     it('still runs Browser Use while the worst-case run fits under the reserve', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => CHECKOUT);
@@ -1461,7 +1462,7 @@ describe('authorized signup runner', () => {
     });
 
     it('replaces the held allowance with the real session cost once the browser stopped', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => ({
@@ -1477,7 +1478,7 @@ describe('authorized signup runner', () => {
     });
 
     it('releases the held allowance when the engine throws before any session', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => {
@@ -1496,7 +1497,7 @@ describe('authorized signup runner', () => {
     });
 
     it('keeps the held allowance when the engine throws after a session started', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => {
@@ -1518,7 +1519,7 @@ describe('authorized signup runner', () => {
     });
 
     it('settles to the real session cost when a throw after a session could read it', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => {
@@ -1536,7 +1537,7 @@ describe('authorized signup runner', () => {
     });
 
     it('keeps the held allowance when a runner throws without saying whether a session started', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => {
@@ -1552,7 +1553,7 @@ describe('authorized signup runner', () => {
     });
 
     it('never starts Browser Use when the spend total cannot be read', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       await setSpentUsd(seeded.familyId, '0.000000');
       const run = vi.fn(async () => CHECKOUT);
@@ -1584,7 +1585,7 @@ describe('authorized signup runner', () => {
     });
 
     it('names a missing engine as not_configured', async () => {
-      const seeded = await familyWithOffer({ ageMonths: 36, url: TORONTO });
+      const seeded = await familyWithOffer({ ageMonths: 36, url: ACTIVENET });
       await withProviderSession(seeded);
       const result = await runAuthorizedSignup(db.database, yes(seeded, 'msg-bu-3'), {
         browserUseSignup: null,
@@ -1769,7 +1770,7 @@ describe('authorized signup runner', () => {
         });
       }
 
-      it("reads a null group bit from Hale's own records: the parent's 1:1 chat gets the details", async () => {
+      it("never reads a null group bit on iMessage as 1:1, even in a chat Hale replied to on the parent's own thread", async () => {
         const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
         await repliedInOwnThread(seeded, 'chat-direct-vil558');
         const outcomeWriter = echoOutcomeWriter();
@@ -1782,55 +1783,10 @@ describe('authorized signup runner', () => {
           outcome: 'needs_login',
           link: REC,
           linkIs: 'registration_page',
-          pack: await seededPack(seeded),
         });
-        expect(outcomeWriter.facts[0]?.pack).toContainEqual({
-          slot: 'child_first_name',
-          value: 'Ada',
-        });
-        expect(result.deliverOnThread).toBe(true);
-        expect(result.reply).toBe(renderEcho(outcomeWriter.facts[0] as SignupOutcomeFacts));
-        expect(result.withheld).toBeUndefined();
-      });
-
-      it('reads a null group bit in a group Hale knows as the group, even beside a 1:1 thread', async () => {
-        const knownGroups = [
-          async (seeded: { familyId: string }, chatId: string) => {
-            await db.database
-              .update(schema.families)
-              .set({ linqGroupChatId: chatId })
-              .where(eq(schema.families.id, seeded.familyId));
-          },
-          async (seeded: { familyId: string }, chatId: string) => {
-            await db.database.insert(schema.linqGroupRosters).values({
-              chatId,
-              familyId: seeded.familyId,
-              source: 'new_group',
-              status: 'confirmed',
-            });
-          },
-        ];
-        for (const [index, markGroup] of knownGroups.entries()) {
-          const chatId = `chat-group-vil558-${index}`;
-          const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
-          await repliedInOwnThread(seeded, chatId);
-          await markGroup(seeded, chatId);
-          const outcomeWriter = echoOutcomeWriter();
-          const result = await runAuthorizedSignup(
-            db.database,
-            yes(seeded, await inboundYes(seeded, null, 'imessage', chatId)),
-            { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter },
-          );
-          expect(outcomeWriter.facts[0]).toMatchObject({
-            outcome: 'needs_login',
-            link: REC,
-            linkIs: 'registration_page',
-          });
-          expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
-          expect(JSON.stringify(outcomeWriter.facts[0])).not.toContain('Ada');
-          expect(result.deliverOnThread).toBe(true);
-          expect(result.withheld).toBeUndefined();
-        }
+        expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
+        expect(JSON.stringify(outcomeWriter.facts[0])).not.toContain('Ada');
+        expect(result).toMatchObject({ deliverOnThread: true, withheld: 'thread_unresolved' });
       });
 
       it('withholds the details from a null group bit it cannot place, and names why', async () => {

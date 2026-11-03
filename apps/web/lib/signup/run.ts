@@ -1,9 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
@@ -994,22 +993,16 @@ function rushHandoff(
 type YesThread = 'private' | 'group' | 'unresolved';
 
 /**
- * Where the yes arrived. The inbound row's group bit decides when it is set; SMS has no
- * group. Linq leaves the bit out on most 1:1 texts (the row stores null), so a null bit
- * on iMessage is placed from what Hale already stored: private only when the chat is no
- * group Hale knows of and Hale's replies in it went to this parent's own 1:1 thread.
- * Anything Hale cannot place is `unresolved`, and read as the group.
+ * Where the yes arrived: the inbound row's group bit, or SMS, which has no group. A null
+ * bit on iMessage (a row stored before the bit existed) is `unresolved` and read as the
+ * group; the router already refuses such turns (`group_unscoped`), so this only fails
+ * closed if one ever gets through.
  */
 async function yesThread(database: Database, input: SignupRunInput): Promise<YesThread> {
   const id = input.inboundChannelMessageId;
   if (!id || !isUuid(id)) return 'unresolved';
   const [row] = await database
-    .select({
-      inGroup: schema.channelMessages.inGroup,
-      channel: schema.channelMessages.channel,
-      chatId: schema.channelMessages.providerChatId,
-      parentUserId: schema.channelMessages.parentUserId,
-    })
+    .select({ inGroup: schema.channelMessages.inGroup, channel: schema.channelMessages.channel })
     .from(schema.channelMessages)
     .where(
       and(
@@ -1021,97 +1014,7 @@ async function yesThread(database: Database, input: SignupRunInput): Promise<Yes
     .limit(1);
   if (!row) return 'unresolved';
   if (row.inGroup !== null) return row.inGroup ? 'group' : 'private';
-  if (row.channel === 'sms') return 'private';
-  if (!row.chatId) return 'unresolved';
-  const placed = { familyId: input.familyId, parentUserId: row.parentUserId, chatId: row.chatId };
-  if (await knownGroupChat(database, placed)) return 'group';
-  return (await repliedOnOwnThread(database, placed)) ? 'private' : 'unresolved';
-}
-
-interface PlacedChat {
-  familyId: string;
-  parentUserId: string;
-  chatId: string;
-}
-
-/** Any stored sign that this chat is a group: a household, roster, shared or group thread. */
-async function knownGroupChat(database: Database, chat: PlacedChat): Promise<boolean> {
-  const probes = await Promise.all([
-    database
-      .select({ id: schema.families.id })
-      .from(schema.families)
-      .where(eq(schema.families.linqGroupChatId, chat.chatId))
-      .limit(1),
-    database
-      .select({ id: schema.linqGroupRosters.id })
-      .from(schema.linqGroupRosters)
-      .where(
-        and(
-          eq(schema.linqGroupRosters.chatId, chat.chatId),
-          ne(schema.linqGroupRosters.status, 'not_group'),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.linqGroupMembers.id })
-      .from(schema.linqGroupMembers)
-      .where(eq(schema.linqGroupMembers.chatId, chat.chatId))
-      .limit(1),
-    database
-      .select({ id: schema.linqMultiFamilyJoins.id })
-      .from(schema.linqMultiFamilyJoins)
-      .where(eq(schema.linqMultiFamilyJoins.chatId, chat.chatId))
-      .limit(1),
-    database
-      .select({ id: schema.linqSharedGroupPeople.id })
-      .from(schema.linqSharedGroupPeople)
-      .where(eq(schema.linqSharedGroupPeople.chatId, chat.chatId))
-      .limit(1),
-    database
-      .select({ id: schema.conversations.id })
-      .from(schema.conversations)
-      .where(
-        and(
-          eq(schema.conversations.familyId, chat.familyId),
-          eq(schema.conversations.noteKey, channelGroupNoteKey(chat.chatId)),
-        ),
-      )
-      .limit(1),
-    database
-      .select({ id: schema.channelMessages.id })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.parentUserId, chat.parentUserId),
-          eq(schema.channelMessages.providerChatId, chat.chatId),
-          eq(schema.channelMessages.inGroup, true),
-        ),
-      )
-      .limit(1),
-  ]);
-  return probes.some((rows) => rows.length > 0);
-}
-
-/** Hale has replied in this chat on the parent's own 1:1 thread (`channel-sms:<userId>`). */
-async function repliedOnOwnThread(database: Database, chat: PlacedChat): Promise<boolean> {
-  const rows = await database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .innerJoin(
-      schema.conversations,
-      eq(schema.conversations.id, schema.channelMessages.relatedConversationId),
-    )
-    .where(
-      and(
-        eq(schema.channelMessages.parentUserId, chat.parentUserId),
-        eq(schema.channelMessages.familyId, chat.familyId),
-        eq(schema.channelMessages.providerChatId, chat.chatId),
-        eq(schema.conversations.familyId, chat.familyId),
-        eq(schema.conversations.noteKey, channelSmsNoteKey(chat.parentUserId)),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
+  return row.channel === 'sms' ? 'private' : 'unresolved';
 }
 
 /** Outcomes where the parent fills the provider's form next, so the pack helps. */
