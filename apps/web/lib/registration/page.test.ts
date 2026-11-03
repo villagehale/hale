@@ -61,6 +61,9 @@ describe('registration page network boundary', () => {
     ['https://10.0.0.1/a', 'non_public_host'],
     ['https://169.254.169.254/a', 'non_public_host'],
     ['https://intranet/a', 'non_public_host'],
+    ['https://localhost./a', 'non_public_host'],
+    ['https://intranet./a', 'non_public_host'],
+    ['https://printer.local./a', 'non_public_host'],
     ['https://localhost/?session=1', 'non_public_host'],
     ['not a url', 'malformed_url'],
   ])('refuses %s as %s', (url, reason) => {
@@ -83,6 +86,7 @@ describe('registration page network boundary', () => {
     'https://example.com/a#/section',
     'https://example.com/a#/program?season=fall&id=4',
     'https://example.com/a;b/c',
+    'https://example.com./a',
   ])('allows the ordinary link %s', (url) => {
     expect(registrationPageUrl(url)).toEqual({ outcome: 'allowed', url });
   });

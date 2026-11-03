@@ -250,6 +250,28 @@ describe('per-host bound on concurrent fetches (instance protection, not a send 
     }
   });
 
+  it('counts a trailing-dot or upper-case spelling of a host as the same host', async () => {
+    const fetchPage = createRegistrationPageBytesFetch();
+    const started: Promise<RegistrationPageFetch>[] = [];
+    try {
+      started.push(fetchPage('https://example.org/a'), fetchPage('https://example.org/a'));
+      await expect(fetchPage('https://EXAMPLE.org./a')).resolves.toEqual({
+        outcome: 'busy',
+        reason: 'host_busy',
+      });
+      expect(info).toHaveBeenLastCalledWith(
+        { outcome: 'busy', reason: 'host_busy', host: 'example.org' },
+        'registration page: not fetched',
+      );
+      expect(network.request).toHaveBeenCalledTimes(2);
+      started.push(fetchPage('https://example.net./a'));
+      expect(network.request).toHaveBeenCalledTimes(3);
+    } finally {
+      for (const { respond } of opened) respond(response(404));
+      await Promise.all(started);
+    }
+  });
+
   it('releases the host slot after a timeout and after a size refusal', async () => {
     const fetchPage = createRegistrationPageBytesFetch(100);
     const started: Promise<RegistrationPageFetch>[] = [];

@@ -148,8 +148,13 @@ function carriesCredential(url: URL): boolean {
   );
 }
 
+/** The parser already lowercases; `example.org.` and `example.org` are one host. */
+function normalisedHost(url: URL): string {
+  return url.hostname.replace(/\.$/, '');
+}
+
 function isNonPublicHost(url: URL): boolean {
-  const host = url.hostname.replace(/^\[|\]$/g, '');
+  const host = normalisedHost(url).replace(/^\[|\]$/g, '');
   return (
     /(^|\.)(localhost|local|internal|test|invalid)$/.test(host) ||
     (!isIP(host) && !host.includes('.')) ||
@@ -186,7 +191,7 @@ const inFlightByHost = new Map<string, number>();
 
 function hostOf(raw: string): string | null {
   try {
-    return new URL(raw).hostname;
+    return normalisedHost(new URL(raw));
   } catch {
     return null;
   }
@@ -215,7 +220,7 @@ export function createRegistrationPageBytesFetch(
       return logged({ outcome: 'refused', reason: check.reason }, hostOf(raw));
     }
     const url = check.url;
-    const host = new URL(url).hostname;
+    const host = normalisedHost(new URL(url));
     const inFlight = inFlightByHost.get(host) ?? 0;
     if (inFlight >= MAX_FETCHES_IN_FLIGHT_PER_HOST) {
       return logged({ outcome: 'busy', reason: 'host_busy' }, host);
