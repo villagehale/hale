@@ -1,15 +1,24 @@
 import { createQueueWithPolicy } from '@hale/tools-contracts';
 import PgBoss from 'pg-boss';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
+  TURN_DEADLINE_MS,
 } from '~/lib/channel/config';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import {
+  type DrainDeps,
+  type DrainHandlers,
+  drainBossFrom,
+  drainHotQueues,
+} from '~/lib/cron/drain';
+import {
+  type QueueSql,
   bindInboundQueue,
   countExpiredActive,
   fetchSingletonSkippingHeldKeys,
@@ -68,6 +77,18 @@ beforeEach(async () => {
   await db.exec('delete from pgboss.job');
 });
 
+/** pglite's clock ticks in milliseconds, so back-to-back sends can share a
+ * `created_on` and the claim order would fall back to random job ids. Each test job
+ * is stamped strictly after the one before it. */
+let sentCount = 0;
+async function stampSendOrder(id: string): Promise<void> {
+  sentCount += 1;
+  await db.client.query(
+    "update pgboss.job set created_on = now() + $2::int * interval '1 millisecond' where id = $1",
+    [id, sentCount],
+  );
+}
+
 async function send(parent: string, n: number): Promise<string> {
   const id = crypto.randomUUID();
   const created = await boss.send(
@@ -80,6 +101,7 @@ async function send(parent: string, n: number): Promise<string> {
     },
   );
   if (!created) throw new Error(`pg-boss created no job for ${parent} #${n}`);
+  await stampSendOrder(created);
   return created;
 }
 
@@ -105,7 +127,7 @@ describe('channel.message.received singleton isolation', () => {
     const other = await send(PARENT_B, 1);
     await makeDue();
 
-    const claimed = await fetchSingletonSkippingHeldKeys<{ parent: string; n: number }>(
+    const { jobs: claimed } = await fetchSingletonSkippingHeldKeys<{ parent: string; n: number }>(
       boss.getDb(),
       'pgboss',
       QUEUE,
@@ -119,7 +141,7 @@ describe('channel.message.received singleton isolation', () => {
 
     await boss.complete(QUEUE, first);
     await makeDue();
-    const next = await fetchSingletonSkippingHeldKeys<{ n: number }>(
+    const { jobs: next } = await fetchSingletonSkippingHeldKeys<{ n: number }>(
       boss.getDb(),
       'pgboss',
       QUEUE,
@@ -153,7 +175,9 @@ describe('channel.message.received singleton isolation', () => {
     expect(stall.unfinished).toBe(3);
 
     const bound = bindInboundQueue(boss);
-    const whileStuck = await bound.fetch<{ parent: string }>(QUEUE, { batchSize: 10 });
+    const whileStuck = await bound.fetch<{ parent: string }>(QUEUE, {
+      batchSize: CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
+    });
     expect(whileStuck.map((job) => job.id)).toEqual([other]);
     expect((await states()).find((row) => row.id === queuedSameParent)?.state).toBe('created');
 
@@ -174,8 +198,10 @@ describe('channel.message.received singleton isolation', () => {
   it('treats a null singleton key as its own slot, not a lock on every family', async () => {
     const globalId = crypto.randomUUID();
     await boss.send(QUEUE, { parent: 'none', n: 1 }, { id: globalId });
+    await stampSendOrder(globalId);
     const globalQueued = crypto.randomUUID();
     await boss.send(QUEUE, { parent: 'none', n: 2 }, { id: globalQueued });
+    await stampSendOrder(globalQueued);
     const other = await send(PARENT_B, 1);
     await makeDue();
 
@@ -185,7 +211,7 @@ describe('channel.message.received singleton isolation', () => {
     const poisoned = await boss.fetch(QUEUE, { batchSize: 10 });
     expect(poisoned).toEqual([]);
 
-    const claimed = await fetchSingletonSkippingHeldKeys<{ parent: string }>(
+    const { jobs: claimed } = await fetchSingletonSkippingHeldKeys<{ parent: string }>(
       boss.getDb(),
       'pgboss',
       QUEUE,
@@ -202,5 +228,236 @@ describe('channel.message.received singleton isolation', () => {
       unfinished: 0,
       oldestSeconds: null,
     });
+  });
+});
+
+/**
+ * Devin's finding on #999: every drain sweeps `expire()` before it fetches, so a sweep
+ * must only ever catch a DEAD turn. These run the real drain over the real pg-boss
+ * wiring (`drainBossFrom`); the only fake is the `channelMessage` handler port.
+ */
+describe('the per-drain expiry sweep', () => {
+  const FAMILY = 'ffffffff-ffff-4fff-8fff-fffffffffff0';
+  const PARENTS = [1, 2, 3, 4].map((n) => `cccccccc-cccc-4ccc-8ccc-cccccccccc0${n}`);
+  const TURN_S = TURN_DEADLINE_MS / 1000 - 10;
+
+  async function sendTurn(parent: string): Promise<string> {
+    const created = await boss.send(
+      QUEUE,
+      {
+        family_id: FAMILY,
+        parent_user_id: parent,
+        channel_message_id: crypto.randomUUID(),
+        provider_message_id: `provider-${parent.slice(-2)}`,
+        received_at: new Date().toISOString(),
+      },
+      {
+        id: crypto.randomUUID(),
+        singletonKey: channelSmsNoteKey(parent),
+        expireInSeconds: CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
+      },
+    );
+    if (!created) throw new Error('pg-boss created no inbound job');
+    await stampSendOrder(created);
+    return created;
+  }
+
+  function drainDeps(channelMessage: DrainHandlers['channelMessage']): DrainDeps {
+    const inert = async () => undefined;
+    return {
+      boss: drainBossFrom(boss),
+      handlers: {
+        runOrchestrator: inert as unknown as DrainHandlers['runOrchestrator'],
+        executeApprovedAction: inert as unknown as DrainHandlers['executeApprovedAction'],
+        rerank: inert,
+        channelSend: inert,
+        channelSendDead: inert,
+        channelMessage,
+        deepResearch: inert,
+        autonomyNotices: inert,
+      },
+      log: { info: vi.fn(), error: vi.fn() },
+      now: () => Date.now(),
+      pageExpiredTurn: vi.fn(async () => undefined),
+    };
+  }
+
+  async function jobRows(ids: string[]) {
+    const res = await db.client.query<{ id: string; state: string; retry_count: number }>(
+      'select id, state::text as state, retry_count from pgboss.job where id = any($1::uuid[])',
+      [ids],
+    );
+    return ids.map((id) => {
+      const row = res.rows.find((r) => r.id === id);
+      return { state: row?.state, retry_count: row?.retry_count };
+    });
+  }
+
+  it('never reaps a turn that a live drain still holds', async () => {
+    const ids: string[] = [];
+    for (const parent of PARENTS) ids.push(await sendTurn(parent));
+    await makeDue();
+
+    const sweeps: number[] = [];
+    const handled: string[] = [];
+    const channelMessage = vi.fn(async (job: { parent_user_id: string }) => {
+      handled.push(job.parent_user_id);
+      await db.client.query(
+        "update pgboss.job set started_on = started_on - make_interval(secs => $2) where name = $1 and state = 'active'",
+        [QUEUE, TURN_S],
+      );
+      sweeps.push(await bindInboundQueue(boss).expire());
+    });
+
+    const summary = await drainHotQueues(drainDeps(channelMessage));
+
+    expect(sweeps).toEqual([0, 0, 0, 0]);
+    expect(handled).toEqual(PARENTS);
+    expect(summary.processed).toBe(4);
+    expect(summary.dropped).toBe(0);
+    expect(await jobRows(ids)).toEqual(ids.map(() => ({ state: 'completed', retry_count: 0 })));
+  });
+
+  it('still reaps a turn whose drain died, and the next parent is answered in that run', async () => {
+    const [deadParent, liveParent] = PARENTS as [string, string];
+    const stuck = await sendTurn(deadParent);
+    await makeDue();
+    const claimed = await bindInboundQueue(boss).fetch(QUEUE, { batchSize: 1 });
+    expect(claimed.map((job) => job.id)).toEqual([stuck]);
+    await db.client.query(
+      'update pgboss.job set started_on = started_on - make_interval(secs => $2) where id = $1',
+      [stuck, CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS + 1],
+    );
+    const live = await sendTurn(liveParent);
+    await makeDue();
+
+    const handled: string[] = [];
+    const channelMessage = vi.fn(async (job: { parent_user_id: string }) => {
+      handled.push(job.parent_user_id);
+    });
+    const summary = await drainHotQueues(drainDeps(channelMessage));
+
+    expect(summary.expiredActive).toBe(1);
+    expect(summary.dropped).toBe(0);
+    expect(handled).toEqual([liveParent]);
+    const stuckRow = await db.client.query<{ state: string; due_later: boolean }>(
+      'select state::text as state, start_after > now() as due_later from pgboss.job where id = $1',
+      [stuck],
+    );
+    expect(stuckRow.rows[0]).toEqual({ state: 'retry', due_later: true });
+    expect(await jobRows([live])).toEqual([{ state: 'completed', retry_count: 0 }]);
+  });
+});
+
+/**
+ * Devin's second finding on #999: a claim that loses to another drain used to give up
+ * after `batchSize` lost races and hand back a short batch, so the drain read the
+ * queue as empty while other parents' keys were free. `peerWins` is a QueueSql port
+ * that lets a real peer claim run just before each of our first `losses` activating
+ * writes (any statement that is not a SELECT), then either forwards ours or raises
+ * the unique violation a committed peer produces.
+ */
+describe('a claim that loses to another drain', () => {
+  const PARENT_C = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd3';
+  const CLAIM_LOST =
+    'drain: inbound claim lost races to another drain; keys skipped for this fetch';
+
+  function peerWins(
+    raw: QueueSql,
+    losses: number,
+    mode: 'forward' | 'unique',
+  ): { db: QueueSql; intercepted: () => number } {
+    let intercepted = 0;
+    return {
+      intercepted: () => intercepted,
+      db: {
+        async executeSql(text, values) {
+          const activating = !/^select\b/i.test(text.trimStart());
+          if (!activating || intercepted >= losses) return raw.executeSql(text, values);
+          intercepted += 1;
+          await fetchSingletonSkippingHeldKeys(raw, 'pgboss', QUEUE, 1);
+          if (mode === 'unique') {
+            throw Object.assign(new Error('duplicate key'), { code: '23505' });
+          }
+          return raw.executeSql(text, values);
+        },
+      },
+    };
+  }
+
+  async function twoTextsEach(): Promise<Record<'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2', string>> {
+    const ids = {
+      A1: await send(PARENT_A, 1),
+      A2: await send(PARENT_A, 2),
+      B1: await send(PARENT_B, 1),
+      B2: await send(PARENT_B, 2),
+      C1: await send(PARENT_C, 1),
+      C2: await send(PARENT_C, 2),
+    };
+    await makeDue();
+    return ids;
+  }
+
+  async function stateOf(ids: string[]): Promise<string[]> {
+    const rows = await states();
+    return ids.map((id) => rows.find((row) => row.id === id)?.state ?? 'missing');
+  }
+
+  it('skips a key the peer took and still claims a free parent', async () => {
+    const ids = await twoTextsEach();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const port = peerWins(boss.getDb(), 2, 'unique');
+
+    const result = await fetchSingletonSkippingHeldKeys(port.db, 'pgboss', QUEUE, 1);
+
+    expect(result.jobs.map((job) => job.id)).toEqual([ids.C1]);
+    expect(result.claimConflicts).toBe(2);
+    expect(await stateOf([ids.A1, ids.B1, ids.C1])).toEqual(['active', 'active', 'active']);
+    expect(await stateOf([ids.A2, ids.B2, ids.C2])).toEqual(['created', 'created', 'created']);
+    expect(warn).toHaveBeenCalledWith({ queue: QUEUE, claimConflicts: 2 }, CLAIM_LOST);
+    warn.mockRestore();
+  });
+
+  it('treats an update the peer beat to the row as a lost claim, not an empty queue', async () => {
+    const ids = await twoTextsEach();
+    const port = peerWins(boss.getDb(), 1, 'forward');
+
+    const result = await fetchSingletonSkippingHeldKeys(port.db, 'pgboss', QUEUE, 1);
+
+    expect(result.jobs.map((job) => job.id)).toEqual([ids.B1]);
+    expect(result.claimConflicts).toBe(1);
+    expect(await stateOf([ids.A1, ids.B1])).toEqual(['active', 'active']);
+  });
+
+  it('claims the oldest free parent and logs nothing when no peer races', async () => {
+    const ids = await twoTextsEach();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const port = peerWins(boss.getDb(), 0, 'unique');
+
+    const result = await fetchSingletonSkippingHeldKeys(port.db, 'pgboss', QUEUE, 1);
+
+    expect(result.jobs.map((job) => job.id)).toEqual([ids.A1]);
+    expect(result.claimConflicts).toBe(0);
+    expect(warn).not.toHaveBeenCalledWith(expect.anything(), CLAIM_LOST);
+    warn.mockRestore();
+  });
+
+  it('ends after one lost claim per distinct key when every claim loses', async () => {
+    const ids = await twoTextsEach();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const port = peerWins(boss.getDb(), Number.POSITIVE_INFINITY, 'unique');
+
+    const result = await fetchSingletonSkippingHeldKeys(port.db, 'pgboss', QUEUE, 1);
+
+    expect(result.jobs).toEqual([]);
+    expect(result.claimConflicts).toBe(3);
+    expect(port.intercepted()).toBe(3);
+    expect(await stateOf([ids.A1, ids.B1, ids.C1])).toEqual(['active', 'active', 'active']);
+    const claimLogs = warn.mock.calls.filter((call) => call[1] === CLAIM_LOST);
+    expect(claimLogs).toEqual([[{ queue: QUEUE, claimConflicts: 3 }, CLAIM_LOST]]);
+    const logged = JSON.stringify(claimLogs);
+    for (const id of Object.values(ids)) expect(logged).not.toContain(id);
+    for (const parent of [PARENT_A, PARENT_B, PARENT_C]) expect(logged).not.toContain(parent);
+    warn.mockRestore();
   });
 });

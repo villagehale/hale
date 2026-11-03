@@ -123,12 +123,26 @@ export const OFF_DOMAIN_BUDGET_MS = 60_000;
  * The other hot queues keep {@link HOT_QUEUE_EXPIRE_SECONDS} (900s), which sits
  * above the 800s function wall so a killed worker is the only thing an expiry
  * can redeliver. This queue cannot: it is per-parent singleton, and a job that
- * stays `active` until 900s blocks every later text from that parent. 180s is
- * above the 90s turn deadline and below the function wall, so a dead turn
- * frees the key in minutes. Re-drives are safe — the turn ledger
+ * stays `active` until 900s blocks every later text from that parent.
+ *
+ * Every drain sweeps expiry before it fetches, so this number is only safe if a
+ * live job can never reach it. A job is claimed only when its turn starts
+ * ({@link CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE}), so its active age is the turn
+ * deadline, plus the timeout path's settle writes (route.ts), plus the drain's own
+ * complete/fail. The trailed workstream extract is handed to `waitUntil` and is not
+ * part of that age. 180s sits above that envelope and below the function wall, so
+ * a dead turn frees the key in minutes. Re-drives are safe — the turn ledger
  * (router/turn-ledger.ts) answers a text at most once.
  */
 export const CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS = 180;
+
+/**
+ * Inbound turns are claimed one at a time. A claimed job is `active`, so a batch
+ * fetched ahead of its turns would age the unstarted ones into
+ * {@link CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS} and another drain's sweep would
+ * reap them while this drain still holds them.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE = 1;
 
 /** The log outcome for a turn that ran out of retries. A DATA value: it is what
  * telemetry counts, so it is never renamed with the code. */

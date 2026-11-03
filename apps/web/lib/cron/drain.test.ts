@@ -694,12 +694,13 @@ describe('channel.message.received', () => {
   });
 
   /**
-   * The inbound fetch window is the full batch. pg-boss gates singleton keys INSIDE the
-   * fetched batch, so a one-row window that lands on a blocked key returns nothing and
-   * the queue stalls behind it (seen in prod 2026-09-17). The window is what keeps the
-   * canary and every other family moving while one family's earlier turn is still active.
+   * An inbound turn is claimed only when it is about to run. A claimed row is `active`,
+   * and every drain's expiry sweep reaps an `active` row past 180s, so a batch fetched
+   * ahead of its turns would age its unstarted rows into the sweep. The claim skips held
+   * keys (singleton-fetch.ts), so a one-row claim cannot land on a blocked key; the
+   * 2026-09-17 stall is pinned by the pglite reap test at this same batch size.
    */
-  it('fetches the inbound queue with the full batch window, and drains it serially', async () => {
+  it('claims inbound turns one at a time, and drains them serially', async () => {
     const { boss, completed } = makeFakeBoss({
       [INBOUND]: [
         {
@@ -723,7 +724,8 @@ describe('channel.message.received', () => {
 
     const summary = await drainHotQueues(makeDeps(boss, { channelMessage }));
 
-    expect(boss.fetch).toHaveBeenCalledWith(INBOUND, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledWith(INBOUND, { batchSize: 1 });
+    expect(boss.fetch).not.toHaveBeenCalledWith(INBOUND, { batchSize: 10 });
     expect(order).toEqual(['SM1', 'SM2', 'SM3']);
     expect([...completed(INBOUND)].sort()).toEqual(['i1', 'i2', 'i3']);
     expect(summary.processed).toBe(3);

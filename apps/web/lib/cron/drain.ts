@@ -26,6 +26,7 @@ import {
 import { dispatchAutonomyNotices } from '~/lib/channel/autonomy/dispatch';
 import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import {
+  CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -116,20 +117,19 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 900;
 const BATCH_SIZE = 10;
 
 /**
- * The inbound queue is fetched with the FULL batch window, on purpose.
+ * The inbound queue is claimed one turn at a time ({@link CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE}).
  *
- * pg-boss 10.4.2 gates a singleton key only inside the fetched batch, and a key that
- * is already active makes the batch UPDATE raise 23505. The library swallows that
- * and returns no rows — every other family in the batch included. Observed on
- * Preview 2026-11-01: one expired active job, drains logging processed: 0, until
- * someone called /api/cron/queue-maintenance. The production boss does not use that
- * fetch for this queue (singleton-fetch.ts skips held keys first, one job at a
- * time). Ten is still the window: one pass can start a turn for up to ten parents.
+ * pg-boss 10.4.2's own fetch gates a singleton key only inside the fetched batch, so a
+ * one-row window that landed on a held key used to come back empty (2026-09-17). The
+ * production boss does not use that fetch for this queue: singleton-fetch.ts skips held
+ * keys before it claims, so a one-row claim takes the oldest FREE parent. Claiming one at
+ * a time is what keeps a claimed job `active` only while its own turn runs, which is the
+ * premise of the 180s expiry every drain sweeps before it fetches. A batch fetched ahead
+ * of its turns aged the unstarted ones into that sweep.
  *
- * A run works its batch one turn at a time. That is safe again because a kicked run no
- * longer lives only as long as the kick (route.ts answers 202 and works in after()), so a
- * ten-turn batch finishes inside maxDuration instead of dying at the kick's 60s. What a
- * burst costs is the turns' own time, in fetch order; what it never costs is a lost turn.
+ * A kicked run no longer lives only as long as the kick (route.ts answers 202 and works in
+ * after()), so a burst of turns finishes inside maxDuration. The wall-clock budget is
+ * checked before every inbound turn.
  */
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
@@ -626,7 +626,11 @@ const DRAIN_PLAN = [
   // Each dead letter drains right behind its queue — an unread DLQ is a silent drop
   // with extra steps (rule #11). All are near-empty near-free reads on a healthy tick.
   { queue: CHANNEL_SEND_DLQ, process: processDeadSendJob },
-  { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
+  {
+    queue: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    process: processChannelMessageJob,
+    batchSize: CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
+  },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
   { queue: EVENTS_DLQ, process: processDeadJobFor(EVENTS_DLQ) },
@@ -774,6 +778,27 @@ export function isConnectionExhaustion(err: unknown): boolean {
   );
 }
 
+/** The production {@link DrainBoss} over a started pg-boss: the inbound queue claims
+ * through {@link bindInboundQueue}, every other call is pg-boss's own. */
+export function drainBossFrom(boss: PgBoss): DrainBoss {
+  const inbound = bindInboundQueue(boss);
+  // P0-3: createQueueWithPolicy is the only caller. Pass the methods through;
+  // queue-policy-guard rejects an invocation written in this file.
+  const queueBoss = boss as unknown as DrainBoss;
+  return {
+    createQueue: queueBoss.createQueue.bind(queueBoss),
+    updateQueue: queueBoss.updateQueue.bind(queueBoss),
+    fetch: (name, options) => inbound.fetch(name, options),
+    complete: async (name, id) => {
+      await boss.complete(name, id);
+    },
+    fail: async (name, id, data) => {
+      await boss.fail(name, id, data);
+    },
+    expire: () => inbound.expire(),
+  };
+}
+
 /**
  * Connection (recipe #4): pg-boss requires prepared statements, which Supabase's
  * TRANSACTION pooler (port 6543) breaks. We connect via DATABASE_DIRECT_URL —
@@ -865,25 +890,10 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
     max: 2,
   });
   await boss.start();
-  const inbound = bindInboundQueue(boss);
-  // P0-3: createQueueWithPolicy is the only caller. Pass the methods through;
-  // queue-policy-guard rejects an invocation written in this file.
-  const queueBoss = boss as unknown as DrainBoss;
   try {
     return await drainHotQueues(
       {
-        boss: {
-          createQueue: queueBoss.createQueue.bind(queueBoss),
-          updateQueue: queueBoss.updateQueue.bind(queueBoss),
-          fetch: (name, options) => inbound.fetch(name, options),
-          complete: async (name, id) => {
-            await boss.complete(name, id);
-          },
-          fail: async (name, id, data) => {
-            await boss.fail(name, id, data);
-          },
-          expire: () => inbound.expire(),
-        },
+        boss: drainBossFrom(boss),
         handlers: {
           runOrchestrator: (job) =>
             runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement, sendEmail }),
