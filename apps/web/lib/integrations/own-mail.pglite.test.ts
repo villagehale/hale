@@ -237,6 +237,9 @@ async function sync(h: Harness, messages: readonly FakeMessage[]) {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: false,
     }),
   };
