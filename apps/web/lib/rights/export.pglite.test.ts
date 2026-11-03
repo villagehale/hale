@@ -190,6 +190,8 @@ describe('a link-owned registration watch in a right-to-access copy', () => {
         familyId: b.familyId,
         parentUserId: b.parentUserId,
         courseUrl: 'https://signup.example.com/class/42',
+        pausedAt: new Date('2026-10-03T12:00:00Z'),
+        pendingChange: { opensAt: 'pending-body-q9' },
       },
     ]);
 
@@ -223,5 +225,16 @@ describe('a link-owned registration watch in a right-to-access copy', () => {
       'signup.example.com',
     ]);
     expect(JSON.stringify(docB)).not.toContain('courses.example.net');
+
+    // A's watch is unpaused with nothing pending, B's is paused with a change pending, so
+    // each of the two mappings must read its own column: a constant in either is red on
+    // one family or the other. Only the presence of the change leaves, never its body.
+    expect(
+      docB.registrationPreparation.map(({ pausedAt, hasPendingChange }) => ({
+        pausedAt,
+        hasPendingChange,
+      })),
+    ).toEqual([{ pausedAt: '2026-10-03T12:00:00.000Z', hasPendingChange: true }]);
+    expect(JSON.stringify(docB)).not.toContain('pending-body-q9');
   });
 });
