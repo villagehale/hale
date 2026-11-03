@@ -4484,12 +4484,13 @@ describe('the weekday-care answer', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
-  it('declines the hidden unapproved draft when NO answers the offer, and YES does not approve it', async () => {
+  it('declines every hidden unapproved draft when NO answers the offer, and YES does not approve them', async () => {
     const declined: string[] = [];
     const approved: string[] = [];
     const spine = {
       listPending: async () => [
         { actionId: 'a-held', actionType: 'calendar_add', reviewerApproved: false },
+        { actionId: 'a-held-2', actionType: 'calendar_add', reviewerApproved: false },
       ],
       latestUndoable: async () => null,
       approve: async (_db: unknown, args: { actionId: string }) => {
@@ -4511,6 +4512,7 @@ describe('the weekday-care answer', () => {
       askedAt: NOW,
       solicited: true,
       declinesActionId: 'a-held',
+      declinesActionIds: ['a-held', 'a-held-2'],
     };
     const offerHandler: DeterministicHandler = {
       name: 'email_alert_add',
@@ -4535,7 +4537,7 @@ describe('the weekday-care answer', () => {
     });
 
     await routeChannelMessage(no.deps, job());
-    expect(declined).toEqual(['a-held']);
+    expect(declined).toEqual(['a-held', 'a-held-2']);
     expect(approved).toEqual([]);
 
     const yesHandler: DeterministicHandler = {
