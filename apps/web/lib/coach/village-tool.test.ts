@@ -148,3 +148,72 @@ describe('search_village uses this operation’s live evidence', () => {
     expect(result.liveRead).toBe('no_area');
   });
 });
+
+describe('VIL-522 search_village tops up a short radar', () => {
+  const fair: ActivityPick = {
+    ...pick,
+    name: 'Harvest fair',
+    sourceName: 'Fairgrounds',
+    sourceUrl: 'https://fair.example/harvest',
+  };
+
+  it('fires one live search when the radar returns a single suitable find', async () => {
+    const familyId = await household();
+    let calls = 0;
+    const find = vi.fn<ActivityFinder['find']>(async () => {
+      calls += 1;
+      return calls === 1 ? { found: true, picks: [pick] } : { found: true, picks: [fair] };
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(find.mock.calls[1]?.[0]).toEqual(find.mock.calls[0]?.[0]);
+    expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+  });
+
+  it('does not search again when the radar already has two suitable finds', async () => {
+    const familyId = await household();
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({
+      found: true,
+      picks: [pick, fair],
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+  });
+
+  it('drops a Wikipedia page and still tops up from the one real find', async () => {
+    const familyId = await household();
+    const wiki: ActivityPick = {
+      ...pick,
+      name: 'Public library',
+      sourceName: 'Wikipedia',
+      sourceUrl: 'https://en.wikipedia.org/wiki/Public_library',
+    };
+    let calls = 0;
+    const find = vi.fn<ActivityFinder['find']>(async () => {
+      calls += 1;
+      return calls === 1 ? { found: true, picks: [pick, wiki] } : { found: true, picks: [fair] };
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(2);
+    expect(result.candidates.map((row) => row.title)).toEqual(['Current swim', 'Harvest fair']);
+    expect(JSON.stringify(result)).not.toContain('wikipedia');
+  });
+
+  it('does not spend a top-up when the radar read itself failed', async () => {
+    const familyId = await household();
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({
+      found: false,
+      reason: 'ground_failed',
+    });
+    const result = await search(familyId, { find });
+
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(result.candidates).toEqual([]);
+    expect(result.liveRead).toBe('ground_failed');
+  });
+});
