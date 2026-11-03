@@ -3,7 +3,11 @@ import { type SQL, and, asc, eq, gt, gte, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { PROVIDER_INCIDENT_WINDOW_HOURS } from '~/lib/monitoring/provider-health';
+import {
+  INCIDENT_FAILURES,
+  type IncidentFailure,
+  PROVIDER_INCIDENT_WINDOW_HOURS,
+} from '~/lib/monitoring/provider-health';
 
 /**
  * VIL-404 — page Slack #ops when a text turn fails or a new parent's first
@@ -44,8 +48,8 @@ import { PROVIDER_INCIDENT_WINDOW_HOURS } from '~/lib/monitoring/provider-health
  * (it is not a 5xx), the apology failed the same way, and the ledger recorded
  * `sms_turn_deferred`. Those rows, a dead-lettered inbound, and a pile of
  * deferrals page through the same claim:
- *   - provider incidents: identifier is `<provider>:<class>` (`anthropic:billing`
- *     or `anthropic:auth`), windowed like the preflight email so one outage
+ *   - provider incidents: identifier is `<provider>:<class>` (`anthropic:billing`,
+ *     `anthropic:auth` or `anthropic:usage_limit`), windowed like the preflight email so one outage
  *     pages once and the next day's outage pages again. The text carries the
  *     provider, the class, and how many distinct turns were deferred for it.
  *   - dead letters: an inbound that exhausted deferrals. Identifier is
@@ -606,7 +610,7 @@ async function pageHellos(
 
 async function countDistinctDeferredTurns(
   database: Database,
-  failure: 'billing' | 'auth',
+  failure: IncidentFailure,
   since: Date,
 ): Promise<number> {
   const rows = await database
@@ -635,7 +639,7 @@ async function pageProviderIncidents(
 ): Promise<void> {
   const windowStart = providerIncidentWindow(now);
   const stamp = claimStamp(now);
-  for (const failure of ['billing', 'auth'] as const) {
+  for (const failure of INCIDENT_FAILURES) {
     const affected = await countDistinctDeferredTurns(database, failure, windowStart);
     if (affected < 1) continue;
     const identifier = `${MODEL_PROVIDER}:${failure}`;

@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
@@ -13,6 +14,16 @@ import {
   notesSourceHash,
   sameEventNotes,
 } from './event-notes';
+import {
+  type KidJudgement,
+  type StoredKidJudgement,
+  judgeKidRelevance,
+  loadKidRelevanceChildren,
+  loadNotMineHints,
+  readStoredKidVerdicts,
+  seriesKeyForEvent,
+} from './kid-relevance/judge';
+import type { KidRelevanceItem } from './kid-relevance/skill-contract';
 
 /**
  * A connected Google Calendar becomes reminder rows without a YES (VIL-416).
@@ -33,6 +44,11 @@ import {
  *   - an occasion Hale already has as a placement or a parent YES (same title,
  *     same start). That row already reminds the household; a second one would
  *     text it twice.
+ *   - anything not judged about the kids (VIL-548). The kid judge (VIL-226) reads each
+ *     candidate before it is written: `adult` or `unsure` is not mirrored and a live copy
+ *     is dropped; a judgement that failed or was deferred writes nothing and clears the
+ *     copy's kid link, so the reminder cron holds it. A written mirror carries its
+ *     `kid_verdict_id`, the receipt the reminder cron requires.
  *
  * A mirror reminds only the parent who connected that calendar. The description
  * and the attendee list are never stored (rule #1). Only the parking and
@@ -77,6 +93,15 @@ export interface CalendarMirrorCounts {
   removed: number;
   alreadyKnown: number;
   skipped: number;
+  /** Judged adult or unsure: not mirrored; a live copy was soft-deleted (also counted in
+   * `removed`). */
+  notKid: number;
+  /** The kid judge failed, ran out of time, or had no parent timezone: nothing written; an
+   * existing copy is kept and its kid link cleared, so its reminders are held. */
+  unjudged: number;
+  /** Stored-only mode (no model key) and nothing stored for this input: handled as
+   * `unjudged`. */
+  unjudgedNoJudge: number;
   /** Nothing was written or deleted for this window; {@link heldReason} names why. */
   held: boolean;
   /** Set exactly when `held` is: the window was empty and not trustworthy, the connection
@@ -84,6 +109,17 @@ export interface CalendarMirrorCounts {
    * off. */
   heldReason?: CalendarMirrorHeldReason;
 }
+
+export type CalendarMirrorKidJudge =
+  | {
+      mode: 'model';
+      /** The model's AgentClient. A scripted fake only in pglite tests, at this port. */
+      client: AgentClient;
+      /** Past this instant no new judge call starts; the rest come back judge_deferred. */
+      deadline: Date;
+    }
+  /** No model key in this environment: stored and parent verdicts only. */
+  | { mode: 'stored_only' };
 
 export type CalendarMirrorHeldReason =
   | 'untrusted_window'
@@ -100,6 +136,9 @@ export function emptyCalendarMirrorCounts(
     removed: 0,
     alreadyKnown: 0,
     skipped: 0,
+    notKid: 0,
+    unjudged: 0,
+    unjudgedNoJudge: 0,
     held: heldReason !== undefined,
     ...(heldReason ? { heldReason } : {}),
   };
@@ -273,6 +312,9 @@ export async function reconcileCalendarMirrors(
     trustWindow: boolean;
     /** VIL-468. Reads parking / what-to-bring from a description. Idle (null) by default. */
     readNotes?: EventNotesReader;
+    /** Required (rule #11). Every candidate is judged, or named unjudged, before it is
+     * written. */
+    kidJudge: CalendarMirrorKidJudge;
   },
 ): Promise<CalendarMirrorCounts> {
   if (!input.trustWindow && input.items.length === 0) {
@@ -324,6 +366,8 @@ export async function reconcileCalendarMirrors(
       transparency: schema.familyEvents.transparency,
       notes: schema.familyEvents.notes,
       deletedAt: schema.familyEvents.deletedAt,
+      childId: schema.familyEvents.childId,
+      kidVerdictId: schema.familyEvents.kidVerdictId,
     })
     .from(schema.familyEvents)
     .where(
@@ -339,7 +383,15 @@ export async function reconcileCalendarMirrors(
   // Devin #930 🔴: read notes up front, in parallel and bounded (the reader carries the
   // per-read timeout and the sweep budget), so one slow description cannot stall the sweep.
   const toMirror = eligible.filter((c) => !known.some((row) => knownEventCovers(c, row)));
-  const notesList = await mapLimited(toMirror, EVENT_NOTES_CONCURRENCY, (c) =>
+  const judgements = await judgeCandidates(database, input, toMirror);
+  const judgementOf = (candidate: CalendarMirrorCandidate) => {
+    const judgement = judgements.get(candidate.eventId);
+    if (!judgement) throw new Error('calendar mirror: a candidate came back unjudged');
+    return judgement;
+  };
+  // Only a kid event's description goes to the notes reader.
+  const kidCandidates = toMirror.filter((c) => judgementOf(c).verdict === 'kid');
+  const notesList = await mapLimited(kidCandidates, EVENT_NOTES_CONCURRENCY, (c) =>
     notesFor(
       c,
       mirrorByEvent.get(c.eventId)?.notes ?? null,
@@ -347,7 +399,9 @@ export async function reconcileCalendarMirrors(
       input.readNotes,
     ),
   );
-  const notesByEvent = new Map(toMirror.map((c, i) => [c.eventId, notesList[i] ?? null] as const));
+  const notesByEvent = new Map(
+    kidCandidates.map((c, i) => [c.eventId, notesList[i] ?? null] as const),
+  );
 
   const kept = new Set<string>();
   for (const candidate of eligible) {
@@ -361,8 +415,36 @@ export async function reconcileCalendarMirrors(
       }
       continue;
     }
-    kept.add(candidate.eventId);
     const existing = mirrorByEvent.get(candidate.eventId);
+    const judgement = judgementOf(candidate);
+    if (judgement.verdict === 'adult' || judgement.verdict === 'unsure') {
+      // The verdict, not its absence, drops the copy, so this runs on a short window too.
+      // A copy already dropped stays dropped and is not deleted (or audited) again.
+      counts.notKid += 1;
+      if (existing && existing.deletedAt === null) {
+        await softDeleteMirror(database, input, existing.id, 'not_kid');
+        existing.deletedAt = input.now;
+        counts.removed += 1;
+      }
+      continue;
+    }
+    if (judgement.verdict === 'held') {
+      // No verdict covers this input, so nothing is written: a changed title may be an
+      // adult one. The copy is kept (deleting it would cancel a kid reminder for good) and
+      // its old link, now stale, is cleared, so the reminder cron holds it.
+      if (judgement.why === 'not_stored') counts.unjudgedNoJudge += 1;
+      else counts.unjudged += 1;
+      kept.add(candidate.eventId);
+      if (existing && existing.kidVerdictId !== null) {
+        await database
+          .update(schema.familyEvents)
+          .set({ kidVerdictId: null })
+          .where(eq(schema.familyEvents.id, existing.id));
+        existing.kidVerdictId = null;
+      }
+      continue;
+    }
+    kept.add(candidate.eventId);
     const notes = notesByEvent.get(candidate.eventId) ?? null;
     if (!existing) {
       const inserted = await database
@@ -379,6 +461,8 @@ export async function reconcileCalendarMirrors(
           createdBy: input.userId,
           googleEventId: candidate.eventId,
           integrationId: input.integrationId,
+          kidVerdictId: judgement.verdictId,
+          childId: judgement.childId,
         })
         .onConflictDoNothing()
         .returning({ id: schema.familyEvents.id });
@@ -404,7 +488,9 @@ export async function reconcileCalendarMirrors(
       (existing.endsAt?.getTime() ?? null) !== (candidate.endsAt?.getTime() ?? null) ||
       (existing.transparency ?? null) !== (candidate.transparency ?? null) ||
       !sameEventNotes(existing.notes, notes) ||
-      existing.deletedAt !== null;
+      existing.deletedAt !== null ||
+      existing.kidVerdictId !== judgement.verdictId ||
+      (existing.childId === null && judgement.childId !== null);
     if (!changed) continue;
     // VIL-474 · NOT a provider change. A mirror is the parent's own private calendar, so
     // an edit here records nothing (reminders/provider-change.ts is the only writer).
@@ -419,11 +505,14 @@ export async function reconcileCalendarMirrors(
         notes,
         deletedAt: null,
         createdBy: input.userId,
+        kidVerdictId: judgement.verdictId,
+        childId: existing.childId ?? judgement.childId,
       })
       .where(eq(schema.familyEvents.id, existing.id));
     counts.updated += 1;
     // Devin #930: a logistics-only change (parking / what-to-bring facts) is audited too.
-    // A failed-read counter bump alone is bookkeeping, not a change the parent would see.
+    // A failed-read counter bump alone is bookkeeping, not a change the parent would see,
+    // and so is a new kid link.
     const factsChanged =
       (existing.notes?.parking ?? null) !== (notes?.parking ?? null) ||
       (existing.notes?.bring ?? null) !== (notes?.bring ?? null);
@@ -455,13 +544,71 @@ export async function reconcileCalendarMirrors(
     }
   }
 
+  if (counts.notKid + counts.unjudged + counts.unjudgedNoJudge > 0) {
+    // Counts only: no family, connection, event or title (rule #1).
+    console.info(
+      {
+        mirrored: counts.mirrored,
+        updated: counts.updated,
+        removed: counts.removed,
+        alreadyKnown: counts.alreadyKnown,
+        skipped: counts.skipped,
+        notKid: counts.notKid,
+        unjudged: counts.unjudged,
+        unjudgedNoJudge: counts.unjudgedNoJudge,
+        judge: input.kidJudge.mode,
+      },
+      'calendar mirror: kid gate',
+    );
+  }
   return counts;
+}
+
+/**
+ * The kid judgement for each candidate, by event id. Each item is built field for field
+ * the way the backfill builds one for a mirror row, keyed through `seriesKeyForEvent`, so
+ * the input hash - and so the cached verdict, and a parent's "that's mine" - agree.
+ */
+async function judgeCandidates(
+  database: Database,
+  input: { familyId: string; integrationId: string; now: Date; kidJudge: CalendarMirrorKidJudge },
+  candidates: readonly CalendarMirrorCandidate[],
+): Promise<Map<string, KidJudgement | StoredKidJudgement>> {
+  if (candidates.length === 0) return new Map();
+  const items: KidRelevanceItem[] = [];
+  for (const candidate of candidates) {
+    items.push({
+      ref: candidate.eventId,
+      source: 'google_calendar',
+      integrationId: input.integrationId,
+      itemKey: await seriesKeyForEvent(database, input.integrationId, candidate.eventId),
+      title: candidate.title,
+      startsAt: candidate.startsAt.toISOString(),
+      place: candidate.location,
+      sender: null,
+    });
+  }
+  const context = {
+    children: await loadKidRelevanceChildren(database, input.familyId),
+    notMineHints: await loadNotMineHints(database, input.familyId),
+  };
+  const asked = { familyId: input.familyId, items, now: input.now };
+  const judged: readonly (KidJudgement | StoredKidJudgement)[] =
+    input.kidJudge.mode === 'model'
+      ? await judgeKidRelevance(
+          database,
+          { ...asked, deadline: input.kidJudge.deadline },
+          { client: input.kidJudge.client, ...context },
+        )
+      : await readStoredKidVerdicts(database, asked, context);
+  return new Map(judged.map((judgement) => [judgement.ref, judgement]));
 }
 
 async function softDeleteMirror(
   database: Database,
   input: { familyId: string; now: Date },
   id: string,
+  reason?: 'not_kid',
 ): Promise<void> {
   // The title and location are the parent's own calendar words, and a removed mirror has
   // no reader that needs them: a later sighting rewrites both from Google. `title` is NOT
@@ -486,6 +633,6 @@ async function softDeleteMirror(
     actionTaken: 'calendar_mirror_removed',
     targetTable: 'family_events',
     targetId: id,
-    after: { source: 'parent' },
+    after: reason ? { source: 'parent', reason } : { source: 'parent' },
   });
 }
