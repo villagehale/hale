@@ -4,7 +4,12 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
-import { CONSUMED_SEND_STATUSES, SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
+import {
+  CONSUMED_SEND_STATUSES,
+  SENT_STATUSES,
+  acceptedStatus,
+  dedupeActive,
+} from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -168,8 +173,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   'labels_unread',
   /** Live pass only: no thread to key the alert on. No classifier call, no alert. */
   'no_thread_id',
-  /** An earlier text for this occasion in this thread failed. The key stays consumed
-   * (the ledger is at-most-once per key), so nothing is sent. */
+  /** An earlier text for this occasion in this thread failed. Its claim stays held (the
+   * ledger is at-most-once per key), so nothing is sent. */
   'occasion_send_failed',
 ] as const;
 
@@ -252,21 +257,30 @@ export interface EmailAlertResult {
 
 export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
+/** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
+ * that re-seeds the same messages mints new keys while a re-run of the same sweep does
+ * not. The alert row carries it, and it is how a parent's "not mine" finds the message
+ * the text was about (kid-relevance/untrack.ts). */
+export function emailAlertDedupeKey(integrationId: string, messageId: string): string {
+  return `email_alert:${integrationId}:${messageId}`;
+}
+
 /**
- * Keyed on the CONNECTION, the THREAD and the OCCASION ({@link emailAlertOccasion}): the
- * identity of the news, not of the transport. A message id changes with every draft
- * autosave and every reply, so keying on it told one Saturday once per message.
+ * The claim on the NEWS rather than on the message: the CONNECTION, the THREAD and the
+ * OCCASION ({@link emailAlertOccasion}), held in `email_alert_occasions`. A message id
+ * changes with every reply and every reminder, so the per-message key alone told one
+ * Saturday once per message.
  *
- * The occasion is hashed: it can carry a place the model read, and a dedupe key is a
- * column that is never redacted (rule #1).
+ * The occasion is hashed: it can carry a place the model read, and a key is a column that
+ * is never redacted (rule #1).
  */
-export function emailAlertDedupeKey(
+export function emailAlertOccasionKey(
   integrationId: string,
   threadId: string,
   occasion: string,
 ): string {
   const digest = createHash('sha256').update(occasion).digest('hex').slice(0, 32);
-  return `email_alert:${integrationId}:${threadId}:${digest}`;
+  return `email_alert_occasion:${integrationId}:${threadId}:${digest}`;
 }
 
 /**
@@ -323,20 +337,24 @@ function instantIso(iso: string | null): string | null {
 }
 
 /**
- * Who has already been told this occasion in this thread, by the ledger row holding its
- * key: a send that went (or is going) is `already_sent`; a send that failed is its own
- * name, because "never told" is not "told" (rule #11). The key is not freed either way.
+ * Who has already been told this occasion in this thread, by the alert row its claim
+ * points at: a send that went (or is going) is `already_sent`; a send that failed is its
+ * own name, because "never told" is not "told" (rule #11). The claim is not freed either way.
  */
 async function occasionAlreadyTold(
   database: Database,
-  dedupeKey: string,
+  occasionKey: string,
 ): Promise<'already_sent' | 'occasion_send_failed' | null> {
   const [row] = await database
     .select({ status: schema.channelMessages.status })
-    .from(schema.channelMessages)
+    .from(schema.emailAlertOccasions)
+    .innerJoin(
+      schema.channelMessages,
+      eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+    )
     .where(
       and(
-        eq(schema.channelMessages.dedupeKey, dedupeKey),
+        eq(schema.emailAlertOccasions.occasionKey, occasionKey),
         inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
       ),
     )
@@ -373,8 +391,11 @@ export interface EmailAlertInput {
   parentUserId: string;
   integrationId: string;
   messageId: string;
-  /** Gmail's thread id: with the occasion, what the claim is keyed on. */
-  threadId: string;
+  /** Gmail's thread id: with the occasion, what the claim is keyed on. `undefined` →
+   * `no_thread_id`. */
+  threadId: string | undefined;
+  /** Gmail's labels at the metadata read. `undefined` (no label read) → `labels_unread`. */
+  labelIds: readonly string[] | undefined;
   envelope: { subject: string; from: string; snippet: string; receivedAt: string };
   /**
    * WHAT THIS SWEEP HAS ALREADY BEEN TOLD IS OFF — {@link bookingCancellationKey} per
@@ -399,6 +420,19 @@ export async function alertParentForEmail(
   const { familyId, parentUserId, integrationId, messageId, now } = input;
   if (!f14EnabledFor(familyId)) return { alert: 'dark', booking: null, going: null };
   if (!laneEnabled('email_alert')) return { alert: 'lane_off', booking: null, going: null };
+
+  const dedupeKey = emailAlertDedupeKey(integrationId, messageId);
+  // Read BEFORE the classifier, not only via the claim below: a re-fired sweep over a
+  // mailbox it has already read must cost nothing, and the claim happens after two model
+  // calls have already been paid for.
+  if (await dedupeActive(dedupeKey, database))
+    return { alert: 'already_sent', booking: null, going: null };
+
+  // Beside the classifier call, so no caller can hand it the parent's own mail.
+  const side = mailboxSide(input.labelIds);
+  if (side !== null) return { alert: side, booking: null, going: null };
+  const threadId = input.threadId;
+  if (threadId === undefined) return { alert: 'no_thread_id', booking: null, going: null };
 
   let classification: SentinelClassification;
   try {
@@ -499,17 +533,34 @@ export async function alertParentForEmail(
     };
   }
 
+  // THE PROVIDER CANCELLED IT: close what it cancelled, and tell the rest of this sweep.
+  // Called only once a writer has said this occasion is about these children and clear:
+  // below on this message, or earlier on the message that first told it.
+  const closeIfCancelled = async () => {
+    if (!booked || extraction.kind !== 'cancellation') return;
+    await closeBookingsFor(database, {
+      familyId,
+      from: input.envelope.from,
+      title: extraction.event.title,
+      now,
+    });
+    // The closer can only stamp rows that already exist, and the receipt for this class
+    // may still be three envelopes away — older, therefore read later.
+    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
+  };
+
   // ONE OCCASION IN ONE THREAD IS TOLD ONCE. Read here, after the provider-change and
   // quiet-booking writes (every message is evidence) and before the writer (a second text
   // is not). The key needs the extraction, so this costs the classifier call; a receipt
-  // still refreshes its booking, exactly as the quiet path does.
-  const dedupeKey = emailAlertDedupeKey(
+  // still refreshes its booking and a cancellation still closes, as on the first message.
+  const occasionKey = emailAlertOccasionKey(
     integrationId,
-    input.threadId,
+    threadId,
     emailAlertOccasion(extraction, messageId),
   );
-  const told = await occasionAlreadyTold(database, dedupeKey);
+  const told = await occasionAlreadyTold(database, occasionKey);
   if (told !== null) {
+    await closeIfCancelled();
     return {
       alert: told,
       booking:
@@ -585,18 +636,7 @@ export async function alertParentForEmail(
   // line, and the Gmail cursor advanced past this message the moment the sweep read it,
   // so a closer placed after the send would leave a 23:40 cancellation permanently
   // unread. Closing a booking is not speaking to anybody, so the chokepoint has no say.
-  if (booked && extraction.kind === 'cancellation') {
-    await closeBookingsFor(database, {
-      familyId,
-      from: input.envelope.from,
-      title: extraction.event.title,
-      now,
-    });
-    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
-    // that already exist, and the receipt for this class may still be three envelopes
-    // away — older, therefore read later.
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
-  }
+  await closeIfCancelled();
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
@@ -637,23 +677,38 @@ export async function alertParentForEmail(
     now,
   });
 
-  // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race. The
-  // occasion read above is the cost guard; this is the correctness one.
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'email_alert',
-      templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-      dedupeKey,
-      status: acceptedStatus('sms'),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
+  // CLAIM FIRST, by the inserts rather than by a read a concurrent sweep can race. The two
+  // reads above are the cost guards; these are the correctness ones: the message's key on
+  // the alert row, then the occasion's, in one transaction. A sweep that loses the
+  // occasion to another message takes its alert row back out.
+  const claimed = await database.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'email_alert',
+        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+        dedupeKey,
+        status: acceptedStatus('sms'),
+        sentAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!row) return null;
+    const [occasion] = await tx
+      .insert(schema.emailAlertOccasions)
+      .values({ occasionKey, channelMessageId: row.id })
+      .onConflictDoNothing()
+      .returning({ occasionKey: schema.emailAlertOccasions.occasionKey });
+    if (!occasion) {
+      await tx.delete(schema.channelMessages).where(eq(schema.channelMessages.id, row.id));
+      return null;
+    }
+    return row;
+  });
   if (!claimed) return { alert: 'already_sent', booking: null, going: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
@@ -1172,9 +1227,7 @@ function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
   const skipped: EmailAlertResult[] = [];
   const dated: Array<GmailAlertEnvelope & { receivedAt: string }> = [];
   for (const envelope of envelopes) {
-    const side = mailboxSide(envelope.labelIds);
-    if (side !== null) skipped.push({ alert: side, booking: null, going: null });
-    else if (envelope.receivedAt === undefined)
+    if (envelope.receivedAt === undefined)
       skipped.push({ alert: 'no_received_at', booking: null, going: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
@@ -1205,6 +1258,8 @@ async function recordBackfillEnvelope(
     booking,
     going: null,
   });
+  const side = mailboxSide(input.envelope.labelIds);
+  if (side !== null) return { alert: side, booking: null, going: null };
   if (!bookedDetectionEnabledFor(input.familyId)) return quiet('booked_dark');
 
   const signal = falseBookingSignal({
@@ -1376,10 +1431,6 @@ export async function alertParentForGmailSweep(
   // this set is a receipt the provider has since called off.
   const cancelledThisSweep = new Set<string>();
   for (const envelope of considered) {
-    if (envelope.threadId === undefined) {
-      outcomes.push({ alert: 'no_thread_id', booking: null, going: null });
-      continue;
-    }
     outcomes.push(
       await alertParentForEmail(
         database,
@@ -1389,6 +1440,7 @@ export async function alertParentForGmailSweep(
           integrationId: input.integrationId,
           messageId: envelope.messageId,
           threadId: envelope.threadId,
+          labelIds: envelope.labelIds,
           envelope: {
             subject: envelope.subject,
             from: envelope.from,

@@ -11,17 +11,18 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertPorts,
   type EmailAlertResult,
   type GmailAlertEnvelope,
   alertParentForGmailSweep,
-  emailAlertDedupeKey,
   emailAlertOccasion,
+  emailAlertOccasionKey,
   gmailAlertSweepInput,
 } from './email-alert';
+import { untrackItem } from './kid-relevance/untrack';
 import { type GoogleFetch, type SyncDeps, backfillBookedMail, syncConnection } from './sync';
 
 /**
@@ -282,7 +283,8 @@ describe('the parent’s own mail never reaches the classifier', () => {
       { id: 'k1', threadId: 't-k1', labelIds: ['INBOX', 'CATEGORY_UPDATES'], internalDate: at(3) },
     ]);
 
-    expect(alerts(result.emailAlerts)).toEqual(['own_mail', 'draft', 'sent']);
+    // Newest first: each refusal sits where its envelope does.
+    expect(alerts(result.emailAlerts)).toEqual(['sent', 'draft', 'own_mail']);
     expect(h.classified).toEqual(['k1']);
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(1);
@@ -294,7 +296,7 @@ describe('the parent’s own mail never reaches the classifier', () => {
     const { labelIds: _unread, ...unlabelled } = inbound('u1', 't-u1', 1);
     await expect(
       sweep(direct, [unlabelled, inbound('k1', 't-k1', 2)]).then(alerts),
-    ).resolves.toEqual(['labels_unread', 'sent']);
+    ).resolves.toEqual(['sent', 'labels_unread']);
     expect(direct.classified).toEqual(['k1']);
 
     // Gmail omits an empty repeated field: archived, read mail with no label at all.
@@ -313,7 +315,7 @@ describe('the parent’s own mail never reaches the classifier', () => {
       { id: 'k1', threadId: 't-k1', labelIds: ['INBOX'], internalDate: at(4) },
     ]);
 
-    expect(alerts(result.emailAlerts)).toEqual(['draft', 'draft', 'draft', 'sent']);
+    expect(alerts(result.emailAlerts)).toEqual(['sent', 'draft', 'draft', 'draft']);
     // The positive control is k1: the only classifier call, the only writer call, the only row.
     expect(h.classified).toEqual(['k1']);
     expect(h.writer.seen).toHaveLength(1);
@@ -387,7 +389,19 @@ describe('one occasion in one thread is told once', () => {
     expect(h.classified).toEqual(['k2', 'k1']);
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(1);
-    await expect(alertRows()).resolves.toHaveLength(1);
+    const rows = await alertRows();
+    expect(rows.map((r) => r.dedupeKey)).toEqual([`email_alert:${integrationId}:k2`]);
+    // The occasion claim points at the one alert row.
+    await expect(
+      db.database
+        .select({ channelMessageId: schema.emailAlertOccasions.channelMessageId })
+        .from(schema.emailAlertOccasions)
+        .innerJoin(
+          schema.channelMessages,
+          eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+        )
+        .where(eq(schema.channelMessages.familyId, family.familyId)),
+    ).resolves.toEqual([{ channelMessageId: rows[0]?.id }]);
   });
 
   it('T4a: the same pair in two threads is two alerts', async () => {
@@ -445,20 +459,94 @@ describe('one occasion in one thread is told once', () => {
     ).resolves.toEqual(['sent', 'sent']);
   });
 
-  it('T7: an earlier text for this occasion that FAILED is named, and nothing is re-sent', async () => {
-    const key = (threadId: string) =>
-      emailAlertDedupeKey(integrationId, threadId, emailAlertOccasion(extraction(), 'k1'));
-    async function prior(threadId: string, status: 'failed' | 'sent') {
-      await db.database.insert(schema.channelMessages).values({
+  it('T4e: a cancellation already told, read again, still closes a booking made since', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const cancellation = (messageId: string) =>
+      classified(
+        { kind: 'cancellation', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
+        messageId,
+      );
+    const receipt = classified({ kind: 'booking_confirmation', title: 'Swim Level 2' }, 'r1');
+    const h = harness({ c1: cancellation('c1'), r1: receipt, c2: cancellation('c2') });
+
+    await expect(sweep(h, [inbound('c1', 't-off', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('r1', 't-receipt', 5)]).then(alerts)).resolves.toEqual(['sent']);
+    // The control: the receipt left one open booking for the class.
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      null,
+    ]);
+
+    // The provider repeats the cancellation in the first thread: the same news, so no text,
+    // and the booking made since is still closed.
+    await expect(sweep(h, [inbound('c2', 't-off', 10)]).then(alerts)).resolves.toEqual([
+      'already_sent',
+    ]);
+    expect(h.transport.sent).toHaveLength(2);
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      NOW,
+    ]);
+  });
+
+  it("T10: a parent's 'not mine' on an alert names the Gmail message that told it", async () => {
+    integrationId = await seedIntegration(
+      db.database,
+      family.familyId,
+      family.parentUserId,
+      'gmail',
+    );
+    const h = harness();
+    await expect(
+      sweep(h, [inbound('k1', 't-swim', 0), inbound('k2', 't-swim', 10)]).then(alerts),
+    ).resolves.toEqual(['sent', 'already_sent']);
+    const [row] = await alertRows();
+    if (row === undefined) throw new Error('the sent alert left no row');
+
+    await expect(
+      untrackItem(db.database, {
         familyId: family.familyId,
-        parentUserId: family.parentUserId,
-        channel: 'sms',
-        direction: 'out',
-        category: 'email_alert',
-        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-        dedupeKey: key(threadId),
-        status,
-        sentAt: NOW,
+        actorUserId: family.parentUserId,
+        target: { kind: 'channel_message', id: row.id },
+        now: NOW,
+        kind: null,
+      }),
+    ).resolves.toMatchObject({ outcome: 'untracked', seenIn: 'gmail' });
+    // k2 is the message that was told (newest first), and the verdict names it.
+    await expect(
+      db.database
+        .select({
+          itemKey: schema.kidRelevanceVerdicts.itemKey,
+          integrationId: schema.kidRelevanceVerdicts.integrationId,
+        })
+        .from(schema.kidRelevanceVerdicts)
+        .where(eq(schema.kidRelevanceVerdicts.familyId, family.familyId)),
+    ).resolves.toEqual([{ itemKey: 'k2', integrationId }]);
+  });
+
+  it('T7: an earlier text for this occasion that FAILED is named, and nothing is re-sent', async () => {
+    // An earlier message in the thread told this occasion; this one is a different message.
+    async function prior(threadId: string, status: 'failed' | 'sent') {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          channel: 'sms',
+          direction: 'out',
+          category: 'email_alert',
+          templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+          dedupeKey: `email_alert:${integrationId}:earlier-${threadId}`,
+          status,
+          sentAt: NOW,
+        })
+        .returning({ id: schema.channelMessages.id });
+      if (row === undefined) throw new Error('the prior alert row was not written');
+      await db.database.insert(schema.emailAlertOccasions).values({
+        occasionKey: emailAlertOccasionKey(
+          integrationId,
+          threadId,
+          emailAlertOccasion(extraction(), 'k1'),
+        ),
+        channelMessageId: row.id,
       });
     }
 
@@ -480,6 +568,55 @@ describe('one occasion in one thread is told once', () => {
     const fresh = harness();
     await expect(sweep(fresh, [inbound('k1', 't-y', 0)]).then(alerts)).resolves.toEqual(['sent']);
     expect(fresh.transport.sent).toHaveLength(1);
+  });
+});
+
+describe('the occasion claim', () => {
+  it('T11: a claim the read could not see wins, and the losing alert row is taken back out', async () => {
+    // A claim held by a row that is not a consumed send stands in for a concurrent sweep's
+    // claim the read could not see yet: only the insert can catch it.
+    const [holder] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'email_alert',
+        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+        dedupeKey: null,
+        status: 'suppressed_quiet_hours',
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (holder === undefined) throw new Error('the holder row was not written');
+    await db.database.insert(schema.emailAlertOccasions).values({
+      occasionKey: emailAlertOccasionKey(
+        integrationId,
+        't-race',
+        emailAlertOccasion(extraction(), 'k1'),
+      ),
+      channelMessageId: holder.id,
+    });
+
+    const h = harness();
+    await expect(sweep(h, [inbound('k1', 't-race', 0)]).then(alerts)).resolves.toEqual([
+      'already_sent',
+    ]);
+    // The read missed it (the writer ran) and the claim caught it: nothing sent, no new row.
+    expect(h.writer.seen).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    await expect(alertRows().then((rows) => rows.map((r) => r.id))).resolves.toEqual([holder.id]);
+
+    // The control: the same message in another thread is told.
+    await expect(sweep(h, [inbound('k1', 't-free', 0)]).then(alerts)).resolves.toEqual(['sent']);
+  });
+
+  it('T12: migration 0203 applies a second time over itself', async () => {
+    await expect(db.applyMigration('0203_email_alert_occasions.sql')).resolves.toBeUndefined();
+    const result = await db.client.query<{ name: string | null }>(
+      "select to_regclass('email_alert_occasions')::text as name",
+    );
+    expect(result.rows).toEqual([{ name: 'email_alert_occasions' }]);
   });
 });
 
@@ -550,8 +687,8 @@ describe('emailAlertOccasion (T5)', () => {
       newTime: SATURDAY,
       location: 'North Pool',
     });
-    const key = emailAlertDedupeKey(integrationId, 't-1', emailAlertOccasion(moved, 'k1'));
-    expect(key.startsWith(`email_alert:${integrationId}:t-1:`)).toBe(true);
+    const key = emailAlertOccasionKey(integrationId, 't-1', emailAlertOccasion(moved, 'k1'));
+    expect(key.startsWith(`email_alert_occasion:${integrationId}:t-1:`)).toBe(true);
     expect(key.toLowerCase()).not.toContain('north pool');
     expect(key.toLowerCase()).not.toContain('swim');
   });

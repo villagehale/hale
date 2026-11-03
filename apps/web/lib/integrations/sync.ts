@@ -1316,9 +1316,6 @@ async function syncDrive(
   return { events, nextMetadata: { pageToken: newStartPageToken } };
 }
 
-/** Gmail's `internalDate` as an ISO instant, or undefined when it is absent or not a
- * number — the extraction anchors relative dates ("this Saturday") on it, so a guessed
- * one would move an appointment rather than fail to mention it. */
 /** The thread and labels of a SUCCESSFUL metadata read. Gmail's JSON omits an empty
  * repeated field, so a 200 with no `labelIds` is a message with no labels (archived, read
  * mail), not an unread one: `[]`. An envelope with no `labelIds` at all is one no label
@@ -1332,6 +1329,9 @@ function threadAndLabels(
   };
 }
 
+/** Gmail's `internalDate` as an ISO instant, or undefined when it is absent or not a
+ * number — the extraction anchors relative dates ("this Saturday") on it, so a guessed
+ * one would move an appointment rather than fail to mention it. */
 function epochMsToIso(internalDate: string | undefined): string | undefined {
   if (internalDate === undefined) return undefined;
   const ms = Number(internalDate);
