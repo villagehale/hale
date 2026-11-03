@@ -63,6 +63,20 @@ describe('checkMonthlySpend', () => {
     expect(body.text).toContain('$50.00');
   });
 
+  it('names a page Slack refused as page_not_delivered, not deduped', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchImpl.mockImplementation(async () => new Response('no', { status: 500 }));
+    await seedRuns([
+      { costUsd: '30.000000', startedAt: THIS_MONTH },
+      { costUsd: '20.000000', startedAt: THIS_MONTH },
+    ]);
+
+    const result = await checkMonthlySpend(testDb.database, defaultProviderHealthDeps(), NOW);
+
+    expect(result).toEqual({ totalUsd: 50, threshold: 50, alert: 'page_not_delivered' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('does not page below the threshold', async () => {
     await seedRuns([
       { costUsd: '30.000000', startedAt: THIS_MONTH },
