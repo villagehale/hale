@@ -517,4 +517,35 @@ describe('registration_sequences · a URL-owned watch', () => {
 
     expect(await loadClaimedWindowIds(db.database, family.familyId)).toEqual(new Set([windowId]));
   });
+
+  it('goes with the child it was for when that child is erased; a family-level watch stays', async () => {
+    // The course link names the exact class the child is being registered for, so a
+    // watch that outlived its child (child_id set null) would keep that fact after the
+    // parent erased the child.
+    const family = await seedFamily(db.database, 'Watch Erasure Family');
+    const [child] = await db.database
+      .insert(schema.children)
+      .values({ familyId: family.familyId, name: 'Juniper', dateOfBirth: '2022-03-01' })
+      .returning({ id: schema.children.id });
+    if (!child) throw new Error('child insert returned no row');
+    const CHILD_URL = 'https://courses.example.net/erasure/child';
+    const FAMILY_URL = 'https://courses.example.net/erasure/family';
+    await db.exec(`
+      INSERT INTO registration_sequences (family_id, parent_user_id, course_url, child_id)
+      VALUES ('${family.familyId}', '${family.parentUserId}', '${CHILD_URL}', '${child.id}')
+    `);
+    await db.exec(`
+      INSERT INTO registration_sequences (family_id, parent_user_id, course_url)
+      VALUES ('${family.familyId}', '${family.parentUserId}', '${FAMILY_URL}')
+    `);
+    const watchedUrls = `SELECT course_url FROM registration_sequences WHERE family_id = '${family.familyId}' ORDER BY course_url`;
+    expect(await rows(watchedUrls)).toEqual([
+      { course_url: CHILD_URL },
+      { course_url: FAMILY_URL },
+    ]);
+
+    await db.database.delete(schema.children).where(sql`${schema.children.id} = ${child.id}`);
+
+    expect(await rows(watchedUrls)).toEqual([{ course_url: FAMILY_URL }]);
+  });
 });

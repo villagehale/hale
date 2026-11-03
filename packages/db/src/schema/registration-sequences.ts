@@ -113,8 +113,9 @@ export const registrationSequences = pgTable(
      * "you told me the setup is done". Collapsing NULL into false would make silence read
      * as a refusal the parent never gave. */
     readinessReady: boolean('readiness_ready'),
-    /** VIL-423 · the child this watch is for, where the parent said. Optional. */
-    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
+    /** VIL-423 · the child this watch is for, where the parent said. Optional. Cascades:
+     * the link names the class that child is being registered for, so it goes with them. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'cascade' }),
     /** VIL-423 · what the last read of the page said, and when. */
     lastReading: jsonb('last_reading').$type<Record<string, unknown>>(),
     lastReadAt: timestamp('last_read_at', { withTimezone: true }),

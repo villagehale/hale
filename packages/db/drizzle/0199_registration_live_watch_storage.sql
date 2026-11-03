@@ -15,13 +15,15 @@
 -- puts the tighter limit back.
 --
 -- No column holds a credential, a price or a child's name. child_id is an optional link
--- to the children row; erasure is unchanged (the row cascades from families).
+-- to the children row, and it CASCADES: the link names the exact class that child is
+-- being registered for, so erasing the child erases the watch (a family-level watch,
+-- child_id NULL, cascades from families as before).
 
 ALTER TABLE "registration_sequences" ALTER COLUMN "window_id" DROP NOT NULL;
 --> statement-breakpoint
 
 ALTER TABLE "registration_sequences"
-  ADD COLUMN IF NOT EXISTS "child_id" uuid REFERENCES "children"("id") ON DELETE set null,
+  ADD COLUMN IF NOT EXISTS "child_id" uuid REFERENCES "children"("id") ON DELETE cascade,
   ADD COLUMN IF NOT EXISTS "last_reading" jsonb,
   ADD COLUMN IF NOT EXISTS "last_read_at" timestamp with time zone,
   ADD COLUMN IF NOT EXISTS "next_check_at" timestamp with time zone,
