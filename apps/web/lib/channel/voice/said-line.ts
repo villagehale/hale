@@ -275,19 +275,28 @@ export function crisisMustInclude(kind: CrisisKind): readonly ['988'] | readonly
   return kind === 'emergency' ? ['911'] : ['988'];
 }
 
+const CRISIS_DIGIT_SEPARATOR = String.raw`[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]`;
+
 // NFKC folds full-width and other compatibility digits to ASCII; then any run of
 // whitespace or separators between digits is dropped, so '9 8 8', '9-8-8', '9.8.8'
 // and '９８８' all read as 988.
 function foldCrisisDigits(text: string): string {
-  return text.normalize('NFKC').replace(/(?<=\d)[\s\p{Z}\p{Pd}.\u00b7\u2022\u30fb/_]+(?=\d)/gu, '');
+  return text
+    .normalize('NFKC')
+    .replace(new RegExp(`(?<=\\d)${CRISIS_DIGIT_SEPARATOR}+(?=\\d)`, 'gu'), '');
+}
+
+// Separators count only inside the number, not around it. Bounded: 1-866-988-0000,
+// 1988 and 988-555-0100 are not the line, while '988 24/7' is: a space, then the hours.
+function crisisNumberPattern(digits: string): RegExp {
+  const sep = CRISIS_DIGIT_SEPARATOR;
+  const body = [...digits].join(`${sep}*`);
+  return new RegExp(`(?<!\\d${sep}*)${body}(?!\\d|[\\p{Pd}.]\\d)`, 'u');
 }
 
 export function crisisTextHasRequiredNumber(kind: CrisisKind, text: string): boolean {
-  const folded = foldCrisisDigits(text);
-  // A bounded run: 1-866-988-0000 or 1988 is not the 988 line.
-  return crisisMustInclude(kind).every((digit) =>
-    new RegExp(`(?<!\\d)${digit}(?!\\d)`).test(folded),
-  );
+  const normalized = text.normalize('NFKC');
+  return crisisMustInclude(kind).every((digits) => crisisNumberPattern(digits).test(normalized));
 }
 
 /** 988 and the Canadian spelling 9-8-8 are the same line. A physical emergency may not carry it. */

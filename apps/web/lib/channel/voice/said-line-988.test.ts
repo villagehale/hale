@@ -52,4 +52,21 @@ describe('crisisTextHasRequiredNumber through crisisReplyAcceptable', () => {
     expect(crisisReplyAcceptable('mental', 'Call 1988.')).toBe(false);
     expect(crisisReplyAcceptable('emergency', 'Call 1-800-911-0000.')).toBe(false);
   });
+
+  it.each([
+    ['mental, 988 then hours', 'mental', 'Call or text 988 24/7.'],
+    ['mental, French hours', 'mental', 'Appelle le 988 24 h sur 24.'],
+    ['mental, Chinese hours', 'mental', '请拨打988 24小时'],
+    ['mental, 9-8-8 then hours', 'mental', 'Appelle ou texte le 9-8-8 24 h sur 24.'],
+    ['emergency, 911 then hours', 'emergency', 'Appelle le 911 24 h sur 24.'],
+  ] as const)('%s: a number after a space is not part of the line', (_name, kind, text) => {
+    expect(crisisReplyAcceptable(kind, text)).toBe(true);
+  });
+
+  it('a hyphen or dot that runs on into more digits still makes a longer number', () => {
+    expect(crisisReplyAcceptable('mental', 'Call or text 988 24/7.')).toBe(true);
+    expect(crisisReplyAcceptable('mental', 'Call 988-555-0100.')).toBe(false);
+    expect(crisisReplyAcceptable('mental', 'Call 1 866 988 0000.')).toBe(false);
+    expect(crisisReplyAcceptable('emergency', 'Call 911.555.0100.')).toBe(false);
+  });
 });
