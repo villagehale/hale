@@ -108,10 +108,16 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     client: {} as ReminderRunDeps['client'],
     loadLanguage: async () => 'en',
     composeText: async (_client, facts) => ({
-      texts: [facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; ')],
-      bold: null,
+      status: 'written',
+      draft: {
+        texts: [facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; ')],
+        bold: null,
+      },
     }),
+    recordAgentRun: async () => {},
     loadNameLevel: async () => 'first_name',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
     ...over,
   };
   return { deps, enqueued, marked, upserts, captures, audited };

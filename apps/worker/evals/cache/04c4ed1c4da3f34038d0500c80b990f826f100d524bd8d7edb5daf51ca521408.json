@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts dropped: the story time end (11:45 AM) is missing, giving only 11:00 AM start. Both venue names (Georgetown library, Riverside Field) and both street addresses (9 Church St, 22 Park Rd) are missing, though they were given. Start times and AM/PM are correct, the soccer end is present, and the language is right, but the missing end, venues and addresses are fact failures.",
+    "score": 1
+  }
+}

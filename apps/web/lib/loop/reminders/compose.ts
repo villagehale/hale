@@ -1,13 +1,20 @@
+import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { estimateCostUsd, pickLane } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
-import { z } from 'zod';
+import { ZodError, z } from 'zod';
+import type { RecordAgentRunInput } from '~/lib/agent-run';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
-import { forceToolJson } from '~/lib/pipeline/structured';
+import {
+  type ProviderFailureClass,
+  abortsSendWindow,
+  classifyProviderFailure,
+} from '~/lib/monitoring/provider-health';
+import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { SourceChange } from './change';
 
 /**
@@ -36,6 +43,10 @@ export interface ReminderEventFacts {
   start: string | null;
   /** Family-local end with AM/PM, null when unknown or all-day. */
   end: string | null;
+  /** VIL-550 · whole minutes from the send moment to `start`, null for an all-day item.
+   * The hourly tick sends a T-1h anywhere from 0 to 60 minutes out, so this, never the
+   * offset, is how soon it is. */
+  minutesUntilStart: number | null;
   /** Where, from the parent's own calendar. Null for a private event or none. */
   location: string | null;
   /**
@@ -52,7 +63,7 @@ export interface ReminderEventFacts {
 }
 
 export interface ReminderFacts {
-  /** "-P1D" the evening-before reminder, "-PT1H" about an hour out. */
+  /** "-P1D" the evening-before reminder, "-PT1H" the one shortly before it starts. */
   offset: '-P1D' | '-PT1H';
   /** The send moment, family-local. */
   now: { date: string; time: string };
@@ -204,6 +215,7 @@ export function reminderFacts(args: {
         allDay,
         start: allDay ? null : localClockFact(start, timeZone),
         end: allDay || !end ? null : localClockFact(end, timeZone),
+        minutesUntilStart: allDay ? null : Math.round((start.getTime() - now.getTime()) / 60_000),
         location: hidden ? null : event.location?.trim() || null,
         changed: changedFact(event.change, timeZone, hidden),
         ...logisticsFacts(hidden ? null : event.notes),
@@ -268,13 +280,70 @@ export interface ReminderDraft {
   bold: string | null;
 }
 
-/** The whole reminder as its texts, or null after two refused or failed attempts.
- * Null sends nothing: there is no fallback or sorry text. */
+/**
+ * VIL-563 · what the writer produced, named. Only `refused` is terminal: the model
+ * answered every attempt and none was usable. `unavailable` is about Hale's
+ * infrastructure (the provider, the skill file, a bug), never about the reminder, so the
+ * row stays scheduled and the next slot asks again.
+ */
+export type ReminderCompose =
+  | { status: 'written'; draft: ReminderDraft }
+  | { status: 'refused'; refusals: string[] }
+  | ({ status: 'unavailable'; cause: ReminderUnavailableCause } & ProviderErrorShape);
+
+/** What the provider said went wrong, without what it quoted: its HTTP status and its
+ * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
+ * a 4xx can quote the request, and the request is the family's facts. Null when the
+ * provider never answered (a connection error, a bug, the skill file). */
+export interface ProviderErrorShape {
+  httpStatus: number | null;
+  errorType: string | null;
+}
+
+const NO_PROVIDER_ANSWER: ProviderErrorShape = { httpStatus: null, errorType: null };
+
+function providerErrorShape(err: unknown): ProviderErrorShape {
+  if (!(err instanceof Anthropic.APIError)) return NO_PROVIDER_ANSWER;
+  const type = (err.error as { error?: { type?: unknown } } | undefined)?.error?.type;
+  return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
+}
+
+export type ReminderUnavailableCause = ProviderFailureClass | 'skill_unavailable' | 'unexpected';
+
+const REMINDER_AGENT = 'reminder-voice';
+
+type Attempt =
+  | { kind: 'written'; draft: ReminderDraft }
+  | { kind: 'refused'; refusals: string[] }
+  | ({ kind: 'unavailable'; cause: ProviderFailureClass | 'unexpected' } & ProviderErrorShape);
+
+/** A thrown error, sorted by who failed: the model answering unusably, the provider, or
+ * our own code. Logged with the provider's status and error type only, so a 400 caused by
+ * Hale's request reads as that rather than as an outage, without the message it quoted. */
+function classifyThrow(err: unknown, familyId: string, attempt: number): Attempt {
+  if (err instanceof StructuredOutputError) {
+    return { kind: 'refused', refusals: [`structured:${err.outcome}`] };
+  }
+  if (err instanceof ZodError) return { kind: 'refused', refusals: ['schema'] };
+  const cause = err instanceof Anthropic.APIError ? classifyProviderFailure(err) : 'unexpected';
+  const shape = providerErrorShape(err);
+  console.warn(
+    { familyId, attempt, cause, ...shape, err: err instanceof Error ? err.name : 'unknown' },
+    'reminder: compose failed',
+  );
+  return { kind: 'unavailable', cause, ...shape };
+}
+
+/** The whole reminder as its texts, or the named reason there are none. Nothing written
+ * sends nothing: there is no fallback or sorry text. Every attempt leaves an agent_runs
+ * row (ids and counts only). An attempt that threw records 0 tokens: a structured error
+ * carries no usage, so a billed-but-unusable answer is undercounted at $0. */
 export async function composeReminderTexts(
   client: AgentClient,
   facts: ReminderFacts,
   familyId: string,
-): Promise<ReminderDraft | null> {
+  recordRun: (run: RecordAgentRunInput) => Promise<void>,
+): Promise<ReminderCompose> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
     skill = await loadCronSkill(REMINDER_SKILL);
@@ -283,13 +352,19 @@ export async function composeReminderTexts(
       { familyId, err: err instanceof Error ? err.name : 'unknown' },
       'reminder: skill load failed, nothing sent',
     );
-    return null;
+    return { status: 'unavailable', cause: 'skill_unavailable', ...NO_PROVIDER_ANSWER };
   }
+  const lane = pickLane(skill.meta.task);
+  const refusals: string[] = [];
+  let unavailable: ({ cause: ReminderUnavailableCause } & ProviderErrorShape) | null = null;
   for (let attempt = 1; attempt <= REMINDER_MAX_ATTEMPTS; attempt += 1) {
+    const startedAt = Date.now();
+    let usage: Anthropic.Usage | null = null;
+    let result: Attempt;
     try {
-      const { value } = await forceToolJson({
+      const answered = await forceToolJson({
         client,
-        lane: pickLane(skill.meta.task),
+        lane,
         system: skill.instructions,
         userMessage: reminderUserMessage(facts),
         toolName: 'reminder_texts',
@@ -298,18 +373,54 @@ export async function composeReminderTexts(
         schema: outputSchema,
         maxTokens: 1024,
       });
-      const texts = value.texts.map((t) => t.trim());
-      const refusals = reminderRefusals(texts, facts);
-      const bold = value.bold?.trim() || null;
-      if (refusals.length === 0) return { texts, bold };
-      console.warn({ familyId, attempt, refusals }, 'reminder: draft refused');
+      usage = answered.usage;
+      const texts = answered.value.texts.map((t) => t.trim());
+      const found = reminderRefusals(texts, facts);
+      const bold = answered.value.bold?.trim() || null;
+      result =
+        found.length === 0
+          ? { kind: 'written', draft: { texts, bold } }
+          : { kind: 'refused', refusals: found };
+      if (result.kind === 'refused') {
+        console.warn({ familyId, attempt, refusals: found }, 'reminder: draft refused');
+      }
     } catch (err) {
-      console.warn(
-        { familyId, attempt, err: err instanceof Error ? err.name : 'unknown' },
-        'reminder: compose failed',
-      );
+      result = classifyThrow(err, familyId, attempt);
+    }
+    const cacheCreation = usage?.cache_creation_input_tokens ?? 0;
+    const cacheRead = usage?.cache_read_input_tokens ?? 0;
+    await recordRun({
+      familyId,
+      agentName: REMINDER_AGENT,
+      modelUsed: lane.model,
+      promptTokens: (usage?.input_tokens ?? 0) + cacheCreation,
+      completionTokens: usage?.output_tokens ?? 0,
+      costUsd: usage
+        ? estimateCostUsd(lane.model, {
+            inputTokens: usage.input_tokens,
+            cacheCreationTokens: cacheCreation,
+            cacheReadTokens: cacheRead,
+            outputTokens: usage.output_tokens,
+          })
+        : 0,
+      cacheReadTokens: cacheRead,
+      cacheWriteTokens: cacheCreation,
+      latencyMs: Date.now() - startedAt,
+      status: result.kind === 'written' ? 'completed' : 'failed',
+    });
+    if (result.kind === 'written') return { status: 'written', draft: result.draft };
+    if (result.kind === 'refused') refusals.push(...result.refusals);
+    if (result.kind === 'unavailable') {
+      unavailable = {
+        cause: result.cause,
+        httpStatus: result.httpStatus,
+        errorType: result.errorType,
+      };
+      // An incident class fails for every call until a person acts; a second is waste.
+      if (result.cause !== 'unexpected' && abortsSendWindow(result.cause)) break;
     }
   }
+  if (unavailable !== null) return { status: 'unavailable', ...unavailable };
   console.error({ familyId, outcome: 'reminder_unwritten' }, 'reminder: nothing sent');
-  return null;
+  return { status: 'refused', refusals: [...new Set(refusals)] };
 }

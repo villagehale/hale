@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every given fact: the event name 'Swim class', the day (today), the start 10:00 AM and the end 11:00 AM, with correct AM. 'About three hours from now' matches minutesUntilStart of 180. No location or 'for' was given, so none is missing, and nothing was invented. No link was used and bold is none, which is fine. The title is presented as the event's name.",
+    "score": 5
+  }
+}
