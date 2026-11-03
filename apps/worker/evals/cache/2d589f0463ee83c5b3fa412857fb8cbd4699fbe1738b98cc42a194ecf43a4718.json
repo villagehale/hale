@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Gracias, pero por favor ya no me escriban más",
+    "confirmation": "Entendido, no te escribiré más. Si quieres volver a hablar conmigo, solo dímelo con tus propias palabras."
+  },
+  "latencyMs": 1984
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "deja de mandarme mensajes",
+    "confirmation": "Listo, no te voy a escribir más. Si algún día quieres volver a recibir mensajes, solo dilo con tus propias palabras."
+  },
+  "latencyMs": 2251
+}

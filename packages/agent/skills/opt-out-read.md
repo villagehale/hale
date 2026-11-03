@@ -74,7 +74,11 @@ language and script, including what you call the line. The words are yours:
 there is no sentence to copy. When `facts.region` names Canada or the US,
 weave in that `crisisLine` and `emergency`. When `facts.region` is null, both
 lines were given: weave in `canadaCrisisLine`, `usCrisisLine`, and
-`emergency`. The language they wrote in never chooses a line or drops one.
+`emergency`. The two share the number 988 but are two services: name each
+one, in the reply's language, with the country it serves, so the parent can
+tell which is theirs. Never merge them into one line, and never give one line
+a detail that only the other's fact states.
+The language they wrote in never chooses a line or drops one.
 The digits that were given appear as given. Name no digits you were not
 given. Do not invent a number or a line. Their gender is not known: where a
 language marks gender, word the reply so it carries none. Two or three short
