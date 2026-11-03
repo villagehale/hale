@@ -12,15 +12,17 @@
 //   (a routing fact; no word is matched). Then the JUDGE (JUDGE_MODEL, not the Sonnet
 //   subject) scores each sent text by meaning against that family's own data, the other
 //   families' private things, and watchFor.
-// The broken case (BROKEN_ASIDE) is judged in every mode and must FAIL; `--broken` swaps
-// every draft for it and the suite must fail.
+// The broken case (BROKEN_ASIDE) is judged in every mode and must FAIL the judge.
+// `--broken` calibrates the gates at $0 from the cache: no read, no draft, no per-send judge.
+// A broken router texts EVERY family, so routing must fail on every case where that is wrong,
+// and the recorded BROKEN_ASIDE verdict (always run in --broken) must be a fail.
 //
 //   node evals/run-group-private-aside-eval.mjs --dry           # $0, no API: worst-case $
-//   node evals/run-group-private-aside-eval.mjs --broken        # calibration, cache only
+//   node evals/run-group-private-aside-eval.mjs --broken        # calibration, $0, cache only
 //   node evals/run-group-private-aside-eval.mjs --cached-only   # CI: replay only, $0
 //   node --env-file=../../.env evals/run-group-private-aside-eval.mjs --live   # PAID
-//   ... --only=<id>[,<id>]   with any one mode: just those cases; the broken calibration
-//                            runs only when its fixture is selected
+//   ... --only=<id>[,<id>]   with any one mode: just those cases; the BROKEN_ASIDE verdict
+//                            runs only when its fixture is selected, except in --broken
 // Exactly one mode (lib/eval-flags.mjs): anything else exits 2 before a client exists.
 
 import { dirname, join } from 'node:path';
@@ -28,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { BROKEN_ASIDE, GROUP_PRIVATE_ASIDE_FIXTURES } from './group-private-aside-fixtures.mjs';
 import { estimateTokens, noClient, parseEvalArgsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
+import { brokenRouter, routingFailure } from './lib/group-private-aside-gates.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -123,21 +126,25 @@ async function loadSubject() {
   return { agent, aside, readSkill, draftSkill };
 }
 
-/** The cases this run covers, and whether the broken calibration (tied to one fixture) runs. */
-function selectCases(only) {
+/** The cases this run covers, and whether the BROKEN_ASIDE verdict (tied to one fixture) runs. */
+function selectCases(only, mode) {
   const fixtures = only
     ? GROUP_PRIVATE_ASIDE_FIXTURES.filter((f) => only.includes(f.id))
     : GROUP_PRIVATE_ASIDE_FIXTURES;
-  const runBroken = !only || only.includes(BROKEN_ASIDE.fixture);
+  const runBroken = mode === 'broken' || !only || only.includes(BROKEN_ASIDE.fixture);
   return { fixtures, runBroken };
 }
+
+/** A case where texting every family is wrong, so the broken router must fail its routing. */
+const overSendingIsWrong = (fixture) =>
+  routingFailure(fixture.sendTo, brokenRouter(fixture)) !== null;
 
 async function main() {
   const { mode, only } = parseEvalArgsOrExit(
     'group-private-aside',
     GROUP_PRIVATE_ASIDE_FIXTURES.map((f) => f.id),
   );
-  const { fixtures, runBroken } = selectCases(only);
+  const { fixtures, runBroken } = selectCases(only, mode);
   if (only) console.log(`--only: ${fixtures.map((f) => f.id).join(',')}`);
   if (mode === 'dry') return dryRun(fixtures, runBroken);
   const broken = mode === 'broken';
@@ -163,6 +170,14 @@ async function main() {
   const results = [];
   for (const fixture of fixtures) {
     const failures = [];
+    if (broken) {
+      const picked = brokenRouter(fixture);
+      const sent = picked.map((ref) => ({ ref, text: BROKEN_ASIDE.text }));
+      const routing = routingFailure(fixture.sendTo, picked);
+      if (routing) failures.push(routing);
+      results.push({ id: fixture.id, picked, sent, failures });
+      continue;
+    }
     const refs = fixture.families.map((f) => f.ref);
     const picked = (
       await cachedToolCall({
@@ -188,28 +203,23 @@ async function main() {
         failures.push(`read:unknown_ref:${ref}`);
         continue;
       }
-      let text = '';
-      if (broken) {
-        text = BROKEN_ASIDE.text;
-      } else {
-        const draft = (
-          await cachedToolCall({
-            tag: `group-private-aside:draft:${fixture.id}:${ref}`,
-            model: agent.pickModel(draftSkill.meta.task),
-            lane: agent.pickLane(draftSkill.meta.task),
-            system: draftSkill.instructions,
-            userMessage: aside.privateAsideDraftMessage(draftInput(fixture, family, aside)),
-            toolName: 'private_aside',
-            toolSchema: aside.PRIVATE_ASIDE_DRAFT_SCHEMA,
-            toolDescription: 'Return the private 1:1 text for this family, or send false.',
-            maxTokens: aside.PRIVATE_ASIDE_DRAFT_MAX_TOKENS,
-            cachedOnly,
-            getClient,
-            cost,
-          })
-        ).value;
-        text = draft.send ? draft.text.trim() : '';
-      }
+      const draft = (
+        await cachedToolCall({
+          tag: `group-private-aside:draft:${fixture.id}:${ref}`,
+          model: agent.pickModel(draftSkill.meta.task),
+          lane: agent.pickLane(draftSkill.meta.task),
+          system: draftSkill.instructions,
+          userMessage: aside.privateAsideDraftMessage(draftInput(fixture, family, aside)),
+          toolName: 'private_aside',
+          toolSchema: aside.PRIVATE_ASIDE_DRAFT_SCHEMA,
+          toolDescription: 'Return the private 1:1 text for this family, or send false.',
+          maxTokens: aside.PRIVATE_ASIDE_DRAFT_MAX_TOKENS,
+          cachedOnly,
+          getClient,
+          cost,
+        })
+      ).value;
+      const text = draft.send ? draft.text.trim() : '';
       if (!text) continue;
       sent.push({ ref, text });
       const verdict = await judge(`${fixture.id}:${ref}`, judgePayload(fixture, family, text));
@@ -217,15 +227,11 @@ async function main() {
         failures.push(`judge:${ref}:${verdict.score} (${verdict.reason})`);
     }
     // Fact check: routing. Who ended up with a text must be one of the case's sets.
-    const got = sent
-      .map((s) => s.ref)
-      .sort()
-      .join(',');
-    if (!fixture.sendTo.some((set) => [...set].sort().join(',') === got)) {
-      failures.push(
-        `sendTo:[${got}] expected ${fixture.sendTo.map((set) => `[${set.join(',')}]`).join(' or ')}`,
-      );
-    }
+    const routing = routingFailure(
+      fixture.sendTo,
+      sent.map((s) => s.ref),
+    );
+    if (routing) failures.push(routing);
     results.push({ id: fixture.id, picked, sent, failures });
   }
 
@@ -254,9 +260,17 @@ async function main() {
   );
   const allPass = brokenCaught && results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
-  const anyFail = results.some((r) => r.failures.length > 0);
-  console.log(`broken-mode calibration (must fail): ${anyFail ? 'PASS' : 'FAIL'}`);
-  process.exit(anyFail ? 0 : 1);
+  // Calibration PASS iff the routing gate caught the over-sending router on every selected
+  // case where that is wrong (and there is at least one), and the judge caught the leak text.
+  const mustFail = fixtures.filter(overSendingIsWrong).map((f) => f.id);
+  const routingCaught =
+    mustFail.length > 0 &&
+    mustFail.every((id) =>
+      results.find((r) => r.id === id).failures.some((f) => f.startsWith('sendTo:')),
+    );
+  const calibrated = routingCaught && brokenCaught;
+  console.log(`broken-mode calibration (must fail): ${calibrated ? 'PASS' : 'FAIL'}`);
+  process.exit(calibrated ? 0 : 1);
 }
 
 /** $0: no spend cap, no client. Every call priced uncached at its full output cap. */
