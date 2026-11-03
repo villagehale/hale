@@ -9,6 +9,7 @@ import { registrationPdfFixture } from './pdf-fixture.test-helper';
 const spawned = vi.hoisted(() => ({
   calls: [] as { file: string | URL; options: WorkerOptions | undefined }[],
   failNext: null as Error | null,
+  rejectNextTerminate: false,
   hideWorkerFile: false,
 }));
 vi.mock('node:worker_threads', async (importOriginal) => {
@@ -20,6 +21,12 @@ vi.mock('node:worker_threads', async (importOriginal) => {
       spawned.failNext = null;
       if (failure) throw failure;
       super(file, options);
+    }
+    override terminate(): Promise<number> {
+      const terminated = super.terminate();
+      if (!spawned.rejectNextTerminate) return terminated;
+      spawned.rejectNextTerminate = false;
+      return terminated.then(() => Promise.reject(new Error('terminate refused')));
     }
   }
   return { ...actual, Worker: SpyWorker };
@@ -138,6 +145,24 @@ describe('the PDF reader worker is isolated from the parent process', () => {
       spawned.hideWorkerFile = false;
       error.mockRestore();
     }
+    const both = await Promise.all([registrationPdfText(GUIDE), registrationPdfText(GUIDE)]);
+    expect(both.map((result) => result.outcome)).toEqual(['read', 'read']);
+  });
+
+  it('frees its slot and still resolves when terminating the worker rejects', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      spawned.rejectNextTerminate = true;
+      await expect(registrationPdfText(GUIDE)).resolves.toMatchObject({ outcome: 'read' });
+      expect(spawned.rejectNextTerminate).toBe(false);
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({ fault: 'reader_terminate_failed' }),
+        expect.any(String),
+      );
+    } finally {
+      error.mockRestore();
+    }
+    // Both slots free: a leaked slot would name the second of these busy.
     const both = await Promise.all([registrationPdfText(GUIDE), registrationPdfText(GUIDE)]);
     expect(both.map((result) => result.outcome)).toEqual(['read', 'read']);
   });

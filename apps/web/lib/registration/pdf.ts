@@ -64,10 +64,15 @@ type WorkerMessage =
   | { ok: false; kind: 'reader_missing'; message: string };
 
 /**
- * Text only, in a killable worker with an empty environment: no OCR, font fetches, scripts,
- * model calls or parent secrets. The parse runs off this thread so the time and memory budgets
- * can stop it outright; page and byte ceilings alone can't bound a flate-inflated content
- * stream. Never rejects: every outcome is a named value.
+ * Text only, in a killable worker: no OCR, font fetches, scripts or model calls. The parse runs
+ * off this thread so the time and memory budgets can stop it outright; page and byte ceilings
+ * alone can't bound a flate-inflated content stream. Never rejects: every outcome is a named
+ * value.
+ *
+ * `env: {}` gives the worker its own empty `process.env`, so code there that reads the
+ * environment gets nothing. It is not process isolation: a worker thread shares this OS
+ * process, so code that escapes pdf.js could still read `/proc/self/environ` or this
+ * process's memory.
  */
 export async function registrationPdfText(
   bytes: Uint8Array,
@@ -139,7 +144,17 @@ export async function registrationPdfText(
   } finally {
     clearTimeout(timer);
     clearInterval(memoryPoll);
-    await worker?.terminate();
+    // The slot goes first: a terminate that rejects must neither leak it nor turn the read
+    // that already settled into a rejection.
     readsInFlight--;
+    await worker?.terminate().catch((error: unknown) => {
+      console.error(
+        {
+          fault: 'reader_terminate_failed',
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'registration pdf: reader terminate failed',
+      );
+    });
   }
 }
