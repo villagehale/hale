@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { REGISTRATION_COURSE_URL_MAX_CHARS } from '@hale/db';
+import { REGISTRATION_COURSE_URL_MAX_CHARS, schema } from '@hale/db';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect, getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import { MAX_URL_CHARS } from './url';
 
@@ -43,5 +45,45 @@ describe('course_url length bound', () => {
     expect(source).toContain(
       '${table.windowId} IS NULL OR (${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)',
     );
+  });
+
+  it('the Drizzle mirror renders the predicates, index columns and child cascade the migration adds', () => {
+    const file = readdirSync(DRIZZLE).find((f) =>
+      f.endsWith('_registration_live_watch_storage.sql'),
+    );
+    const migration = readFileSync(path.join(DRIZZLE, file as string), 'utf8').replace(/\s+/g, ' ');
+    const config = getTableConfig(schema.registrationSequences);
+    const dialect = new PgDialect();
+    const render = (value: SQL) =>
+      dialect.sqlToQuery(value).sql.replaceAll('"registration_sequences".', '');
+
+    for (const name of [
+      'registration_sequences_target_check',
+      'registration_sequences_date_review_check',
+    ]) {
+      const mirror = config.checks.find((c) => c.name === name);
+      expect(mirror, name).toBeDefined();
+      expect(migration).toContain(
+        `ADD CONSTRAINT "${name}" CHECK (${render(mirror?.value as SQL)}) NOT VALID;`,
+      );
+    }
+
+    for (const name of [
+      'registration_sequences_live_url_uniq',
+      'registration_sequences_check_idx',
+    ]) {
+      const mirror = config.indexes.find((i) => i.config.name === name)?.config;
+      expect(mirror?.where, name).toBeDefined();
+      const columns = mirror?.columns.map((c) => `"${(c as { name: string }).name}"`).join(', ');
+      expect(migration).toContain(
+        `"${name}" ON "registration_sequences" (${columns}) WHERE ${render(mirror?.where as SQL)};`,
+      );
+    }
+
+    const childFk = config.foreignKeys.find((fk) =>
+      fk.reference().columns.some((c) => c.name === 'child_id'),
+    );
+    expect(childFk?.onDelete).toBe('cascade');
+    expect(migration).toContain('"child_id" uuid REFERENCES "children"("id") ON DELETE cascade,');
   });
 });
