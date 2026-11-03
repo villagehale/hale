@@ -20,6 +20,13 @@ import { type NonGoogleClearance, assertClearance } from './provider-clearance';
 export const HOT_SMS_CLIENT_OPTIONS = { timeout: 30_000, maxRetries: 1 } as const;
 
 /**
+ * Options for the claim reader (VIL-581): a second model call on a turn whose parent is
+ * already waiting. One request gets 12s and no SDK retry; the reader's own one retry runs
+ * inside its read budget, and the tier spend cap is a 429 that keeps refusing.
+ */
+export const CLAIM_READ_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
+
+/**
  * Options for the activity lane's WEB-GROUNDED call — the one model request on the SMS
  * path that goes out to the open web before it answers.
  *

@@ -1,0 +1,190 @@
+/**
+ * VIL-581 · the rows a claim may cite, and the names the model cites them by.
+ *
+ * The alias enum is the same 94 values on every call, so the output grammar never
+ * changes per request. The per-call map is built only from rows read under this
+ * family's id: an alias that is not in it backs nothing, whatever the model says —
+ * another family's row, an earlier turn's alias, an invented one.
+ *
+ * The projection is all the model sees of a row: an alias, a kind, a state, a label and
+ * a family-local time or a host. Never a family, user, child or row id, a URL or path,
+ * or a place. Labels arrive already projected: a 13+ child's or a sensitive calendar
+ * row is "A private calendar item" before it reaches this builder (the loader's job).
+ */
+
+export const CLAIM_ROW_SLOTS = { e: 50, s: 20, c: 5, g: 10, q: 5, w: 1 } as const;
+type Slot = keyof typeof CLAIM_ROW_SLOTS | 'p1' | 'p2';
+
+export type ClaimRowAlias =
+  | 'none'
+  | `e${number}`
+  | `s${number}`
+  | `c${number}`
+  | `g${number}`
+  | `q${number}`
+  | `w${number}`
+  | 'p1'
+  | 'p2';
+
+export const CLAIM_ROW_ALIASES: readonly ClaimRowAlias[] = [
+  'none',
+  ...(Object.entries(CLAIM_ROW_SLOTS) as Array<[keyof typeof CLAIM_ROW_SLOTS, number]>).flatMap(
+    ([slot, cap]) => Array.from({ length: cap }, (_, i) => `${slot}${i + 1}` as ClaimRowAlias),
+  ),
+  'p1',
+  'p2',
+];
+
+export type ClaimCandidateRow =
+  | {
+      familyId: string;
+      source: 'calendar';
+      kind: 'scheduled_event';
+      what: string;
+      startsAt: Date;
+    }
+  | { familyId: string; source: 'parent_stated'; kind: 'scheduled_event'; what: string }
+  | {
+      familyId: string;
+      source: 'open_commitment';
+      kind: 'registration_watch' | 'activity_followup';
+      what: string;
+    }
+  | { familyId: string; source: 'watched_page'; kind: 'spot_watch'; what: string; host: string }
+  | {
+      familyId: string;
+      source: 'live_sequence';
+      kind: 'registration_watch';
+      what: string;
+      opensAt: Date | null;
+    }
+  | {
+      familyId: string;
+      source: 'mintable_window';
+      kind: 'registration_watch';
+      what: string;
+      opensForFamilyAt: Date;
+    }
+  | { familyId: string; source: 'pending'; kind: 'activity_followup'; what: string }
+  | { familyId: string; source: 'pending'; kind: 'spot_watch'; what: string };
+
+export interface ProjectedRow {
+  a: ClaimRowAlias;
+  kind: ClaimCandidateRow['kind'];
+  state: 'open' | 'pending' | 'mintable' | 'live';
+  what: string;
+  when?: string;
+  host?: string;
+  source?: 'parent_stated';
+}
+
+const BUILT: unique symbol = Symbol('ClaimCandidateSet');
+
+export interface ClaimCandidateSet {
+  readonly [BUILT]: true;
+  readonly familyId: string;
+  readonly byAlias: ReadonlyMap<ClaimRowAlias, ClaimCandidateRow>;
+  /** What the model sees. */
+  readonly projected: readonly ProjectedRow[];
+  /** Rows dropped past a slot's cap. Named, never silent: a claim about one is refused. */
+  readonly capped: readonly { slot: string; dropped: number }[];
+}
+
+/** A row read under another family's id reached the builder: a bug, never masked. */
+export class ForeignCandidateRow extends Error {
+  constructor() {
+    super('claim candidates: a row from another family was offered');
+    this.name = 'ForeignCandidateRow';
+  }
+}
+
+function slotOf(row: ClaimCandidateRow): Slot {
+  switch (row.source) {
+    case 'calendar':
+      return 'e';
+    case 'parent_stated':
+      return 's';
+    case 'open_commitment':
+      return 'c';
+    case 'watched_page':
+      return 'g';
+    case 'live_sequence':
+      return 'q';
+    case 'mintable_window':
+      return 'w';
+    case 'pending':
+      return row.kind === 'activity_followup' ? 'p1' : 'p2';
+  }
+}
+
+function capOf(slot: Slot): number {
+  return slot === 'p1' || slot === 'p2' ? 1 : CLAIM_ROW_SLOTS[slot];
+}
+
+function aliasFor(slot: Slot, ordinal: number): ClaimRowAlias {
+  return slot === 'p1' || slot === 'p2' ? slot : (`${slot}${ordinal}` as ClaimRowAlias);
+}
+
+function project(row: ClaimCandidateRow, a: ClaimRowAlias, when: (at: Date) => string) {
+  const base = { a, kind: row.kind, what: row.what };
+  switch (row.source) {
+    case 'calendar':
+      return { ...base, state: 'open', when: when(row.startsAt) } satisfies ProjectedRow;
+    case 'parent_stated':
+      return { ...base, state: 'open', source: 'parent_stated' } satisfies ProjectedRow;
+    case 'open_commitment':
+      return { ...base, state: 'open' } satisfies ProjectedRow;
+    case 'watched_page':
+      return { ...base, state: 'open', host: row.host } satisfies ProjectedRow;
+    case 'live_sequence':
+      return row.opensAt
+        ? ({ ...base, state: 'live', when: when(row.opensAt) } satisfies ProjectedRow)
+        : ({ ...base, state: 'live' } satisfies ProjectedRow);
+    case 'mintable_window':
+      return {
+        ...base,
+        state: 'mintable',
+        when: when(row.opensForFamilyAt),
+      } satisfies ProjectedRow;
+    case 'pending':
+      return { ...base, state: 'pending' } satisfies ProjectedRow;
+  }
+}
+
+export function buildClaimCandidates(
+  familyId: string,
+  rows: readonly ClaimCandidateRow[],
+  timeZone: string,
+): ClaimCandidateSet {
+  const format = new Intl.DateTimeFormat('en', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const when = (at: Date) => format.format(at);
+  const used = new Map<Slot, number>();
+  const dropped = new Map<Slot, number>();
+  const byAlias = new Map<ClaimRowAlias, ClaimCandidateRow>();
+  const projected: ProjectedRow[] = [];
+  for (const row of rows) {
+    if (row.familyId !== familyId) throw new ForeignCandidateRow();
+    const slot = slotOf(row);
+    const ordinal = (used.get(slot) ?? 0) + 1;
+    if (ordinal > capOf(slot)) {
+      dropped.set(slot, (dropped.get(slot) ?? 0) + 1);
+      continue;
+    }
+    used.set(slot, ordinal);
+    const a = aliasFor(slot, ordinal);
+    byAlias.set(a, row);
+    projected.push(project(row, a, when));
+  }
+  const capped = [...dropped].map(([slot, count]) => ({ slot, dropped: count }));
+  for (const entry of capped) {
+    console.warn({ event: 'claim_read_candidates_capped', ...entry }, 'claim reader: rows capped');
+  }
+  return { [BUILT]: true, familyId, byAlias, projected, capped };
+}
