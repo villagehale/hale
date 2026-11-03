@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the session is not booked (confirmed false), gives the registration link exactly as provided with linkIs registration_page (no browser hold claim), lists pack details only as provided, uses plain English for a direct audience, makes no promise to retry, and does not claim a login was tried or failed. Minor: phrasing 'can't complete sign-ups on this site yet' is reasonable and consistent with the facts.",
+    "score": 5
+  }
+}

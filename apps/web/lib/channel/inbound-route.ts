@@ -236,10 +236,11 @@ function keywordOutcome(
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
   if (ack === 'voice_unsent') {
-    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    // The opt-out reader's stop or start ran; its confirmation was empty or withheld, so
+    // nothing went out.
     deps.log.error(
       { providerMessageId: inbound.providerId },
-      'inbound: opt-out revoked, model confirmation unsent',
+      'inbound: opt-out read handled, model confirmation unsent',
     );
     return 'intake_unsent';
   }

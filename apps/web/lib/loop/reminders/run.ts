@@ -68,6 +68,10 @@ import {
  */
 
 const REMINDER_TEMPLATE_KEY = 'reminder';
+
+/** A row mirrored from a parent's own calendar that no `kid` verdict covers (VIL-548). */
+const mirrorUnjudged = (event: LiveEvent): boolean =>
+  event.googleEventId !== null && event.kidVerdict !== 'kid';
 const REMINDER_EMAIL_TYPE = 'reminder';
 
 /** An enrolled parent whose reminder category is on. */
@@ -105,6 +109,13 @@ export interface LiveEvent extends EventSnapshot {
   /** `family_events.created_by`. For a mirror this is the parent who connected
    * that calendar. Null when the row has no acting user. */
   createdBy: string | null;
+  /**
+   * VIL-548 · the LIVE verdict behind `family_events.kid_verdict_id`, or null when the row
+   * links none. A mirror is reminded about only while this is `kid`: the mirror writes the
+   * link when the kid judge says so and clears it when a changed event is not yet judged.
+   * Required, like `DueReminder.role`, so a fake that omits it is a compile error.
+   */
+  kidVerdict: 'kid' | 'adult' | 'unsure' | null;
 }
 
 /** A materialized reminder that is due (status 'scheduled', fire_at ≤ now), joined to
@@ -260,8 +271,13 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
+          kidVerdict: schema.kidRelevanceVerdicts.verdict,
         })
         .from(schema.familyEvents)
+        .leftJoin(
+          schema.kidRelevanceVerdicts,
+          eq(schema.kidRelevanceVerdicts.id, schema.familyEvents.kidVerdictId),
+        )
         .where(
           and(
             eq(schema.familyEvents.familyId, familyId),
@@ -379,12 +395,17 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           notes: schema.familyEvents.notes,
           googleEventId: schema.familyEvents.googleEventId,
           createdBy: schema.familyEvents.createdBy,
+          kidVerdict: schema.kidRelevanceVerdicts.verdict,
           sourceChangedField: schema.familyEvents.sourceChangedField,
           sourceChangedFromStartsAt: schema.familyEvents.sourceChangedFromStartsAt,
           sourceChangedFromLocation: schema.familyEvents.sourceChangedFromLocation,
           sourceChangedAt: schema.familyEvents.sourceChangedAt,
         })
         .from(schema.familyEvents)
+        .leftJoin(
+          schema.kidRelevanceVerdicts,
+          eq(schema.kidRelevanceVerdicts.id, schema.familyEvents.kidVerdictId),
+        )
         .where(eq(schema.familyEvents.id, eventRef))
         .limit(1);
       const row = rows[0];
@@ -479,6 +500,14 @@ export interface ReminderRunResult {
   /** Reminder rows not created for a mirrored Google event because the
    * parent_calendar_mirror lane is off. They are created on the first run after it is on. */
   notScheduledLaneOff: number;
+  /** VIL-548 · due reminders on a mirrored Google event left 'scheduled' because the event
+   * does not link to a `kid` verdict. Held, not suppressed (that is terminal): once the
+   * mirror judges it kid it is sent, late if its slot passed; judged otherwise, the mirror
+   * drops the event and the reminder is cancelled; started first, it is suppressed. */
+  heldNoKidVerdict: number;
+  /** VIL-548 · reminder rows not created for a mirrored Google event that does not link to
+   * a `kid` verdict. They are created on the first run after the mirror judges it kid. */
+  notScheduledNoKidVerdict: number;
   sendEnabled: boolean;
 }
 
@@ -573,6 +602,7 @@ export async function runReminderCron(
 
   let converged = 0;
   let notScheduledLaneOff = 0;
+  let notScheduledNoKidVerdict = 0;
   const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
   for (const familyId of new Set([...familyParents.keys(), ...familyCaregivers.keys()])) {
     const events = await deps.loadHorizonEvents(db, familyId, now);
@@ -596,6 +626,10 @@ export async function runReminderCron(
         if (event.googleEventId && event.createdBy !== parent.userId) continue;
         if (event.googleEventId && !mirrorLaneOn) {
           notScheduledLaneOff += REMINDER_OFFSETS.length;
+          continue;
+        }
+        if (mirrorUnjudged(event)) {
+          notScheduledNoKidVerdict += REMINDER_OFFSETS.length;
           continue;
         }
         await materialize(parent.userId, parent.timezone, event);
@@ -652,6 +686,7 @@ export async function runReminderCron(
   let suppressed = 0;
   let cancelled = 0;
   let heldLaneOff = 0;
+  let heldNoKidVerdict = 0;
 
   const drop = async (
     row: Pick<DueReminder, 'id' | 'familyId' | 'offset'>,
@@ -700,6 +735,12 @@ export async function runReminderCron(
         break;
       case 'fire':
         if (event) {
+          // Left 'scheduled', like the lane-off hold: a suppression is terminal and would
+          // lose a kid reminder the mirror has not judged yet.
+          if (mirrorUnjudged(event)) {
+            heldNoKidVerdict += 1;
+            break;
+          }
           if (!(await recipientMaySee(row, event))) {
             await drop(row, 'out_of_scope');
             break;
@@ -917,6 +958,13 @@ export async function runReminderCron(
     }
   }
 
+  if (heldNoKidVerdict > 0 || notScheduledNoKidVerdict > 0) {
+    console.info(
+      { heldNoKidVerdict, notScheduledNoKidVerdict },
+      'reminder: mirror rows without a kid verdict, not sent',
+    );
+  }
+
   return {
     converged,
     due: due.length,
@@ -926,6 +974,8 @@ export async function runReminderCron(
     cancelled,
     heldLaneOff,
     notScheduledLaneOff,
+    heldNoKidVerdict,
+    notScheduledNoKidVerdict,
     sendEnabled,
   };
 }
