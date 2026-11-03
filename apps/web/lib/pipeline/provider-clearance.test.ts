@@ -50,7 +50,7 @@ describe('clearForNonAnthropic', () => {
 
   it('fails closed when the family witness cannot be read', async () => {
     const database = {
-      select: () => {
+      execute: async () => {
         throw new Error('connection reset');
       },
     } as unknown as Database;
@@ -61,6 +61,16 @@ describe('clearForNonAnthropic', () => {
       ),
     ).toEqual({ refused: 'origin_unreadable' });
     expect(warn.mock.calls[0]?.[0]).toEqual({ stage: 'test stage', refusal: 'origin_unreadable' });
+  });
+
+  it('fails closed on a witness result it cannot read, rather than clearing', async () => {
+    const database = { execute: async () => ({ unexpected: true }) } as unknown as Database;
+    expect(
+      await clearForNonAnthropic(
+        { kind: 'family_state', database, familyId: '00000000-0000-4000-8000-000000000001' },
+        'test stage',
+      ),
+    ).toEqual({ refused: 'origin_unreadable' });
   });
 });
 

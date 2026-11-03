@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import type { Database, schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 
 /**
  * VIL-556: content Hale received from a Google API (Gmail, Calendar, Drive), and
@@ -22,6 +22,10 @@ import { and, eq, inArray } from 'drizzle-orm';
  * Revoking keeps the row and nulls its tokens (integrations/store.ts, revokeConnection;
  * coparent/depart.ts does the same). A change that deletes the row on disconnect would
  * blind this witness: provider-clearance.pglite.test.ts pins "revoked still refuses".
+ *
+ * @hale/db is imported for TYPES only. Both transports import this module, and
+ * client.ts is reached from vitest.setup.ts, so a runtime @hale/db import here loads it
+ * before any test file's vi.mock('drizzle-orm') applies (lib/loop/queries.test.ts).
  */
 
 // No exported provider type exists in @hale/db; derived from the enum, never retyped.
@@ -103,16 +107,17 @@ function refuse(stage: string, refusal: ClearanceRefusal): ClearanceDecision {
 }
 
 async function familyHasGoogleRow(database: Database, familyId: string): Promise<boolean> {
-  const rows = await database
-    .select({ id: schema.integrations.id })
-    .from(schema.integrations)
-    .where(
-      and(
-        eq(schema.integrations.familyId, familyId),
-        inArray(schema.integrations.provider, GOOGLE_PROVIDERS),
-      ),
-    )
-    .limit(1);
+  const providers = sql.join(
+    GOOGLE_PROVIDERS.map((provider) => sql`${provider}`),
+    sql`, `,
+  );
+  const result = (await database.execute(
+    sql`select 1 from integrations where family_id = ${familyId} and provider in (${providers}) limit 1`,
+  )) as unknown;
+  // postgres-js returns the rows as an array; pglite wraps them in `{ rows }`. Anything
+  // else is unreadable, and unreadable must refuse rather than clear.
+  const rows = Array.isArray(result) ? result : (result as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) throw new Error('integrations witness: unrecognised result shape');
   return rows.length > 0;
 }
 
