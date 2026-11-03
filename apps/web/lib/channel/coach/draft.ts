@@ -167,16 +167,15 @@ export async function findPendingIdenticalCalendarAdd(
   const groupAsk = input.audience === 'group';
   // A private draft sitting beside the group's draft makes two close matches, and
   // the matcher then returns null. Filter to this chat's group drafts first, so
-  // the repeat ask reuses that draft instead of minting another.
-  const groupIds = groupAsk
-    ? await groupDraftIdsForChat(
-        database,
-        input.familyId,
-        shaped.map((item) => item.id),
-        input.groupChatId,
-      )
-    : null;
-  const candidates = groupIds ? shaped.filter((row) => groupIds.has(row.id)) : shaped;
+  // the repeat ask reuses that draft instead of minting another. A private ask
+  // skips every group draft: the private thread never lists one to answer.
+  const groupIds = await groupDraftIdsForChat(
+    database,
+    input.familyId,
+    shaped.map((item) => item.id),
+    groupAsk ? input.groupChatId : undefined,
+  );
+  const candidates = shaped.filter((row) => groupIds.has(row.id) === groupAsk);
   const hit = matchingCalendarAddId(candidates, {
     title: input.title,
     startsAt: input.startsAt,

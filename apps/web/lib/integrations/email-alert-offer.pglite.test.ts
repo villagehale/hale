@@ -7,7 +7,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { declineDraftedAction } from '~/lib/actions/decline';
 import { pairedDraftsForCalendarNo } from '~/lib/channel/calendar-ask';
 import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
-import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
+import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
+import { buildChannelCoachTools, createTurnOfferLedger } from '~/lib/channel/coach/tools';
 import { groupPlanDraftPort } from '~/lib/channel/group-plan/stamp';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
@@ -1156,15 +1157,14 @@ describe('a coach offer is the calendar, not the sentence', () => {
 
   it('a private offer does not stop a group ask from drafting', async () => {
     await seedOffer({ title: TITLE, startsAt: STARTS_AT });
-    const asked = {
+    const unscoped = {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       title: TITLE,
       startsAt: STARTS_AT.toISOString(),
       now: NOW,
-      audience: 'group' as const,
-      groupChatId: 'chat-family',
     };
+    const asked = { ...unscoped, audience: 'group' as const, groupChatId: 'chat-family' };
     expect(await findPendingIdenticalCalendarAdd(db.database, asked)).toBeNull();
     expect(
       await findPendingIdenticalCalendarAdd(db.database, { ...asked, audience: 'direct' }),
@@ -1179,7 +1179,8 @@ describe('a coach offer is the calendar, not the sentence', () => {
       { audience: 'group', conversationId: 'c-group', groupChatId: 'chat-family' },
       record,
     );
-    expect(await port.pendingIdentical?.(asked)).toBeNull();
+    // The group port scopes the ask itself, even when the caller did not.
+    expect(await port.pendingIdentical?.(unscoped)).toBeNull();
     await expect(
       port.draft({
         familyId: family.familyId,
@@ -1233,7 +1234,7 @@ describe('a coach offer is the calendar, not the sentence', () => {
       audience: 'group',
       groupChatId: 'chat-family',
       reader: {
-        timeZone: async () => 'America/Toronto',
+        timeZone: async () => 'America/Chicago',
         weekPlanSummary: async () => null,
         eventsInWeek: async () => [],
         resolveEvent: async () => null,
@@ -1261,7 +1262,7 @@ describe('a coach offer is the calendar, not the sentence', () => {
     };
     const result = await invokeTool(
       tool,
-      { title: TITLE, date: '2026-09-19', time: '09:00', weekday: 'sat' },
+      { title: TITLE, date: '2026-09-19', time: '08:00', weekday: 'sat' },
       { familyId: family.familyId, actor: family.parentUserId },
       guard,
     );
@@ -1269,6 +1270,136 @@ describe('a coach offer is the calendar, not the sentence', () => {
     expect(result).toMatchObject({ alreadyPending: true, actionId: groupId });
     expect(result).not.toMatchObject({ actionId: privateId });
     expect(minted).toBe(0);
+  });
+
+  it('a private ask beside a group-only draft drafts its own, and the private thread lists only that one', async () => {
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+    const privateAsk = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      now: NOW,
+    };
+    const approvalIds = async (surface: 'direct' | 'group') =>
+      (
+        await defaultOpenQuestionReader().open(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          now: NOW,
+          surface,
+        })
+      )
+        .filter((question) => question.kind === 'approval')
+        .map((question) => question.id);
+
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toBeNull();
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        ...privateAsk,
+        audience: 'group',
+        groupChatId: 'chat-family',
+      }),
+    ).toBe(groupId);
+    expect(await approvalIds('direct')).toEqual([]);
+    expect(await approvalIds('group')).toEqual([groupId]);
+
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    expect(await approvalIds('direct')).toEqual([privateId]);
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toBe(privateId);
+  });
+
+  describe('through the production coach ports', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    async function proposeAdd(turn: { audience: 'direct' | 'group'; groupChatId?: string }) {
+      // Built, never called: a draft that reaches the model fails on this fetch.
+      vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
+      vi.stubGlobal('fetch', async () => {
+        throw new Error('email-alert-offer.pglite.test: this test makes no network calls');
+      });
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Chicago' })
+        .where(eq(schema.users.id, family.parentUserId));
+      const noop = () => {};
+      const tool = productionChannelCoachPorts(db.database)
+        .buildTools(
+          {
+            familyId: family.familyId,
+            parentUserId: family.parentUserId,
+            conversationId: randomUUID(),
+            body: 'add picture day',
+            now: NOW,
+            standingQuestions: [],
+            ...turn,
+          },
+          noop,
+          noop,
+          noop,
+          noop,
+          noop,
+          createTurnOfferLedger(),
+        )
+        .find((candidate) => candidate.name === 'propose_calendar_add');
+      if (!tool) throw new Error('production buildTools registers no propose_calendar_add');
+      const guard: GuardDeps = {
+        writeAudit: async () => {},
+        checkChildContentAccess: async () => ({ ok: true, reason: 'ok' }),
+      };
+      return invokeTool(
+        tool,
+        { title: TITLE, date: '2026-09-19', time: '08:00', weekday: 'sat' },
+        { familyId: family.familyId, actor: family.parentUserId },
+        guard,
+      );
+    }
+
+    it("a private ask finds the parent's standing offer", async () => {
+      const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+      await expect(proposeAdd({ audience: 'direct' })).resolves.toMatchObject({
+        alreadyPending: true,
+        actionId: offerId,
+      });
+    });
+
+    it("a group ask reuses that chat's draft, not the parent's private offer", async () => {
+      await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+      const groupId = await seedDraftedAction({
+        title: TITLE,
+        startsAt: STARTS_AT.toISOString(),
+        reviewerVerdict: 'pending',
+      });
+      await db.database.insert(schema.auditLog).values({
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        actionTaken: 'group_plan.drafted',
+        targetTable: 'actions',
+        targetId: groupId,
+        after: { chatId: 'chat-family' },
+      });
+      await expect(
+        proposeAdd({ audience: 'group', groupChatId: 'chat-family' }),
+      ).resolves.toMatchObject({ alreadyPending: true, actionId: groupId });
+    });
   });
 
   it('a NO clears every private draft of that offer', async () => {
