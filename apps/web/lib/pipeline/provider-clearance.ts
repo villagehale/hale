@@ -1,5 +1,6 @@
 import type { Database, schema } from '@hale/db';
 import { sql } from 'drizzle-orm';
+import type { AuditVerb } from '~/lib/trail/verbs';
 
 /**
  * VIL-556: content Hale received from a Google API (Gmail, Calendar, Drive), and
@@ -12,16 +13,27 @@ import { sql } from 'drizzle-orm';
  * Google origin. A non-Anthropic call on Google input therefore cannot be written
  * without declaring a false origin, and that lie is visible in review. A cast does not
  * work either: minted clearances are tracked at runtime, so a forged one throws at the
- * transport before any key is read or any request leaves.
+ * transport before any key is read or any request leaves. Each is spent by its first
+ * transport check, so one clearance buys one call or one client build.
  *
  * A refusal is a named outcome (rule #11): it is logged here, once, with the stage and
  * the refusal name only (never input text), and the caller returns it while the
  * Anthropic path runs instead. Privacy first: when the origin is unclear, refuse.
  *
- * The family_state witness depends on integrations rows OUTLIVING a disconnect.
- * Revoking keeps the row and nulls its tokens (integrations/store.ts, revokeConnection;
- * coparent/depart.ts does the same). A change that deletes the row on disconnect would
- * blind this witness: provider-clearance.pglite.test.ts pins "revoked still refuses".
+ * WHAT THE family_state WITNESS RELIES ON. A family is "with Google" when EITHER holds:
+ *  - an integrations row for a Google provider, in any status. Revoking keeps the row and
+ *    nulls its tokens (integrations/store.ts, revokeConnection; coparent/depart.ts does
+ *    the same), so a disconnect does not blind it. But integrations.user_id is ON DELETE
+ *    CASCADE: deleting the parent who connected takes the row, while the family's
+ *    Google-derived events, memory and messages stay.
+ *  - an audit_log 'integration_connected' row naming a Google provider. saveConnection,
+ *    the only writer of integrations, writes it in the same transaction, and audit_log
+ *    is append-only and cascades only with the family (rule #6). This is what still
+ *    refuses after that parent's user row is deleted.
+ * Both are pinned in provider-clearance.pglite.test.ts ("revoked still refuses", "deleted
+ * parent still refuses"). A family loses both only with the family itself, and then no
+ * family state is left to send. A change that deletes or rewrites audit_log rows, or a
+ * second writer of Google integrations rows that skips the audit, would blind it.
  *
  * @hale/db is imported for TYPES only. Both transports import this module, and
  * client.ts is reached from vitest.setup.ts, so a runtime @hale/db import here loads it
@@ -106,13 +118,24 @@ function refuse(stage: string, refusal: ClearanceRefusal): ClearanceDecision {
   return { refused: refusal };
 }
 
+/** The audit verb saveConnection writes, in the same transaction as the integrations row
+ * (integrations/store.ts AUDIT_CONNECTED, not exported). The pglite test drives the real
+ * saveConnection, so a rename there turns it red. */
+const GOOGLE_CONNECT_VERB = 'integration_connected' satisfies AuditVerb;
+
 async function familyHasGoogleRow(database: Database, familyId: string): Promise<boolean> {
   const providers = sql.join(
     GOOGLE_PROVIDERS.map((provider) => sql`${provider}`),
     sql`, `,
   );
   const result = (await database.execute(
-    sql`select 1 from integrations where family_id = ${familyId} and provider in (${providers}) limit 1`,
+    sql`select 1 where exists (
+          select 1 from integrations where family_id = ${familyId} and provider in (${providers})
+        ) or exists (
+          select 1 from audit_log
+          where family_id = ${familyId} and action_taken = ${GOOGLE_CONNECT_VERB}
+            and after ->> 'provider' in (${providers})
+        )`,
   )) as unknown;
   // postgres-js returns the rows as an array; pglite wraps them in `{ rows }`. Anything
   // else is unreadable, and unreadable must refuse rather than clear.
@@ -147,9 +170,11 @@ export async function clearForNonAnthropic(
 }
 
 /** Throws {@link ProviderClearanceError} unless `clearance` was minted by
- * {@link clearForNonAnthropic}. Every non-Anthropic transport calls this first. */
+ * {@link clearForNonAnthropic} and has not been used yet. Every non-Anthropic transport
+ * calls this first. Single-use, because a clearance carries no family: one minted for
+ * family A must not build a second gateway client, for family B, later. */
 export function assertClearance(clearance: NonGoogleClearance): void {
-  if (typeof clearance !== 'object' || clearance === null || !minted.has(clearance)) {
+  if (typeof clearance !== 'object' || clearance === null || !minted.delete(clearance)) {
     throw new ProviderClearanceError();
   }
 }

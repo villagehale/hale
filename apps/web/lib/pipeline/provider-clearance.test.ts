@@ -85,6 +85,13 @@ describe('assertClearance', () => {
     if (!('cleared' in decision)) throw new Error('expected cleared');
     expect(() => assertClearance(decision.cleared)).not.toThrow();
   });
+
+  it('is single-use: the same clearance cannot pass a second time', async () => {
+    const decision = await clearForNonAnthropic({ kind: 'parent_text' }, 'test stage');
+    if (!('cleared' in decision)) throw new Error('expected cleared');
+    assertClearance(decision.cleared);
+    expect(() => assertClearance(decision.cleared)).toThrow(ProviderClearanceError);
+  });
 });
 
 describe('GOOGLE_INTEGRATION_PROVIDER', () => {

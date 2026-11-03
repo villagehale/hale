@@ -1,5 +1,7 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { saveConnection } from '~/lib/integrations/store';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { clearForNonAnthropic } from './provider-clearance';
 
@@ -24,7 +26,10 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 async function addIntegration(
   familyId: string,
@@ -83,5 +88,42 @@ describe('clearForNonAnthropic · family_state', () => {
       refused: 'family_has_google_connection',
     });
     expect('cleared' in (await clearForNonAnthropic(stateOf(b.familyId), 'witness'))).toBe(true);
+  });
+
+  it('still refuses after the parent who connected Gmail is deleted and the row cascades away', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    const { familyId } = await seedFamily(db.database, 'Witness Departed');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `departed-${familyId}@example.test`, name: 'Departed Parent' })
+      .returning({ id: schema.users.id });
+    if (!coParent) throw new Error('co-parent insert returned no row');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: coParent.id, role: 'co_parent' });
+    await saveConnection(db.database, {
+      familyId,
+      userId: coParent.id,
+      provider: 'gmail',
+      scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+      tokens: { accessToken: 'test-access', refreshToken: 'test-refresh' },
+    });
+
+    await db.database.delete(schema.users).where(eq(schema.users.id, coParent.id));
+
+    // The scenario is real: integrations.user_id cascades, so the row itself is gone.
+    const left = await db.database
+      .select({ id: schema.integrations.id })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.familyId, familyId));
+    expect(left).toEqual([]);
+    expect(await clearForNonAnthropic(stateOf(familyId), 'witness')).toEqual({
+      refused: 'family_has_google_connection',
+    });
+    // Positive control: a family that never connected Google is still cleared.
+    const other = await seedFamily(db.database, 'Witness Departed Neighbour');
+    expect('cleared' in (await clearForNonAnthropic(stateOf(other.familyId), 'witness'))).toBe(
+      true,
+    );
   });
 });

@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type NonGoogleClearance,
+  ProviderClearanceError,
   assertClearance,
   clearForNonAnthropic,
 } from '~/lib/pipeline/provider-clearance';
@@ -42,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 function plainTurnClient(): AgentClient {
@@ -152,5 +154,35 @@ describe('defaultInferenceDeps · candidate mode', () => {
     expect((deps.candidateClient(decision.cleared) as Anthropic).baseURL).toBe(
       'https://ai-gateway.vercel.sh',
     );
+  });
+
+  it("refuses to build a second gateway client, for another family, on one family's clearance", async () => {
+    // NO NETWORK: only clients are built here, and fetch throws if anything tries to send.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('no network in tests');
+      }),
+    );
+    vi.stubEnv('HALE_MEMORY_INFER_MODEL_MODE', 'candidate');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-no-network');
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'test-key-no-network');
+    const deps = defaultInferenceDeps();
+    if (deps.modelMode !== 'candidate')
+      throw new Error(`expected candidate, got ${deps.modelMode}`);
+
+    const { familyId } = await seedFamily(db.database, 'Guard Reuse A');
+    const decision = await clearForNonAnthropic(
+      { kind: 'family_state', database: db.database, familyId },
+      'reuse test',
+    );
+    if (!('cleared' in decision))
+      throw new Error('expected a clearance for a family without Google');
+
+    // Positive control: the first build, for the family the clearance was minted for.
+    expect((deps.candidateClient(decision.cleared) as Anthropic).baseURL).toBe(
+      'https://ai-gateway.vercel.sh',
+    );
+    expect(() => deps.candidateClient(decision.cleared)).toThrow(ProviderClearanceError);
   });
 });
