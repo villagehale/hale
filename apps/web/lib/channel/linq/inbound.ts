@@ -79,10 +79,9 @@ import {
   type GroupCoparentPorts,
   considerGroupCoparent,
   firstSeatableHandle,
-  seatAppearingCoparent,
+  labelAppearingCoparent,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import { groupWelcome } from './group-coparent-copy';
 import {
   holdTrueStrangerOnce,
   seatParticipantAdded,
@@ -1112,42 +1111,18 @@ async function claimGroupFromTrigger(
     });
   }
 
+  // VIL-582: the claiming parent's words are not the other handle's, so it is labelled only.
   const appearing =
     accepted && linqGroupCoparentEnabled()
       ? firstSeatableHandle(message.otherHandles, message.senderHandle)
       : null;
   if (appearing) {
-    const seated = await seatAppearingCoparent(deps.database, {
+    await labelAppearingCoparent(deps.database, {
       familyId: mapped.familyId,
-      invitedByUserId: mapped.userId,
-      phoneE164: appearing,
       chatId: message.chatId,
-      verbatim: message.text,
-      now,
+      handle: appearing,
+      via: 'second_handle',
     });
-    if (seated.status === 'seated') {
-      const welcome = await groupWelcome(language);
-      if (!welcome) {
-        deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
-        await deps.countOutcome('intake');
-        return json({ outcome: 'group_claimed', claim: claim.status, notice: 'not_sent' });
-      }
-      const notice = await deliverLinqGroupNotice(deps.database, {
-        familyId: mapped.familyId,
-        parentUserId: seated.userId,
-        chatId: message.chatId,
-        text: welcome,
-        templateKey: 'linq:coparent_welcome',
-        now,
-        send: deps.sendGroupText,
-      });
-      deps.log.info(
-        { outcome: 'group_claimed', claim: claim.status, notice },
-        'linq inbound: group claim',
-      );
-      await deps.countOutcome('intake');
-      return json({ outcome: 'group_claimed', claim: claim.status, notice });
-    }
   }
 
   const claimReply = accepted
@@ -1623,33 +1598,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   ) {
     const familyId = await familyIdForClaimedChat(deps.database, signal.chatId);
     if (familyId) {
-      const now = deps.now?.() ?? new Date();
-      const seated = await seatAppearingCoparent(deps.database, {
+      // VIL-582: an add carries none of the person's own words, so it is labelled only.
+      const label = await labelAppearingCoparent(deps.database, {
         familyId,
-        invitedByUserId: null,
-        phoneE164: signal.participantHandle,
         chatId: signal.chatId,
-        verbatim: '',
-        now,
+        handle: signal.participantHandle,
+        via: 'participant_added',
       });
-      if (seated.status === 'seated') {
-        const welcome = await groupWelcome(await familySpeechLanguage(deps.database, familyId));
-        if (!welcome) {
-          deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
-          await deps.countOutcome('intake');
-          return json({ outcome: 'group_coparent_seated', notice: 'not_sent' });
-        }
-        const notice = await deliverLinqGroupNotice(deps.database, {
-          familyId,
-          parentUserId: seated.userId,
-          chatId: signal.chatId,
-          text: welcome,
-          templateKey: 'linq:coparent_welcome',
-          now,
-          send: deps.sendGroupText,
-        });
-        await deps.countOutcome('intake');
-        return json({ outcome: 'group_coparent_seated', notice });
+      if (label.status === 'needs_own_reply') {
+        await deps.countOutcome('ignored');
+        return json({ outcome: 'seat_needs_own_reply' });
       }
     }
   }
