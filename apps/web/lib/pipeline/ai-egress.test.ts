@@ -25,6 +25,9 @@ const EGRESS_TOKENS = [
   'ai-gateway.vercel.sh',
   'baseURL:',
   'baseURL ',
+  'baseURL,',
+  'baseURL}',
+  'ANTHROPIC_BASE_URL',
   'api.browser-use.com',
   'api.openai.com',
   'api.deepseek.com',
@@ -98,6 +101,18 @@ describe('findEgressTokens', () => {
       'baseURL:',
       'api.openai.com',
     ]);
+  });
+
+  it.each([
+    [
+      'the Anthropic SDK base-URL override',
+      'const base = process.env.ANTHROPIC_BASE_URL;',
+      'ANTHROPIC_BASE_URL',
+    ],
+    ['a shorthand baseURL mid-object', 'new Anthropic({ baseURL, apiKey })', 'baseURL,'],
+    ['a shorthand baseURL closing the object', 'new Anthropic({ apiKey, baseURL})', 'baseURL}'],
+  ])('positive control: sees %s', (_label, fixture, token) => {
+    expect(findEgressTokens(fixture)).toEqual([token]);
   });
 
   it('sees nothing in a plain Anthropic construction', () => {
