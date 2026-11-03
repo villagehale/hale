@@ -62,6 +62,14 @@ function asIntOrNull(value: unknown): number | null {
   return asInt(value);
 }
 
+/** The driver error carries the SQL text and its bound parameters, so only its
+ * class is logged. */
+function errorClass(err: unknown): { code: string | null; name: string } {
+  if (!(err instanceof Error)) return { code: null, name: typeof err };
+  const code = (err as { code?: unknown }).code;
+  return { code: typeof code === 'string' ? code : null, name: err.name };
+}
+
 /**
  * One aggregate over the inbound queues. `state` is compared to SQL literals:
  * the column is pg-boss's enum, and a bound text parameter would need a cast
@@ -88,7 +96,7 @@ export async function loadInboundQueueStall(database: Database): Promise<Inbound
       oldestSeconds: asIntOrNull(row?.oldestSeconds),
     };
   } catch (err) {
-    console.error('ops daily: inbound queue unreadable', { err });
+    console.error('ops daily: inbound queue unreadable', errorClass(err));
     return INBOUND_QUEUE_UNREADABLE;
   }
 }
