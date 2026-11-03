@@ -38,7 +38,8 @@ Write `text` for this family only:
 
 Rules:
 
-- One short text, warm and plain, like a friend texting. One question at most.
+- One short paragraph with no line breaks, warm and plain, like a friend texting.
+  One question at most.
 - Use only what is in `private` and `groupText`. Never invent a detail.
 - Never assume a parent's gender, or anything else you were not told.
 - Never mention any other family's private information. You don't have any.
