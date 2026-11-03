@@ -97,6 +97,21 @@ describe('opt-out reader guards (structural, no model)', () => {
     );
     expect(canadaAgain?.confirmation).toBe('reading for CA');
   });
+
+  it('a seam that asks without a region reuses the turn read made with one', async () => {
+    const calls: Array<string | null> = [];
+    const reader: OptOutReader = {
+      read: async (input) => {
+        calls.push(input.region ?? null);
+        return { intent: 'identity', confirmation: '' };
+      },
+    };
+    const text = `regionless reuse ${Math.random()}`;
+    await readTextOnce(reader, { text, language: 'en', region: 'CA' });
+    const regionless = await readTextOnce(reader, { text, language: null });
+    expect(regionless?.intent).toBe('identity');
+    expect(calls).toEqual(['CA']);
+  });
 });
 
 describe('VIL-477 leave_group reading', () => {

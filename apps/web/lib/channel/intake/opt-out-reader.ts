@@ -189,8 +189,12 @@ export function readTurnOnce(
 /** Seams that see only the words (the friend voice, its judge) share the turn's read
  * by text for a minute, so one inbound is still one model call (#868). Keyed by the
  * region too: the reading carries that region's crisis line, so a family elsewhere
- * sending the same words gets its own read. */
-const textReads = new Map<string, { at: number; read: Promise<OptOutReading | null> }>();
+ * sending the same words gets its own read. A seam that asks with no region reads only
+ * the intent, which the region does not change, so it reuses any live read of the words. */
+const textReads = new Map<
+  string,
+  { at: number; text: string; read: Promise<OptOutReading | null> }
+>();
 const TEXT_READ_TTL_MS = 60_000;
 
 export function readTextOnce(
@@ -202,11 +206,16 @@ export function readTextOnce(
   for (const [key, entry] of textReads) {
     if (now - entry.at > TEXT_READ_TTL_MS) textReads.delete(key);
   }
-  const key = JSON.stringify([input.region ?? null, input.text]);
-  const hit = textReads.get(key);
+  const region = input.region ?? null;
+  const key = JSON.stringify([region, input.text]);
+  const hit =
+    textReads.get(key) ??
+    (region === null
+      ? [...textReads.values()].find((entry) => entry.text === input.text)
+      : undefined);
   if (hit) return hit.read;
   const read = reader.read(input);
-  textReads.set(key, { at: now, read });
+  textReads.set(key, { at: now, text: input.text, read });
   // A failed read is not remembered: the next ask reads again.
   void read.then((reading) => {
     if (reading === null && textReads.get(key)?.read === read) textReads.delete(key);
