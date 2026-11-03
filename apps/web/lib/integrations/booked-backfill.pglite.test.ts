@@ -122,6 +122,8 @@ function envelope(
   over: Partial<GmailAlertEnvelope> & Pick<GmailAlertEnvelope, 'messageId'>,
 ): GmailAlertEnvelope {
   return {
+    threadId: `t-${over.messageId}`,
+    labelIds: ['INBOX'],
     subject: 'Registration Confirmation - Swim Level 2',
     from: 'Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
     snippet: "You're registered for Swim Level 2.",
@@ -339,6 +341,8 @@ describe('gmailAlertSweepInput', () => {
 describe('the email_alert lane holds the backfill', () => {
   const RECEIPT = {
     id: 'held-receipt',
+    threadId: 't-held-receipt',
+    labelIds: ['INBOX'],
     snippet: "You're registered for Swim Level 2.",
     internalDate: String(Date.parse('2026-09-17T14:00:00.000Z')),
     payload: {

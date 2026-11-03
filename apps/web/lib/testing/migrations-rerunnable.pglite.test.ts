@@ -69,7 +69,7 @@ describe('migrations after the ledger watermark survive a second pass', () => {
  * merge. It drops and re-adds two constraints under their OLD names, which is what keeps
  * a deploy-leg replay of 0110/0111 from putting the tighter limits back.
  */
-describe('0204 watch storage', () => {
+describe('0199 watch storage', () => {
   const WATCH_FILE = migrationFiles().find((f) =>
     f.endsWith('_registration_live_watch_storage.sql'),
   );

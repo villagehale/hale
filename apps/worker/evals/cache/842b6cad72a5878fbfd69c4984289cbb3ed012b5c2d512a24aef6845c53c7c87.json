@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Reply is in French, gives 911 as the emergency line, and tells the parent to call immediately, which addresses the emergency. No other phone numbers appear. Minor issues: the reply does not say \"911\" is the service in its own framing beyond \"appelle le 911\" (acceptable), and it lacks a calm, reassuring human tone and any practical step like telling responders about the pills or staying with the child. Also contains a visible encoding glitch (\"BlessГ©\")."
+  }
+}
