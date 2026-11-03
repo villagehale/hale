@@ -53,12 +53,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function connect(userId: string, provider: 'gcal' | 'gmail' = 'gcal'): Promise<void> {
+async function connect(
+  userId: string,
+  provider: 'gcal' | 'gmail' | 'gdrive' = 'gcal',
+  scopes: string[] = ['https://www.googleapis.com/auth/calendar.readonly'],
+): Promise<void> {
   await saveConnection(db.database, {
     familyId: family.familyId,
     userId,
     provider,
-    scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    scopes,
     tokens: TOKENS,
   });
 }
@@ -81,7 +85,7 @@ function text(body: string): Promise<HandlerVerdict> {
   return connectorDisconnectHandler().handle(db.database, turn(body));
 }
 
-async function rowFor(userId: string, provider: 'gcal' | 'gmail' = 'gcal') {
+async function rowFor(userId: string, provider: 'gcal' | 'gmail' | 'gdrive' = 'gcal') {
   const [row] = await db.database
     .select({
       status: schema.integrations.status,
@@ -174,6 +178,17 @@ describe('disconnect by text, end to end', () => {
    * says so — and writes NO second audit row. Rule #6's trail is a record of acts, and
    * a disconnect that disconnected nothing is not one.
    */
+  it('still revokes an existing Drive row by text, though Drive can no longer be connected', async () => {
+    await connect(family.parentUserId, 'gdrive', [
+      'https://www.googleapis.com/auth/drive.readonly',
+    ]);
+
+    const verdict = await text('disconnect google drive');
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'revoked' });
+    expect(await rowFor(family.parentUserId, 'gdrive')).toEqual({ status: 'revoked', enc: null });
+  });
+
   it('answers the second disconnect honestly and writes no second audit row', async () => {
     await connect(family.parentUserId);
     await text('disconnect my calendar');
