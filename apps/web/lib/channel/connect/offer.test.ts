@@ -467,6 +467,36 @@ describe('connectorLinkHandler', () => {
     vi.unstubAllGlobals();
   });
 
+  it('a Drive ask from the family group is refused by name: no token, no 1:1 text', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const wire: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        wire.push(String(url));
+        return Response.json({ message: { id: 'out-1' } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
+      ...turn('connect my google drive'),
+      inboundChannelMessageId: groupRow,
+    });
+
+    expect(verdict).toEqual({ claimed: true, outcome: 'connector_not_offered', reply: null });
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    expect(wire).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
   async function inboundIn(chatId: string, at: Date): Promise<string> {
     const [row] = await db.database
       .insert(schema.channelMessages)
