@@ -44,23 +44,69 @@ export async function releaseHeldMessage(
   return deleted.length > 0 ? 'released' : 'not_held';
 }
 
-/**
- * Erasure (rights/delete.ts, after the family cascade): hold rows are keyed by the number
- * alone, so an erased family's numbers take theirs here. A number someone still holds
- * keeps its rows, since one may be that holder's own unread stop; recovery settles the
- * rest (a text no store holds any more is paged as not in the ledger).
- */
-export async function releaseErasedNumbers(
+/** What an erasure takes from the two hold tables, read before the family cascade. */
+export interface ErasedHolds {
+  /** The erased families' numbers. */
+  phoneHashes: string[];
+  /** Held texts the erased families sent, whichever number holds them now. */
+  providerMessageIds: string[];
+}
+
+/** Read BEFORE the family cascade: it deletes the channels and texts that say what to take. */
+export async function erasedFamilyHolds(
   database: Database,
-  phoneHashes: readonly string[],
-): Promise<void> {
-  if (phoneHashes.length === 0) return;
+  familyIds: readonly string[],
+): Promise<ErasedHolds> {
+  if (familyIds.length === 0) return { phoneHashes: [], providerMessageIds: [] };
+  const channels = await database
+    .select({ phoneHash: schema.parentChannels.phoneE164Hash })
+    .from(schema.parentChannels)
+    .where(inArray(schema.parentChannels.familyId, [...familyIds]));
+  // The held set is small (one row per unread text); a family's ledger is not.
+  const held = await database
+    .select({ id: schema.optOutHeldMessages.providerMessageId })
+    .from(schema.optOutHeldMessages);
+  const texts =
+    held.length === 0
+      ? []
+      : await database
+          .select({ id: schema.channelMessages.providerMessageId })
+          .from(schema.channelMessages)
+          .where(
+            and(
+              inArray(schema.channelMessages.familyId, [...familyIds]),
+              eq(schema.channelMessages.direction, 'in'),
+              inArray(
+                schema.channelMessages.providerMessageId,
+                held.map((row) => row.id),
+              ),
+            ),
+          );
+  return {
+    phoneHashes: [...new Set(channels.map((row) => row.phoneHash))],
+    providerMessageIds: [...new Set(texts.flatMap((row) => (row.id === null ? [] : [row.id])))],
+  };
+}
+
+/**
+ * After the family cascade (rights/delete.ts). Hold rows are keyed by the number and the
+ * text alone, so an erasure takes its own here: every held text the family sent, and
+ * every row on its numbers that nobody holds now. A number someone still holds keeps
+ * that holder's rows, since one may be their own unread stop.
+ */
+export async function releaseErasedHolds(database: Database, erased: ErasedHolds): Promise<void> {
+  if (erased.providerMessageIds.length > 0) {
+    await database
+      .delete(schema.optOutHeldMessages)
+      .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
+  }
+  if (erased.phoneHashes.length === 0) return;
   const channels = await database
     .select({ phoneHash: schema.parentChannels.phoneE164Hash })
     .from(schema.parentChannels)
     .where(
       and(
-        inArray(schema.parentChannels.phoneE164Hash, [...phoneHashes]),
+        inArray(schema.parentChannels.phoneE164Hash, erased.phoneHashes),
         isNull(schema.parentChannels.revokedAt),
       ),
     );
@@ -69,12 +115,12 @@ export async function releaseErasedNumbers(
     .from(schema.smsIntakeSessions)
     .where(
       and(
-        inArray(schema.smsIntakeSessions.phoneHash, [...phoneHashes]),
+        inArray(schema.smsIntakeSessions.phoneHash, erased.phoneHashes),
         isNull(schema.smsIntakeSessions.closedAt),
       ),
     );
   const stillHeld = new Set([...channels, ...sessions].map((row) => row.phoneHash));
-  const released = phoneHashes.filter((hash) => !stillHeld.has(hash));
+  const released = erased.phoneHashes.filter((hash) => !stillHeld.has(hash));
   if (released.length === 0) return;
   await database
     .delete(schema.optOutHeldMessages)

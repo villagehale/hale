@@ -1303,8 +1303,11 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
       .insert(schema.optOutReadHolds)
       .values({ phoneHash: phoneBlindIndex(PHONE_A), heldAt: ago(60) });
     await hold(PHONE_B, 'pm-keep', ago(20));
-    // The erased family's old number, now another parent's: their unread stop may be here.
+    // The erased family's old number, now another parent's: their unread stop may be here,
+    // while a text the erased family sent from it goes with the family.
     await hold(PHONE_C, 'pm-held-by-new-holder', ago(20));
+    await inboundRow(a, 'pm-erased-on-old-number', 'an old text', ago(3 * DAY));
+    await hold(PHONE_C, 'pm-erased-on-old-number', ago(3 * DAY));
     await db.database
       .update(schema.families)
       .set({ scheduledDeletionAt: ago(1) })
@@ -1317,5 +1320,6 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     expect(await db.database.select().from(schema.optOutReadHolds)).toEqual([]);
     expect(await heldRow('pm-keep')).not.toBeNull();
     expect(await heldRow('pm-held-by-new-holder')).not.toBeNull();
+    expect(await heldRow('pm-erased-on-old-number')).toBeNull();
   }, 30_000);
 });
