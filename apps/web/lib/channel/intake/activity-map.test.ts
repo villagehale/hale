@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import {
   ACTIVITY_CATEGORIES,
@@ -134,14 +134,14 @@ describe('collectActivityMap', () => {
     const { finder } = finderWith({ learning_sports_arts: [same], swimming: [same] });
     const map = await collectActivityMap({
       finder,
-      children: [{ name: null, ageMonths: 50 }],
+      children: [{ name: null, ageMonths: 50, dobPrecision: 'derived' }],
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
     });
     expect(map.titles).toEqual(['Workshop']);
   });
-  const kids = [{ name: 'Maya', ageMonths: 50 }];
+  const kids = [{ name: 'Maya', ageMonths: 50, dobPrecision: 'derived' as const }];
 
   it('runs one real search per fitting category and keeps two or three results each', async () => {
     const { finder, subjects } = finderWith({
@@ -197,12 +197,15 @@ describe('collectActivityMap', () => {
 
   it('puts civic weekend finds under free and public, topping up to the cap', async () => {
     const { finder } = finderWith({
-      parent_baby: [pick('EarlyON drop-in')],
-      free_public: [pick('Free family swim'), pick('Open gym')],
+      parent_baby: [pick('EarlyON drop-in', { ageFit: '0-2 years' })],
+      free_public: [
+        pick('Free family swim', { ageFit: '0-2 years' }),
+        pick('Open gym', { ageFit: '0-2 years' }),
+      ],
     });
     const map = await collectActivityMap({
       finder,
-      children: [{ name: 'Leo', ageMonths: 10 }],
+      children: [{ name: 'Leo', ageMonths: 10, dobPrecision: 'derived' }],
       areaCoarse: 'M5V',
       civic: [civic('Story time'), civic('Baby rhyme time'), civic('Lego club')],
       familyId: FAMILY,
@@ -278,6 +281,38 @@ describe('collectActivityMap', () => {
     expect(map.groups).toEqual([]);
   });
 
+  it('leaves out picks outside every child age before filling a group, and drops a group they emptied', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { finder } = finderWith({
+      parent_baby: [
+        pick('Baby rhyme circle', { ageFit: 'Ages 0-1', sourceName: 'Town' }),
+        pick('Toddler gym', { ageFit: '18 months - 3 years', sourceName: 'Town' }),
+        pick('Family fair', { ageFit: 'All ages', sourceName: 'Town' }),
+        pick('Library play', { ageFit: 'see site', sourceName: 'Town' }),
+      ],
+      swimming: [pick('Infant swim', { ageFit: 'Ages 0-1', sourceName: 'Town' })],
+    });
+    const map = await collectActivityMap({
+      finder,
+      children: [{ name: 'Wren', ageMonths: 18, dobPrecision: 'exact' }],
+      areaCoarse: null,
+      civic: [],
+      familyId: FAMILY,
+    });
+    // Ages 0-1 is 0..12 months and 18 > 12; the swim group had nothing else.
+    expect(map.groups.map((group) => group.category)).toEqual(['parent_baby']);
+    expect(map.titles).toEqual(['Toddler gym', 'Family fair', 'Library play']);
+    const logged = info.mock.calls.find((call) => call[1] === 'intake activity map');
+    expect(logged?.[0]).toEqual({
+      familyId: FAMILY,
+      finder: 'used',
+      groups: 1,
+      lines: 3,
+      droppedAge: 2,
+    });
+    info.mockRestore();
+  });
+
   it("never puts a kid's name into a search", async () => {
     const seen: string[] = [];
     const finder: ActivityFinder = {
@@ -288,7 +323,7 @@ describe('collectActivityMap', () => {
     };
     await collectActivityMap({
       finder,
-      children: [{ name: 'Maya', ageMonths: 50 }],
+      children: [{ name: 'Maya', ageMonths: 50, dobPrecision: 'derived' }],
       areaCoarse: 'M5V',
       civic: [],
       familyId: FAMILY,
