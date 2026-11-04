@@ -1201,4 +1201,36 @@ describe('VIL-156 · families erased with Google unconfirmed page #ops by count'
     expect(result.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
     expect(texts).toEqual([]);
   });
+
+  /** A claim a poster took at `claimedAt` and never finished: it crashed after claimOwed. */
+  async function crashedClaim(claimedAt: Date): Promise<void> {
+    await db.database.insert(schema.rateLimits).values({
+      identifier: `${randomUUID()}:1:0`,
+      route: ERASURE_GOOGLE_PAGE_ROUTE,
+      windowStart: CLAIM_EPOCH,
+      count: claimStamp(claimedAt),
+    });
+  }
+
+  it('a poster that crashed after claiming is retried once its claim is stale', async () => {
+    await crashedClaim(new Date(NOW.getTime() - 5 * 60_000));
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.erasureGoogle).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(texts).toEqual([
+      'Hale: families erased with Google unconfirmed. revoke unanswered 1. end failed 0.',
+    ]);
+  });
+
+  it('positive control: a claim taken seconds ago is left to its poster, not posted twice', async () => {
+    await crashedClaim(new Date(NOW.getTime() - 10_000));
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([]);
+  });
 });

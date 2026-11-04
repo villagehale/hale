@@ -1068,8 +1068,8 @@ async function pageDeferredPileup(
 }
 
 /**
- * VIL-553 · what stands in the two hold tables, by count. A hold row carries no family,
- * so canary traffic cannot be told apart here and nothing is excluded.
+ * VIL-156 · every owed erasure claim, by count: a family erased past its Google wait with
+ * Google unconfirmed. The claim row is the record, so a page Slack refused stays owed.
  */
 async function pageErasureGoogle(
   database: Database,
@@ -1105,6 +1105,10 @@ async function pageErasureGoogle(
   }
 }
 
+/**
+ * VIL-553 · what stands in the two hold tables, by count. A hold row carries no family,
+ * so canary traffic cannot be told apart here and nothing is excluded.
+ */
 async function pageOptOutHolds(
   database: Database,
   post: (text: string) => Promise<OpsPageOutcome>,
