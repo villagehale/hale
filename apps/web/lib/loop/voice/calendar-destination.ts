@@ -115,7 +115,7 @@ const NORTH_AMERICAN = /^(?!\d11)[2-9]\d\d(?!\d11)[2-9]\d{6}$/;
 const DECIMAL = /\p{Nd}/u;
 
 /** Unicode encodes every decimal digit in runs of ten, from 0 to 9, so a digit's place in its run is its value. */
-function asciiDigits(text: string): string {
+export function asciiDigits(text: string): string {
   return text.replace(/\p{Nd}/gu, (digit) => {
     const cp = digit.codePointAt(0) as number;
     let zero = cp;

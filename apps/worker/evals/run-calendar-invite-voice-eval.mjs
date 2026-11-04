@@ -118,7 +118,7 @@ function startNumbers(starts) {
 }
 
 /** Mirrors `calendarInviteRefusals`. */
-function refusals(body, request, starts, smsSegments, textDestination) {
+function refusals(body, request, starts, smsSegments, { textDestination, asciiDigits }) {
   if (body === '') return ['empty'];
   const found = [];
   const slotCount = body.split(SLOT).length - 1;
@@ -127,9 +127,11 @@ function refusals(body, request, starts, smsSegments, textDestination) {
   const carriesLink = textDestination(body.split(SLOT).join(' '), starts) !== null;
   if (carriesLink) found.push('carries_destination');
   const allowed = startNumbers(starts);
-  for (const n of request.summary.match(/\d+/g) ?? []) allowed.add(n);
+  for (const n of asciiDigits(request.summary).match(/\d+/g) ?? []) allowed.add(n);
   const rest = body.split(request.summary).join(' ').split(SLOT).join(' ');
-  if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
+  if ((asciiDigits(rest).match(/\d+/g) ?? []).some((n) => !allowed.has(n))) {
+    found.push('invented_number');
+  }
   if (slotCount === 1 && !carriesLink && /\[\[[^\]]*\]\]/.test(body.replace(SLOT, ''))) {
     found.push('stray_slot');
   }
@@ -163,7 +165,7 @@ async function main() {
   const cost = makeCost();
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
-  const { textDestination } = await tsImport(DESTINATION_SRC, import.meta.url);
+  const destination = await tsImport(DESTINATION_SRC, import.meta.url);
   const writer = await agent.loadSkill(WRITER_SKILL);
   const time = await agent.loadSkill(TIME_SKILL);
   const writerModel = agent.pickModel(writer.meta.task);
@@ -206,7 +208,7 @@ async function main() {
           })
         ).value.text;
     const body = String(raw).trim();
-    const failures = refusals(body, request, starts, smsSegments, textDestination);
+    const failures = refusals(body, request, starts, smsSegments, destination);
     // --dry prices both judges even on the stand-in reply the code gate refuses.
     if (failures.length === 0 || isDryRun()) {
       const { value } = await cachedToolCall({

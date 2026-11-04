@@ -95,12 +95,14 @@ function zonedStart(startsAt, timeZone) {
 }
 
 /** Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts. */
-function refusals(body, request, starts, textDestination) {
+function refusals(body, request, starts, { textDestination, asciiDigits }) {
   if (body === '') return ['empty'];
   const found = [];
   if (textDestination(body, starts)) found.push('carries_destination');
-  const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  const handed = new Set(asciiDigits(`${request.summary} ${request.when}`).match(/\d+/g) ?? []);
+  if ((asciiDigits(body).match(/\d+/g) ?? []).some((n) => !handed.has(n))) {
+    found.push('invented_number');
+  }
   return found;
 }
 
@@ -134,7 +136,7 @@ async function main() {
   const getClient = lazyAnthropic('calendar-cancel-voice');
   const cost = makeCost();
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { textDestination } = await tsImport(DESTINATION_SRC, import.meta.url);
+  const destination = await tsImport(DESTINATION_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const lane = agent.pickLane(skill.meta.task);
@@ -177,7 +179,7 @@ async function main() {
     const body = flatten(raw);
     const { request } = fixture;
     const starts = zonedStart(new Date(request.startsAt), request.timeZone);
-    const failures = refusals(body, request, starts, textDestination);
+    const failures = refusals(body, request, starts, destination);
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source}`);
     }

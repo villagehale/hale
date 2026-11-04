@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { groupBothReaderFrench } from '~/lib/channel/linq/group-coparent-copy';
 import { calendarCancelSmsText } from '~/lib/loop/templates/calendar-cancel/sms';
 import { splitInviteSms } from '~/lib/loop/templates/calendar-invite/sms';
 import {
@@ -1116,3 +1117,91 @@ describe("VIL-588 · round 7: the time judge's reason restates the title and is 
     expect(lines).not.toContain('Marigold');
   });
 });
+
+describe('VIL-588 · round 7: a number in any digit script is checked against the handed facts', () => {
+  const invented = [
+    { row: 'an Arabic-Indic digit', digit: '\u0664' },
+    { row: 'a Devanagari digit', digit: '\u096A' },
+    { row: 'a fullwidth digit', digit: '\uFF14' },
+  ];
+  for (const { row, digit } of invented) {
+    it(`${row} the writer added is refused in both voices`, () => {
+      expect(
+        calendarCancelRefusals(`Swim class, ${WHEN}, group ${digit} is cancelled.`, CANCEL),
+      ).toContain('invented_number');
+      expect(
+        calendarInviteRefusals(`Swim class, ${WHEN}, group ${digit}. ${INVITE_LINK_SLOT}`, INVITE),
+      ).toContain('invented_number');
+    });
+  }
+
+  it('positive control: the same digit handed in the title is not invented', () => {
+    const summary = 'Swim class group \u0664';
+    expect(
+      calendarCancelRefusals(`${summary}, ${WHEN}, is cancelled.`, { ...CANCEL, summary }),
+    ).not.toContain('invented_number');
+    expect(
+      calendarInviteRefusals(`${summary}, ${WHEN}. ${INVITE_LINK_SLOT}`, { ...INVITE, summary }),
+    ).not.toContain('invented_number');
+  });
+});
+
+describe('VIL-588 · round 7: the French group register rewrite after the gate adds no destination', () => {
+  /*
+   * phone-sms.ts sends a French family group's text through groupBothReaderFrench after
+   * the gate. It swaps letter runs for letter runs at word boundaries, so a shape the
+   * gate passed cannot appear. Pinned so a new rewrite rule that adds a dot, an at sign
+   * or a digit fails here.
+   */
+  it('no text the gate passes is held once rewritten', () => {
+    const atoms = [
+      'ta',
+      'Ta',
+      'ton',
+      'Ton',
+      'tu veux',
+      'Tu veux',
+      'envoie-moi',
+      '.',
+      '@',
+      ':',
+      '//',
+      ' ',
+      '-',
+      '\u00EF',
+      'x',
+      'org',
+      '5',
+      '555',
+      '0104',
+      '+',
+      '\u3002',
+      '\u2726',
+      '\u0301',
+    ];
+    let seed = 7;
+    const next = (n: number) => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed % n;
+    };
+    let rewritten = 0;
+    const created: string[] = [];
+    for (let i = 0; i < 40_000; i += 1) {
+      let text = '';
+      for (let k = 2 + next(7); k > 0; k -= 1) text += atoms[next(atoms.length)];
+      const after = groupBothReaderFrench(text);
+      if (after === text) continue;
+      rewritten += 1;
+      for (const read of [textDestination, titleDestination]) {
+        if (read(text, JUL_23_START) === null && read(after, JUL_23_START) !== null) {
+          created.push(text);
+        }
+      }
+    }
+    // Positive control: the rewrite really ran on thousands of texts.
+    expect(rewritten).toBeGreaterThan(5_000);
+    expect(created).toEqual([]);
+  });
+});
+
+const JUL_23_START = { year: 2026, month: 7, day: 23, hour: 10, minute: 30, weekday: 'Thursday' };

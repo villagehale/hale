@@ -5,7 +5,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { textDestination, titleDestination } from './calendar-destination';
+import { asciiDigits, textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
@@ -64,8 +64,10 @@ export function calendarCancelRefusals(
   if (textDestination(body, zonedStart(request.startsAt, request.timeZone))) {
     found.push('carries_destination');
   }
-  const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  const handed = new Set(asciiDigits(`${request.summary} ${request.when}`).match(/\d+/g) ?? []);
+  if ((asciiDigits(body).match(/\d+/g) ?? []).some((n) => !handed.has(n))) {
+    found.push('invented_number');
+  }
   return found;
 }
 

@@ -5,7 +5,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { textDestination, titleDestination } from './calendar-destination';
+import { asciiDigits, textDestination, titleDestination } from './calendar-destination';
 
 /**
  * The tap-to-add text a parent gets after a placement — written by a model (skill
@@ -108,7 +108,7 @@ export function startNumbers(event: ZonedStart): Set<string> {
 
 function allowedDigits(summary: string, event: ZonedStart): Set<string> {
   const allowed = startNumbers(event);
-  for (const n of summary.match(/\d+/g) ?? []) allowed.add(n);
+  for (const n of asciiDigits(summary).match(/\d+/g) ?? []) allowed.add(n);
   return allowed;
 }
 
@@ -136,7 +136,9 @@ export function calendarInviteRefusals(
   if (carriesLink) found.push('carries_destination');
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
   const allowed = allowedDigits(request.summary, starts);
-  if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
+  if ((asciiDigits(rest).match(/\d+/g) ?? []).some((n) => !allowed.has(n))) {
+    found.push('invented_number');
+  }
   if (slotCount === 1 && request.url && !carriesLink) {
     const withoutSlot = body.replace(INVITE_LINK_SLOT, '');
     if (/\[\[[^\]]*\]\]/.test(withoutSlot)) found.push('stray_slot');
