@@ -3,13 +3,15 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { textDestination, titleDestination } from './calendar-destination';
+import { type DestinationShape, textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
   MAX_INVITE_SUMMARY_CHARS,
+  type ZonedStart,
   createCalendarInviteTimeJudge,
   zonedStart,
 } from './calendar-invite-voice';
@@ -30,6 +32,10 @@ import {
  * parent. Voice and tone are graded by the judge model in the eval; the gate below only
  * checks facts: no destination, and no number that was not handed. Whether the text
  * names this event (in any language) at its start is the time judge's call (VIL-588).
+ *
+ * The renderer sends gsmSafe(line) (templates/calendar-cancel/sms.ts), and the fold deletes
+ * what GSM-7 cannot carry. So every check reads that fold, the composed body IS that fold,
+ * and the renderer's own fold leaves it unchanged: the bytes judged are the bytes sent.
  */
 const MAX_ATTEMPTS = 3;
 const MAX_TOKENS = 160;
@@ -51,17 +57,27 @@ export type CalendarCancelRefusal =
   | 'when_missing'
   | 'invented_number';
 
+/** Read as written, and as the renderer's fold sends it ("pool.\u30FBorg" goes out as "pool.org"). */
+function wireTitleDestination(title: string, starts: ZonedStart): DestinationShape | null {
+  return titleDestination(title, starts) ?? titleDestination(gsmSafe(title), starts);
+}
+
+function wireTextDestination(text: string, starts: ZonedStart): DestinationShape | null {
+  return textDestination(text, starts) ?? textDestination(gsmSafe(text), starts);
+}
+
 export function calendarCancelRefusals(
-  body: string,
+  text: string,
   request: CalendarCancelRequest,
 ): CalendarCancelRefusal[] {
-  if (body === '') return ['empty'];
+  const wire = gsmSafe(text);
+  if (wire.trim() === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  if (textDestination(body, zonedStart(request.startsAt, request.timeZone))) {
+  if (wireTextDestination(text, zonedStart(request.startsAt, request.timeZone))) {
     found.push('carries_destination');
   }
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  if ((wire.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
 }
 
@@ -112,14 +128,18 @@ function deferred(reason: CalendarCancelDeferral, detail?: string): CalendarCanc
 }
 
 /** What the time judge is shown. The cancel writer is not handed a language. */
-function cancelTimeInput(text: string, request: CalendarCancelRequest): CalendarInviteTimeInput {
+function cancelTimeInput(
+  text: string,
+  request: CalendarCancelRequest,
+  starts: ZonedStart,
+): CalendarInviteTimeInput {
   return {
     text,
     summary: request.summary,
     when: request.when,
     timeZone: request.timeZone,
     language: null,
-    starts: zonedStart(request.startsAt, request.timeZone),
+    starts,
   };
 }
 
@@ -140,10 +160,13 @@ export function createCalendarCancelVoice(
   return {
     async compose(uncut) {
       const request = cutTitle(uncut);
-      const held = titleDestination(
-        request.summary,
-        zonedStart(request.startsAt, request.timeZone),
-      );
+      let starts: ZonedStart;
+      try {
+        starts = zonedStart(request.startsAt, request.timeZone);
+      } catch (err) {
+        return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
+      }
+      const held = wireTitleDestination(request.summary, starts);
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
@@ -176,13 +199,14 @@ export function createCalendarCancelVoice(
         } catch (err) {
           return deferred('model_failed', errorClass(err));
         }
-        const body = plainText(raw);
-        const problems = calendarCancelRefusals(body, request);
+        const text = plainText(raw);
+        const problems = calendarCancelRefusals(text, request);
         if (problems.length > 0) {
-          rejected.push({ text: body, problems });
+          rejected.push({ text, problems });
           continue;
         }
-        const match = await judge.matches(cancelTimeInput(body, request));
+        const body = gsmSafe(text);
+        const match = await judge.matches(cancelTimeInput(body, request, starts));
         if (match === null) return deferred('time_unjudged');
         if (!match) {
           rejected.push({ text: body, problems: ['when_missing'] });

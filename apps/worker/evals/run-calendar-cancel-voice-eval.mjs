@@ -94,7 +94,10 @@ function zonedStart(startsAt, timeZone) {
   };
 }
 
-/** Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts. */
+/**
+ * Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts, minus its second reading of
+ * the GSM-7 fold (gsmSafe sits behind `~/`); calendar-destination.test.ts pins that reading.
+ */
 function refusals(body, request, starts, textDestination) {
   if (body === '') return ['empty'];
   const found = [];

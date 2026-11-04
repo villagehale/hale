@@ -61,7 +61,7 @@ export type CalendarInviteRefusal =
   | 'invented_number'
   | 'too_long';
 
-interface ZonedStart {
+export interface ZonedStart {
   year: number;
   month: number;
   day: number;
@@ -307,10 +307,13 @@ export function createCalendarInviteVoice(
       if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
         return deferred('summary_too_long', String(request.summary.length));
       }
-      const held = titleDestination(
-        request.summary,
-        zonedStart(request.startsAt, request.timeZone),
-      );
+      let starts: ZonedStart;
+      try {
+        starts = zonedStart(request.startsAt, request.timeZone);
+      } catch (err) {
+        return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
+      }
+      const held = titleDestination(request.summary, starts);
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {

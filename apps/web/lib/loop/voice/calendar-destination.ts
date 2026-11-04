@@ -179,12 +179,23 @@ function isPhone(run: string, start: EventDate): boolean {
   return !isCalendarFact(run, start);
 }
 
+/**
+ * A symbol or a lone combining mark is no separator a reader sees, and the GSM-7 fold
+ * deletes it, so the shapes are read again with them taken out: "pool.\u2726org" and
+ * "555\u2726010\u27264477" are a domain and a number.
+ */
+const SKIPPED_MARKS = /[\p{So}\p{M}]/gu;
+
 function destinationIn(
   text: string,
   start: EventDate,
   stops: StopReading,
 ): DestinationShape | null {
   const normalized = normalize(text, stops);
+  return shapeIn(normalized, start) ?? shapeIn(normalized.replace(SKIPPED_MARKS, ''), start);
+}
+
+function shapeIn(normalized: string, start: EventDate): DestinationShape | null {
   for (const { shape, pattern } of SHAPES) {
     if (pattern.test(normalized)) return shape;
   }
