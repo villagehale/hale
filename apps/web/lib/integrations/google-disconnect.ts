@@ -581,10 +581,11 @@ export async function expireStaleGoogleRevocations(
  * holding a pending token, leaves the erased family's grant live at Google.
  *
  * Ends every Google connector of every parent in the family locally (one transaction),
- * then settles those rows and every row an earlier disconnect left pending. The cascade
- * that follows deletes any token Google did not answer for, so `pending_retry` here means
- * "erased unconfirmed", and the log says so. Throws only when the local end fails, which
- * leaves the family standing for the next sweep.
+ * then settles those rows and every row an earlier disconnect left pending. A row still
+ * `pending_retry` holds the only token that can end its grant, and the cascade would
+ * delete it: the caller keeps the family for a later sweep instead. The wait is bounded,
+ * because {@link expireStaleGoogleRevocations} deletes that token at seven days. Throws
+ * only when the local end fails, which leaves the family standing for the next sweep.
  */
 export async function endGoogleForFamilyErasure(
   db: Database,
@@ -620,6 +621,23 @@ export async function endGoogleForFamilyErasure(
       if (userId === null) continue;
       out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
     }
+    // The family stands until Google answers, so its trail says what ended (rule #6).
+    if (out.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        out.map((row) => ({
+          familyId,
+          actor: 'system',
+          actionTaken: 'integration_ended_for_erasure',
+          targetTable: 'integrations',
+          targetId: row.id,
+          after: {
+            provider: row.provider,
+            custody: tokenCustody(),
+            pending: row.unrevocable ? null : revokePendingCustody(),
+          },
+        })),
+      );
+    }
     return out;
   });
   const settlements = await settleGoogleRevocations(
@@ -640,7 +658,8 @@ export async function endGoogleForFamilyErasure(
         integrationId: settlement.integrationId,
         provider: settlement.provider,
         push: settlement.push,
-        google: settlement.google === 'pending_retry' ? 'erased_unconfirmed' : settlement.google,
+        google:
+          settlement.google === 'pending_retry' ? 'erasure_waits_for_google' : settlement.google,
       },
       'google disconnect: family erasure',
     );

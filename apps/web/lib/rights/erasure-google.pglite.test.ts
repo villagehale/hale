@@ -33,6 +33,7 @@ afterAll(async () => {
 });
 
 let posted: string[];
+let googleStatus: number;
 
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
@@ -41,10 +42,11 @@ beforeEach(() => {
   vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'test-client.apps.example');
   vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'test-secret');
   posted = [];
+  googleStatus = 200;
   vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
     if (url !== GOOGLE_REVOKE_URL) throw new Error(`unexpected fetch ${url}`);
     posted.push(new URLSearchParams(init?.body ?? '').get('token') ?? '');
-    return { ok: true, status: 200, json: async () => ({}) };
+    return { ok: googleStatus === 200, status: googleStatus, json: async () => ({}) };
   });
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -138,6 +140,45 @@ describe('runDeletionSweep revokes an erased family at Google before the cascade
       .where(eq(schema.integrations.familyId, kept.familyId));
     expect(live?.status).toBe('active');
     expect(live?.enc).not.toBeNull();
+  });
+
+  it('waits for Google: a transient answer keeps the family until the revoke lands, and says so', async () => {
+    const erased = await household('Erased');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
+    await connect(erased.familyId, erased.parentUserId, 'gmail', '1//erased-mail');
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: PAST })
+      .where(eq(schema.families.id, erased.familyId));
+    googleStatus = 503;
+
+    const waiting = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(waiting).toMatchObject({ erased: 0, googleRevokePending: 1 });
+    const family = () =>
+      db.database
+        .select({ id: schema.families.id })
+        .from(schema.families)
+        .where(eq(schema.families.id, erased.familyId));
+    expect(await family()).toHaveLength(1);
+    // The family that stays has a trail of what ended, written by Hale (rule #6).
+    const ended = await db.database
+      .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'integration_ended_for_erasure'));
+    expect(ended.map((row) => row.actor)).toEqual(['system', 'system']);
+    expect(ended.map((row) => (row.after as { provider: string }).provider).sort()).toEqual([
+      'gcal',
+      'gmail',
+    ]);
+
+    googleStatus = 200;
+    posted = [];
+    const done = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(done).toMatchObject({ erased: 1, googleRevokePending: 0 });
+    expect(posted.sort()).toEqual(['1//erased-cal', '1//erased-mail']);
+    expect(await family()).toEqual([]);
   });
 
   it('positive control: a sweep with no family due posts nothing to Google', async () => {

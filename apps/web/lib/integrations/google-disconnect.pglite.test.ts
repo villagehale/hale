@@ -587,6 +587,16 @@ describe('a pending token never outlives its window, on time alone', () => {
     ]);
   });
 
+  it('a token exactly seven days old is deleted, not left for the next run', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN, { now: NOW }));
+
+    expect(
+      await expireStaleGoogleRevocations(db.database, new Date(NOW.getTime() + 7 * DAY_MS)),
+    ).toEqual({ abandoned: 1 });
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).toBeNull();
+  });
+
   it('deletes a token whose settle keeps throwing, which the retry alone never clears', async () => {
     await connect(parentUserId, 'gcal', CAL);
     await db.exec(`

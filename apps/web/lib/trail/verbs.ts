@@ -444,6 +444,7 @@ export const AUDIT_VERBS = [
   'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
+  'integration_ended_for_erasure',
   'integration_google_grant_revoked',
   'integration_google_grant_revoke_failed',
   'integration.google_calendar_written',
@@ -1646,6 +1647,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   // and the two rows below say when it is gone.
   integration_revoked: {
     sentence: 'you disconnected an account and Hale stopped using its keys',
+    family: 'done',
+  },
+  // Hale's own act, so third person: erasing the family ends its connected accounts at
+  // Google first (VIL-156), and the row stands while the erasure waits on Google.
+  integration_ended_for_erasure: {
+    sentence:
+      'a connected account was disconnected because this family asked Hale to delete its data, and Hale stopped using its keys',
     family: 'done',
   },
   // Third person and role-neutral: Google's answer is Hale's own record, and it also

@@ -190,6 +190,9 @@ export interface DeletionSweepSummary {
    * purged from the private bucket across the run — the caller logs it so the
    * byte-level erasure is recorded durably (rule #6 note below). */
   purgedObjects: number;
+  /** Families due for erasure kept for a later sweep because Google has not yet answered
+   * a revoke of their grant (VIL-156). Named, never folded into `erased`. */
+  googleRevokePending: number;
 }
 
 /** The storage-object remover, injected so tests record deletes without a live bucket. */
@@ -283,10 +286,17 @@ export async function runDeletionSweep(
         ];
 
   let purgedObjects = 0;
+  let googleRevokePending = 0;
   for (const familyId of familyIds) {
     // The cascade deletes keys and pending tokens; deleting a key revokes nothing, so
-    // the family's Google grants are ended and revoked at Google first (VIL-156).
-    await endGoogleForFamilyErasure(database, familyId);
+    // the family's Google grants are ended and revoked at Google first (VIL-156). A
+    // revoke Google has not answered keeps the family for a later sweep, at most until
+    // its token's seven-day window ends.
+    const google = await endGoogleForFamilyErasure(database, familyId);
+    if (google.some((row) => row.google === 'pending_retry')) {
+      googleRevokePending += 1;
+      continue;
+    }
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
@@ -300,5 +310,10 @@ export async function runDeletionSweep(
   // still there. The cost is that these people's audit rows have nowhere to live — see
   // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
   const orphans = await runOrphanUserSweep(database, now, stranded);
-  return { erased: familyIds.length, purgedObjects, orphans };
+  return {
+    erased: familyIds.length - googleRevokePending,
+    purgedObjects,
+    googleRevokePending,
+    orphans,
+  };
 }

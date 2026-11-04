@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
 import {
@@ -620,7 +620,7 @@ export async function clearGoogleRevokePending(
 }
 
 /**
- * Delete every pending token older than `cutoff`, on time alone, inside the caller's
+ * Delete every pending token as old as `cutoff` or older, on time alone, inside the caller's
  * transaction. Returns the rows it cleared, so the caller writes each one's audit row in
  * the same transaction.
  */
@@ -634,7 +634,7 @@ export async function deleteStaleGoogleRevokePending(
     .where(
       and(
         isNotNull(schema.integrations.googleRevokePendingEncrypted),
-        lt(schema.integrations.googleRevokePendingSince, cutoff),
+        lte(schema.integrations.googleRevokePendingSince, cutoff),
       ),
     )
     .returning({
@@ -647,6 +647,7 @@ export async function deleteStaleGoogleRevokePending(
 /** The trail rows that say where a disconnected row's Google grant stands, newest wins. */
 const GOOGLE_GRANT_TRAIL = [
   'integration_revoked',
+  'integration_ended_for_erasure',
   'integration_google_grant_revoked',
   'integration_google_grant_revoke_failed',
 ] as const;
