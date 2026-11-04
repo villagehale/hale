@@ -299,6 +299,8 @@ export const AUDIT_VERBS = [
   'group_plan.line_unsent',
   'group_plan.report_held',
   'group_plan.report_released',
+  // VIL-559 · a crisis that got no reply, paged to #ops (monitoring/failure-page.ts).
+  'crisis_unanswered',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
@@ -1184,6 +1186,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale finished waiting to text the household group about its plan',
     family: 'note',
   },
+  // VIL-559. The row's `after` is kind, where, reason and writes only. History hides it:
+  // the household's shared receipts must not show one parent's crisis to the other.
+  crisis_unanswered: {
+    sentence: 'Hale could not write a reply to a crisis, so it told its team at once',
+    family: 'problem',
+  },
   // A booking email said the family is going somewhere with the children. 'note', not
   // 'done': nothing was sent yet and nothing was decided - Hale read a confirmation and
   // wrote down that a trip is coming. The row's `after` carries an evidence enum and a
@@ -2003,6 +2011,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_plan.drafted',
   'group_plan.report_released',
   'calendar_alert_debt_retired',
+  'crisis_unanswered',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
-import type { SaidLineInput, SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type {
+  CrisisPager,
+  CrisisUnanswered,
+  SaidLineInput,
+  SaidLineWriter,
+} from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -801,8 +806,29 @@ describe('friend voice onboarding', () => {
     const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
     deps3.optOutReader = crisisReader('crisis_emergency', 'en');
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
+    const alerts: CrisisUnanswered[] = [];
+    deps3.crisisPager = {
+      record: async () => {},
+      page: async (alert) => {
+        alerts.push(alert);
+        return 'paged';
+      },
+    };
+    const fire = inbound(transport3, 'fire');
+    await handleInboundSms(fake3.db, fire, deps3);
     expect(transport3.bodies()).toEqual([]);
+    // Before any family exists the page still goes out, keyed on this inbound.
+    expect(alerts).toEqual([
+      {
+        kind: 'emergency',
+        where: 'intake crisis',
+        reason: 'no_writer',
+        writes: 0,
+        inboundId: fire.providerId,
+        familyId: null,
+        parentUserId: null,
+      },
+    ]);
   });
 
   it('a crisis reply is in the language Hale already holds, over the language the reader read', async () => {
@@ -1529,6 +1555,45 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
       replyLanguage: 'العربية',
     });
     expect(transport.bodies()).toEqual([reply]);
+  });
+
+  it("a reply that fails twice reaches the crisis pager with this inbound and this family's id", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const missed = ladder('Call 911.');
+    const alerts: CrisisUnanswered[] = [];
+    const pager: CrisisPager = {
+      record: async () => {},
+      page: async (alert) => {
+        alerts.push(alert);
+        return 'paged';
+      },
+    };
+    missed.deps.crisisPager = pager;
+    const text = inbound(missed.transport, 'words the reader read as none');
+    await handleInboundSms(missed.fake.db, text, missed.deps);
+    expect(missed.transport.bodies()).toEqual([]);
+    expect(alerts).toEqual([
+      {
+        kind: 'mental',
+        where: 'intake answer crisis',
+        reason: 'missing_line',
+        writes: 2,
+        inboundId: text.providerId,
+        familyId: FAMILY,
+        parentUserId: USER,
+      },
+    ]);
+
+    // Positive control: the same turn with a sendable reply pages nobody.
+    const answered = ladder('اتصل أو أرسل رسالة إلى 988 الآن.');
+    answered.deps.crisisPager = pager;
+    await handleInboundSms(
+      answered.fake.db,
+      inbound(answered.transport, 'words the reader read as none'),
+      answered.deps,
+    );
+    expect(answered.transport.bodies()).toHaveLength(1);
+    expect(alerts).toHaveLength(1);
   });
 
   it('a reply that fails the crisis check twice sends nothing and pages #ops', async () => {

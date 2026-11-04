@@ -1420,27 +1420,33 @@ export async function recordLapsedInviteAnswered(
 }
 
 /**
- * How a number that had an invite in flight came to own a channel of its own — the two
+ * How a number that had an invite in flight came to own a channel of its own — the
  * doors onto {@link supersedeOpenInviteOnEnrollment}, each with the state and the audit
  * verb that says what actually happened to that person.
  *
  * They are not one bucket, because they are not one event: `co_parent_join` is somebody
- * accepting a BIGGER role in the household that invited them, and `sms_intake` is the
- * same phone signing up as a parent of its OWN family and walking away from the ask.
- * The inviting parent's trail has to be able to tell those apart.
+ * accepting a BIGGER role in the household that invited them, while `sms_intake`,
+ * `casl_start` (a number that STOPped texting START back) and `web_otp` (a code entered
+ * on the web) are the same phone becoming a parent's channel in its OWN family and
+ * walking away from the ask. The inviting parent's trail has to be able to tell the
+ * join apart from the other three; the three share one state and verb because, to the
+ * inviting parent, they are the same event.
  */
 const ENROLMENT_SUPERSEDES = {
   co_parent_join: { state: 'superseded_by_join', suffix: 'superseded_by_join' },
   sms_intake: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
+  casl_start: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
+  web_otp: { state: 'superseded_by_enrollment', suffix: 'superseded_by_enrollment' },
 } as const satisfies Record<string, { state: CaregiverInviteState; suffix: string }>;
 
 export type EnrolmentDoor = keyof typeof ENROLMENT_SUPERSEDES;
 
 /**
  * A number with an invite in flight has just been ENROLLED — given an active channel of
- * its own, by a forwarded co-parent link (VIL-297) or by finishing its own SMS intake
- * (VIL-305). The invite is closed by the same transaction, and this is the ONE invariant
- * behind every door: a number that owns an active channel has no open caregiver invite.
+ * its own, by a forwarded co-parent link (VIL-297), by finishing its own SMS intake
+ * (VIL-305), by START after a STOP, or by a web verification code (VIL-310). The invite
+ * is closed by the same transaction, and this is the ONE invariant behind every door: a
+ * number that owns an active channel has no open caregiver invite.
  *
  * {@link startCaregiverInvite} keeps the other end of it (`number_in_use`); nothing kept
  * this one, and the two states are not merely redundant. `loadOpenInviteByPhone` is read

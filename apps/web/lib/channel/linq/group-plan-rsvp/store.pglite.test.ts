@@ -7,7 +7,7 @@ import { memberKeyFromHandle } from './member-key';
 import { createPostgresGroupPlanRsvpStore } from './store';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PARENT = '+14165550111';
+const PARENT = '+15555550111';
 const CHAT = 'chat-pglite-plan';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 

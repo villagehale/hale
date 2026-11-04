@@ -18,8 +18,8 @@ import { fakeGroupPlanRsvpComposer } from './voice-fake';
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PARENT = '+14165550111';
-const NOT_HALE = '+14165550199';
+const PARENT = '+15555550111';
+const NOT_HALE = '+15555550199';
 const CHAT = 'chat-pglite-poll';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 

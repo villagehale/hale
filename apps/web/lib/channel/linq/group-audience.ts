@@ -282,14 +282,32 @@ function presenceVerdict(
 }
 
 const FLOOR_PASS: unique symbol = Symbol('floor-pass');
+/** Every pass `chatFloorAllows` minted. A copy (a spread with another class) is not one. */
+const ISSUED = new WeakSet<FloorPass>();
 
 /**
  * What `chatFloorAllows` hands back when a line may enter `chatId`. The floored sends
  * below take nothing else, so a sender that may address a 1:1 or a group cannot decide
- * the audience itself. The key is private to this module: a pass from anywhere else (a
- * cast) carries no key and is refused at send time.
+ * the audience itself. Only a pass this module minted is honoured: a cast, or a copy
+ * with another chat or class written in, is refused at send time. A pass is good for one
+ * chat and the one class it was asked for: a `reply` pass from an unclaimed chat cannot
+ * carry a household line.
  */
-export type FloorPass = { readonly chatId: string; readonly [FLOOR_PASS]: true };
+export type FloorPass = {
+  readonly chatId: string;
+  readonly lineClass: GroupLineClass;
+  readonly [FLOOR_PASS]: true;
+};
+
+export type FloorPassRefusal = 'pass_forged' | 'pass_wrong_chat' | 'pass_wrong_class';
+
+/** A floored send that was not given a pass for this chat and this class. Nothing was sent. */
+export class FloorPassRefused extends Error {
+  constructor(readonly reason: FloorPassRefusal) {
+    super(`linq floor: no pass from chatFloorAllows for this send (${reason})`);
+    this.name = 'FloorPassRefused';
+  }
+}
 
 export type ChatFloorVerdict =
   | {
@@ -329,7 +347,12 @@ export async function chatFloorAllows(
     )
     .orderBy(desc(schema.channelMessages.inGroup))
     .limit(1);
-  const pass: FloorPass = { chatId: input.chatId, [FLOOR_PASS]: true };
+  const pass: FloorPass = Object.freeze({
+    chatId: input.chatId,
+    lineClass: input.lineClass,
+    [FLOOR_PASS]: true as const,
+  });
+  ISSUED.add(pass);
   if (recorded?.inGroup === false) return { allowed: true, reason: 'direct', pass };
   const verdict = await groupAudienceAllows(
     database,
@@ -340,24 +363,37 @@ export async function chatFloorAllows(
   return verdict.allowed ? { ...verdict, pass } : verdict;
 }
 
-function requirePass(pass: FloorPass, chatId: string): void {
-  if (pass[FLOOR_PASS] !== true || pass.chatId !== chatId) {
-    throw new Error('linq floor: no pass from chatFloorAllows for this chat');
-  }
+function requirePass(pass: FloorPass, chatId: string, lineClass: GroupLineClass): void {
+  const reason: FloorPassRefusal | null = !ISSUED.has(pass)
+    ? 'pass_forged'
+    : pass.chatId !== chatId
+      ? 'pass_wrong_chat'
+      : pass.lineClass !== lineClass
+        ? 'pass_wrong_class'
+        : null;
+  if (!reason) return;
+  console.warn(
+    { outcome: 'floor_pass_refused', reason, lineClass, passClass: pass.lineClass },
+    'linq floor: refused a send without its pass, nothing sent',
+  );
+  throw new FloorPassRefused(reason);
 }
 
+/** `lineClass` is the class of what this send carries, and must be the one the pass was given for. */
 export async function sendFlooredChatMessage(
   pass: FloorPass,
+  lineClass: GroupLineClass,
   input: Parameters<typeof sendLinqChatMessage>[0],
 ): ReturnType<typeof sendLinqChatMessage> {
-  requirePass(pass, input.chatId);
+  requirePass(pass, input.chatId, lineClass);
   return sendLinqChatMessage(input);
 }
 
 export async function sendFlooredPoll(
   pass: FloorPass,
+  lineClass: GroupLineClass,
   input: Parameters<typeof sendLinqPoll>[0],
 ): ReturnType<typeof sendLinqPoll> {
-  requirePass(pass, input.chatId);
+  requirePass(pass, input.chatId, lineClass);
   return sendLinqPoll(input);
 }

@@ -29,8 +29,13 @@ import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import {
+  CRISIS_UNANSWERED_AUDIT_ACTION,
+  CRISIS_UNANSWERED_PAGE_ROUTE,
+} from '~/lib/monitoring/failure-page';
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -486,6 +491,7 @@ function harness(
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
     floodLine?: FloodLineComposer;
+    crisisPager?: CrisisPager;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -562,6 +568,7 @@ function harness(
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
+      crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -572,6 +579,29 @@ function harness(
         warn: (...args: unknown[]) => logs.push(args),
         error: (...args: unknown[]) => logs.push(args),
       } as unknown as Pick<Console, 'info' | 'warn' | 'error'>,
+    },
+  };
+}
+
+/** The crisis pager port, recorded: what it was asked to record, then to page. */
+function recordingCrisisPager(): {
+  pager: CrisisPager;
+  recorded: CrisisUnanswered[];
+  paged: CrisisUnanswered[];
+} {
+  const recorded: CrisisUnanswered[] = [];
+  const paged: CrisisUnanswered[] = [];
+  return {
+    recorded,
+    paged,
+    pager: {
+      async record(alert) {
+        recorded.push(alert);
+      },
+      async page(alert) {
+        paged.push(alert);
+        return 'paged';
+      },
     },
   };
 }
@@ -2401,6 +2431,60 @@ describe('the outage smoke alarm', () => {
     expect(again.status).toBe('deflected');
     expect(h.transport.bodies()).toEqual(['Get help where you are.']);
     expect(calls).toBe(2);
+  });
+
+  it('a crisis moment nobody could write pages #ops at once, then defers as before', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unwritten = (
+      moment: 'mental_crisis' | 'emergency' | 'could_not_answer',
+      reason: string,
+    ): OffDomainLane => ({
+      async consider() {
+        return {
+          status: 'unwritten' as const,
+          moment,
+          reason,
+          lane: 'safety_critical' as const,
+          category: 'other' as const,
+        };
+      },
+    });
+    const crisis = recordingCrisisPager();
+    const turn = job();
+
+    for (const [moment, reason] of [
+      ['mental_crisis', 'model_failed'],
+      ['emergency', 'client_unavailable'],
+    ] as const) {
+      const h = harness({ offDomain: unwritten(moment, reason), crisisPager: crisis.pager });
+      await expect(routeChannelMessage(h.deps, turn)).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+      expect(h.transport.bodies()).toEqual([]);
+    }
+
+    const at = {
+      where: 'router moment',
+      inboundId: turn.provider_message_id,
+      familyId: turn.family_id,
+      parentUserId: turn.parent_user_id,
+    };
+    expect(crisis.paged).toEqual([
+      { kind: 'mental', reason: 'model_failed', writes: 2, ...at },
+      { kind: 'emergency', reason: 'client_unavailable', writes: 0, ...at },
+    ]);
+    expect(crisis.recorded).toEqual(crisis.paged);
+
+    // Positive control: a could-not-answer moment is not a crisis. It defers and pages nobody.
+    const plain = harness({
+      offDomain: unwritten('could_not_answer', 'model_failed'),
+      crisisPager: crisis.pager,
+    });
+    await expect(routeChannelMessage(plain.deps, turn)).rejects.toMatchObject({
+      reason: 'moment_unwritten',
+    });
+    expect(crisis.paged).toHaveLength(2);
   });
 
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
@@ -5608,6 +5692,83 @@ describe('the reply row, written to a real database', () => {
       expect(elsewhere.said).toEqual(['coach says hi']);
       expect(await keptAsks(parent.familyId)).toEqual([
         { ...ASKED, chat: 'chat-own', direction: 'out' },
+      ]);
+    });
+  });
+
+  /** The production wiring: no `crisisPager` in the deps, so the router's default (the
+   * real failure-page pager on this turn's database) runs. Only the Slack post is faked. */
+  describe('a crisis moment nobody could write, through the default pager', () => {
+    const WEBHOOK = 'https://hooks.example.test/ops';
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("pages #ops once and leaves the claim and the texting parent's audit row", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+        if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+        return new Response('ok', { status: 200 });
+      });
+      const { h, familyId, parentUserId, turn } = await onRealDatabase(db, {
+        offDomain: {
+          async consider() {
+            return {
+              status: 'unwritten' as const,
+              moment: 'mental_crisis' as const,
+              reason: 'model_failed',
+              lane: 'safety_critical' as const,
+              category: 'other' as const,
+            };
+          },
+        },
+      });
+      h.deps.crisisPager = undefined;
+
+      await expect(routeChannelMessage(h.deps, turn())).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+
+      expect(h.transport.bodies()).toEqual([]);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain('kind mental.');
+      expect(posted[0]).toContain('where router_moment.');
+      expect(posted[0]).toContain('reason model_failed.');
+      expect(posted[0]).toContain('writes 2.');
+      const claims = await db.database
+        .select({ count: schema.rateLimits.count })
+        .from(schema.rateLimits)
+        .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+      expect(claims).toEqual([{ count: 1 }]);
+      const audit = await db.database
+        .select({
+          familyId: schema.auditLog.familyId,
+          targetId: schema.auditLog.targetId,
+          after: schema.auditLog.after,
+        })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, CRISIS_UNANSWERED_AUDIT_ACTION));
+      expect(audit).toEqual([
+        {
+          familyId,
+          targetId: parentUserId,
+          after: { kind: 'mental', where: 'router moment', reason: 'model_failed', writes: 2 },
+        },
       ]);
     });
   });
