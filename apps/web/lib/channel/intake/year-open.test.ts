@@ -207,7 +207,7 @@ describe('collectYearOpenLines', () => {
     const exact = await collectYearOpenLines({
       civic: [],
       children: [wren],
-      areaCoarse: 'L7G',
+      areaCoarse: null,
       finder: { find },
       familyId: 'fam',
     });
@@ -219,7 +219,7 @@ describe('collectYearOpenLines', () => {
     const derived = await collectYearOpenLines({
       civic: [],
       children: [{ ...wren, dobPrecision: 'derived' }],
-      areaCoarse: 'L7G',
+      areaCoarse: null,
       finder: { find },
       familyId: 'fam',
     });

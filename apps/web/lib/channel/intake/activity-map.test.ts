@@ -285,17 +285,17 @@ describe('collectActivityMap', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const { finder } = finderWith({
       parent_baby: [
-        pick('Baby rhyme circle', { ageFit: 'Ages 0-1' }),
-        pick('Toddler gym', { ageFit: '18 months - 3 years' }),
-        pick('Family fair', { ageFit: 'All ages' }),
-        pick('Library play', { ageFit: 'see site' }),
+        pick('Baby rhyme circle', { ageFit: 'Ages 0-1', sourceName: 'Town' }),
+        pick('Toddler gym', { ageFit: '18 months - 3 years', sourceName: 'Town' }),
+        pick('Family fair', { ageFit: 'All ages', sourceName: 'Town' }),
+        pick('Library play', { ageFit: 'see site', sourceName: 'Town' }),
       ],
-      swimming: [pick('Infant swim', { ageFit: 'Ages 0-1' })],
+      swimming: [pick('Infant swim', { ageFit: 'Ages 0-1', sourceName: 'Town' })],
     });
     const map = await collectActivityMap({
       finder,
       children: [{ name: 'Wren', ageMonths: 18, dobPrecision: 'exact' }],
-      areaCoarse: 'M5V',
+      areaCoarse: null,
       civic: [],
       familyId: FAMILY,
     });
