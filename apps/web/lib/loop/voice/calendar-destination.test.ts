@@ -88,6 +88,13 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a tel link', destination: 'tel:+14165550199' },
   { row: 'an sms short code', destination: 'sms:55501' },
   { row: 'a facetime handle', destination: 'facetime:swimdesk' },
+  { row: 'a facetime-audio handle', destination: 'facetime-audio:swimdesk' },
+  ...['\u2212', '\u207B', '\u2796', '\u2043', '\u02D7', '\u30FC', '\u2022', '\u2219'].map(
+    (sep) => ({
+      row: `a phone joined by U+${(sep.codePointAt(0) as number).toString(16).toUpperCase()}`,
+      destination: `416${sep}555${sep}0199`,
+    }),
+  ),
   ...['\u034F', '\uFE0F', '\u{E0100}', '\u180B', '\u17B4'].flatMap((mark) => {
     const hex = (mark.codePointAt(0) as number).toString(16).toUpperCase();
     return [
@@ -121,6 +128,8 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
   { row: 'an emoji with a variation selector', words: 'Picnic \u2600\uFE0F' },
+  { row: 'a scheme name inside a word', words: 'Hotel:Lobby' },
+  { row: 'a scheme name with nothing after it', words: 'Swim (bring tel:)' },
 ];
 
 /** A writer at the client port: answers every call with the text `write` builds from the facts. */
@@ -410,6 +419,16 @@ const NOV_23: EventAt = {
   when: 'Mon, Nov 23 at 11:30 PM',
 };
 
+/** Thu, Jul 23 2026, 10:30 AM in Denver: the start every invite and cancel request above uses. */
+const JUL_23: EventAt = { startsAt: STARTS, timeZone: TIME_ZONE, when: WHEN };
+
+/** Mon, Dec 21 2026, 10:00 AM in Denver. */
+const DEC_21: EventAt = {
+  startsAt: new Date('2026-12-21T17:00:00.000Z'),
+  timeZone: TIME_ZONE,
+  when: 'Mon, Dec 21 at 10:00 AM',
+};
+
 /** Mon, Jan 12 2026, 10:00 AM in Denver. */
 const JAN_12: EventAt = {
   startsAt: new Date('2026-01-12T17:00:00.000Z'),
@@ -466,6 +485,11 @@ const PHONES: readonly string[] = [
   '202 607 2314:30',
   '٤١٦ ٥٥٥ ٠١٩٩',
   '४१६ ५५५ ०१९९',
+  '10:5550199',
+  '2031-2032',
+  '2026-11-23 2026-11-23',
+  '2026-27 4 1',
+  '101 2026-11-23',
 ];
 
 const FACTS: readonly string[] = [
@@ -478,6 +502,9 @@ const FACTS: readonly string[] = [
   '11.23.2026',
   '2026-11-23 23:30',
   'Level 3 Fall 2026',
+  'Grade 10 2026-11-23 10:30',
+  '10:30-11:30 2026-11-23',
+  '2026-11-23 14',
 ];
 
 describe('VIL-588 · a run of 7+ digits is a phone unless it is one calendar fact of this event', () => {
@@ -502,6 +529,23 @@ describe('VIL-588 · a run of 7+ digits is a phone unless it is one calendar fac
     expect(v.cancelTitle.status).toBe('composed');
     expect([v.inviteText, v.cancelText]).toEqual([false, false]);
     expect(await verdicts('Session 2 2026-01-12', NOV_23)).toEqual(HELD);
+  });
+
+  it('a clock only counts with no digit before it: 2314:30 is a phone beside the date', async () => {
+    expect(await verdicts('2026-07-2314:30', JUL_23)).toEqual(HELD);
+    const control = await verdicts('2026-07-23 14:30', JUL_23);
+    expect([control.inviteTitle.status, control.cancelTitle.status]).toEqual([
+      'composed',
+      'composed',
+    ]);
+    expect([control.inviteText, control.cancelText]).toEqual([false, false]);
+  });
+
+  it('an N11 area code is no North American number, so the date and its chunk are sent', async () => {
+    const v = await verdicts('21.12.2026 34', DEC_21);
+    expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);
+    expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    expect(await verdicts('21.12.2026 34', NOV_23)).toEqual(HELD);
   });
 });
 

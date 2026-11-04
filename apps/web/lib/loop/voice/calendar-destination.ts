@@ -19,6 +19,12 @@ export type DestinationShape = 'scheme' | 'domain' | 'email' | 'phone';
  */
 const LOOKALIKE_DOTS = /[\u0701\u0702\uA60E\u{10A50}\u{1D16D}]/gu;
 
+/**
+ * Dashes that are not \p{Pd}, so a dial run would end at them: minus signs (NFKC turns the
+ * super- and subscript minus into U+2212), the hyphen bullet and the prolonged sound mark.
+ */
+const LOOKALIKE_DASHES = /[\u02D7\u2043\u2212\u2796\u30FC]/gu;
+
 const IDEOGRAPHIC_STOP = '\u3002';
 
 const CJK =
@@ -35,7 +41,8 @@ function normalize(raw: string, stops: StopReading): string {
   const folded = raw
     .normalize('NFKC')
     .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
-    .replace(LOOKALIKE_DOTS, '.');
+    .replace(LOOKALIKE_DOTS, '.')
+    .replace(LOOKALIKE_DASHES, '-');
   if (stops === 'title') return folded.split(IDEOGRAPHIC_STOP).join('.');
   const chars = Array.from(folded);
   return chars
@@ -57,7 +64,8 @@ const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
   { shape: 'scheme', pattern: /[a-z][a-z0-9+.-]*:\/\//iu },
   {
     shape: 'scheme',
-    pattern: /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime):(?!\s)/iu,
+    pattern:
+      /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime|facetime-audio):(?![\s\p{Pe}\p{Pf}]|$)/iu,
   },
   { shape: 'email', pattern: /[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
   { shape: 'domain', pattern: /[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
@@ -73,8 +81,8 @@ export interface EventDate {
 /** An hour, a colon and two minute digits, with no digit on either side ("2314:30" is no clock). */
 const CLOCK = /(?<!\p{Nd})\p{Nd}{1,2}:\p{Nd}{2}(?!\p{Nd})/gu;
 
-/** Separators a dialer skips. ':' and '/' are not among them. */
-const DIAL_RUN = /(?:\+[\s.()\p{Pd}_·‧]*)?\p{Nd}(?:[\s.()\p{Pd}_·‧]*\p{Nd})*/gu;
+/** Separators a dialer skips, bullets among them. ':' and '/' are not. */
+const DIAL_RUN = /(?:\+[\s.()\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s.()\p{Pd}_·‧•∙]*\p{Nd})*/gu;
 
 const MIN_PHONE_DIGITS = 7;
 
