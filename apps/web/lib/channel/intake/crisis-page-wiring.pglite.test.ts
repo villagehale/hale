@@ -168,18 +168,30 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
       },
     ]);
 
-    // Neither History nor the family-wide export shows it: no other adult in the
-    // household reads one parent's crisis. The loader with internal rows on does see it
-    // (positive control: the row is there to be left out).
+    // Neither History nor another adult's export shows it: no other adult in the
+    // household reads one parent's crisis. The parent it is about gets it in their own
+    // copy (right of access), and the loader with internal rows on sees it.
     const sentence = trailVerb(CRISIS_UNANSWERED_AUDIT_ACTION).sentence;
     expect(sentence).not.toBe('recorded an update');
     const history = await loadTrailForFamily(db.database, familyId);
     expect(history.some((row) => row.summary.includes(sentence))).toBe(false);
-    const copy = await assembleFamilyExport(db.database, familyId, {
+    const [co] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:co-parent-wiring', name: 'Robin' })
+      .returning({ id: schema.users.id });
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: co?.id as string, role: 'co_parent' });
+    const other = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: co?.id as string,
+      now: NOW,
+    });
+    expect(other.trail.some((row) => row.summary.includes(sentence))).toBe(false);
+    const own = await assembleFamilyExport(db.database, familyId, {
       actorUserId: parentUserId,
       now: NOW,
     });
-    expect(copy.trail.some((row) => row.summary.includes(sentence))).toBe(false);
+    expect(own.trail.filter((row) => row.summary.includes(sentence))).toHaveLength(1);
     const internal = await loadTrailForFamily(db.database, familyId, NO_TEEN_UNLOCKS, {
       includeInternal: true,
     });
