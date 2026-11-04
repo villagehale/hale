@@ -4,7 +4,7 @@ import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
 import { YEAR_OPEN_SUBJECT, collectYearOpenLines, yearOpenQuery } from './year-open';
 
-const SEB = { name: 'Seb', ageMonths: 17 };
+const SEB = { name: 'Seb', ageMonths: 17, dobPrecision: 'derived' as const };
 
 describe('yearOpenQuery', () => {
   it('asks for the kids year in Halton Hills, with the stage beside the subject', () => {
@@ -144,7 +144,7 @@ describe('collectYearOpenLines', () => {
     expect(YEAR_FIND_CAP).toBe(3);
   });
 
-  it('ranks a stage fit first and still keeps another category', async () => {
+  it('leaves out a pick outside every child age and lets civic take its room', async () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time')],
       children: [SEB],
@@ -162,19 +162,19 @@ describe('collectYearOpenLines', () => {
       },
       familyId: 'fam',
     });
+    // ages 8-12 is 96..144 months; 17 + 6 < 96.
     expect(opened.lines.map((line) => line.split(' (')[0])).toEqual([
       'Parent and tot swim',
       'Saturday: Story time',
-      'U12 soccer tryouts',
     ]);
-    expect(opened.titles).toEqual(['Parent and tot swim', 'Story time', 'U12 soccer tryouts']);
+    expect(opened.titles).toEqual(['Parent and tot swim', 'Story time']);
     expect(opened.titles.join('\n')).not.toContain('Saturday:');
   });
 
   it('does not sink an older sibling behind the youngest stage', async () => {
     const opened = await collectYearOpenLines({
       civic: [],
-      children: [SEB, { name: 'Jo', ageMonths: 96 }],
+      children: [SEB, { name: 'Jo', ageMonths: 96, dobPrecision: 'derived' }],
       areaCoarse: 'L7G',
       finder: {
         async find() {
@@ -191,6 +191,41 @@ describe('collectYearOpenLines', () => {
     });
     expect(opened.lines[0]).toContain('U12 soccer tryouts');
     expect(opened.lines[1]).toContain('Parent and tot swim');
+  });
+
+  it('keeps only picks whose age band holds a child, and logs the drop as a count', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const find = async () => ({
+      found: true as const,
+      picks: [
+        webPick('Baby rhyme circle', 'Ages 0-1'),
+        webPick('Toddler gym', '18 months - 3 years'),
+        webPick('Family fair', 'All ages'),
+      ],
+    });
+    const wren = { name: 'Wren', ageMonths: 18, dobPrecision: 'exact' as const };
+    const exact = await collectYearOpenLines({
+      civic: [],
+      children: [wren],
+      areaCoarse: 'L7G',
+      finder: { find },
+      familyId: 'fam',
+    });
+    // Ages 0-1 is 0..12 months and 18 > 12.
+    expect(exact.titles).toEqual(['Toddler gym', 'Family fair']);
+    const logged = info.mock.calls.find((call) => call[1] === 'intake year find');
+    expect(logged?.[0]).toEqual({ familyId: 'fam', picks: 3, droppedAge: 1 });
+
+    const derived = await collectYearOpenLines({
+      civic: [],
+      children: [{ ...wren, dobPrecision: 'derived' }],
+      areaCoarse: 'L7G',
+      finder: { find },
+      familyId: 'fam',
+    });
+    // 12 + 6 >= 18: a derived age keeps it.
+    expect(derived.titles).toEqual(['Baby rhyme circle', 'Toddler gym', 'Family fair']);
+    info.mockRestore();
   });
 
   it('keeps a kind the subject never named', async () => {
