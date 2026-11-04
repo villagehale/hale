@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
@@ -487,6 +487,34 @@ export async function noteGroupSyncConversation(
     );
 }
 
+/** Close still-open syncs unsent and write their one body-free audit row, in one transaction. */
+async function closeSyncsUnsent(
+  database: Database,
+  input: {
+    familyId: string;
+    reason: GroupHoldReason | 'legacy_channel' | 'teen_withheld';
+    now: Date;
+    rows: SQL;
+  },
+): Promise<void> {
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const closed = await tx
+      .update(schema.groupDecisionSync)
+      .set({ flushedAt: input.now })
+      .where(and(input.rows, isNull(schema.groupDecisionSync.flushedAt)))
+      .returning({ id: schema.groupDecisionSync.id });
+    if (closed.length === 0) return;
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'group_decision_sync_closed_unsent',
+      targetTable: 'group_decision_sync',
+      after: { reason: input.reason, count: closed.length },
+    });
+  });
+}
+
 /**
  * Send the waiting decisions whose 1:1 has been quiet. One bubble, every due
  * line, never a second bubble for the same sitting. Quiet hours, or a participant
@@ -539,29 +567,16 @@ export async function flushGroupDecisionSyncs(
       continue;
     }
     if (target.channel !== 'group') {
-      await database.transaction(async (rawTx) => {
-        const tx = rawTx as unknown as Database;
-        const closed = await tx
-          .update(schema.groupDecisionSync)
-          .set({ flushedAt: input.now })
-          .where(
-            and(
-              eq(schema.groupDecisionSync.familyId, familyId),
-              isNull(schema.groupDecisionSync.flushedAt),
-            ),
-          )
-          .returning({ id: schema.groupDecisionSync.id });
-        if (closed.length === 0) return;
-        await tx.insert(schema.auditLog).values({
-          familyId,
-          actor: 'system',
-          actionTaken: 'group_decision_sync_closed_unsent',
-          targetTable: 'group_decision_sync',
-          after: { reason: target.reason, count: closed.length },
-        });
+      // No reason means no group to hear it at all: the kill switch, or no chat claimed now.
+      const reason = target.reason ?? 'legacy_channel';
+      await closeSyncsUnsent(database, {
+        familyId,
+        reason,
+        now: input.now,
+        rows: eq(schema.groupDecisionSync.familyId, familyId),
       });
       console.info(
-        { familyId, queued: queued.length, reason: target.reason },
+        { familyId, queued: queued.length, reason },
         'family outbound: sync closed unsent',
       );
       continue;
@@ -571,10 +586,12 @@ export async function flushGroupDecisionSyncs(
       .filter((row) => namesTeen(`${row.activity} ${row.kid}`, teens))
       .map((row) => row.id);
     if (withheld.length > 0) {
-      await database
-        .update(schema.groupDecisionSync)
-        .set({ flushedAt: input.now })
-        .where(inArray(schema.groupDecisionSync.id, withheld));
+      await closeSyncsUnsent(database, {
+        familyId,
+        reason: 'teen_withheld',
+        now: input.now,
+        rows: inArray(schema.groupDecisionSync.id, withheld),
+      });
       console.info({ familyId, withheld: withheld.length }, 'family outbound: teen sync withheld');
     }
     const rows = queued.filter((row) => !withheld.includes(row.id));

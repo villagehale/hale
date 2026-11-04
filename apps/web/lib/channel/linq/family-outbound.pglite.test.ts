@@ -414,6 +414,92 @@ describe('a 1:1 decision syncs the group', () => {
     expect(body).not.toMatch(/hockey|debate/);
   });
 
+  it("a teen-withheld close writes one body-free closed-unsent row, beside the younger child's sent line", async () => {
+    const seeded = await seedHousehold(GROUP);
+    await seedChild(db.database, seeded.familyId, 'Noor', 14 * 12, undefined, NOW);
+    await seedChild(db.database, seeded.familyId, 'Maya', 4 * 12, undefined, NOW);
+    const http = wire();
+    await db.database.insert(schema.groupDecisionSync).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: 'passed',
+      activity: 'debate',
+      kid: 'Noor',
+      flushAfter: NOW,
+      createdAt: NOW,
+    });
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: { decision: 'picked', activity: 'swim', kid: 'Maya', day: 'Tuesday', time: '4:00' },
+      now: NOW,
+    });
+
+    const flushed = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: http.fetch,
+    });
+
+    expect(flushed.sent).toBe(1);
+    const rows = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, seeded.familyId));
+    expect(rows.filter((row) => row.actionTaken === 'group_decision_sync_closed_unsent')).toEqual([
+      {
+        actionTaken: 'group_decision_sync_closed_unsent',
+        after: { reason: 'teen_withheld', count: 1 },
+      },
+    ]);
+    expect(rows.map((row) => row.actionTaken)).toContain('group_decision_sync_sent');
+    expect(JSON.stringify(rows)).not.toMatch(/Noor|debate/);
+  });
+
+  it('a sync closed unsent on the legacy channel names why: the kill switch, or the chat cleared after queueing', async () => {
+    const off = await seedHousehold(GROUP);
+    const cleared = await seedHousehold('chat-home-cleared');
+    const http = wire();
+    const waitingFor = (seeded: { familyId: string; parentUserId: string }) =>
+      db.database.insert(schema.groupDecisionSync).values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        originChatId: PERSONAL,
+        decision: 'passed',
+        activity: 'swim',
+        kid: 'Maya',
+        flushAfter: NOW,
+        createdAt: NOW,
+      });
+    const closedRows = (familyId: string) =>
+      db.database
+        .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, familyId));
+    const legacyClose = [
+      {
+        actionTaken: 'group_decision_sync_closed_unsent',
+        after: { reason: 'legacy_channel', count: 1 },
+      },
+    ];
+
+    await waitingFor(off);
+    vi.stubEnv('LINQ_GROUP_COPARENT', 'off');
+    await flushGroupDecisionSyncs(db.database, { now: NOW, fetch: http.fetch });
+    expect(await closedRows(off.familyId)).toEqual(legacyClose);
+
+    vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+    await waitingFor(cleared);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, cleared.familyId));
+    await flushGroupDecisionSyncs(db.database, { now: NOW, fetch: http.fetch });
+    expect(await closedRows(cleared.familyId)).toEqual(legacyClose);
+    expect(http.linqUrls()).toEqual([]);
+  });
+
   it('queues one row for a repeated pick, and does not sync it again the same day', async () => {
     const seeded = await seedHousehold(GROUP);
     const http = wire();
@@ -567,7 +653,7 @@ describe('a 1:1 decision syncs the group', () => {
     );
   });
 
-  it('a participant read Linq refuses for good (404) closes the sync unsent, named participants_unreadable', async () => {
+  it('a participant read Linq refuses for good (404, Linq 2001) closes the sync unsent, named participants_unreadable', async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {
       familyId: seeded.familyId,
@@ -584,7 +670,7 @@ describe('a 1:1 decision syncs the group', () => {
     });
     const linqUrls: string[] = [];
     const gone = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'GET') return Response.json({}, { status: 404 });
+      if (init?.method === 'GET') return Response.json({ error: { code: 2001 } }, { status: 404 });
       linqUrls.push(String(url));
       return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
     });
@@ -662,7 +748,7 @@ describe('a 1:1 decision syncs the group', () => {
       flushAfter: new Date(sweptAt.getTime() + 5 * 60 * 1000),
       createdAt: sweptAt,
     });
-    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    const gone = vi.fn(async () => Response.json({ error: { code: 2001 } }, { status: 404 }));
     vi.stubGlobal('fetch', gone);
 
     await flushGroupDecisionSyncs(db.database, {
@@ -697,7 +783,7 @@ describe('a 1:1 decision syncs the group', () => {
       },
       now: NOW,
     });
-    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    const gone = vi.fn(async () => Response.json({ error: { code: 2001 } }, { status: 404 }));
     vi.stubGlobal('fetch', gone);
     const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
 
