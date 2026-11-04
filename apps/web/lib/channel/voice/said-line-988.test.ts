@@ -305,6 +305,66 @@ describe('the reply is in the script of its language', () => {
   });
 });
 
+// One letter of the script is not enough: most of the reply's letters are in it, counted
+// after NFKC with format characters gone, the crisis line's own name and the numbers left
+// out. It tells writing systems apart only; fr, es and en are all Latin.
+describe('the reply is mostly in the script of its language', () => {
+  it.each([
+    ['an English call to act with one Arabic word', 'mental', 'Call 988 الآن', 'ar'],
+    [
+      'an English reply ending in an Arabic phrase',
+      'mental',
+      'Please call or text 988 right now. أنا هنا',
+      'ar',
+    ],
+    ['an English reply with one Hindi word', 'mental', 'Please call or text 988 now. मदद', 'hi'],
+    ['a Cyrillic reply with one Arabic word', 'emergency', 'Позвоните 911 الآن', 'ar'],
+    ['English split by zero-width spaces', 'mental', 'C​all or text 988 n​ow ​الآن', 'ar'],
+    [
+      'full-width English with one Han character',
+      'mental',
+      'Ｃａｌｌ ｏｒ ｔｅｘｔ 988 ｎｏｗ 请',
+      'zh',
+    ],
+    ['English around the line name', 'mental', 'Call the Suicide Crisis Helpline 988 الآن', 'ar'],
+  ] as const)('%s is wrong_script', (_name, kind, text, language) => {
+    expect(crisisReplyViolation(kind, text, language)).toBe('wrong_script');
+  });
+
+  it.each([
+    [
+      'Hindi naming the US line in English',
+      'mental',
+      'आप अकेले नहीं हैं: 988 Suicide & Crisis Lifeline को 988 पर कॉल करें',
+      'hi',
+    ],
+    [
+      'Chinese naming the US line in full-width letters',
+      'mental',
+      '请拨打988 Ｓｕｉｃｉｄｅ ＆ Ｃｒｉｓｉｓ Ｌｉｆｅｌｉｎｅ',
+      'zh',
+    ],
+    [
+      'Arabic naming the Canada line split by zero-width spaces',
+      'mental',
+      'اتصل أو أرسل إلى 988، 9-8-8 Sui​cide Cri​sis Help​line',
+      'ar',
+    ],
+  ] as const)('%s passes', (_name, kind, text, language) => {
+    expect(crisisReplyViolation(kind, text, language)).toBeNull();
+  });
+
+  it('a reply of only the line name and its number is not in any language', () => {
+    expect(crisisReplyViolation('mental', '9-8-8 Suicide Crisis Helpline 988', 'en')).toBe(
+      'wrong_script',
+    );
+    // Positive control: one word of the language around it is enough.
+    expect(
+      crisisReplyViolation('mental', 'Call the 9-8-8 Suicide Crisis Helpline 988', 'en'),
+    ).toBeNull();
+  });
+});
+
 // A stop or start confirmation is the reader's text, written while it read the parent's
 // words. Its job is to say stop or start, so any number (an hours form too) or link in
 // it is refused.
