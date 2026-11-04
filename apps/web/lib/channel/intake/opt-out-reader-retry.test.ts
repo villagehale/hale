@@ -11,6 +11,20 @@ const { createOptOutReader, readReplyOnce } = await import('./opt-out-reader');
 
 const STOP = { value: { intent: 'stop', verbatim: 'leave me be', confirmation: 'Okay, done.' } };
 
+/** The ops pager port, recording what it was asked to page. */
+function recordingPager() {
+  const pages: unknown[] = [];
+  return {
+    pages,
+    pager: {
+      page: async (page: unknown) => {
+        pages.push(page);
+        return 'paged' as const;
+      },
+    },
+  };
+}
+
 describe('#868 opt-out reader: one retry, then null', () => {
   afterEach(() => {
     forceToolJson.mockReset();
@@ -20,26 +34,27 @@ describe('#868 opt-out reader: one retry, then null', () => {
   it('retries once after a failure and returns the second read', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     forceToolJson.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(STOP);
-    const reading = await createOptOutReader({} as never).read({
+    const { pages, pager } = recordingPager();
+    const reading = await createOptOutReader({} as never, pager).read({
       text: 'leave me be',
       language: null,
     });
     expect(reading?.intent).toBe('stop');
     expect(forceToolJson).toHaveBeenCalledTimes(2);
+    expect(pages).toEqual([]);
   });
 
-  it('returns null after two failures and logs it as urgent', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('returns null after two failures and pages #ops once, without the text', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     forceToolJson.mockRejectedValue(new Error('down'));
-    const reading = await createOptOutReader({} as never).read({
+    const { pages, pager } = recordingPager();
+    const reading = await createOptOutReader({} as never, pager).read({
       text: 'leave me be',
       language: null,
     });
     expect(reading).toBeNull();
     expect(forceToolJson).toHaveBeenCalledTimes(2);
-    expect(error.mock.calls.some(([meta]) => (meta as { urgent?: boolean })?.urgent === true)).toBe(
-      true,
-    );
+    expect(pages).toEqual([{ site: 'opt_out_unread', facts: {} }]);
   });
 
   it('does not remember a failed read: the next ask reads again', async () => {

@@ -28,7 +28,7 @@ import {
   mintEventInviteLink,
   toInviteEvent,
 } from '~/lib/loop/ics-invite';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { recordGroupPlanHold } from './redrive';
 import {
@@ -651,18 +651,10 @@ export function productionGroupPlanReportPorts(
         targetId: plan.placedByActionId,
         after: { familyEventId: plan.familyEventId, change: plan.change },
       });
-      console.error(
-        {
-          urgent: true,
-          familyId: plan.familyId,
-          familyEventId: plan.familyEventId,
-          change: plan.change,
-        },
-        'URGENT: group plan text unwritten after a smaller model - page #ops now',
-      );
-      const page = await postOpsSlack(
-        `Hale group plan: the ${plan.change} text for a family group could not be written, so nothing was sent to the group.`,
-      );
+      const page = await pageOps(database, {
+        site: 'group_plan_unwritten',
+        facts: { change: plan.change },
+      });
       console.warn({ page }, 'group plan report: ops paged');
     },
     hold: (plan) => recordGroupPlanHold(database, plan, clock()),

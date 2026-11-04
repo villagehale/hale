@@ -1859,9 +1859,9 @@ export async function speakFriend(
         retry?: FriendVoiceInput['retry'];
       }
   > => {
-    // The full attempt still has the short retry. An error log here is what
-    // pages #ops, so a refusal that can still recover is a warning. The short
-    // attempt is the last one: its refusal is the error, and failed() pages.
+    // The full attempt still has the short retry, so a refusal that can still
+    // recover is a warning. The short attempt is the last one: its refusal is the
+    // error, and failed() pages #ops through page() (a log alone pages nobody).
     const terminal = prompt === 'short';
     const noteRefusal = (fields: Record<string, unknown>, kind: 'unusable' | 'compose'): void => {
       if (terminal) {
