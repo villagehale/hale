@@ -3013,6 +3013,60 @@ describe("a late stop applies at once; its confirmation waits for the family's o
     expect(await heldRow('pm-day')).toBeNull();
   }, 30_000);
 
+  it('a family that stored only its coarse area keeps its clock: confirmed at 14:00 local', async () => {
+    const a = await parent(PHONE_A);
+    await db.database
+      .update(schema.families)
+      .set({ areaCoarse: EASTERN_FSA })
+      .where(eq(schema.families.id, a.familyId));
+    await inboundRow(a, 'pm-fsa', STOP, LOCAL('13:40'));
+    await hold(PHONE_A, 'pm-fsa', LOCAL('13:40'));
+    const transport = new FakeTransport();
+
+    const result = await tick(reader().reader, transport, LOCAL('14:00'));
+
+    expect(result.outcomes.stopped_confirmation_zone_unknown).toBe(0);
+    expect(result.outcomes.stopped).toBe(1);
+    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
+      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
+    ]);
+  }, 30_000);
+
+  it('a morning confirmation that left is never sent again when its ledger write throws', async () => {
+    const a = await parent(PHONE_A, { place: EASTERN_POSTAL });
+    await inboundRow(a, 'pm-once', STOP, LOCAL('02:40'));
+    await hold(PHONE_A, 'pm-once', LOCAL('02:40'));
+    const transport = new FakeTransport();
+    const r = reader();
+    await tick(r.reader, transport, LOCAL('03:00'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // A real database fault on the outbound ledger row, after the confirmation has left.
+    await db.exec(`
+      create function refuse_outbound_ledger() returns trigger language plpgsql
+        as $$ begin
+          if new.direction = 'out' then raise exception 'refused for the test'; end if;
+          return new;
+        end $$;
+      create trigger refuse_outbound_ledger before insert on channel_messages
+        for each row execute function refuse_outbound_ledger();
+    `);
+    try {
+      await tick(r.reader, transport, LOCAL('08:00'));
+      await tick(r.reader, transport, new Date(LOCAL('08:00').getTime() + heldReadBackoff(3)));
+    } finally {
+      await db.exec(
+        'drop trigger refuse_outbound_ledger on channel_messages; drop function refuse_outbound_ledger();',
+      );
+    }
+
+    // Positive control: the fault fired, so no outbound ledger row was written.
+    expect(await outboundFor(a.parentUserId)).toEqual([]);
+    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
+      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
+    ]);
+    expect(await heldRow('pm-once')).toBeNull();
+  }, 30_000);
+
   it('a family with no place has no clock: revoked at once, the confirmation held as zone_unknown', async () => {
     const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-nozone', STOP, LOCAL('13:40'));

@@ -552,22 +552,31 @@ async function owedConfirmation(
     );
     return 'stopped_confirmation_failed';
   }
+  // Sent: the row goes first, so a trace that throws below never sends it again.
+  await releaseHeldMessage(database, row.providerMessageId);
   if (held.familyId && held.authorUserId) {
     const channel =
       sent.transport === 'imessage' || held.inbound.transport === 'imessage' ? 'imessage' : 'sms';
-    await writeChannelMessage(
-      database,
-      { familyId: held.familyId, parentUserId: held.authorUserId },
-      {
-        direction: 'out',
-        body,
-        providerId: sent.providerMessageId,
-        at: now.toISOString(),
-        channel,
-        chatId: channel === 'imessage' ? (sent.chatId ?? held.inbound.chatId ?? null) : null,
-      },
-      now,
-    );
+    try {
+      await writeChannelMessage(
+        database,
+        { familyId: held.familyId, parentUserId: held.authorUserId },
+        {
+          direction: 'out',
+          body,
+          providerId: sent.providerMessageId,
+          at: now.toISOString(),
+          channel,
+          chatId: channel === 'imessage' ? (sent.chatId ?? held.inbound.chatId ?? null) : null,
+        },
+        now,
+      );
+    } catch (err) {
+      console.error(
+        { outcome: 'stopped', err: errName(err) },
+        'opt-out recovery: late_stop_confirmation_ledger_failed',
+      );
+    }
   }
   return 'stopped';
 }
@@ -1005,7 +1014,7 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
       const transport = message.channel === 'imessage' ? 'imessage' : 'sms';
       // Never families.country_code: it defaults to CA, which would be a guess.
       const [family] = await database
-        .select({ postalCode: schema.families.postalCode })
+        .select({ postalCode: schema.families.postalCode, areaCoarse: schema.families.areaCoarse })
         .from(schema.families)
         .where(eq(schema.families.id, message.familyId))
         .limit(1);
@@ -1015,7 +1024,7 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
         authorUserId: message.parentUserId,
         familyId: message.familyId,
         region: crisisRegionForPlace([family?.postalCode]),
-        timeZone: postalZone(family?.postalCode ?? null),
+        timeZone: placeZone(family),
         inbound: {
           from: phoneE164,
           body: message.body,
@@ -1081,18 +1090,25 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
   return null;
 }
 
-/** The zone a stored postal place gives; null for none, or for a place that is not a code. */
-function postalZone(postalCode: string | null): string | null {
-  return parseIntakePostal(postalCode)?.timezone ?? null;
+/** The zone a family's stored place gives: its postal code, else its coarse area (a
+ * family provisioned from an FSA alone stores only that). Null when neither is a code. */
+function placeZone(
+  family: { postalCode: string | null; areaCoarse: string | null } | undefined,
+): string | null {
+  for (const token of [family?.postalCode, family?.areaCoarse]) {
+    const zone = parseIntakePostal(token ?? null)?.timezone;
+    if (zone) return zone;
+  }
+  return null;
 }
 
 async function familyZone(database: Database, familyId: string): Promise<string | null> {
   const [family] = await database
-    .select({ postalCode: schema.families.postalCode })
+    .select({ postalCode: schema.families.postalCode, areaCoarse: schema.families.areaCoarse })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
-  return postalZone(family?.postalCode ?? null);
+  return placeZone(family);
 }
 
 /** Something can still text this number: a channel not revoked, or an open intake. */
