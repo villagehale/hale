@@ -126,8 +126,8 @@ const OK = (): GoogleRevokeResult => ({ outcome: 'revoked' });
 const DOWN = (): GoogleRevokeResult => ({ outcome: 'unavailable', status: 503 });
 
 /** Each parent connects their own Google account: the callback stores its key. */
-function accountOf(userId: string): Record<string, unknown> {
-  return { googleAccountKey: `account-of-${userId}` };
+function accountOf(userId: string): string {
+  return `account-of-${userId}`;
 }
 
 async function connect(
@@ -141,7 +141,7 @@ async function connect(
     provider,
     scopes: provider === 'gcal' ? CAL_SCOPES : MAIL_SCOPES,
     tokens,
-    providerMetadata: accountOf(userId),
+    googleAccountKey: accountOf(userId),
   });
   const row = await rowFor(userId, provider);
   if (!row) throw new Error('connection was not saved');
@@ -496,14 +496,14 @@ describe('a connect cancels a pending revoke of the same Google account only, in
     return other.familyId;
   }
 
-  function connectThere(otherFamilyId: string, providerMetadata?: Record<string, unknown>) {
+  function connectThere(otherFamilyId: string, googleAccountKey?: string) {
     return saveConnection(db.database, {
       familyId: otherFamilyId,
       userId: parentUserId,
       provider: 'gcal',
       scopes: CAL_SCOPES,
       tokens: THERE,
-      ...(providerMetadata ? { providerMetadata } : {}),
+      ...(googleAccountKey ? { googleAccountKey } : {}),
     });
   }
 
@@ -512,9 +512,7 @@ describe('a connect cancels a pending revoke of the same Google account only, in
     await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
     const other = await secondHousehold();
 
-    await connectThere(other, { googleAccountKey: 'a-different-account' });
-    // A connect whose account Hale could not read is not the same account either.
-    await connectThere(other);
+    await connectThere(other, 'a-different-account');
 
     expect((await rowFor(parentUserId, 'gcal'))?.pending).not.toBeNull();
     expect(await audits('integration_google_revoke_cancelled')).toEqual([]);

@@ -840,6 +840,25 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(holdNameMock).not.toHaveBeenCalled();
   });
 
+  it("stores the Google account's key in its own field, never in the metadata a sync replaces", async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
+    });
+    readSubMock.mockResolvedValue('google-sub-own');
+    const { googleAccountBlindIndex } = await import('~/lib/crypto/blind-index');
+
+    const res = await callCallback(await minterState());
+
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    const saved = saveConnectionMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(saved.googleAccountKey).toBe(googleAccountBlindIndex('google-sub-own'));
+    expect(JSON.stringify(saved.providerMetadata ?? {})).not.toContain('googleAccountKey');
+  });
+
   it('still connects when profile was not granted, and does not read userinfo', async () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',

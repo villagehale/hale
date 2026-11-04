@@ -32,6 +32,10 @@ export const integrations = pgTable(
     googleRevokePendingEncrypted: text('google_revoke_pending_encrypted'),
     /** When that token was set aside: it is deleted seven days on, answered or not. */
     googleRevokePendingSince: timestamp('google_revoke_pending_since', { withTimezone: true }),
+    /** Blind index of the Google account that granted this row, written by the connect
+     * callback only. Its own column because every sync replaces providerMetadata. Null
+     * when unread: cross-household decisions then fall back to the Hale user (VIL-156). */
+    googleAccountKey: text('google_account_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

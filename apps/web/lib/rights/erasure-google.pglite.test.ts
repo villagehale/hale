@@ -93,7 +93,7 @@ async function connect(
     provider,
     scopes: [],
     tokens: { accessToken: `ya29.${refreshToken}`, refreshToken },
-    ...(googleAccountKey ? { providerMetadata: { googleAccountKey } } : {}),
+    ...(googleAccountKey ? { googleAccountKey } : {}),
   });
 }
 
@@ -425,16 +425,22 @@ describe('erasing one household never revokes a Google account another household
     });
   });
 
-  it('a row whose account Hale never read is revoked, failing toward revocation', async () => {
+  it('a row whose account Hale never read falls back to its owner: kept when they hold a grant elsewhere', async () => {
     const { erased, otherFamilyId } = await twoHouseholds();
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
     await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here');
     await connect(otherFamilyId, erased.coParentUserId, 'gcal', '1//co-there', 'account-x');
     await scheduleAt(erased.familyId, PAST);
 
     const summary = await runDeletionSweep(db.database, NOW, async () => {});
 
-    expect(posted).toEqual(['1//co-here']);
-    expect(summary.google.map((row) => row.google)).toEqual(['revoked']);
+    // Positive control: the unread row of the parent with no other household is revoked.
+    expect(posted).toEqual(['1//erased-cal']);
+    expect(summary.google.map((row) => row.google).sort()).toEqual([
+      'grant_kept_other_household',
+      'revoked',
+    ]);
+    expect(await otherRow(otherFamilyId)).toMatchObject({ status: 'active' });
   });
 
   it("the erased family's own trail row says only that the row ended locally; the reason stays in the return value", async () => {

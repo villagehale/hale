@@ -241,7 +241,7 @@ export async function GET(req: NextRequest) {
       }
       return back(grantStatus, surface, bound.provider);
     }
-    let providerMetadata: Record<string, unknown> | undefined;
+    let googleAccountKey: string | undefined;
     if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
       const sub = await readGoogleAccountSub(tokens.accessToken);
       if (!sub) {
@@ -282,7 +282,7 @@ export async function GET(req: NextRequest) {
           }
           return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
         }
-        providerMetadata = { googleAccountKey: accountKey };
+        googleAccountKey = accountKey;
       }
     }
     ({ connectId } = await saveConnection(database, {
@@ -291,7 +291,7 @@ export async function GET(req: NextRequest) {
       provider: bound.provider,
       scopes,
       tokens,
-      providerMetadata,
+      googleAccountKey,
     }));
     {
       const connected =
@@ -338,7 +338,7 @@ export async function GET(req: NextRequest) {
           familyId: bound.familyId,
           userId: bound.userId,
           accessToken: tokens.accessToken,
-          providerMetadata: providerMetadata ?? {},
+          providerMetadata: {},
         });
         console.info(
           { familyId: bound.familyId, kick: kick.outcome },

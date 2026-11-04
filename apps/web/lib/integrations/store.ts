@@ -90,22 +90,49 @@ export async function saveConnection(
     scopes: string[];
     tokens: OAuthTokens;
     providerMetadata?: Record<string, unknown>;
+    /** The Google account's blind index, when the callback read it. */
+    googleAccountKey?: string;
   },
 ): Promise<{ connectId: string }> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
-  const accountKey = input.providerMetadata?.googleAccountKey;
+  const connecting: GoogleAccountSide = {
+    key: input.googleAccountKey ?? null,
+    userId: input.userId,
+  };
   return database.transaction(async (tx) => {
     // A fresh consent cancels a revoke still waiting from an earlier disconnect of the
     // SAME Google account, in every household: Google grants and revokes per account, so
-    // that retry would end the grant just given. Another account's revoke, or one whose
-    // account is unknown on either side, still runs (VIL-156).
-    if (typeof accountKey === 'string' && accountKey.length > 0) {
+    // that retry would end the grant just given. Another account's revoke still runs
+    // (VIL-156; sameGoogleAccount for a row whose account is unknown).
+    const candidates = await tx
+      .select({
+        id: schema.integrations.id,
+        key: schema.integrations.googleAccountKey,
+        userId: schema.integrations.userId,
+      })
+      .from(schema.integrations)
+      .where(
+        and(
+          isNotNull(schema.integrations.googleRevokePendingEncrypted),
+          connecting.key === null
+            ? eq(schema.integrations.userId, input.userId)
+            : or(
+                eq(schema.integrations.googleAccountKey, connecting.key),
+                eq(schema.integrations.userId, input.userId),
+              ),
+        ),
+      );
+    const sameAccount = candidates.filter((row) => sameGoogleAccount(connecting, row));
+    if (sameAccount.length > 0) {
       const cancelled = await tx
         .update(schema.integrations)
         .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
         .where(
           and(
-            eq(googleAccountKeyOf(), accountKey),
+            inArray(
+              schema.integrations.id,
+              sameAccount.map((row) => row.id),
+            ),
             isNotNull(schema.integrations.googleRevokePendingEncrypted),
           ),
         )
@@ -133,6 +160,19 @@ export async function saveConnection(
         );
       }
     }
+    // The row this connect lands on has ONE pending slot, and a row holding live keys holds
+    // none: a revoke still waiting there now is another account's (the same account was
+    // cancelled above). The upsert clears it, and it is named, never silently overwritten by
+    // this grant's own disconnect later (VIL-156).
+    const superseded = await tx
+      .select({ id: schema.integrations.id })
+      .from(schema.integrations)
+      .where(
+        and(
+          byFamilyUserProvider(input.familyId, input.userId, input.provider),
+          isNotNull(schema.integrations.googleRevokePendingEncrypted),
+        ),
+      );
     const upserted = await tx
       .insert(schema.integrations)
       .values({
@@ -142,6 +182,7 @@ export async function saveConnection(
         scopes: input.scopes,
         oauthTokensEncrypted,
         providerMetadata: input.providerMetadata ?? {},
+        googleAccountKey: connecting.key,
         status: 'active' as const,
         updatedAt: new Date(),
       })
@@ -156,6 +197,9 @@ export async function saveConnection(
           scopes: sqlExcluded('scopes'),
           oauthTokensEncrypted: sqlExcluded('oauth_tokens_encrypted'),
           providerMetadata: sqlExcluded('provider_metadata'),
+          googleAccountKey: sqlExcluded('google_account_key'),
+          googleRevokePendingEncrypted: null,
+          googleRevokePendingSince: null,
           status: sqlExcluded('status'),
           updatedAt: sqlExcluded('updated_at'),
         },
@@ -163,6 +207,20 @@ export async function saveConnection(
       .returning({ id: schema.integrations.id });
     const id = upserted[0]?.id;
     if (!id) throw new Error('saveConnection: integrations upsert returned no row');
+    if (superseded.length > 0) {
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'integration_google_grant_revoke_failed',
+        targetTable: 'integrations',
+        targetId: id,
+        after: { provider: input.provider, outcome: 'superseded' },
+      });
+      console.error(
+        { integrationId: id, provider: input.provider },
+        'google disconnect: superseded',
+      );
+    }
     const [connect] = await tx
       .insert(schema.auditLog)
       .values({
@@ -196,19 +254,15 @@ export async function otherParentHoldsGoogleAccount(
   input: { familyId: string; userId: string; accountKey: string },
 ): Promise<boolean> {
   const rows = await database
-    .select({
-      userId: schema.integrations.userId,
-      familyId: schema.integrations.familyId,
-      providerMetadata: schema.integrations.providerMetadata,
-    })
+    .select({ userId: schema.integrations.userId })
     .from(schema.integrations)
-    .where(eq(schema.integrations.familyId, input.familyId));
-  return rows.some((row) => {
-    if (row.familyId !== input.familyId || !row.userId || row.userId === input.userId) return false;
-    const meta = row.providerMetadata;
-    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
-    return (meta as Record<string, unknown>).googleAccountKey === input.accountKey;
-  });
+    .where(
+      and(
+        eq(schema.integrations.familyId, input.familyId),
+        eq(schema.integrations.googleAccountKey, input.accountKey),
+      ),
+    );
+  return rows.some((row) => row.userId !== null && row.userId !== input.userId);
 }
 
 /** The decrypted tokens for an ACTIVE connection, or null if none/revoked. */
@@ -612,30 +666,48 @@ export async function endGoogleConnectionsLocally(
   return ended.map((row) => ({ id: row.id, provider: row.provider as ConnectorProvider }));
 }
 
-/** The Google account a row was granted by, as the callback stored it (null if unread). */
-export function googleAccountKeyOf() {
-  return sql<string | null>`${schema.integrations.providerMetadata}->>'googleAccountKey'`;
+/** One side of a Google-account comparison: the key the callback read, and the Hale user. */
+export interface GoogleAccountSide {
+  key: string | null;
+  userId: string | null;
 }
 
-/** Which of these Google accounts still hold a live grant in a household other than this
- * one. Keyed on the account, never the Hale user: Google grants and revokes per account. */
-export async function googleAccountsHeldElsewhere(
+/**
+ * Whether two rows were granted by the same Google account. The key decides when both
+ * rows have one (Google grants and revokes per account, not per Hale user). A row whose
+ * key is unknown (a legacy row, or a connect whose identity Hale could not read) falls
+ * back to the Hale user on both sides of the comparison (VIL-156).
+ */
+export function sameGoogleAccount(a: GoogleAccountSide, b: GoogleAccountSide): boolean {
+  if (a.key !== null && b.key !== null) return a.key === b.key;
+  return a.userId !== null && a.userId === b.userId;
+}
+
+/** Every live Google grant in a household other than this one that could share an
+ * account with these rows; {@link sameGoogleAccount} decides which do. */
+export async function googleGrantsHeldElsewhere(
   database: Database,
-  input: { familyId: string; accountKeys: string[] },
-): Promise<Set<string>> {
-  if (input.accountKeys.length === 0) return new Set();
-  const rows = await database
-    .select({ accountKey: googleAccountKeyOf() })
+  input: { familyId: string; rows: GoogleAccountSide[] },
+): Promise<GoogleAccountSide[]> {
+  const keys = [...new Set(input.rows.flatMap((row) => (row.key === null ? [] : [row.key])))];
+  const userIds = [
+    ...new Set(input.rows.flatMap((row) => (row.userId === null ? [] : [row.userId]))),
+  ];
+  if (keys.length === 0 && userIds.length === 0) return [];
+  return database
+    .select({ key: schema.integrations.googleAccountKey, userId: schema.integrations.userId })
     .from(schema.integrations)
     .where(
       and(
-        inArray(googleAccountKeyOf(), input.accountKeys),
+        or(
+          keys.length > 0 ? inArray(schema.integrations.googleAccountKey, keys) : undefined,
+          userIds.length > 0 ? inArray(schema.integrations.userId, userIds) : undefined,
+        ),
         ne(schema.integrations.familyId, input.familyId),
         inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
         isNotNull(schema.integrations.oauthTokensEncrypted),
       ),
     );
-  return new Set(rows.flatMap((row) => (row.accountKey === null ? [] : [row.accountKey])));
 }
 
 /** Ids of every ended row still waiting on Google, least recently asked first: the

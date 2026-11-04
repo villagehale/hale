@@ -11,11 +11,11 @@ import {
   deleteStaleGoogleRevokePending,
   endGoogleConnections,
   endGoogleConnectionsLocally,
-  googleAccountKeyOf,
-  googleAccountsHeldElsewhere,
+  googleGrantsHeldElsewhere,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
   noteGoogleRevokeAttempt,
+  sameGoogleAccount,
 } from './store';
 import {
   type RevokePendingToken,
@@ -620,7 +620,7 @@ export async function endGoogleForFamilyErasure(
       provider: schema.integrations.provider,
       enc: schema.integrations.oauthTokensEncrypted,
       pending: schema.integrations.googleRevokePendingEncrypted,
-      accountKey: googleAccountKeyOf(),
+      key: schema.integrations.googleAccountKey,
     })
     .from(schema.integrations)
     .where(
@@ -631,15 +631,11 @@ export async function endGoogleForFamilyErasure(
     );
   const held = rows.filter((row) => row.enc !== null || row.pending !== null);
   if (held.length === 0) return [];
-  // A row whose account is unknown is revoked: it fails toward revocation.
-  const elsewhere = await googleAccountsHeldElsewhere(db, {
-    familyId,
-    accountKeys: [...new Set(held.flatMap((row) => (row.accountKey ? [row.accountKey] : [])))],
-  });
+  const elsewhere = await googleGrantsHeldElsewhere(db, { familyId, rows: held });
   const localOnly = new Map<string, ErasureGoogleOutcome>();
   for (const row of held) {
     if (row.userId === null) localOnly.set(row.id, 'ended_without_owner');
-    else if (row.accountKey && elsewhere.has(row.accountKey)) {
+    else if (elsewhere.some((other) => sameGoogleAccount(row, other))) {
       localOnly.set(row.id, 'grant_kept_other_household');
     }
   }
