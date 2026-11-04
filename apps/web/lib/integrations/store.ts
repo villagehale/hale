@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
 import {
@@ -349,6 +349,16 @@ function holdingKeys(id: string) {
   return and(eq(schema.integrations.id, id), isNotNull(schema.integrations.oauthTokensEncrypted));
 }
 
+/** True while the row still holds keys: no disconnect has ended it. */
+export async function connectionHoldsKeys(database: Database, id: string): Promise<boolean> {
+  const rows = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(holdingKeys(id))
+    .limit(1);
+  return rows.length > 0;
+}
+
 /** Advance a connection's sync cursor after a SUCCESSFUL sync: persist the new
  * providerMetadata and stamp lastSyncAt. Only ever called once the batch's events
  * are enqueued, so the cursor can't move past un-emitted items. */
@@ -607,4 +617,81 @@ export async function clearGoogleRevokePending(
     )
     .returning({ id: schema.integrations.id });
   return cleared.length > 0;
+}
+
+/**
+ * Delete every pending token older than `cutoff`, on time alone, inside the caller's
+ * transaction. Returns the rows it cleared, so the caller writes each one's audit row in
+ * the same transaction.
+ */
+export async function deleteStaleGoogleRevokePending(
+  tx: Database,
+  cutoff: Date,
+): Promise<Array<{ id: string; familyId: string; provider: string }>> {
+  return tx
+    .update(schema.integrations)
+    .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
+    .where(
+      and(
+        isNotNull(schema.integrations.googleRevokePendingEncrypted),
+        lt(schema.integrations.googleRevokePendingSince, cutoff),
+      ),
+    )
+    .returning({
+      id: schema.integrations.id,
+      familyId: schema.integrations.familyId,
+      provider: schema.integrations.provider,
+    });
+}
+
+/** The trail rows that say where a disconnected row's Google grant stands, newest wins. */
+const GOOGLE_GRANT_TRAIL = [
+  'integration_revoked',
+  'integration_google_grant_revoked',
+  'integration_google_grant_revoke_failed',
+] as const;
+
+/**
+ * This parent's disconnected connectors whose Google grant Hale never heard Google end:
+ * the newest grant trail row is a failure, and no revoke is still pending. A parent told
+ * "Hale keeps asking" reads this on their Settings card once Hale has stopped asking.
+ */
+export async function googleRevokeUnconfirmedProviders(
+  database: Database,
+  input: { familyId: string; userId: string },
+): Promise<string[]> {
+  const ended = await database
+    .select({ id: schema.integrations.id, provider: schema.integrations.provider })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, input.familyId),
+        eq(schema.integrations.userId, input.userId),
+        eq(schema.integrations.status, 'revoked'),
+        isNull(schema.integrations.googleRevokePendingEncrypted),
+      ),
+    );
+  if (ended.length === 0) return [];
+  const trail = await database
+    .select({ targetId: schema.auditLog.targetId, actionTaken: schema.auditLog.actionTaken })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, input.familyId),
+        eq(schema.auditLog.targetTable, 'integrations'),
+        inArray(
+          schema.auditLog.targetId,
+          ended.map((row) => row.id),
+        ),
+        inArray(schema.auditLog.actionTaken, [...GOOGLE_GRANT_TRAIL]),
+      ),
+    )
+    .orderBy(desc(schema.auditLog.occurredAt));
+  return ended
+    .filter(
+      (row) =>
+        trail.find((entry) => entry.targetId === row.id)?.actionTaken ===
+        'integration_google_grant_revoke_failed',
+    )
+    .map((row) => row.provider);
 }

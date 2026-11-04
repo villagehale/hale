@@ -1,4 +1,4 @@
-import { schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +24,21 @@ import {
 } from './google-push-watch';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
+
+/** A connected row holds keys; a watch is saved only for one that does (savePushWatch). */
+async function seedConnected(
+  database: Database,
+  familyId: string,
+  userId: string,
+  provider: 'gcal' | 'gmail',
+): Promise<string> {
+  const id = await seedIntegration(database, familyId, userId, provider);
+  await database
+    .update(schema.integrations)
+    .set({ oauthTokensEncrypted: 'opaque-envelope' })
+    .where(eq(schema.integrations.id, id));
+  return id;
+}
 const TOKEN = 'channel-secret';
 const NOW = new Date('2026-10-01T12:00:00.000Z');
 const TOPIC = 'projects/hale-test/topics/gmail-push';
@@ -75,7 +90,7 @@ describe('google push subscriptions', () => {
     const family = await seedFamily(db.database);
     familyId = family.familyId;
     parentUserId = family.parentUserId;
-    integrationId = await seedIntegration(db.database, familyId, parentUserId, 'gcal');
+    integrationId = await seedConnected(db.database, familyId, parentUserId, 'gcal');
   });
 
   it('verifies a stored channel token and refuses a forged one', async () => {
@@ -187,7 +202,7 @@ describe('google push subscriptions', () => {
   });
 
   it('renews a Gmail watch before the 7-day expiry without writing historyId onto the cursor', async () => {
-    const gmailId = await seedIntegration(db.database, familyId, parentUserId, 'gmail');
+    const gmailId = await seedConnected(db.database, familyId, parentUserId, 'gmail');
     const mailbox = `parent-${gmailId}@example.com`;
     await db.database
       .update(schema.integrations)
@@ -293,7 +308,7 @@ describe('google push subscriptions', () => {
   });
 
   it('a verified Gmail Pub/Sub push syncs the mailbox and ignores the notice historyId', async () => {
-    const gmailId = await seedIntegration(db.database, familyId, parentUserId, 'gmail');
+    const gmailId = await seedConnected(db.database, familyId, parentUserId, 'gmail');
     const mailbox = `parent-${gmailId}@example.com`;
     await db.database
       .update(schema.integrations)

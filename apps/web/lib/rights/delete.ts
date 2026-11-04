@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { removeDocument } from '../docs/storage.js';
+import { endGoogleForFamilyErasure } from '../integrations/google-disconnect.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
 export {
@@ -283,6 +284,9 @@ export async function runDeletionSweep(
 
   let purgedObjects = 0;
   for (const familyId of familyIds) {
+    // The cascade deletes keys and pending tokens; deleting a key revokes nothing, so
+    // the family's Google grants are ended and revoked at Google first (VIL-156).
+    await endGoogleForFamilyErasure(database, familyId);
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }

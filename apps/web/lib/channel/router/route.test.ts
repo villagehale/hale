@@ -6025,6 +6025,63 @@ describe('VIL-463 group scope', () => {
     expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
   });
 
+  /** A receipt only its asker should read (a texted disconnect names their accounts). */
+  function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
+    return {
+      name: 'asker_only',
+      async handle() {
+        return {
+          claimed: true as const,
+          outcome: 'revoked',
+          reply: 'Your Gmail and Calendar are off.',
+          ...(onlyToAsker ? { onlyToAsker: true as const } : {}),
+        };
+      },
+    };
+  }
+
+  it('a group turn: a receipt marked for its asker goes 1:1 to them, never into the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+  });
+
+  it('positive control: the same receipt without the mark answers in the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(false)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(h.transport.sent).toEqual([
+      { route: GROUP_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+  });
+
+  it('a 1:1 turn: a receipt marked for its asker is the ordinary answer in their own thread', async () => {
+    const h = harness({ handlers: [askerOnlyHandler(true)] });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out[0]?.relatedConversationId).not.toBeNull();
+  });
+
   it('a 1:1 text re-driven by the reconciler with its stored bit (false) runs, in its own thread', async () => {
     const coach = fakeCoach();
     const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });

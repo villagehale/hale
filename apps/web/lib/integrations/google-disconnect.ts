@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, type FetchLike } from './google-oauth';
 import type { PushEnv } from './google-push-flag';
 import { googleJsonClient, stopGooglePushForEndedConnection } from './google-push-runtime';
@@ -8,6 +8,7 @@ import {
   type ConnectorRevokeVia,
   type EndedConnection,
   clearGoogleRevokePending,
+  deleteStaleGoogleRevokePending,
   endGoogleConnections,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
@@ -37,7 +38,8 @@ import {
  * commit, every push watch is stopped (while the token still works), then each token is
  * revoked at Google. A transient answer leaves the token pending, and the 15-minute
  * connector-sync cron retries through the same function, for at most
- * {@link GOOGLE_REVOKE_PENDING_RETENTION_MS}.
+ * {@link GOOGLE_REVOKE_PENDING_RETENTION_MS}: {@link expireStaleGoogleRevocations} deletes
+ * the token at that age on time alone, whatever the retry did.
  */
 
 export const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -533,4 +535,115 @@ export async function retryPendingGoogleRevocations(
     }
   }
   return summary;
+}
+
+/**
+ * The pending token's deletion window, enforced on TIME ALONE. The retry's own
+ * `abandoned` needs Google to answer `unavailable`; a row whose settle keeps throwing, or
+ * that the retry never reaches, would otherwise hold a live token forever. Asks Google
+ * nothing, so nothing Google does can starve it. Each deletion and its `abandoned` row
+ * land in one transaction (rule #6).
+ */
+export async function expireStaleGoogleRevocations(
+  db: Database,
+  now: Date,
+): Promise<{ abandoned: number }> {
+  const cutoff = new Date(now.getTime() - GOOGLE_REVOKE_PENDING_RETENTION_MS);
+  const expired = await db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const rows = await deleteStaleGoogleRevokePending(tx, cutoff);
+    if (rows.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        rows.map((row) => ({
+          familyId: row.familyId,
+          actor: 'system',
+          actionTaken: 'integration_google_grant_revoke_failed',
+          targetTable: 'integrations',
+          targetId: row.id,
+          after: { provider: row.provider, outcome: 'abandoned' satisfies GoogleRowOutcome },
+        })),
+      );
+    }
+    return rows;
+  });
+  for (const row of expired) {
+    console.error(
+      { integrationId: row.id, provider: row.provider, google: 'abandoned' },
+      'google disconnect: abandoned',
+    );
+  }
+  return { abandoned: expired.length };
+}
+
+/**
+ * Family erasure's half (rights/delete.ts), called BEFORE the family row is deleted: the
+ * cascade removes integrations rows, and a row it removes still holding keys, or still
+ * holding a pending token, leaves the erased family's grant live at Google.
+ *
+ * Ends every Google connector of every parent in the family locally (one transaction),
+ * then settles those rows and every row an earlier disconnect left pending. The cascade
+ * that follows deletes any token Google did not answer for, so `pending_retry` here means
+ * "erased unconfirmed", and the log says so. Throws only when the local end fails, which
+ * leaves the family standing for the next sweep.
+ */
+export async function endGoogleForFamilyErasure(
+  db: Database,
+  familyId: string,
+  ports?: GoogleDisconnectPorts,
+): Promise<GoogleSettlement[]> {
+  const rows = await db
+    .select({
+      id: schema.integrations.id,
+      userId: schema.integrations.userId,
+      provider: schema.integrations.provider,
+      enc: schema.integrations.oauthTokensEncrypted,
+      pending: schema.integrations.googleRevokePendingEncrypted,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+      ),
+    );
+  const live = rows.filter((row) => row.enc !== null);
+  const alreadyPending = rows.filter((row) => row.enc === null && row.pending !== null);
+  if (live.length === 0 && alreadyPending.length === 0) return [];
+  const wired = ports ?? defaultGoogleDisconnectPorts();
+  const now = wired.now();
+  const ownerIds = [...new Set(live.map((row) => row.userId))];
+  const ended = await db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const out: EndedConnection[] = [];
+    for (const userId of ownerIds) {
+      // A family-wide row (no owner) is not a Google connector: every connect is per parent.
+      if (userId === null) continue;
+      out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
+    }
+    return out;
+  });
+  const settlements = await settleGoogleRevocations(
+    db,
+    [
+      ...ended,
+      ...alreadyPending.map((row) => ({
+        id: row.id,
+        familyId,
+        provider: row.provider as ConnectorProvider,
+      })),
+    ],
+    wired,
+  );
+  for (const settlement of settlements) {
+    console.info(
+      {
+        integrationId: settlement.integrationId,
+        provider: settlement.provider,
+        push: settlement.push,
+        google: settlement.google === 'pending_retry' ? 'erased_unconfirmed' : settlement.google,
+      },
+      'google disconnect: family erasure',
+    );
+  }
+  return settlements;
 }

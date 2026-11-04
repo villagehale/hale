@@ -498,7 +498,9 @@ export function connectorDisconnectHandler(
         );
         return { claimed: true, outcome: 'reply_unwritten', reply: null };
       }
-      return { claimed: true, outcome: outcome.status, reply };
+      // The reply names which of this parent's accounts were connected: from a group
+      // turn it goes to them alone (route.ts).
+      return { claimed: true, outcome: outcome.status, reply, onlyToAsker: true };
     },
   };
 }

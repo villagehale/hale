@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import type { SavedPushWatch, StoredPushWatch } from './google-push-watch';
 
 /**
@@ -98,28 +98,35 @@ export async function loadPushWatch(
   };
 }
 
+/**
+ * Save a watch, only for an integration that still holds keys, checked under a lock on
+ * the integrations row. A disconnect takes the same lock to end the row, so a renewal
+ * that listed the row as live before the disconnect committed cannot put a watch back
+ * after the disconnect's settle deleted it (VIL-156). `integration_ended`: nothing saved.
+ */
 export async function savePushWatch(
   database: Database,
   integrationId: string,
   watch: SavedPushWatch,
-): Promise<void> {
+): Promise<'saved' | 'integration_ended'> {
   const now = new Date();
-  await database
-    .insert(schema.googlePushSubscriptions)
-    .values({
-      integrationId,
-      provider: watch.provider,
-      channelId: watch.channelId,
-      resourceId: watch.resourceId,
-      tokenHash: watch.tokenHash,
-      mailboxKey: watch.mailboxKey,
-      topicName: watch.topicName,
-      expiration: watch.expiration,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: schema.googlePushSubscriptions.integrationId,
-      set: {
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const live = await tx
+      .select({ id: schema.integrations.id })
+      .from(schema.integrations)
+      .where(
+        and(
+          eq(schema.integrations.id, integrationId),
+          isNotNull(schema.integrations.oauthTokensEncrypted),
+        ),
+      )
+      .for('update');
+    if (live.length === 0) return 'integration_ended' as const;
+    await tx
+      .insert(schema.googlePushSubscriptions)
+      .values({
+        integrationId,
         provider: watch.provider,
         channelId: watch.channelId,
         resourceId: watch.resourceId,
@@ -128,8 +135,22 @@ export async function savePushWatch(
         topicName: watch.topicName,
         expiration: watch.expiration,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: schema.googlePushSubscriptions.integrationId,
+        set: {
+          provider: watch.provider,
+          channelId: watch.channelId,
+          resourceId: watch.resourceId,
+          tokenHash: watch.tokenHash,
+          mailboxKey: watch.mailboxKey,
+          topicName: watch.topicName,
+          expiration: watch.expiration,
+          updatedAt: now,
+        },
+      });
+    return 'saved' as const;
+  });
 }
 
 export async function deletePushWatch(database: Database, integrationId: string): Promise<void> {

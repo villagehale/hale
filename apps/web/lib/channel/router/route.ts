@@ -354,6 +354,12 @@ export type HandlerVerdict =
        * owns its own ledger writes.
        */
       afterSend?: (channelMessageId: string) => Promise<unknown>;
+      /**
+       * The receipt is for the parent who asked, never the group: on a group turn it goes
+       * to their phone, outside the group and its thread, as the over-limit line does.
+       * 1:1, it is the ordinary answer.
+       */
+      onlyToAsker?: true;
     };
 
 /**
@@ -1184,6 +1190,23 @@ async function routeChannelMessageInner(
       },
     });
 
+  const answerAsker = async (
+    body: string,
+    _medicalSource?: MedicalReplySource | null,
+    _replySource?: ReplySource | null,
+    templateKey: string | null = null,
+  ) =>
+    sendReply(deps, {
+      route: { channel: 'sms', to: route.to },
+      body,
+      job,
+      conversationId: null,
+      templateKey,
+      claim: claimAnswer,
+      openAsks: { leaves: null },
+      beforeSend: stopTyping,
+    });
+
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
   //
   // FIRST, ahead of the deterministic chain, and that ordering is the point rather than a
@@ -1257,7 +1280,7 @@ async function routeChannelMessageInner(
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
       if (!verdict.claimed) continue;
-      await deliver(verdict, answer);
+      await deliver(verdict, verdict.onlyToAsker && inGroup ? answerAsker : answer);
       return done(deps, job, {
         status: 'handled',
         handler: handler.name,

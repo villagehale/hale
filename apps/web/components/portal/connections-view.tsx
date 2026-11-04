@@ -18,6 +18,19 @@ function liveRow(
   );
 }
 
+/**
+ * The parent was told Hale keeps asking Google to remove its access. When Hale has
+ * stopped asking without Google confirming, their own card says so (VIL-156).
+ */
+const GOOGLE_UNCONFIRMED =
+  'Google hasn’t confirmed it removed Hale’s access. Your Google account settings show whether Hale is still listed.';
+
+function unconfirmed(connections: FamilyConnectorView[], provider: string): boolean {
+  return connections.some(
+    (row) => row.provider === provider && row.ownedByViewer && row.googleRevokeUnconfirmed,
+  );
+}
+
 function readOnly(row: FamilyConnectorView): boolean {
   return row.scopes.length > 0 && row.scopes.every((scope) => describeScope(scope).readOnly);
 }
@@ -66,7 +79,13 @@ export function ConnectionsView({
           <SourceRow
             icon={<Mail aria-hidden="true" />}
             title="Gmail"
-            meta={gmail ? sinceLine(gmail, gmailSince) : null}
+            meta={
+              gmail
+                ? sinceLine(gmail, gmailSince)
+                : unconfirmed(connections, 'gmail')
+                  ? GOOGLE_UNCONFIRMED
+                  : null
+            }
             action={
               gmail ? (
                 <>
@@ -84,7 +103,11 @@ export function ConnectionsView({
             icon={<Calendar aria-hidden="true" />}
             title="Google Calendar"
             meta={
-              calendar ? sinceLine(calendar, calendarSince) : 'Catches class invites and trip dates'
+              calendar
+                ? sinceLine(calendar, calendarSince)
+                : unconfirmed(connections, 'gcal')
+                  ? GOOGLE_UNCONFIRMED
+                  : 'Catches class invites and trip dates'
             }
             action={
               calendar ? (
