@@ -432,7 +432,7 @@ function eventNotesClient(): AgentClient {
 }
 
 /** Deps for the connect-time backfill kick. The cursor write merges onto the row
- * so a historyId or googleAccountKey stored during the kick is kept. */
+ * so a historyId stored during the kick is kept. */
 export function kickGmailBackfillDeps(
   database: Database,
 ): Pick<SyncDeps, 'googleFetch' | 'alertGmailEnvelopes' | 'saveCursor'> {
