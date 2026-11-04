@@ -912,6 +912,7 @@ async function readGmailMessageBatch(
   const envelopes: GmailAlertEnvelope[] = [];
   let skippedNotFound = 0;
   const skippedOwn = { own_mail: 0, draft: 0 };
+  let labelsMissing = 0;
   for (const id of messageIds) {
     const { status, data } = await getJson<GmailMessageResponse>(
       googleFetch,
@@ -925,6 +926,9 @@ async function readGmailMessageBatch(
       skippedNotFound += 1;
       continue;
     }
+    // Gmail omits an empty repeated field, and archived provider mail can carry no label at
+    // all, so a message with none is read as inbound: fails open, and is counted.
+    if (data.labelIds === undefined) labelsMissing += 1;
     // MAIL THE PARENT WROTE never leaves the sync: no ingest payload, no envelope for the
     // alert or travel passes. The alert lane refuses it again on its own.
     const own = parentsOwnMail(data.labelIds ?? []);
@@ -964,6 +968,12 @@ async function readGmailMessageBatch(
     console.info(
       { integrationId: connection.id, skippedOwnMail: skippedOwn },
       'connector sync: the parent’s own gmail skipped before ingest',
+    );
+  }
+  if (labelsMissing > 0) {
+    console.info(
+      { integrationId: connection.id, labelsMissing },
+      'connector sync: gmail messages with no labels read as inbound',
     );
   }
   return { events, envelopes };

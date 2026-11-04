@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
@@ -59,6 +59,7 @@ beforeEach(async () => {
   integrationId = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'info').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -303,6 +304,11 @@ describe('the parent’s own mail never reaches the classifier', () => {
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(1);
     await expect(alertRows()).resolves.toHaveLength(1);
+    // Every message here carried labels, so none is counted as unlabelled (T2 is the control).
+    expect(console.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ labelsMissing: expect.anything() }),
+      expect.anything(),
+    );
   });
 
   it('T13: the parent’s SENT and DRAFT mail is never enqueued for ingestion; inbound mail is', async () => {
@@ -328,7 +334,7 @@ describe('the parent’s own mail never reaches the classifier', () => {
     const { labelIds: _unread, ...unlabelled } = inbound('u1', 't-u1', 1);
     await expect(
       sweep(direct, [unlabelled, inbound('k1', 't-k1', 2)]).then(alerts),
-    ).resolves.toEqual(['sent', 'labels_unread']);
+    ).resolves.toEqual(['labels_unread', 'sent']);
     expect(direct.classified).toEqual(['k1']);
 
     // Gmail omits an empty repeated field: archived, read mail with no label at all.
@@ -336,6 +342,11 @@ describe('the parent’s own mail never reaches the classifier', () => {
     const result = await sync(viaSync, [{ id: 'a1', threadId: 't-a1', internalDate: at(3) }]);
     expect(alerts(result.emailAlerts)).toEqual(['sent']);
     expect(viaSync.classified).toEqual(['a1']);
+    // Read as inbound, and counted under its own name.
+    expect(console.info).toHaveBeenCalledWith(
+      { integrationId, labelsMissing: 1 },
+      'connector sync: gmail messages with no labels read as inbound',
+    );
   });
 
   it('T3: three autosaves of one draft (three message ids) are zero alerts', async () => {
@@ -420,13 +431,13 @@ describe('one occasion in one thread is told once', () => {
     const h = harness();
     const outcomes = await sweep(h, [inbound('k1', 't-swim', 0), inbound('k2', 't-swim', 10)]);
 
-    // Newest first: k2 is told, k1 is the same news.
+    // Oldest first: k1 is told, k2 is the same news.
     expect(alerts(outcomes)).toEqual(['sent', 'already_sent']);
-    expect(h.classified).toEqual(['k2', 'k1']);
+    expect(h.classified).toEqual(['k1', 'k2']);
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(1);
     const rows = await alertRows();
-    expect(rows.map((r) => r.dedupeKey)).toEqual([`email_alert:${integrationId}:k2`]);
+    expect(rows.map((r) => r.dedupeKey)).toEqual([`email_alert:${integrationId}:k1`]);
     // The occasion claim points at the one alert row.
     await expect(
       db.database
@@ -451,7 +462,6 @@ describe('one occasion in one thread is told once', () => {
     const h = harness({
       k2: classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, 'k2'),
     });
-    // Told in its own sweep first: read in one batch, the older announcement is superseded (T4i).
     await expect(sweep(h, [inbound('k1', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
     await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual(['sent']);
     expect(h.transport.sent).toHaveLength(2);
@@ -568,65 +578,6 @@ describe('one occasion in one thread is told once', () => {
     expect(h.transport.sent).toHaveLength(1);
   });
 
-  it('T4i: an older "on" read after a newer cancellation is superseded, in one sweep or a later one', async () => {
-    const off = (messageId: string) =>
-      classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, messageId);
-    const reminder = (messageId: string) =>
-      classified({ kind: 'reminder_only', originalTime: SATURDAY, newTime: null }, messageId);
-    const h = harness({ k1: reminder('k1'), k2: off('k2'), k3: reminder('k3') });
-
-    await expect(sweep(h, [inbound('k0', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
-    // Newest first: the cancellation (minute 20) is told, and the reminder written before it
-    // (minute 10) is older news than the parent's last word, so "cancelled" stays last.
-    await expect(
-      sweep(h, [inbound('k1', 't-swim', 10), inbound('k2', 't-swim', 20)]).then(alerts),
-    ).resolves.toEqual(['sent', 'superseded']);
-    // Read only in a later sweep, an email older than the cancellation is still superseded.
-    await expect(sweep(h, [inbound('k3', 't-swim', 15)]).then(alerts)).resolves.toEqual([
-      'superseded',
-    ]);
-    expect(h.transport.sent).toHaveLength(2);
-    // Named in the log by family id alone: no Gmail message id beside it.
-    expect(console.info).toHaveBeenCalledWith(
-      { familyId: family.familyId },
-      'email alert: older than what this thread last told',
-    );
-    // The control: a newer reminder after the cancellation is the class back on, and is told.
-    await expect(sweep(h, [inbound('k4', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
-    expect(h.transport.sent).toHaveLength(3);
-  });
-
-  it('T4j: a superseded cancellation leaves the booking of a class told back on open', async () => {
-    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
-    const on = (messageId: string) =>
-      classified({ kind: 'new_event', title: 'Swim Level 2', newTime: SATURDAY }, messageId);
-    const off = (messageId: string) =>
-      classified(
-        { kind: 'cancellation', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
-        messageId,
-      );
-    const receipt = classified({ kind: 'booking_confirmation', title: 'Swim Level 2' }, 'r1');
-    const h = harness({ k1: on('k1'), k2: off('k2'), k3: on('k3'), r1: receipt });
-    const h2 = harness({ k5: off('k5'), k6: off('k6') });
-    const one = (harnessed: Harness, messageId: string, threadId: string, minute: number) =>
-      sweep(harnessed, [inbound(messageId, threadId, minute)]).then(alerts);
-
-    await expect(one(h, 'k1', 't-swim', 10)).resolves.toEqual(['sent']);
-    await expect(one(h, 'k2', 't-swim', 20)).resolves.toEqual(['sent']);
-    await expect(one(h, 'k3', 't-swim', 30)).resolves.toEqual(['sent']);
-    await expect(one(h, 'r1', 't-receipt', 35)).resolves.toEqual(['sent']);
-    // A cancellation older than the reinstatement, read late: not news, and it changes nothing.
-    await expect(one(h2, 'k5', 't-swim', 25)).resolves.toEqual(['superseded']);
-    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
-      null,
-    ]);
-    // The control: a cancellation newer than the reinstatement is told and closes the booking.
-    await expect(one(h2, 'k6', 't-swim', 40)).resolves.toEqual(['sent']);
-    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
-      NOW,
-    ]);
-  });
-
   it('T4g: another date told in the same thread does not make a repeat of this one news', async () => {
     const sunday = '2026-11-15T16:00:00.000Z';
     const h = harness({
@@ -666,7 +617,7 @@ describe('one occasion in one thread is told once', () => {
         kind: null,
       }),
     ).resolves.toMatchObject({ outcome: 'untracked', seenIn: 'gmail' });
-    // k2 is the message that was told (newest first), and the verdict names it.
+    // k1 is the message that was told (oldest first), and the verdict names it.
     await expect(
       db.database
         .select({
@@ -675,7 +626,7 @@ describe('one occasion in one thread is told once', () => {
         })
         .from(schema.kidRelevanceVerdicts)
         .where(eq(schema.kidRelevanceVerdicts.familyId, family.familyId)),
-    ).resolves.toEqual([{ itemKey: 'k2', integrationId }]);
+    ).resolves.toEqual([{ itemKey: 'k1', integrationId }]);
   });
 
   it('T7: an earlier text for this occasion that FAILED is named, and nothing is re-sent', async () => {
@@ -724,6 +675,215 @@ describe('one occasion in one thread is told once', () => {
     const fresh = harness();
     await expect(sweep(fresh, [inbound('k1', 't-y', 0)]).then(alerts)).resolves.toEqual(['sent']);
     expect(fresh.transport.sent).toHaveLength(1);
+  });
+});
+
+/**
+ * THE PARENT'S LAST WORD FROM HALE IS THE NEWEST EMAIL'S STATE, AND EVERY BOOKING EFFECT
+ * HAPPENS EXACTLY ONCE. A sweep is handled oldest first, so the claims inside one sweep are
+ * written in the order the emails were sent. An email older than what the thread has
+ * already told about the same instant, read in a LATER sweep, is `stale_news`: it is not
+ * texted, and its booking effects happen as for any email.
+ */
+describe('the emails’ own order decides the last word', () => {
+  const SUNDAY = '2026-11-15T16:00:00.000Z';
+  const on = (messageId: string, title = 'Swim Level 2') =>
+    classified({ kind: 'new_event', title, newTime: SATURDAY }, messageId);
+  const reminder = (messageId: string) =>
+    classified(
+      { kind: 'reminder_only', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
+      messageId,
+    );
+  const off = (messageId: string) =>
+    classified(
+      { kind: 'cancellation', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
+      messageId,
+    );
+  const receipt = (messageId: string) =>
+    classified({ kind: 'booking_confirmation', title: 'Swim Level 2' }, messageId);
+  const moved = (messageId: string) =>
+    classified(
+      { kind: 'reschedule', title: 'Swim Level 2', originalTime: SATURDAY, newTime: SUNDAY },
+      messageId,
+    );
+  const cancelledAt = () => bookingRows().then((rows) => rows.map((r) => r.cancelledAt));
+  const kindsTold = (h: Harness) => h.writer.seen.map((facts) => facts.email.kind);
+
+  beforeEach(() => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  });
+
+  it('T15: a cancellation and another class at the same instant, in one sweep, are both told and the cancelled booking closes', async () => {
+    const h = harness({ r1: receipt('r1'), c1: off('c1'), n1: on('n1', 'Swim Level 3') });
+    await expect(sweep(h, [inbound('r1', 't-receipt', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    // The control: the receipt left Level 2 open, so the closer has something to close.
+    await expect(cancelledAt()).resolves.toEqual([null]);
+
+    // Handed newest first; the sweep reads them in the order they were sent.
+    await expect(
+      sweep(h, [inbound('n1', 't-swim', 20), inbound('c1', 't-swim', 10)]).then(alerts),
+    ).resolves.toEqual(['sent', 'sent']);
+    expect(kindsTold(h)).toEqual(['booking_confirmation', 'cancellation', 'new_event']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+  });
+
+  it('T16: a receipt and a newer move of the same class, in one sweep, record the booking and tell the move', async () => {
+    const h = harness({ r1: receipt('r1'), m1: moved('m1') });
+
+    await expect(
+      sweep(h, [inbound('m1', 't-swim', 20), inbound('r1', 't-swim', 10)]).then(alerts),
+    ).resolves.toEqual(['sent', 'sent']);
+    expect(kindsTold(h)).toEqual(['booking_confirmation', 'reschedule']);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+  });
+
+  it('T17: after "on" was told, an older cancellation and a newer "back on" in one sweep leave the last word "on"', async () => {
+    const h = harness({ k0: on('k0'), k1: off('k1'), k2: on('k2'), k3: on('k3'), k4: off('k4') });
+    await expect(sweep(h, [inbound('k0', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(
+      sweep(h, [inbound('k2', 't-swim', 20), inbound('k1', 't-swim', 10)]).then(alerts),
+    ).resolves.toEqual(['sent', 'sent']);
+    expect(kindsTold(h)).toEqual(['new_event', 'cancellation', 'new_event']);
+    // The last word is "on": the same "on" again is a repeat of it.
+    await expect(sweep(h, [inbound('k3', 't-swim', 30)]).then(alerts)).resolves.toEqual([
+      'already_sent',
+    ]);
+    // The control: a newer cancellation is news.
+    await expect(sweep(h, [inbound('k4', 't-swim', 40)]).then(alerts)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(4);
+  });
+
+  it('T18: after "on" was told, an older "on" and a newer cancellation in one sweep leave the last word "cancelled", and "on" is not texted again', async () => {
+    const h = harness({
+      k0: on('k0'),
+      k1: reminder('k1'),
+      k2: off('k2'),
+      k3: off('k3'),
+      k4: on('k4'),
+    });
+    await expect(sweep(h, [inbound('k0', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(
+      sweep(h, [inbound('k2', 't-swim', 20), inbound('k1', 't-swim', 10)]).then(alerts),
+    ).resolves.toEqual(['already_sent', 'sent']);
+    expect(kindsTold(h)).toEqual(['new_event', 'cancellation']);
+    // The last word is "cancelled": the same cancellation again is a repeat of it.
+    await expect(sweep(h, [inbound('k3', 't-swim', 30)]).then(alerts)).resolves.toEqual([
+      'already_sent',
+    ]);
+    // The control: a newer "on" is the class back on, and is told.
+    await expect(sweep(h, [inbound('k4', 't-swim', 40)]).then(alerts)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(3);
+  });
+
+  it('T19: a cancellation older than what the thread last told, read in a later sweep, is not texted and still closes a booking from an older email', async () => {
+    const h = harness({ r0: receipt('r0'), n1: on('n1', 'Swim Level 3'), c1: off('c1') });
+    await expect(sweep(h, [inbound('r0', 't-receipt', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('n1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+
+    await expect(sweep(h, [inbound('c1', 't-swim', 10)]).then(alerts)).resolves.toEqual([
+      'stale_news',
+    ]);
+    expect(h.transport.sent).toHaveLength(2);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+    // Named in the log by family id alone: no Gmail message id beside it.
+    expect(console.info).toHaveBeenCalledWith(
+      { familyId: family.familyId },
+      'email alert: older than what this thread last told',
+    );
+  });
+
+  it('T20: a stale cancellation leaves open a booking recorded from a newer email; a newer cancellation closes it', async () => {
+    const h = harness({ r1: receipt('r1'), c1: off('c1'), c2: off('c2') });
+    await expect(sweep(h, [inbound('r1', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual([
+      'stale_news',
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+
+    // The control: a cancellation newer than the receipt is told and closes it.
+    await expect(sweep(h, [inbound('c2', 't-swim', 40)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+    expect(kindsTold(h)).toEqual(['booking_confirmation', 'cancellation']);
+  });
+
+  it('T20b: a booking refreshed by a newer receipt is not closed by a cancellation older than that receipt', async () => {
+    const h = harness({ r1: receipt('r1'), r2: receipt('r2'), c1: off('c1'), c2: off('c2') });
+    await expect(sweep(h, [inbound('r1', 't-first', 10)])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+    ]);
+    await expect(sweep(h, [inbound('r2', 't-again', 30)])).resolves.toEqual([
+      { alert: 'sent', booking: 'refreshed', going: 'going_dark' },
+    ]);
+
+    // Newer than the first receipt, older than the second: the booking stays open.
+    await expect(sweep(h, [inbound('c1', 't-again', 20)]).then(alerts)).resolves.toEqual([
+      'stale_news',
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    // The control: newer than both, it closes.
+    await expect(sweep(h, [inbound('c2', 't-again', 40)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+  });
+
+  it('T21: a stale receipt is not texted and still records its booking', async () => {
+    const h = harness({ c1: off('c1'), r1: receipt('r1'), r2: receipt('r2') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+    expect(h.transport.sent).toHaveLength(1);
+    await expect(bookingRows()).resolves.toHaveLength(1);
+
+    // The control: the same receipt newer than the cancellation is the class back on, told.
+    await expect(sweep(h, [inbound('r2', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(2);
+  });
+
+  it('T22: "last" is the order the emails were received in, not the order their claims were written', async () => {
+    const h = harness({
+      a: on('a'),
+      b: classified({ kind: 'new_event', title: 'Swim Level 2', newTime: SUNDAY }, 'b'),
+      c: moved('c'),
+      d: moved('d'),
+    });
+    await expect(sweep(h, [inbound('a', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
+    // Another instant, received earlier and claimed later.
+    await expect(sweep(h, [inbound('b', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    // About both instants: the newest email about them is `a` (minute 30), so a move from
+    // minute 25 is older than the thread's last word.
+    await expect(sweep(h, [inbound('c', 't-swim', 25)]).then(alerts)).resolves.toEqual([
+      'stale_news',
+    ]);
+    // The control: the same move from minute 35 is news.
+    await expect(sweep(h, [inbound('d', 't-swim', 35)]).then(alerts)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(3);
+  });
+
+  it('T23: an anchor key is a keyed index, never a plain digest of the instant', async () => {
+    const h = harness({ k1: on('k1'), k2: on('k2') });
+    await expect(sweep(h, [inbound('k1', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    const [claim] = await db.database
+      .select({ anchorKeys: schema.emailAlertOccasions.anchorKeys })
+      .from(schema.emailAlertOccasions)
+      .innerJoin(
+        schema.channelMessages,
+        eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+      )
+      .where(eq(schema.channelMessages.familyId, family.familyId));
+    const plain = createHash('sha256').update(SATURDAY).digest('hex').slice(0, 32);
+    expect(claim?.anchorKeys).toHaveLength(1);
+    expect(claim?.anchorKeys?.some((key) => key.includes(plain))).toBe(false);
+    expect(claim?.anchorKeys?.some((key) => key.includes(integrationId))).toBe(false);
+    // The control: the key still finds the claim, so the same "on" again is a repeat.
+    await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual([
+      'already_sent',
+    ]);
   });
 });
 
@@ -777,13 +937,14 @@ describe('the occasion claim', () => {
 });
 
 describe('migration 0200', () => {
-  it('T14: applies a second time over itself and leaves both columns and the index', async () => {
+  it('T14: applies a second time over itself and leaves its three columns and the index', async () => {
     await expect(
       db.applyMigration('0200_email_alert_occasion_anchors.sql'),
     ).resolves.toBeUndefined();
     const result = await db.client.query<{
       type: string | null;
       received: string | null;
+      source: string | null;
       idx: string | null;
     }>(
       `select
@@ -791,12 +952,15 @@ describe('migration 0200', () => {
            where table_name = 'email_alert_occasions' and column_name = 'anchor_keys') as type,
          (select data_type from information_schema.columns
            where table_name = 'email_alert_occasions' and column_name = 'received_at') as received,
+         (select data_type from information_schema.columns
+           where table_name = 'activity_bookings' and column_name = 'source_received_at') as source,
          to_regclass('email_alert_occasions_anchor_keys_idx')::text as idx`,
     );
     expect(result.rows).toEqual([
       {
         type: 'ARRAY',
         received: 'timestamp with time zone',
+        source: 'timestamp with time zone',
         idx: 'email_alert_occasions_anchor_keys_idx',
       },
     ]);

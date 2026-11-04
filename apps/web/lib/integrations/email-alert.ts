@@ -24,6 +24,7 @@ import {
 } from '~/lib/channel/outbound-transport';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
 import type { SourceChange } from '~/lib/loop/reminders/change';
 import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
@@ -40,7 +41,6 @@ import { bookedDetectionEnabledFor } from './booked';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   type BookingDraftResult,
-  bookingCancellationKey,
   bookingDraft,
   closeCancelledBookings,
   familyHoldsLiveBooking,
@@ -141,11 +141,6 @@ export const EMAIL_ALERT_OUTCOMES = [
   'already_on_calendar',
   /** The notice writer failed or every draft was refused. There is no fallback. */
   'notice_unwritten',
-  // This sweep had ALREADY read the provider calling this exact class off, and a batch is
-  // read newest first — so the receipt is the older email and there is nothing true left
-  // to say about it. Its own name rather than silence, because "Hale chose not to speak"
-  // is a fact about a mailbox and a counter is the only place it is recorded.
-  'cancelled_in_sweep',
   'already_sent',
   'dark',
   'no_parent_user',
@@ -174,10 +169,10 @@ export const EMAIL_ALERT_OUTCOMES = [
   'labels_unread',
   /** Live pass only: no thread to key the alert on. No classifier call, no alert. */
   'no_thread_id',
-  /** A NEWER email in this thread about the same instant has already been told, so this
-   * older one is not news: the parent's last word follows the provider's last word. It
-   * writes nothing: no booking, no closer. */
-  'superseded',
+  /** Read in a later sweep than a NEWER email in this thread about the same instant, which
+   * was already told: not texted, so the parent's last word stays the newest email's. Its
+   * booking effects still happen, as for any email. */
+  'stale_news',
   /** An earlier text for this occasion in this thread failed. Its claim stays held (the
    * ledger is at-most-once per key), so nothing is sent. */
   'occasion_send_failed',
@@ -287,9 +282,10 @@ export function emailAlertOccasionKey(
   return `email_alert_occasion:${integrationId}:${threadId}:${shortDigest(occasion)}`;
 }
 
-/** One instant (or, with none, the event or message) a claim was about, in this thread. */
+/** One instant (or, with none, the event or message) a claim was about, in this thread:
+ * a keyed index, because an instant is guessable. */
 function emailAlertAnchorKey(integrationId: string, threadId: string, anchor: string): string {
-  return `email_alert_anchor:${integrationId}:${threadId}:${shortDigest(anchor)}`;
+  return emailAlertAnchorIndex(`${integrationId}\u0000${threadId}\u0000${anchor}`);
 }
 
 function shortDigest(value: string): string {
@@ -377,7 +373,7 @@ function instantIso(iso: string | null): string | null {
   return offsetInstant(iso)?.toISOString() ?? null;
 }
 
-type Told = 'already_sent' | 'occasion_send_failed' | 'superseded';
+type Told = 'already_sent' | 'occasion_send_failed' | 'stale_news';
 
 /**
  * AN OCCASION IS A STATE CHANGE, so whether this email is news is decided by what this
@@ -388,9 +384,9 @@ type Told = 'already_sent' | 'occasion_send_failed' | 'superseded';
  * instants the key is the bare occasion key, which is also every claim written before the
  * anchors existed.
  *
- * "Last" is the order the EMAILS were received in, never the order claims were written: a
- * sweep reads newest first, so a reminder older than the cancellation beside it is claimed
- * after it. An email older than what the thread last told is `superseded`.
+ * "Last" is the order the EMAILS were received in. A sweep is read oldest first, so inside
+ * one sweep that is also the order claims are written in; across sweeps it is not, and an
+ * email older than what the thread last told is `stale_news`.
  */
 async function occasionClaim(
   database: Database,
@@ -439,7 +435,7 @@ async function occasionClaim(
     return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
   }
   if (last?.receivedAt != null && receivedAt < last.receivedAt) {
-    return { occasionKey: base, anchorKeys, told: 'superseded' };
+    return { occasionKey: base, anchorKeys, told: 'stale_news' };
   }
   const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
   return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
@@ -507,17 +503,6 @@ export interface EmailAlertInput {
   /** Gmail's labels at the metadata read. `undefined` (no label read) → `labels_unread`. */
   labelIds: readonly string[] | undefined;
   envelope: { subject: string; from: string; snippet: string; receivedAt: string };
-  /**
-   * WHAT THIS SWEEP HAS ALREADY BEEN TOLD IS OFF — {@link bookingCancellationKey} per
-   * cancellation read so far, written by this function and read by it.
-   *
-   * Required rather than optional, and a caller's own Set rather than one minted here: a
-   * batch is read newest first, so the cancellation reaches the closer BEFORE the receipt
-   * it cancels exists in the table, and the only thing that can carry that fact the few
-   * milliseconds forward is the loop that owns both envelopes. A default would make the
-   * hole re-openable by forgetting an argument.
-   */
-  cancelledThisSweep: Set<string>;
   timeZone: string;
   now: Date;
 }
@@ -584,12 +569,6 @@ export async function alertParentForEmail(
   // answer.
   const booked = bookedDetectionEnabledFor(familyId);
 
-  // ONE KEY, TWO USES: the closer matches the table on it, and the sweep remembers it.
-  const cancellationKey = bookingCancellationKey(
-    input.envelope.from,
-    sanitizedTitle(extraction.event.title),
-  );
-
   // VIL-474 · THE PROVIDER SAYS IT MOVED: record the change (field + old value) for the
   // reminder to bold and the parent to be told. NOTHING MOVES from email (#955 review):
   // moving is a follow-up gated on a model confirming the exact event, ambiguity meaning
@@ -603,24 +582,6 @@ export async function alertParentForEmail(
     timeZone: input.timeZone,
     now,
   });
-
-  // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
-  // say: the batch is newest-first, so this email is older than the cancellation, and
-  // "you're in for Swim Level 2" would contradict a text this same run put on the same
-  // phone. No text, no CTA, no offer row, no booking — the suppression sits ABOVE the gate
-  // and above the claim so none of the three is minted for a message nobody is told about.
-  if (
-    booked &&
-    extraction.kind === 'booking_confirmation' &&
-    cancellationKey !== null &&
-    input.cancelledThisSweep.has(cancellationKey)
-  ) {
-    console.warn(
-      { familyId },
-      'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
-    );
-    return { alert: 'cancelled_in_sweep', booking: null, going: null };
-  }
 
   // ALREADY ON THE CALENDAR AND UNCHANGED: a reminder, a re-announcement or a second
   // receipt for an occasion the family already holds is a duplicate of what they have.
@@ -643,7 +604,8 @@ export async function alertParentForEmail(
     };
   }
 
-  // THE PROVIDER CANCELLED IT: close what it cancelled, and tell the rest of this sweep.
+  const receivedAt = new Date(input.envelope.receivedAt);
+  // THE PROVIDER CANCELLED IT: close what it cancelled, unless a newer email recorded it.
   // Called only once a writer has said this occasion is about these children and clear:
   // below on this message, or earlier on the message that first told it.
   const closeIfCancelled = async () => {
@@ -652,18 +614,15 @@ export async function alertParentForEmail(
       familyId,
       from: input.envelope.from,
       title: extraction.event.title,
+      receivedAt,
       now,
     });
-    // The closer can only stamp rows that already exist, and the receipt for this class
-    // may still be three envelopes away — older, therefore read later.
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
   };
 
   // ONE OCCASION IN ONE THREAD IS TOLD ONCE. Read here, after the provider-change and
   // quiet-booking writes (every message is evidence) and before the writer (a second text
   // is not). The key needs the extraction, so this costs the classifier call; a receipt
   // still refreshes its booking and a cancellation still closes, as on the first message.
-  const receivedAt = new Date(input.envelope.receivedAt);
   const { occasionKey, anchorKeys, told } = await occasionClaim(
     database,
     integrationId,
@@ -672,11 +631,10 @@ export async function alertParentForEmail(
     messageId,
     receivedAt,
   );
-  // OLDER THAN THE THREAD'S LAST WORD: the provider has since said something else about this
-  // instant, so this email changes nothing: no closer, no booking, no sweep cancellation.
-  if (told === 'superseded') {
+  // OLDER THAN THE THREAD'S LAST WORD, read late: not texted, and its booking effects below
+  // happen as for any email.
+  if (told === 'stale_news') {
     console.info({ familyId }, 'email alert: older than what this thread last told');
-    return { alert: 'superseded', booking: null, going: null };
   }
   if (told !== null) {
     await closeIfCancelled();
@@ -919,6 +877,7 @@ export async function alertParentForEmail(
     channelMessageId: claimed.id,
     draft,
     offered: offer !== null,
+    receivedAt,
     timeZone: input.timeZone,
   });
   await passport.afterSend();
@@ -993,6 +952,7 @@ async function recordQuietBooking(
     channelMessageId: null,
     draft: bookingDraftFor(extraction, input.envelope.from, input.booked, input.now),
     offered: false,
+    receivedAt: new Date(input.envelope.receivedAt),
   });
   const passport = await attachPassportToEmailAlert(database, {
     body: '',
@@ -1117,12 +1077,13 @@ async function readGoingFor(
  */
 async function closeBookingsFor(
   database: Database,
-  input: { familyId: string; from: string; title: string; now: Date },
+  input: { familyId: string; from: string; title: string; receivedAt: Date; now: Date },
 ): Promise<void> {
   const closed = await closeCancelledBookings(database, {
     familyId: input.familyId,
     from: input.from,
     title: sanitizedTitle(input.title),
+    receivedAt: input.receivedAt,
     now: input.now,
   });
   for (const booking of closed) {
@@ -1171,6 +1132,8 @@ async function recordBooking(
     draft: BookingDraftResult | null;
     /** Whether the text that went out asked to put it on the calendar. */
     offered: boolean;
+    /** The email's own received time: a cancellation older than it does not close the row. */
+    receivedAt: Date;
     /** Live mail only: a registration refresh may apply the provider's move (VIL-474).
      * The backfill leaves it unset, because historical mail is not today's schedule. */
     timeZone?: string;
@@ -1189,6 +1152,7 @@ async function recordBooking(
       messageId: input.messageId,
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
+      receivedAt: input.receivedAt,
       timeZone: input.timeZone,
     });
   } catch (err) {
@@ -1271,8 +1235,9 @@ export function gmailAlertSweepInput(
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first. Every dated envelope in the sweep is read. A count is not a reason
- * to leave one unsaid.
+ * Oldest first, by each email's own received time, so the claims and booking effects of
+ * one sweep happen in the order the provider sent them. Every dated envelope in the sweep
+ * is read. A count is not a reason to leave one unsaid.
  */
 const BOOKING_WROTE = new Set<BookingOutcome>(['recorded', 'already_recorded', 'refreshed']);
 
@@ -1344,7 +1309,7 @@ function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
       skipped.push({ alert: 'no_received_at', booking: null, going: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
-  dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  dated.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   return { skipped, considered: dated };
 }
 
@@ -1360,7 +1325,6 @@ async function recordBackfillEnvelope(
     parentUserId: string;
     integrationId: string;
     envelope: GmailAlertEnvelope & { receivedAt: string };
-    cancelledThisSweep: Set<string>;
     timeZone: string;
     now: Date;
   },
@@ -1410,26 +1374,16 @@ async function recordBackfillEnvelope(
     return { alert: 'not_parenting', booking: null, going: null };
   }
 
-  const cancellationKey = bookingCancellationKey(
-    input.envelope.from,
-    sanitizedTitle(extraction.event.title),
-  );
+  const receivedAt = new Date(input.envelope.receivedAt);
   if (extraction.kind === 'cancellation') {
     await closeBookingsFor(database, {
       familyId: input.familyId,
       from: input.envelope.from,
       title: extraction.event.title,
+      receivedAt,
       now: input.now,
     });
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
     return quiet('not_a_booking');
-  }
-  if (
-    extraction.kind === 'booking_confirmation' &&
-    cancellationKey !== null &&
-    input.cancelledThisSweep.has(cancellationKey)
-  ) {
-    return { alert: 'cancelled_in_sweep', booking: null, going: null };
   }
 
   const draft = bookingDraftFor(extraction, input.envelope.from, true, input.now);
@@ -1441,6 +1395,7 @@ async function recordBackfillEnvelope(
     channelMessageId: null,
     draft,
     offered: false,
+    receivedAt,
   });
   const passport = await attachPassportToEmailAlert(database, {
     body: '',
@@ -1483,7 +1438,6 @@ export async function alertParentForGmailSweep(
     const outcomes: EmailAlertResult[] = [...skipped];
     if (considered.length > 0) {
       const timeZone = await ports.timeZone(parentUserId);
-      const cancelledThisSweep = new Set<string>();
       for (const envelope of considered) {
         outcomes.push(
           await recordBackfillEnvelope(
@@ -1493,7 +1447,6 @@ export async function alertParentForGmailSweep(
               parentUserId,
               integrationId: input.integrationId,
               envelope,
-              cancelledThisSweep,
               timeZone,
               now: input.now,
             },
@@ -1539,10 +1492,6 @@ export async function alertParentForGmailSweep(
   }
 
   const timeZone = await ports.timeZone(parentUserId);
-  // ONE SET FOR THE WHOLE BATCH. The sort above is what makes it sound: every envelope
-  // read after a cancellation is OLDER than that cancellation, so a receipt that lands in
-  // this set is a receipt the provider has since called off.
-  const cancelledThisSweep = new Set<string>();
   for (const envelope of considered) {
     outcomes.push(
       await alertParentForEmail(
@@ -1560,7 +1509,6 @@ export async function alertParentForGmailSweep(
             snippet: envelope.snippet,
             receivedAt: envelope.receivedAt,
           },
-          cancelledThisSweep,
           timeZone,
           now: input.now,
         },

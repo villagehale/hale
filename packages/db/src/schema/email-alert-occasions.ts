@@ -20,9 +20,10 @@ export const emailAlertOccasions = pgTable(
       .notNull()
       .references(() => channelMessages.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /** Digests of the instants this claim was about, scoped to the connection and thread
-     * (migration 0200). The latest claim overlapping a new email's anchors is what that
-     * thread last told about them. NULL on claims written before it. */
+    /** Keyed indexes (HMAC under an HKDF subkey of APP_ENCRYPTION_KEY, never a plain
+     * digest: an instant is guessable) of the connection, thread and each instant this claim
+     * was about (migration 0200). The latest claim overlapping a new email's anchors is what
+     * that thread last told about them. NULL on claims written before it. */
     anchorKeys: text('anchor_keys').array(),
     /** Gmail's internalDate of the email this claim told: what "last" means between claims
      * (migration 0200). NULL on claims written before it. */

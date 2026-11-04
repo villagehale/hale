@@ -233,7 +233,8 @@ describe('booked-detection backfill', () => {
       }),
     ]);
 
-    expect(outcomes.map((outcome) => outcome.booking)).toEqual(['waitlist', 'reminder_only']);
+    // Oldest first: the 13:00 reminder, then the 14:00 waitlist mail.
+    expect(outcomes.map((outcome) => outcome.booking)).toEqual(['reminder_only', 'waitlist']);
     expect(outcomes.map((outcome) => outcome.alert)).toEqual([
       'backfill_suppressed',
       'backfill_suppressed',
