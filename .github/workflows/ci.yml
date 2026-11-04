@@ -63,8 +63,10 @@ jobs:
     name: Workspace lint, typecheck, test, build
     runs-on: ubuntu-latest
     # Chromium install plus the authorized-signup sandbox (local mock forms)
-    # sits on top of the workspace suite and the production build.
-    timeout-minutes: 25
+    # sits on top of the workspace suite and the production build. The job
+    # ran 23-24 minutes on 2026-11-03, and a 25-minute limit cancelled a
+    # green run mid-build; 40 leaves headroom until the suite is split.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -247,6 +249,9 @@ jobs:
       - name: Proactive writer eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-writer
 
+      - name: Calendar-invite time judge eval (cached-only)
+        run: pnpm --filter @hale/worker exec node evals/run-calendar-invite-time-eval.mjs --cached-only
+
       - name: Weekday-care ask eval (cached-only)
         run: pnpm --filter @hale/worker eval:weekday-care-ask
 
@@ -356,6 +361,10 @@ jobs:
 
       - name: Calendar cancel composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-cancel-voice
+
+      # Hard cache gate. A miss fails the job.
+      - name: Name take-back eval (cached-only)
+        run: pnpm --filter @hale/worker eval:name-takeback
 
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
