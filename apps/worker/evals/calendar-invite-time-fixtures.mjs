@@ -11,6 +11,10 @@
 // a different weekday does not match. One case starts on the hour (10:00 AM,
 // `2026-07-23T14:00:00.000Z`), so an hour named in Chinese with no minute matches:
 // the other side of "10 h" against 10:30.
+//
+// VIL-588 / VIL-596: the judge also reads whether the text names the event, in any
+// language, and the summary's words are a name, not a date claim. The cases below run in
+// America/Chicago (the same local start, `2026-07-23T15:30:00.000Z`), with invented names.
 
 const STARTS = {
   year: 2026,
@@ -72,5 +76,39 @@ export const CALENDAR_INVITE_TIME_FIXTURES = [
     language: 'zh',
     text: '周四上午10点 Swim class。[[link]]',
     expectMatch: true,
+  },
+  {
+    id: 'weekday-in-name-once',
+    ...SHARED,
+    timeZone: 'America/Chicago',
+    summary: 'Saturday Art Club',
+    language: 'en',
+    text: 'Saturday Art Club is on Thu, Jul 23 at 10:30 AM. [[link]]',
+    expectMatch: true,
+  },
+  {
+    id: 'weekday-in-name-repeated',
+    ...SHARED,
+    timeZone: 'America/Chicago',
+    summary: 'Saturday Art Club',
+    language: 'en',
+    text: 'Saturday Art Club is in your plans. Saturday Art Club meets Thursday, July 23 at 10:30 AM. [[link]]',
+    expectMatch: true,
+  },
+  {
+    id: 'name-translated-fr',
+    ...SHARED,
+    timeZone: 'America/Chicago',
+    language: 'fr',
+    text: 'Cours de natation jeudi 23 juillet à 10 h 30. [[link]]',
+    expectMatch: true,
+  },
+  {
+    id: 'name-missing',
+    ...SHARED,
+    timeZone: 'America/Chicago',
+    language: 'en',
+    text: 'Thu, Jul 23 at 10:30 AM is in your plans. [[link]]',
+    expectMatch: false,
   },
 ];

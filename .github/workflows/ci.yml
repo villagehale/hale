@@ -302,6 +302,12 @@ jobs:
       - name: Calendar-invite time judge eval (cached-only)
         run: pnpm --filter @hale/worker exec node evals/run-calendar-invite-time-eval.mjs --cached-only
 
+      - name: Calendar-invite writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-invite-voice
+
+      - name: Calendar-invite writer eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:calendar-invite-voice:broken
+
       - name: Weekday-care ask eval (cached-only)
         run: pnpm --filter @hale/worker eval:weekday-care-ask
 

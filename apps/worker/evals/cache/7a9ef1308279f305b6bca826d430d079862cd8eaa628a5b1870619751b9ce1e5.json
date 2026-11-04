@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is in Chinese, names the event as Library storytime, gives Wed July 22 at 4 PM, notes it is recorded, and tells the parent the link adds it to their phone calendar. Uses the placeholder correctly with no other web address. It says '已经记在你的安排里' (already in your plans) rather than claiming it is already on the phone calendar, which is acceptable. No extra details about place, price, or child, and no promise of a later text.",
+    "score": 5
+  }
+}

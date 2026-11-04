@@ -6,7 +6,9 @@
 // calendar-invite-time-fixtures.mjs. The skill body and model routing are imported
 // live, so a skill edit re-keys the cache.
 //
-// Recorded 2026-11-01 @ a404b1874 (5/5 PASS). CI replays it cached-only.
+// Recorded 2026-11-01 @ a404b1874 (5/5 PASS). Re-keyed 2026-11-04 (VIL-588: reason
+// before match, and the judge now also reads whether the text names the event).
+// CI replays it cached-only.
 // Re-record:
 //   HALE_SPEND_LEDGER=... HALE_MAX_USD=1 node --env-file=../../.env evals/run-calendar-invite-time-eval.mjs --live
 // Replay once cached:
@@ -36,13 +38,14 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'calendar-invite-time.md');
 
+/** Mirrors `timeJsonSchema` in calendar-invite-voice.ts. */
 const TOOL_SCHEMA = {
   type: 'object',
-  properties: { match: { type: 'boolean' } },
-  required: ['match'],
+  properties: { reason: { type: 'string' }, match: { type: 'boolean' } },
+  required: ['reason', 'match'],
 };
 
-const MAX_TOKENS = 80;
+const MAX_TOKENS = 300;
 
 /** Mirrors `calendarInviteTimeUserMessage` in calendar-invite-voice.ts. */
 function userMessage(fixture) {
@@ -80,22 +83,23 @@ async function main() {
       userMessage: message,
       toolName: 'time_match',
       toolSchema: TOOL_SCHEMA,
-      toolDescription: 'Whether the text states the same start as the facts.',
+      toolDescription: 'Whether the text names this event and states the same start as the facts.',
       maxTokens: MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
     const match = value.match === true;
-    const failures = match === fixture.expectMatch ? [] : [`match:${match} expected:${fixture.expectMatch}`];
-    results.push({ fixture, match, failures });
+    const failures =
+      match === fixture.expectMatch ? [] : [`match:${match} expected:${fixture.expectMatch}`];
+    results.push({ fixture, match, failures, reason: value.reason });
   }
 
   for (const r of results) {
     console.log(
       `${r.failures.length === 0 ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(24)} match=${r.match} expected=${r.fixture.expectMatch}`,
     );
-    for (const f of r.failures) console.log(`      · ${f}`);
+    for (const f of r.failures) console.log(`      · ${f} (${r.reason})`);
   }
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,

@@ -41,15 +41,15 @@
   },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
-    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
+    "sha256": "e199f7bad0c42615373dbbe869f05424c35fd1d995e6a58387141fec0035b3fb"
   },
   "calendar-invite-time.md": {
     "file": "calendar-invite-time.md",
-    "sha256": "1a07b041adce933d6bab2cb62ded5e6ef245a078630f58e650f2bd221b879289"
+    "sha256": "35c865876e1573a180b14a49d775a3170839936cf3daac858067ce0fcba86924"
   },
   "calendar-invite-voice.md": {
     "file": "calendar-invite-voice.md",
-    "sha256": "186475779c760f2d539d05b06edada16fd68b04b59d6d741dd5bc408a640be38"
+    "sha256": "8e9359cad3eb06966da050be62020602bc0572a9440a659239080e412f76eb81"
   },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
