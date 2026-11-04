@@ -15,12 +15,6 @@ export function calendarTitlesEqual(left: string, right: string): boolean {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-export function calendarInstantsEqual(left: string, right: string): boolean {
-  const a = new Date(left).getTime();
-  const b = new Date(right).getTime();
-  return !Number.isNaN(a) && a === b;
-}
-
 /** How far a clock read a minute off the sentence still counts as the same instant. */
 export const CALENDAR_CLOCK_TOLERANCE_MS = 2 * 60 * 1000;
 
@@ -36,31 +30,36 @@ export function calendarInstantsClose(
   return Math.abs(a - b) <= toleranceMs;
 }
 
+/** Which reviewer-approved `calendar_add` a calendar offer is the question about. */
+export type ApprovedCalendarAddMatch =
+  | { outcome: 'paired'; action: PendingAction }
+  | { outcome: 'unpaired' }
+  | { outcome: 'ambiguous'; actionIds: string[] };
+
 /**
- * The reviewer-approved `calendar_add` this offer is asking about, or null.
+ * The reviewer-approved `calendar_add` this offer is asking about.
  *
- * One draft with this title is that draft, even when the offer's instant was read
- * a minute off the sentence. Two drafts with the title are told apart by the instant,
- * and only by an exact match — never by picking the newest.
+ * Its occasion: the same title and a close clock. A minute off the sentence is the
+ * same occasion. The same title hours away is another one, even when it is the only
+ * draft, so a morning YES never approves the afternoon add. Two drafts of the same
+ * occasion are `ambiguous`: the offer pairs with neither, and both stay listed.
  */
 export function matchApprovedCalendarAdd(
   approvals: readonly PendingAction[],
   offer: { title: string; startsAt: string },
-): PendingAction | null {
-  const titled = approvals.filter(
+): ApprovedCalendarAddMatch {
+  const sameOccasion = approvals.filter(
     (action) =>
       action.actionType === 'calendar_add' &&
       action.reviewerApproved &&
       action.occasion !== undefined &&
-      calendarTitlesEqual(action.occasion.title, offer.title),
+      calendarTitlesEqual(action.occasion.title, offer.title) &&
+      calendarInstantsClose(action.occasion.startsAt, offer.startsAt),
   );
-  if (titled.length === 1) return titled[0] ?? null;
-  const timed = titled.filter(
-    (action) =>
-      action.occasion !== undefined &&
-      calendarInstantsEqual(action.occasion.startsAt, offer.startsAt),
-  );
-  return timed.length === 1 ? (timed[0] ?? null) : null;
+  const [only] = sameOccasion;
+  if (sameOccasion.length === 1 && only) return { outcome: 'paired', action: only };
+  if (sameOccasion.length === 0) return { outcome: 'unpaired' };
+  return { outcome: 'ambiguous', actionIds: sameOccasion.map((action) => action.actionId) };
 }
 
 /**

@@ -57,8 +57,8 @@ describe('matchApprovedCalendarAdd', () => {
       matchApprovedCalendarAdd([matched, draft({ actionId: 'a-2', reviewerApproved: false })], {
         title: '  trunk or treat ',
         startsAt: '2026-10-31T19:01:00.000Z',
-      })?.actionId,
-    ).toBe('a-1');
+      }),
+    ).toEqual({ outcome: 'paired', action: matched });
   });
 
   it('does not pick between two approved drafts that share a title unless the instant matches', () => {
@@ -76,14 +76,40 @@ describe('matchApprovedCalendarAdd', () => {
       matchApprovedCalendarAdd([early, late], {
         title: 'Gymnastics',
         startsAt: '2026-10-04T18:00:00.000Z',
-      })?.actionId,
-    ).toBe('late');
+      }),
+    ).toEqual({ outcome: 'paired', action: late });
     expect(
       matchApprovedCalendarAdd([early, late], {
         title: 'Gymnastics',
         startsAt: '2026-10-04T12:00:00.000Z',
       }),
-    ).toBeNull();
+    ).toEqual({ outcome: 'unpaired' });
+  });
+
+  it('does not pair the only approved draft of that title when it is hours from the offer', () => {
+    const afternoon = draft({
+      actionId: 'afternoon',
+      reviewerApproved: true,
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-04T20:00:00.000Z' },
+    });
+    expect(
+      matchApprovedCalendarAdd([afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-04T13:00:00.000Z',
+      }),
+    ).toEqual({ outcome: 'unpaired' });
+  });
+
+  it('names two approved drafts of the same occasion as ambiguous rather than picking one', () => {
+    const exact = draft({ actionId: 'exact', reviewerApproved: true });
+    const minuteOff = draft({
+      actionId: 'minute-off',
+      reviewerApproved: true,
+      occasion: { title: 'Trunk or Treat', startsAt: '2026-10-31T19:01:00.000Z' },
+    });
+    expect(
+      matchApprovedCalendarAdd([exact, minuteOff], { title: 'Trunk or Treat', startsAt: START }),
+    ).toEqual({ outcome: 'ambiguous', actionIds: ['exact', 'minute-off'] });
   });
 
   it('ignores an unrelated approved draft', () => {
@@ -98,7 +124,7 @@ describe('matchApprovedCalendarAdd', () => {
         ],
         { title: 'Picture day', startsAt: START },
       ),
-    ).toBeNull();
+    ).toEqual({ outcome: 'unpaired' });
   });
 });
 

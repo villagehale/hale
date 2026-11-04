@@ -5,7 +5,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { declineDraftedAction } from '~/lib/actions/decline';
-import { pairedDraftsForCalendarNo } from '~/lib/channel/calendar-ask';
+import { approvalForCalendarYes, pairedDraftsForCalendarNo } from '~/lib/channel/calendar-ask';
 import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
 import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
 import { buildChannelCoachTools, createTurnOfferLedger } from '~/lib/channel/coach/tools';
@@ -1537,5 +1537,144 @@ describe('a coach offer is the calendar, not the sentence', () => {
     const rows = await events();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.startsAt.toISOString()).toBe(SUNDAY.toISOString());
+  });
+});
+
+/**
+ * VIL-596. An answer approves only the add it was asked about. A calendar offer pairs
+ * with the reviewer-approved draft of ITS occasion: the same title and a close clock.
+ * The same title on the same day at another hour is another occasion. Read by the
+ * shipped reader over real rows, then through the router's own YES and NO pairing.
+ */
+describe('an offer pairs only with the draft of its own occasion', () => {
+  const GYM = 'Gymnastics';
+  const MORNING = STARTS_AT;
+  const AFTERNOON = new Date(STARTS_AT.getTime() + 7 * 60 * 60 * 1000);
+
+  const open = () =>
+    defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+
+  function calendarReading(offerId: string, polarity: 'yes' | 'no') {
+    return {
+      status: 'resolved' as const,
+      questionId: offerId,
+      kind: 'email_alert_add' as const,
+      polarity,
+      confidence: 'high' as const,
+    };
+  }
+
+  async function draftState(actionId: string) {
+    const [row] = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, actionId));
+    return row?.state;
+  }
+
+  it('a YES to the morning offer never approves the afternoon add of the same title', async () => {
+    const afternoonOffer = await seedOffer({
+      title: GYM,
+      startsAt: AFTERNOON,
+      createdAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+    });
+    const afternoonDraft = await seedDraftedAction({
+      title: GYM,
+      startsAt: AFTERNOON.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    // Newer, so the reader meets it first: the order that let it take the afternoon draft.
+    const morningOffer = await seedOffer({ title: GYM, startsAt: MORNING, createdAt: NOW });
+
+    const questions = await open();
+    const morning = questions.find((question) => question.id === morningOffer);
+    const afternoon = questions.find((question) => question.id === afternoonOffer);
+    expect(morning?.approvesActionId).toBeUndefined();
+    expect(afternoon?.approvesActionId).toBe(afternoonDraft);
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+
+    expect(approvalForCalendarYes(questions, calendarReading(morningOffer, 'yes'))).toEqual(
+      calendarReading(morningOffer, 'yes'),
+    );
+    expect(pairedDraftsForCalendarNo(questions, calendarReading(morningOffer, 'no'))).toEqual([]);
+    // POSITIVE CONTROL: the afternoon offer is the afternoon add's own question.
+    expect(approvalForCalendarYes(questions, calendarReading(afternoonOffer, 'yes'))).toEqual({
+      ...calendarReading(afternoonDraft, 'yes'),
+      kind: 'approval',
+    });
+    expect(pairedDraftsForCalendarNo(questions, calendarReading(afternoonOffer, 'no'))).toEqual([
+      afternoonDraft,
+    ]);
+
+    const verdict = await reply('yes', { resolved: reading(morningOffer, 'yes') });
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const placed = await events();
+    expect(placed.map((row) => row.startsAt.toISOString())).toEqual([MORNING.toISOString()]);
+    await expect(draftState(afternoonDraft)).resolves.toBe('drafted_for_approval');
+  });
+
+  it('a morning offer leaves an approved afternoon add listed as its own question', async () => {
+    const morningOffer = await seedOffer({ title: GYM, startsAt: MORNING });
+    const afternoonDraft = await seedDraftedAction({
+      title: GYM,
+      startsAt: AFTERNOON.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === morningOffer)?.approvesActionId).toBe(
+      undefined,
+    );
+    expect(
+      questions.filter((question) => question.kind === 'approval').map((question) => question.id),
+    ).toEqual([afternoonDraft]);
+  });
+
+  it('pairs the only approved add of the occasion when its clock reads a minute off (control)', async () => {
+    const offerId = await seedOffer({ title: GYM, startsAt: MORNING });
+    const actionId = await seedDraftedAction({
+      title: GYM,
+      startsAt: new Date(MORNING.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(actionId);
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+  });
+
+  it('names two approved adds of the occasion as ambiguous and pairs with neither', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const offerId = await seedOffer({ title: GYM, startsAt: MORNING });
+    const exact = await seedDraftedAction({
+      title: GYM,
+      startsAt: MORNING.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    const minuteOff = await seedDraftedAction({
+      title: GYM,
+      startsAt: new Date(MORNING.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(undefined);
+    expect(
+      questions
+        .filter((question) => question.kind === 'approval')
+        .map((question) => question.id)
+        .sort(),
+    ).toEqual([exact, minuteOff].sort());
+    expect(info).toHaveBeenCalledWith(
+      { offerId, actionIds: expect.arrayContaining([exact, minuteOff]), outcome: 'ambiguous' },
+      expect.any(String),
+    );
   });
 });
