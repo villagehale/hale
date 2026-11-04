@@ -521,6 +521,169 @@ describe('a 1:1 decision syncs the group', () => {
     expect(retry.bodies()).toContain('Quick sync: Barton picked swim for Maya, Friday at 3:00.');
   });
 
+  it('a participant read Linq refuses for now keeps the sync queued for the next sweep', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Tuesday',
+        time: '4:00',
+      },
+      now: NOW,
+    });
+    const linqUrls: string[] = [];
+    const rateLimited = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 429 });
+      linqUrls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', rateLimited);
+
+    const held = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 10 * 60 * 1000),
+      fetch: rateLimited as unknown as typeof fetch,
+    });
+    expect(held).toEqual({ sent: 0, held: 1 });
+    expect(linqUrls).toEqual([]);
+    const [waiting] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(waiting?.flushedAt).toBeNull();
+
+    const recovered = wire();
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 20 * 60 * 1000),
+      fetch: recovered.fetch,
+    });
+    expect(sent.sent).toBe(1);
+    expect(recovered.linqUrls()).toEqual([GROUP_MESSAGES]);
+    expect(recovered.bodies()).toContain(
+      'Quick sync: Barton picked swim for Maya, Tuesday at 4:00.',
+    );
+  });
+
+  it('positive control: someone Hale cannot identify at the sweep still closes the sync unsent', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'swim',
+        kid: 'Maya',
+        day: 'Tuesday',
+        time: '4:00',
+      },
+      now: NOW,
+    });
+    const linqUrls: string[] = [];
+    const strangerPresent = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') {
+        return Response.json({
+          chat: {
+            id: GROUP,
+            is_group: true,
+            handles: [{ handle: PARENT }, { handle: DAD }, { handle: FRIEND }],
+          },
+        });
+      }
+      linqUrls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', strangerPresent);
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+
+    const closed = await flushGroupDecisionSyncs(db.database, {
+      now: sweptAt,
+      fetch: strangerPresent as unknown as typeof fetch,
+    });
+    expect(closed).toEqual({ sent: 0, held: 0 });
+    expect(linqUrls).toEqual([]);
+    const [done] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(done?.flushedAt).toEqual(sweptAt);
+
+    const later = wire();
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 20 * 60 * 1000),
+        fetch: later.fetch,
+      }),
+    ).toEqual({ sent: 0, held: 0 });
+    expect(later.linqUrls()).toEqual([]);
+  });
+
+  it('queues a decision made while Linq refuses the participant read, and waits out the 1:1 as usual', async () => {
+    const seeded = await seedHousehold(GROUP);
+    const rateLimited = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 429 });
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', rateLimited);
+
+    expect(
+      await queueGroupActivityDecision(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        originChatId: PERSONAL,
+        decision: { decision: 'passed', activity: 'art', kid: 'Maya' },
+        now: NOW,
+      }),
+    ).toBe('queued');
+    const laterLine = new Date(NOW.getTime() + 5 * 60 * 1000);
+    await noteGroupSyncConversation(db.database, {
+      familyId: seeded.familyId,
+      originChatId: PERSONAL,
+      now: laterLine,
+    });
+    const [waiting] = await db.database
+      .select({ flushAfter: schema.groupDecisionSync.flushAfter })
+      .from(schema.groupDecisionSync);
+    expect(waiting?.flushAfter).toEqual(new Date(laterLine.getTime() + 10 * 60 * 1000));
+
+    const recovered = wire();
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 16 * 60 * 1000),
+      fetch: recovered.fetch,
+    });
+    expect(sent.sent).toBe(1);
+    expect(recovered.bodies()).toContain('Quick sync: Barton passed on art for Maya.');
+  });
+
+  it('positive control: does not queue a decision while someone Hale cannot identify is in the chat', async () => {
+    const seeded = await seedHousehold(GROUP);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          chat: {
+            id: GROUP,
+            is_group: true,
+            handles: [{ handle: PARENT }, { handle: DAD }, { handle: FRIEND }],
+          },
+        }),
+      ),
+    );
+
+    expect(
+      await queueGroupActivityDecision(db.database, {
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        originChatId: PERSONAL,
+        decision: { decision: 'passed', activity: 'art', kid: 'Maya' },
+        now: NOW,
+      }),
+    ).toBe('skipped');
+    expect(await db.database.select().from(schema.groupDecisionSync)).toEqual([]);
+  });
+
   it('does not mark a not-yet-due row flushed with the sitting', async () => {
     const seeded = await seedHousehold(GROUP);
     const http = wire();

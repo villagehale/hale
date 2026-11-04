@@ -355,6 +355,24 @@ async function familyTeenNames(database: Database, familyId: string, now: Date):
 }
 
 /**
+ * The claimed chat a decision sync is queued for. A participant read that could not be
+ * made is no answer about the audience: the sync still waits, and the flush reads again.
+ */
+async function decisionSyncChatId(database: Database, familyId: string): Promise<string | null> {
+  const target = await familyOutboundTarget(database, familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
+  if (target.channel === 'group') return target.chatId;
+  if (target.reason !== 'participants_unverified') return null;
+  const [family] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return family?.linqGroupChatId ?? null;
+}
+
+/**
  * Queue one picked or passed activity from a 1:1 thread. The group hears it
  * only after the thread has been quiet. A question, a piece of advice, or a
  * decision this template does not cover is not queued, and neither is one about a
@@ -370,11 +388,9 @@ export async function queueGroupActivityDecision(
     now: Date;
   },
 ): Promise<'queued' | 'skipped'> {
-  const target = await familyOutboundTarget(database, input.familyId, {
-    contentClass: DECISION_SYNC_CLASS,
-  });
-  if (target.channel !== 'group') return 'skipped';
-  if (input.originChatId !== null && input.originChatId === target.chatId) return 'skipped';
+  const groupChatId = await decisionSyncChatId(database, input.familyId);
+  if (!groupChatId) return 'skipped';
+  if (input.originChatId !== null && input.originChatId === groupChatId) return 'skipped';
   const { decision } = input;
   if (!decision.activity.trim() || !decision.kid.trim()) return 'skipped';
   const timed = decision.decision === 'picked' || decision.decision === 'duty';
@@ -457,11 +473,9 @@ export async function noteGroupSyncConversation(
   input: { familyId: string; originChatId: string | null; now: Date },
 ): Promise<void> {
   if (typeof database.update !== 'function') return;
-  const target = await familyOutboundTarget(database, input.familyId, {
-    contentClass: DECISION_SYNC_CLASS,
-  });
-  if (target.channel !== 'group') return;
-  if (input.originChatId !== null && input.originChatId === target.chatId) return;
+  const groupChatId = await decisionSyncChatId(database, input.familyId);
+  if (!groupChatId) return;
+  if (input.originChatId !== null && input.originChatId === groupChatId) return;
   await database
     .update(schema.groupDecisionSync)
     .set({ flushAfter: new Date(input.now.getTime() + SETTLE_MS) })
@@ -475,9 +489,10 @@ export async function noteGroupSyncConversation(
 
 /**
  * Send the waiting decisions whose 1:1 has been quiet. One bubble, every due
- * line, never a second bubble for the same sitting. Quiet hours hold the
- * bubble; the rows stay queued. A row about a child who is 13+ by now is
- * withheld: marked flushed and never said.
+ * line, never a second bubble for the same sitting. Quiet hours, or a participant
+ * read that could not be made, hold the bubble; the rows stay queued. Any other
+ * reason the group may not hear it closes the rows unsent. A row about a child
+ * who is 13+ by now is withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
@@ -515,6 +530,14 @@ export async function flushGroupDecisionSyncs(
     const target = await familyOutboundTarget(database, familyId, {
       contentClass: DECISION_SYNC_CLASS,
     });
+    if (target.channel !== 'group' && target.reason === 'participants_unverified') {
+      held += 1;
+      console.info(
+        { familyId, queued: queued.length, reason: target.reason },
+        'family outbound: sync held, participants not read',
+      );
+      continue;
+    }
     if (target.channel !== 'group') {
       await database
         .update(schema.groupDecisionSync)

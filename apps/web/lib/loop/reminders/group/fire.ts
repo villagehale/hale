@@ -56,11 +56,11 @@ import { type GroupReminderVoice, sharedGroupReminderVoice } from './voice';
  * goes through the loop's channel dispatch, which carries a household's texts into its
  * family group.
  *
- * An error mid-send, or a refusal Linq calls temporary, closes nothing: the claim goes
- * stale and a later tick takes the row again and checks everything afresh. A refusal hands
- * the commit back first, so a STOP meanwhile still takes the reminder back. A reminder
- * that keeps failing is tried at most every `SENDING_STALE_MS` and dropped as missed past
- * `LATE_LIMIT_MS`. A send that reached Linq, or may have, is never made again: its ledger
+ * An error mid-send, a refusal Linq calls temporary, or a participant read that could not
+ * be made, closes nothing: the claim goes stale and a later tick takes the row again and
+ * checks everything afresh. A refusal hands the commit back first, so a STOP meanwhile
+ * still takes the reminder back. A reminder that keeps failing is tried at most every
+ * `SENDING_STALE_MS` and dropped as missed past `LATE_LIMIT_MS`. A send that reached Linq, or may have, is never made again: its ledger
  * key holds it, and the later tick closes the reminder as sent only on Linq's message id.
  */
 
@@ -86,7 +86,10 @@ export type GroupReminderTickSummary =
       failed: number;
       /** Taken back by a STOP, a cancel or a later tick before this tick sent anything. */
       lost: number;
-      /** An error mid-send: left claimed, so a later tick tries again once the claim is stale. */
+      /**
+       * An error mid-send, or a participant read that could not be made: left claimed, so a
+       * later tick tries again once the claim is stale.
+       */
       retrying: number;
     };
 
@@ -176,6 +179,14 @@ async function settle(
   now: Date,
   thread: () => Promise<unknown>,
 ): Promise<FireOutcome> {
+  if (sent.outcome === 'held' && sent.reason === 'participants_unverified') {
+    await releaseSend(database, row);
+    console.warn(
+      { reminderId: row.id, reason: sent.reason, outcome: 'retrying' },
+      'group reminders: participants not read at the send, left claimed for a later tick',
+    );
+    return 'retrying';
+  }
   if (sent.outcome === 'held') {
     return close(database, row, { status: 'dropped', reason: 'audience_held', now });
   }
@@ -248,17 +259,15 @@ async function fireOne(
     ? (seats.find((seat) => seat.phoneHash === row.forPhoneHash) ?? null)
     : null;
   const groupHeld = await familyHoldsChat(database, row.familyId, row.chatId);
-  const audienceAllowed =
+  const audience =
     row.delivery === 'group'
-      ? (
-          await groupAudienceAllows(
-            database,
-            row.chatId,
-            'schedule',
-            ports.listChatHandles ?? listLinqParticipantHandles,
-          )
-        ).allowed
-      : true;
+      ? await groupAudienceAllows(
+          database,
+          row.chatId,
+          'schedule',
+          ports.listChatHandles ?? listLinqParticipantHandles,
+        )
+      : null;
   const askerCustomer =
     row.delivery === 'direct'
       ? await seatedCustomer(database, row.chatId, row.askedByUserId)
@@ -272,11 +281,18 @@ async function fireOne(
     groupHeld,
     askerSeated: askerSeat !== null,
     recipientSeated: row.forKind === 'person' ? recipientSeat !== null : null,
-    audienceAllowed,
+    audience,
     askerCustomer,
     quietNow: await quietNowFor(database, row, seats, askerSeat, now),
     directReachable: reachable,
   });
+  if (decision.kind === 'defer') {
+    console.warn(
+      { reminderId: row.id, reason: decision.reason, outcome: 'retrying' },
+      'group reminders: participants not read, left claimed for a later tick',
+    );
+    return 'retrying';
+  }
   if (decision.kind === 'drop') {
     return close(database, row, { status: 'dropped', reason: decision.reason, now });
   }

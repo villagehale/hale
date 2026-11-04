@@ -304,6 +304,11 @@ export async function takeGroupReminderTurn(
     send: ports.send,
     listChatHandles: ports.listChatHandles,
   });
+  if (posted.outcome === 'held' && posted.reason === 'participants_unverified') {
+    // Who is in the chat could not be read: no answer about the audience, so nothing is
+    // cancelled and Linq's redelivery runs the turn again.
+    return releaseForRetry(database, { pendingIds, recorded, familyId, why: posted.reason });
+  }
   if (posted.outcome === 'held') {
     await cancelReminders(database, {
       ids: pendingIds,
