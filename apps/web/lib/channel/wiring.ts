@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
@@ -52,5 +53,7 @@ export function buildDispatchPorts(
     },
     channels: opts.channels,
     renderer: opts.renderer,
+    // VIL-581 · bound to this handle; a no-op while CLAIM_READER_MODE is unset.
+    claimShadow: { dispatch: (input) => defaultClaimShadow().dispatch(database, input) },
   };
 }

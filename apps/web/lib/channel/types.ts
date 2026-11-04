@@ -101,6 +101,12 @@ export type VoiceOutcome =
 export type RenderedContent = {
   kind: 'sms';
   text: string;
+  /**
+   * VIL-581 · the whole text is the model's (composed from facts), not a template's.
+   * Required, so a new renderer cannot forget it: the dispatch's claim shadow reads only
+   * model-written bodies, since a template's claims are a template bug, not a misread.
+   */
+  modelWritten: boolean;
   voice?: VoiceOutcome;
   /** Keep the sent text on the outbound channel_messages row. Set only by a template
    * whose whole text is model-written from the parent's own facts (the reminder). */

@@ -296,6 +296,8 @@ export async function deliverFollowUp(
     familyId: input.familyId,
     body,
     now,
+    lane: 'activity_followup',
+    parentUserId: input.recipient.parentUserId,
   });
   if (unbacked.length > 0) {
     console.error(

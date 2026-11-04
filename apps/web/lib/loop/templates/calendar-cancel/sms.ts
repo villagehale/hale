@@ -48,6 +48,7 @@ export const calendarCancelSmsRenderer: TemplateRenderer = {
     return {
       kind: 'sms',
       text: calendarCancelSmsText(asCalendarCancelSmsPayload(message.payload)),
+      modelWritten: true,
     };
   },
 };

@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { type ClaimShadow, type ClaimShadowLane, defaultClaimShadow } from './claim-shadow';
 import { extractStateClaims } from './claims';
 import { type ReconcileVerdict, reconcile } from './reconcile';
 import { loadReconcileView } from './view';
@@ -42,15 +43,39 @@ export function unsendableReasons(verdict: ReconcileVerdict): SendRefusalReason[
 /**
  * Read the family's ledger and judge the body against it — the whole primitive, for a
  * caller that has a database handle and one string to decide about.
+ *
+ * VIL-581: the claim reader SHADOWS the decision. It is handed the verdict after the
+ * decision is made and starts detached (claim-shadow.ts); what this returns never
+ * depends on it. `lane` and `parentUserId` only label and place that read: a caller
+ * that names neither is the unlabelled sweep, read in the primary parent's zone.
  */
 export async function refuseUnbackedSend(
   database: Database,
-  input: { familyId: string; body: string; now: Date },
+  input: {
+    familyId: string;
+    body: string;
+    now: Date;
+    lane?: Exclude<ClaimShadowLane, 'coach' | 'dispatch' | 'sweep_unlabelled'>;
+    parentUserId?: string;
+  },
+  shadow: ClaimShadow = defaultClaimShadow(),
 ): Promise<SendRefusalReason[]> {
+  const shadowed = {
+    lane: input.lane ?? 'sweep_unlabelled',
+    familyId: input.familyId,
+    parentUserId: input.parentUserId ?? null,
+    body: input.body,
+    now: input.now,
+  } as const;
   const claims = extractStateClaims(input.body);
   // NO CLAIM, NO QUERY. The overwhelming majority of bodies assert nothing this
   // primitive owns, and those must not cost a sweep four selects per message.
-  if (claims.length === 0) return [];
+  if (claims.length === 0) {
+    shadow.sweep(database, { ...shadowed, verdict: null, view: null });
+    return [];
+  }
   const view = await loadReconcileView(database, { familyId: input.familyId, now: input.now });
-  return unsendableReasons(reconcile(claims, view));
+  const verdict = reconcile(claims, view);
+  shadow.sweep(database, { ...shadowed, verdict, view });
+  return unsendableReasons(verdict);
 }
