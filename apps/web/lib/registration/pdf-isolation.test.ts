@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { WorkerOptions } from 'node:worker_threads';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { registrationPdfFixture } from './pdf-fixture.test-helper';
@@ -19,6 +20,8 @@ const spawned = vi.hoisted(() => ({
   rejectNextTerminate: false,
   refusedTerminates: [] as (() => Promise<number>)[],
   hideWorkerFile: false,
+  /** When set, this is the only reader path that exists. */
+  onlyWorkerAt: null as string | null,
 }));
 vi.mock('node:worker_threads', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:worker_threads')>();
@@ -54,17 +57,19 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
-    existsSync: (path: Parameters<typeof actual.existsSync>[0]) =>
-      spawned.hideWorkerFile && String(path).endsWith('pdf-worker.mjs')
-        ? false
-        : actual.existsSync(path),
+    existsSync: (path: Parameters<typeof actual.existsSync>[0]) => {
+      if (!String(path).endsWith('pdf-worker.mjs')) return actual.existsSync(path);
+      if (spawned.hideWorkerFile) return false;
+      if (spawned.onlyWorkerAt !== null) return String(path) === spawned.onlyWorkerAt;
+      return actual.existsSync(path);
+    },
   };
 });
 
 // vitest.setup.ts already loaded resolve-repo-file with the real node:fs; a fresh registry
 // makes pdf.ts and its resolver load against the spy-through ports above.
 vi.resetModules();
-const { registrationPdfText } = await import('./pdf');
+const { pdfWorkerCandidates, registrationPdfText } = await import('./pdf');
 
 const GUIDE = registrationPdfFixture([
   'Fall 2026. Preview August 3.',
@@ -145,6 +150,45 @@ describe('the PDF reader worker is isolated from the parent process', () => {
     } finally {
       cwd.mockRestore();
     }
+  });
+
+  it('never looks for the reader above the app root', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = spawned.calls.length;
+    // The real reader is gone; only a file planted at the filesystem root would be found.
+    spawned.onlyWorkerAt = join(parse(scratch).root, 'apps/web/lib/registration/pdf-worker.mjs');
+    try {
+      await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+        outcome: 'reader_fault',
+        fault: 'reader_missing',
+      });
+      expect(spawned.calls).toHaveLength(before);
+    } finally {
+      spawned.onlyWorkerAt = null;
+      error.mockRestore();
+    }
+    // Positive control: with the real reader back, the same read runs it.
+    await expect(registrationPdfText(GUIDE)).resolves.toMatchObject({ outcome: 'read' });
+    expect(String(spawned.calls[spawned.calls.length - 1]?.file)).toBe(
+      fileURLToPath(new URL('./pdf-worker.mjs', import.meta.url)),
+    );
+  });
+
+  it('tries the runtime location first, mapped to where tracing ships the reader', () => {
+    // A moved build: the baked build-time path is gone, the real chunk dir is under .next.
+    expect(
+      pdfWorkerCandidates(
+        '/run/apps/web/.next/server/app/api/pdf',
+        'file:///build/apps/web/lib/registration/pdf.ts',
+      ),
+    ).toEqual([
+      '/run/apps/web/lib/registration/pdf-worker.mjs',
+      '/build/apps/web/lib/registration/pdf-worker.mjs',
+    ]);
+    // turbopack dev: no __dirname, and import.meta.url is the real source file.
+    expect(pdfWorkerCandidates(undefined, 'file:///src/apps/web/lib/registration/pdf.ts')).toEqual([
+      '/src/apps/web/lib/registration/pdf-worker.mjs',
+    ]);
   });
 
   it('names a reader that cannot spawn a reader fault and releases its slot', async () => {

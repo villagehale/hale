@@ -1,7 +1,7 @@
-import { dirname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { findRepoFile } from '~/lib/coach/resolve-repo-file';
 import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS, PAGE_FETCH_TIMEOUT_MS } from './fetch';
 
 export const MAX_PDF_PAGES = 100;
@@ -14,14 +14,29 @@ export const PDF_READ_MEMORY_POLL_MS = 50;
  * Next's own ~400 MB.
  */
 export const MAX_CONCURRENT_PDF_READS = 2;
-const PDF_WORKER_FILE = 'apps/web/lib/registration/pdf-worker.mjs';
-// The module's own location as each runtime reports it, never the cwd. Next bakes
-// import.meta.url to the build-time path, which is gone once the build is moved; __dirname is
-// the real chunk dir there (and absent under turbopack dev, where import.meta.url is real).
-const PDF_WORKER_ANCHORS = [
-  dirname(fileURLToPath(import.meta.url)),
-  ...(typeof __dirname === 'string' ? [__dirname] : []),
-];
+const PDF_WORKER_FILE = 'pdf-worker.mjs';
+
+/**
+ * Where the reader can be, the runtime location first: never the cwd, never above the app root
+ * (the dir holding `.next`). A Next chunk under `<app>/.next/` maps to where tracing ships the
+ * reader, `<app>/lib/registration/`; a source module (vitest, turbopack dev) to its sibling.
+ * Next bakes import.meta.url to the build-time path, which is gone once the build is moved;
+ * __dirname is the real chunk dir there (and absent under turbopack dev).
+ */
+export function pdfWorkerCandidates(runtimeDir: string | undefined, moduleUrl: string): string[] {
+  return [...(runtimeDir === undefined ? [] : [runtimeDir]), dirname(fileURLToPath(moduleUrl))].map(
+    (dir) => {
+      const parts = dir.split(sep);
+      const next = parts.lastIndexOf('.next');
+      if (next === -1) return join(dir, PDF_WORKER_FILE);
+      return join(parts.slice(0, next).join(sep) || sep, 'lib', 'registration', PDF_WORKER_FILE);
+    },
+  );
+}
+const PDF_WORKER_CANDIDATES = pdfWorkerCandidates(
+  typeof __dirname === 'string' ? __dirname : undefined,
+  import.meta.url,
+);
 
 /** About the city's PDF only. */
 export type RegistrationPdfRefusal = 'pdf_unreadable' | 'pdf_no_text' | 'pdf_read_budget';
@@ -109,7 +124,7 @@ export async function registrationPdfText(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let memoryPoll: ReturnType<typeof setInterval> | undefined;
   try {
-    const workerFile = findRepoFile(PDF_WORKER_ANCHORS, PDF_WORKER_FILE);
+    const workerFile = PDF_WORKER_CANDIDATES.find((candidate) => existsSync(candidate));
     if (!workerFile) return readerFault('reader_missing', null);
     try {
       worker = new Worker(workerFile, {

@@ -15,13 +15,7 @@ import { fileURLToPath } from 'node:url';
  * worker's file (rule #2); we never write a copy.
  */
 export function resolveRepoFile(rel: string): string {
-  const found = findRepoFile([process.cwd(), dirname(fileURLToPath(import.meta.url))], rel);
-  if (found) return found;
-  throw new Error(`resolveRepoFile: could not locate ${rel} from cwd=${process.cwd()}`);
-}
-
-/** The walk itself: the first `<ancestor>/<rel>` that exists, trying each anchor in order. */
-export function findRepoFile(anchors: readonly string[], rel: string): string | null {
+  const anchors = [process.cwd(), dirname(fileURLToPath(import.meta.url))];
   for (const anchor of anchors) {
     let dir = anchor;
     const root = parse(dir).root;
@@ -32,5 +26,5 @@ export function findRepoFile(anchors: readonly string[], rel: string): string | 
       dir = dirname(dir);
     }
   }
-  return null;
+  throw new Error(`resolveRepoFile: could not locate ${rel} from cwd=${process.cwd()}`);
 }
