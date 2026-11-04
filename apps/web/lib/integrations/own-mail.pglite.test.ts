@@ -544,6 +544,29 @@ describe('one occasion in one thread is told once', () => {
     expect(h.writer.seen).toHaveLength(4);
   });
 
+  it('T4h: a cancellation that never reached the parent does not make the next announcement news', async () => {
+    const on = (messageId: string) =>
+      classified({ kind: 'new_event', newTime: SATURDAY }, messageId);
+    const off = (messageId: string) =>
+      classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, messageId);
+    const byMessage = { k1: on('k1'), k2: off('k2'), k3: on('k3'), k4: off('k4') };
+    const h = harness(byMessage);
+    const refused = harness(byMessage);
+    refused.transport.send = async () => {
+      throw new Error('provider refused');
+    };
+    const one = (harnessed: Harness, messageId: string, minute: number) =>
+      sweep(harnessed, [inbound(messageId, 't-swim', minute)]).then(alerts);
+
+    await expect(one(h, 'k1', 0)).resolves.toEqual(['sent']);
+    await expect(one(refused, 'k2', 10)).resolves.toEqual(['send_failed']);
+    // The parent's last word is still "on": the same "on" again is a repeat.
+    await expect(one(h, 'k3', 20)).resolves.toEqual(['already_sent']);
+    // The failed cancellation, read again, is named rather than re-sent.
+    await expect(one(h, 'k4', 30)).resolves.toEqual(['occasion_send_failed']);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
   it('T4g: another date told in the same thread does not make a repeat of this one news', async () => {
     const sunday = '2026-11-15T16:00:00.000Z';
     const h = harness({

@@ -398,7 +398,6 @@ async function occasionClaim(
     .select({
       occasionKey: schema.emailAlertOccasions.occasionKey,
       channelMessageId: schema.emailAlertOccasions.channelMessageId,
-      status: schema.channelMessages.status,
     })
     .from(schema.emailAlertOccasions)
     .innerJoin(
@@ -412,7 +411,9 @@ async function occasionClaim(
           anchorKeys.map((key) => sql`${key}`),
           sql`, `,
         )}]::text[]`,
-        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+        // What the parent HEARD: a failed send told nobody, so it is not the thread's last
+        // word. Read again, it is still found by its own key below and named.
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
     .orderBy(desc(schema.emailAlertOccasions.createdAt))
@@ -421,7 +422,7 @@ async function occasionClaim(
     last !== undefined &&
     (last.occasionKey === base || last.occasionKey.startsWith(`${base}:`))
   ) {
-    return { occasionKey: last.occasionKey, anchorKeys, told: toldBy(last.status) };
+    return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
   }
   const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
   return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
