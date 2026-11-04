@@ -16,6 +16,7 @@ const accountHeldMock = vi.fn();
 const holdNameMock = vi.fn();
 const kickMock = vi.fn();
 const freshMock = vi.fn();
+const settleSupersededMock = vi.fn();
 
 vi.mock('~/lib/channel/connect/fresh-link', () => ({
   textFreshConnectorLink: (...a: unknown[]) => freshMock(...a),
@@ -43,6 +44,9 @@ vi.mock('~/lib/integrations/google-oauth', async () => {
 vi.mock('~/lib/integrations/store', () => ({
   saveConnection: (...a: unknown[]) => saveConnectionMock(...a),
   otherParentHoldsGoogleAccount: (...a: unknown[]) => accountHeldMock(...a),
+}));
+vi.mock('~/lib/integrations/google-disconnect', () => ({
+  settleSupersededGoogleRevoke: (...a: unknown[]) => settleSupersededMock(...a),
 }));
 vi.mock('~/lib/integrations/google-profile', () => ({
   readGoogleGivenName: (...a: unknown[]) => readProfileMock(...a),
@@ -92,10 +96,12 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       holdNameMock,
       kickMock,
       freshMock,
+      settleSupersededMock,
     ]) {
       m.mockReset();
     }
     freshMock.mockResolvedValue('not_enrolled');
+    settleSupersededMock.mockResolvedValue('revoked');
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     kickMock.mockResolvedValue({ outcome: 'off' });
@@ -107,7 +113,7 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       accessToken: 'ya29.x',
       scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
     });
-    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID, superseded: null });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -162,6 +168,35 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       provider: 'gcal',
     });
     expect(location(res)).toContain('connect=gcal');
+  });
+
+  it("WEB: another account's revoke the connect took from the row is asked of Google after the store", async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
+    resolveUserIdMock.mockResolvedValue(MINTER);
+    const superseded = {
+      id: '55555555-5555-4555-8555-555555555555',
+      familyId: FAMILY,
+      provider: 'gcal',
+      enc: 'pending-ciphertext',
+      since: new Date('2026-11-01T00:00:00.000Z'),
+    };
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID, superseded });
+
+    const res = await callCallback(await webState(MINTER));
+
+    expect(settleSupersededMock).toHaveBeenCalledTimes(1);
+    expect(settleSupersededMock.mock.calls[0]?.[1]).toBe(superseded);
+    expect(location(res)).toContain('connect=gcal');
+  });
+
+  it('WEB: a connect that took no other revoke asks Google nothing', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
+    resolveUserIdMock.mockResolvedValue(MINTER);
+
+    await callCallback(await webState(MINTER));
+
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(settleSupersededMock).not.toHaveBeenCalled();
   });
 
   /** An unreadable state cannot name a surface, so it keeps the answer the web dead end
@@ -838,6 +873,25 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(saveConnectionMock).not.toHaveBeenCalled();
     expect(noticeMock).not.toHaveBeenCalled();
     expect(holdNameMock).not.toHaveBeenCalled();
+  });
+
+  it("stores the Google account's key in its own field, never in the metadata a sync replaces", async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
+    });
+    readSubMock.mockResolvedValue('google-sub-own');
+    const { googleAccountBlindIndex } = await import('~/lib/crypto/blind-index');
+
+    const res = await callCallback(await minterState());
+
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    const saved = saveConnectionMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(saved.googleAccountKey).toBe(googleAccountBlindIndex('google-sub-own'));
+    expect(JSON.stringify(saved.providerMetadata ?? {})).not.toContain('googleAccountKey');
   });
 
   it('still connects when profile was not granted, and does not read userinfo', async () => {

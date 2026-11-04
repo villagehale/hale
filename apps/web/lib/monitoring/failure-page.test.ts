@@ -19,6 +19,7 @@ import {
   DEAD_LETTER_PAGE_ROUTE,
   DEFERRED_PILEUP_PAGE_ROUTE,
   DEFERRED_PILEUP_THRESHOLD,
+  ERASURE_GOOGLE_PAGE_ROUTE,
   FIRST_HELLO_PAGE_ROUTE,
   MODEL_PROVIDER,
   OPT_OUT_HOLD_PAGE_ROUTE,
@@ -31,6 +32,7 @@ import {
   composeCrisisUnansweredAlert,
   composeDeadLetterAlert,
   composeDeferredPileupAlert,
+  composeErasureGoogleAlert,
   composeFirstHelloFailureAlert,
   composeOptOutHoldAlert,
   composeProviderIncidentAlert,
@@ -40,7 +42,9 @@ import {
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
   noteFirstHelloFailure,
+  pageErasureGoogleUnconfirmed,
   pageFailureAlerts,
+  recordErasureGoogleUnconfirmed,
 } from './failure-page';
 import type { IncidentFailure } from './provider-health';
 
@@ -1139,5 +1143,99 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
 
     expect(result.optOutHolds).toEqual({ posted: 1, deduped: 0, failed: 0 });
     expect(texts).toHaveLength(1);
+  });
+});
+
+describe('VIL-156 · families erased with Google unconfirmed page #ops by count', () => {
+  let db: TestDb;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  it('composes counts only, and renders a non-count as 0', () => {
+    expect(composeErasureGoogleAlert({ unconfirmed: 2, endFailed: Number.NaN })).toBe(
+      'Hale: families erased with Google unconfirmed. revoke unanswered 2. end failed 0.',
+    );
+  });
+
+  it('pages a recorded erasure at once, and only once', async () => {
+    const { texts, post } = recorder();
+    await recordErasureGoogleUnconfirmed(db.database, { unconfirmed: 1, endFailed: 0 });
+
+    const first = await pageErasureGoogleUnconfirmed(db.database, { post, now: NOW });
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(first).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(sweep.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([
+      'Hale: families erased with Google unconfirmed. revoke unanswered 1. end failed 0.',
+    ]);
+  });
+
+  it('a page Slack refused stays owed, and the failure-page cron posts it', async () => {
+    await recordErasureGoogleUnconfirmed(db.database, { unconfirmed: 0, endFailed: 1 });
+    const refused = recorder(() => 'failed');
+    const first = await pageErasureGoogleUnconfirmed(db.database, {
+      post: refused.post,
+      now: NOW,
+    });
+    expect(first).toEqual({ posted: 0, deduped: 0, failed: 1 });
+
+    const { texts, post } = recorder();
+    const later = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(later.erasureGoogle).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(texts).toEqual([
+      'Hale: families erased with Google unconfirmed. revoke unanswered 0. end failed 1.',
+    ]);
+    const [claim] = await db.database
+      .select({ count: schema.rateLimits.count })
+      .from(schema.rateLimits)
+      .where(eq(schema.rateLimits.route, ERASURE_GOOGLE_PAGE_ROUTE));
+    expect(claim?.count).toBe(1);
+  });
+
+  it('positive control: nothing recorded, nothing posted', async () => {
+    const { texts, post } = recorder();
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(result.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([]);
+  });
+
+  /** A claim a poster took at `claimedAt` and never finished: it crashed after claimOwed. */
+  async function crashedClaim(claimedAt: Date): Promise<void> {
+    await db.database.insert(schema.rateLimits).values({
+      identifier: `${randomUUID()}:1:0`,
+      route: ERASURE_GOOGLE_PAGE_ROUTE,
+      windowStart: CLAIM_EPOCH,
+      count: claimStamp(claimedAt),
+    });
+  }
+
+  it('a poster that crashed after claiming is retried once its claim is stale', async () => {
+    await crashedClaim(new Date(NOW.getTime() - 5 * 60_000));
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.erasureGoogle).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(texts).toEqual([
+      'Hale: families erased with Google unconfirmed. revoke unanswered 1. end failed 0.',
+    ]);
+  });
+
+  it('positive control: a claim taken seconds ago is left to its poster, not posted twice', async () => {
+    await crashedClaim(new Date(NOW.getTime() - 10_000));
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([]);
   });
 });

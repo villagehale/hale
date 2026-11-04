@@ -5,6 +5,7 @@ import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { asciiDigits, textDestination, titleDestination } from './calendar-destination';
 
 /**
  * The tap-to-add text a parent gets after a placement — written by a model (skill
@@ -23,16 +24,6 @@ import { forceToolJson } from '~/lib/pipeline/structured';
 
 /** The placeholder the model writes. Code replaces it with the exact ICS url. */
 export const INVITE_LINK_SLOT = '[[link]]';
-
-/**
- * A destination a phone would open or a parent could type: a scheme, or a
- * label(.label)*.tld token whose TLD is letters. Structural, over model output with
- * the slot removed, so a bare domain an event title smuggled in cannot ride along.
- * "2.5 km", "U.S." and "a.m." are not tokens (the TLD needs two letters after a dot).
- * The ideographic full stop is left out: Chinese ends a sentence with it.
- */
-const DESTINATION =
-  /[a-z][a-z0-9+.-]*:\/\/|[\p{L}\p{N}-]+(?:[.\uFF0E\uFF61][\p{L}\p{N}-]+)*[.\uFF0E\uFF61][a-z]{2}/iu;
 
 /** Longer than any event name: an input past it is not a name, and is not sent. */
 export const MAX_INVITE_SUMMARY_CHARS = 200;
@@ -61,7 +52,7 @@ export interface CalendarInviteVoiceRequest {
 
 export type CalendarInviteRefusal =
   | 'empty'
-  | 'carries_link'
+  | 'carries_destination'
   | 'link_missing'
   | 'link_repeated'
   | 'link_damaged'
@@ -70,7 +61,7 @@ export type CalendarInviteRefusal =
   | 'invented_number'
   | 'too_long';
 
-interface ZonedStart {
+export interface ZonedStart {
   year: number;
   month: number;
   day: number;
@@ -104,19 +95,26 @@ export function zonedStart(startsAt: Date, timeZone: string): ZonedStart {
   };
 }
 
-function allowedDigits(summary: string, event: ZonedStart): Set<string> {
-  const allowed = new Set<string>();
-  for (const n of summary.match(/\d+/g) ?? []) allowed.add(n);
+/** The numbers code hands about the start, as a writer may print them. */
+export function startNumbers(event: ZonedStart): Set<string> {
+  const numbers = new Set<string>();
   const hour12 = event.hour % 12 || 12;
   for (const n of [event.year, event.month, event.day, event.hour, hour12, event.minute]) {
-    allowed.add(String(n));
-    allowed.add(String(n).padStart(2, '0'));
+    numbers.add(String(n));
+    numbers.add(String(n).padStart(2, '0'));
   }
+  return numbers;
+}
+
+function allowedDigits(summary: string, event: ZonedStart): Set<string> {
+  const allowed = startNumbers(event);
+  for (const n of asciiDigits(summary).match(/\d+/g) ?? []) allowed.add(n);
   return allowed;
 }
 
-export function carriesDestination(text: string): boolean {
-  return DESTINATION.test(text.split(INVITE_LINK_SLOT).join(' '));
+/** The slot is read as a gap, so its neighbours never join into a domain. */
+function carriesDestination(text: string, starts: ZonedStart): boolean {
+  return textDestination(text.split(INVITE_LINK_SLOT).join(' '), starts) !== null;
 }
 
 /**
@@ -133,11 +131,14 @@ export function calendarInviteRefusals(
   const slotCount = body.split(INVITE_LINK_SLOT).length - 1;
   if (!request.url || slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
-  const carriesLink = carriesDestination(body);
-  if (carriesLink) found.push('carries_link');
+  const starts = zonedStart(request.startsAt, request.timeZone);
+  const carriesLink = carriesDestination(body, starts);
+  if (carriesLink) found.push('carries_destination');
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
-  const allowed = allowedDigits(request.summary, zonedStart(request.startsAt, request.timeZone));
-  if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
+  const allowed = allowedDigits(request.summary, starts);
+  if ((asciiDigits(rest).match(/\d+/g) ?? []).some((n) => !allowed.has(n))) {
+    found.push('invented_number');
+  }
   if (slotCount === 1 && request.url && !carriesLink) {
     const withoutSlot = body.replace(INVITE_LINK_SLOT, '');
     if (/\[\[[^\]]*\]\]/.test(withoutSlot)) found.push('stray_slot');
@@ -252,7 +253,7 @@ export function createCalendarInviteTimeJudge(client: () => AgentClient): Calend
 
 export type CalendarInviteDeferral =
   | 'summary_too_long'
-  | 'summary_carries_link'
+  | 'summary_carries_destination'
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
@@ -308,7 +309,14 @@ export function createCalendarInviteVoice(
       if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
         return deferred('summary_too_long', String(request.summary.length));
       }
-      if (carriesDestination(request.summary)) return deferred('summary_carries_link');
+      let starts: ZonedStart;
+      try {
+        starts = zonedStart(request.startsAt, request.timeZone);
+      } catch (err) {
+        return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
+      }
+      const held = titleDestination(request.summary, starts);
+      if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
         resolved = client();

@@ -105,6 +105,8 @@ import {
   logCrisisUnanswered,
 } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
@@ -358,6 +360,12 @@ export type HandlerVerdict =
        * owns its own ledger writes.
        */
       afterSend?: (channelMessageId: string) => Promise<unknown>;
+      /**
+       * The receipt is for the parent who asked, never the group: on a group turn it goes
+       * to their phone, outside the group and its thread, as the over-limit line does.
+       * 1:1, it is the ordinary answer.
+       */
+      onlyToAsker?: true;
     };
 
 /**
@@ -750,7 +758,11 @@ export type RouterStatus =
    * turn still answered the question the parent actually asked. */
   | 'smoke_alarm_fired'
   /** VIL-477: Hale left this group chat while the turn was in flight. Nothing sent. */
-  | 'group_left';
+  | 'group_left'
+  /** A handler's receipt was for its asker alone (onlyToAsker) on a group turn, and the
+   * asker has no enrolled SMS channel at a phone number to take it 1:1. The handler did
+   * its work; nothing was sent, to them or to the group. */
+  | 'asker_unreachable';
 
 export interface RouterResult {
   status: RouterStatus;
@@ -1190,6 +1202,52 @@ async function routeChannelMessageInner(
       },
     });
 
+  const answerAsker = async (
+    body: string,
+    _medicalSource?: MedicalReplySource | null,
+    _replySource?: ReplySource | null,
+    templateKey: string | null = null,
+  ) =>
+    sendReply(deps, {
+      route: { channel: 'sms', to: route.to },
+      body,
+      job,
+      conversationId: null,
+      templateKey,
+      claim: claimAnswer,
+      openAsks: { leaves: null },
+      beforeSend: stopTyping,
+    });
+
+  // A receipt for its asker alone, on a group turn, goes 1:1 only to the asker's own
+  // enrolled SMS number, and only when that is the handle this text came from: a Linq
+  // group handle can be an Apple ID address or someone else's number, and an asker who
+  // never enrolled has not agreed to texts (CASL). Otherwise nothing is sent, to them or
+  // to the group, and the outcome is named.
+  const deliverVerdict = async (
+    verdict: Extract<HandlerVerdict, { claimed: true }>,
+  ): Promise<'delivered' | 'asker_unreachable'> => {
+    if (!(verdict.onlyToAsker && inGroup)) {
+      await deliver(verdict, answer);
+      return 'delivered';
+    }
+    if (verdict.reply !== null) {
+      const atPhone = normalizePhoneE164(route.to) === route.to;
+      const enrolled = atPhone
+        ? await resolveSendablePhone(deps.database, turn.parentUserId)
+        : null;
+      if (enrolled === null || enrolled !== route.to) {
+        deps.log.warn(
+          { outcome: 'asker_unreachable', atPhone, enrolled: enrolled !== null },
+          'channel router: receipt for the asker alone not sent',
+        );
+        return 'asker_unreachable';
+      }
+    }
+    await deliver(verdict, answerAsker);
+    return 'delivered';
+  };
+
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
   //
   // FIRST, ahead of the deterministic chain, and that ordering is the point rather than a
@@ -1245,7 +1303,7 @@ async function routeChannelMessageInner(
   // never reach this router. A resolved answer is delivered by the handler that owns
   // the question. An unresolved turn falls through to the handlers that are not a
   // yes or a no.
-  const natural = await resolveNaturalReply(deps, turn, answer);
+  const natural = await resolveNaturalReply(deps, turn, deliverVerdict);
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
@@ -1263,9 +1321,9 @@ async function routeChannelMessageInner(
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
       if (!verdict.claimed) continue;
-      await deliver(verdict, answer);
+      const delivered = await deliverVerdict(verdict);
       return done(deps, job, {
-        status: 'handled',
+        status: delivered === 'asker_unreachable' ? delivered : 'handled',
         handler: handler.name,
         conversationId,
         lane: null,
@@ -1854,7 +1912,9 @@ async function recordWeekdayCareAnswer(
 async function resolveNaturalReply(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
-  answer: (body: string) => Promise<string>,
+  deliverVerdict: (
+    verdict: Extract<HandlerVerdict, { claimed: true }>,
+  ) => Promise<'delivered' | 'asker_unreachable'>,
 ): Promise<NaturalReplyOutcome> {
   const questions = await turn.openQuestions();
   // NO OPEN QUESTION, NO MODEL CALL. The precondition that makes this stage affordable on
@@ -1967,8 +2027,14 @@ async function resolveNaturalReply(
       }
     }
   }
-  await deliver(verdict, answer);
-  return { status: 'handled', result: { status: 'resolved', handler: owner.name } };
+  const delivered = await deliverVerdict(verdict);
+  return {
+    status: 'handled',
+    result: {
+      status: delivered === 'asker_unreachable' ? delivered : 'resolved',
+      handler: owner.name,
+    },
+  };
 }
 
 /**

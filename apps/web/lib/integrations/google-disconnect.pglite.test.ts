@@ -3,18 +3,23 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   GOOGLE_REVOKE_RETRY_BUDGET_MS,
   type GoogleDisconnectPorts,
   type GoogleRevokeResult,
   disconnectGoogle,
+  expireStaleGoogleRevocations,
   retryPendingGoogleRevocations,
 } from './google-disconnect';
 import type { FetchLike } from './google-oauth';
+import { renewDueGooglePushWatches } from './google-push-runtime';
 import { loadPushWatch, savePushWatch } from './google-push-store';
 import type { GoogleJsonClient } from './google-push-watch';
 import {
+  googleRevokeUnconfirmedProviders,
   markConnectionError,
   saveConnection,
   saveConnectionCursor,
@@ -120,6 +125,11 @@ function scriptedPorts(
 const OK = (): GoogleRevokeResult => ({ outcome: 'revoked' });
 const DOWN = (): GoogleRevokeResult => ({ outcome: 'unavailable', status: 503 });
 
+/** Each parent connects their own Google account: the callback stores its key. */
+function accountOf(userId: string): string {
+  return `account-of-${userId}`;
+}
+
 async function connect(
   userId: string,
   provider: 'gcal' | 'gmail',
@@ -131,6 +141,7 @@ async function connect(
     provider,
     scopes: provider === 'gcal' ? CAL_SCOPES : MAIL_SCOPES,
     tokens,
+    googleAccountKey: accountOf(userId),
   });
   const row = await rowFor(userId, provider);
   if (!row) throw new Error('connection was not saved');
@@ -474,6 +485,106 @@ describe('reconnecting clears a pending revoke', () => {
   });
 });
 
+describe('a connect cancels a pending revoke of the same Google account only, in any household', () => {
+  const THERE = { accessToken: 'ya29.there', refreshToken: '1//there' };
+
+  async function secondHousehold() {
+    const other = await seedFamily(db.database, 'Other');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: other.familyId, userId: parentUserId, role: 'co_parent' });
+    return other.familyId;
+  }
+
+  function connectThere(otherFamilyId: string, googleAccountKey?: string) {
+    return saveConnection(db.database, {
+      familyId: otherFamilyId,
+      userId: parentUserId,
+      provider: 'gcal',
+      scopes: CAL_SCOPES,
+      tokens: THERE,
+      ...(googleAccountKey ? { googleAccountKey } : {}),
+    });
+  }
+
+  it("another account connected elsewhere leaves this household's pending revoke, and the retry ends it", async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+    const other = await secondHousehold();
+
+    await connectThere(other, 'a-different-account');
+
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).not.toBeNull();
+    expect(await audits('integration_google_revoke_cancelled')).toEqual([]);
+    const ports = scriptedPorts(OK);
+    expect(await retryPendingGoogleRevocations(db.database, ports)).toMatchObject({
+      attempted: 1,
+      revoked: 1,
+    });
+    expect(ports.revoked).toEqual(['1//cal-r']);
+  });
+
+  it('the same account connected elsewhere cancels it, with a neutral row here that History and the family copy leave out', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+    const other = await secondHousehold();
+
+    await connectThere(other, accountOf(parentUserId));
+
+    expect(await rowFor(parentUserId, 'gcal')).toMatchObject({ pending: null, since: null });
+    const ports = scriptedPorts(OK);
+    expect(await retryPendingGoogleRevocations(db.database, ports)).toMatchObject({
+      attempted: 0,
+    });
+    expect(ports.revoked).toEqual([]);
+
+    const rows = await db.database
+      .select({
+        id: schema.auditLog.id,
+        familyId: schema.auditLog.familyId,
+        actor: schema.auditLog.actor,
+        targetTable: schema.auditLog.targetTable,
+        targetId: schema.auditLog.targetId,
+        after: schema.auditLog.after,
+      })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'integration_google_revoke_cancelled'));
+    // One row, in the household whose token was cleared, naming no other household.
+    expect(rows).toEqual([
+      {
+        id: expect.any(String),
+        familyId,
+        actor: 'system',
+        targetTable: 'users',
+        targetId: parentUserId,
+        after: { provider: 'gcal', integrationId: calId, reason: 'same_account_connected' },
+      },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain(other);
+
+    const [disconnected] = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'integration_revoked'),
+        ),
+      );
+    const history = await loadTrailForFamily(db.database, familyId);
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    for (const trail of [history, copy.trail]) {
+      const ids = trail.map((row) => row.id);
+      expect(ids).not.toContain(rows[0]?.id);
+      // Positive control: the disconnect itself is on both.
+      expect(ids).toContain(disconnected?.id);
+    }
+  }, 30_000);
+});
+
 describe('the cron retry reaches every pending row during a long outage', () => {
   it('stops at its time budget and starts the next run with the rows it did not reach', async () => {
     const third = { accessToken: 'ya29.third', refreshToken: '1//third-r' };
@@ -549,5 +660,345 @@ describe("Google's answer and its audit row land together", () => {
     });
     expect((await rowFor(parentUserId, 'gcal'))?.pending).toBeNull();
     expect(await audits('integration_google_grant_revoked')).toHaveLength(1);
+  });
+});
+
+describe('a pending token never outlives its window, on time alone', () => {
+  const RETENTION_PLUS = 7 * DAY_MS + 60_000;
+
+  it('deletes a pending token past seven days without asking Google, and keeps a younger one', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    await connect(coParentUserId, 'gcal', CO);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN, { now: NOW }));
+    await disconnect(
+      coParentUserId,
+      'gcal',
+      scriptedPorts(DOWN, { now: new Date(NOW.getTime() + 2 * DAY_MS) }),
+    );
+
+    // No ports at all: the expiry needs no Google answer, so none can starve it.
+    const expired = await expireStaleGoogleRevocations(
+      db.database,
+      new Date(NOW.getTime() + RETENTION_PLUS),
+    );
+
+    expect(expired).toEqual({ abandoned: 1 });
+    expect(await rowFor(parentUserId, 'gcal')).toMatchObject({ pending: null, since: null });
+    // Positive control: five days old at that moment, still waiting on Google.
+    expect((await rowFor(coParentUserId, 'gcal'))?.pending).not.toBeNull();
+    const failed = await db.database
+      .select({ targetId: schema.auditLog.targetId, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'integration_google_grant_revoke_failed'));
+    expect(failed).toEqual([
+      { targetId: calId, after: { provider: 'gcal', outcome: 'abandoned' } },
+    ]);
+  });
+
+  it('a token exactly seven days old is deleted, not left for the next run', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN, { now: NOW }));
+
+    expect(
+      await expireStaleGoogleRevocations(db.database, new Date(NOW.getTime() + 7 * DAY_MS)),
+    ).toEqual({ abandoned: 1 });
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).toBeNull();
+  });
+
+  it('deletes a token whose settle keeps throwing, which the retry alone never clears', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await db.exec(`
+      create or replace function fail_grant_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end; $$ language plpgsql;
+      create trigger fail_grant_audit before insert on audit_log for each row
+        when (new.action_taken = 'integration_google_grant_revoked')
+        execute function fail_grant_audit();
+    `);
+    const late = new Date(NOW.getTime() + RETENTION_PLUS);
+    try {
+      await disconnect(parentUserId, 'gcal', scriptedPorts(OK));
+      expect(
+        await retryPendingGoogleRevocations(db.database, scriptedPorts(OK, { now: late })),
+      ).toMatchObject({ attempted: 1, pending: 1 });
+      expect((await rowFor(parentUserId, 'gcal'))?.pending).not.toBeNull();
+
+      expect(await expireStaleGoogleRevocations(db.database, late)).toEqual({ abandoned: 1 });
+    } finally {
+      await db.exec(
+        'drop trigger fail_grant_audit on audit_log; drop function fail_grant_audit();',
+      );
+    }
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).toBeNull();
+    expect(await audits('integration_google_grant_revoke_failed')).toEqual([
+      { actor: 'system', after: { provider: 'gcal', outcome: 'abandoned' } },
+    ]);
+  });
+
+  it("the parent's own Settings card learns Google never confirmed; a confirmed or pending one does not", async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await connect(parentUserId, 'gmail', MAIL);
+    await connect(coParentUserId, 'gcal', CO);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN, { now: NOW }));
+    await disconnect(coParentUserId, 'gcal', scriptedPorts(OK));
+    const scope = (userId: string) => ({ familyId, userId });
+
+    // Still asking: not yet a failure.
+    expect(await googleRevokeUnconfirmedProviders(db.database, scope(parentUserId))).toEqual([]);
+
+    await expireStaleGoogleRevocations(db.database, new Date(NOW.getTime() + RETENTION_PLUS));
+
+    expect(
+      (await googleRevokeUnconfirmedProviders(db.database, scope(parentUserId))).sort(),
+    ).toEqual(['gcal', 'gmail']);
+    // Positive control: Google confirmed the co-parent's revoke.
+    expect(await googleRevokeUnconfirmedProviders(db.database, scope(coParentUserId))).toEqual([]);
+
+    // A reconnect makes the row live again, and a live row has nothing to report.
+    await connect(parentUserId, 'gcal', { accessToken: 'ya29.back', refreshToken: '1//back' });
+    expect(await googleRevokeUnconfirmedProviders(db.database, scope(parentUserId))).toEqual([
+      'gmail',
+    ]);
+  });
+});
+
+describe('a reconnect that lands while a revoke is in flight', () => {
+  it("gets no false 'Google confirmed' row, and keeps the new grant", async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    const ports = scriptedPorts(OK);
+    const reconnecting: GoogleDisconnectPorts = {
+      ...ports,
+      revoker: {
+        async revoke(token) {
+          await connect(parentUserId, 'gcal', { accessToken: 'ya29.new', refreshToken: '1//new' });
+          return ports.revoker.revoke(token);
+        },
+      },
+    };
+
+    const result = await disconnect(parentUserId, 'gcal', reconnecting);
+
+    expect(result).toMatchObject({ status: 'disconnected', google: 'not_confirmed' });
+    expect(await audits('integration_google_grant_revoked')).toHaveLength(0);
+    expect(await audits('integration_google_grant_revoke_failed')).toHaveLength(0);
+    const row = await rowFor(parentUserId, 'gcal');
+    expect(row).toMatchObject({ status: 'active', pending: null });
+    expect(decryptTokens(row?.enc as string).refreshToken).toBe('1//new');
+  });
+
+  it('positive control: with no reconnect, the same revoke writes one confirmed row', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    expect(await disconnect(parentUserId, 'gcal', scriptedPorts(OK))).toMatchObject({
+      google: 'revoked',
+    });
+    expect(await audits('integration_google_grant_revoked')).toHaveLength(1);
+  });
+});
+
+describe('a push renewal racing a disconnect never revives the watch', () => {
+  const PUSH_ON = { GOOGLE_PUSH_SYNC_ENABLED: 'true', APP_URL: 'https://app.example.test' };
+
+  function calendarGoogle(onWatch: () => Promise<void>, stopStatus = 204) {
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    const google: GoogleJsonClient = {
+      async request({ url, body }) {
+        calls.push({ url, body });
+        if (url.endsWith('/channels/stop')) {
+          return { ok: stopStatus < 300, status: stopStatus, json: async () => ({}) };
+        }
+        if (url.endsWith('/events/watch')) {
+          await onWatch();
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              resourceId: 'resource-new',
+              expiration: String(NOW.getTime() + DAY_MS * 6),
+            }),
+          };
+        }
+        return { ok: true, status: 204, json: async () => ({}) };
+      },
+    };
+    return { google, calls };
+  }
+
+  it('a disconnect that commits after the listing: no push row, and the new channel is stopped', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    const { google, calls } = calendarGoogle(async () => {
+      await disconnect(parentUserId, 'gcal', scriptedPorts(OK));
+    });
+
+    const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+
+    expect(summary).toMatchObject({
+      opened: 0,
+      integrationEnded: 1,
+      orphanStopFailed: 0,
+      failed: 0,
+    });
+    expect(await loadPushWatch(db.database, calId)).toBeNull();
+    const watched = calls.find((call) => call.url.endsWith('/events/watch'));
+    const stopped = calls.filter((call) => call.url.endsWith('/channels/stop'));
+    expect(stopped).toEqual([
+      {
+        url: 'https://www.googleapis.com/calendar/v3/channels/stop',
+        body: { id: watched?.body?.id, resourceId: 'resource-new' },
+      },
+    ]);
+  });
+
+  it('a stop Google refuses for the orphaned channel is counted and logged with its row', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { google } = calendarGoogle(async () => {
+      await disconnect(parentUserId, 'gcal', scriptedPorts(OK));
+    }, 500);
+
+    const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+
+    expect(summary).toMatchObject({ integrationEnded: 1, orphanStopFailed: 1, failed: 0 });
+    expect(errors).toHaveBeenCalledWith(
+      { integrationId: calId, provider: 'gcal', stop: 'stop_failed' },
+      'google push: orphaned channel not stopped',
+    );
+  });
+
+  it('positive control: with no disconnect, the watch is opened and saved', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    const { google, calls } = calendarGoogle(async () => {});
+
+    const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 1, integrationEnded: 0, failed: 0 });
+    expect((await loadPushWatch(db.database, calId))?.resourceId).toBe('resource-new');
+    expect(calls.filter((call) => call.url.endsWith('/channels/stop'))).toHaveLength(0);
+  });
+
+  function gmailGoogle(onWatch: () => Promise<void>) {
+    const calls: string[] = [];
+    const google: GoogleJsonClient = {
+      async request({ url }) {
+        calls.push(url);
+        if (url.endsWith('/users/me/profile')) {
+          return { ok: true, status: 200, json: async () => ({ emailAddress: 'a@example.test' }) };
+        }
+        if (url.endsWith('/users/me/watch')) {
+          await onWatch();
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ expiration: String(NOW.getTime() + DAY_MS * 6) }),
+          };
+        }
+        return { ok: true, status: 204, json: async () => ({}) };
+      },
+    };
+    return { google, calls };
+  }
+  const GMAIL_PUSH_ON = { ...PUSH_ON, GOOGLE_PUBSUB_TOPIC: 'projects/hale-test/topics/mail' };
+
+  it('Gmail: a disconnect during users.watch leaves no push row, and the mailbox watch is stopped', async () => {
+    const mailId = await connect(parentUserId, 'gmail', MAIL);
+    const { google, calls } = gmailGoogle(async () => {
+      await disconnect(parentUserId, 'gmail', scriptedPorts(OK));
+    });
+
+    const summary = await renewDueGooglePushWatches(db.database, GMAIL_PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 0, integrationEnded: 1, failed: 0 });
+    expect(await loadPushWatch(db.database, mailId)).toBeNull();
+    expect(calls.filter((url) => url.endsWith('/users/me/stop'))).toEqual([
+      'https://gmail.googleapis.com/gmail/v1/users/me/stop',
+    ]);
+  });
+
+  it('Gmail positive control: with no disconnect, the watch is opened and saved, never stopped', async () => {
+    const mailId = await connect(parentUserId, 'gmail', MAIL);
+    const { google, calls } = gmailGoogle(async () => {});
+
+    const summary = await renewDueGooglePushWatches(db.database, GMAIL_PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 1, integrationEnded: 0, failed: 0 });
+    expect((await loadPushWatch(db.database, mailId))?.provider).toBe('gmail');
+    expect(calls.filter((url) => url.endsWith('/users/me/stop'))).toHaveLength(0);
+  });
+
+  it('a row a disconnect ended after the listing is never sent to Google at all', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await connect(coParentUserId, 'gcal', CO);
+    const watchedWith: string[] = [];
+    const calls: string[] = [];
+    // Whichever row the sweep reaches first, its watch call ends the OTHER parent's row:
+    // that row was listed as live and must not reach Google.
+    const google: GoogleJsonClient = {
+      async request({ url, accessToken }) {
+        calls.push(url);
+        if (url.endsWith('/events/watch')) {
+          watchedWith.push(accessToken);
+          if (watchedWith.length === 1) {
+            const other = accessToken === CAL.accessToken ? coParentUserId : parentUserId;
+            await disconnect(other, 'gcal', scriptedPorts(OK));
+          }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              resourceId: 'resource-new',
+              expiration: String(NOW.getTime() + DAY_MS),
+            }),
+          };
+        }
+        return { ok: true, status: 204, json: async () => ({}) };
+      },
+    };
+
+    const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 1, integrationEnded: 1, failed: 0 });
+    expect(watchedWith).toHaveLength(1);
+    expect(calls.filter((url) => url.endsWith('/channels/stop'))).toHaveLength(0);
+  });
+
+  it("an expired row a disconnect ended after the listing never sends its refresh token to Google's token endpoint", async () => {
+    const expired = { expiresAt: 0 };
+    await connect(parentUserId, 'gcal', { ...CAL, ...expired });
+    await connect(coParentUserId, 'gcal', { ...CO, ...expired });
+    const refreshedWith: string[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
+      const token = new URLSearchParams(init?.body ?? '').get('refresh_token') ?? '';
+      refreshedWith.push(token);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: `ya29.fresh-${token}`, expires_in: 3600 }),
+      };
+    });
+    const google: GoogleJsonClient = {
+      async request({ url }) {
+        if (url.endsWith('/events/watch') && refreshedWith.length === 1) {
+          // The first row reached ends the OTHER parent's row, which was listed as live.
+          const other = refreshedWith[0] === CAL.refreshToken ? coParentUserId : parentUserId;
+          await disconnect(other, 'gcal', scriptedPorts(OK));
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resourceId: 'resource-new',
+            expiration: String(NOW.getTime() + DAY_MS),
+          }),
+        };
+      },
+    };
+
+    try {
+      const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+      expect(summary).toMatchObject({ opened: 1, integrationEnded: 1, failed: 0 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // Positive control: the live row was refreshed, once.
+    expect(refreshedWith).toHaveLength(1);
+    expect([CAL.refreshToken, CO.refreshToken]).toContain(refreshedWith[0]);
   });
 });

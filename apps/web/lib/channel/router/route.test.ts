@@ -33,6 +33,7 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import {
   CRISIS_ANSWERED_ROUTE,
@@ -6026,6 +6027,160 @@ describe('VIL-463 group scope', () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.relatedConversationId).toBeNull();
     expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+
+  /** A receipt only its asker should read (a texted disconnect names their accounts). */
+  function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
+    return {
+      name: 'asker_only',
+      async handle() {
+        return {
+          claimed: true as const,
+          outcome: 'revoked',
+          reply: 'Your Gmail and Calendar are off.',
+          ...(onlyToAsker ? { onlyToAsker: true as const } : {}),
+        };
+      },
+    };
+  }
+
+  /** The asker's own SMS channel, verified, as enrolment leaves it. */
+  async function enrolAsker(h: Harness, phone = PHONE): Promise<void> {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    await h.fake.db.insert(schema.parentChannels).values({
+      familyId: FAMILY,
+      userId: PARENT,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: 'hash-asker',
+      verifiedAt: NOW,
+      revokedAt: null,
+    });
+  }
+
+  it('a group turn: a receipt marked for its asker goes 1:1 to them, never into the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+  });
+
+  it('a group turn whose asker has no enrolled SMS channel: nothing sent anywhere, named', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a group turn from an Apple ID handle: no SMS to an address, nothing to the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: { ...GROUP_ROUTE, to: 'parent@icloud.example' }, inGroup: true },
+    });
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it("a group handle that is a phone, but not the asker's enrolled one: nothing sent", async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+    await enrolAsker(h, '+12025550143');
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a resolved answer whose owner marks the receipt for its asker goes 1:1 too', async () => {
+    const planned: OpenQuestion = {
+      id: 'dddd4444-4444-4444-8444-444444444444',
+      kind: 'approval',
+      description: 'Add to your calendar',
+      subject: 'add to your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: { questionId: string } | null }) {
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done, just for you.', onlyToAsker: true };
+      },
+    } as unknown as DeterministicHandler;
+    const resolver = {
+      async read() {
+        return {
+          status: 'resolved' as const,
+          questionId: planned.id,
+          kind: 'approval' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        };
+      },
+    };
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([planned]),
+      replyResolver: resolver as never,
+    });
+    h.deps.groupPlanActionIds = async () => new Set([planned.id]);
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('resolved');
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Done, just for you.' }]);
+  });
+
+  it('positive control: the same receipt without the mark answers in the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(false)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(h.transport.sent).toEqual([
+      { route: GROUP_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+  });
+
+  it('a 1:1 turn: a receipt marked for its asker is the ordinary answer in their own thread', async () => {
+    const h = harness({ handlers: [askerOnlyHandler(true)] });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out[0]?.relatedConversationId).not.toBeNull();
   });
 
   it('a 1:1 text re-driven by the reconciler with its stored bit (false) runs, in its own thread', async () => {

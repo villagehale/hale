@@ -188,7 +188,8 @@ describe('disconnect by text, end to end', () => {
 
     const verdict = await h.text('disconnect my calendar');
 
-    expect(verdict).toEqual({ claimed: true, outcome: 'revoked', reply: 'ok' });
+    // The receipt names the parent's accounts: in a group it goes only to them.
+    expect(verdict).toEqual({ claimed: true, outcome: 'revoked', reply: 'ok', onlyToAsker: true });
     expect(await rowFor(family.parentUserId)).toEqual({ status: 'revoked', enc: null });
     expect(h.revoked).toEqual(['1//secret-refresh']);
 
@@ -312,7 +313,7 @@ describe('disconnect by text, end to end', () => {
   it('never claims a disconnect for a parent who never connected anything', async () => {
     const verdict = await harness().text('disconnect gmail');
 
-    expect(verdict).toMatchObject({ claimed: true, outcome: 'not_connected' });
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'not_connected', onlyToAsker: true });
     expect(await auditRows('integration_revoked')).toHaveLength(0);
   });
 
