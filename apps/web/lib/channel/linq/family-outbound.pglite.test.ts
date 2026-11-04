@@ -636,6 +636,52 @@ describe('a 1:1 decision syncs the group', () => {
     expect(later.linqUrls()).toEqual([]);
   });
 
+  it('the closed-unsent audit row counts every row the close settled, a not-yet-due one included', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+    await db.database.insert(schema.groupDecisionSync).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: 'passed',
+      activity: 'swimming',
+      kid: 'Juniper',
+      flushAfter: new Date(sweptAt.getTime() + 5 * 60 * 1000),
+      createdAt: sweptAt,
+    });
+    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    vi.stubGlobal('fetch', gone);
+
+    await flushGroupDecisionSyncs(db.database, {
+      now: sweptAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(
+      await db.database
+        .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+        .from(schema.groupDecisionSync),
+    ).toEqual([{ flushedAt: sweptAt }, { flushedAt: sweptAt }]);
+    expect(
+      await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([{ after: { reason: 'participants_unreadable', count: 2 } }]);
+  });
+
   it("a participant read refused for Hale's own credential (401), or with no Linq key, keeps the sync queued and writes no audit row", async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {

@@ -539,7 +539,7 @@ export async function flushGroupDecisionSyncs(
       continue;
     }
     if (target.channel !== 'group') {
-      await database
+      const closed = await database
         .update(schema.groupDecisionSync)
         .set({ flushedAt: input.now })
         .where(
@@ -547,13 +547,14 @@ export async function flushGroupDecisionSyncs(
             eq(schema.groupDecisionSync.familyId, familyId),
             isNull(schema.groupDecisionSync.flushedAt),
           ),
-        );
+        )
+        .returning({ id: schema.groupDecisionSync.id });
       await database.insert(schema.auditLog).values({
         familyId,
         actor: 'system',
         actionTaken: 'group_decision_sync_closed_unsent',
         targetTable: 'group_decision_sync',
-        after: { reason: target.reason, count: queued.length },
+        after: { reason: target.reason, count: closed.length },
       });
       console.info(
         { familyId, queued: queued.length, reason: target.reason },
