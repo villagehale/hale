@@ -27,7 +27,7 @@ import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
-import { groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
+import { groupDraftedActionIds, groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
@@ -352,6 +352,11 @@ export function defaultApprovalSpine(): ApprovalSpine {
       // decline, so removing it would take away an answer they have. What it cannot be is
       // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
       // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
+      const groupIds = await groupDraftedActionIds(
+        database,
+        familyId,
+        rows.map((row) => row.id),
+      );
       return rows.map((row) => {
         const occasion = calendarOccasion(row.actionType, row.payload);
         return {
@@ -359,6 +364,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
           actionType: row.actionType,
           reviewerApproved: row.reviewerVerdict === 'approved',
           ...(occasion ? { occasion } : {}),
+          ...(groupIds.has(row.id) ? { groupPlan: true as const } : {}),
         };
       });
     },
