@@ -11,6 +11,7 @@ import {
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
+import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
   appendTranscript,
@@ -118,6 +119,8 @@ export interface FirstReplyRecoveryResult {
   deferred: number;
   /** The tick did not speak: the provider cannot serve any family right now. */
   held?: AbortedWindow;
+  /** VIL-553 · owed rows not claimed because the number has an unread opt-out read. */
+  optOutHeld?: number;
 }
 
 export interface FirstReplyRecoveryRow {
@@ -203,6 +206,14 @@ export async function runFirstReplyRecoveryCron(
       })
     ) {
       result.skipped += 1;
+      continue;
+    }
+    if (await isSenderHeld(database, row.phoneHash)) {
+      result.optOutHeld = (result.optOutHeld ?? 0) + 1;
+      console.info(
+        { skipped: 'opt_out_unread' },
+        'first-reply recovery: number held - not claimed',
+      );
       continue;
     }
     owed.push({ ...row, recovery });
@@ -340,6 +351,7 @@ function languageFromTranscript(
 
 interface FirstReplyCandidate {
   id: string;
+  phoneHash: string;
   phoneEncrypted: string;
   state: string;
   closedAt: Date | null;
@@ -357,6 +369,7 @@ async function loadFirstReplyCandidates(
   return database
     .select({
       id: schema.smsIntakeSessions.id,
+      phoneHash: schema.smsIntakeSessions.phoneHash,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,

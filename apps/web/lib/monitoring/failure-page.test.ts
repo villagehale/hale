@@ -21,14 +21,18 @@ import {
   DEFERRED_PILEUP_THRESHOLD,
   FIRST_HELLO_PAGE_ROUTE,
   MODEL_PROVIDER,
+  OPT_OUT_HOLD_PAGE_ROUTE,
+  OPT_OUT_LATE_CRISIS_ROUTE,
   PROVIDER_INCIDENT_PAGE_ROUTE,
   TURN_DEFERRED_AUDIT_ACTION,
   TURN_FAILED_AUDIT_ACTION,
   TURN_FAILURE_PAGE_ROUTE,
+  claimStamp,
   composeCrisisUnansweredAlert,
   composeDeadLetterAlert,
   composeDeferredPileupAlert,
   composeFirstHelloFailureAlert,
+  composeOptOutHoldAlert,
   composeProviderIncidentAlert,
   composeTurnFailureAlert,
   failureCategory,
@@ -36,6 +40,7 @@ import {
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
   noteFirstHelloFailure,
+  noteLateOptOutCrisis,
   pageFailureAlerts,
 } from './failure-page';
 import type { IncidentFailure } from './provider-health';
@@ -975,5 +980,159 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(text).not.toContain(PHONE_SHAPED);
     expect(text).not.toContain(PARENT_WORDS);
     assertNoParentPayload(text);
+  });
+});
+
+describe('VIL-553 · held opt-out reads page #ops by count', () => {
+  let db: TestDb;
+  const HOUR = 3_600_000;
+  const ago = (ms: number): Date => new Date(NOW.getTime() - ms);
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  async function held(providerMessageId: string, phoneHash: string, heldAt: Date) {
+    await db.database
+      .insert(schema.optOutHeldMessages)
+      .values({ providerMessageId, phoneHash, heldAt, nextReadAt: heldAt });
+  }
+
+  async function seedThree(): Promise<void> {
+    const family = await seedFamily(db.database, 'Held');
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId: 'pm-ledger',
+      status: 'delivered',
+      body: PARENT_WORDS,
+      sentAt: ago(HOUR / 2),
+    });
+    await held('pm-ledger', 'hash-x', ago(HOUR / 2));
+    await held('pm-lost', 'hash-y', ago(3 * HOUR));
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: 'hash-z', heldAt: ago(5 * HOUR) });
+  }
+
+  it('composes counts only, and renders a non-count as 0', () => {
+    expect(
+      composeOptOutHoldAlert({
+        messages: 2,
+        numbers: 3,
+        notInLedger: 1,
+        legacy: 1,
+        oldestHours: 5,
+        lateCrisis: Number.NaN,
+      }),
+    ).toBe(
+      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 5h. crisis read late 0.',
+    );
+  });
+
+  it('posts once an hour while a hold is new, with no hash, id or words', async () => {
+    await seedThree();
+    const { texts, post } = recorder();
+
+    const first = await pageFailureAlerts(db.database, { post, now: NOW });
+    const again = await pageFailureAlerts(db.database, {
+      post,
+      now: new Date(NOW.getTime() + 20 * 60_000),
+    });
+
+    expect(first.optOutHolds).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(again.optOutHolds).toEqual({ posted: 0, deduped: 1, failed: 0 });
+    expect(texts).toEqual([
+      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 5h. crisis read late 0.',
+    ]);
+    for (const secret of ['hash-x', 'hash-y', 'hash-z', 'pm-ledger', 'pm-lost']) {
+      expect(texts[0]).not.toContain(secret);
+    }
+    assertNoParentPayload(texts[0] ?? '');
+    // Positive control: the stored hash is really there to leak.
+    const rows = await db.database
+      .select({ phoneHash: schema.optOutHeldMessages.phoneHash })
+      .from(schema.optOutHeldMessages);
+    expect(rows.map((row) => row.phoneHash)).toContain('hash-x');
+  });
+
+  it('a standing hold pages once a UTC day, not every hour', async () => {
+    await held('pm-old', 'hash-y', ago(3 * HOUR));
+    const { texts, post } = recorder();
+
+    const first = await pageFailureAlerts(db.database, { post, now: NOW });
+    const later = await pageFailureAlerts(db.database, {
+      post,
+      now: new Date(NOW.getTime() + 2 * HOUR),
+    });
+    const nextDay = await pageFailureAlerts(db.database, {
+      post,
+      now: new Date(NOW.getTime() + 13 * HOUR),
+    });
+
+    expect(first.optOutHolds.posted).toBe(1);
+    expect(later.optOutHolds).toEqual({ posted: 0, deduped: 1, failed: 0 });
+    expect(nextDay.optOutHolds.posted).toBe(1);
+    expect(texts[1]).toContain('oldest 16h.');
+  });
+
+  it('a crisis read late pages within the hour, with nothing held', async () => {
+    await noteLateOptOutCrisis(db.database, 'pm-crisis', ago(10 * 60_000));
+    // Read more than an hour ago: no longer counted.
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-old', ago(2 * HOUR));
+    const { texts, post } = recorder();
+
+    await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(texts).toEqual([
+      'Hale: opt-out reads held. messages 0. numbers 0. not in ledger 0. legacy 0. oldest 0h. crisis read late 1.',
+    ]);
+  });
+
+  it('a late crisis mark names no message and is gone once a day old', async () => {
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-fresh', ago(10 * 60_000));
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-stale', ago(25 * HOUR));
+    const { post } = recorder();
+
+    await pageFailureAlerts(db.database, { post, now: NOW });
+
+    const marks = await db.database
+      .select({ identifier: schema.rateLimits.identifier, at: schema.rateLimits.windowStart })
+      .from(schema.rateLimits)
+      .where(eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE));
+    // Positive control: the fresh mark stands; only the day-old one was deleted.
+    expect(marks.map((mark) => mark.at)).toEqual([ago(10 * 60_000)]);
+    expect(marks[0]?.identifier).not.toContain('pm-crisis');
+  });
+
+  it('posts nothing when nothing is held', async () => {
+    const { texts, post } = recorder();
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(result.optOutHolds).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toEqual([]);
+  });
+
+  it("clears a crashed poster's claim so the next sweep pages", async () => {
+    await held('pm-new', 'hash-x', ago(HOUR / 2));
+    const hour = new Date(Math.floor(NOW.getTime() / HOUR) * HOUR);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'new',
+      route: OPT_OUT_HOLD_PAGE_ROUTE,
+      windowStart: hour,
+      count: claimStamp(ago(5 * 60_000)),
+    });
+    const { texts, post } = recorder();
+
+    const result = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(result.optOutHolds).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(texts).toHaveLength(1);
   });
 });

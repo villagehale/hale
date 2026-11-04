@@ -3,6 +3,7 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
+import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type IntakeSession,
   appendTranscript,
@@ -77,6 +78,8 @@ export interface SittingReminderResult {
   sent: number;
   skipped: number;
   failed: number;
+  /** VIL-553 · rows not claimed because the number has an unread opt-out read. Still owed. */
+  optOutHeld?: number;
 }
 
 export interface SittingSessionRow {
@@ -176,6 +179,11 @@ export async function runSittingReminderCron(
       result.skipped += 1;
       continue;
     }
+    if (await isSenderHeld(database, row.phoneHash)) {
+      result.optOutHeld = (result.optOutHeld ?? 0) + 1;
+      console.info({ skipped: 'opt_out_unread' }, 'sitting reminder: number held - not claimed');
+      continue;
+    }
     result.evaluated += 1;
     if (!(await claimSittingReminder(database, row.id, now, row.state))) {
       result.skipped += 1;
@@ -227,6 +235,7 @@ export async function runSittingReminderCron(
 
 interface SittingCandidate extends SittingSessionRow {
   id: string;
+  phoneHash: string;
   phoneEncrypted: string;
 }
 
@@ -237,6 +246,7 @@ async function loadSittingCandidates(
   return database
     .select({
       id: schema.smsIntakeSessions.id,
+      phoneHash: schema.smsIntakeSessions.phoneHash,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,

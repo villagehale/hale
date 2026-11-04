@@ -202,6 +202,50 @@ describe('groupAudienceAllows reads the live participant list', () => {
     }
   });
 
+  it('a read Linq refuses for this chat (403, 404) is participants_unreadable, not a hold', async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+
+    for (const status of [403, 404]) {
+      const refusing = (async () => Response.json({}, { status })) as typeof fetch;
+      await expect(
+        groupAudienceAllows(db.database, CHAT, 'schedule', realList(refusing)),
+      ).resolves.toEqual({ allowed: false, reason: 'participants_unreadable' });
+    }
+  });
+
+  it("a read with no Linq key configured is Hale's own gap, so participants_unverified", async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+    vi.stubEnv('LINQ_API_KEY', '');
+    const fetchImpl = vi.fn(docsFetch([{ handle: MOM }, { handle: DAD }]));
+
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', realList(fetchImpl)),
+    ).resolves.toEqual({ allowed: false, reason: 'participants_unverified' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("a 401 (Hale's own credential), a 5xx, a 429 or a 408 through the real read stays participants_unverified", async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+
+    for (const status of [401, 408, 429, 500, 503]) {
+      const failing = (async () => Response.json({}, { status })) as typeof fetch;
+      await expect(
+        groupAudienceAllows(db.database, CHAT, 'schedule', realList(failing)),
+      ).resolves.toEqual({ allowed: false, reason: 'participants_unverified' });
+    }
+  });
+
+  it("positive control: Linq's own rate limit (400, error 1007) stays participants_unverified with cadence off", async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    const rateLimited = (async () =>
+      Response.json({ error: { code: 1007 } }, { status: 400 })) as typeof fetch;
+
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', realList(rateLimited)),
+    ).resolves.toEqual({ allowed: false, reason: 'participants_unverified' });
+  });
+
   it('a chat Linq says is not a group is refused by name', async () => {
     await seedRoster(await seedFamily(CHAT), PARENTS);
 

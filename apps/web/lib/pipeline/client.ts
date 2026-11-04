@@ -27,6 +27,13 @@ export const HOT_SMS_CLIENT_OPTIONS = { timeout: 30_000, maxRetries: 1 } as cons
 export const CLAIM_READ_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
 
 /**
+ * Options for the opt-out recovery pass (VIL-553): it re-reads held texts inside the
+ * drain's headroom, so one row that keeps failing costs at most the reader's two
+ * attempts × 12s, never the hot path's 30s with a retry.
+ */
+export const OPT_OUT_RECOVERY_CLIENT_OPTIONS = { timeout: 12_000, maxRetries: 0 } as const;
+
+/**
  * Options for the activity lane's WEB-GROUNDED call — the one model request on the SMS
  * path that goes out to the open web before it answers.
  *

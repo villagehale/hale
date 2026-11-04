@@ -102,4 +102,20 @@ export const OPT_OUT_FIXTURES = [
     language: 'es',
     expect: 'none',
   },
+  // VIL-553: read only after a model outage. The reply also says, in time since then,
+  // when the message came in; the judge grades that, with no required words.
+  {
+    id: 'en-late-stop',
+    text: 'please stop texting me',
+    language: 'en',
+    expect: 'stop',
+    late: { receivedAt: '2026-10-20T09:30:00.000Z', readAt: '2026-10-20T15:00:00.000Z' },
+  },
+  {
+    id: 'fr-late-stop',
+    text: "Arrêtez de m'écrire, merci",
+    language: 'fr',
+    expect: 'stop',
+    late: { receivedAt: '2026-10-18T15:00:00.000Z', readAt: '2026-10-20T15:00:00.000Z' },
+  },
 ];
