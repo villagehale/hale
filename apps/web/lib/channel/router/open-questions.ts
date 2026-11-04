@@ -949,9 +949,15 @@ export function createOpenQuestionReader(
             title: offer.title,
             startsAt: offer.startsAt,
           });
-          if (match && !hiddenDrafts.has(match.actionId)) {
-            hiddenDrafts.add(match.actionId);
-            approvesByOffer.set(offer.id, match.actionId);
+          if (match.outcome === 'paired' && !hiddenDrafts.has(match.action.actionId)) {
+            hiddenDrafts.add(match.action.actionId);
+            approvesByOffer.set(offer.id, match.action.actionId);
+          }
+          if (match.outcome === 'ambiguous') {
+            console.info(
+              { offerId: offer.id, actionIds: match.actionIds, outcome: match.outcome },
+              'open questions: a calendar offer matches more than one approved add, so it approves neither',
+            );
           }
           const unapprovedIds = unapprovedCalendarAddIds(
             privateApprovals.map((action) => ({
