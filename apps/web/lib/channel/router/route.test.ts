@@ -29,6 +29,7 @@ import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
@@ -486,6 +487,7 @@ function harness(
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
     floodLine?: FloodLineComposer;
+    crisisPager?: CrisisPager;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -562,6 +564,7 @@ function harness(
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
+      crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -572,6 +575,29 @@ function harness(
         warn: (...args: unknown[]) => logs.push(args),
         error: (...args: unknown[]) => logs.push(args),
       } as unknown as Pick<Console, 'info' | 'warn' | 'error'>,
+    },
+  };
+}
+
+/** The crisis pager port, recorded: what it was asked to record, then to page. */
+function recordingCrisisPager(): {
+  pager: CrisisPager;
+  recorded: CrisisUnanswered[];
+  paged: CrisisUnanswered[];
+} {
+  const recorded: CrisisUnanswered[] = [];
+  const paged: CrisisUnanswered[] = [];
+  return {
+    recorded,
+    paged,
+    pager: {
+      async record(alert) {
+        recorded.push(alert);
+      },
+      async page(alert) {
+        paged.push(alert);
+        return 'paged';
+      },
     },
   };
 }
@@ -2401,6 +2427,60 @@ describe('the outage smoke alarm', () => {
     expect(again.status).toBe('deflected');
     expect(h.transport.bodies()).toEqual(['Get help where you are.']);
     expect(calls).toBe(2);
+  });
+
+  it('a crisis moment nobody could write pages #ops at once, then defers as before', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unwritten = (
+      moment: 'mental_crisis' | 'emergency' | 'could_not_answer',
+      reason: string,
+    ): OffDomainLane => ({
+      async consider() {
+        return {
+          status: 'unwritten' as const,
+          moment,
+          reason,
+          lane: 'safety_critical' as const,
+          category: 'other' as const,
+        };
+      },
+    });
+    const crisis = recordingCrisisPager();
+    const turn = job();
+
+    for (const [moment, reason] of [
+      ['mental_crisis', 'model_failed'],
+      ['emergency', 'client_unavailable'],
+    ] as const) {
+      const h = harness({ offDomain: unwritten(moment, reason), crisisPager: crisis.pager });
+      await expect(routeChannelMessage(h.deps, turn)).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+      expect(h.transport.bodies()).toEqual([]);
+    }
+
+    const at = {
+      where: 'router moment',
+      inboundId: turn.provider_message_id,
+      familyId: turn.family_id,
+      parentUserId: turn.parent_user_id,
+    };
+    expect(crisis.paged).toEqual([
+      { kind: 'mental', reason: 'model_failed', writes: 2, ...at },
+      { kind: 'emergency', reason: 'client_unavailable', writes: 0, ...at },
+    ]);
+    expect(crisis.recorded).toEqual(crisis.paged);
+
+    // Positive control: a could-not-answer moment is not a crisis. It defers and pages nobody.
+    const plain = harness({
+      offDomain: unwritten('could_not_answer', 'model_failed'),
+      crisisPager: crisis.pager,
+    });
+    await expect(routeChannelMessage(plain.deps, turn)).rejects.toMatchObject({
+      reason: 'moment_unwritten',
+    });
+    expect(crisis.paged).toHaveLength(2);
   });
 
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
