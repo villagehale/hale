@@ -945,9 +945,11 @@ describe('the emails’ own order decides the last word', () => {
       )
       .where(eq(schema.channelMessages.familyId, family.familyId));
     const plain = createHash('sha256').update(SATURDAY).digest('hex').slice(0, 32);
-    expect(claim?.anchorKeys).toHaveLength(1);
+    // One for the instant, one for this class at the instant.
+    expect(claim?.anchorKeys).toHaveLength(2);
     expect(claim?.anchorKeys?.some((key) => key.includes(plain))).toBe(false);
     expect(claim?.anchorKeys?.some((key) => key.includes(integrationId))).toBe(false);
+    expect(claim?.anchorKeys?.some((key) => /swim|aspen/i.test(key))).toBe(false);
     // The control: the key still finds the claim, so the same "on" again is a repeat.
     await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual([
       'already_sent',
@@ -1068,14 +1070,13 @@ describe('a cancellation the parent was told outlives an older receipt read late
   });
 
   it('T25d: an older receipt read late that refreshes an open booking closes it at the told cancellation', async () => {
-    // The cancellation names the class in words the closer's title fold does not join to
-    // the booking; the receipt in its thread does, by the instant.
-    const h = harness({ r0: receipt('r0'), c1: off('c1', 'Aquatics program'), r1: receipt('r1') });
+    const h = harness({ c1: off('c1'), r0: receipt('r0'), r1: receipt('r1') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    // A receipt in another thread has no told cancellation behind it, so its booking is
+    // open: the refresh below is what closes it.
     await expect(sweep(h, [inbound('r0', 't-first', 5)])).resolves.toEqual([
       { alert: 'sent', booking: 'recorded', going: 'going_dark' },
     ]);
-    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
-    // The control: the closer left it open, so the refresh is what closes it.
     await expect(cancelledAt()).resolves.toEqual([null]);
 
     await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
@@ -1087,6 +1088,28 @@ describe('a cancellation the parent was told outlives an older receipt read late
       'activity_booking_cancelled',
       'activity_booking_recorded',
     ]);
+  });
+
+  it('T25f: a told cancellation of another class at the same instant leaves a late receipt open', async () => {
+    const h = harness({
+      c1: off('c1', 'Swim Level 1'),
+      r1: receipt('r1'),
+      r2: classified({ kind: 'booking_confirmation', title: 'Swim Level 1' }, 'r2'),
+    });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    // The control: a late receipt for the class that was cancelled is closed.
+    await expect(sweep(h, [inbound('r2', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+    const byTitle = await bookingRows().then((rows) =>
+      Object.fromEntries(rows.map((row) => [row.title, row.cancelledAt])),
+    );
+    expect(byTitle).toEqual({ 'Swim Level 1': minute(20), 'Swim Level 2': null });
   });
 });
 

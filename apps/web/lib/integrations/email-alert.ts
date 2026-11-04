@@ -43,6 +43,7 @@ import {
   type BookingDraftResult,
   type ClosedBooking,
   bookingDraft,
+  canonicalBookingTitle,
   closeCancelledBookings,
   familyHoldsLiveBooking,
   recordActivityBooking,
@@ -400,11 +401,23 @@ async function occasionClaim(
   extraction: Parameters<typeof emailAlertOccasion>[0],
   messageId: string,
   receivedAt: Date,
+  from: string,
 ): Promise<{ occasionKey: string; anchorKeys: string[]; told: Told | null }> {
   const { occasion, anchors } = occasionOf(extraction, messageId);
   const base = emailAlertOccasionKey(integrationId, threadId, occasion);
-  const anchorKeys = anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor));
-  const last = await lastToldClaim(database, anchorKeys);
+  const instantKeys = anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor));
+  // Written with the claim, read only by `toldCancellationAfter`: every claim holding one of
+  // these also holds the instant key it was built from, so the told check below is unchanged.
+  const anchorKeys = [
+    ...instantKeys,
+    ...classAnchorKeys(
+      integrationId,
+      threadId,
+      anchors,
+      classIdentity(senderHost(from), sanitizedTitle(extraction.event.title)),
+    ),
+  ];
+  const last = await lastToldClaim(database, instantKeys);
   if (last !== undefined && isClaimOf(last.occasionKey, base)) {
     return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
   }
@@ -413,6 +426,29 @@ async function occasionClaim(
   }
   const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
   return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
+}
+
+/** The class an email is about, by the folds the cancellation closer matches a booking on:
+ * the sender's domain and the canonical title. `null` names no class, and a cancellation
+ * that names no class closes nothing. */
+function classIdentity(providerHost: string, title: string): string | null {
+  const canonical = canonicalBookingTitle(title);
+  if (providerHost === '' || canonical === '') return null;
+  return `${providerHost}|${canonical}`;
+}
+
+/** One keyed anchor per instant, for this class only: two classes at one instant in one
+ * thread share the instant's anchor and never these. */
+function classAnchorKeys(
+  integrationId: string,
+  threadId: string,
+  anchors: readonly string[],
+  identity: string | null,
+): string[] {
+  if (identity === null) return [];
+  return anchors.map((anchor) =>
+    emailAlertAnchorKey(integrationId, threadId, `class:${identity}|${anchor}`),
+  );
 }
 
 /** A claim key is the occasion's bare key, or that key followed by the claim it came after. */
@@ -456,11 +492,12 @@ async function lastToldClaim(database: Database, anchorKeys: readonly string[]) 
 }
 
 /**
- * A BOOKING IS OPEN ONLY IF THE THREAD'S LAST WORD ABOUT ITS INSTANT IS NOT A NEWER
- * CANCELLATION. The receipt is history when, in its own thread, the newest thing the parent
- * was told about the same instant is "it's off" and that email is newer than the receipt:
- * the booking it records or refreshes is closed at the cancellation's received time. A
- * newer "back on" told after the cancellation is the last word instead, and leaves it open.
+ * A BOOKING IS OPEN ONLY IF THE THREAD'S LAST WORD ABOUT ITS CLASS AT ITS INSTANT IS NOT A
+ * NEWER CANCELLATION. The receipt is history when, in its own thread, the newest thing the
+ * parent was told about the same class at the same instant is "it's off" and that email is
+ * newer than the receipt: the booking it records or refreshes is closed at the
+ * cancellation's received time. A newer "back on" told after the cancellation is the last
+ * word instead, and leaves it open. Another class at the same instant is not this one.
  *
  * Returns that cancellation's received time, or `null` when the last word is not one.
  * Anchors are per thread, so a cancellation in another thread is the closer's to apply.
@@ -473,14 +510,21 @@ async function toldCancellationAfter(
     extraction: Parameters<typeof emailAlertOccasion>[0];
     messageId: string;
     receivedAt: Date;
+    /** The booking draft's own sender domain and title: the folds the claim was keyed on. */
+    providerHost: string;
+    title: string;
   },
 ): Promise<Date | null> {
   const { integrationId, threadId } = input;
   const { anchors } = occasionOf(input.extraction, input.messageId);
-  const last = await lastToldClaim(
-    database,
-    anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor)),
+  const keys = classAnchorKeys(
+    integrationId,
+    threadId,
+    anchors,
+    classIdentity(input.providerHost, input.title),
   );
+  if (keys.length === 0) return null;
+  const last = await lastToldClaim(database, keys);
   if (last?.receivedAt == null || last.receivedAt <= input.receivedAt) return null;
   const cancelled = anchors.some((anchor) =>
     isClaimOf(
@@ -681,6 +725,7 @@ export async function alertParentForEmail(
     extraction,
     messageId,
     receivedAt,
+    input.envelope.from,
   );
   // OLDER THAN THE THREAD'S LAST WORD, read late: not texted, and its booking effects below
   // happen as for any email.
@@ -1225,6 +1270,8 @@ async function recordBooking(
             extraction: input.toldIn.extraction,
             messageId: input.messageId,
             receivedAt: input.receivedAt,
+            providerHost: draft.draft.providerHost,
+            title: draft.draft.title,
           });
     recorded = await recordActivityBooking(database, {
       familyId: input.familyId,
