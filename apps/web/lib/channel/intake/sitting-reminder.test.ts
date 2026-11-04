@@ -51,7 +51,7 @@ const FIRST_HELLO_SAME_MORNING = new Date('2026-08-27T11:00:00.000Z');
 /** Postal places, by FSA only. K2P resolves to the Eastern zone, V5K to the Pacific. */
 const EASTERN_FSA = 'K2P';
 const PACIFIC_FSA = 'V5K';
-const EASTERN = 'America/Toronto';
+const EASTERN = 'America/New_York';
 
 function firstTouchAt(areaCoarse: string) {
   return {
