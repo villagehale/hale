@@ -235,6 +235,41 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
     expect(summary.discrepancies).toBe(0);
     expect(h.markVerified).not.toHaveBeenCalled();
   });
+
+  describe('a time the page does not print never confirms a stored time', () => {
+    const stored = storedWindow({ previewAt: null, openAt: new Date('2026-08-11T08:00:00-04:00') });
+    const sweep = (printed: string) =>
+      harness({
+        loadWindows: async () => [stored],
+        fetchPage: vi.fn(async () => `${stored.cycleLabel}. Register starting ${printed}.`),
+        extract: vi.fn(async () =>
+          reading({
+            evidence: `Register starting ${printed}.`,
+            preview: null,
+            generalOpen: { quote: printed, date: '2026-08-11', time: '08:00' },
+          }),
+        ),
+      });
+
+    it.each(['2026-08-11', '08/11/2026', '11/08/2026'])(
+      'drops a reading that takes the hour from the date-only quote %s',
+      async (printed) => {
+        const h = sweep(printed);
+        const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+        expect(summary.rows[0]?.outcome).toEqual({ kind: 'unverified', reason: 'uncorroborated' });
+        expect(h.markVerified).not.toHaveBeenCalled();
+      },
+    );
+
+    it('confirms the same row once the page prints the time (control)', async () => {
+      const h = sweep('2026-08-11 at 8:00 a.m.');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'confirmed', fields: ['openAt'] });
+      expect(h.markVerified).toHaveBeenCalledWith({}, stored.id, NOW);
+    });
+  });
 });
 
 describe('runRegistrationVerifySweep — bounded and idempotent', () => {

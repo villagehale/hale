@@ -204,72 +204,67 @@ const YEAR_RUN = /^(19|20)\d{2}$/;
  *
  * Only the digits are checked, so a French, Spanish or Japanese quote verifies the same
  * way an English one does, with no month or weekday tables. Every ASCII digit run in the
- * (normalised) quote must be consumed exactly once by one of: the day (required), the
- * month number — which must be printed beside the day run, with at most one non-space
- * character between them (`11/06`, `6月11`), so that the hour in `June 11 at 6 a.m.`
- * cannot pass as the month of a date-only reading — a four-digit year (which must be
- * this date's year), the hour (required when the date has a time; 13-23 may be printed
- * on a 12-hour clock), and the minute — which must be the run straight after the hour,
- * and is absent when it is zero and the page prints none (`9 a.m.`, `9 h`). A leftover
- * run fails the date: a time on a date-only reading, a second date in the quote.
+ * (normalised) quote must be consumed exactly once, and the DATE is read first: a
+ * four-digit year (which must be this date's year), the day (required), and the month
+ * number wherever the quote prints one joined to the day by exactly one non-space
+ * character (`11/06`, `2026-06-11`, `6月11`). Those runs are the date's and only the date's.
+ * The clock comes from what the date leaves: the hour (required when the date has a
+ * time; 13-23 may be printed on a 12-hour clock), and the minute — the run straight
+ * after the hour, absent when it is zero and the page prints none (`9 a.m.`, `9 h`). So
+ * a date-only `2026-08-11` cannot lend its month to an 08:00 the page never printed, and
+ * whitespace alone never joins a month to its day, so `Aug. 11 8 a.m.` keeps its hour.
+ * A leftover run fails the date: a time on a date-only reading, a second date in the quote.
  *
  * Known residuals, all fail-closed or caught by the eval's exact equality: a spelled-out
  * month and AM/PM are not checked; a day/hour swap at minute zero with both numbers
  * under 24 is not caught; a day/month swap in an all-numeric date with both numbers
- * 12 or under (`11/08/2026`) is not caught; `noon`, spelled-out numbers and non-ASCII
- * digit systems fail.
+ * 12 or under (`11/08/2026`) is not caught; a clock joined to the day by one character
+ * whose hour equals the month number (`Sep. 22, 9 a.m.`) fails; `noon`, spelled-out
+ * numbers and non-ASCII digit systems fail.
  */
 function quoteStatesDate(published: PublishedDate): boolean {
   const quote = normalizeQuote(published.quote);
-  const runs = Array.from(quote.matchAll(/\d+/g), (match) => ({
+  const runs = Array.from(quote.matchAll(/\d+/g), (match, index) => ({
+    index,
     text: match[0],
     value: Number(match[0]),
     start: match.index,
     end: match.index + match[0].length,
   }));
   type Run = (typeof runs)[number];
-  const besideEachOther = (a: Run, b: Run): boolean => {
+  const joined = (a: Run, b: Run): boolean => {
     const [first, second] = a.start < b.start ? [a, b] : [b, a];
-    return quote.slice(first.end, second.start).replace(/\s/g, '').length <= 1;
+    return quote.slice(first.end, second.start).replace(/\s/g, '').length === 1;
   };
   const [year, month, day] = published.date.split('-').map(Number);
   const clock = published.time?.split(':').map(Number) ?? null;
 
-  const dateConsumes = (rest: typeof runs): boolean => {
-    let dayRun: Run | null = null;
-    let monthRun: Run | null = null;
-    let yearFound = false;
-    // Greedy is a complete search: a run fits the day and the month only when the two
-    // values are equal, and then the roles are interchangeable (adjacency is symmetric).
-    for (const run of rest) {
-      if (YEAR_RUN.test(run.text)) {
-        if (yearFound || run.value !== year) return false;
-        yearFound = true;
-      } else if (dayRun === null && run.value === day) {
-        dayRun = run;
-      } else if (monthRun === null && run.value === month) {
-        monthRun = run;
-      } else {
-        return false;
-      }
-    }
-    if (dayRun === null) return false;
-    return monthRun === null || besideEachOther(dayRun, monthRun);
+  const years = runs.filter((run) => YEAR_RUN.test(run.text));
+  if (years.length > 1 || years.some((run) => run.value !== year)) return false;
+  const others = runs.filter((run) => !YEAR_RUN.test(run.text));
+
+  const clockConsumes = (rest: readonly Run[]): boolean => {
+    if (clock === null) return rest.length === 0;
+    const [hour, minute] = clock as [number, number];
+    const [hourRun, minuteRun, ...extra] = rest;
+    if (hourRun === undefined || extra.length > 0) return false;
+    const hourMatches =
+      hourRun.value === hour ||
+      (hour >= 13 && hourRun.value === hour - 12) ||
+      (hour === 0 && hourRun.value === 12);
+    if (!hourMatches) return false;
+    if (minuteRun === undefined) return minute === 0;
+    return minuteRun.index === hourRun.index + 1 && minuteRun.value === minute;
   };
 
-  if (clock === null) return dateConsumes(runs);
-  const [hour, minute] = clock as [number, number];
-  return runs.some((run, index) => {
-    const hourMatches =
-      run.value === hour ||
-      (hour >= 13 && run.value === hour - 12) ||
-      (hour === 0 && run.value === 12);
-    if (!hourMatches) return false;
-    const next = runs[index + 1];
-    const minuteRun = minute !== 0 || next?.value === 0 ? next : undefined;
-    if (minute !== 0 && minuteRun?.value !== minute) return false;
-    const used = new Set([index, ...(minuteRun ? [index + 1] : [])]);
-    return dateConsumes(runs.filter((_, i) => !used.has(i)));
+  return others.some((dayRun) => {
+    if (dayRun.value !== day) return false;
+    const months = others.filter(
+      (run) => run !== dayRun && run.value === month && joined(dayRun, run),
+    );
+    return (months.length > 0 ? months : [null]).some((monthRun) =>
+      clockConsumes(others.filter((run) => run !== dayRun && run !== monthRun)),
+    );
   });
 }
 

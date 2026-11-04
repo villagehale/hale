@@ -558,6 +558,53 @@ describe('corroborationFailure — every date is bound to its own quote', () => 
     });
   });
 
+  describe('the clock never comes from the date’s own numbers', () => {
+    const read = (quote: string, time: string | null) =>
+      corroborationFailure(
+        `2026 Fall Programs. Register starting ${quote}.`,
+        extracted({
+          yearEvidence: '2026 Fall Programs',
+          evidence: `Register starting ${quote}.`,
+          preview: null,
+          generalOpen: { quote, date: '2026-08-11', time },
+        }),
+      );
+
+    it.each([
+      ['ISO, the hour taken from the month', '2026-08-11', '08:00'],
+      ['ISO, an afternoon hour taken from the month', '2026-08-11', '20:00'],
+      ['ISO, the hour taken from the day', '2026-08-11', '11:00'],
+      ['month first, the hour taken from the month', '08/11/2026', '08:00'],
+      ['month first, the hour taken from the day', '08/11/2026', '11:00'],
+      ['day first, the hour taken from the month', '11/08/2026', '08:00'],
+      ['day first, the hour taken from the day', '11/08/2026', '11:00'],
+      ['CJK, the hour taken from the month', '2026年8月11日', '08:00'],
+    ] as const)('refuses a time on a date-only quote: %s', (_name, quote, time) => {
+      expect(read(quote, time)).toBe('uncorroborated');
+    });
+
+    it.each([
+      ['ISO', '2026-08-11'],
+      ['month first', '08/11/2026'],
+      ['day first', '11/08/2026'],
+      ['CJK', '2026年8月11日'],
+    ] as const)('accepts the same date-only quote with no time: %s (control)', (_name, quote) => {
+      expect(read(quote, null)).toBeNull();
+    });
+
+    it.each([
+      ['ISO with 8:00', '2026-08-11 8:00', '08:00'],
+      ['ISO with 8 a.m.', '2026-08-11 8 a.m.', '08:00'],
+      ['ISO with 20h00', '2026-08-11 20h00', '20:00'],
+      ['month first with 8:00 a.m.', '08/11/2026 at 8:00 a.m.', '08:00'],
+      ['day first with 8 h', '11/08/2026 à 8 h', '08:00'],
+      ['CJK with 8点', '2026年8月11日8点', '08:00'],
+      ['a month name, the clock a space after the day', 'Aug. 11 8 a.m.', '08:00'],
+    ] as const)('accepts a time the quote prints: %s (control)', (_name, quote, time) => {
+      expect(read(quote, time)).toBeNull();
+    });
+  });
+
   it('refuses a date whose quote prints another year', () => {
     const page = `${PAGE} Last season: Aug. 11, 2025 at 6:30 AM.`;
     expect(

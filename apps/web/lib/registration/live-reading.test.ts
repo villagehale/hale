@@ -403,6 +403,38 @@ describe('the per-date gate runs on every slot, the unclassified one included', 
   });
 });
 
+describe('a time the page does not print is never verified', () => {
+  const page = (opening: string) => `Fall 2026. Registration opens ${opening}. Eastern Time.`;
+  const reading = (quote: string, time: string) =>
+    extracted({
+      evidence: `Registration opens ${quote}.`,
+      yearEvidence: 'Fall 2026',
+      generalOpen: { quote, date: '2026-08-11', time },
+    });
+
+  it.each([
+    ['ISO, the hour taken from the month', '2026-08-11', '08:00'],
+    ['ISO, the hour taken from the day', '2026-08-11', '11:00'],
+    ['month first', '08/11/2026', '08:00'],
+    ['day first', '11/08/2026', '08:00'],
+  ] as const)('refuses a time on a date-only quote: %s', (_name, quote, time) => {
+    const result = normalizeExtractedRegistration(reading(quote, time), page(quote), SOURCE);
+    expect(result).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it.each([
+    ['ISO with 8:00', '2026-08-11 8:00', '08:00', '2026-08-11T12:00:00.000Z'],
+    ['day first with 8 a.m.', '11/08/2026 8 a.m.', '08:00', '2026-08-11T12:00:00.000Z'],
+    ['ISO with 20h00', '2026-08-11 20h00', '20:00', '2026-08-12T00:00:00.000Z'],
+    ['CJK with 8点', '2026年8月11日8点', '08:00', '2026-08-11T12:00:00.000Z'],
+  ] as const)('verifies a time the quote prints: %s (control)', (_name, quote, time, instant) => {
+    expect(
+      anchors(normalizeExtractedRegistration(reading(quote, time), page(quote), SOURCE)),
+    ).toEqual({ general_open: instant });
+  });
+});
+
 describe('the date a family can act on', () => {
   const PAGE = [
     'Fall 2026. Residents register August 11, 2026 at 6:30 a.m.',
