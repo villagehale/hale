@@ -567,6 +567,317 @@ describe('a 1:1 decision syncs the group', () => {
     );
   });
 
+  it('a participant read Linq refuses for good (404) closes the sync unsent, named participants_unreadable', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const linqUrls: string[] = [];
+    const gone = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 404 });
+      linqUrls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', gone);
+    const info = vi.spyOn(console, 'info');
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+
+    const closed = await flushGroupDecisionSyncs(db.database, {
+      now: sweptAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(closed).toEqual({ sent: 0, held: 0 });
+    expect(linqUrls).toEqual([]);
+    const [done] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(done?.flushedAt).toEqual(sweptAt);
+    expect(info).toHaveBeenCalledWith(
+      { familyId: seeded.familyId, queued: 1, reason: 'participants_unreadable' },
+      'family outbound: sync closed unsent',
+    );
+    info.mockRestore();
+    expect(
+      await db.database
+        .select({
+          actor: schema.auditLog.actor,
+          actionTaken: schema.auditLog.actionTaken,
+          targetId: schema.auditLog.targetId,
+          after: schema.auditLog.after,
+        })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([
+      {
+        actor: 'system',
+        actionTaken: 'group_decision_sync_closed_unsent',
+        targetId: null,
+        after: { reason: 'participants_unreadable', count: 1 },
+      },
+    ]);
+
+    const later = wire();
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 20 * 60 * 1000),
+        fetch: later.fetch,
+      }),
+    ).toEqual({ sent: 0, held: 0 });
+    expect(later.linqUrls()).toEqual([]);
+  });
+
+  it('the closed-unsent audit row counts every row the close settled, a not-yet-due one included', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+    await db.database.insert(schema.groupDecisionSync).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: 'passed',
+      activity: 'swimming',
+      kid: 'Juniper',
+      flushAfter: new Date(sweptAt.getTime() + 5 * 60 * 1000),
+      createdAt: sweptAt,
+    });
+    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    vi.stubGlobal('fetch', gone);
+
+    await flushGroupDecisionSyncs(db.database, {
+      now: sweptAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(
+      await db.database
+        .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+        .from(schema.groupDecisionSync),
+    ).toEqual([{ flushedAt: sweptAt }, { flushedAt: sweptAt }]);
+    expect(
+      await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([{ after: { reason: 'participants_unreadable', count: 2 } }]);
+  });
+
+  it('a close whose audit row cannot be written leaves the sync queued, and the next sweep closes it with its row', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    vi.stubGlobal('fetch', gone);
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+
+    await db.exec(`
+      create or replace function refuse_closed_unsent_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end;
+      $$ language plpgsql;
+      create trigger refuse_closed_unsent_audit_trg before insert on audit_log
+        for each row when (new.action_taken = 'group_decision_sync_closed_unsent')
+        execute function refuse_closed_unsent_audit();
+    `);
+    try {
+      await expect(
+        flushGroupDecisionSyncs(db.database, {
+          now: sweptAt,
+          fetch: gone as unknown as typeof fetch,
+        }),
+      ).rejects.toThrow(/audit write refused/);
+      expect(
+        await db.database
+          .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+          .from(schema.groupDecisionSync),
+      ).toEqual([{ flushedAt: null }]);
+    } finally {
+      await db.exec('drop trigger if exists refuse_closed_unsent_audit_trg on audit_log');
+    }
+
+    const retriedAt = new Date(NOW.getTime() + 20 * 60 * 1000);
+    await flushGroupDecisionSyncs(db.database, {
+      now: retriedAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(
+      await db.database
+        .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+        .from(schema.groupDecisionSync),
+    ).toEqual([{ flushedAt: retriedAt }]);
+    expect(
+      await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([{ after: { reason: 'participants_unreadable', count: 1 } }]);
+  });
+
+  it("a participant read refused for Hale's own credential (401), or with no Linq key, keeps the sync queued and writes no audit row", async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const unauthorized = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 401 });
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', unauthorized);
+    const waitingRow = async () =>
+      (
+        await db.database
+          .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+          .from(schema.groupDecisionSync)
+      )[0];
+
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 10 * 60 * 1000),
+        fetch: unauthorized as unknown as typeof fetch,
+      }),
+    ).toEqual({ sent: 0, held: 1 });
+    expect(await waitingRow()).toEqual({ flushedAt: null });
+
+    vi.stubEnv('LINQ_API_KEY', '');
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 15 * 60 * 1000),
+        fetch: unauthorized as unknown as typeof fetch,
+      }),
+    ).toEqual({ sent: 0, held: 1 });
+    expect(await waitingRow()).toEqual({ flushedAt: null });
+    expect(
+      await db.database
+        .select({ actionTaken: schema.auditLog.actionTaken })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([]);
+
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const recovered = wire();
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 20 * 60 * 1000),
+      fetch: recovered.fetch,
+    });
+    expect(sent.sent).toBe(1);
+    expect(recovered.linqUrls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it('a participant read that times out (408) keeps the sync queued, and the next sweep sends it', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const timedOut = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 408 });
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', timedOut);
+
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 10 * 60 * 1000),
+        fetch: timedOut as unknown as typeof fetch,
+      }),
+    ).toEqual({ sent: 0, held: 1 });
+    const [waiting] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(waiting?.flushedAt).toBeNull();
+
+    const recovered = wire();
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 20 * 60 * 1000),
+      fetch: recovered.fetch,
+    });
+    expect(sent.sent).toBe(1);
+    expect(recovered.linqUrls()).toEqual([GROUP_MESSAGES]);
+  });
+
+  it("Linq's own rate limit (400, error 1007) on the participant read keeps the sync queued, with cadence off", async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    const rateLimited = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({ error: { code: 1007 } }, { status: 400 });
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', rateLimited);
+
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 10 * 60 * 1000),
+        fetch: rateLimited as unknown as typeof fetch,
+      }),
+    ).toEqual({ sent: 0, held: 1 });
+    const [waiting] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(waiting?.flushedAt).toBeNull();
+  });
+
   it('positive control: someone Hale cannot identify at the sweep still closes the sync unsent', async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {
