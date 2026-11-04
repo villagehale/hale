@@ -34,6 +34,7 @@ describe('catalog history cutover', () => {
       '0197_family_event_notes',
       '0198_email_alert_occasions',
       '0199_registration_live_watch_storage',
+      '0200_email_alert_occasion_anchors',
     ]);
   });
 });
