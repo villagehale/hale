@@ -27,12 +27,14 @@ const TWO_PAGE_GUIDE = [
 // "[PDF page n]\n" marker and the trailing newline.
 const CHARS_PER_TEXT_PAGE = 3_053;
 const FLATE_BOMB_INFLATED_BYTES = 128 * 1024 * 1024;
+// Long enough for a cold worker to load the reader on a busy CI runner, well short of the
+// ~2.4 s this bomb takes to finish on a fast laptop.
+const BOMB_DEADLINE_MS = 1_200;
 // Calibrated: the largest legal read stays under the ceiling; this bomb grows it by ~965 MiB within
 // 3 s even after the deadline test has already raised the process's RSS high-water mark,
 // which freed-and-reused pages hide from a smaller bomb (128 MiB grows only ~36 MiB then).
 const MEMORY_BOMB_INFLATED_BYTES = 512 * 1024 * 1024;
 const MEMORY_CEILING_BYTES = 128 * 1024 * 1024;
-const MICROS_PER_MS = 1_000;
 // 100 pages of this stay just under MAX_PAGE_TEXT_CHARS once page markers are added.
 const LARGEST_LEGAL_PAGE_CHARS = 1_900;
 const DENSE_MEMORY_POLL_MS = 1;
@@ -212,7 +214,7 @@ describe('local registration PDF text extraction', () => {
 
     it('is killed at the deadline, and burns no CPU after the kill', async () => {
       const budget = {
-        timeoutMs: 400,
+        timeoutMs: BOMB_DEADLINE_MS,
         maxRssGrowthBytes: Number.MAX_SAFE_INTEGER,
         memoryPollMs: PDF_READ_MEMORY_POLL_MS,
       };
@@ -226,16 +228,19 @@ describe('local registration PDF text extraction', () => {
 
       expect(outcome).toEqual(refused('pdf_read_budget', 'time'));
       expect(elapsed).toBeLessThan(budget.timeoutMs + 1_000);
-      expect(readCpu).toBeGreaterThanOrEqual(0.5 * budget.timeoutMs * MICROS_PER_MS);
 
       // The read resolves before its worker stops; the kill is done once the worker exits.
       await readersExited();
       const afterKillStart = process.cpuUsage();
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-      expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
+      const afterKillWindowMs = 1_000;
+      await new Promise((resolve) => setTimeout(resolve, afterKillWindowMs));
+      const afterKillCpu = cpuMicros(process.cpuUsage(afterKillStart));
+      expect(afterKillCpu).toBeLessThan(300_000);
+      // Both rates are measured on the same runner at the same time, so CPU contention slows both:
+      // a bomb still running after the kill would burn at its read-time rate.
+      expect(readCpu / elapsed).toBeGreaterThan((3 * afterKillCpu) / afterKillWindowMs);
 
-      // The control read gets the default budget: under CI load a cold worker can take longer than the bomb's 400 ms.
-      expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE))).toContain(
+      expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
         'Winter registration begins November 10, 2026',
       );
     }, 30_000);
