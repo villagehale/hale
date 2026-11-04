@@ -1,7 +1,23 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS } from './fetch';
 import { MAX_PDF_PAGES, PDF_READ_MEMORY_POLL_MS, registrationPdfText } from './pdf';
 import { registrationPdfFixture, registrationPdfFlateFixture } from './pdf-fixture.test-helper';
+
+// Spy-through: the real Worker runs; this only records when each one exits, because a read's
+// slot frees on its worker's exit, which can trail the read's own result.
+const exits = vi.hoisted(() => [] as Promise<number>[]);
+vi.mock('node:worker_threads', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:worker_threads')>();
+  class ExitRecordingWorker extends actual.Worker {
+    constructor(...args: ConstructorParameters<typeof actual.Worker>) {
+      super(...args);
+      exits.push(new Promise((resolve) => this.once('exit', resolve)));
+    }
+  }
+  return { ...actual, Worker: ExitRecordingWorker };
+});
+const readersExited = () => Promise.all(exits);
+afterEach(readersExited);
 
 const TWO_PAGE_GUIDE = [
   'Fall 2026. Preview August 3.',
@@ -118,19 +134,23 @@ describe('local registration PDF text extraction', () => {
     await expect(reads[2]).resolves.toEqual({ outcome: 'busy', reason: 'pdf_readers_busy' });
     expect(await outcomes(reads.slice(0, 2))).toEqual(['read', 'read']);
 
+    await readersExited();
     expect(await outcomes([registrationPdfText(guide), registrationPdfText(guide)])).toEqual([
       'read',
       'read',
     ]);
 
+    await readersExited();
     await expect(
       Promise.all([registrationPdfText(broken), registrationPdfText(broken)]),
     ).resolves.toEqual([refused('pdf_unreadable', null), refused('pdf_unreadable', null)]);
+    await readersExited();
     expect(await outcomes([registrationPdfText(guide), registrationPdfText(guide)])).toEqual([
       'read',
       'read',
     ]);
 
+    await readersExited();
     const inFlight = [registrationPdfText(guide), registrationPdfText(guide)];
     await expect(registrationPdfText(new Uint8Array(MAX_PAGE_BYTES + 1))).resolves.toEqual(
       refused('pdf_read_budget', 'bytes'),
@@ -153,6 +173,7 @@ describe('local registration PDF text extraction', () => {
         'registration pdf: busy',
       );
       await Promise.all(reads);
+      await readersExited();
 
       await expect(registrationPdfText(registrationPdfFixture(['']))).resolves.toEqual(
         refused('pdf_no_text', null),
@@ -210,6 +231,7 @@ describe('local registration PDF text extraction', () => {
       const afterKillStart = process.cpuUsage();
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
+      await readersExited();
 
       expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
         'Winter registration begins November 10, 2026',
@@ -229,6 +251,7 @@ describe('local registration PDF text extraction', () => {
         refused('pdf_read_budget', 'memory'),
       );
       expect(performance.now() - started).toBeLessThan(5_000);
+      await readersExited();
 
       // The largest read the page and text ceilings allow, sampled every millisecond, so the
       // check runs dozens of times against an instance whose RSS is already far past the

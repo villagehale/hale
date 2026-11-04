@@ -2,14 +2,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorkerOptions } from 'node:worker_threads';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { registrationPdfFixture } from './pdf-fixture.test-helper';
 
 // Spy-through ports: the real Worker and the real existsSync run unless a test steers them.
 const spawned = vi.hoisted(() => ({
   calls: [] as { file: string | URL; options: WorkerOptions | undefined }[],
+  exits: [] as Promise<number>[],
   failNext: null as Error | null,
+  /** Runs this file in place of the real reader (the worker port), then resets. */
+  swapNextFile: null as string | null,
+  /** The next n terminate() calls wait for `releaseHeld` before killing the worker. */
+  holdTerminates: 0,
+  held: [] as (() => void)[],
+  /** The next terminate() rejects and leaves the worker running. */
   rejectNextTerminate: false,
+  refusedTerminates: [] as (() => Promise<number>)[],
   hideWorkerFile: false,
 }));
 vi.mock('node:worker_threads', async (importOriginal) => {
@@ -20,13 +28,24 @@ vi.mock('node:worker_threads', async (importOriginal) => {
       const failure = spawned.failNext;
       spawned.failNext = null;
       if (failure) throw failure;
-      super(file, options);
+      const swapped = spawned.swapNextFile;
+      spawned.swapNextFile = null;
+      super(swapped ?? file, options);
+      spawned.exits.push(new Promise((resolve) => this.once('exit', resolve)));
     }
     override terminate(): Promise<number> {
-      const terminated = super.terminate();
-      if (!spawned.rejectNextTerminate) return terminated;
-      spawned.rejectNextTerminate = false;
-      return terminated.then(() => Promise.reject(new Error('terminate refused')));
+      if (spawned.rejectNextTerminate) {
+        spawned.rejectNextTerminate = false;
+        spawned.refusedTerminates.push(() => super.terminate());
+        return Promise.reject(new Error('terminate refused'));
+      }
+      if (spawned.holdTerminates > 0) {
+        spawned.holdTerminates--;
+        return new Promise((resolve) => {
+          spawned.held.push(() => resolve(super.terminate()));
+        });
+      }
+      return super.terminate();
     }
   }
   return { ...actual, Worker: SpyWorker };
@@ -53,6 +72,23 @@ const GUIDE = registrationPdfFixture([
 ]);
 const scratch = mkdtempSync(join(tmpdir(), 'hale-pdf-isolation-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+// Answers like the reader, then stays alive until it is terminated.
+const KEEP_ALIVE_READER = join(scratch, 'keep-alive-reader.mjs');
+writeFileSync(
+  KEEP_ALIVE_READER,
+  "import { parentPort } from 'node:worker_threads';\nparentPort.postMessage({ kind: 'reader_loaded' });\nparentPort.postMessage({ ok: true, text: 'kept alive' });\nsetInterval(() => {}, 1_000);\n",
+);
+const allExited = () => Promise.all(spawned.exits);
+const outcomes = async (reads: ReturnType<typeof registrationPdfText>[]) =>
+  (await Promise.all(reads)).map((result) => result.outcome);
+
+// Slots free when a worker exits, which can trail the read's own result.
+afterEach(async () => {
+  for (const release of spawned.held.splice(0)) release();
+  await Promise.all(spawned.refusedTerminates.splice(0).map((kill) => kill()));
+  spawned.holdTerminates = 0;
+  await allExited();
+});
 
 async function probe(file: string, options: WorkerOptions | undefined): Promise<unknown> {
   const { Worker } =
@@ -128,6 +164,7 @@ describe('the PDF reader worker is isolated from the parent process', () => {
     } finally {
       error.mockRestore();
     }
+    await allExited();
     await expect(registrationPdfText(GUIDE)).resolves.toMatchObject({ outcome: 'read' });
   });
 
@@ -145,25 +182,76 @@ describe('the PDF reader worker is isolated from the parent process', () => {
       spawned.hideWorkerFile = false;
       error.mockRestore();
     }
+    await allExited();
     const both = await Promise.all([registrationPdfText(GUIDE), registrationPdfText(GUIDE)]);
     expect(both.map((result) => result.outcome)).toEqual(['read', 'read']);
   });
 
-  it('frees its slot and still resolves when terminating the worker rejects', async () => {
+  it('holds the slot of a terminated worker until it exits, so a third read is busy', async () => {
+    spawned.holdTerminates = 2;
+    spawned.swapNextFile = KEEP_ALIVE_READER;
+    const first = registrationPdfText(GUIDE);
+    spawned.swapNextFile = KEEP_ALIVE_READER;
+    const second = registrationPdfText(GUIDE);
+    await vi.waitFor(() => expect(spawned.held).toHaveLength(2));
+
+    await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+      outcome: 'busy',
+      reason: 'pdf_readers_busy',
+    });
+    // The reads themselves resolved without waiting for their workers to exit.
+    expect(await outcomes([first, second])).toEqual(['read', 'read']);
+
+    // Positive control: once 'exit' fires, both slots are free again.
+    for (const release of spawned.held.splice(0)) release();
+    await allExited();
+    expect(await outcomes([registrationPdfText(GUIDE), registrationPdfText(GUIDE)])).toEqual([
+      'read',
+      'read',
+    ]);
+  });
+
+  it('resolves when terminate rejects, logs it by name, and frees the slot on exit', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       spawned.rejectNextTerminate = true;
-      await expect(registrationPdfText(GUIDE)).resolves.toMatchObject({ outcome: 'read' });
-      expect(spawned.rejectNextTerminate).toBe(false);
+      spawned.swapNextFile = KEEP_ALIVE_READER;
+      await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+        outcome: 'read',
+        pageDerivedText: 'kept alive',
+      });
+      await vi.waitFor(() => expect(spawned.refusedTerminates).toHaveLength(1));
       expect(error).toHaveBeenCalledWith(
-        expect.objectContaining({ fault: 'reader_terminate_failed' }),
-        expect.any(String),
+        { fault: 'reader_terminate_failed', errorClass: 'Error' },
+        'registration pdf: reader terminate failed',
       );
+      expect(JSON.stringify(error.mock.calls)).not.toContain('terminate refused');
     } finally {
       error.mockRestore();
     }
-    // Both slots free: a leaked slot would name the second of these busy.
-    const both = await Promise.all([registrationPdfText(GUIDE), registrationPdfText(GUIDE)]);
-    expect(both.map((result) => result.outcome)).toEqual(['read', 'read']);
+    // The worker that refused to stop still holds its slot: one read fits, a second is busy.
+    expect(await outcomes([registrationPdfText(GUIDE), registrationPdfText(GUIDE)])).toEqual([
+      'read',
+      'busy',
+    ]);
+
+    await Promise.all(spawned.refusedTerminates.splice(0).map((kill) => kill()));
+    await allExited();
+    expect(await outcomes([registrationPdfText(GUIDE), registrationPdfText(GUIDE)])).toEqual([
+      'read',
+      'read',
+    ]);
+  });
+
+  it('frees a slot once when terminate resolves and exit fires, never twice', async () => {
+    await expect(registrationPdfText(GUIDE)).resolves.toMatchObject({ outcome: 'read' });
+    await allExited();
+    expect(
+      await outcomes([
+        registrationPdfText(GUIDE),
+        registrationPdfText(GUIDE),
+        registrationPdfText(GUIDE),
+      ]),
+    ).toEqual(['read', 'read', 'busy']);
   });
 });

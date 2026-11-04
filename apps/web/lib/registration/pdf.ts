@@ -44,6 +44,11 @@ export type RegistrationPdfRead =
 
 let readsInFlight = 0;
 
+/** The class name only: an error's message can carry text from the city's PDF. */
+function errorClass(error: unknown): string {
+  return error instanceof Error ? error.constructor.name : typeof error;
+}
+
 function readerFault(fault: RegistrationPdfReaderFault, detail: string): RegistrationPdfRead {
   console.error({ fault, err: detail }, 'registration pdf: reader failed');
   return { outcome: 'reader_fault', fault };
@@ -88,6 +93,14 @@ export async function registrationPdfText(
     return { outcome: 'busy', reason: 'pdf_readers_busy' };
   }
   readsInFlight++;
+  // The slot is the worker's memory, not the read: it frees on 'exit', so a worker that was
+  // told to stop but is still alive (or never stops) keeps it.
+  let slotHeld = true;
+  const releaseSlot = () => {
+    if (!slotHeld) return;
+    slotHeld = false;
+    readsInFlight--;
+  };
   let worker: Worker | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let memoryPoll: ReturnType<typeof setInterval> | undefined;
@@ -99,6 +112,7 @@ export async function registrationPdfText(
         workerData: { bytes, maxPages: MAX_PDF_PAGES, maxTextChars: MAX_PAGE_TEXT_CHARS },
         env: {},
       });
+      worker.once('exit', releaseSlot);
     } catch (error) {
       return readerFault(
         'reader_spawn_failed',
@@ -144,15 +158,11 @@ export async function registrationPdfText(
   } finally {
     clearTimeout(timer);
     clearInterval(memoryPoll);
-    // The slot goes first: a terminate that rejects must neither leak it nor turn the read
-    // that already settled into a rejection.
-    readsInFlight--;
-    await worker?.terminate().catch((error: unknown) => {
+    if (!worker) releaseSlot();
+    // Not awaited: the read has settled; only the slot waits for the worker to exit.
+    worker?.terminate().catch((error: unknown) => {
       console.error(
-        {
-          fault: 'reader_terminate_failed',
-          err: error instanceof Error ? error.message : String(error),
-        },
+        { fault: 'reader_terminate_failed', errorClass: errorClass(error) },
         'registration pdf: reader terminate failed',
       );
     });
