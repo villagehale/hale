@@ -388,13 +388,14 @@ describe('connectorLinkHandler', () => {
     expect(verdict.reply).toBeNull();
   });
 
-  it('mints nothing for a Drive ask and names connector_not_offered, while Calendar still mints', async () => {
+  it('declines a Drive ask so the coach answers it, names connector_not_offered, while Calendar still mints', async () => {
     const log = { ...console, error: vi.fn(), info: vi.fn() };
     const handler = connectorLinkHandler(log, scriptedSaidLine());
 
     const drive = await handler.handle(db.database, turn('connect my google drive'));
 
-    expect(drive).toEqual({ claimed: true, outcome: 'connector_not_offered', reply: null });
+    // VIL-576: a claim with no reply is silence; declining hands the turn to the coach.
+    expect(drive).toEqual({ claimed: false });
     expect(log.error).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'gdrive', outcome: 'connector_not_offered' }),
       expect.any(String),
@@ -411,6 +412,8 @@ describe('connectorLinkHandler', () => {
 
     if (!calendar.claimed) throw new Error('expected the handler to claim');
     expect(calendar.outcome).toBe('sent');
+    expect(calendar.reply).toContain('https://app.villagehale.com/connect?t=');
+    expect(calendar.reply).toContain('to=gcal');
     expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(1);
   });
 
@@ -467,7 +470,7 @@ describe('connectorLinkHandler', () => {
     vi.unstubAllGlobals();
   });
 
-  it('a Drive ask from the family group is refused by name: no token, no 1:1 text', async () => {
+  it('a Drive ask from the family group is declined to the coach: no token, no 1:1 text', async () => {
     const GROUP = 'chat-family-group';
     const PERSONAL = 'chat-parent-direct';
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -491,7 +494,7 @@ describe('connectorLinkHandler', () => {
       inboundChannelMessageId: groupRow,
     });
 
-    expect(verdict).toEqual({ claimed: true, outcome: 'connector_not_offered', reply: null });
+    expect(verdict).toEqual({ claimed: false });
     expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
     expect(wire).toHaveLength(0);
     vi.unstubAllGlobals();
