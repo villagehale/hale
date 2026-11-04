@@ -965,8 +965,9 @@ export async function unlessSeatGrantChanged<T>(seat: Promise<T>): Promise<T | n
  * join-link grant names no phone and never matches. The inviter must still be a parent
  * here.
  *
- * Read inside a transaction, the invite rows stay locked until it ends, so a seat that
- * re-reads its grant there cannot race a 1:1 close.
+ * Read inside a transaction, the invite rows and the `family_members` rows the grant
+ * rests on (the seated caregiver's and the inviter's) stay locked until it ends, so a seat
+ * that re-reads its grant there cannot race a 1:1 close, a departure or an unseat (VIL-596).
  */
 export async function recordedSeatGrant(
   database: Database,
@@ -1011,7 +1012,8 @@ export async function recordedSeatGrant(
           eq(schema.familyMembers.userId, userId),
           eq(schema.familyMembers.role, input.role),
         ),
-      );
+      )
+      .for('share');
     return Boolean(held);
   };
   const grantVerb =
@@ -1039,7 +1041,8 @@ export async function recordedSeatGrant(
           eq(schema.familyMembers.familyId, input.familyId),
           eq(schema.familyMembers.userId, invite.invitedByUserId),
         ),
-      );
+      )
+      .for('share');
     if (!inviter || !isParentRole(inviter.role)) continue;
     return { inviteId: invite.id, grantedByUserId: invite.invitedByUserId, open: invite.open };
   }
