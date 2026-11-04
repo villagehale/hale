@@ -11,7 +11,7 @@
  * No `~/` imports: the evals load this file as is instead of replicating it.
  */
 
-export type DestinationShape = 'scheme' | 'domain' | 'email' | 'phone';
+export type DestinationShape = 'scheme' | 'domain' | 'ip' | 'email' | 'phone';
 
 /**
  * Not digits: the Arabic-Indic zeros are confusables of FULL STOP too, and folding them
@@ -21,10 +21,11 @@ const LOOKALIKE_DOTS = /[\u0701\u0702\uA60E\u{10A50}\u{1D16D}]/gu;
 
 /**
  * Dashes that are not \p{Pd}, so a dial run would end at them: minus signs (NFKC turns the
- * super- and subscript minus into U+2212), the hyphen bullet and the prolonged sound mark.
+ * super- and subscript minus into U+2212), the hyphen bullet, the prolonged sound mark, and
+ * the swung dash and tilde operator a dialer also skips.
  * Folded only where dial runs are read: U+30FC is a letter, and a TLD like "セール" holds one.
  */
-const LOOKALIKE_DASHES = /[\u02D7\u2043\u2212\u2796\u30FC]/gu;
+const LOOKALIKE_DASHES = /[\u02D7\u2043\u2053\u2212\u223C\u2796\u30FC]/gu;
 
 const IDEOGRAPHIC_STOP = '\u3002';
 
@@ -38,8 +39,18 @@ const CJK =
  */
 type StopReading = 'title' | 'text';
 
+/**
+ * UAX #15 stream-safe text: a combining grapheme joiner (U+034F, a starter) after every 30
+ * non-starters, so NFKC never reorders an unbounded run of marks, which is quadratic
+ * (200,000 marks took seconds). The default-ignorable strip takes the joiner out again.
+ * The two halfwidth sound marks are the only non-marks NFKC turns into a non-starter.
+ */
+const NON_STARTER_RUN = /[\p{M}\uFF9E\uFF9F]{30}/gu;
+const COMBINING_GRAPHEME_JOINER = '\u034F';
+
 function normalize(raw: string, stops: StopReading): string {
   const folded = raw
+    .replace(NON_STARTER_RUN, `$&${COMBINING_GRAPHEME_JOINER}`)
     .normalize('NFKC')
     .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
     .replace(LOOKALIKE_DOTS, '.');
@@ -56,8 +67,9 @@ function normalize(raw: string, stops: StopReading): string {
 
 /*
  * The table. A TLD starts with two letters of any script: "com", "рф", and "xn--p1ai"
- * alike. "2.5 km", "St. Mary's", "a.m." and "U.S." are not a label, a dot and two
- * letters. An email needs only a local part, an @ and a label: "desk@pool" mails too.
+ * alike, and a label may hold symbols ("i❤.ws"), as a phone's link finder reads it. A
+ * host may also be four dotted numbers, an IPv4 address. "2.5 km", "St. Mary's", "a.m."
+ * and "U.S." are not a label, a dot and two letters. An email needs only a local part, an @ and a label: "desk@pool" mails too.
  * The opaque schemes are the ones a phone opens with no "//" after the colon.
  *
  * Every pattern starts where its run starts (a lookbehind, or "://" read backwards), so a
@@ -72,7 +84,11 @@ const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
       /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime|facetime-audio):(?!\s|$|[\p{Pe}\p{Pf}](?:\s|$))/iu,
   },
   { shape: 'email', pattern: /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
-  { shape: 'domain', pattern: /(?<![\p{L}\p{M}\p{N}-])[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
+  {
+    shape: 'domain',
+    pattern: /(?<![\p{L}\p{M}\p{N}\p{S}-])[\p{L}\p{M}\p{N}\p{S}-]+\.\p{L}[\p{L}\p{M}]/u,
+  },
+  { shape: 'ip', pattern: /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?!\d)/u },
 ];
 
 /** The event's start date in the family's zone: the only date a title may carry beside 7+ digits. */
@@ -88,8 +104,8 @@ export interface EventDate {
  */
 const CLOCK = /(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?!\d)/g;
 
-/** Separators a dialer skips, bullets among them. ':' and '/' are not. */
-const DIAL_RUN = /(?:\+[\s.()\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s.()\p{Pd}_·‧•∙]*\p{Nd})*/gu;
+/** Separators a dialer skips, bullets and square brackets among them. ':' and '/' are not. */
+const DIAL_RUN = /(?:\+[\s.()[\]\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s.()[\]\p{Pd}_·‧•∙]*\p{Nd})*/gu;
 
 const MIN_PHONE_DIGITS = 7;
 
@@ -130,6 +146,14 @@ function isSeasonAround(chunk: string, start: EventDate): boolean {
 }
 
 /**
+ * Dashes and the whitespace around them become one '-'. Whitespace before a dash is taken
+ * only where its run starts, so a long run of spaces is read once, not once per space.
+ */
+export function joinDashes(run: string): string {
+  return run.replace(/(?:(?<!\s)\s+)?\p{Pd}\s*/gu, '-');
+}
+
+/**
  * Exactly one fact of this event — its own start date, or a season around its year —
  * plus at most one chunk of up to two digits ("Session 2", "Grade 10"). A lone year is
  * not a fact, and neither is any other date: the sender writes the title.
@@ -137,7 +161,7 @@ function isSeasonAround(chunk: string, start: EventDate): boolean {
 function isCalendarFact(run: string, start: EventDate): boolean {
   let facts = 0;
   let others = 0;
-  for (const chunk of run.replace(/(?<!\s)\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
+  for (const chunk of joinDashes(run).split(/\s+/)) {
     const bare = chunk.replace(/^\D+|(?<=\d)\D+$/g, '');
     if (bare === '') continue;
     if (isStartDate(bare, start) || isSeasonAround(bare, start)) facts += 1;

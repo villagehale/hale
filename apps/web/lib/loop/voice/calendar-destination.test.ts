@@ -5,7 +5,7 @@ import {
   calendarCancelRefusals,
   createCalendarCancelVoice,
 } from './calendar-cancel-voice';
-import { textDestination, titleDestination } from './calendar-destination';
+import { joinDashes, textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
@@ -121,6 +121,16 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
       { row: `format char U+${hex} inside a phone`, destination: `202${mark}555${mark}0142` },
     ];
   }),
+  { row: 'a domain with a heart in its label', destination: 'i\u2764.ws' },
+  { row: 'a domain that is one emoji', destination: '\u{1F4A9}.la' },
+  { row: 'a domain with a snowman label', destination: '\u2603.net' },
+  { row: 'a bare IPv4 address', destination: '10.0.0.1' },
+  { row: 'a bare IPv4 address with no letter and six digits', destination: '3.14.15.9' },
+  { row: 'a phone joined by swung dashes', destination: '202\u2053555\u20530142' },
+  { row: 'a phone joined by tilde operators', destination: '202\u223C555\u223C0142' },
+  { row: 'a phone with a bracketed area code', destination: '[202]555-0142' },
+  { row: 'a phone with a bracketed exchange', destination: '202[555]0142' },
+  { row: 'a phone in fullwidth brackets', destination: '\uFF3B202\uFF3D555\uFF3B0142\uFF3D' },
 ];
 
 /** Words that look dotted or numbered and are not a destination. */
@@ -147,6 +157,8 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
   { row: 'an emoji with a variation selector', words: 'Picnic \u2600\uFE0F' },
+  { row: 'an emoji after the name', words: 'Pool party \u{1F389}' },
+  { row: 'a three-part level number', words: 'Swim level 1.2.3' },
   { row: 'a scheme name inside a word', words: 'Hotel:Lobby' },
 ];
 
@@ -511,6 +523,8 @@ const PHONES: readonly string[] = [
   '2026-11-23 2026-11-23',
   '2026-27 4 1',
   '101 2026-11-23',
+  '2026-11-23 - - 5',
+  '2026-11-23\u00A0-\u3000-\u00A05',
 ];
 
 const FACTS: readonly string[] = [
@@ -624,6 +638,73 @@ describe('VIL-588 · only a real clock leaves a dial run', () => {
   });
 });
 
+describe('VIL-588 · a run of dashes and spaces joins as it always did', () => {
+  /** The reference reading, before the anchor that keeps long whitespace linear. */
+  const reference = (run: string) => run.replace(/\s*\p{Pd}\s*/gu, '-');
+
+  it('repeated separators join exactly as the reference does', () => {
+    for (const run of [
+      '1 - - 2',
+      '2026-07-23 - - 5',
+      ' - - ',
+      '1 \u2013 - 2',
+      '- -',
+      '1\u00A0-\u3000-\u00A02',
+      '\u3000\u2013\u00A0-  -\u3000',
+      '2026 -\u00A0\u00A0- 11 - - - 23',
+    ]) {
+      expect(joinDashes(run)).toBe(reference(run));
+    }
+  });
+
+  it('so do 20,000 runs drawn from spaces, dashes and digits', () => {
+    const alphabet = [' ', '\u00A0', '\u3000', '\t', '-', '\u2013', '\u2014', '1', '7', 'a'];
+    let seed = 588;
+    const next = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed;
+    };
+    for (let i = 0; i < 20_000; i += 1) {
+      const run = Array.from(
+        { length: 1 + (next() % 12) },
+        () => alphabet[next() % alphabet.length],
+      ).join('');
+      expect(joinDashes(run)).toBe(reference(run));
+    }
+  });
+
+  it("the same date and dashes for the event's own day stay one chunk, so its digits are a phone", async () => {
+    expect(await verdicts('2026-07-23 - - 5', JUL_23)).toEqual(HELD);
+  });
+});
+
+describe('VIL-588 · symbols are label characters, and a bare IPv4 address is a host', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  const november = { year: 2026, month: 11, day: 23 };
+  for (const words of ['i\u2764.ws', '\u{1F4A9}.la', '\u2603.net']) {
+    it(`${words} is a domain`, () => {
+      for (const read of [titleDestination, textDestination]) {
+        expect(read(`Swim class ${words}`, july)).toBe('domain');
+      }
+    });
+  }
+  for (const words of ['10.0.0.1', '3.14.15.9']) {
+    it(`${words} is a host by number`, () => {
+      for (const read of [titleDestination, textDestination]) {
+        expect(read(`Swim class ${words}`, july)).toBe('ip');
+      }
+    });
+  }
+  it("the event's own dotted date and a three-part number are no host", () => {
+    for (const read of [titleDestination, textDestination]) {
+      expect(read('Swim class 23.11.2026', november)).toBeNull();
+      expect(read('Swim level 1.2.3', november)).toBeNull();
+      expect(read('Picnic \u2600\uFE0F', july)).toBeNull();
+      expect(read('Pool party \u{1F389}', july)).toBeNull();
+    }
+  });
+});
+
 describe('VIL-588 · six digits are short of a phone number', () => {
   it('a 6-digit run is sent; one more digit is held', async () => {
     const v = await verdicts('202 555', NOV_23);
@@ -644,7 +725,18 @@ describe('VIL-588 · the gate reads a title of any length in linear time', () =>
     { row: 'a date run on by dots', words: `2026.07.23${'.'.repeat(n)}1`, shape: 'phone' },
     { row: 'a date run on by brackets', words: `2026.07.23${'('.repeat(n)}1`, shape: 'phone' },
     { row: 'spaces between digits', words: `1${' '.repeat(n)}234567`, shape: 'phone' },
-    { row: 'no-break spaces between digits', words: `1${'\u00a0'.repeat(n)}234567`, shape: 'phone' },
+    {
+      row: 'no-break spaces between digits',
+      words: `1${'\u00a0'.repeat(n)}234567`,
+      shape: 'phone',
+    },
+    { row: 'two combining marks repeated', words: `a${'\u0316\u0301'.repeat(n / 2)}`, shape: null },
+    {
+      row: 'three combining marks of three classes repeated',
+      words: `a${'\u0316\u0301\u0345'.repeat(Math.floor(n / 3))}`,
+      shape: null,
+    },
+    { row: 'halfwidth sound marks', words: `\uFF76${'\uFF9E\uFF9F'.repeat(n / 2)}`, shape: null },
   ];
   for (const { row, words, shape } of LONG) {
     it(`${row}: read within ${BUDGET_MS} ms`, () => {
@@ -658,19 +750,51 @@ describe('VIL-588 · the gate reads a title of any length in linear time', () =>
 });
 
 describe('VIL-588 · the cancel voice tells the parent about an event with a long title', () => {
-  it('a 10,000-character title is written and sent', async () => {
+  /** The title the cancel voice works from: its first MAX_INVITE_SUMMARY_CHARS code points. */
+  const cut = (summary: string) => Array.from(summary).slice(0, MAX_INVITE_SUMMARY_CHARS).join('');
+
+  it('a 10,000-character title is cut, and the cut title is written and sent', async () => {
     const summary = 'Swim class '.repeat(1000).slice(0, 10_000);
+    const w = writer(echoCancel);
+    const j = judge(true);
+    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
+      ...CANCEL,
+      summary,
+    });
+    const short = 'Swim class '.repeat(19).slice(0, MAX_INVITE_SUMMARY_CHARS);
+    expect(cut(summary)).toBe(short);
+    expect(outcome).toEqual({ status: 'composed', body: `${short}, ${WHEN}, is off.` });
+    expect(j.seen.map((input) => input.summary)).toEqual([short]);
+  });
+
+  it('the cut counts code points, so an emoji is never split', async () => {
+    const summary = '\u{1F3CA}'.repeat(MAX_INVITE_SUMMARY_CHARS + 50);
     const w = writer(echoCancel);
     const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
       ...CANCEL,
       summary,
     });
-    expect(outcome).toEqual({ status: 'composed', body: `${summary}, ${WHEN}, is off.` });
+    const short = '\u{1F3CA}'.repeat(MAX_INVITE_SUMMARY_CHARS);
+    expect(outcome).toEqual({ status: 'composed', body: `${short}, ${WHEN}, is off.` });
   });
 
-  it('a long title that carries a domain is held as a destination, before any call', async () => {
+  it('a destination only past the cut never reaches the writer or the text', async () => {
     const summary = `${'Swim class '.repeat(20)}pool.example.org`;
-    expect(summary.length).toBeGreaterThan(MAX_INVITE_SUMMARY_CHARS);
+    expect(summary.indexOf('pool.example.org')).toBeGreaterThan(MAX_INVITE_SUMMARY_CHARS);
+    const w = writer(echoCancel);
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      ...CANCEL,
+      summary,
+    });
+    expect(outcome).toEqual({
+      status: 'composed',
+      body: `${cut(summary)}, ${WHEN}, is off.`,
+    });
+    expect(outcome.status === 'composed' && outcome.body.includes('pool')).toBe(false);
+  });
+
+  it('a destination inside the cut of a long title is held before any call', async () => {
+    const summary = `Swim class pool.example.org ${'Swim class '.repeat(1000)}`;
     const w = writer(echoCancel);
     const j = judge(true);
     const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
@@ -680,6 +804,18 @@ describe('VIL-588 · the cancel voice tells the parent about an event with a lon
     expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
     expect(w.calls()).toBe(0);
     expect(j.seen).toEqual([]);
+  });
+
+  it('a 100,000-mark title is cut and read within the budget', async () => {
+    const summary = `a${'\u0316\u0301'.repeat(50_000)}`;
+    const w = writer(echoCancel);
+    const started = performance.now();
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      ...CANCEL,
+      summary,
+    });
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(outcome).toEqual({ status: 'composed', body: `${cut(summary)}, ${WHEN}, is off.` });
   });
 });
 

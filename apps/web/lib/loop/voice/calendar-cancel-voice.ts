@@ -9,6 +9,7 @@ import { textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
+  MAX_INVITE_SUMMARY_CHARS,
   createCalendarInviteTimeJudge,
   zonedStart,
 } from './calendar-invite-voice';
@@ -122,12 +123,23 @@ function cancelTimeInput(text: string, request: CalendarCancelRequest): Calendar
   };
 }
 
+/**
+ * The title cut to the invite voice's bound, in code points. A cancellation is never
+ * held for a long title (the parent was told about the event): the gate, the writer and
+ * the time judge all read the cut title, so the read and the tokens stay bounded.
+ */
+function cutTitle(request: CalendarCancelRequest): CalendarCancelRequest {
+  const summary = Array.from(request.summary).slice(0, MAX_INVITE_SUMMARY_CHARS).join('');
+  return { ...request, summary };
+}
+
 export function createCalendarCancelVoice(
   client: () => AgentClient,
   judge: CalendarInviteTimeJudge = createCalendarInviteTimeJudge(client),
 ): CalendarCancelVoice {
   return {
-    async compose(request) {
+    async compose(uncut) {
+      const request = cutTitle(uncut);
       const held = titleDestination(
         request.summary,
         zonedStart(request.startsAt, request.timeZone),
