@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
+    "evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps Preview starting Aug, 3 Register starting Aug. 11 at 6:30 AM",
+    "year_evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The page gives the registration opening no resident or non-resident label: \"Register starting Aug. 11 at 6:30 AM\".",
+    "preview": {
+      "quote": "Aug, 3",
+      "date_text": "Aug, 3",
+      "time_text": null,
+      "date": "2026-08-03",
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "Aug. 11 at 6:30 AM",
+      "date_text": "Aug. 11",
+      "time_text": "6:30 AM",
+      "date": "2026-08-11",
+      "time": "06:30"
+    },
+    "note": null,
+    "found": true,
+    "reason": null,
+    "confidence": 0.95
+  },
+  "latencyMs": 7055
+}

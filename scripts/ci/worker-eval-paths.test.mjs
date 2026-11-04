@@ -201,6 +201,14 @@ describe('ci.yml wiring', () => {
     return next === -1 ? rest : rest.slice(0, next);
   }
 
+  it('grants a read-only token at the top and widens it in no job', () => {
+    const jobsAt = ci.indexOf('\njobs:\n');
+    const permissionsKey = /^\s*permissions:/m;
+    expect(ci.slice(0, jobsAt).endsWith('\npermissions:\n  contents: read\n')).toBe(true);
+    expect(ci.slice(0, jobsAt)).toMatch(permissionsKey);
+    expect(ci.slice(jobsAt)).not.toMatch(permissionsKey);
+  });
+
   it('does not path-filter the workflow trigger', () => {
     const onBlock = ci.slice(0, ci.indexOf('\njobs:\n'));
     expect(onBlock).not.toMatch(/^\s+paths:/m);

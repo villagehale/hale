@@ -9,7 +9,11 @@ import {
 
 /** A family whose stored postal is a Toronto FSA: rec-morning answers only a GTA family. */
 const TORONTO_FSA = 'M5V';
-const AT_TORONTO_FSA = resolveRecMorningWhere({ city: null, postal: TORONTO_FSA });
+const AT_TORONTO_FSA = resolveRecMorningWhere({
+  city: null,
+  postal: TORONTO_FSA,
+  timeZone: 'America/Toronto',
+});
 
 describe('VIL-508 · rec-morning text is the model, or nothing', () => {
   it('hands the reviewed facts to the model and keeps the portal verbatim', async () => {

@@ -35,6 +35,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only for every job: the test shards run the whole third-party dependency
+# tree. A job whose step needs more gets its own permissions block, never here.
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Path filter

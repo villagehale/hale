@@ -9,7 +9,6 @@ import {
   TORONTO_FOLLOW,
   TORONTO_REC_PORTAL,
   TORONTO_WAITLIST_HOURS,
-  YMCA_FIRST,
   YMCA_FOLLOW,
   YMCA_PORTAL,
   cityRecLine,
@@ -36,13 +35,26 @@ const THIS_MORNING = new Date('2026-09-17T14:00:00.000Z');
 /** Five days on, past the Sep 21 Brampton morning and nothing else. */
 const NEXT_WEEK = new Date('2026-09-22T14:00:00.000Z');
 
+/** A week before Aug 27 2026, the morning YMCA GTA opened fall swim. */
+const BEFORE_YMCA_OPENS = new Date('2026-08-20T14:00:00.000Z');
+/** Hand-derived: Aug 27 2026 is a Thursday, and the Y opened at 9:00 a.m. */
+const YMCA_OPEN_FACT =
+  'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
+
 type StoredPlace = { city?: string | null; postal?: string | null };
+
+/** The zone a GTA family's parent has on file in these fixtures. */
+const FAMILY_ZONE = 'America/Toronto';
 
 /** A family whose stored city is Toronto: the GTA family most of these asks come from. */
 const TORONTO_HOME: StoredPlace = { city: 'Toronto' };
 
 function at(place: StoredPlace) {
-  return resolveRecMorningWhere({ city: place.city ?? null, postal: place.postal ?? null });
+  return resolveRecMorningWhere({
+    city: place.city ?? null,
+    postal: place.postal ?? null,
+    timeZone: FAMILY_ZONE,
+  });
 }
 
 const AT_TORONTO_HOME = at(TORONTO_HOME);
@@ -159,7 +171,14 @@ describe('VIL-591 · the GTA topics answer only a family whose place is in the G
     expect(at('YMCA swim', null)).toBeNull();
     // Positive control: the same asks from a Toronto FSA still get the reviewed facts.
     expect(at('waitlist', 'M5V')).toBe(TORONTO_FOLLOW);
-    expect(at('YMCA swim', 'M5V')).toBe(YMCA_FIRST);
+    expect(
+      recMorningIntakeReply({
+        parentWords: 'YMCA swim',
+        pendingAsk: '',
+        now: BEFORE_YMCA_OPENS,
+        postal: 'M5V',
+      }),
+    ).toBe(YMCA_OPEN_FACT);
   });
 
   it('a GTA town name on file does not outvote a stored US ZIP', () => {
@@ -173,11 +192,72 @@ describe('VIL-591 · the GTA topics answer only a family whose place is in the G
     expect(at({ city: 'Richmond Hill', postal: null })).toEqual({
       municipality: 'richmond_hill',
       postal: null,
+      timeZone: FAMILY_ZONE,
     });
     expect(at({ city: 'Nobleton', postal: 'L0G' })).toEqual({
       municipality: 'king',
       postal: 'L0G',
+      timeZone: FAMILY_ZONE,
     });
+  });
+});
+
+describe('VIL-591 · a dated fact is handed out only until its date', () => {
+  const ASK = 'when does ymca swim open';
+  const BEFORE_OPEN = BEFORE_YMCA_OPENS;
+  const inZone = (timeZone: string | null) =>
+    resolveRecMorningWhere({ city: null, postal: 'M5V', timeZone });
+
+  it('stops handing out the YMCA open date once that day has passed', () => {
+    expect(
+      recMorningReply(ASK, new Date('2026-11-04T14:00:00.000Z'), inZone(FAMILY_ZONE)),
+    ).toBeNull();
+    // Positive control: before the morning, the fact with its year, clock and portal.
+    expect(recMorningReply(ASK, BEFORE_OPEN, inZone(FAMILY_ZONE))).toBe(YMCA_OPEN_FACT);
+    expect(smsEncoding(YMCA_OPEN_FACT)).toBe('gsm7');
+  });
+
+  it("reads today in the family's own zone", () => {
+    // 02:00Z on Aug 28 is still the evening of Aug 27 for a family in Eastern time.
+    const lateOnTheDay = new Date('2026-08-28T02:00:00.000Z');
+    expect(recMorningReply(ASK, lateOnTheDay, inZone(FAMILY_ZONE))).toBe(YMCA_OPEN_FACT);
+    expect(recMorningReply(ASK, lateOnTheDay, inZone('UTC'))).toBeNull();
+    // No zone on file: Hale cannot know the day is still ahead, so it does not say it is.
+    expect(recMorningReply(ASK, BEFORE_OPEN, inZone(null))).toBeNull();
+  });
+
+  it('mid-signup, reads the day in the zone of the postal collected', () => {
+    const ask = (postal: string | null, city: string | null) =>
+      recMorningIntakeReply({ parentWords: ASK, pendingAsk: '', now: BEFORE_OPEN, postal, city });
+    expect(ask('M5V', null)).toBe(YMCA_OPEN_FACT);
+    expect(ask(null, 'Toronto')).toBeNull();
+    // Undated facts do not need a zone (positive control for the null above).
+    expect(
+      recMorningIntakeReply({
+        parentWords: 'YMCA otter or Ultra?',
+        pendingAsk: '',
+        now: BEFORE_OPEN,
+        postal: null,
+        city: 'Toronto',
+      }),
+    ).toBe(YMCA_FOLLOW);
+  });
+});
+
+describe('VIL-591 · a waitlist ask is claimed only where Hale holds a waitlist fact', () => {
+  const AT_MARKHAM_HOME = at({ city: 'Markham' });
+
+  it("leaves another town's waitlist to the coach", () => {
+    expect(matchRecMorning('waitlist', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('how does the swim waitlist work?', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('is there a Markham waitlist?', AT_TORONTO_HOME)).toBeNull();
+    expect(matchRecMorning('YMCA swim waitlist?', AT_TORONTO_HOME)).toBeNull();
+    // Positive controls: Toronto's waitlist, and a Markham rec ask, are still this lane's.
+    expect(matchRecMorning('waitlist', AT_TORONTO_HOME)).toBe('toronto_waitlist');
+    expect(matchRecMorning('is there a Toronto waitlist?', AT_MARKHAM_HOME)).toBe(
+      'toronto_waitlist',
+    );
+    expect(matchRecMorning('Markham fall rec dates?', AT_MARKHAM_HOME)).toBe('markham');
   });
 });
 
@@ -286,20 +366,21 @@ describe('rec-morning SMS · the Toronto line, derived', () => {
     expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('efun');
   });
 
-  it('sends the locked YMCA first answer, and the follow only for levels or membership', () => {
-    expect(YMCA_FIRST).toBe('YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.');
-    expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
-    expect(reply('when does YMCA GTA swim registration open?')).toBe(YMCA_FIRST);
-    expect(YMCA_FIRST).toContain(YMCA_PORTAL);
-    firstAnswerIsClean(YMCA_FIRST);
-    expect(YMCA_FIRST.toLowerCase()).not.toContain('efun');
+  it('sends the YMCA first answer before its morning, and the follow only for levels or membership', () => {
+    expect(reply('when does YMCA GTA swim registration open?', BEFORE_YMCA_OPENS)).toBe(
+      YMCA_OPEN_FACT,
+    );
+    expect(YMCA_OPEN_FACT.toLowerCase()).not.toContain('today');
+    expect(YMCA_OPEN_FACT).toContain(YMCA_PORTAL);
+    firstAnswerIsClean(YMCA_OPEN_FACT);
+    expect(YMCA_OPEN_FACT.toLowerCase()).not.toContain('efun');
     expect(YMCA_FOLLOW).toBe(
       'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.',
     );
     expect(YMCA_FOLLOW.toLowerCase()).not.toContain('today');
     expect(reply('YMCA otter or Ultra?')).toBe(YMCA_FOLLOW);
     expect(reply('does YMCA need membership?')).toBe(YMCA_FOLLOW);
-    expect(reply('when does YMCA swim open?')).not.toBe(YMCA_FOLLOW);
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS)).not.toBe(YMCA_FOLLOW);
     firstAnswerIsClean(YMCA_FOLLOW);
   });
 });
@@ -329,7 +410,9 @@ describe('rec-morning SMS · Brampton and Jack of Sports when asked', () => {
     expect(reply('When does Toronto swim registration open?').toLowerCase()).not.toContain(
       'jack of sports',
     );
-    expect(reply('when does YMCA swim open?').toLowerCase()).not.toContain('jack of sports');
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS).toLowerCase()).not.toContain(
+      'jack of sports',
+    );
   });
 });
 
@@ -455,8 +538,9 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(reply('When does Toronto swim registration open?')).toBe(TORONTO_LINE);
     expect(reply('when is Toronto rec?', THIS_MORNING, { postal: 'L3R' })).toBe(TORONTO_LINE);
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
-    expect(reply('when does YMCA swim open?', THIS_MORNING, { postal: 'L3R' })).toBe(YMCA_FIRST);
-    expect(YMCA_FIRST.toLowerCase()).not.toContain('today');
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS, { postal: 'L3R' })).toBe(
+      YMCA_OPEN_FACT,
+    );
   });
 
   it('VIL-334: M1B (Scarborough) is a Toronto FSA and gets the Scarborough morning', () => {
@@ -693,7 +777,6 @@ describe('rec-morning SMS · budgets and the intake return', () => {
       'how long is the Toronto rec waitlist?',
       'the wishlist looks frozen, should I keep refreshing?',
       'do I log into eFun for Toronto rec?',
-      'when does YMCA GTA swim registration open?',
       'YMCA otter or Ultra?',
       'is Brampton swim Aug 24?',
       'when does Brampton rec open?',
@@ -719,7 +802,6 @@ describe('rec-morning SMS · budgets and the intake return', () => {
       'how long is the Toronto rec waitlist?',
       'the wishlist looks frozen, should I keep refreshing?',
       'do I log into eFun for Toronto rec?',
-      'when does YMCA GTA swim registration open?',
       'YMCA otter or Ultra?',
       'is Brampton swim Aug 24?',
       'when does Brampton rec open?',
@@ -737,8 +819,5 @@ describe('rec-morning SMS · budgets and the intake return', () => {
     expect(
       String(intake('When does Toronto swim registration open?')).startsWith(TORONTO_LINE),
     ).toBe(true);
-    expect(String(intake('when does YMCA swim open?', COLD_START_ASK)).startsWith(YMCA_FIRST)).toBe(
-      true,
-    );
   });
 });
