@@ -137,7 +137,7 @@ function isSeasonAround(chunk: string, start: EventDate): boolean {
 function isCalendarFact(run: string, start: EventDate): boolean {
   let facts = 0;
   let others = 0;
-  for (const chunk of run.replace(/\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
+  for (const chunk of run.replace(/(?<!\s)\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
     const bare = chunk.replace(/^\D+|(?<=\d)\D+$/g, '');
     if (bare === '') continue;
     if (isStartDate(bare, start) || isSeasonAround(bare, start)) facts += 1;

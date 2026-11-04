@@ -643,6 +643,8 @@ describe('VIL-588 · the gate reads a title of any length in linear time', () =>
     { row: 'plus signs', words: '+'.repeat(n), shape: null },
     { row: 'a date run on by dots', words: `2026.07.23${'.'.repeat(n)}1`, shape: 'phone' },
     { row: 'a date run on by brackets', words: `2026.07.23${'('.repeat(n)}1`, shape: 'phone' },
+    { row: 'spaces between digits', words: `1${' '.repeat(n)}234567`, shape: 'phone' },
+    { row: 'no-break spaces between digits', words: `1${'\u00a0'.repeat(n)}234567`, shape: 'phone' },
   ];
   for (const { row, words, shape } of LONG) {
     it(`${row}: read within ${BUDGET_MS} ms`, () => {
