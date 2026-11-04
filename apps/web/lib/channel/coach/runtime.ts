@@ -77,6 +77,8 @@ import {
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
+import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
@@ -127,8 +129,9 @@ import {
  * answer in the parent's history before it existed. Nothing in {@link ChannelCoachPorts}
  * can write to that table, which is the structural half of the promise.
  *
- * A failed turn THROWS. The router owns the honesty template ("nothing was changed"),
- * and it can only use it if a failure looks like one — see route.ts runAgentTurn.
+ * A failed turn THROWS. The router owns what a parent hears next (route.ts
+ * disposeOfFailedTurn): a model writes it from facts, or nothing is sent. That
+ * path only runs when a failure looks like one.
  */
 
 /** The whole turn's model budget. Six steps is enough for lookup_week → resolve → two
@@ -261,6 +264,14 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
+   * VIL-524. On a nearby-find turn, after the model writes, this decides whether
+   * the whole reply is internal reasoning. Production always sets it. Absent is
+   * named `not_configured` and the draft is sent, so a scripted coach is not
+   * silenced. A wired judge that withholds or fails sends nothing. The judge
+   * does not rewrite parent text.
+   */
+  judgeFindReply?(draft: string): Promise<FindReplyGate>;
+  /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
    */
@@ -335,15 +346,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
       };
+      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
+      // itself stays byte-identical, so coach-channel and group-privacy
+      // recordings stay keyed on the prompt they already have.
+      const findTurn = nearbyFindTurn(turn.body, transcript);
+      const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      const skill = augmentCoachSkillForFindPrivate(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
         ),
-        leaveLit,
+        findPrivate,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -576,6 +595,37 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
+          // VIL-524. The judge is the gate, and only on a nearby-find turn. It does
+          // not edit the draft. withhold, or a judge that failed, sends nothing.
+          // A runtime built without the port (scripted journey coaches) names that
+          // and sends the draft: production always wires the judge.
+          if (!noticeReady && findTurn) {
+            if (!ports.judgeFindReply) {
+              console.error(
+                { reason: 'not_configured' },
+                'channel coach: find-reasoning judge absent - draft sent unjudged',
+              );
+            } else {
+              const gate = await ports.judgeFindReply(spoken);
+              if (gate.verdict !== 'send') {
+                console.error(
+                  {
+                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                  },
+                  'channel coach: find reply withheld - nothing sent',
+                );
+                await ports.recordRun(record('failed'));
+                // A failed turn, not a deliberate silence (Devin #983): the router's
+                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                // The withheld draft itself is never sent.
+                throw failed(
+                  gate.verdict === 'withhold'
+                    ? 'channel coach: find reply withheld (find_reasoning)'
+                    : `channel coach: find reply judge failed (${gate.reason})`,
+                );
+              }
+            }
+          }
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
           // (the skill, or a rewrite the model chooses). Code does not cut it, and it
           // does not call a shorten pass because a sentence ran past two segments.
@@ -643,6 +693,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
