@@ -1145,6 +1145,42 @@ describe('a coach offer is the calendar, not the sentence', () => {
     expect(next.find((question) => question.id === offerId)).toBeUndefined();
   });
 
+  it("a private YES retires only the private draft of that add, never the household group's", async () => {
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const states = await db.database
+      .select({ id: schema.actions.id, state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(new Map(states.map((row) => [row.id, row.state]))).toEqual(
+      new Map([
+        [privateId, 'reverted'],
+        [groupId, 'drafted_for_approval'],
+      ]),
+    );
+  });
+
   it('a private offer does not stop a group ask from drafting', async () => {
     const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
     const ask = {

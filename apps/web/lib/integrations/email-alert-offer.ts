@@ -6,6 +6,7 @@ import {
   matchingCalendarAddId,
   unapprovedCalendarAddIds,
 } from '~/lib/channel/calendar-ask';
+import { calendarDraftApprovalSurfaces } from '~/lib/channel/coach/draft';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -362,13 +363,22 @@ async function supersedeUnapprovedCalendarAdds(
       ),
     )
     .limit(20);
+  // A private YES retires only private-surface drafts: a household group's draft is that
+  // group's question, answered in the group (VIL-525).
+  const surfaces = await calendarDraftApprovalSurfaces(
+    database,
+    input.familyId,
+    rows.map((row) => row.id),
+  );
   const ids = unapprovedCalendarAddIds(
-    rows.map((row) => ({
-      id: row.id,
-      actionType: row.actionType,
-      reviewerApproved: row.reviewerVerdict === 'approved',
-      occasion: occasionFromPayload(row.payload),
-    })),
+    rows
+      .filter((row) => surfaces.get(row.id)?.surface === 'private')
+      .map((row) => ({
+        id: row.id,
+        actionType: row.actionType,
+        reviewerApproved: row.reviewerVerdict === 'approved',
+        occasion: occasionFromPayload(row.payload),
+      })),
     { title: input.title, startsAt: input.startsAt.toISOString() },
   );
   for (const id of ids) {
