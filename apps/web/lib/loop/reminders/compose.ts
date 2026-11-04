@@ -68,7 +68,7 @@ export interface ReminderFacts {
   /** The send moment, family-local. */
   now: { date: string; time: string };
   events: ReminderEventFacts[];
-  /** The /plan link the parent may be handed, or null. Never added by code. */
+  /** A link the parent may be handed. Always null while /plan is retired; code never adds one. */
   planLink: string | null;
   /** The parent's language tag. */
   language: ReplyLanguage;
