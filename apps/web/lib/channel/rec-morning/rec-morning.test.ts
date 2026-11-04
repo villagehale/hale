@@ -470,6 +470,13 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(reply('M1B rec dates?')).toBe(scarborough);
     // The district they asked about wins over the one on file.
     expect(reply('M1B rec dates?', THIS_MORNING, { postal: 'M5V' })).toBe(scarborough);
+    // A postal in the ask that is not a Toronto district does not displace the one on file.
+    expect(reply('when is fall rec? we are near L3T', THIS_MORNING, { postal: 'M1B' })).toBe(
+      scarborough,
+    );
+    expect(reply('Toronto rec, my sister is in L4G', THIS_MORNING, { postal: 'M1B' })).toBe(
+      scarborough,
+    );
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M8V' })).toBe(TORONTO_LINE);
     const dayBefore = new Date('2026-09-14T14:00:00.000Z');

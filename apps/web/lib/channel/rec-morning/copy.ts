@@ -1,6 +1,6 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
-import { cityRecLine } from './city-line';
+import { cityRecLine, districtPostal } from './city-line';
 import {
   JACK_OF_SPORTS_PAGE,
   TORONTO_REC_PORTAL,
@@ -47,11 +47,23 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
  * The topic a parent asked about, answered as of `now`. A city topic reads the
  * dataset; everything else is a reviewed constant that no calendar can age.
  */
-type RecMorningLine = (now: Date, where: RecMorningWhere) => string | null;
+type RecMorningLine = (
+  now: Date,
+  where: RecMorningWhere,
+  askedPostal: string | null,
+) => string | null;
 
 export const REC_MORNING_FACTS: Record<RecMorningTopic, RecMorningLine> = {
-  toronto_swim: (now, where) => cityRecLine('toronto', now, 'swim', undefined, where.postal),
-  toronto_rec: (now, where) => cityRecLine('toronto', now, 'rec_program', undefined, where.postal),
+  toronto_swim: (now, where, asked) =>
+    cityRecLine('toronto', now, 'swim', undefined, districtPostal('toronto', asked, where.postal)),
+  toronto_rec: (now, where, asked) =>
+    cityRecLine(
+      'toronto',
+      now,
+      'rec_program',
+      undefined,
+      districtPostal('toronto', asked, where.postal),
+    ),
   toronto_waitlist: () => TORONTO_FOLLOW,
   toronto_wishlist: () => TORONTO_FOLLOW,
   toronto_efun: () => EFUN_GONE,
@@ -86,8 +98,9 @@ export function recMorningBody(
   topic: RecMorningTopic,
   now: Date,
   where: RecMorningWhere,
+  askedPostal: string | null,
 ): string | null {
-  return REC_MORNING_FACTS[topic](now, where);
+  return REC_MORNING_FACTS[topic](now, where, askedPostal);
 }
 
 /**
@@ -104,9 +117,7 @@ export function recMorningReply(
   if (where === null) return null;
   const topic = matchRecMorning(body, where);
   if (topic === null) return null;
-  // A postal in the ask is the district they asked about, ahead of the one on file.
-  // cityRecLine already ignores one that belongs to a different town.
-  return recMorningBody(topic, now, { ...where, postal: postalMentioned(body) ?? where.postal });
+  return recMorningBody(topic, now, where, postalMentioned(body));
 }
 
 export function recMorningReturnLine(pendingAsk: string): string {
