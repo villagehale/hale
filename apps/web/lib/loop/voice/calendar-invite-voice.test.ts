@@ -18,6 +18,7 @@ import {
   calendarInviteTimeInput,
   calendarInviteTimeUserMessage,
   calendarInviteUserMessage,
+  carriesDestination,
   createCalendarInviteVoice,
   fillCalendarInvite,
   prepareCalendarInvite,
@@ -157,6 +158,11 @@ describe('VIL-588 · the only destination in the text is the slot', () => {
       ),
     ).not.toContain('carries_link');
     expect(calendarInviteRefusals(PASSING, REQUEST)).not.toContain('carries_link');
+  });
+
+  it('reads the removed slot as a gap, so its neighbours never join into a domain', () => {
+    expect(carriesDestination(`Add it.${INVITE_LINK_SLOT}ca va`)).toBe(false);
+    expect(carriesDestination(`Add it. ${INVITE_LINK_SLOT} kids.example`)).toBe(true);
   });
 });
 
