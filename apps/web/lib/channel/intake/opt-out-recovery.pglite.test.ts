@@ -32,7 +32,7 @@ import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { recordedModel } from '~/lib/testing/recorded-model';
 import { reenrolOnStart } from './channel-state';
-import { isSenderHeld } from './opt-out-hold';
+import { holdSender, isSenderHeld } from './opt-out-hold';
 import type { OptOutReadInput, OptOutReader, OptOutReading } from './opt-out-reader';
 import {
   HELD_READ_BATCH,
@@ -1043,6 +1043,26 @@ describe('recoverHeldOptOutReads', () => {
     expect(posted[0]).toContain('reason holder_changed.');
   }, 30_000);
 
+  it("a late crisis still reaches the number's own holder when someone typed it in after", async () => {
+    await frenchIntake(PHONE_A, 'pm-typed', FR_CRISIS);
+    const typist = await seedFamily(db.database, 'Typed Family');
+    await channel(typist, PHONE_A, { verifiedAt: null, revokedAt: null, createdAt: ago(10) });
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, { saidLine: writer }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    expect(result.outcomes.crisis_unreachable).toBe(0);
+    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(posted).toEqual([]);
+    expect(await heldRow('pm-typed')).toBeNull();
+  }, 30_000);
+
   it("a ledger text's crisis region is read from its family's postal code", async () => {
     const us = await parent(PHONE_A);
     await db.database
@@ -1246,6 +1266,44 @@ describe('recoverHeldOptOutReads', () => {
     expect(result.outcomes.unrecorded).toBe(1);
     expect((await heldRow('pm-unrecorded'))?.readAttempts).toBe(1);
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(true);
+  }, 30_000);
+
+  it('k: a provider id two numbers share keeps the second held through later texts and passes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const a = await parent(PHONE_A, { place: EASTERN_POSTAL });
+    const b = await parent(PHONE_B, { place: EASTERN_POSTAL });
+    await inboundRow(a, 'pm-shared', 'see you soon', ago(60));
+    expect(
+      await holdSender(db.database, {
+        phoneHash: phoneBlindIndex(PHONE_A),
+        providerMessageId: 'pm-shared',
+        now: ago(60),
+      }),
+    ).toBe('held');
+    expect(
+      await holdSender(db.database, {
+        phoneHash: phoneBlindIndex(PHONE_B),
+        providerMessageId: 'pm-shared',
+        now: ago(60),
+      }),
+    ).toBe('held_id_collision');
+    await inboundRow(b, 'pm-b-later', 'thanks, all good', ago(30));
+    const r = reader();
+
+    const first = await recoverHeldOptOutReads(db.database, deps(r.reader, new FakeTransport()));
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, new FakeTransport(), { now: new Date(NOW.getTime() + 2 * 24 * 60 * MINUTE) }),
+    );
+
+    // Positive control: the first number's own text is read and released by the same pass.
+    expect(first.outcomes.read_not_stop).toBe(1);
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
+    // The second number's colliding text can never be placed, so no later text releases it.
+    expect(first.outcomes.unrecorded).toBe(1);
+    expect(second.outcomes.unrecorded).toBe(1);
+    expect(r.texts).toEqual(['see you soon']);
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_B))).toBe(true);
   }, 30_000);
 
   it('l: a legacy hold is re-pointed at every inbound since it was written', async () => {

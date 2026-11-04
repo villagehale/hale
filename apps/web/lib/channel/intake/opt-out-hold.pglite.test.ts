@@ -76,10 +76,21 @@ describe('#868 failed-read hold', () => {
     ).toBe('held_id_collision');
     expect(await isSenderHeld(db, 'hash-one')).toBe(true);
     expect(await isSenderHeld(db, 'hash-two')).toBe(true);
-    // The second number is held per number, beside the first number's row.
-    expect(await db.select().from(schema.optOutReadHolds)).toEqual([
-      { phoneHash: 'hash-two', heldAt: now, repointedAt: null },
-    ]);
+    // The second number is held by a row of its own that no store can place, never by a
+    // legacy per-number row a later text of that number would retire.
+    const held = await db
+      .select({
+        id: schema.optOutHeldMessages.providerMessageId,
+        phoneHash: schema.optOutHeldMessages.phoneHash,
+      })
+      .from(schema.optOutHeldMessages);
+    expect(held.map((row) => row.phoneHash).sort()).toEqual(['hash-one', 'hash-two']);
+    expect(held.find((row) => row.phoneHash === 'hash-two')?.id).not.toBe('pm-shared');
+    expect(await db.select().from(schema.optOutReadHolds)).toEqual([]);
+    // Replaying the second number's text holds nothing new and pages nobody again.
+    expect(
+      await holdSender(db, { phoneHash: 'hash-two', providerMessageId: 'pm-shared', now }),
+    ).toBe('already_held');
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('held_id_collision');
     expect(posted[0]).not.toContain('hash-two');

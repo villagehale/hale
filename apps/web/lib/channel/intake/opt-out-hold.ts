@@ -38,11 +38,19 @@ export async function holdSender(
     .limit(1);
   if (existing?.phoneHash === input.phoneHash) return 'already_held';
   // The id is the key across every transport, so another number's text already holds it.
-  // Fail closed: this number is held by number until a human resolves the collision.
-  await database
-    .insert(schema.optOutReadHolds)
-    .values({ phoneHash: input.phoneHash, heldAt: input.now })
-    .onConflictDoNothing();
+  // Fail closed: this number's row gets a key no store can place, so recovery keeps it as
+  // unrecorded (paged) while the number can be texted, until a human resolves it.
+  const collision = await database
+    .insert(schema.optOutHeldMessages)
+    .values({
+      providerMessageId: `${input.providerMessageId}#collision:${input.phoneHash}`,
+      phoneHash: input.phoneHash,
+      heldAt: input.now,
+      nextReadAt: input.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.optOutHeldMessages.providerMessageId });
+  if (collision.length === 0) return 'already_held';
   await pageOps(database, {
     site: 'opt_out_hold_unwritten',
     facts: { outcome: 'held_id_collision', numbers: 2 },
