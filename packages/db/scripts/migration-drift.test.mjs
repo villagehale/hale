@@ -37,6 +37,7 @@ describe('catalog history cutover', () => {
       '0200_email_alert_occasion_anchors',
       '0201_integrations_google_revoke_pending',
       '0202_opt_out_held_messages',
+      '0203_integrations_google_account_key',
     ]);
   });
 });
