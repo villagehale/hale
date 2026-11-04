@@ -1630,6 +1630,24 @@ describe('when a group reminder is due', () => {
     });
   });
 
+  it("keeps a due group line when the participant read is refused for Hale's own credential (401)", async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const unauthorized: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 401 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: unauthorized }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+  });
+
   it('positive control: keeps a due group line when the participant read answers a 5xx', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     await seedHousehold();

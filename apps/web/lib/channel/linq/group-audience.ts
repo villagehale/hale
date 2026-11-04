@@ -6,7 +6,7 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { linqFromE164 } from './config';
 import { type ListChatHandles, isUndefinedTable } from './roster';
-import { LINQ_RATE_LIMIT_CODE, LinqSendError } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — what a family group may hear.
@@ -29,10 +29,12 @@ import { LINQ_RATE_LIMIT_CODE, LinqSendError } from './transport';
  * line, the floor reads the chat's present participants once (`listChatHandles`). Every
  * present handle other than Hale's line must be a live member of this roster by phone
  * hash; an email, an unrostered phone or a failed read holds the line, and the scope is
- * the narrowest role among the people actually present. A read that could not be made
- * now (a 429, a 5xx, a timeout, a thrown transport error) is `participants_unverified`,
- * the one verdict queued work waits out. A read Linq refuses for good (any other 4xx, or
- * no Linq key) is `participants_unreadable`, a durable answer like any other refusal.
+ * the narrowest role among the people actually present. A read Linq refuses as a fact
+ * about this chat (403: not this account's chat; 404: no such chat) is
+ * `participants_unreadable`, a durable answer like any other refusal. Every other failed
+ * read is about Hale's side or the moment (a 401 or no Linq key is Hale's own credential;
+ * a 408, a rate limit, a 5xx, a timeout, a thrown transport error) and is
+ * `participants_unverified`, the one verdict queued work waits out.
  * The roster tables are read on every group send, so a missing table is the named
  * `not_migrated` refusal.
  */
@@ -212,28 +214,22 @@ type LiveRead =
   | { ok: false; failure: 'temporary'; status: string; code?: string; httpStatus?: number }
   | { ok: false; failure: 'permanent'; status: string; httpStatus?: number };
 
-/** The transport calls every 4xx but 429 permanent, and Linq's 1007 only with cadence
- * armed; a timed-out read and Linq's own rate limit are "could not check now". */
-const HTTP_REQUEST_TIMEOUT = 408;
+/** Linq 2005 "Access denied" (credentials valid, not this account's chat) and 2001 "Chat
+ * not found". A 401 is Hale's own credential, so it is not here. */
+const HTTP_FORBIDDEN = 403;
+const HTTP_NOT_FOUND = 404;
+const CHAT_REFUSALS: ReadonlySet<number> = new Set([HTTP_FORBIDDEN, HTTP_NOT_FOUND]);
 
 async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
   try {
     const read = await listChatHandles({ chatId });
     if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
-    if (
-      read.status === 'refused' &&
-      read.permanent &&
-      read.httpStatus !== HTTP_REQUEST_TIMEOUT &&
-      read.code !== LINQ_RATE_LIMIT_CODE
-    ) {
+    if (read.status === 'refused' && CHAT_REFUSALS.has(read.httpStatus)) {
       return { ok: false, failure: 'permanent', status: read.status, httpStatus: read.httpStatus };
     }
     if (read.status === 'refused') {
       const { status, code, httpStatus } = read;
       return { ok: false, failure: 'temporary', status, code, httpStatus };
-    }
-    if (read.status === 'not_configured') {
-      return { ok: false, failure: 'permanent', status: read.status };
     }
     return { ok: false, failure: 'temporary', status: read.status };
   } catch (err) {
