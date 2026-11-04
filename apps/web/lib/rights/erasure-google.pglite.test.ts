@@ -489,6 +489,51 @@ describe('erasing one household never revokes a Google account another household
     expect(await otherRow(otherFamilyId)).toMatchObject({ status: 'active' });
   });
 
+  it('an owned account that may be shared, a live row of another parent elsewhere having no key, ends locally only as ended_possibly_shared', async () => {
+    const erased = await household('Erased');
+    const other = await seedFamily(db.database, 'Other');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//owned-maybe', 'account-maybe');
+    // A live grant whose key a sync overwrote: it may be the same Google account.
+    await connect(other.familyId, other.parentUserId, 'gcal', '1//other-unkeyed');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual([]);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'ended_possibly_shared' }),
+    ]);
+    expect(await otherRow(other.familyId)).toMatchObject({
+      status: 'active',
+      enc: expect.any(String),
+    });
+  });
+
+  it('control: an owned account where every live row elsewhere is keyed and different, an ENDED one unkeyed, is revoked at Google', async () => {
+    const erased = await household('Erased');
+    const other = await seedFamily(db.database, 'Other');
+    const third = await seedFamily(db.database, 'Third');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//owned-alone', 'account-alone');
+    await connect(other.familyId, other.parentUserId, 'gcal', '1//other-keyed', 'account-other');
+    await db.database.insert(schema.integrations).values({
+      familyId: third.familyId,
+      userId: third.parentUserId,
+      provider: 'gcal',
+      status: 'revoked',
+      oauthTokensEncrypted: null,
+    });
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual(['1//owned-alone']);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'revoked' }),
+    ]);
+  });
+
   it("the erased family's own trail row says only that the row ended locally; the reason stays in the return value", async () => {
     const { erased, otherFamilyId } = await twoHouseholds();
     await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here', 'account-x');

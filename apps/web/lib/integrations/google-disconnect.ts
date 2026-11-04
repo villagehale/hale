@@ -664,10 +664,10 @@ export type ErasureGoogleOutcome =
   /** A live row with no owner and no account key, so nothing says which Google account a
    * revoke would end: ended locally, never skipped (rule #11). */
   | 'ended_without_owner'
-  /** A row with no owner whose account is known, while a live grant in another household
-   * has no key (a sync overwrote it before the key had its own column), so it may be the
-   * same account. Fails closed: ended locally, since Hale's token copy goes either way and
-   * a cut grant would end another household's (rule #5). */
+  /** A row whose account is known, while a live grant in another household, of another
+   * parent or of none, has no key (a sync overwrote it before the key had its own column),
+   * so it may be the same account. Fails closed: ended locally, since Hale's token copy
+   * goes either way and a cut grant would end another household's (rule #5). */
   | 'ended_possibly_shared';
 
 export interface ErasureSettlement {
@@ -688,9 +688,9 @@ export interface ErasureSettlement {
  * delete it: the caller keeps the family for a later sweep instead, for a bounded wait
  * (the sweep's own bound, rights/delete.ts). Three kinds of row end locally only and are
  * never revoked: one whose Google account still holds a live grant in another household,
- * one with neither an owner nor an account key, and one with no owner while a live grant
- * elsewhere has no key. Any other row with no owner but a known account is revoked like
- * any other. Throws only when the local end fails, which leaves the family standing.
+ * one with neither an owner nor an account key, and one with a known account while a live
+ * grant elsewhere has no key. Any other row with no owner but a known account is revoked
+ * like any other. Throws only when the local end fails, which leaves the family standing.
  */
 export async function endGoogleForFamilyErasure(
   db: Database,
@@ -721,7 +721,7 @@ export async function endGoogleForFamilyErasure(
     if (row.userId === null && row.key === null) localOnly.set(row.id, 'ended_without_owner');
     else if (elsewhere.some((other) => sameGoogleAccount(row, other))) {
       localOnly.set(row.id, 'grant_kept_other_household');
-    } else if (row.userId === null && elsewhere.some((other) => other.key === null)) {
+    } else if (row.key !== null && elsewhere.some((other) => other.key === null)) {
       localOnly.set(row.id, 'ended_possibly_shared');
     }
   }

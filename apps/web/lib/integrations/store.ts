@@ -439,16 +439,10 @@ export async function getSweepableConnectorConnection(
 }
 
 /**
- * The three writers a running sync calls by row id match only a row that still holds
- * keys. A sync already in flight when a disconnect commits would otherwise put refreshed
- * keys back, flip the ended row to 'active', or park it in 'error' with no tokens
- * (VIL-156). Writing nothing to an ended row is the right result, not a skipped effect:
- * the sweep's next run no longer lists it.
- */
-/**
  * A row whose account key still decides anything: it holds live keys or a pending revoke.
- * Rows ended before endKeys dropped the key with the last token still carry it (VIL-156);
- * every key reader that asks who holds an account goes through this, so that key is inert.
+ * Rows ended before endKeys dropped the key with the last token still carry it (VIL-156).
+ * Every key reader that asks who holds an account counts only rows with live keys or a
+ * pending revoke, so that key is inert; this predicate is the either-one form.
  */
 function keyStillDecides() {
   return or(
@@ -457,6 +451,13 @@ function keyStillDecides() {
   );
 }
 
+/**
+ * The three writers a running sync calls by row id match only a row that still holds
+ * keys. A sync already in flight when a disconnect commits would otherwise put refreshed
+ * keys back, flip the ended row to 'active', or park it in 'error' with no tokens
+ * (VIL-156). Writing nothing to an ended row is the right result, not a skipped effect:
+ * the sweep's next run no longer lists it.
+ */
 function holdingKeys(id: string) {
   return and(eq(schema.integrations.id, id), isNotNull(schema.integrations.oauthTokensEncrypted));
 }
@@ -700,8 +701,8 @@ async function endCalendarMirrors(tx: Database, integrationIds: string[], now: D
  * Family erasure's LOCAL-ONLY end (VIL-156): the rows' keys and any pending token leave,
  * and nothing is kept for Google. For a row whose Google account still holds a live grant
  * in another household (Google revokes per account, so a revoke here would end that grant
- * too, rule #5), for a row with neither an owner nor an account key, and for a row with no
- * owner whose account may be another household's unkeyed grant. Same invariant as
+ * too, rule #5), for a row with neither an owner nor an account key, and for a keyed row
+ * whose account may be another household's unkeyed grant. Same invariant as
  * {@link endGoogleConnections}: keys gone means status 'revoked'.
  */
 export async function endGoogleConnectionsLocally(
@@ -747,8 +748,8 @@ export function sameGoogleAccount(a: GoogleAccountSide, b: GoogleAccountSide): b
 
 /** Every live Google grant in a household other than this one that could share an
  * account with these rows; {@link sameGoogleAccount} decides which do. Live only: a
- * pending revoke elsewhere ends that grant anyway. When a row here has no owner, every
- * live grant elsewhere with no key comes back too, since nothing can rule those out. */
+ * pending revoke elsewhere ends that grant anyway. When a row here has a key, every live
+ * grant elsewhere with no key comes back too, since no key can rule those out. */
 export async function googleGrantsHeldElsewhere(
   database: Database,
   input: { familyId: string; rows: GoogleAccountSide[] },
@@ -757,7 +758,6 @@ export async function googleGrantsHeldElsewhere(
   const userIds = [
     ...new Set(input.rows.flatMap((row) => (row.userId === null ? [] : [row.userId]))),
   ];
-  const ownerless = input.rows.some((row) => row.userId === null);
   if (keys.length === 0 && userIds.length === 0) return [];
   return database
     .select({ key: schema.integrations.googleAccountKey, userId: schema.integrations.userId })
@@ -767,7 +767,7 @@ export async function googleGrantsHeldElsewhere(
         or(
           keys.length > 0 ? inArray(schema.integrations.googleAccountKey, keys) : undefined,
           userIds.length > 0 ? inArray(schema.integrations.userId, userIds) : undefined,
-          ownerless ? isNull(schema.integrations.googleAccountKey) : undefined,
+          keys.length > 0 ? isNull(schema.integrations.googleAccountKey) : undefined,
         ),
         ne(schema.integrations.familyId, input.familyId),
         inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
