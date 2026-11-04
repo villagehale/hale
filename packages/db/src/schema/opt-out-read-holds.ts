@@ -10,6 +10,9 @@ import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 export const optOutReadHolds = pgTable('opt_out_read_holds', {
   phoneHash: text('phone_hash').primaryKey(),
   heldAt: timestamp('held_at', { withTimezone: true }).notNull(),
+  /** Its placeable texts are held by message. Set only on a row that still stands for a
+   * text it could not place, so those texts are re-pointed once, never every tick. */
+  repointedAt: timestamp('repointed_at', { withTimezone: true }),
 });
 
 export type OptOutReadHold = typeof optOutReadHolds.$inferSelect;

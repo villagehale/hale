@@ -210,5 +210,9 @@ describe('opt_out_held_messages', () => {
       'opt_out_held_messages_phone_idx',
       'opt_out_held_messages_pkey',
     ]);
+    const legacy = await db.client.query<{ column_name: string; is_nullable: string }>(
+      "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'opt_out_read_holds' AND column_name = 'repointed_at'",
+    );
+    expect(legacy.rows).toEqual([{ column_name: 'repointed_at', is_nullable: 'YES' }]);
   });
 });

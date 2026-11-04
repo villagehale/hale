@@ -177,7 +177,7 @@ function readTranscript(dataEncrypted: string): ReturnType<typeof decodeIntakeFo
   return dataEncrypted === INTAKE_CONTENT_REDACTED ? null : decodeIntakeForRecovery(dataEncrypted);
 }
 
-interface HeldText {
+export interface HeldText {
   inbound: Inbound;
   phoneE164: string;
   language: IntakeSession['ladderLanguage'];
@@ -543,7 +543,7 @@ async function stillSendable(database: Database, phoneE164: string): Promise<boo
 }
 
 /** The held text, from the family ledger, else from an intake transcript of the number. */
-async function resolveHeldText(database: Database, row: HeldRow): Promise<HeldText | null> {
+export async function resolveHeldText(database: Database, row: HeldRow): Promise<HeldText | null> {
   const [message] = await database
     .select({
       familyId: schema.channelMessages.familyId,
@@ -698,13 +698,10 @@ async function repointLegacyHold(
   row: typeof schema.optOutReadHolds.$inferSelect,
 ): Promise<void> {
   const { ids, unplaceable } = await inboundIdsSince(database, row.phoneHash, row.heldAt);
-  if (unplaceable > 0) {
-    // A text the ledger cannot place on one number is never guessed onto this one: the
-    // row stands (fail closed) and the failure-page sweep pages it as legacy.
-    result.legacyUnpointed += 1;
-    return;
-  }
-  if (ids.length > 0) {
+  // A row left standing has already held these by message, and a held text that was
+  // read is gone, so holding them again would re-read it every tick. Once nothing is
+  // left to place, the row goes after one last pass (a repeat read at most once).
+  if (ids.length > 0 && (row.repointedAt === null || unplaceable === 0)) {
     await database
       .insert(schema.optOutHeldMessages)
       .values(
@@ -716,8 +713,22 @@ async function repointLegacyHold(
         })),
       )
       .onConflictDoNothing();
-    await deleteLegacyHold(database, row.phoneHash);
     result.repointed += ids.length;
+  }
+  if (unplaceable > 0) {
+    // A text the ledger cannot place on one number is never guessed onto this one: the
+    // row stands for it (fail closed) and the failure-page sweep pages it as legacy.
+    if (row.repointedAt === null) {
+      await database
+        .update(schema.optOutReadHolds)
+        .set({ repointedAt: now })
+        .where(eq(schema.optOutReadHolds.phoneHash, row.phoneHash));
+    }
+    result.legacyUnpointed += 1;
+    return;
+  }
+  if (ids.length > 0) {
+    await deleteLegacyHold(database, row.phoneHash);
     return;
   }
   const settled = row.heldAt.getTime() <= now.getTime() - HELD_MESSAGE_SETTLE_MS;
@@ -735,9 +746,10 @@ async function deleteLegacyHold(database: Database, phoneHash: string): Promise<
     .where(eq(schema.optOutReadHolds.phoneHash, phoneHash));
 }
 
-/** Every text from this number since `since`: from the ledger and from every intake
- * transcript of the number, open or closed. `unplaceable` counts ledger texts sent while
- * their author also held another number, which could have come from either. */
+/** Every text this number sent since `since`: from the ledger and from every intake
+ * transcript of the number, open or closed. `unplaceable` counts the ledger texts left
+ * out because their author also held another number then, so either could have sent it;
+ * one on this number's own transcript is placed here regardless. */
 async function inboundIdsSince(
   database: Database,
   phoneHash: string,
@@ -790,23 +802,20 @@ async function inboundIdsSince(
   );
   // This number's own transcript places a text on it, whatever else its author held.
   const elsewhere = await otherNumberHoldings(database, people, phoneHash);
-  const unplaceable = fromThisNumber.filter(
-    (text) =>
-      !transcript.includes(text.id) &&
-      elsewhere.some(
-        (holding) =>
-          holding.userId === text.userId && text.sentAt !== null && covers(holding, text.sentAt),
-      ),
-  ).length;
+  const placeable = (text: (typeof fromThisNumber)[number]) =>
+    transcript.includes(text.id) ||
+    !elsewhere.some(
+      (holding) =>
+        holding.userId === text.userId && text.sentAt !== null && covers(holding, text.sentAt),
+    );
+  const placed = fromThisNumber.filter(placeable);
   return {
     ids: [
       ...new Set(
-        [...fromThisNumber.map((text) => text.id), ...transcript].filter((id): id is string =>
-          Boolean(id),
-        ),
+        [...placed.map((text) => text.id), ...transcript].filter((id): id is string => Boolean(id)),
       ),
     ],
-    unplaceable,
+    unplaceable: fromThisNumber.length - placed.length,
   };
 }
 
