@@ -228,10 +228,11 @@ describe('local registration PDF text extraction', () => {
       expect(elapsed).toBeLessThan(budget.timeoutMs + 1_000);
       expect(readCpu).toBeGreaterThanOrEqual(0.5 * budget.timeoutMs * MICROS_PER_MS);
 
+      // The read resolves before its worker stops; the kill is done once the worker exits.
+      await readersExited();
       const afterKillStart = process.cpuUsage();
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
-      await readersExited();
 
       expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
         'Winter registration begins November 10, 2026',
