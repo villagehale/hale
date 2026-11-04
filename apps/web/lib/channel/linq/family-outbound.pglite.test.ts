@@ -682,6 +682,67 @@ describe('a 1:1 decision syncs the group', () => {
     ).toEqual([{ after: { reason: 'participants_unreadable', count: 2 } }]);
   });
 
+  it('a close whose audit row cannot be written leaves the sync queued, and the next sweep closes it with its row', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const gone = vi.fn(async () => Response.json({}, { status: 404 }));
+    vi.stubGlobal('fetch', gone);
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+
+    await db.exec(`
+      create or replace function refuse_closed_unsent_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end;
+      $$ language plpgsql;
+      create trigger refuse_closed_unsent_audit_trg before insert on audit_log
+        for each row when (new.action_taken = 'group_decision_sync_closed_unsent')
+        execute function refuse_closed_unsent_audit();
+    `);
+    try {
+      await expect(
+        flushGroupDecisionSyncs(db.database, {
+          now: sweptAt,
+          fetch: gone as unknown as typeof fetch,
+        }),
+      ).rejects.toThrow(/audit write refused/);
+      expect(
+        await db.database
+          .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+          .from(schema.groupDecisionSync),
+      ).toEqual([{ flushedAt: null }]);
+    } finally {
+      await db.exec('drop trigger if exists refuse_closed_unsent_audit_trg on audit_log');
+    }
+
+    const retriedAt = new Date(NOW.getTime() + 20 * 60 * 1000);
+    await flushGroupDecisionSyncs(db.database, {
+      now: retriedAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(
+      await db.database
+        .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+        .from(schema.groupDecisionSync),
+    ).toEqual([{ flushedAt: retriedAt }]);
+    expect(
+      await db.database
+        .select({ after: schema.auditLog.after })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.familyId, seeded.familyId)),
+    ).toEqual([{ after: { reason: 'participants_unreadable', count: 1 } }]);
+  });
+
   it("a participant read refused for Hale's own credential (401), or with no Linq key, keeps the sync queued and writes no audit row", async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {

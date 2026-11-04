@@ -539,22 +539,26 @@ export async function flushGroupDecisionSyncs(
       continue;
     }
     if (target.channel !== 'group') {
-      const closed = await database
-        .update(schema.groupDecisionSync)
-        .set({ flushedAt: input.now })
-        .where(
-          and(
-            eq(schema.groupDecisionSync.familyId, familyId),
-            isNull(schema.groupDecisionSync.flushedAt),
-          ),
-        )
-        .returning({ id: schema.groupDecisionSync.id });
-      await database.insert(schema.auditLog).values({
-        familyId,
-        actor: 'system',
-        actionTaken: 'group_decision_sync_closed_unsent',
-        targetTable: 'group_decision_sync',
-        after: { reason: target.reason, count: closed.length },
+      await database.transaction(async (rawTx) => {
+        const tx = rawTx as unknown as Database;
+        const closed = await tx
+          .update(schema.groupDecisionSync)
+          .set({ flushedAt: input.now })
+          .where(
+            and(
+              eq(schema.groupDecisionSync.familyId, familyId),
+              isNull(schema.groupDecisionSync.flushedAt),
+            ),
+          )
+          .returning({ id: schema.groupDecisionSync.id });
+        if (closed.length === 0) return;
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'group_decision_sync_closed_unsent',
+          targetTable: 'group_decision_sync',
+          after: { reason: target.reason, count: closed.length },
+        });
       });
       console.info(
         { familyId, queued: queued.length, reason: target.reason },
