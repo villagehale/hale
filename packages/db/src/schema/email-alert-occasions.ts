@@ -24,6 +24,9 @@ export const emailAlertOccasions = pgTable(
      * (migration 0200). The latest claim overlapping a new email's anchors is what that
      * thread last told about them. NULL on claims written before it. */
     anchorKeys: text('anchor_keys').array(),
+    /** Gmail's internalDate of the email this claim told: what "last" means between claims
+     * (migration 0200). NULL on claims written before it. */
+    receivedAt: timestamp('received_at', { withTimezone: true }),
   },
   (table) => ({
     channelMessageIdx: index('email_alert_occasions_channel_message_idx').on(

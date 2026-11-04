@@ -174,6 +174,9 @@ export const EMAIL_ALERT_OUTCOMES = [
   'labels_unread',
   /** Live pass only: no thread to key the alert on. No classifier call, no alert. */
   'no_thread_id',
+  /** A NEWER email in this thread about the same instant has already been told, so this
+   * older one is not news: the parent's last word follows the provider's last word. */
+  'superseded',
   /** An earlier text for this occasion in this thread failed. Its claim stays held (the
    * ledger is at-most-once per key), so nothing is sent. */
   'occasion_send_failed',
@@ -373,7 +376,7 @@ function instantIso(iso: string | null): string | null {
   return offsetInstant(iso)?.toISOString() ?? null;
 }
 
-type Told = 'already_sent' | 'occasion_send_failed';
+type Told = 'already_sent' | 'occasion_send_failed' | 'superseded';
 
 /**
  * AN OCCASION IS A STATE CHANGE, so whether this email is news is decided by what this
@@ -383,6 +386,10 @@ type Told = 'already_sent' | 'occasion_send_failed';
  * two sweeps reading the same history still compute one. With nothing told about these
  * instants the key is the bare occasion key, which is also every claim written before the
  * anchors existed.
+ *
+ * "Last" is the order the EMAILS were received in, never the order claims were written: a
+ * sweep reads newest first, so a reminder older than the cancellation beside it is claimed
+ * after it. An email older than what the thread last told is `superseded`.
  */
 async function occasionClaim(
   database: Database,
@@ -390,6 +397,7 @@ async function occasionClaim(
   threadId: string,
   extraction: Parameters<typeof emailAlertOccasion>[0],
   messageId: string,
+  receivedAt: Date,
 ): Promise<{ occasionKey: string; anchorKeys: string[]; told: Told | null }> {
   const { occasion, anchors } = occasionOf(extraction, messageId);
   const base = emailAlertOccasionKey(integrationId, threadId, occasion);
@@ -398,6 +406,7 @@ async function occasionClaim(
     .select({
       occasionKey: schema.emailAlertOccasions.occasionKey,
       channelMessageId: schema.emailAlertOccasions.channelMessageId,
+      receivedAt: schema.emailAlertOccasions.receivedAt,
     })
     .from(schema.emailAlertOccasions)
     .innerJoin(
@@ -416,13 +425,20 @@ async function occasionClaim(
         inArray(schema.channelMessages.status, [...SENT_STATUSES]),
       ),
     )
-    .orderBy(desc(schema.emailAlertOccasions.createdAt))
+    // Every claim with anchors carries received_at: both arrived in migration 0200.
+    .orderBy(
+      desc(schema.emailAlertOccasions.receivedAt),
+      desc(schema.emailAlertOccasions.createdAt),
+    )
     .limit(1);
   if (
     last !== undefined &&
     (last.occasionKey === base || last.occasionKey.startsWith(`${base}:`))
   ) {
     return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
+  }
+  if (last?.receivedAt != null && receivedAt < last.receivedAt) {
+    return { occasionKey: base, anchorKeys, told: 'superseded' };
   }
   const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
   return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
@@ -646,13 +662,18 @@ export async function alertParentForEmail(
   // quiet-booking writes (every message is evidence) and before the writer (a second text
   // is not). The key needs the extraction, so this costs the classifier call; a receipt
   // still refreshes its booking and a cancellation still closes, as on the first message.
+  const receivedAt = new Date(input.envelope.receivedAt);
   const { occasionKey, anchorKeys, told } = await occasionClaim(
     database,
     integrationId,
     threadId,
     extraction,
     messageId,
+    receivedAt,
   );
+  if (told === 'superseded') {
+    console.info({ familyId, messageId }, 'email alert: older than what this thread last told');
+  }
   if (told !== null) {
     await closeIfCancelled();
     return {
@@ -794,7 +815,7 @@ export async function alertParentForEmail(
     if (!row) return null;
     const [occasion] = await tx
       .insert(schema.emailAlertOccasions)
-      .values({ occasionKey, channelMessageId: row.id, anchorKeys })
+      .values({ occasionKey, channelMessageId: row.id, anchorKeys, receivedAt })
       .onConflictDoNothing()
       .returning({ occasionKey: schema.emailAlertOccasions.occasionKey });
     if (!occasion) {

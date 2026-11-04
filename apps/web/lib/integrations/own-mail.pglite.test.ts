@@ -451,8 +451,9 @@ describe('one occasion in one thread is told once', () => {
     const h = harness({
       k2: classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, 'k2'),
     });
-    const outcomes = await sweep(h, [inbound('k1', 't-swim', 0), inbound('k2', 't-swim', 10)]);
-    expect(alerts(outcomes)).toEqual(['sent', 'sent']);
+    // Told in its own sweep first: read in one batch, the older announcement is superseded (T4i).
+    await expect(sweep(h, [inbound('k1', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual(['sent']);
     expect(h.transport.sent).toHaveLength(2);
   });
 
@@ -468,8 +469,8 @@ describe('one occasion in one thread is told once', () => {
         'k2',
       ),
     });
-    const outcomes = await sweep(h, [inbound('k1', 't-swim', 0), inbound('k2', 't-swim', 10)]);
-    expect(alerts(outcomes)).toEqual(['sent', 'sent']);
+    await expect(sweep(h, [inbound('k1', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual(['sent']);
     expect(h.writer.seen).toHaveLength(2);
   });
 
@@ -565,6 +566,29 @@ describe('one occasion in one thread is told once', () => {
     // The failed cancellation, read again, is named rather than re-sent.
     await expect(one(h, 'k4', 30)).resolves.toEqual(['occasion_send_failed']);
     expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('T4i: an older "on" read after a newer cancellation is superseded, in one sweep or a later one', async () => {
+    const off = (messageId: string) =>
+      classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, messageId);
+    const reminder = (messageId: string) =>
+      classified({ kind: 'reminder_only', originalTime: SATURDAY, newTime: null }, messageId);
+    const h = harness({ k1: reminder('k1'), k2: off('k2'), k3: reminder('k3') });
+
+    await expect(sweep(h, [inbound('k0', 't-swim', 0)]).then(alerts)).resolves.toEqual(['sent']);
+    // Newest first: the cancellation (minute 20) is told, and the reminder written before it
+    // (minute 10) is older news than the parent's last word, so "cancelled" stays last.
+    await expect(
+      sweep(h, [inbound('k1', 't-swim', 10), inbound('k2', 't-swim', 20)]).then(alerts),
+    ).resolves.toEqual(['sent', 'superseded']);
+    // Read only in a later sweep, an email older than the cancellation is still superseded.
+    await expect(sweep(h, [inbound('k3', 't-swim', 15)]).then(alerts)).resolves.toEqual([
+      'superseded',
+    ]);
+    expect(h.transport.sent).toHaveLength(2);
+    // The control: a newer reminder after the cancellation is the class back on, and is told.
+    await expect(sweep(h, [inbound('k4', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(3);
   });
 
   it('T4g: another date told in the same thread does not make a repeat of this one news', async () => {
@@ -717,17 +741,29 @@ describe('the occasion claim', () => {
 });
 
 describe('migration 0200', () => {
-  it('T14: applies a second time over itself and leaves the column and its index', async () => {
+  it('T14: applies a second time over itself and leaves both columns and the index', async () => {
     await expect(
       db.applyMigration('0200_email_alert_occasion_anchors.sql'),
     ).resolves.toBeUndefined();
-    const result = await db.client.query<{ type: string | null; idx: string | null }>(
+    const result = await db.client.query<{
+      type: string | null;
+      received: string | null;
+      idx: string | null;
+    }>(
       `select
          (select data_type from information_schema.columns
            where table_name = 'email_alert_occasions' and column_name = 'anchor_keys') as type,
+         (select data_type from information_schema.columns
+           where table_name = 'email_alert_occasions' and column_name = 'received_at') as received,
          to_regclass('email_alert_occasions_anchor_keys_idx')::text as idx`,
     );
-    expect(result.rows).toEqual([{ type: 'ARRAY', idx: 'email_alert_occasions_anchor_keys_idx' }]);
+    expect(result.rows).toEqual([
+      {
+        type: 'ARRAY',
+        received: 'timestamp with time zone',
+        idx: 'email_alert_occasions_anchor_keys_idx',
+      },
+    ]);
   });
 });
 
