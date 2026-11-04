@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GOOGLE_REVOKE_URL,
@@ -179,6 +179,52 @@ describe('runDeletionSweep revokes an erased family at Google before the cascade
     expect(done).toMatchObject({ erased: 1, googleRevokePending: 0 });
     expect(posted.sort()).toEqual(['1//erased-cal', '1//erased-mail']);
     expect(await family()).toEqual([]);
+  });
+
+  it("one family's failed Google end keeps that family, named, and never holds the others", async () => {
+    const failing = await household('Failing');
+    await connect(failing.familyId, failing.parentUserId, 'gcal', '1//failing-cal');
+    const erased = await household('Erased');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: PAST })
+      .where(inArray(schema.families.id, [failing.familyId, erased.familyId]));
+    // The local end's trail row cannot be written for one family only: its transaction
+    // rolls back and the end throws, as a driver or constraint failure would.
+    await db.exec(`
+      create or replace function fail_erasure_end() returns trigger as $$
+      begin
+        if new.action_taken = 'integration_ended_for_erasure'
+          and new.family_id = '${failing.familyId}' then
+          raise exception 'erasure end refused';
+        end if;
+        return new;
+      end $$ language plpgsql;
+      create trigger fail_erasure_end before insert on audit_log
+        for each row execute function fail_erasure_end();
+    `);
+    try {
+      const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+      expect(summary).toMatchObject({ erased: 1, googleRevokePending: 0, googleEndFailed: 1 });
+      expect(posted).toEqual(['1//erased-cal']);
+      const standing = await db.database
+        .select({ id: schema.families.id })
+        .from(schema.families)
+        .where(inArray(schema.families.id, [failing.familyId, erased.familyId]));
+      expect(standing).toEqual([{ id: failing.familyId }]);
+      // The failing family's grant is untouched, live for the next sweep to end.
+      const [row] = await db.database
+        .select({ enc: schema.integrations.oauthTokensEncrypted })
+        .from(schema.integrations)
+        .where(eq(schema.integrations.familyId, failing.familyId));
+      expect(row?.enc).not.toBeNull();
+    } finally {
+      await db.exec(
+        'drop trigger fail_erasure_end on audit_log; drop function fail_erasure_end();',
+      );
+    }
   });
 
   it('positive control: a sweep with no family due posts nothing to Google', async () => {

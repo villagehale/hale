@@ -2,7 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { removeDocument } from '../docs/storage.js';
-import { endGoogleForFamilyErasure } from '../integrations/google-disconnect.js';
+import {
+  type GoogleSettlement,
+  endGoogleForFamilyErasure,
+} from '../integrations/google-disconnect.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
 export {
@@ -193,6 +196,9 @@ export interface DeletionSweepSummary {
   /** Families due for erasure kept for a later sweep because Google has not yet answered
    * a revoke of their grant (VIL-156). Named, never folded into `erased`. */
   googleRevokePending: number;
+  /** Families kept because ending their Google grants locally threw. Named, and they never
+   * hold the other families' erasure. */
+  googleEndFailed: number;
 }
 
 /** The storage-object remover, injected so tests record deletes without a live bucket. */
@@ -265,7 +271,33 @@ export async function runDeletionSweep(
   now: Date = new Date(),
   removeObject: RemoveObject = removeDocument,
 ): Promise<DeletionSweepSummary> {
-  const familyIds = await selectFamiliesDueForDeletion(database, now);
+  const due = await selectFamiliesDueForDeletion(database, now);
+  // FIRST, because the cascade deletes keys and pending tokens and deleting a key revokes
+  // nothing: each family's Google grants are ended and revoked at Google (VIL-156). A
+  // revoke Google has not answered keeps the family for a later sweep, at most until its
+  // token's seven-day window ends, and so does a local end that throws. Everything below
+  // runs on `familyIds`, the families this run deletes, and never on one it keeps.
+  const familyIds: string[] = [];
+  let googleRevokePending = 0;
+  let googleEndFailed = 0;
+  for (const familyId of due) {
+    let google: GoogleSettlement[];
+    try {
+      google = await endGoogleForFamilyErasure(database, familyId);
+    } catch (err) {
+      googleEndFailed += 1;
+      console.error(
+        { familyId, error: err instanceof Error ? err.name : 'unknown' },
+        'deletion sweep: google end failed, family kept for the next sweep',
+      );
+      continue;
+    }
+    if (google.some((row) => row.google === 'pending_retry')) {
+      googleRevokePending += 1;
+      continue;
+    }
+    familyIds.push(familyId);
+  }
   // READ BEFORE THE DELETES, because the delete is what destroys it. `parent_channels`
   // cascades from `families`, and that row is the orphan sweep's whole evidence that a
   // person ever held a channel — so a parent erased below is invisible to a sweep that
@@ -286,17 +318,7 @@ export async function runDeletionSweep(
         ];
 
   let purgedObjects = 0;
-  let googleRevokePending = 0;
   for (const familyId of familyIds) {
-    // The cascade deletes keys and pending tokens; deleting a key revokes nothing, so
-    // the family's Google grants are ended and revoked at Google first (VIL-156). A
-    // revoke Google has not answered keeps the family for a later sweep, at most until
-    // its token's seven-day window ends.
-    const google = await endGoogleForFamilyErasure(database, familyId);
-    if (google.some((row) => row.google === 'pending_retry')) {
-      googleRevokePending += 1;
-      continue;
-    }
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
@@ -311,9 +333,10 @@ export async function runDeletionSweep(
   // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
   const orphans = await runOrphanUserSweep(database, now, stranded);
   return {
-    erased: familyIds.length - googleRevokePending,
+    erased: familyIds.length,
     purgedObjects,
     googleRevokePending,
+    googleEndFailed,
     orphans,
   };
 }
