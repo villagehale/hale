@@ -393,14 +393,85 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
     expect(outcome).toEqual({ status: 'refused', refusals: ['structured:truncated'] });
   });
 
-  it('a throw that is not the provider is unavailable as unexpected, never a provider class', async () => {
-    const { outcome } = await compose(new TypeError('a bug'), new TypeError('a bug'));
+  it('a throw that is not the provider is our bug: rejected as unexpected after one call', async () => {
+    const { outcome, runs, create } = await compose(new TypeError('a bug'), {
+      texts: ['unreached'],
+    });
     expect(outcome).toEqual({
-      status: 'unavailable',
+      status: 'rejected',
       cause: 'unexpected',
       httpStatus: null,
       errorType: null,
     });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(runs.map((run) => run.status)).toEqual(['failed']);
+  });
+
+  it('a 400 that is not a usage limit is Hale’s own request: rejected as bad_request after one call', async () => {
+    const badRequest = apiError(400, 'invalid_request_error', 'messages: invalid shape');
+    const { outcome, runs, create } = await compose(badRequest, { texts: ['unreached'] });
+    expect(outcome).toEqual({
+      status: 'rejected',
+      cause: 'bad_request',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ agentName: 'reminder-voice', status: 'failed', costUsd: 0 });
+  });
+
+  it.each([
+    [408, 'timeout_error'],
+    [409, 'conflict_error'],
+  ])(
+    'a %i is retryable, not Hale’s request: unavailable after both attempts',
+    async (status, type) => {
+      const retryable = () => apiError(status, type, 'try again');
+      const { outcome, runs, create } = await compose(retryable(), retryable());
+      expect(outcome).toEqual({
+        status: 'unavailable',
+        cause: 'transient',
+        httpStatus: status,
+        errorType: type,
+      });
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(runs).toHaveLength(2);
+    },
+  );
+
+  it.each([
+    [401, 'authentication_error', 'invalid x-api-key', 'auth', 1],
+    [403, 'permission_error', 'Your API key does not have permission', 'auth', 1],
+    [429, 'rate_limit_error', 'Number of requests has exceeded your rate limit', 'quota', 2],
+    [
+      400,
+      'invalid_request_error',
+      'Your credit balance is too low to access the Anthropic API.',
+      'billing',
+      1,
+    ],
+  ])(
+    'a %i %s is %s, which clears without a code change: held as unavailable, never rejected',
+    async (status, type, message, cause, calls) => {
+      const failure = () => apiError(status, type, message);
+      const { outcome, runs, create } = await compose(failure(), failure());
+      expect(outcome).toEqual({ status: 'unavailable', cause, httpStatus: status, errorType: type });
+      expect(create).toHaveBeenCalledTimes(calls);
+      expect(runs).toHaveLength(calls);
+    },
+  );
+
+  it('positive control: an overload on both attempts stays unavailable, with a run per attempt', async () => {
+    const { outcome, runs, create } = await compose(OVERLOADED(), OVERLOADED());
+    expect(outcome).toEqual({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 503,
+      errorType: 'overloaded_error',
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(runs).toHaveLength(2);
   });
 
   it('two answers that fail the output schema are refused as schema: the model answered, unusably', async () => {
@@ -416,18 +487,18 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
     const { outcome } = await compose(quoting(), quoting());
 
     expect(outcome).toEqual({
-      status: 'unavailable',
-      cause: 'transient',
+      status: 'rejected',
+      cause: 'bad_request',
       httpStatus: 400,
       errorType: 'invalid_request_error',
     });
     const logged = [console.warn, console.error, console.info].flatMap(
       (log) => vi.mocked(log).mock.calls,
     );
-    // Positive control: the attempts were logged, with what tells a bad request from an outage.
+    // Positive control: the attempt was logged, with what tells a bad request from an outage.
     expect(console.warn).toHaveBeenCalledWith(
       expect.objectContaining({
-        cause: 'transient',
+        cause: 'bad_request',
         httpStatus: 400,
         errorType: 'invalid_request_error',
       }),
