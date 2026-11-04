@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event as 图书馆故事时间 (Library storytime) and offers a link to add it to the calendar, stating it is Wednesday July 22 at 下午4:00. The start is Wednesday July 22, 2026 at 16:00 minute 0 in America/Chicago. 下午4:00 means 16:00, the day and weekday match, and the hour with no minute means minute zero, which matches.",
+    "match": true
+  },
+  "latencyMs": 1588
+}
