@@ -135,9 +135,14 @@ export function postalMentioned(body: string): string | null {
   return fold(body).match(POSTAL_IN_TEXT)?.[1] ?? null;
 }
 
-function helloCityFromPostal(postal: string): RecHelloCity | null {
+function fsaOf(postal: string): string | null {
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  return /^[A-Z]\d[A-Z]$/.test(fsa) ? fsa : null;
+}
+
+function helloCityFromPostal(postal: string): RecHelloCity | null {
+  const fsa = fsaOf(postal);
+  if (fsa === null) return null;
   const towns = municipalitiesForFsa(fsa);
   if (towns.length !== 1) return null;
   const only = towns[0];
@@ -148,9 +153,12 @@ function helloCityFromPostal(postal: string): RecHelloCity | null {
 /**
  * The family's stored place as a GTA municipality: the city on file, then the postal on
  * file. Null for anywhere else, and for an ambiguous or unverified FSA - no guessed town.
+ * A stored code that is not a Canadian FSA (a US ZIP) is never in the GTA, whatever
+ * town name sits beside it: Richmond Hill and Burlington are US towns too.
  */
 export function resolveRecMorningWhere(place: RecMorningPlace | null): RecMorningWhere | null {
   if (place === null) return null;
+  if (place.postal && fsaOf(place.postal) === null) return null;
   const fromCity = place.city ? namedHelloCity(fold(place.city)) : null;
   const municipality = fromCity ?? (place.postal ? helloCityFromPostal(place.postal) : null);
   if (municipality === null) return null;

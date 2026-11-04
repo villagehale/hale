@@ -104,9 +104,9 @@ export function recMorningReply(
   if (where === null) return null;
   const topic = matchRecMorning(body, where);
   if (topic === null) return null;
-  // A postal in the ask is the family's district when none is on file.
+  // A postal in the ask is the district they asked about, ahead of the one on file.
   // cityRecLine already ignores one that belongs to a different town.
-  return recMorningBody(topic, now, { ...where, postal: where.postal ?? postalMentioned(body) });
+  return recMorningBody(topic, now, { ...where, postal: postalMentioned(body) ?? where.postal });
 }
 
 export function recMorningReturnLine(pendingAsk: string): string {

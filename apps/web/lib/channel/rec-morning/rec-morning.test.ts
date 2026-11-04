@@ -161,6 +161,24 @@ describe('VIL-591 · the GTA topics answer only a family whose place is in the G
     expect(at('waitlist', 'M5V')).toBe(TORONTO_FOLLOW);
     expect(at('YMCA swim', 'M5V')).toBe(YMCA_FIRST);
   });
+
+  it('a GTA town name on file does not outvote a stored US ZIP', () => {
+    // Richmond Hill is also a town in Georgia: the ZIP says where this family lives.
+    expect(at({ city: 'Richmond Hill', postal: '31324' })).toBeNull();
+    expect(
+      recMorningReply('YMCA swim', THIS_MORNING, at({ city: 'Burlington', postal: '05401' })),
+    ).toBeNull();
+    // Positive controls: the town alone, and a covered village whose rural FSA resolves
+    // to nothing, still place the family in the GTA.
+    expect(at({ city: 'Richmond Hill', postal: null })).toEqual({
+      municipality: 'richmond_hill',
+      postal: null,
+    });
+    expect(at({ city: 'Nobleton', postal: 'L0G' })).toEqual({
+      municipality: 'king',
+      postal: 'L0G',
+    });
+  });
 });
 
 describe('rec-morning matcher', () => {
@@ -450,6 +468,8 @@ describe('rec-morning SMS · a city line is derived, never locked', () => {
     expect(resolveHelloCity('Theo is 3, Cruz is 18-months, M1B', null)).toBe('toronto');
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M1B' })).toBe(scarborough);
     expect(reply('M1B rec dates?')).toBe(scarborough);
+    // The district they asked about wins over the one on file.
+    expect(reply('M1B rec dates?', THIS_MORNING, { postal: 'M5V' })).toBe(scarborough);
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
     expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M8V' })).toBe(TORONTO_LINE);
     const dayBefore = new Date('2026-09-14T14:00:00.000Z');

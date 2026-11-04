@@ -661,6 +661,15 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     expect(await handleFor(texas, 'YMCA swim')).toEqual({ claimed: false });
   });
 
+  it('leaves a US family whose town shares a GTA name to the coach', async () => {
+    const georgia = await familyAt({
+      countryCode: 'US',
+      city: 'Richmond Hill',
+      postalCode: '31324',
+    });
+    expect(await handleFor(georgia, 'YMCA swim')).toEqual({ claimed: false });
+  });
+
   it('leaves a Vancouver family asking about the parents login to the coach', async () => {
     const vancouver = await familyAt({ countryCode: 'CA', city: 'Vancouver', postalCode: 'V6B' });
     expect(await handleFor(vancouver, 'both parents need the login')).toEqual({
