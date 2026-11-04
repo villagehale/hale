@@ -689,11 +689,14 @@ describe('a reconnect that lands while a revoke is in flight', () => {
 describe('a push renewal racing a disconnect never revives the watch', () => {
   const PUSH_ON = { GOOGLE_PUSH_SYNC_ENABLED: 'true', APP_URL: 'https://app.example.test' };
 
-  function calendarGoogle(onWatch: () => Promise<void>) {
+  function calendarGoogle(onWatch: () => Promise<void>, stopStatus = 204) {
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     const google: GoogleJsonClient = {
       async request({ url, body }) {
         calls.push({ url, body });
+        if (url.endsWith('/channels/stop')) {
+          return { ok: stopStatus < 300, status: stopStatus, json: async () => ({}) };
+        }
         if (url.endsWith('/events/watch')) {
           await onWatch();
           return {
@@ -719,7 +722,12 @@ describe('a push renewal racing a disconnect never revives the watch', () => {
 
     const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
 
-    expect(summary).toMatchObject({ opened: 0, integrationEnded: 1, failed: 0 });
+    expect(summary).toMatchObject({
+      opened: 0,
+      integrationEnded: 1,
+      orphanStopFailed: 0,
+      failed: 0,
+    });
     expect(await loadPushWatch(db.database, calId)).toBeNull();
     const watched = calls.find((call) => call.url.endsWith('/events/watch'));
     const stopped = calls.filter((call) => call.url.endsWith('/channels/stop'));
@@ -729,6 +737,22 @@ describe('a push renewal racing a disconnect never revives the watch', () => {
         body: { id: watched?.body?.id, resourceId: 'resource-new' },
       },
     ]);
+  });
+
+  it('a stop Google refuses for the orphaned channel is counted and logged with its row', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { google } = calendarGoogle(async () => {
+      await disconnect(parentUserId, 'gcal', scriptedPorts(OK));
+    }, 500);
+
+    const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+
+    expect(summary).toMatchObject({ integrationEnded: 1, orphanStopFailed: 1, failed: 0 });
+    expect(errors).toHaveBeenCalledWith(
+      { integrationId: calId, provider: 'gcal', stop: 'stop_failed' },
+      'google push: orphaned channel not stopped',
+    );
   });
 
   it('positive control: with no disconnect, the watch is opened and saved', async () => {

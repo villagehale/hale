@@ -56,6 +56,8 @@ export interface PushRenewalSummary {
   topicNotConfigured: number;
   /** Listed as live, then ended by a disconnect before its watch could be saved. */
   integrationEnded: number;
+  /** Of those, the channel just opened that Google did not confirm stopping. */
+  orphanStopFailed: number;
   failed: number;
 }
 
@@ -66,6 +68,7 @@ function emptyRenewal(): PushRenewalSummary {
     notDue: 0,
     topicNotConfigured: 0,
     integrationEnded: 0,
+    orphanStopFailed: 0,
     failed: 0,
   };
 }
@@ -163,9 +166,15 @@ export async function renewDueGooglePushWatches(
         },
       });
       countOutcome(summary, result.outcome);
+      if (result.stop === 'stop_failed') summary.orphanStopFailed += 1;
       if (result.outcome !== 'not_due') {
         console.info(
-          { integrationId: connection.id, provider: connection.provider, push: result.outcome },
+          {
+            integrationId: connection.id,
+            provider: connection.provider,
+            push: result.outcome,
+            ...(result.stop ? { stop: result.stop } : {}),
+          },
           'google push: renewal',
         );
       }
