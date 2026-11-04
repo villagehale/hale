@@ -128,11 +128,20 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     // A GTA family (stored Toronto FSA), so the facts exist and only the model is silent.
     const postal = 'M5V';
     expect(
-      recMorningReply(body, new Date(), resolveRecMorningWhere({ city: null, postal })),
+      recMorningReply(
+        body,
+        new Date(),
+        resolveRecMorningWhere({ city: null, postal, timeZone: 'America/Toronto' }),
+      ),
     ).not.toBeNull();
     const family = { primaryLanguage: null, city: null, postalCode: postal, areaCoarse: null };
     const database = {
-      select: () => ({ from: () => ({ where: () => ({ limit: async () => [family] }) }) }),
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [family] }),
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      }),
     } as unknown as Database;
     const verdict = await recMorningHandler().handle(database, {
       body,

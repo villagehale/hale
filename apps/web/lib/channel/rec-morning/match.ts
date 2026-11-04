@@ -31,10 +31,15 @@ export type RecHelloCity =
   | 'uxbridge'
   | 'milton';
 
-/** The place a family has on file: the families row's city and postal code. */
+/**
+ * The place a family has on file: the families row's city and postal code, and the
+ * family's own zone, which says what day "today" is for a dated fact. Null when no zone
+ * is known.
+ */
 export type RecMorningPlace = {
   city: string | null;
   postal: string | null;
+  timeZone: string | null;
 };
 
 /**
@@ -44,6 +49,7 @@ export type RecMorningPlace = {
 export type RecMorningWhere = {
   municipality: RecHelloCity;
   postal: string | null;
+  timeZone: string | null;
 };
 
 export type RecMorningTopic =
@@ -162,7 +168,7 @@ export function resolveRecMorningWhere(place: RecMorningPlace | null): RecMornin
   const fromCity = place.city ? namedHelloCity(fold(place.city)) : null;
   const municipality = fromCity ?? (place.postal ? helloCityFromPostal(place.postal) : null);
   if (municipality === null) return null;
-  return { municipality, postal: place.postal };
+  return { municipality, postal: place.postal, timeZone: place.timeZone };
 }
 
 /**
@@ -184,7 +190,7 @@ export function resolveHelloCity(body: string, where: RecMorningWhere | null): R
 }
 
 function isCityRecAsk(text: string): boolean {
-  return /\b(rec|recreation|swim|skate|aquatics?|camps?|fall registration|waitlists?|winter-?break)\b/.test(
+  return /\b(rec|recreation|swim|skate|aquatics?|camps?|fall registration|winter-?break)\b/.test(
     text,
   );
 }
@@ -212,8 +218,9 @@ function isYmca(text: string): boolean {
 /**
  * The rec-morning topic this text is asking about, or null when it is not one.
  *
- * First match wins, most specific first: Jack of Sports before "swim", YMCA follow
- * before YMCA clock, a named or known city before the Toronto waitlist/rec clock.
+ * First match wins, most specific first: Jack of Sports before "swim", a waitlist ask
+ * before everything it mentions, YMCA follow before YMCA clock, a named or known city
+ * before the Toronto rec clock.
  * ActiveTO is routed to the first Toronto rec answer so the reply never names it.
  */
 export function matchRecMorning(
@@ -226,6 +233,13 @@ export function matchRecMorning(
   if (text === '' || isNotOurs(text)) return null;
 
   if (/\bjack of sports\b/.test(text)) return 'jack_of_sports';
+
+  const city = resolveHelloCity(text, where);
+  // The only waitlist fact this lane holds is Toronto's. Any other town's waitlist, or
+  // the Y's, is the coach's: a registration date is not an answer to a waitlist ask.
+  if (/\bwaitlists?\b/.test(text)) {
+    return city === 'toronto' && !isYmca(text) ? 'toronto_waitlist' : null;
+  }
 
   if (
     /\b(two phones|two logins|both parents|one login|one phone)\b/.test(text) ||
@@ -241,12 +255,9 @@ export function matchRecMorning(
     return 'ymca_gta_swim';
   }
 
-  const city = resolveHelloCity(text, where);
   if (city !== null && city !== 'toronto' && isCityRecAsk(text)) {
     return cityTopic(city, text);
   }
-
-  if (/\bwaitlists?\b/.test(text)) return 'toronto_waitlist';
 
   if (
     /\bwish\s*lists?\b/.test(text) ||
