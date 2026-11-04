@@ -160,6 +160,27 @@ describe('groupAudienceAllows reads the live participant list', () => {
     ).resolves.toEqual({ allowed: false, reason: 'group_audience_empty' });
   });
 
+  it('a stale left_at beside an active status still counts as present and holds the line', async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+    const readded = docsFetch([
+      { handle: MOM, status: 'active', is_me: false },
+      { handle: DAD, status: 'active', is_me: false },
+      { handle: STRANGER, status: 'active', left_at: '2026-10-30T15:00:00Z', is_me: false },
+    ]);
+    const removed = docsFetch([
+      { handle: MOM, status: 'active', is_me: false },
+      { handle: DAD, status: 'active', is_me: false },
+      { handle: STRANGER, status: 'removed', left_at: '2026-10-30T15:00:00Z', is_me: false },
+    ]);
+
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', realList(readded)),
+    ).resolves.toEqual({ allowed: false, reason: 'participant_unresolved' });
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', realList(removed)),
+    ).resolves.toEqual({ allowed: true, reason: 'in_scope' });
+  });
+
   it('a read that fails, is refused (429) or throws holds the line as participants_unverified', async () => {
     await seedRoster(await seedFamily(CHAT), PARENTS);
     const unreachable: ListChatHandles = async () => ({ status: 'unreachable', reason: 'timeout' });

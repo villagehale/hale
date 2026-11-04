@@ -12,8 +12,11 @@ const LEFT = '+15555550104';
 const NULL_STATUS = '+15555550105';
 const NO_STATUS = '+15555550106';
 const ACTIVE_BUT_LEFT_AT = '+15555550107';
+const NULL_STATUS_LEFT_AT = '+15555550108';
+const NO_STATUS_LEFT_AT = '+15555550109';
 
-/** GET /v3/chats/{id} as Linq documents it: departed people stay listed. */
+/** GET /v3/chats/{id} as Linq documents it: departed people stay listed. A person who
+ * left and was added back can carry a stale left_at beside a present status. */
 const DOCS_CHAT = {
   chat: {
     id: CHAT,
@@ -41,28 +44,42 @@ const DOCS_CHAT = {
         left_at: '2026-10-31T09:00:00Z',
         is_me: false,
       },
+      {
+        id: 'h-i',
+        handle: NULL_STATUS_LEFT_AT,
+        service: 'iMessage',
+        status: null,
+        left_at: '2026-10-31T09:00:00Z',
+        is_me: false,
+      },
+      {
+        id: 'h-j',
+        handle: NO_STATUS_LEFT_AT,
+        service: 'iMessage',
+        left_at: '2026-10-31T09:00:00Z',
+        is_me: false,
+      },
     ],
   },
 };
 
-const PRESENT = [ACTIVE, NANNY_EMAIL, NULL_STATUS, NO_STATUS];
+const PRESENT = [
+  ACTIVE,
+  NANNY_EMAIL,
+  NULL_STATUS,
+  NO_STATUS,
+  ACTIVE_BUT_LEFT_AT,
+  NULL_STATUS_LEFT_AT,
+  NO_STATUS_LEFT_AT,
+];
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe('readLinqChatHandles: present participants only', () => {
-  it('keeps active, null-status and status-less handles, emails included, and drops Hale and everyone who left', () => {
+  it('drops Hale and only an explicit left or removed status; left_at alone removes no one', () => {
     expect(readLinqChatHandles(DOCS_CHAT)).toEqual(PRESENT);
-  });
-
-  it('a handle with left_at set is gone even when its status still reads active', () => {
-    const handles = readLinqChatHandles(DOCS_CHAT);
-    expect(handles).not.toContain(ACTIVE_BUT_LEFT_AT);
-    expect(handles).not.toContain(REMOVED);
-    expect(handles).not.toContain(LEFT);
-    expect(handles).not.toContain(HALE);
-    expect(handles).toContain(ACTIVE);
   });
 });
 

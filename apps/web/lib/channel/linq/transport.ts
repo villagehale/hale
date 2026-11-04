@@ -702,8 +702,9 @@ export function readLinqPollEnvelope(
 }
 
 /** Non-me handles of the people in the chat now, emails included. Linq keeps a person
- * who left listed with status `left` or `removed` and a `left_at`; those are dropped.
- * Any other status, or none, counts as present, so an unknown never hides a person.
+ * who left listed; only an explicit status `left` or `removed` drops them. Any other
+ * status, or none, counts as present, and `left_at` alone never drops anyone: a person
+ * added back can carry a stale one, and an audience gate must not lose them.
  * Phones stay in the return value for the caller to hash; this function does not log them. */
 export function readLinqChatHandles(payload: unknown): string[] {
   if (!isRecord(payload)) return [];
@@ -713,7 +714,6 @@ export function readLinqChatHandles(payload: unknown): string[] {
   for (const handle of handles) {
     if (!isRecord(handle) || handle.is_me === true) continue;
     if (handle.status === 'left' || handle.status === 'removed') continue;
-    if (handle.left_at !== undefined && handle.left_at !== null) continue;
     if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
   }
   return out;
