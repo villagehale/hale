@@ -64,7 +64,9 @@ export type SaidLinePurpose =
    * says what is true; the model words it. */
   | 'intro_reply'
   /** VIL-505: the line riding Hale's contact card (vCard MMS) at intake. */
-  | 'contact_card';
+  | 'contact_card'
+  /** VIL-156: the reply to a texted Google disconnect, from what Google confirmed. */
+  | 'connector_revoke';
 
 export type SaidLineFact =
   | string

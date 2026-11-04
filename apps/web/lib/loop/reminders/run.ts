@@ -539,8 +539,9 @@ export interface ReminderRunResult {
    * instead, and counted in `suppressed`. */
   heldQuietHours: number;
   /** VIL-563 · due reminders left 'scheduled' because the writer could not be reached (a
-   * provider error, a skill that did not load, or an unexpected throw). Checked again at
-   * the next slot, like any held row. Only a refused draft is dropped ('unwritten'). */
+   * provider fault that can clear, or a skill that did not load). Checked again at the
+   * next slot, like any held row. A refused draft is dropped ('unwritten'), and so is a
+   * request the provider rejected or our own bug ('compose_rejected'). */
   heldComposeUnavailable: number;
   sendEnabled: boolean;
 }
@@ -948,6 +949,28 @@ export async function runReminderCron(
             'reminder: compose unavailable, held for the next slot',
           );
           heldComposeUnavailable += batch.eventRefs.length;
+          continue;
+        }
+        if (composed?.status === 'rejected') {
+          console.error(
+            {
+              familyId: group.familyId,
+              offset: batch.offset,
+              events: batch.eventRefs.length,
+              cause: composed.cause,
+              httpStatus: composed.httpStatus,
+              errorType: composed.errorType,
+            },
+            'reminder: compose rejected, dropped',
+          );
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (!r) continue;
+            await drop(
+              { id: r.reminderId, familyId: r.familyId, offset: r.offset },
+              'compose_rejected',
+            );
+          }
           continue;
         }
         if (composed?.status !== 'written') {

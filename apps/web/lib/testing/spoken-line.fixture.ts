@@ -345,22 +345,6 @@ function render(
       if (facts.provider === 'gcal') return pick(language, 'Google Calendar', 'Google Agenda');
       if (facts.provider === 'gmail') return 'Gmail';
       return 'Google Drive';
-    case 'connector_revoke': {
-      const noun = facts.noun ?? '';
-      if (facts.outcome === 'revoke_failed') {
-        return fr(language)
-          ? `Quelque chose s'est mal passé chez moi avec votre ${noun} - rien n'a changé. Réessayez dans une minute.`
-          : `Something went wrong on my end with your ${noun} - nothing was changed. Try me again in a minute.`;
-      }
-      if (facts.outcome === 'not_connected') {
-        return fr(language)
-          ? `Hale n'a pas de clés pour votre ${noun} - rien à déconnecter. Demandez dans ce fil si vous voulez le lier.`
-          : `Hale has no keys for your ${noun} - nothing to disconnect. Ask in this thread if you want to link it.`;
-      }
-      return fr(language)
-        ? `Fait - votre ${noun} est déconnecté, Hale a supprimé ses clés. Google garde Hale jusqu'à ce que vous l'enleviez sur myaccount.google.com/permissions`
-        : `Done - your ${noun} is disconnected and Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions`;
-    }
     case 'provider_access': {
       const body = facts.body ?? '';
       if (asksAboutEyeCare(body)) return EYE;

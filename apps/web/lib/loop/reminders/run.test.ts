@@ -925,4 +925,40 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
     );
     error.mockRestore();
   });
+
+  it('drops the reminder once when Hale’s own request was rejected: suppressed compose_rejected, audited', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    composeText.mockResolvedValue({
+      status: 'rejected',
+      cause: 'bad_request',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'compose_rejected' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'compose_rejected' },
+    ]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldComposeUnavailable: 0 });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        familyId: 'fam-1',
+        offset: '-PT1H',
+        cause: 'bad_request',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
+      'reminder: compose rejected, dropped',
+    );
+    error.mockRestore();
+    info.mockRestore();
+  });
 });

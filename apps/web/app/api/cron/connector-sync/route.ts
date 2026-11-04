@@ -3,6 +3,7 @@ import { cronRoute } from '~/lib/cron/auth';
 import { connectorSyncDeps, runConnectorSync } from '~/lib/cron/connector-sync';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
+import { retryPendingGoogleRevocations } from '~/lib/integrations/google-disconnect';
 import { renewDueGooglePushWatches } from '~/lib/integrations/google-push-runtime';
 import { getQueue } from '~/lib/queue';
 
@@ -27,11 +28,17 @@ export const GET = cronRoute('connector-sync', async (req: Request) => {
   // The poll above is the fallback. This renews push channels when the flag is on
   // and names flag_off when it is not — it never replaces the sweep.
   const pushRenewal = await renewDueGooglePushWatches(database);
+  // A disconnect whose Google revoke got a transient answer is asked again here, through
+  // the same settle the disconnect ran (VIL-156).
+  const googleRevokeRetry = await retryPendingGoogleRevocations(database);
 
   // Kick the drain so freshly-enqueued events flow through the pipeline now rather
   // than waiting up to 60s for the next cron tick (the cron is the safety net).
   const origin = process.env.APP_URL ?? new URL(req.url).origin;
   after(() => kickDrain(origin));
 
-  return NextResponse.json({ ok: true, ...summary, pushRenewal }, { status: 200 });
+  return NextResponse.json(
+    { ok: true, ...summary, pushRenewal, googleRevokeRetry },
+    { status: 200 },
+  );
 });

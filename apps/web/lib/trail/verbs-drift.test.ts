@@ -274,7 +274,12 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_watch_granted',
     'proactive_watch_declined',
   ],
-  'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  'apps/web/lib/integrations/store.ts': ['integration_connected'],
+  // Google's answer to a disconnect's revoke: confirmed, or not (VIL-156).
+  'apps/web/lib/integrations/google-disconnect.ts': [
+    'integration_google_grant_revoked',
+    'integration_google_grant_revoke_failed',
+  ],
   // The placement and draft services forward the verb they already chose. The
   // literals above the insert are scanned directly; this line is the pass-through.
   'apps/web/lib/integrations/google-calendar-placement.ts': [

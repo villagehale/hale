@@ -281,15 +281,18 @@ export interface ReminderDraft {
 }
 
 /**
- * VIL-563 · what the writer produced, named. Only `refused` is terminal: the model
- * answered every attempt and none was usable. `unavailable` is about Hale's
- * infrastructure (the provider, the skill file, a bug), never about the reminder, so the
- * row stays scheduled and the next slot asks again.
+ * VIL-563 · what the writer produced, named. `refused` is terminal: the model answered
+ * every attempt and none was usable. `unavailable` is a fault that can clear without a
+ * code change (the provider, the skill file), so the row stays scheduled and the next
+ * slot asks again. VIL-586 · `rejected` is terminal too: the provider refused Hale's own
+ * request (`bad_request`) or our code threw (`unexpected`). The same request would fail
+ * the same way every slot, so it is asked once.
  */
 export type ReminderCompose =
   | { status: 'written'; draft: ReminderDraft }
   | { status: 'refused'; refusals: string[] }
-  | ({ status: 'unavailable'; cause: ReminderUnavailableCause } & ProviderErrorShape);
+  | ({ status: 'unavailable'; cause: ReminderUnavailableCause } & ProviderErrorShape)
+  | ({ status: 'rejected'; cause: ReminderRejectedCause } & ProviderErrorShape);
 
 /** What the provider said went wrong, without what it quoted: its HTTP status and its
  * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
@@ -308,14 +311,42 @@ function providerErrorShape(err: unknown): ProviderErrorShape {
   return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
 }
 
-export type ReminderUnavailableCause = ProviderFailureClass | 'skill_unavailable' | 'unexpected';
+export type ReminderUnavailableCause = ProviderFailureClass | 'skill_unavailable';
+
+export type ReminderRejectedCause = 'bad_request' | 'unexpected';
 
 const REMINDER_AGENT = 'reminder-voice';
 
 type Attempt =
   | { kind: 'written'; draft: ReminderDraft }
   | { kind: 'refused'; refusals: string[] }
-  | ({ kind: 'unavailable'; cause: ProviderFailureClass | 'unexpected' } & ProviderErrorShape);
+  | ({ kind: 'unavailable'; cause: ProviderFailureClass } & ProviderErrorShape)
+  | ({ kind: 'rejected'; cause: ReminderRejectedCause } & ProviderErrorShape);
+
+/** The 4xx statuses the SDK itself retries (request timeout, conflict): the provider's
+ * state, not Hale's request, so the same call can succeed later. */
+const RETRYABLE_CLIENT_STATUSES: ReadonlySet<number> = new Set([408, 409]);
+
+/** A thrown error's class. A 4xx the provider classifier only reads as `transient`
+ * (its fail-open default) is Hale's own request, refused, unless it is one the SDK
+ * retries; auth, usage limit, quota and billing keep their own classes. An APIError with
+ * no status (connection, timeout) is transient. Anything that is not an APIError is our
+ * bug. */
+function throwCause(err: unknown): ProviderFailureClass | ReminderRejectedCause {
+  if (!(err instanceof Anthropic.APIError)) return 'unexpected';
+  const failure = classifyProviderFailure(err);
+  const status = err.status;
+  if (
+    failure === 'transient' &&
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    !RETRYABLE_CLIENT_STATUSES.has(status)
+  ) {
+    return 'bad_request';
+  }
+  return failure;
+}
 
 /** A thrown error, sorted by who failed: the model answering unusably, the provider, or
  * our own code. Logged with the provider's status and error type only, so a 400 caused by
@@ -325,12 +356,14 @@ function classifyThrow(err: unknown, familyId: string, attempt: number): Attempt
     return { kind: 'refused', refusals: [`structured:${err.outcome}`] };
   }
   if (err instanceof ZodError) return { kind: 'refused', refusals: ['schema'] };
-  const cause = err instanceof Anthropic.APIError ? classifyProviderFailure(err) : 'unexpected';
+  const cause = throwCause(err);
   const shape = providerErrorShape(err);
   console.warn(
     { familyId, attempt, cause, ...shape, err: err instanceof Error ? err.name : 'unknown' },
     'reminder: compose failed',
   );
+  if (cause === 'bad_request' || cause === 'unexpected')
+    return { kind: 'rejected', cause, ...shape };
   return { kind: 'unavailable', cause, ...shape };
 }
 
@@ -409,6 +442,14 @@ export async function composeReminderTexts(
       status: result.kind === 'written' ? 'completed' : 'failed',
     });
     if (result.kind === 'written') return { status: 'written', draft: result.draft };
+    if (result.kind === 'rejected') {
+      return {
+        status: 'rejected',
+        cause: result.cause,
+        httpStatus: result.httpStatus,
+        errorType: result.errorType,
+      };
+    }
     if (result.kind === 'refused') refusals.push(...result.refusals);
     if (result.kind === 'unavailable') {
       unavailable = {
@@ -417,7 +458,7 @@ export async function composeReminderTexts(
         errorType: result.errorType,
       };
       // An incident class fails for every call until a person acts; a second is waste.
-      if (result.cause !== 'unexpected' && abortsSendWindow(result.cause)) break;
+      if (abortsSendWindow(result.cause)) break;
     }
   }
   if (unavailable !== null) return { status: 'unavailable', ...unavailable };

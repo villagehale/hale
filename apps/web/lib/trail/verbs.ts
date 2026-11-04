@@ -446,6 +446,8 @@ export const AUDIT_VERBS = [
   'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
+  'integration_google_grant_revoked',
+  'integration_google_grant_revoke_failed',
   'integration.google_calendar_written',
   'integration.google_calendar_failed',
   'integration.gmail_draft_written',
@@ -1646,9 +1648,23 @@ const VERBS: Record<AuditVerb, Verb> = {
       'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
     family: 'done',
   },
+  // Claims only the disconnect: one token may still wait for Google's answer (VIL-156),
+  // and the two rows below say when it is gone.
   integration_revoked: {
-    sentence: 'you disconnected an account and Hale deleted its keys',
+    sentence: 'you disconnected an account and Hale stopped using its keys',
     family: 'done',
+  },
+  // Third person and role-neutral: Google's answer is Hale's own record, and it also
+  // lands on the trail of a parent whose co-parent's account it was.
+  integration_google_grant_revoked: {
+    sentence:
+      'Google confirmed it removed Hale’s access to a disconnected account, and Hale deleted its last copy of the key',
+    family: 'done',
+  },
+  integration_google_grant_revoke_failed: {
+    sentence:
+      'Google did not confirm it removed Hale’s access to a disconnected account; Hale deleted its last copy of the key',
+    family: 'problem',
   },
   'integration.google_calendar_written': {
     sentence: 'added it to your Google Calendar',
