@@ -40,7 +40,7 @@ import {
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { FOUNDER_PAIR_SESSION_IDS, SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
+import { SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
 
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
@@ -188,11 +188,6 @@ export async function runFirstReplyRecoveryCron(
 
   const owed: Array<FirstReplyCandidate & { recovery: RecoveryView }> = [];
   for (const row of await loadFirstReplyCandidates(database, now)) {
-    if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
-      await claimFirstReplyRecovery(database, row.id, row.state, now);
-      result.skipped += 1;
-      continue;
-    }
     const recovery = decodeIntakeForRecovery(row.dataEncrypted);
     if (
       !firstReplyRecoveryEligible({
