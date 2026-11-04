@@ -171,6 +171,24 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
     expect(await audits()).toEqual([]);
   });
 
+  it('holds the reminder through a 429 rate limit: quota clears without a code change', async () => {
+    const rateLimited = () =>
+      Anthropic.APIError.generate(
+        429,
+        { type: 'error', error: { type: 'rate_limit_error', message: 'Rate limited' } },
+        undefined,
+        { 'request-id': 'req_probe' },
+      );
+    const result = await runReminderCron(
+      db.database,
+      deps(client(rateLimited(), rateLimited())),
+      EVENING_TICK,
+    );
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
+    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: null });
+    expect(await audits()).toEqual([]);
+  });
+
   it('drops the reminder after ONE call when the provider rejects Hale’s request (VIL-586)', async () => {
     const badRequest = Anthropic.APIError.generate(
       400,

@@ -440,6 +440,28 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
     },
   );
 
+  it.each([
+    [401, 'authentication_error', 'invalid x-api-key', 'auth', 1],
+    [403, 'permission_error', 'Your API key does not have permission', 'auth', 1],
+    [429, 'rate_limit_error', 'Number of requests has exceeded your rate limit', 'quota', 2],
+    [
+      400,
+      'invalid_request_error',
+      'Your credit balance is too low to access the Anthropic API.',
+      'billing',
+      1,
+    ],
+  ])(
+    'a %i %s is %s, which clears without a code change: held as unavailable, never rejected',
+    async (status, type, message, cause, calls) => {
+      const failure = () => apiError(status, type, message);
+      const { outcome, runs, create } = await compose(failure(), failure());
+      expect(outcome).toEqual({ status: 'unavailable', cause, httpStatus: status, errorType: type });
+      expect(create).toHaveBeenCalledTimes(calls);
+      expect(runs).toHaveLength(calls);
+    },
+  );
+
   it('positive control: an overload on both attempts stays unavailable, with a run per attempt', async () => {
     const { outcome, runs, create } = await compose(OVERLOADED(), OVERLOADED());
     expect(outcome).toEqual({
