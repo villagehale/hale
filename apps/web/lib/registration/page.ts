@@ -193,7 +193,8 @@ export function registrationPageUrl(raw: string, base?: string): RegistrationUrl
   if (isNonPublicHost(url)) return refuse('non_public_host');
   if (href.length > REGISTRATION_COURSE_URL_MAX_CHARS) return refuse('url_too_long');
   // Last on purpose: only a link that would otherwise be fetched lands here.
-  if ([...url.searchParams.keys()].some(isAmbiguousKey)) {
+  // Fragment and hash-route keys too: an OAuth callback can put its `code` there.
+  if ([...url.searchParams.keys(), ...fragmentKeys(url.hash)].some(isAmbiguousKey)) {
     return refuse('ambiguous_query_key');
   }
   return { outcome: 'allowed', url: href };

@@ -62,6 +62,10 @@ describe('registration page network boundary', () => {
     'https://example.com/a?key=4',
     'https://example.com/a?ticket=7',
     'https://example.com/a?sid=12',
+    // An OAuth callback can carry its one-time code in the fragment or a hash route.
+    'https://example.com/a#code=abc',
+    'https://example.com/a#/cb?code=x',
+    'https://example.com/a#state=1&session=fall',
   ])('names %s an ordinary link it still refuses, never a credential link', (url) => {
     expect(registrationPageUrl(url)).toEqual({ outcome: 'refused', reason: 'ambiguous_query_key' });
   });
