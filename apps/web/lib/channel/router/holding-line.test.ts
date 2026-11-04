@@ -1,13 +1,19 @@
+import { readFileSync } from 'node:fs';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { structuredReply } from '~/lib/testing/structured-reply';
+import { isStage, structuredReply } from '~/lib/testing/structured-reply';
+import { HOLDING_LINE_JUDGE_TOOL } from './holding-line-judge';
 
-const skillLoad = vi.hoisted(() => ({ error: null as Error | null }));
+const skillLoad = vi.hoisted(() => ({
+  error: null as Error | null,
+  failName: null as string | null,
+}));
 vi.mock('~/lib/cron/skill', async (actual) => {
   const real = await actual<typeof import('~/lib/cron/skill')>();
   return {
     ...real,
     loadCronSkill: async (name: string) => {
+      if (skillLoad.failName === name) throw new Error('echo: her daughter is wheezing');
       if (skillLoad.error) throw skillLoad.error;
       return real.loadCronSkill(name);
     },
@@ -37,14 +43,25 @@ describe('what may not be sent as a holding line', () => {
   it('passes the shape the skill asks for', () => {
     expect(refusals("I'm on it - your answer is coming.")).toEqual([]);
     expect(refusals("J'y travaille, la réponse arrive.")).toEqual([]);
+    expect(refusals('我在处理，答复会来。')).toEqual([]);
+  });
+
+  // A time or an app is meaning, in any language. These used to be English patterns.
+  it.each([
+    ['an English time', "I'm on it and will have it shortly."],
+    ['an English app', "I'm on it, your week is in the app."],
+    ['a French time', "Je m'en occupe, ce sera bientôt prêt."],
+    ['a French app', "Je m'en occupe. C'est dans l'application."],
+    ['a Chinese time', '我马上就回你。'],
+    ['a Chinese website', '详情在网站上。'],
+  ])('does not decide %s by pattern', (_name, body) => {
+    expect(refusals(body)).toEqual([]);
   });
 
   it.each([
     ['nothing at all', '', 'empty'],
     ['a number', "I'm on it, give me 2 minutes.", 'carries_number'],
-    ['a promised time', "I'm on it and will have it shortly.", 'promised_a_time'],
     ['a link', "I'm on it, see https://villagehale.com meanwhile.", 'carries_link'],
-    ['an app pointer', "I'm on it, your week is in the app.", 'points_at_the_app'],
   ])('refuses %s', (_name, body, reason) => {
     expect(refusals(body)).toContain(reason);
   });
@@ -72,13 +89,39 @@ describe('the request the model gets', () => {
   });
 });
 
-function clientSaying(lines: string[], seen: unknown[] = []): () => AgentClient {
+type ScriptedJudge =
+  | { promises_a_time: 'yes' | 'no'; points_at_an_app: 'yes' | 'no' }
+  | 'throw'
+  | 'garbage';
+
+function userText(request: unknown): string {
+  const content = (request as { messages?: { content?: unknown }[] }).messages?.[0]?.content;
+  return typeof content === 'string' ? content : '';
+}
+
+function clientSaying(
+  lines: string[],
+  seen: unknown[] = [],
+  judge: ScriptedJudge | ((line: string) => ScriptedJudge) = {
+    promises_a_time: 'no',
+    points_at_an_app: 'no',
+  },
+): () => AgentClient {
   const queue = [...lines];
   return () =>
     ({
       messages: {
         create: vi.fn(async (request: unknown) => {
           seen.push(request);
+          if (isStage(request, HOLDING_LINE_JUDGE_TOOL, 'promises_a_time')) {
+            const script = typeof judge === 'function' ? judge(userText(request)) : judge;
+            if (script === 'throw') throw new Error('echo: her daughter is wheezing');
+            const verdict =
+              script === 'garbage'
+                ? { reason: '', promises_a_time: 'maybe', points_at_an_app: 'no' }
+                : { reason: 'scripted', ...script };
+            return structuredReply(request, HOLDING_LINE_JUDGE_TOOL, verdict);
+          }
           return structuredReply(request, 'holding_line', { line: queue.shift() ?? '' });
         }),
       },
@@ -95,18 +138,79 @@ describe('createHoldingLine', () => {
     const seen: unknown[] = [];
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
     const outcome = await createHoldingLine(
-      clientSaying(
-        ['On it, back shortly with 2 options.', 'On it, back shortly with 2 options.'],
-        seen,
-      ),
+      clientSaying(['On it, back in 2.', 'On it, back in 2.'], seen),
     ).compose('en');
     expect(outcome).toEqual({ status: 'unavailable', reason: 'gate_exhausted' });
     expect(seen).toHaveLength(MAX_COMPOSE_ATTEMPTS);
+    expect(
+      seen.some((request) => isStage(request, HOLDING_LINE_JUDGE_TOOL, 'promises_a_time')),
+    ).toBe(false);
     const second = seen[1] as { messages: { content: string }[] };
-    expect(JSON.parse(second.messages[0]?.content ?? '{}').rejected[0].problems).toEqual(
-      expect.arrayContaining(['promised_a_time', 'carries_number']),
-    );
+    expect(JSON.parse(second.messages[0]?.content ?? '{}').rejected[0].problems).toEqual([
+      'carries_number',
+    ]);
     quiet.mockRestore();
+  });
+
+  it('asks the judge before a mechanically clean line goes out, and sends that line', async () => {
+    const seen: unknown[] = [];
+    const outcome = await createHoldingLine(clientSaying(["I'm on it."], seen)).compose('en');
+    expect(outcome).toEqual({ status: 'composed', line: "I'm on it." });
+    const judged = seen.filter((request) =>
+      isStage(request, HOLDING_LINE_JUDGE_TOOL, 'promises_a_time'),
+    );
+    expect(judged).toHaveLength(1);
+    expect(JSON.parse(userText(judged[0] ?? {})).line).toBe("I'm on it.");
+  });
+
+  it('feeds a judged time or app back, and sends nothing when the gate never clears', async () => {
+    const seen: unknown[] = [];
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const outcome = await createHoldingLine(
+      clientSaying(["Je m'en occupe, ce sera bientôt prêt.", '详情在网站上。'], seen, (user) =>
+        user.includes('网站')
+          ? { promises_a_time: 'no', points_at_an_app: 'yes' }
+          : { promises_a_time: 'yes', points_at_an_app: 'no' },
+      ),
+    ).compose('fr');
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'gate_exhausted' });
+    expect(outcome).not.toHaveProperty('line');
+    const writers = seen.filter((request) => isStage(request, 'holding_line', 'line'));
+    expect(writers).toHaveLength(MAX_COMPOSE_ATTEMPTS);
+    expect(JSON.parse(userText(writers[1] ?? '{}')).rejected[0].problems).toEqual([
+      'promised_a_time',
+    ]);
+    expect(JSON.stringify(outcome)).not.toContain('网站');
+    quiet.mockRestore();
+  });
+
+  it('sends nothing when the judge errors, and does not substitute a line', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const seen: unknown[] = [];
+    const outcome = await createHoldingLine(clientSaying(["I'm on it."], seen, 'throw')).compose(
+      'en',
+    );
+    expect(outcome).toEqual({ status: 'unavailable', reason: 'judge_failed' });
+    expect(outcome).not.toHaveProperty('line');
+    expect(seen.filter((request) => isStage(request, 'holding_line', 'line'))).toHaveLength(1);
+    expect(JSON.stringify(quiet.mock.calls)).not.toContain("I'm on it.");
+    expect(JSON.stringify(quiet.mock.calls)).not.toContain('wheezing');
+    quiet.mockRestore();
+  });
+
+  it('sends nothing when the judge skill cannot be loaded', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    skillLoad.failName = 'holding-line-judge';
+    try {
+      const outcome = await createHoldingLine(clientSaying(["I'm on it."])).compose('en');
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'judge_unavailable' });
+      expect(quiet.mock.calls).toEqual([
+        [{ reason: 'judge_unavailable', detail: undefined }, 'holding line: no line composed'],
+      ]);
+    } finally {
+      skillLoad.failName = null;
+      quiet.mockRestore();
+    }
   });
 
   it('names a missing client rather than throwing', async () => {
@@ -167,6 +271,15 @@ function composer(line: string | null): HoldingLineComposer & { calls: number } 
   };
   return c;
 }
+
+describe('the composer does not keep an English time or app pattern', () => {
+  it('names neither pattern', () => {
+    const src = readFileSync(new URL('./holding-line.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/PROMISED_TIME|APP_POINTER/);
+    expect(src).not.toMatch(/\b(shortly|momentarily|jiffy|dashboard|villagehale)\b/i);
+    expect(src).not.toMatch(/\w+\|\w+/);
+  });
+});
 
 describe('armHoldingLine — one line, only on a slow turn', () => {
   beforeEach(() => {

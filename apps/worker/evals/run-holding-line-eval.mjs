@@ -15,9 +15,11 @@
 //   node --env-file=../../.env evals/run-holding-line-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-holding-line-eval.mjs --cached-only                    # CI: replay only
 //
-// THE HARD ZEROS: an unsendable body (the composer's own refusals()), and too few distinct
-// lines across the plain draws - a composed line that never varies is a constant with an
-// API bill. Everything else is the judge's bar (JUDGE_MIN per draw).
+// THE HARD ZEROS: an unsendable body (the composer's own mechanical refusals(): empty, a
+// link, a digit), and too few distinct lines across the plain draws - a composed line that
+// never varies is a constant with an API bill. A promised time or an app/website is meaning,
+// in any language, and is the holding-line judge eval (run-holding-line-judge-eval.mjs),
+// not a pattern here. Everything else is the quality judge's bar (JUDGE_MIN per draw).
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -114,19 +116,17 @@ function flatten(text) {
   return out.replace(/\s+/g, ' ').trim();
 }
 
-// Mirrors `refusals` in holding-line.ts.
+// Mirrors the MECHANICAL half of `refusals` in holding-line.ts. Time and app/website
+// left this list (VIL-540): they are the holding-line judge, not an English pattern.
+// The quality-judge prompt below still says times are verified mechanically. That
+// sentence is part of the cached request and is not edited here.
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const PROMISED_TIME =
-  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
-const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
 
 function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
-  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
-  if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
 
