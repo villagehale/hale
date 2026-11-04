@@ -586,9 +586,45 @@ describe('one occasion in one thread is told once', () => {
       'superseded',
     ]);
     expect(h.transport.sent).toHaveLength(2);
+    // Named in the log by family id alone: no Gmail message id beside it.
+    expect(console.info).toHaveBeenCalledWith(
+      { familyId: family.familyId },
+      'email alert: older than what this thread last told',
+    );
     // The control: a newer reminder after the cancellation is the class back on, and is told.
     await expect(sweep(h, [inbound('k4', 't-swim', 30)]).then(alerts)).resolves.toEqual(['sent']);
     expect(h.transport.sent).toHaveLength(3);
+  });
+
+  it('T4j: a superseded cancellation leaves the booking of a class told back on open', async () => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+    const on = (messageId: string) =>
+      classified({ kind: 'new_event', title: 'Swim Level 2', newTime: SATURDAY }, messageId);
+    const off = (messageId: string) =>
+      classified(
+        { kind: 'cancellation', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
+        messageId,
+      );
+    const receipt = classified({ kind: 'booking_confirmation', title: 'Swim Level 2' }, 'r1');
+    const h = harness({ k1: on('k1'), k2: off('k2'), k3: on('k3'), r1: receipt });
+    const h2 = harness({ k5: off('k5'), k6: off('k6') });
+    const one = (harnessed: Harness, messageId: string, threadId: string, minute: number) =>
+      sweep(harnessed, [inbound(messageId, threadId, minute)]).then(alerts);
+
+    await expect(one(h, 'k1', 't-swim', 10)).resolves.toEqual(['sent']);
+    await expect(one(h, 'k2', 't-swim', 20)).resolves.toEqual(['sent']);
+    await expect(one(h, 'k3', 't-swim', 30)).resolves.toEqual(['sent']);
+    await expect(one(h, 'r1', 't-receipt', 35)).resolves.toEqual(['sent']);
+    // A cancellation older than the reinstatement, read late: not news, and it changes nothing.
+    await expect(one(h2, 'k5', 't-swim', 25)).resolves.toEqual(['superseded']);
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      null,
+    ]);
+    // The control: a cancellation newer than the reinstatement is told and closes the booking.
+    await expect(one(h2, 'k6', 't-swim', 40)).resolves.toEqual(['sent']);
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      NOW,
+    ]);
   });
 
   it('T4g: another date told in the same thread does not make a repeat of this one news', async () => {

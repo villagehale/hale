@@ -175,7 +175,8 @@ export const EMAIL_ALERT_OUTCOMES = [
   /** Live pass only: no thread to key the alert on. No classifier call, no alert. */
   'no_thread_id',
   /** A NEWER email in this thread about the same instant has already been told, so this
-   * older one is not news: the parent's last word follows the provider's last word. */
+   * older one is not news: the parent's last word follows the provider's last word. It
+   * writes nothing: no booking, no closer. */
   'superseded',
   /** An earlier text for this occasion in this thread failed. Its claim stays held (the
    * ledger is at-most-once per key), so nothing is sent. */
@@ -671,8 +672,11 @@ export async function alertParentForEmail(
     messageId,
     receivedAt,
   );
+  // OLDER THAN THE THREAD'S LAST WORD: the provider has since said something else about this
+  // instant, so this email changes nothing: no closer, no booking, no sweep cancellation.
   if (told === 'superseded') {
-    console.info({ familyId, messageId }, 'email alert: older than what this thread last told');
+    console.info({ familyId }, 'email alert: older than what this thread last told');
+    return { alert: 'superseded', booking: null, going: null };
   }
   if (told !== null) {
     await closeIfCancelled();
