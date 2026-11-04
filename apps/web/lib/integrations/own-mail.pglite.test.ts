@@ -1090,6 +1090,19 @@ describe('a cancellation the parent was told outlives an older receipt read late
     ]);
   });
 
+  it('T25g: with no sender on either email, the class is still read by its title, as the closer reads it', async () => {
+    const h = harness({ c1: off('c1'), r1: receipt('r1') });
+    const unsigned = (envelope: GmailAlertEnvelope) => ({ ...envelope, from: '' });
+    await expect(sweep(h, [unsigned(inbound('c1', 't-swim', 20))]).then(alerts)).resolves.toEqual([
+      'sent',
+    ]);
+
+    await expect(sweep(h, [unsigned(inbound('r1', 't-swim', 10))])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([minute(20)]);
+  });
+
   it('T25f: a told cancellation of another class at the same instant leaves a late receipt open', async () => {
     const h = harness({
       c1: off('c1', 'Swim Level 1'),

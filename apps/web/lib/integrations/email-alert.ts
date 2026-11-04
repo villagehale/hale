@@ -429,11 +429,12 @@ async function occasionClaim(
 }
 
 /** The class an email is about, by the folds the cancellation closer matches a booking on:
- * the sender's domain and the canonical title. `null` names no class, and a cancellation
- * that names no class closes nothing. */
+ * the sender's domain (empty when the email had no sender, which the closer matches too) and
+ * the canonical title. `null` names no class, and a cancellation that names no class closes
+ * nothing. */
 function classIdentity(providerHost: string, title: string): string | null {
   const canonical = canonicalBookingTitle(title);
-  if (providerHost === '' || canonical === '') return null;
+  if (canonical === '') return null;
   return `${providerHost}|${canonical}`;
 }
 
