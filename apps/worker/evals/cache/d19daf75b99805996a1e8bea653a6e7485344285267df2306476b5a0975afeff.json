@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Fall Programs & Winter Camps",
+    "evidence": "Fall Programs & Winter Camps Registration. View programs August 4 and register August 11.",
+    "year_evidence": null,
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The page attaches no resident or non-resident label to the registration opening: \"register August 11\". The preview date is \"View programs August 4\".",
+    "preview": {
+      "quote": "August 4",
+      "date_text": "August 4",
+      "time_text": null,
+      "date": null,
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "August 11",
+      "date_text": "August 11",
+      "time_text": null,
+      "date": null,
+      "time": null
+    },
+    "note": "The page prints the dates August 4 and August 11 for \"Fall Programs & Winter Camps\" but never states a year, so the dates are left without a year. No times are published.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.7
+  },
+  "latencyMs": 4590
+}

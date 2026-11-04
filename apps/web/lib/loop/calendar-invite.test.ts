@@ -49,9 +49,9 @@ vi.mock('~/lib/db', () => ({ db: () => routeDb.current }));
  * cannot be emailed says so in words the executor writes down, and never by omission.
  */
 
-const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in Toronto — outside quiet hours
+const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in New York — outside quiet hours
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PHONE = '+16475550123';
+const PHONE = '+12025550123';
 
 let db: TestDb;
 let sms: ReturnType<typeof fakeChannel>;
@@ -234,10 +234,10 @@ describe('the tap-to-add link a text-only family gets', () => {
     await clearEmail(seeded.parentUserId);
     await enrollSms(seeded.familyId, seeded.parentUserId);
     // Timezone comes from the postal code at signup now (VIL-413); this family's is
-    // Toronto, which is what the composed "10:30 AM" below is read in.
+    // New York, which is what the composed "10:30 AM" below is read in.
     await db.database
       .update(schema.users)
-      .set({ timezone: 'America/Toronto' })
+      .set({ timezone: 'America/New_York' })
       .where(eq(schema.users.id, seeded.parentUserId));
     return seeded;
   }
@@ -383,7 +383,14 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(cancelCalls).toEqual([{ summary: 'Swim class', when: 'Thu, Jul 23 at 10:30 AM' }]);
+    expect(cancelCalls).toEqual([
+      {
+        summary: 'Swim class',
+        when: 'Thu, Jul 23 at 10:30 AM',
+        startsAt: new Date('2026-07-23T14:30:00.000Z'),
+        timeZone: 'America/New_York',
+      },
+    ]);
     expect(lastText()).toBe(
       'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
     );
@@ -684,7 +691,7 @@ describe('the tap-to-add link a text-only family gets', () => {
   async function textingCoParent(familyId: string): Promise<string> {
     const [user] = await db.database
       .insert(schema.users)
-      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/Toronto' })
+      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/New_York' })
       .returning({ id: schema.users.id });
     const userId = user?.id as string;
     await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'co_parent' });
@@ -1105,5 +1112,107 @@ describe('the tap-to-add link a text-only family gets', () => {
     });
 
     expect(sentTranscript()).toContain('Maya \u2014 Preschool swim lessons - Level 2 (Saturdays)');
+  });
+
+  async function setZone(userId: string, timezone: string): Promise<void> {
+    await db.database.update(schema.users).set({ timezone }).where(eq(schema.users.id, userId));
+  }
+
+  describe('VIL-588 · a parent zone Intl cannot read defers that parent, and the sender returns', () => {
+    for (const zone of ['Not/A_Zone', '']) {
+      it(`invite, zone ${JSON.stringify(zone)}: that parent is time_unjudged, the co-parent gets the link`, async () => {
+        const { familyId, parentUserId } = await textOnlyFamily();
+        const sam = await textingCoParent(familyId);
+        await setZone(parentUserId, zone);
+        const familyEventId = await seedPlacement(familyId);
+
+        const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+        expect(report).toEqual({
+          status: 'reported',
+          parents: [
+            { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'time_unjudged' },
+            { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+          ],
+        });
+        expect(inviteCalls.map((call) => call.timeZone)).toEqual(['America/New_York']);
+        // A long scripted line goes out in parts: every part is the co-parent's.
+        expect(new Set(sms.calls.map((call) => call.userId))).toEqual(new Set([sam]));
+      });
+
+      it(`cancel, zone ${JSON.stringify(zone)}: that parent is time_unjudged, the co-parent is told`, async () => {
+        const { familyId, parentUserId } = await textOnlyFamily();
+        const sam = await textingCoParent(familyId);
+        const familyEventId = await seedPlacement(familyId);
+        await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+        await setZone(parentUserId, zone);
+        await softDelete(familyEventId);
+        const sentBefore = sms.calls.length;
+
+        const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+        expect(report).toEqual({
+          status: 'reported',
+          parents: [
+            { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'time_unjudged' },
+            { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+          ],
+        });
+        expect(cancelCalls.map((call) => call.timeZone)).toEqual(['America/New_York']);
+        expect(sms.calls.slice(sentBefore).map((call) => call.userId)).toEqual([sam]);
+      });
+    }
+
+    it('positive control: both parents in a real zone are both texted the link and the cancel', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const sam = await textingCoParent(familyId);
+      const familyEventId = await seedPlacement(familyId);
+
+      const invite = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+      await softDelete(familyEventId);
+      const cancel = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+      const both = {
+        status: 'reported',
+        parents: [
+          { parentUserId, channel: 'sms', outcome: 'sent' },
+          { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+        ],
+      };
+      expect(invite).toEqual(both);
+      expect(cancel).toEqual(both);
+    });
+  });
+
+  it('VIL-588 · the cancel message carries only what its renderer sends: the start and the line', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+    const payloads: Record<string, unknown>[] = [];
+    const recording = createCalendarInviteSender(db.database, {
+      channels: channels(),
+      renderer: {
+        render(message, channel, nameLevel) {
+          payloads.push(message.payload);
+          return loopTemplateRenderer.render(message, channel, nameLevel);
+        },
+      },
+      inviteVoice: { compose: async () => ({ status: 'deferred', reason: 'model_failed' }) },
+      cancelVoice: { compose: async () => cancelOutcome },
+      now: () => NOON,
+    });
+
+    await recording.send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(payloads).toEqual([
+      {
+        when: 'Thu, Jul 23 at 10:30 AM',
+        line: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+      },
+    ]);
+    expect(lastText()).toBe(
+      'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+    );
   });
 });

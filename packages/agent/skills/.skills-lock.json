@@ -45,7 +45,7 @@
   },
   "calendar-invite-time.md": {
     "file": "calendar-invite-time.md",
-    "sha256": "35c865876e1573a180b14a49d775a3170839936cf3daac858067ce0fcba86924"
+    "sha256": "f171de15fb55c9eb5ecf5b791c9116fd560fc31655ae355fb1207f9bd61c86ad"
   },
   "calendar-invite-voice.md": {
     "file": "calendar-invite-voice.md",
@@ -449,7 +449,7 @@
   },
   "verify-registration-window.md": {
     "file": "verify-registration-window.md",
-    "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
+    "sha256": "a3e769bf539465457a5b9ce040d70fdef85663e049003cfe3830072771c54155"
   },
   "voice-register.md": {
     "file": "voice-register.md",

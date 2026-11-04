@@ -1,11 +1,14 @@
+import { timezoneForIntakePostal } from '~/lib/channel/intake/postal-zone';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
+import { localDate } from '~/lib/memory/workstream-time';
 import { cityRecLine, districtPostal } from './city-line';
 import {
   JACK_OF_SPORTS_PAGE,
   TORONTO_REC_PORTAL,
   TORONTO_WAITLIST_HOURS,
   YMCA_PORTAL,
+  YMCA_SWIM_OPENS,
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
 import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './match';
@@ -19,8 +22,9 @@ import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './matc
  * What is NOT here any more: a city's clock. Every dated city hello rotted in place
  * (VIL-334, and then the whole GTA set a cycle later), so a town's line is DERIVED
  * from the verified registration dataset and `now` in {@link cityRecLine}. This file
- * keeps the facts that outlive a cycle — the portals, the waitlist mechanics, the
- * YMCA lock — and hands the dates to the dataset.
+ * keeps the facts that outlive a cycle — the portals, the waitlist mechanics — and
+ * hands the dates to the dataset. The one date it still holds, the Y's opening morning,
+ * is data that stops being handed out once that day has passed ({@link ymcaSwimFact}).
  *
  * One link, no ladder on the first Toronto rec/swim answer. Follow only
  * if they need waitlist/wishlist/two phones. eFun named only if they said eFun. YMCA
@@ -36,7 +40,26 @@ export const TORONTO_FOLLOW = `Wishlist can look frozen, so wait, don't mash ref
 
 export const EFUN_GONE = `eFun is gone. Rec is ${TORONTO_REC_PORTAL} now.`;
 
-export const YMCA_FIRST = `YMCA GTA swim opened Aug 27 at 9:00 a.m. Sign in at ${YMCA_PORTAL}.`;
+/** A calendar date as the Y published it; no zone, so it is read in UTC as a bare date. */
+const PUBLISHED_DATE = new Intl.DateTimeFormat('en-CA', {
+  weekday: 'long',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/**
+ * The Y's opening morning, while it is still on or after the family's own today. Once
+ * the day has passed it is not a fact about anything a parent can do, so there is none
+ * and the coach answers (it can look the next session up). No zone known: Hale cannot
+ * tell the day is still ahead, so it does not say it is.
+ */
+function ymcaSwimFact(now: Date, timeZone: string | null): string | null {
+  if (timeZone === null || localDate(now, timeZone) > YMCA_SWIM_OPENS.date) return null;
+  const day = PUBLISHED_DATE.format(new Date(`${YMCA_SWIM_OPENS.date}T00:00:00Z`));
+  return `YMCA GTA swim registration opens ${day} at ${YMCA_SWIM_OPENS.clock} Sign in at ${YMCA_PORTAL}.`;
+}
 
 export const YMCA_FOLLOW =
   'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.';
@@ -45,7 +68,8 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
 
 /**
  * The topic a parent asked about, answered as of `now`. A city topic reads the
- * dataset; everything else is a reviewed constant that no calendar can age.
+ * dataset, the Y's opening morning reads the family's today; everything else is a
+ * reviewed constant that no calendar can age.
  */
 type RecMorningLine = (
   now: Date,
@@ -67,7 +91,7 @@ export const REC_MORNING_FACTS: Record<RecMorningTopic, RecMorningLine> = {
   toronto_waitlist: () => TORONTO_FOLLOW,
   toronto_wishlist: () => TORONTO_FOLLOW,
   toronto_efun: () => EFUN_GONE,
-  ymca_gta_swim: () => YMCA_FIRST,
+  ymca_gta_swim: (now, where) => ymcaSwimFact(now, where.timeZone),
   ymca_follow: () => YMCA_FOLLOW,
   brampton_swim: (now) => cityRecLine('brampton', now, 'swim'),
   brampton_rec: (now) => cityRecLine('brampton', now, 'rec_program'),
@@ -127,6 +151,23 @@ export function recMorningReturnLine(pendingAsk: string): string {
 }
 
 /**
+ * Mid-signup there is no family row, so no stored zone yet. The zone is the one intake
+ * derives for the parent from this same postal (intake/derive.ts); no postal, no zone.
+ */
+function intakeWhere(input: {
+  postal?: string | null;
+  city?: string | null;
+}): RecMorningWhere | null {
+  const postal = input.postal ?? null;
+  const fsa = postal === null ? null : postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  return resolveRecMorningWhere({
+    city: input.city ?? null,
+    postal,
+    timeZone: fsa === null ? null : timezoneForIntakePostal('CA', fsa),
+  });
+}
+
+/**
  * Mid-signup: the rec-morning answer plus Hale's outstanding ask. Null when the parent's text was not a
  * rec-morning question.
  */
@@ -137,11 +178,7 @@ export function recMorningIntakeReply(input: {
   postal?: string | null;
   city?: string | null;
 }): string | null {
-  const sms = recMorningReply(
-    input.parentWords,
-    input.now ?? new Date(),
-    resolveRecMorningWhere({ city: input.city ?? null, postal: input.postal ?? null }),
-  );
+  const sms = recMorningReply(input.parentWords, input.now ?? new Date(), intakeWhere(input));
   if (sms === null) return null;
   const joined = [sms, recMorningReturnLine(input.pendingAsk)]
     .filter((part) => part.length > 0)
@@ -204,7 +241,7 @@ export async function writeRecMorningIntakeReply(
   const text = await writeRecMorningReply(
     input.parentWords,
     input.now ?? new Date(),
-    resolveRecMorningWhere({ city: input.city ?? null, postal: input.postal ?? null }),
+    intakeWhere(input),
     input.language ?? null,
     write,
   );

@@ -229,6 +229,27 @@ async function nextInviteKey(
 }
 
 /**
+ * The start label in this parent's own zone, or null when Intl cannot read the zone
+ * (empty, or no IANA name). That parent's text is then deferred as `time_unjudged`, the
+ * voices' own name for an unreadable zone, and the family's other parents still get theirs.
+ * Only the error's name is logged: the message repeats the stored zone.
+ */
+function whenLabelInZone(startsAt: Date, timeZone: string): string | null {
+  try {
+    return inviteWhenLabel(startsAt, timeZone);
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    console.error(
+      { reason: 'time_unjudged', detail: err.name },
+      'calendar invite: parent zone unreadable, nothing sent',
+    );
+    return null;
+  }
+}
+
+const ZONE_UNREADABLE = { outcome: 'compose_deferred', reason: 'time_unjudged' } as const;
+
+/**
  * Text one parent the placement as a tap-to-add link.
  *
  * The line is the model's (calendar-invite-voice.ts). A deferred compose sends nothing
@@ -262,7 +283,8 @@ async function textOneParent(
   // does not skip the new part 0 when that is where the link now sits.
   const dedupeKey = await nextInviteKey(database, job.familyId, parent.userId, baseKey);
 
-  const when = inviteWhenLabel(composed.startsAt, parent.timezone);
+  const when = whenLabelInZone(composed.startsAt, parent.timezone);
+  if (when === null) return { parentUserId: parent.userId, channel: 'sms', ...ZONE_UNREADABLE };
   const voiced = await voice.compose({
     summary: composed.summary,
     when,
@@ -413,8 +435,14 @@ async function cancelOneParent(
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
   }
 
-  const when = inviteWhenLabel(event.startsAt, parent.timezone);
-  const voiced = await voice.compose({ summary: event.summary, when });
+  const when = whenLabelInZone(event.startsAt, parent.timezone);
+  if (when === null) return { parentUserId: parent.userId, channel: 'sms', ...ZONE_UNREADABLE };
+  const voiced = await voice.compose({
+    summary: event.summary,
+    when,
+    startsAt: event.startsAt,
+    timeZone: parent.timezone,
+  });
   // No fixed fallback: a deferred compose sends nothing and is named back, so the
   // cancellation is never a canned line (Barton: the model writes it, or nothing goes).
   if (voiced.status !== 'composed') {
@@ -425,7 +453,7 @@ async function cancelOneParent(
       reason: voiced.reason,
     };
   }
-  const payload: CalendarCancelSmsPayload = { summary: event.summary, when, line: voiced.body };
+  const payload: CalendarCancelSmsPayload = { when, line: voiced.body };
   const message: LoopMessage = {
     templateKey: CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
     familyId: job.familyId,

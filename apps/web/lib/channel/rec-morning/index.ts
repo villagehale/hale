@@ -10,7 +10,6 @@ export {
   EFUN_GONE,
   REC_MORNING_FACTS,
   TORONTO_FOLLOW,
-  YMCA_FIRST,
   YMCA_FOLLOW,
   recMorningBody,
   recMorningIntakeReply,

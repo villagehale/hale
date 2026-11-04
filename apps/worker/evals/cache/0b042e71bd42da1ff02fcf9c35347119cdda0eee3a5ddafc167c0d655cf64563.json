@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text is in French and says 'Cours de natation' (swim class), which is a translation of the summary 'Swim class', so it names this event. It states Thursday 23 July at 10 h 30. The start is Thursday July 23, 2026 at 10:30. Day, weekday, hour and minute (10 h 30 means 10:30, with 30 minutes stated) all agree with the start. The text offers a link to add the event, so it states the start and no different day or time.",
+    "match": true
+  },
+  "latencyMs": 2255
+}

@@ -18,7 +18,6 @@ import {
   calendarInviteTimeInput,
   calendarInviteTimeUserMessage,
   calendarInviteUserMessage,
-  carriesDestination,
   createCalendarInviteVoice,
   fillCalendarInvite,
   prepareCalendarInvite,
@@ -27,7 +26,7 @@ import {
 
 const LINK = `https://app.villagehale.com/api/ics/event/${'a'.repeat(36)}.${'b'.repeat(43)}`;
 
-/** Thu, Jul 23 2026, 10:30 AM in Toronto. */
+/** Thu, Jul 23 2026, 10:30 AM in New York. */
 const STARTS = new Date('2026-07-23T14:30:00.000Z');
 
 const REQUEST: CalendarInviteVoiceRequest = {
@@ -35,7 +34,7 @@ const REQUEST: CalendarInviteVoiceRequest = {
   when: 'Thu, Jul 23 at 10:30 AM',
   url: LINK,
   startsAt: STARTS,
-  timeZone: 'America/Toronto',
+  timeZone: 'America/New_York',
   language: 'en',
 };
 
@@ -62,7 +61,7 @@ describe('calendarInviteRefusals', () => {
     ]);
     expect(
       calendarInviteRefusals(`Swim class on Thu, Jul 23 at 10:30 AM: ${LINK}`, REQUEST),
-    ).toEqual(expect.arrayContaining(['carries_link', 'link_missing']));
+    ).toEqual(expect.arrayContaining(['carries_destination', 'link_missing']));
   });
 
   it('refuses a repeated slot, a second placeholder, and an invented time', () => {
@@ -126,23 +125,23 @@ describe('VIL-588 · the only destination in the text is the slot', () => {
   it('refuses a draft that echoes a summary carrying a bare domain call to action', () => {
     const hostile: CalendarInviteVoiceRequest = {
       ...REQUEST,
-      summary: 'Swim class - sign up at kids-swim.example',
+      summary: 'Swim class - sign up at kids-swim.example.org',
     };
     expect(
       calendarInviteRefusals(
-        `Swim class - sign up at kids-swim.example on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
+        `Swim class - sign up at kids-swim.example.org on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
         hostile,
       ),
-    ).toContain('carries_link');
+    ).toContain('carries_destination');
   });
 
   it('refuses a draft that adds a bare domain of its own', () => {
     for (const line of [
-      `Swim class on Thu, Jul 23 at 10:30 AM, see swimfun.ca/kids for more. ${INVITE_LINK_SLOT}`,
+      `Swim class on Thu, Jul 23 at 10:30 AM, see swim.example.test/kids for more. ${INVITE_LINK_SLOT}`,
       `Swim class on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT} or Pool.Example.ORG`,
-      `Swim class on Thu, Jul 23 at 10:30 AM, write to desk@pool-sample.net ${INVITE_LINK_SLOT}`,
+      `Swim class on Thu, Jul 23 at 10:30 AM, write to desk@example.test ${INVITE_LINK_SLOT}`,
     ]) {
-      expect(calendarInviteRefusals(line, REQUEST)).toContain('carries_link');
+      expect(calendarInviteRefusals(line, REQUEST)).toContain('carries_destination');
     }
   });
 
@@ -156,13 +155,23 @@ describe('VIL-588 · the only destination in the text is the slot', () => {
         `Jr. Lifeguards 2.5 km swim, e.g. U.S. rules on Thu, Jul 23 at 10:30 a.m. ${INVITE_LINK_SLOT}`,
         dotted,
       ),
-    ).not.toContain('carries_link');
-    expect(calendarInviteRefusals(PASSING, REQUEST)).not.toContain('carries_link');
+    ).not.toContain('carries_destination');
+    expect(calendarInviteRefusals(PASSING, REQUEST)).not.toContain('carries_destination');
   });
 
   it('reads the removed slot as a gap, so its neighbours never join into a domain', () => {
-    expect(carriesDestination(`Add it.${INVITE_LINK_SLOT}ca va`)).toBe(false);
-    expect(carriesDestination(`Add it. ${INVITE_LINK_SLOT} kids.example`)).toBe(true);
+    expect(
+      calendarInviteRefusals(
+        `Swim class Thu, Jul 23 at 10:30 AM. Add it.${INVITE_LINK_SLOT}ca va`,
+        REQUEST,
+      ),
+    ).not.toContain('carries_destination');
+    expect(
+      calendarInviteRefusals(
+        `Swim class Thu, Jul 23 at 10:30 AM. Add it. ${INVITE_LINK_SLOT} kids.example.org`,
+        REQUEST,
+      ),
+    ).toContain('carries_destination');
   });
 });
 
@@ -219,14 +228,14 @@ describe('VIL-588 · the summary is checked before any model call', () => {
     });
   });
 
-  it('defers summary_carries_link for a summary carrying a domain and never calls the writer', async () => {
+  it('defers summary_carries_destination for a summary carrying a domain and never calls the writer', async () => {
     const writer = countingWriter();
     const voice = createCalendarInviteVoice(() => writer.client, agrees);
     const outcome = await voice.compose({
       ...REQUEST,
-      summary: 'Swim class - sign up at kids-swim.example',
+      summary: 'Swim class - sign up at kids-swim.example.org',
     });
-    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_link' });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
     expect(writer.calls()).toBe(0);
   });
 });

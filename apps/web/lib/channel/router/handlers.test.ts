@@ -541,11 +541,17 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
-  /** The families row both reads in this handler select from: language, then stored place. */
+  /** The families row both reads in this handler select from: language, then stored place.
+   * No primary parent row, so the family's zone is the read's own fallback. */
   function familyRow(row: { primaryLanguage: string | null; city: string | null }): Database {
     const found = { ...row, postalCode: null, areaCoarse: null };
     return {
-      select: () => ({ from: () => ({ where: () => ({ limit: async () => [found] }) }) }),
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [found] }),
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      }),
     } as unknown as Database;
   }
   const TORONTO_FAMILY = familyRow({ primaryLanguage: null, city: 'Toronto' });
@@ -647,9 +653,63 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     return row.id;
   }
 
-  async function handleFor(familyId: string, body: string) {
-    return recMorningHandler().handle(placeDb.database, { ...turn(body), familyId });
+  async function handleFor(familyId: string, body: string, now: Date = TURN_NOW) {
+    return recMorningHandler().handle(placeDb.database, { ...turn(body), familyId, now });
   }
+
+  async function primaryParentIn(familyId: string, timezone: string): Promise<void> {
+    const [user] = await placeDb.database
+      .insert(schema.users)
+      .values({ name: 'Sam', timezone })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('user not inserted');
+    await placeDb.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'primary_parent' });
+  }
+
+  /** Hand-derived: the Y opened fall swim Thursday Aug 27 2026 at 9:00 a.m. */
+  const YMCA_OPEN_FACT =
+    'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
+
+  it("leaves the Y's opening morning to the coach once that day has passed", async () => {
+    const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(toronto, 'America/Toronto');
+    const ask = 'when does ymca swim open';
+    expect(await handleFor(toronto, ask, new Date('2026-11-04T14:00:00.000Z'))).toEqual({
+      claimed: false,
+    });
+    // Positive control: a week before that morning, the lane answers with the fact.
+    expect(await handleFor(toronto, ask, new Date('2026-08-20T14:00:00.000Z'))).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+  });
+
+  it("reads that day in the zone the family's parent has on file", async () => {
+    // 02:00Z on Aug 28 is still Aug 27 in Eastern time, and already Aug 28 in UTC.
+    const lateOnTheDay = new Date('2026-08-28T02:00:00.000Z');
+    const eastern = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(eastern, 'America/Toronto');
+    const utc = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(utc, 'UTC');
+    expect(await handleFor(eastern, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+    expect(await handleFor(utc, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: false,
+    });
+  });
+
+  it('leaves a Markham family texting "waitlist" to the coach', async () => {
+    const markham = await familyAt({ countryCode: 'CA', city: 'Markham', postalCode: null });
+    expect(await handleFor(markham, 'waitlist')).toEqual({ claimed: false });
+    // Positive control: the same family's rec ask is still this lane's.
+    expect((await handleFor(markham, 'Markham fall rec dates?')).claimed).toBe(true);
+  });
 
   it('leaves a Texas family texting "waitlist" to the coach', async () => {
     const texas = await familyAt({ countryCode: 'US', city: 'Austin', postalCode: '78701' });
