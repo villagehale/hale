@@ -4,23 +4,30 @@ import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  type ChannelDraftInput,
-  findPendingIdenticalCalendarAdd,
-  productionChannelDraftPort,
-} from '~/lib/channel/coach/draft';
+import { type ChannelDraftInput, productionChannelDraftPort } from '~/lib/channel/coach/draft';
 import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
 import { createTurnOfferLedger } from '~/lib/channel/coach/tools';
 import {
   groupPlanActionIds,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
-import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
+import { approvalHandler } from '~/lib/channel/router/handlers';
+import { FakeReplyTransport } from '~/lib/channel/router/reply-route';
+import { type ChannelRouterDeps, routeChannelMessage } from '~/lib/channel/router/route';
+import {
+  channelRouterDeps,
+  defaultApprovalSpine,
+  defaultOpenQuestionReader,
+} from '~/lib/channel/router/wiring';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
+import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 
 /**
- * VIL-525 round 3 — a calendar draft's audience is written when it is minted.
+ * VIL-525 — a calendar draft's audience is written when it is minted, and it fixes the
+ * one place the draft is answered: the household group it was asked in, or the family's
+ * private threads. A shared or unclaimed chat is never that place (round 4).
  *
  * Every ask here goes through the SHIPPED production coach ports, so the draft port, the
  * group-plan wrapper, the origin it records and the dedupe that reads it are the ones a
@@ -38,6 +45,9 @@ const TITLE = 'Picture day';
 /** 08:00 on 2026-09-19 in America/Chicago. */
 const STARTS_AT = '2026-09-19T13:00:00.000Z';
 const SHARED_CHAT = 'chat-shared';
+const OTHER_SHARED_CHAT = 'chat-shared-other';
+/** A fictional number: the router wants a reply address, and nothing is sent. */
+const PHONE = '+15555550100';
 
 type Turn =
   | { audience: 'direct' }
@@ -59,6 +69,7 @@ beforeEach(async () => {
     .where(eq(schema.users.id, family.parentUserId));
   vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
   vi.stubEnv('ANTHROPIC_BASE_URL', 'http://127.0.0.1:9');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -80,13 +91,17 @@ async function addIds(): Promise<string[]> {
   return rows.map((row) => row.id);
 }
 
-/** The family's own group chat, with the thread a turn in it runs on. */
-async function householdGroup(): Promise<{ chatId: string; conversationId: string }> {
-  const chatId = `chat-household-${randomUUID()}`;
+async function makeHousehold(chatId: string): Promise<void> {
   await db.database
     .update(schema.families)
     .set({ linqGroupChatId: chatId })
     .where(eq(schema.families.id, family.familyId));
+}
+
+/** The family's own group chat, with the thread a turn in it runs on. */
+async function householdGroup(): Promise<{ chatId: string; conversationId: string }> {
+  const chatId = `chat-household-${randomUUID()}`;
+  await makeHousehold(chatId);
   const [row] = await db.database
     .insert(schema.conversations)
     .values({ familyId: family.familyId, noteKey: channelGroupNoteKey(chatId) })
@@ -214,7 +229,7 @@ async function ask(
   return { result, minted };
 }
 
-async function mintOrigin(actionId: string): Promise<unknown> {
+async function mintRowAfter(actionId: string): Promise<unknown> {
   const [row] = await db.database
     .select({ after: schema.auditLog.after })
     .from(schema.auditLog)
@@ -224,7 +239,109 @@ async function mintOrigin(actionId: string): Promise<unknown> {
         eq(schema.auditLog.actionTaken, 'channel_sms.calendar_drafted'),
       ),
     );
-  return (row?.after as { origin?: unknown } | undefined)?.origin;
+  if (!row) throw new Error('no mint row');
+  return row.after;
+}
+
+async function mintOrigin(actionId: string): Promise<unknown> {
+  return ((await mintRowAfter(actionId)) as { origin?: unknown }).origin;
+}
+
+/** The reviewer this suite cannot reach, standing in for its approve verdict. */
+async function reviewerApproved(actionId: string): Promise<void> {
+  await db.database
+    .update(schema.actions)
+    .set({ reviewerVerdict: 'approved' })
+    .where(eq(schema.actions.id, actionId));
+}
+
+/**
+ * A parent's "yes" through the shipped router, in a group chat or on the private thread.
+ * The open-question reader, the group list and the approval spine's listing are the
+ * production ones. Only the model readers are scripted: the resolver answers YES to
+ * `target` when it is shown, and `approve` records instead of enqueueing.
+ */
+async function routeYes(
+  target: string,
+  where: { chatId: string | null },
+): Promise<{ shown: string[][]; approved: string[] }> {
+  const shown: string[][] = [];
+  const approved: string[] = [];
+  const providerMessageId = `in-${randomUUID()}`;
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms',
+      direction: 'in',
+      category: 'reply',
+      providerMessageId,
+      status: 'delivered',
+      body: 'yes',
+      createdAt: NOW,
+      sentAt: NOW,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('no inbound row');
+  const inGroup = where.chatId !== null;
+  const deps: ChannelRouterDeps = {
+    ...channelRouterDeps(db.database),
+    loadContext: async () => ({
+      body: 'yes',
+      role: 'primary_parent',
+      primaryParentName: null,
+      reply:
+        where.chatId === null
+          ? { channel: 'sms', to: PHONE }
+          : { channel: 'imessage', to: PHONE, chatId: where.chatId, replyToMessageId: null },
+      inGroup,
+    }),
+    transport: new FakeReplyTransport(),
+    handlers: [
+      approvalHandler({
+        ...defaultApprovalSpine(),
+        approve: async (_database, args) => {
+          approved.push(args.actionId);
+          return { ok: true };
+        },
+      }),
+    ],
+    offDomain: { consider: async () => ({ status: 'in_domain', fallback: null }) },
+    replyResolver: {
+      read: async (input) => {
+        const ids = input.questions.map((question) => question.id);
+        shown.push(ids);
+        return ids.includes(target)
+          ? {
+              status: 'resolved' as const,
+              questionId: target,
+              kind: 'approval' as const,
+              polarity: 'yes' as const,
+              confidence: 'high' as const,
+            }
+          : { status: 'unresolved' as const, reason: 'no_target' as const };
+      },
+    },
+    calendarOffers: calendarOffersIdle,
+    coach: {
+      async respond() {
+        return { reply: 'Noted.', planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    },
+    limiter: new FakeRateLimiter(() => NOW.getTime()),
+    now: () => NOW,
+    log: { info: () => {}, warn: () => {}, error: () => {} },
+  };
+  await routeChannelMessage(deps, {
+    family_id: family.familyId,
+    parent_user_id: family.parentUserId,
+    channel_message_id: row.id,
+    provider_message_id: providerMessageId,
+    received_at: NOW.toISOString(),
+    in_group: inGroup,
+  });
+  return { shown, approved };
 }
 
 async function privateApprovalIds(): Promise<string[]> {
@@ -237,25 +354,57 @@ async function privateApprovalIds(): Promise<string[]> {
 }
 
 describe('VIL-525 a calendar draft records its audience at mint', () => {
-  it('a repeat ask in a group chat that is not the household group reuses the first draft', async () => {
-    const turn: Turn = { audience: 'group', groupChatId: SHARED_CHAT };
-    const first = await ask(turn);
-    expect(first.minted).toHaveLength(1);
-    const [groupId] = first.minted;
-    if (!groupId) throw new Error('unreachable');
-    expect(await mintOrigin(groupId)).toEqual({ surface: 'group', chatId: SHARED_CHAT });
+  it('a shared-chat draft is answered on the private thread, never in the shared chat', async () => {
+    await householdGroup();
+    const [sharedId] = (await ask({ audience: 'group', groupChatId: SHARED_CHAT })).minted;
+    if (!sharedId) throw new Error('the shared-chat ask did not draft');
+    await reviewerApproved(sharedId);
 
-    const again = await ask(turn, { time: '08:01' });
+    expect(await privateApprovalIds()).toEqual([sharedId]);
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: SHARED_CHAT }),
+    ).toEqual(new Set());
 
-    expect(again.minted).toEqual([]);
-    expect(again.result).toMatchObject({ alreadyPending: true, actionId: groupId });
+    const inShared = await routeYes(sharedId, { chatId: SHARED_CHAT });
+    expect(inShared.shown).toEqual([]);
+    expect(inShared.approved).toEqual([]);
+
+    const onPrivate = await routeYes(sharedId, { chatId: null });
+    expect(onPrivate.shown).toEqual([[sharedId]]);
+    expect(onPrivate.approved).toEqual([sharedId]);
+  });
+
+  it("a household-group draft is listed and approved only in that group's chat", async () => {
+    const household = await householdGroup();
+    const groupId = await householdGroupDraft(household, {
+      audience: 'group',
+      groupChatId: household.chatId,
+      ...household,
+    });
+    await reviewerApproved(groupId);
+
+    expect(
+      await groupPlanActionIds(db.database, {
+        familyId: family.familyId,
+        chatId: household.chatId,
+      }),
+    ).toEqual(new Set([groupId]));
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: SHARED_CHAT }),
+    ).toEqual(new Set());
+    expect(await privateApprovalIds()).toEqual([]);
+
+    const onPrivate = await routeYes(groupId, { chatId: null });
+    expect(onPrivate.approved).toEqual([]);
+    const inGroup = await routeYes(groupId, { chatId: household.chatId });
+    expect(inGroup.shown).toEqual([[groupId]]);
+    expect(inGroup.approved).toEqual([groupId]);
   });
 
   it('a household-group ask reuses its own group draft and never the private draft beside it', async () => {
     const household = await householdGroup();
     const group: Turn = { audience: 'group', groupChatId: household.chatId, ...household };
     const groupId = await householdGroupDraft(household, group);
-    expect(await mintOrigin(groupId)).toEqual({ surface: 'group', chatId: household.chatId });
 
     const privateAsk = await ask({ audience: 'direct' });
     expect(privateAsk.minted).toHaveLength(1);
@@ -271,55 +420,106 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
     expect(privateAgain.result).toMatchObject({ alreadyPending: true, actionId: privateId });
   });
 
-  it('a private ask beside a group draft from another chat drafts its own, and only that one is listed privately', async () => {
-    const [groupId] = (await ask({ audience: 'group', groupChatId: SHARED_CHAT })).minted;
-    if (!groupId) throw new Error('the group ask did not draft');
-    expect(await privateApprovalIds()).toEqual([]);
-    expect(
-      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: SHARED_CHAT }),
-    ).toEqual(new Set([groupId]));
+  it('a private ask reuses a shared-chat draft, which waits on the private thread', async () => {
+    await householdGroup();
+    const [sharedId] = (await ask({ audience: 'group', groupChatId: SHARED_CHAT })).minted;
+    if (!sharedId) throw new Error('the shared-chat ask did not draft');
 
-    const privateAsk = await ask({ audience: 'direct' });
+    const privateAsk = await ask({ audience: 'direct' }, { time: '08:01' });
 
-    expect(privateAsk.minted).toHaveLength(1);
-    expect(privateAsk.minted).not.toContain(groupId);
-    expect(await privateApprovalIds()).toEqual(privateAsk.minted);
-    expect(
-      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: 'chat-other' }),
-    ).toEqual(new Set());
+    expect(privateAsk.minted).toEqual([]);
+    expect(privateAsk.result).toMatchObject({ alreadyPending: true, actionId: sharedId });
   });
 
-  it('a group ask with no chat id checks no group draft and names group_chat_unknown', async () => {
-    const chat = await householdGroup();
-    const household: Turn = { audience: 'group', groupChatId: chat.chatId, ...chat };
-    const groupId = await householdGroupDraft(chat, household);
+  it("a group ask in household chat B never reuses chat A's draft, though A's is the newest", async () => {
+    const chatB = await householdGroup();
+    const inB: Turn = { audience: 'group', groupChatId: chatB.chatId, ...chatB };
+    const bId = await householdGroupDraft(chatB, inB);
+    const chatA = await householdGroup();
+    const aId = await householdGroupDraft(chatA, {
+      audience: 'group',
+      groupChatId: chatA.chatId,
+      ...chatA,
+    });
+    await makeHousehold(chatB.chatId);
+
+    const again = await ask(inB);
+
+    expect(again.minted).toEqual([]);
+    expect(again.result).toMatchObject({ alreadyPending: true, actionId: bId });
+    // Recorded at mint: a later change of household chat leaves A's draft on A's list.
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: chatA.chatId }),
+    ).toEqual(new Set([aId]));
+  });
+
+  it('a group ask in a shared chat reuses only a draft asked in that same chat', async () => {
+    await householdGroup();
+    const [privateId] = (await ask({ audience: 'direct' })).minted;
+    if (!privateId) throw new Error('the private ask did not draft');
+
+    const shared = await ask({ audience: 'group', groupChatId: SHARED_CHAT });
+    expect(shared.minted).toHaveLength(1);
+    expect(shared.minted).not.toContain(privateId);
+    const [sharedId] = shared.minted;
+
+    const sharedAgain = await ask(
+      { audience: 'group', groupChatId: SHARED_CHAT },
+      { time: '08:01' },
+    );
+    expect(sharedAgain.minted).toEqual([]);
+    expect(sharedAgain.result).toMatchObject({ alreadyPending: true, actionId: sharedId });
+
+    const otherShared = await ask({ audience: 'group', groupChatId: OTHER_SHARED_CHAT });
+    expect(otherShared.minted).toHaveLength(1);
+    expect(otherShared.minted).not.toContain(sharedId);
+  });
+
+  it('a group ask with no chat id mints nothing and names group_chat_unknown', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
 
     const unknown = await ask({ audience: 'group' });
 
-    expect(unknown.minted).toHaveLength(1);
-    expect(unknown.minted).not.toContain(groupId);
+    expect(unknown.minted).toEqual([]);
+    expect(unknown.result).toEqual({ drafted: false, outcome: 'group_chat_unknown' });
     expect(info).toHaveBeenCalledWith(
       { familyId: family.familyId, outcome: 'group_chat_unknown' },
       expect.any(String),
     );
-    await expect(
-      findPendingIdenticalCalendarAdd(db.database, {
-        familyId: family.familyId,
-        parentUserId: family.parentUserId,
-        title: TITLE,
-        startsAt: STARTS_AT,
-        childId: null,
-        now: NOW,
-        origin: { surface: 'group', chatId: null },
-      }),
-    ).resolves.toEqual({ outcome: 'group_chat_unknown' });
-    expect(await privateApprovalIds()).toEqual([]);
 
-    // Positive control: the same ask with its chat named reuses that chat's draft.
-    const named = await ask(household);
-    expect(named.minted).toEqual([]);
-    expect(named.result).toMatchObject({ alreadyPending: true, actionId: groupId });
+    // Positive control: the same ask with its chat named drafts.
+    const named = await ask({ audience: 'group', groupChatId: SHARED_CHAT });
+    expect(named.minted).toHaveLength(1);
+  });
+
+  it('the mint row records the origin without the raw chat id', async () => {
+    const household = await householdGroup();
+    const [sharedId] = (await ask({ audience: 'group', groupChatId: SHARED_CHAT })).minted;
+    if (!sharedId) throw new Error('the shared-chat ask did not draft');
+    const householdId = await householdGroupDraft(household, {
+      audience: 'group',
+      groupChatId: household.chatId,
+      ...household,
+    });
+
+    for (const [id, chatId] of [
+      [sharedId, SHARED_CHAT],
+      [householdId, household.chatId],
+    ] as const) {
+      expect(JSON.stringify(await mintRowAfter(id))).not.toContain(chatId);
+    }
+    // Positive control: the origin is still recorded, keyed, with the household bit.
+    expect(await mintOrigin(sharedId)).toEqual({
+      surface: 'group',
+      chatKey: expect.stringMatching(/^[0-9a-f]{64}$/),
+      household: false,
+    });
+    expect(await mintOrigin(householdId)).toEqual({
+      surface: 'group',
+      chatKey: expect.stringMatching(/^[0-9a-f]{64}$/),
+      household: true,
+    });
+    expect(await mintOrigin(sharedId)).not.toEqual(await mintOrigin(householdId));
   });
 
   it("an ask for one child never reuses another child's draft, and an ask with no child never reuses a child's", async () => {
@@ -402,6 +602,7 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
   });
 
   it("a group turn's move or cancel stays on the private list, as only a group add is the group's", async () => {
+    const household = await householdGroup();
     const port = productionChannelDraftPort(
       db.database,
       new Anthropic({
@@ -412,7 +613,7 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
       {
         now: NOW,
         parentUserId: family.parentUserId,
-        origin: { surface: 'group', chatId: SHARED_CHAT },
+        origin: { surface: 'group', chatId: household.chatId },
       },
     );
     const draft = async (actionType: ChannelDraftInput['actionType']): Promise<string> => {
@@ -454,7 +655,10 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
 
     expect(await privateApprovalIds()).toEqual([cancelId]);
     expect(
-      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: SHARED_CHAT }),
+      await groupPlanActionIds(db.database, {
+        familyId: family.familyId,
+        chatId: household.chatId,
+      }),
     ).toEqual(new Set([addId]));
   });
 });

@@ -672,6 +672,9 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         startsAt: startsAt.toISOString(),
         childId: input.childId ?? null,
       });
+      if (already?.outcome === 'group_chat_unknown') {
+        return { drafted: false as const, outcome: already.outcome };
+      }
       if (already?.outcome === 'already_pending' || already?.outcome === 'already_asked') {
         return {
           drafted: true as const,

@@ -870,6 +870,20 @@ describe('what the week does with it', () => {
  */
 describe('a coach offer is the calendar, not the sentence', () => {
   const SUNDAY = new Date('2026-10-04T13:00:00.000Z');
+
+  // The group drafts below are stamped for 'chat-family', which only the household group
+  // ever gets, so that chat is this family's household group (VIL-525).
+  beforeEach(async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.linqGroupChatId, 'chat-family'));
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-family' })
+      .where(eq(schema.families.id, family.familyId));
+  });
   const THURSDAY = new Date('2026-10-01T20:15:00.000Z');
   const OCTOBER_SECOND = new Date('2026-10-02T15:00:00.000Z');
 

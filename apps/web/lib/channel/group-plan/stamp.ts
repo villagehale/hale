@@ -3,9 +3,10 @@ import { and, eq, or, sql } from 'drizzle-orm';
 import {
   CHANNEL_AUDIT_ACTION,
   type ChannelDraftPort,
-  calendarDraftOrigins,
+  calendarDraftApprovalSurfaces,
 } from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 
 /**
  * VIL-443 (T17) — which placements are a group's plan.
@@ -129,14 +130,15 @@ export async function groupPlanChatId(
 }
 
 /**
- * Every draft whose origin is this group chat (VIL-525), which is the group's list of
- * approvals. It includes a chat that is not the household group: a draft made there is
- * answered there, though its placement still gets 1:1 invites.
+ * The drafts this household group chat answers (VIL-525): those asked in it while it was
+ * the household group. A draft asked in a shared or unclaimed chat is never listed here;
+ * it waits on the family's private threads.
  */
 export async function groupPlanActionIds(
   database: Database,
   input: { familyId: string; chatId: string },
 ): Promise<ReadonlySet<string>> {
+  const chatKey = linqChatBlindIndex(input.chatId);
   const rows = await database
     .select({ targetId: schema.auditLog.targetId })
     .from(schema.auditLog)
@@ -147,7 +149,7 @@ export async function groupPlanActionIds(
         or(
           and(
             eq(schema.auditLog.actionTaken, CHANNEL_AUDIT_ACTION),
-            sql`${schema.auditLog.after}->'origin'->>'chatId' = ${input.chatId}`,
+            sql`${schema.auditLog.after}->'origin'->>'chatKey' = ${chatKey}`,
           ),
           and(
             eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
@@ -157,21 +159,23 @@ export async function groupPlanActionIds(
       ),
     );
   const ids = [...new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])))];
-  const origins = await calendarDraftOrigins(database, input.familyId, ids);
+  // The query finds every draft asked in this chat; only those on its household-group
+  // surface are its own. A shared chat's draft is on the private surface.
+  const surfaces = await calendarDraftApprovalSurfaces(database, input.familyId, ids);
   return new Set(
     ids.filter((id) => {
-      const origin = origins.get(id);
-      return origin?.surface === 'group' && origin.chatId === input.chatId;
+      const surface = surfaces.get(id);
+      return surface?.surface === 'household_group' && surface.chatKey === chatKey;
     }),
   );
 }
 
-/** Which of these actions a group chat turn drafted, in any chat (VIL-525). */
+/** Which of these actions a household group answers, in any such chat (VIL-525). */
 export async function groupDraftedActionIds(
   database: Database,
   familyId: string,
   actionIds: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  const origins = await calendarDraftOrigins(database, familyId, actionIds);
-  return new Set(actionIds.filter((id) => origins.get(id)?.surface === 'group'));
+  const surfaces = await calendarDraftApprovalSurfaces(database, familyId, actionIds);
+  return new Set(actionIds.filter((id) => surfaces.get(id)?.surface === 'household_group'));
 }

@@ -930,7 +930,7 @@ export function createOpenQuestionReader(
       // the same add again.
       //
       // VIL-525. Every unapproved draft of that same occasion (a close clock, not
-      // merely the same day) is hidden. Only private drafts: a group-drafted add of
+      // merely the same day) is hidden. Only private drafts: a household-group add of
       // the same start is the group's own plan. A NO declines every private one. A YES does not approve
       // any of them: they are not `approvesActionId`.
       //
@@ -939,7 +939,7 @@ export function createOpenQuestionReader(
       const approvesByOffer = new Map<string, string>();
       const declinesByOffer = new Map<string, readonly string[]>();
       const hiddenDrafts = new Set<string>();
-      // A private offer never pairs with a group-drafted add (VIL-525): that draft is
+      // A private offer never pairs with a household-group add (VIL-525): that draft is
       // the group's question, answered in the group.
       const privateApprovals = approvals.filter((action) => !action.groupPlan);
       if (input.surface !== 'group') {
@@ -969,7 +969,7 @@ export function createOpenQuestionReader(
         }
       }
       const questions: OpenQuestion[] = namedApprovals(
-        // A group-drafted add is the group's question: never listed on a private
+        // A household-group add is the group's question: never listed on a private
         // thread, so a private YES/NO cannot approve or decline it (VIL-525).
         (input.surface === 'group' ? approvals : privateApprovals).filter(
           (action) => !hiddenDrafts.has(action.actionId),
