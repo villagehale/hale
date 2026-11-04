@@ -39,6 +39,9 @@ const FLATE_BOMB_INFLATED_BYTES = 128 * 1024 * 1024;
 // Long enough for a cold worker to load the reader on a busy CI runner, well short of the
 // ~2.4 s this bomb takes to finish on a fast laptop.
 const BOMB_DEADLINE_MS = 1_200;
+// µs of CPU per ms of wall time: a twentieth of a core, ~6× below the slowest parse rate seen on a
+// loaded CI runner.
+const MIN_PARSE_CPU_PER_MS = 50;
 // Calibrated: the largest legal read stays under the ceiling; this bomb grows it by ~965 MiB within
 // 3 s even after the deadline test has already raised the process's RSS high-water mark,
 // which freed-and-reused pages hide from a smaller bomb (128 MiB grows only ~36 MiB then).
@@ -254,9 +257,11 @@ describe('local registration PDF text extraction', () => {
       await new Promise((resolve) => setTimeout(resolve, afterKillWindowMs));
       const afterKillCpu = cpuMicros(process.cpuUsage(afterKillStart));
       expect(afterKillCpu).toBeLessThan(300_000);
-      // The parse burned CPU well above the after-kill rate. Both rates come from the same runner at
-      // the same time, so CPU contention slows both; an idle or still-loading worker would not.
-      expect(parseCpu / parseMs).toBeGreaterThan((3 * afterKillCpu) / afterKillWindowMs);
+      // The parse kept the worker busy: above an absolute floor, and above three times the after-kill
+      // rate measured on the same runner at the same time, so contention slows both.
+      expect(parseCpu / parseMs).toBeGreaterThan(
+        Math.max(MIN_PARSE_CPU_PER_MS, (3 * afterKillCpu) / afterKillWindowMs),
+      );
 
       expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
         'Winter registration begins November 10, 2026',
