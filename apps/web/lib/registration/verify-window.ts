@@ -413,7 +413,7 @@ const CLOCK_FORMS: ReadonlyArray<{
   },
   // `7 a.m.`, `9pm`
   { pattern: new RegExp(`^(\\d{1,2})\\s?${MERIDIEM}$`, 'u'), read: (m) => [m[1] ?? '', '0', m[2]] },
-  // `20h00`, `18 h 30`, `9 h`
+  // `20h00`, `18 h 30`, and `9 h`: French prints a whole hour with no minutes (`à 9 h`).
   { pattern: /^(\d{1,2})\s?h(?:\s?(\d{2}))?$/u, read: (m) => [m[1] ?? '', m[2] ?? '0', undefined] },
   // `8点`, `8点30分`, `8点半`
   {
@@ -468,22 +468,26 @@ function boundaries(text: string): number[] {
   return cuts;
 }
 
+type Range = readonly [start: number, end: number];
+
+const overlaps = (a: Range, b: Range) => a[0] < b[1] && b[0] < a[1];
+
 /** Every expression of one grammar that `text` prints, read whole; an expression inside a
  * longer one (`05 p.m.` inside `1:05 p.m.`, `Aug. 11` inside `Tuesday, Aug. 11`) is part of
  * it, not a second one. */
-function expressionsIn<T>(text: string, read: (span: string) => T | null): T[] {
+function expressionsIn<T>(text: string, read: (span: string) => T | null) {
   const cuts = boundaries(text);
-  const found: Array<{ start: number; end: number; value: T }> = [];
+  const found: Array<{ at: Range; value: T }> = [];
   for (const start of cuts) {
     for (const end of cuts) {
       if (end <= start || end - start > MAX_CHARS.span) continue;
       const value = read(text.slice(start, end));
-      if (value !== null) found.push({ start, end, value });
+      if (value !== null) found.push({ at: [start, end], value });
     }
   }
-  return found
-    .filter((a) => !found.some((b) => b !== a && b.start <= a.start && a.end <= b.end))
-    .map(({ value }) => value);
+  return found.filter(
+    (a) => !found.some((b) => b !== a && b.at[0] <= a.at[0] && a.at[1] <= b.at[1]),
+  );
 }
 
 function dateExpression(span: string): PrintedDate | 'date_ambiguous' | null {
@@ -491,12 +495,14 @@ function dateExpression(span: string): PrintedDate | 'date_ambiguous' | null {
   return printed === 'date_unparsed' ? null : printed;
 }
 
-/** Every index at which `needle` starts in `haystack`. */
-function occurrences(haystack: string, needle: string): number[] {
-  const found: number[] = [];
-  if (needle === '') return found;
-  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
-    found.push(at);
+/** Every place `span` sits in `quote` as whole words and numbers: starting and ending at a
+ * boundary, never inside a run of digits or letters (`sept. 20` is not in `sept. 2026`). */
+function placements(quote: string, span: string): Range[] {
+  const cuts = new Set(boundaries(quote));
+  const found: Range[] = [];
+  if (span === '') return found;
+  for (let at = quote.indexOf(span); at !== -1; at = quote.indexOf(span, at + 1)) {
+    if (cuts.has(at) && cuts.has(at + span.length)) found.push([at, at + span.length]);
   }
   return found;
 }
@@ -506,7 +512,8 @@ function occurrences(haystack: string, needle: string): number[] {
  *
  * The model labels the characters of its quote that state the date (`dateText`) and the
  * time (`timeText`). Code never guesses which printed number is which: each span must be
- * in the quote, the two must sit in separate characters, the date span must parse WHOLE
+ * in the quote as whole words and numbers, the two must sit in separate characters, the
+ * date span must parse WHOLE
  * under the date grammar to exactly this month and day (and year, when it prints one), and
  * the time span WHOLE under the clock grammar to exactly this HH:MM. A null time needs a
  * null time span and the other way round.
@@ -516,6 +523,8 @@ function occurrences(haystack: string, needle: string): number[] {
  * too: a label cannot take the day from one expression and leave a conflicting year
  * (`Aug. 11, 2025`), a second date or a second clock beside it. A bare number outside the
  * spans (an age, a room) is in neither grammar, so it is never read as a date or a clock.
+ * The one expression left out is a seam that shares characters with BOTH labels: in
+ * `11 août 20h00` the month and the hour also read as `août 20`, which is neither label.
  */
 export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | null {
   if (published.time !== null && published.timeText === null) return 'span_missing';
@@ -524,15 +533,13 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
   const quote = normalizeQuote(published.quote);
   const dateSpan = normalizeQuote(published.dateText);
   const timeSpan = published.timeText === null ? null : normalizeQuote(published.timeText);
-  const dateAt = occurrences(quote, dateSpan);
-  const timeAt = timeSpan === null ? [] : occurrences(quote, timeSpan);
-  if (dateAt.length === 0 || (timeSpan !== null && timeAt.length === 0)) return 'span_missing';
-  if (
-    timeSpan !== null &&
-    !dateAt.some((d) => timeAt.some((t) => d + dateSpan.length <= t || t + timeSpan.length <= d))
-  ) {
-    return 'span_overlap';
-  }
+  const dateAt = placements(quote, dateSpan);
+  const timeAt = timeSpan === null ? [null] : placements(quote, timeSpan);
+  if (dateAt.length === 0 || timeAt.length === 0) return 'span_missing';
+  const labelled = dateAt.flatMap((date) =>
+    timeAt.filter((time) => time === null || !overlaps(date, time)).map((time) => ({ date, time })),
+  );
+  if (labelled.length === 0) return 'span_overlap';
 
   const printed = parseDateSpan(dateSpan);
   if (typeof printed === 'string') return printed;
@@ -550,11 +557,18 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
     if (clock !== published.time) return 'time_mismatch';
   }
 
-  if (!expressionsIn(quote, dateExpression).every(statesDate)) return 'date_mismatch';
-  if (!expressionsIn(quote, parseClockSpan).every((clock) => clock === published.time)) {
-    return 'time_mismatch';
-  }
-  return null;
+  const dates = expressionsIn(quote, dateExpression);
+  const clocks = expressionsIn(quote, parseClockSpan);
+  const scanRefusal = ({ date, time }: { date: Range; time: Range | null }) => {
+    const seam = (at: Range) => time !== null && overlaps(at, date) && overlaps(at, time);
+    if (!dates.every(({ at, value }) => seam(at) || statesDate(value))) return 'date_mismatch';
+    if (!clocks.every(({ at, value }) => seam(at) || value === published.time)) {
+      return 'time_mismatch';
+    }
+    return null;
+  };
+  const refusals = labelled.map(scanRefusal);
+  return refusals.includes(null) ? null : (refusals[0] ?? null);
 }
 
 /**

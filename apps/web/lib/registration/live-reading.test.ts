@@ -573,6 +573,38 @@ describe('a number beside the date is never its month', () => {
   });
 });
 
+describe('a day is never cut from the digits of the year', () => {
+  const reading = (quote: string, dateText: string, date: string) =>
+    extracted({
+      evidence: `Registration opens ${quote}.`,
+      yearEvidence: quote,
+      generalOpen: { quote, dateText, timeText: null, date, time: null },
+    });
+  const page = (quote: string) => `Registration opens ${quote}. Pool hours are Eastern Time.`;
+
+  it("refuses a month-and-year page 'Sept. 2026' labelled 'Sept. 20'", () => {
+    const result = normalizeExtractedRegistration(
+      reading('Sept. 2026', 'Sept. 20', '2026-09-20'),
+      page('Sept. 2026'),
+      SOURCE,
+    );
+    expect(result).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it("verifies 'Aug. 20, 2026' labelled 'Aug. 20' (control)", () => {
+    expect(
+      anchors(
+        normalizeExtractedRegistration(
+          reading('Aug. 20, 2026', 'Aug. 20', '2026-08-20'),
+          page('Aug. 20, 2026'),
+          SOURCE,
+        ),
+      ),
+    ).toEqual({ general_open: '2026-08-20T04:00:00.000Z' });
+  });
+});
+
 describe('a quote that prints two dates verifies neither', () => {
   const PAGE =
     'Fall 2026. Preview Aug. 11; registration opens Aug. 12 at 9 a.m. Pool hours are Eastern Time.';

@@ -388,6 +388,47 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
       expect(h.markVerified).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('a day cut from the digits of the year never confirms a stored day', () => {
+    // A month-and-year page states no day; `sept. 20` is not a word of `sept. 2026`.
+    const sweep = (quote: string) =>
+      harness({
+        loadWindows: async () => [
+          storedWindow({ previewAt: null, openAt: new Date('2026-09-20T00:00:00-04:00') }),
+        ],
+        fetchPage: vi.fn(async () => `Registration opens ${quote}.`),
+        extract: vi.fn(async () =>
+          reading({
+            yearEvidence: quote,
+            evidence: `Registration opens ${quote}.`,
+            preview: null,
+            generalOpen: {
+              quote,
+              dateText: 'Sept. 20',
+              timeText: null,
+              date: '2026-09-20',
+              time: null,
+            },
+          }),
+        ),
+      });
+
+    it("drops 'Sept. 2026' labelled 'Sept. 20', so a stored Sep 20 is never confirmed", async () => {
+      const h = sweep('Sept. 2026');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'unverified', reason: 'uncorroborated' });
+      expect(h.markVerified).not.toHaveBeenCalled();
+    });
+
+    it("confirms a stored Sep 20 from 'Sept. 20, 2026' (control)", async () => {
+      const h = sweep('Sept. 20, 2026');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'confirmed', fields: ['openAt'] });
+      expect(h.markVerified).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('runRegistrationVerifySweep — bounded and idempotent', () => {

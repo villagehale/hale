@@ -785,6 +785,99 @@ describe('corroborationFailure — every date is read from its own labelled span
     });
   });
 
+  describe('a label starts and ends where the quote’s own words and numbers do', () => {
+    it.each([
+      ['a day cut from the year', label('Sept. 2026', 'Sept. 20', null, '2026-09-20', null)],
+      ['a one-digit day cut from the year', label('Aug 2026', 'Aug 2', null, '2026-08-02', null)],
+      [
+        'a day cut from the year, beside a clock',
+        label('Sept 2026 9 a.m.', 'Sept 2', '9 a.m.', '2026-09-02', '09:00'),
+      ],
+      ['a month cut from a word', label('Grammar 3', 'mar 3', null, '2026-03-03', null)],
+      [
+        'a clock cut from a longer hour',
+        label('Aug. 11 at 10:30', 'Aug. 11', '0:30', '2026-08-11', '00:30'),
+      ],
+    ])('refuses %s', (_name, labels) => {
+      expect(verdict(labels)).toEqual(refused('span_missing'));
+    });
+
+    it('accepts a day the quote prints whole (control)', () => {
+      expect(verdict(label('Aug. 20, 2026', 'Aug. 20', null, '2026-08-20', null))).toEqual(
+        ACCEPTED,
+      );
+    });
+  });
+
+  /**
+   * A day-first date runs straight into its clock (`11 août 20h00`), so the month and the
+   * hour also read as a date (`août 20`). That expression straddles the two labels: it is
+   * the seam between them, not a third value.
+   */
+  describe('a day-first date followed by its clock', () => {
+    it.each([
+      ['fr, 20h00', label('11 août 20h00', '11 août', '20h00', '2026-08-11', '20:00')],
+      [
+        'fr, a weekday and 18 h 30',
+        label('lundi 7 décembre 18 h 30', 'lundi 7 décembre', '18 h 30', '2026-12-07', '18:30'),
+      ],
+      ['es', label('11 de agosto 9:00', '11 de agosto', '9:00', '2026-08-11', '09:00')],
+      ['en', label('11 Aug 9 a.m.', '11 Aug', '9 a.m.', '2026-08-11', '09:00')],
+    ])('accepts %s', (_name, labels) => {
+      expect(verdict(labels)).toEqual(ACCEPTED);
+    });
+
+    it('refuses the hour read as the day', () => {
+      expect(verdict(label('11 Aug 9 a.m.', '11 Aug', '9 a.m.', '2026-08-09', '09:00'))).toEqual(
+        refused('date_mismatch'),
+      );
+    });
+
+    it('refuses no time beside the printed clock', () => {
+      // With no time label there is no seam, so `août 20` and `20h00` both disagree.
+      expect(verdict(label('11 août 20h00', '11 août', null, '2026-08-11', null)).result).toBe(
+        'uncorroborated',
+      );
+    });
+
+    it('refuses a prior-year date before its clock', () => {
+      expect(
+        verdict(label('11 août 2025 20h00', '11 août', '20h00', '2026-08-11', '20:00')),
+      ).toEqual(refused('date_mismatch'));
+    });
+
+    it('refuses a second date that only touches the clock', () => {
+      expect(
+        verdict(label('Aug 11 Aug 9 a.m.', 'Aug 11', '9 a.m.', '2026-08-11', '09:00')),
+      ).toEqual(refused('date_mismatch'));
+    });
+  });
+
+  /**
+   * Each label is checked on its own, not only through the scan of the whole quote: these
+   * labels sit inside a longer expression that does state the reading, so the scan alone
+   * would pass them.
+   */
+  describe('a label inside a longer expression must itself state the value', () => {
+    it("refuses 'mar. 3' (March 3) labelled inside 'mar. 3 août' (Tuesday, Aug 3)", () => {
+      expect(verdict(label('mar. 3 août', 'mar. 3', null, '2026-08-03', null))).toEqual(
+        refused('date_mismatch'),
+      );
+    });
+
+    it("accepts the whole 'mar. 3 août' as Aug 3 (control)", () => {
+      expect(verdict(label('mar. 3 août', 'mar. 3 août', null, '2026-08-03', null))).toEqual(
+        ACCEPTED,
+      );
+    });
+
+    it("refuses '05 p.m.' (17:00) labelled inside '1:05 p.m.' read as 13:05", () => {
+      expect(
+        verdict(label('Aug. 11 at 1:05 p.m.', 'Aug. 11', '05 p.m.', '2026-08-11', '13:05')),
+      ).toEqual(refused('time_mismatch'));
+    });
+  });
+
   describe('each span says exactly the extracted value', () => {
     it.each([
       ['another day', 'Aug. 11', '6:30 AM', '2026-08-12', '06:30', 'date_mismatch'],
@@ -904,7 +997,7 @@ describe('corroborationFailure — every date is read from its own labelled span
         '18:30',
       ],
       [
-        '9 h',
+        '9 h, a whole French hour',
         'vendredi 11 décembre 2026 à 9 h',
         'vendredi 11 décembre 2026',
         '9 h',
@@ -1031,27 +1124,68 @@ describe('EXTRACTION_JSON_SCHEMA', () => {
     expect(unbounded).toEqual([]);
   });
 
-  it('enforces the same bounds on the answer, so an overlong quote never reaches the gate', () => {
-    const limit = (EXTRACTION_JSON_SCHEMA.properties.evidence as { maxLength: number }).maxLength;
-    const raw = (evidence: string) => ({
+  /** Every free-text field and the bound the JSON schema states for it. `date` and `time`
+   * are left out: their format regex bounds them more tightly than any length. */
+  const freeText = [
+    ...[
+      'cycle_on_page',
+      'evidence',
+      'year_evidence',
+      'time_zone_evidence',
+      'time_zone',
+      'eligibility_evidence',
+      'note',
+    ].map((field) => ({ field, slotField: null })),
+    ...['quote', 'date_text', 'time_text'].map((slotField) => ({
+      field: 'general_open',
+      slotField,
+    })),
+  ] as const;
+  const bound = (field: string, slotField: string | null) => {
+    const node = slotField
+      ? EXTRACTION_JSON_SCHEMA.$defs.publishedDate.properties[
+          slotField as keyof typeof EXTRACTION_JSON_SCHEMA.$defs.publishedDate.properties
+        ]
+      : EXTRACTION_JSON_SCHEMA.properties[field as keyof typeof EXTRACTION_JSON_SCHEMA.properties];
+    return (node as { maxLength: number }).maxLength;
+  };
+  const answerWith = (field: string, slotField: string | null, text: string) => {
+    const slot = {
+      quote: 'Aug. 11',
+      date_text: 'Aug. 11',
+      time_text: null,
+      date: null,
+      time: null,
+    };
+    return {
       cycle_on_page: 'Fall 2026',
-      evidence,
+      evidence: null,
       year_evidence: null,
       time_zone_evidence: null,
       time_zone: null,
       eligibility_evidence: null,
       preview: null,
       resident_open: null,
-      general_open: null,
+      general_open: slotField ? { ...slot, [slotField]: text } : slot,
       unclassified_open: null,
       note: null,
       found: true,
       reason: null,
       confidence: 0.9,
-    });
-    expect(() => parseExtraction(raw('x'.repeat(limit + 1)))).toThrow();
-    expect(parseExtraction(raw('x'.repeat(limit))).evidence).toHaveLength(limit);
-  });
+      ...(slotField ? {} : { [field]: text }),
+    };
+  };
+
+  it.each(freeText)(
+    'enforces the schema bound on $field $slotField at the parse, so overlong text never reaches the gate',
+    ({ field, slotField }) => {
+      const limit = bound(field, slotField);
+      expect(limit).toBeGreaterThan(0);
+      expect(() => parseExtraction(answerWith(field, slotField, 'x'.repeat(limit + 1)))).toThrow();
+      // Positive control: text at the bound parses.
+      expect(() => parseExtraction(answerWith(field, slotField, 'x'.repeat(limit)))).not.toThrow();
+    },
+  );
 });
 
 describe('compareWindow — an unlabelled opening is compared as before (VIL-347)', () => {
