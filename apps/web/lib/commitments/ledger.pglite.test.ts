@@ -102,7 +102,7 @@ describe('the ledger writes one audit row per changed promise (rule #6)', () => 
         actionTaken: 'commitment_recorded',
         targetTable: 'agent_commitments',
         targetId: firstId,
-        after: { kind: 'first_find', topic: null, dueAt: DUE.toISOString() },
+        after: { kind: 'first_find', dueAt: DUE.toISOString() },
       },
     ]);
 
@@ -143,6 +143,26 @@ describe('the ledger writes one audit row per changed promise (rule #6)', () => 
     expect(rows[3]?.after).toEqual({ kind: 'spot_watch', reason: 'spot_watch_ended' });
     expect(rows.every((row) => row.targetTable === 'agent_commitments')).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('Juniper');
+  });
+
+  it('keeps a free-text topic out of the audit row', async () => {
+    // The activity follow-up's topic is the search phrase its summary is built from.
+    const subject = 'weekend pottery for Juniper';
+    const recorded = await recordCommitment(db.database, {
+      familyId,
+      kind: 'activity_followup',
+      summary: `A promise to come back with what I find on ${subject}`,
+      topic: subject,
+      dueAt: DUE,
+      channelMessageId: SENT_MESSAGE,
+    });
+    expect(recorded.status).toBe('recorded');
+
+    const rows = await commitmentAudits();
+    expect(rows.map((row) => row.after)).toEqual([
+      { kind: 'activity_followup', dueAt: DUE.toISOString() },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain('pottery');
   });
 
   it('writes no row for a re-fired promise the index refused', async () => {

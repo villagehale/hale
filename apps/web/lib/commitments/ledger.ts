@@ -166,15 +166,15 @@ export async function recordCommitment(
         .onConflictDoNothing()
         .returning({ id: schema.agentCommitments.id });
       if (!inserted) return null;
-      // `summary` stays out of `after`: it is free text that may name a child, and this
-      // row is in the family's own export.
+      // `summary` and `topic` stay out of `after`: the summary is free text that may name a
+      // child, and an activity follow-up's topic is the search phrase it is built from.
       await tx.insert(schema.auditLog).values({
         familyId: input.familyId,
         actor: 'system',
         actionTaken: 'commitment_recorded',
         targetTable: 'agent_commitments',
         targetId: inserted.id,
-        after: { kind: input.kind, topic: input.topic ?? null, dueAt: input.dueAt },
+        after: { kind: input.kind, dueAt: input.dueAt },
       });
       return inserted;
     });
