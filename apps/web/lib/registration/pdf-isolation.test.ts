@@ -187,6 +187,51 @@ describe('the PDF reader worker is isolated from the parent process', () => {
     expect(both.map((result) => result.outcome)).toEqual(['read', 'read']);
   });
 
+  it('logs a reader fault by name and error class, never the text of its error', async () => {
+    const PLANTED = 'planted-by-pdf-canary';
+    const crashing = join(scratch, 'crashing-reader.mjs');
+    writeFileSync(
+      crashing,
+      `import { parentPort } from 'node:worker_threads';\nparentPort.postMessage({ kind: 'reader_loaded' });\nthrow new TypeError('${PLANTED} crash');\n`,
+    );
+    const missing = join(scratch, 'missing-reader.mjs');
+    writeFileSync(
+      missing,
+      `import { parentPort } from 'node:worker_threads';\nparentPort.postMessage({ ok: false, kind: 'reader_missing', message: '${PLANTED} missing' });\nsetInterval(() => {}, 1_000);\n`,
+    );
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      spawned.failNext = new RangeError(`${PLANTED} spawn`);
+      await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+        outcome: 'reader_fault',
+        fault: 'reader_spawn_failed',
+      });
+      spawned.swapNextFile = crashing;
+      await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+        outcome: 'reader_fault',
+        fault: 'reader_crashed',
+      });
+      spawned.swapNextFile = missing;
+      await expect(registrationPdfText(GUIDE)).resolves.toEqual({
+        outcome: 'reader_fault',
+        fault: 'reader_missing',
+      });
+      expect(error.mock.calls).toEqual([
+        [
+          { fault: 'reader_spawn_failed', errorClass: 'RangeError' },
+          'registration pdf: reader failed',
+        ],
+        [{ fault: 'reader_crashed', errorClass: 'TypeError' }, 'registration pdf: reader failed'],
+        [{ fault: 'reader_missing', errorClass: null }, 'registration pdf: reader failed'],
+      ]);
+      const logged = JSON.stringify(error.mock.calls);
+      expect(logged).toContain('reader_crashed');
+      expect(logged).not.toContain(PLANTED);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it('holds the slot of a terminated worker until it exits, so a third read is busy', async () => {
     spawned.holdTerminates = 2;
     spawned.swapNextFile = KEEP_ALIVE_READER;

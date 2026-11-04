@@ -49,8 +49,12 @@ function errorClass(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-function readerFault(fault: RegistrationPdfReaderFault, detail: string): RegistrationPdfRead {
-  console.error({ fault, err: detail }, 'registration pdf: reader failed');
+/** `error` is null when the fault has no error object (a missing file, a worker's own report). */
+function readerFault(fault: RegistrationPdfReaderFault, error: unknown): RegistrationPdfRead {
+  console.error(
+    { fault, errorClass: error === null ? null : errorClass(error) },
+    'registration pdf: reader failed',
+  );
   return { outcome: 'reader_fault', fault };
 }
 
@@ -106,7 +110,7 @@ export async function registrationPdfText(
   let memoryPoll: ReturnType<typeof setInterval> | undefined;
   try {
     const workerFile = findRepoFile(PDF_WORKER_ANCHORS, PDF_WORKER_FILE);
-    if (!workerFile) return readerFault('reader_missing', `could not locate ${PDF_WORKER_FILE}`);
+    if (!workerFile) return readerFault('reader_missing', null);
     try {
       worker = new Worker(workerFile, {
         workerData: { bytes, maxPages: MAX_PDF_PAGES, maxTextChars: MAX_PAGE_TEXT_CHARS },
@@ -114,10 +118,7 @@ export async function registrationPdfText(
       });
       worker.once('exit', releaseSlot);
     } catch (error) {
-      return readerFault(
-        'reader_spawn_failed',
-        error instanceof Error ? error.message : String(error),
-      );
+      return readerFault('reader_spawn_failed', error);
     }
     const reader = worker;
     const baselineRss = process.memoryUsage.rss();
@@ -141,19 +142,15 @@ export async function registrationPdfText(
         } else if (message.ok) {
           settle(() => ({ outcome: 'read', pageDerivedText: message.text }));
         } else if ('kind' in message) {
-          settle(() => readerFault('reader_missing', message.message));
+          settle(() => readerFault('reader_missing', null));
         } else {
           settle(() => refused(message.reason, message.limit));
         }
       });
       reader.on('error', (error) =>
-        settle(() =>
-          readerFault(readerLoaded ? 'reader_crashed' : 'reader_missing', error.message),
-        ),
+        settle(() => readerFault(readerLoaded ? 'reader_crashed' : 'reader_missing', error)),
       );
-      reader.on('exit', (code) =>
-        settle(() => readerFault('reader_crashed', `exited with code ${code}`)),
-      );
+      reader.on('exit', () => settle(() => readerFault('reader_crashed', null)));
     });
   } finally {
     clearTimeout(timer);
