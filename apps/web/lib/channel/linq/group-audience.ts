@@ -6,7 +6,7 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { linqFromE164 } from './config';
 import { type ListChatHandles, isUndefinedTable } from './roster';
-import { LinqSendError } from './transport';
+import { LINQ_RATE_LIMIT_CODE, LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — what a family group may hear.
@@ -212,14 +212,20 @@ type LiveRead =
   | { ok: false; failure: 'temporary'; status: string; code?: string; httpStatus?: number }
   | { ok: false; failure: 'permanent'; status: string; httpStatus?: number };
 
-/** The transport calls every 4xx but the rate limit permanent; a timed-out read is not. */
+/** The transport calls every 4xx but 429 permanent, and Linq's 1007 only with cadence
+ * armed; a timed-out read and Linq's own rate limit are "could not check now". */
 const HTTP_REQUEST_TIMEOUT = 408;
 
 async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
   try {
     const read = await listChatHandles({ chatId });
     if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
-    if (read.status === 'refused' && read.permanent && read.httpStatus !== HTTP_REQUEST_TIMEOUT) {
+    if (
+      read.status === 'refused' &&
+      read.permanent &&
+      read.httpStatus !== HTTP_REQUEST_TIMEOUT &&
+      read.code !== LINQ_RATE_LIMIT_CODE
+    ) {
       return { ok: false, failure: 'permanent', status: read.status, httpStatus: read.httpStatus };
     }
     if (read.status === 'refused') {

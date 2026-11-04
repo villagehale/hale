@@ -74,7 +74,7 @@ function cadenceArmed(): boolean {
 }
 
 /** Linq's rate limit: HTTP 429, or its own error 1007. */
-const LINQ_RATE_LIMIT_CODE = '1007';
+export const LINQ_RATE_LIMIT_CODE = '1007';
 /** The longest Retry-After a send waits out in-call; a longer one is handed back. */
 const IN_CALL_RETRY_MAX_MS = 1_000;
 

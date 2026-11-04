@@ -235,6 +235,17 @@ describe('groupAudienceAllows reads the live participant list', () => {
     }
   });
 
+  it("positive control: Linq's own rate limit (400, error 1007) stays participants_unverified with cadence off", async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+    vi.stubEnv('PROACTIVE_CADENCE', '');
+    const rateLimited = (async () =>
+      Response.json({ error: { code: 1007 } }, { status: 400 })) as typeof fetch;
+
+    await expect(
+      groupAudienceAllows(db.database, CHAT, 'schedule', realList(rateLimited)),
+    ).resolves.toEqual({ allowed: false, reason: 'participants_unverified' });
+  });
+
   it('a chat Linq says is not a group is refused by name', async () => {
     await seedRoster(await seedFamily(CHAT), PARENTS);
 
