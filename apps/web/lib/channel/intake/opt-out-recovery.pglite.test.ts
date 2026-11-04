@@ -11,7 +11,7 @@ import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { isSenderHeld } from './opt-out-hold';
-import type { OptOutReader, OptOutReading } from './opt-out-reader';
+import type { OptOutReadInput, OptOutReader, OptOutReading } from './opt-out-reader';
 import {
   HELD_READ_BATCH,
   OPT_OUT_RECOVERY_BUDGET_MS,
@@ -1066,6 +1066,23 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     expect(await withdrawals()).toEqual([]);
     expect(await sessionRow(id)).toMatchObject({ state: 'stopped' });
     expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+  }, 30_000);
+
+  it('a late read is told when the stop arrived and when it is read', async () => {
+    const u = await parent(PHONE_A);
+    await inboundRow(u, 'pm-when', 'stop texting me', ago(330));
+    await hold(PHONE_A, 'pm-when', ago(330));
+    const inputs: OptOutReadInput[] = [];
+    const seen: OptOutReader = {
+      read: async (input) => {
+        inputs.push(input);
+        return scriptedOptOutRead(input.text);
+      },
+    };
+
+    await recover(new FakeTransport(), seen);
+
+    expect(inputs.map((input) => input.late)).toEqual([{ receivedAt: ago(330), readAt: NOW }]);
   }, 30_000);
 
   it('(6) the holder at the time, still current, is stopped, confirmed and released', async () => {

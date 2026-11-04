@@ -83,6 +83,11 @@ export interface OptOutReadInput {
    * language of the text. The reader is handed that region's crisis lines as facts.
    */
   region?: CrisisRegion | null;
+  /**
+   * Only on a read made after the text was held through a model outage (VIL-553): when
+   * it arrived and when it is read, so a late stop's reply can say when it came in.
+   */
+  late?: { receivedAt: Date; readAt: Date } | null;
 }
 
 export interface OptOutReader {
@@ -126,6 +131,14 @@ export function optOutUserMessage(input: OptOutReadInput): string {
     text: input.text,
     languageHint: certainLanguageHint(input.language),
     facts: crisisFactsForRegion(input.region, 'mental'),
+    ...(input.late
+      ? {
+          readLate: {
+            receivedAt: input.late.receivedAt.toISOString(),
+            readAt: input.late.readAt.toISOString(),
+          },
+        }
+      : {}),
   });
 }
 

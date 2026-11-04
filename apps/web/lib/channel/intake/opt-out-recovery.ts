@@ -223,6 +223,7 @@ async function recoverRow(
   const reading = await deps.reader.read({
     text: held.inbound.body,
     language: held.language,
+    late: { receivedAt: held.inbound.receivedAt, readAt: now },
   });
   if (reading === null) return 'read_failed';
 
