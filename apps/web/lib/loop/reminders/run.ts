@@ -950,6 +950,28 @@ export async function runReminderCron(
           heldComposeUnavailable += batch.eventRefs.length;
           continue;
         }
+        if (composed?.status === 'rejected') {
+          console.error(
+            {
+              familyId: group.familyId,
+              offset: batch.offset,
+              events: batch.eventRefs.length,
+              cause: composed.cause,
+              httpStatus: composed.httpStatus,
+              errorType: composed.errorType,
+            },
+            'reminder: compose rejected, dropped',
+          );
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (!r) continue;
+            await drop(
+              { id: r.reminderId, familyId: r.familyId, offset: r.offset },
+              'compose_rejected',
+            );
+          }
+          continue;
+        }
         if (composed?.status !== 'written') {
           console.error(
             { familyId: group.familyId, offset: batch.offset, events: batch.eventRefs.length },
