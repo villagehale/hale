@@ -73,6 +73,15 @@ const readRefused: ListChatHandles = async () => ({
   permanent: false,
 });
 
+/** The real participant read, with Linq (or whatever answered in front of it) replying `status` and `body`. */
+function readAnswering(status: number, body: unknown): ListChatHandles {
+  return (input) =>
+    listLinqParticipantHandles({
+      ...input,
+      fetch: (async () => Response.json(body, { status })) as typeof fetch,
+    });
+}
+
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
@@ -900,6 +909,50 @@ describe('asking for a reminder in the group', () => {
     expect(await onlyReminder()).toMatchObject({ status: 'scheduled' });
   });
 
+  it('holds the confirmation, and sets nothing, when Linq refuses the participant read for this chat (403, its 2005)', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-denied'), {
+        ...ports,
+        listChatHandles: readAnswering(403, { error: { code: 2005 } }),
+      }),
+    ).toEqual({ handled: true, outcome: 'group_reminder_held' });
+    expect(sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'cancelled',
+      statusReason: 'confirm_held',
+    });
+    const held = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, home.familyId),
+          eq(schema.auditLog.actionTaken, 'group_reminder_held'),
+        ),
+      );
+    expect(held).toEqual([{ after: { kind: 'confirm', reason: 'participants_unreadable' } }]);
+  });
+
+  it('positive control: a 403 with no Linq code is not Linq naming the chat, so the redelivery sets the reminder', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const home = await seedHousehold();
+    const { ports, sends } = turnPorts(reading([ask()]));
+
+    expect(
+      await takeGroupReminderTurn(db.database, inbound(RUTH, 'remind me at 4', 'in-edge'), {
+        ...ports,
+        listChatHandles: readAnswering(403, {}),
+      }),
+    ).toEqual({ handled: true, outcome: 'group_reminder_retry' });
+    expect(sends).toEqual([]);
+    expect(await reminders()).toEqual([]);
+    expect(await verbs(home.familyId)).not.toContain('group_reminder_held');
+  });
+
   it('leaves anything that is not a reminder ask to the coach, untouched', async () => {
     await seedHousehold();
     const other = turnPorts({ request: 'other', set: [], cancel: [], language: 'en' });
@@ -1609,16 +1662,12 @@ describe('when a group reminder is due', () => {
     expect(await onlyReminder()).toMatchObject({ status: 'sent' });
   });
 
-  it('drops a due group line, by name, when Linq refuses the participant read for good (403)', async () => {
+  it('drops a due group line, by name, when Linq refuses the participant read for good (403, its 2005)', async () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     await seedHousehold();
     await setFor(RUTH);
     const tick = tickPorts(THURSDAY_FOUR);
-    const forbidden: ListChatHandles = (input) =>
-      listLinqParticipantHandles({
-        ...input,
-        fetch: (async () => Response.json({}, { status: 403 })) as typeof fetch,
-      });
+    const forbidden = readAnswering(403, { error: { code: 2005 } });
 
     expect(
       await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: forbidden }),
@@ -1628,6 +1677,27 @@ describe('when a group reminder is due', () => {
       status: 'dropped',
       statusReason: 'audience_held',
     });
+  });
+
+  it('keeps a due group line when a 403 or 404 carries no Linq code: an edge page is not Linq naming the chat', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+
+    for (const [at, status] of [
+      [THURSDAY_FOUR, 403],
+      [AFTER_STALE, 404],
+    ] as const) {
+      const tick = tickPorts(at);
+      expect(
+        await runGroupReminderTick(db.database, {
+          ...tick.ports,
+          listChatHandles: readAnswering(status, {}),
+        }),
+      ).toMatchObject({ sent: 0, dropped: 0, retrying: 1 });
+      expect(tick.sends).toEqual([]);
+      expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+    }
   });
 
   it("keeps a due group line when the participant read is refused for Hale's own credential (401)", async () => {

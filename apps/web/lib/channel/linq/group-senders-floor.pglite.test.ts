@@ -647,6 +647,43 @@ describe('RSVP follow-ups through the real sender', () => {
     expect(await store.claimFollowup(plan.id, 1, DAY)).toBe(true);
   });
 
+  /** Every GET answers `status` with `body`; nothing else may reach the wire. */
+  function readRefusedWith(status: number, body: unknown) {
+    const posts: string[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'GET') return Response.json(body, { status });
+      posts.push(String(url));
+      return Response.json({ message: { id: 'out-1' } }, { status: 201 });
+    });
+    return { fetch: fetchImpl as unknown as typeof fetch, posts: () => posts };
+  }
+
+  it('a read Linq refuses for this chat (404, its 2001) holds the wave and keeps it claimed', async () => {
+    await householdGroup();
+    const { store, plan } = await duePlan();
+    const wire = readRefusedWith(404, { error: { code: 2001 } });
+    vi.stubGlobal('fetch', wire.fetch);
+
+    const result = await run(store);
+
+    expect(result).toMatchObject({ evaluated: 1, sent: 0, held: 1, failed: 0 });
+    expect(wire.posts()).toEqual([]);
+    expect(await store.claimFollowup(plan.id, 1, DAY)).toBe(false);
+  });
+
+  it('positive control: a 404 with no Linq code holds the wave without consuming it', async () => {
+    await householdGroup();
+    const { store, plan } = await duePlan();
+    const wire = readRefusedWith(404, {});
+    vi.stubGlobal('fetch', wire.fetch);
+
+    const result = await run(store);
+
+    expect(result).toMatchObject({ evaluated: 1, sent: 0, held: 1, failed: 0 });
+    expect(wire.posts()).toEqual([]);
+    expect(await store.claimFollowup(plan.id, 1, DAY)).toBe(true);
+  });
+
   it('participant_unresolved holds the wave and keeps it claimed', async () => {
     await householdGroup();
     const { store, plan } = await duePlan();
