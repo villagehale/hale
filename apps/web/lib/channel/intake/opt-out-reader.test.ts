@@ -145,6 +145,25 @@ describe('opt-out reader guards (structural, no model)', () => {
     expect(us.facts.crisisLine).toContain('988 Suicide & Crisis Lifeline');
     expect(us.facts.crisisLine).not.toContain('9-8-8 Suicide Crisis Helpline');
   });
+
+  it('hands a late read when the text arrived and when it is read, and a live read neither', () => {
+    const late = JSON.parse(
+      optOutUserMessage({
+        text: 'stop texting me',
+        language: null,
+        late: {
+          receivedAt: new Date('2026-10-20T09:30:00.000Z'),
+          readAt: new Date('2026-10-20T15:00:00.000Z'),
+        },
+      }),
+    );
+    expect(late.readLate).toEqual({
+      receivedAt: '2026-10-20T09:30:00.000Z',
+      readAt: '2026-10-20T15:00:00.000Z',
+    });
+    const live = JSON.parse(optOutUserMessage({ text: 'stop texting me', language: null }));
+    expect(Object.keys(live).sort()).toEqual(['facts', 'languageHint', 'text']);
+  });
 });
 
 describe('crisis situation: a closed enum, validated in code', () => {

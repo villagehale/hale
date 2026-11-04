@@ -23,7 +23,8 @@ import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
-import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { createOptOutReader, sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import type { OptOutRecoveryDeps } from '~/lib/channel/intake/opt-out-recovery';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
 import { createSignupStepReader } from '~/lib/channel/intake/signup-step';
 import type { WelcomeCardPorts } from '~/lib/channel/intake/welcome-card';
@@ -37,7 +38,13 @@ import type { MessageTransport } from '~/lib/channel/transport-address';
 import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
-import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { providerPreflight } from '~/lib/monitoring/provider-health';
+import {
+  HOT_SMS_CLIENT_OPTIONS,
+  OPT_OUT_RECOVERY_CLIENT_OPTIONS,
+  activityClient,
+  budgetedAnthropic,
+} from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
@@ -251,4 +258,19 @@ export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJ
   }
   await sendChannelMessageReceived(queue, job);
   queueEnsured = true;
+}
+
+/**
+ * VIL-553 · the opt-out recovery pass's ports. Its own reader client (12s, no SDK retry)
+ * so one held text that keeps failing cannot eat the drain's headroom, and a pre-flight
+ * against that same client on its own window.
+ */
+export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecoveryDeps {
+  const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS);
+  return {
+    reader: createOptOutReader(client),
+    transport: createOutboundTransport(),
+    preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),
+    now,
+  };
 }

@@ -56,6 +56,7 @@ describe('GET /api/cron/failure-page', () => {
       providerIncidents: { posted: 0, deduped: 0, failed: 0 },
       deadLetters: { posted: 0, deduped: 0, failed: 0 },
       deferredPileups: { posted: 0, deduped: 0, failed: 0 },
+      optOutHolds: { posted: 0, deduped: 0, failed: 0 },
     });
 
     const response = await GET(request());
@@ -68,6 +69,7 @@ describe('GET /api/cron/failure-page', () => {
       providerIncidents: { posted: 0, deduped: 0, failed: 0 },
       deadLetters: { posted: 0, deduped: 0, failed: 0 },
       deferredPileups: { posted: 0, deduped: 0, failed: 0 },
+      optOutHolds: { posted: 0, deduped: 0, failed: 0 },
     });
     expect(pageFailureAlertsMock).toHaveBeenCalledTimes(1);
   });

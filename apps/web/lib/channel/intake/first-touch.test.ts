@@ -1406,8 +1406,10 @@ describe('#868 opt-out reader decides every turn, and a failed read holds the se
     return {
       calls,
       port: {
-        hold: async (hash: string) => void calls.push(`hold:${hash.length > 0}`),
-        release: async (hash: string) => void calls.push(`release:${hash.length > 0}`),
+        hold: async (hash: string, providerMessageId: string) =>
+          void calls.push(`hold:${hash}:${providerMessageId}`),
+        settled: async (providerMessageId: string) =>
+          void calls.push(`settled:${providerMessageId}`),
       },
     };
   };
@@ -1427,23 +1429,62 @@ describe('#868 opt-out reader decides every turn, and a failed read holds the se
     expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
   });
 
-  it('a read that fails (after its retry) holds the sender', async () => {
+  it('a read that fails (after its retry) holds that message by its provider id', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     const held = recorder();
     deps.optOutReader = { read: async () => null };
     deps.optOutHold = held.port;
-    await handleInboundSms(fake.db, inbound(transport, 'unreadable for now'), deps);
-    expect(held.calls).toContain('hold:true');
-    expect(held.calls).not.toContain('release:true');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    expect(held.calls).toEqual([`hold:${phoneBlindIndex(PHONE)}:pm-1`]);
   });
 
-  it('a read that succeeds releases the hold', async () => {
+  it('a read that succeeds settles only the message it read', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     const held = recorder();
     deps.optOutReader = reader('none', '');
     deps.optOutHold = held.port;
-    await handleInboundSms(fake.db, inbound(transport, 'hello again'), deps);
-    expect(held.calls).toEqual(['release:true']);
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'hello again', { providerId: 'pm-2' }),
+      deps,
+    );
+    expect(held.calls).toEqual(['settled:pm-2']);
+  });
+
+  it('VIL-553: a later text read fine never releases the held one', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutHold = held.port;
+    deps.optOutReader = { read: async () => null };
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    deps.optOutReader = reader('none', '');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'hello again', { providerId: 'pm-2' }),
+      deps,
+    );
+    expect(held.calls).toEqual([`hold:${phoneBlindIndex(PHONE)}:pm-1`, 'settled:pm-2']);
+  });
+
+  it('positive control: a redelivery of the held message that is read settles it', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutHold = held.port;
+    deps.optOutReader = reader('none', '');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    expect(held.calls).toEqual(['settled:pm-1']);
   });
 });
 

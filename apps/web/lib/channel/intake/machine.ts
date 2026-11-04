@@ -128,7 +128,7 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
-import { holdSender, releaseSender } from './opt-out-hold';
+import { holdSender, releaseHeldMessage } from './opt-out-hold';
 import {
   type OptOutReader,
   type OptOutReading,
@@ -230,7 +230,7 @@ export interface IntakeDeps {
    * EFFECT (failure-page.ts on this turn's database): a test seam, never a way to
    * withhold the page. */
   crisisPager?: CrisisPager;
-  /** #868 · failed-read hold store; defaults to opt_out_read_holds. */
+  /** #868 · failed-read hold store; defaults to opt_out_held_messages (VIL-553). */
   optOutHold?: OptOutHoldPort;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
@@ -383,7 +383,7 @@ export type IntakeOutcome =
   // (inbound-route.ts), and a redemption has already been answered.
   | JoinOutcome;
 
-interface Inbound {
+export interface Inbound {
   from: string;
   body: string;
   providerId: string;
@@ -447,7 +447,7 @@ export async function handleInboundSms(
         text: inbound.body,
         language: null,
       });
-      await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+      await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
       if (reading?.intent === 'stop') {
         return handleStop(
           database,
@@ -492,7 +492,7 @@ export async function handleInboundSms(
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
-    await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+    await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(
         database,
@@ -3606,30 +3606,37 @@ async function helpBody(
 
 /** #868 · where a failed read's hold is written (tests pass a recorder). */
 export interface OptOutHoldPort {
-  hold(phoneHash: string, now: Date): Promise<void>;
-  release(phoneHash: string): Promise<void>;
+  hold(phoneHash: string, providerMessageId: string, now: Date): Promise<void>;
+  /** This exact message was read. Releases only its own hold row. */
+  settled(providerMessageId: string): Promise<void>;
 }
 
 /**
- * #868 · after the turn's read: a failed read (null after the reader's retry) holds the
- * sender from proactive and queued sends; a successful read releases any hold.
+ * #868 · after the turn's read: a failed read (null after the reader's retry) holds this
+ * message, and so its sender, from proactive and queued sends. VIL-553: a successful
+ * read settles only the message it read; another unread text of the same number stays
+ * held until it is read (opt-out-recovery.ts).
  */
 async function settleOptOutHold(
   database: Database,
   phoneHash: string,
-  body: string,
+  inbound: Pick<Inbound, 'body' | 'providerId'>,
   reading: OptOutReading | null,
   now: Date,
   hold?: OptOutHoldPort,
 ): Promise<void> {
-  if (body.trim().length === 0) return;
-  const port = hold ?? {
-    hold: (hash: string, at: Date) => holdSender(database, hash, at),
-    release: (hash: string) => releaseSender(database, hash),
+  if (inbound.body.trim().length === 0) return;
+  const port: OptOutHoldPort = hold ?? {
+    hold: async (hash, providerMessageId, at) => {
+      await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
+    },
+    settled: async (providerMessageId) => {
+      await releaseHeldMessage(database, providerMessageId);
+    },
   };
   try {
-    if (reading === null) await port.hold(phoneHash, now);
-    else await port.release(phoneHash);
+    if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
+    else await port.settled(inbound.providerId);
   } catch (err) {
     // The hold is a guard, never a reason to drop the turn: logged, and the turn goes on.
     console.error(
@@ -3698,7 +3705,7 @@ async function restartFromReader(
   return { status: 'restarted', ack: 'sent' };
 }
 
-async function handleStop(
+export async function handleStop(
   database: Database,
   args: {
     phoneE164: string;
@@ -3712,7 +3719,7 @@ async function handleStop(
      * revocation above it has already run. */
     confirmation?: string;
   },
-  deps: IntakeDeps,
+  deps: Pick<IntakeDeps, 'transport'>,
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now, providerAnswered } = args;
 

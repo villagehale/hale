@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Request was to start again; reply clearly says it is back and will text again, in English matching the person's language. Short, warm enough, asks nothing and sells nothing. No readLate field, so no lateness requirement applies."
+  }
+}

@@ -142,6 +142,8 @@ export const AUDIT_VERBS = [
   // ── the messaging product itself (SMS / voice / email / push) ───────────
   'channel_sms_enrolled',
   'channel_sms_revoked',
+  // VIL-553. A text whose stop check failed during a model outage, read again later.
+  'opt_out_hold_read',
   'sms_reply_received',
   'sms_reply_sent',
   // Only ever written for the synthetic canary household — but rule #6 admits no
@@ -709,6 +711,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // They were the whole reason the trail read as "Hale recorded an update".
   channel_sms_enrolled: { sentence: 'your phone was set up to text with Hale', family: 'done' },
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
+  opt_out_hold_read: {
+    sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
   sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
   sms_reply_sent: { sentence: 'Hale texted you back', family: 'note' },
   sms_canary_answered: { sentence: 'Hale answered its own service check', family: 'note' },
@@ -2030,6 +2036,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_plan.report_released',
   'calendar_alert_debt_retired',
   'crisis_unanswered',
+  // VIL-553. About the one parent who texted: another adult in the home never sees it.
+  'opt_out_hold_read',
   'group_decision_sync_closed_unsent',
 ] as const satisfies readonly AuditVerb[];
 
