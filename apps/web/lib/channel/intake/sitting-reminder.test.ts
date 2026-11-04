@@ -6,7 +6,6 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { type FakeDb, makeFakeDb } from './fakes';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import {
-  FOUNDER_PAIR_SESSION_IDS,
   SITTING_REMINDER_HOUR_LOCAL,
   SITTING_REMINDER_TIMEZONE,
   type SittingReminderDeps,
@@ -146,8 +145,6 @@ describe('sitting reminder', () => {
     expect(SITTING_REMINDER_HOUR_LOCAL).toBe(8);
     expect(SITTING_REMINDER_HOUR_LOCAL).not.toBe(9);
   });
-
-  it("never carries tonight's founder pair — Barton / Sebastian's dad / I built Hale", () => {});
 });
 
 describe('isSittingReminderSlot', () => {
@@ -311,23 +308,6 @@ describe('runSittingReminderCron', () => {
     const owed = await runSittingReminderCron(unheld.db, deps(transport), TORONTO_8AM);
     expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
     expect(transport.sent[0]?.to).toBe(PHONE);
-  });
-
-  it("does not send Still here to tonight's founder-pair session ids", async () => {
-    const fake = makeFakeDb();
-    const transport = new FakeTransport();
-    const [firstId, secondId] = [...FOUNDER_PAIR_SESSION_IDS];
-    expect(FOUNDER_PAIR_SESSION_IDS.size).toBe(2);
-    seedSession(fake, { id: firstId });
-    seedSession(fake, { id: secondId, phoneE164: OTHER });
-
-    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
-    expect(result.sent).toBe(0);
-    expect(transport.bodies()).toEqual([]);
-    expect(fake.rows(schema.smsIntakeSessions).map((row) => row.sittingReminderSentAt)).toEqual([
-      TORONTO_8AM,
-      TORONTO_8AM,
-    ]);
   });
 
   it('caps at one send — a second tick in the same hour is quiet', async () => {
