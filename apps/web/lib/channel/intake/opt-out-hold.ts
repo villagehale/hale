@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 
@@ -42,6 +42,46 @@ export async function releaseHeldMessage(
     .where(eq(schema.optOutHeldMessages.providerMessageId, providerMessageId))
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   return deleted.length > 0 ? 'released' : 'not_held';
+}
+
+/**
+ * Erasure (rights/delete.ts, after the family cascade): hold rows are keyed by the number
+ * alone, so an erased family's numbers take theirs here. A number someone still holds
+ * keeps its rows, since one may be that holder's own unread stop; recovery settles the
+ * rest (a text no store holds any more is paged as not in the ledger).
+ */
+export async function releaseErasedNumbers(
+  database: Database,
+  phoneHashes: readonly string[],
+): Promise<void> {
+  if (phoneHashes.length === 0) return;
+  const channels = await database
+    .select({ phoneHash: schema.parentChannels.phoneE164Hash })
+    .from(schema.parentChannels)
+    .where(
+      and(
+        inArray(schema.parentChannels.phoneE164Hash, [...phoneHashes]),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    );
+  const sessions = await database
+    .select({ phoneHash: schema.smsIntakeSessions.phoneHash })
+    .from(schema.smsIntakeSessions)
+    .where(
+      and(
+        inArray(schema.smsIntakeSessions.phoneHash, [...phoneHashes]),
+        isNull(schema.smsIntakeSessions.closedAt),
+      ),
+    );
+  const stillHeld = new Set([...channels, ...sessions].map((row) => row.phoneHash));
+  const released = phoneHashes.filter((hash) => !stillHeld.has(hash));
+  if (released.length === 0) return;
+  await database
+    .delete(schema.optOutHeldMessages)
+    .where(inArray(schema.optOutHeldMessages.phoneHash, released));
+  await database
+    .delete(schema.optOutReadHolds)
+    .where(inArray(schema.optOutReadHolds.phoneHash, released));
 }
 
 /** Held while any unread text of this number stands, or a pre-VIL-553 row does. */

@@ -32,6 +32,8 @@ import type { AuditVerb } from '~/lib/trail/verbs';
 const NOT_IN_FAMILY_EXPORT = [
   // A crisis flag can endanger the parent who texted if another adult in the home reads it.
   'crisis_unanswered',
+  // That Hale re-read one parent's held text to see whether they asked it to stop.
+  'opt_out_hold_read',
 ] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {

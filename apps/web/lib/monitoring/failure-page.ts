@@ -109,7 +109,8 @@ export const CRISIS_UNANSWERED_AUDIT_ACTION = 'crisis_unanswered';
 export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
 /**
  * A held text read late as a crisis. The row IS the record, as for a first hello: a
- * sender with no family has no audit row to count. Identifier is the provider message id.
+ * sender with no family has no audit row to count. Identifier is a hash of the provider
+ * message id (one mark per text), never the id itself.
  */
 export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
 const HOUR_MS = 3_600_000;
@@ -437,6 +438,16 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         eq(schema.rateLimits.route, OPT_OUT_HOLD_PAGE_ROUTE),
         gt(schema.rateLimits.count, ALERTED_COUNT),
         lt(schema.rateLimits.count, staleBefore),
+      ),
+    );
+  // A late-crisis mark only feeds the page's last-hour count. A day keeps it past a
+  // Slack outage; after that it is deleted, so no mark of one parent's crisis outlives it.
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE),
+        lt(schema.rateLimits.windowStart, new Date(now.getTime() - DAY_MS)),
       ),
     );
   // A dead letter's claim row IS the record, same as a first hello. Reset it.
@@ -1097,7 +1108,7 @@ export async function noteLateOptOutCrisis(
   await database
     .insert(schema.rateLimits)
     .values({
-      identifier: providerMessageId,
+      identifier: crisisInboundKey(providerMessageId),
       route: OPT_OUT_LATE_CRISIS_ROUTE,
       windowStart: now,
       count: ALERTED_COUNT,

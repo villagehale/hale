@@ -2012,6 +2012,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_plan.report_released',
   'calendar_alert_debt_retired',
   'crisis_unanswered',
+  // VIL-553. About the one parent who texted: another adult in the home never sees it.
+  'opt_out_hold_read',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

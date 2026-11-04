@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
+import { releaseErasedNumbers } from '../channel/intake/opt-out-hold.js';
 import { removeDocument } from '../docs/storage.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
@@ -281,11 +282,28 @@ export async function runDeletionSweep(
           ),
         ];
 
+  // VIL-553 · held opt-out reads are keyed by the number alone, out of the cascade's
+  // reach. Read before the delete, like `stranded`.
+  const heldNumbers =
+    familyIds.length === 0
+      ? []
+      : [
+          ...new Set(
+            (
+              await database
+                .select({ phoneHash: schema.parentChannels.phoneE164Hash })
+                .from(schema.parentChannels)
+                .where(inArray(schema.parentChannels.familyId, familyIds))
+            ).map((row) => row.phoneHash),
+          ),
+        ];
+
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
+  await releaseErasedNumbers(database, heldNumbers);
   // AFTER the families, and on the same tick rather than a cron of its own: an erasure
   // that just removed a household is the commonest way a person is orphaned, so running
   // second means this run cleans up after itself instead of leaving it for the next hour.

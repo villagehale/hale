@@ -313,8 +313,10 @@ describe('GET /api/cron/drain', () => {
   it('names a failed opt-out recovery leg and still drains', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const { GET } = await import('./route');
-    recoverHeldOptOutReadsMock.mockRejectedValue(new Error('leg blew up'));
+    const thrown = new Error('leg blew up near a held text');
+    recoverHeldOptOutReadsMock.mockRejectedValue(thrown);
     runDrainCronMock.mockResolvedValue({ processed: 1, failed: 0, dropped: 0 });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const response = await GET(request());
 
@@ -324,6 +326,13 @@ describe('GET /api/cron/drain', () => {
       processed: 1,
       optOutRecovery: { skipped: 'tick_failed' },
     });
+    // The error's name only: its message or stack may carry what the leg was reading.
+    const leg = errors.mock.calls.find((call) =>
+      call.some((arg) => typeof arg === 'string' && arg.includes('opt-out recovery leg failed')),
+    );
+    expect(leg?.[0]).toEqual({ err: 'Error', skipped: 'tick_failed' });
+    expect(errors.mock.calls.flat()).not.toContain(thrown);
+    expect(JSON.stringify(errors.mock.calls)).not.toContain('near a held text');
   });
 
   it('skips the opt-out recovery leg on Preview, which shares the prod database', async () => {

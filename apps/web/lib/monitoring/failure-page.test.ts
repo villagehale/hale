@@ -22,6 +22,7 @@ import {
   FIRST_HELLO_PAGE_ROUTE,
   MODEL_PROVIDER,
   OPT_OUT_HOLD_PAGE_ROUTE,
+  OPT_OUT_LATE_CRISIS_ROUTE,
   PROVIDER_INCIDENT_PAGE_ROUTE,
   TURN_DEFERRED_AUDIT_ACTION,
   TURN_FAILED_AUDIT_ACTION,
@@ -1093,6 +1094,22 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
     expect(texts).toEqual([
       'Hale: opt-out reads held. messages 0. numbers 0. not in ledger 0. legacy 0. oldest 0h. crisis read late 1.',
     ]);
+  });
+
+  it('a late crisis mark names no message and is gone once a day old', async () => {
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-fresh', ago(10 * 60_000));
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-stale', ago(25 * HOUR));
+    const { post } = recorder();
+
+    await pageFailureAlerts(db.database, { post, now: NOW });
+
+    const marks = await db.database
+      .select({ identifier: schema.rateLimits.identifier, at: schema.rateLimits.windowStart })
+      .from(schema.rateLimits)
+      .where(eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE));
+    // Positive control: the fresh mark stands; only the day-old one was deleted.
+    expect(marks.map((mark) => mark.at)).toEqual([ago(10 * 60_000)]);
+    expect(marks[0]?.identifier).not.toContain('pm-crisis');
   });
 
   it('posts nothing when nothing is held', async () => {

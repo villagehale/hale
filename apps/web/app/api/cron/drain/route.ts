@@ -142,7 +142,11 @@ async function runOptOutRecoveryLeg(): Promise<OptOutRecoveryResult | { skipped:
     const database = db();
     return await recoverHeldOptOutReads(database, optOutRecoveryPorts(database, new Date()));
   } catch (err) {
-    console.error({ err, skipped: 'tick_failed' }, 'cron/drain opt-out recovery leg failed');
+    // The name only: a message or stack from inside the leg may carry what it was reading.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain opt-out recovery leg failed',
+    );
     return { skipped: 'tick_failed' };
   }
 }
