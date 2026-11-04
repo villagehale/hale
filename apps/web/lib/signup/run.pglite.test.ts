@@ -835,7 +835,7 @@ describe('authorized signup runner', () => {
     expect(await audits(seeded.familyId)).not.toContain('Ada');
   });
 
-  it('sends the result to the co-parent group and not as a new 1:1 reply', async () => {
+  it('VIL-565: a result names no content class, so it is the 1:1 reply even when the family holds a group', async () => {
     const seeded = await familyWithOffer({ ageMonths: 36 });
     await db.database
       .update(schema.families)
@@ -866,8 +866,8 @@ describe('authorized signup runner', () => {
     });
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed) return;
-    expect(verdict.reply).toBeNull();
-    expect(sent).toEqual(['group-chat-1']);
+    expect(verdict.reply).toContain('outcome=completed reason= confirmed=true session=Tue 4:30');
+    expect(sent).toEqual([]);
   });
 
   it('hands back before a browser or a pack when the yes has no message id', async () => {
@@ -1803,27 +1803,32 @@ describe('authorized signup runner', () => {
           return { seeded, messageId: await inboundYes(seeded, false) };
         }
         // A 1:1 yes carries the pack, which never goes to the group; with no thread the
-        // parent opened, that door is held.
+        // parent opened, that door is held. The family's group is no door for an
+        // unclassified result (VIL-565), so the hold comes before the browser runs.
         const held = await familyWithGroupAndYes('group-chat-vil558-held');
         const heldWriter = echoOutcomeWriter();
+        const heldRun = vi.fn(async () => CHECKOUT);
         const result = await runAuthorizedSignup(
           db.database,
           { ...yes(held.seeded, held.messageId), existingThread: false },
-          { browserUseSignup: { run: vi.fn(async () => CHECKOUT) }, outcomeWriter: heldWriter },
+          { browserUseSignup: { run: heldRun }, outcomeWriter: heldWriter },
         );
         expect(heldWriter.facts).toEqual([]);
+        expect(heldRun).not.toHaveBeenCalled();
         expect(result).toMatchObject({
           claimed: true,
-          outcome: 'needs_login',
+          outcome: 'would_initiate_1_1',
           reply: null,
           deliverOnThread: false,
         });
         expect(result.unsent).toBeUndefined();
-        expect(await reportAudit(held.seeded.familyId)).toMatchObject({
-          outcome: 'needs_login',
-          door: 'held',
-          replied: false,
-        });
+        const heldAudits = await db.database
+          .select({ after: schema.auditLog.after })
+          .from(schema.auditLog)
+          .where(eq(schema.auditLog.familyId, held.seeded.familyId));
+        expect(heldAudits.map((row) => row.after)).toContainEqual(
+          expect.objectContaining({ step: 'door', reason: 'would_initiate_1_1' }),
+        );
 
         // Positive control: the same 1:1 yes on the thread the parent opened reaches the writer.
         const open = await familyWithGroupAndYes('group-chat-vil558-open');
@@ -1998,7 +2003,9 @@ describe('authorized signup runner', () => {
         expect(result.deliverOnThread).toBe(true);
         expect(result.reply).toContain('fixture-live-view-token');
 
-        // Positive control: an outcome with nothing private keeps the family's group door.
+        // Control: an outcome with nothing private is still delivered, on the thread the parent
+        // opened. The family's group is no door for a result that names no content class
+        // (VIL-565), so the group spy stays silent there too.
         const other = await familyWithOffer({ ageMonths: 36, url: REC });
         await db.database
           .update(schema.families)
@@ -2018,12 +2025,13 @@ describe('authorized signup runner', () => {
             outcomeWriter,
           },
         );
-        expect(groupSpy).toHaveBeenCalledTimes(1);
+        expect(groupSpy).not.toHaveBeenCalled();
         expect(soldOut.outcome).toBe('sold_out');
+        expect(soldOut.deliverOnThread).toBe(true);
         expect(outcomeWriter.facts[0]).toMatchObject({
           outcome: 'sold_out',
           reason: null,
-          audience: 'group',
+          audience: 'direct',
         });
         expect(outcomeWriter.facts[0]?.pack ?? []).toEqual([]);
       });

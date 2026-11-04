@@ -24,6 +24,7 @@ import { groupAudienceAllows } from './group-audience';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
 import type { LinqInboundText } from './payload';
+import type { ListChatHandles } from './roster';
 import { removeRosterParticipant, stopInGroup } from './roster-stop';
 
 /**
@@ -41,6 +42,11 @@ const GRAN = '+14165550132';
 const FRIEND = '+14165550133';
 const GROUP = 'chat-family-group';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
+
+/** The floor's live read: who Linq says is in the chat now. */
+function inChat(...handles: string[]): ListChatHandles {
+  return async () => ({ status: 'ok', handles, isGroup: true });
+}
 
 let db: TestDb;
 
@@ -275,7 +281,10 @@ describe('stopInGroup', () => {
       { phone: GRAN, role: 'grandparent' },
     ]);
     const granId = seeded.users[GRAN] as string;
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(true);
+    const everyone = inChat(PARENT, DAD, GRAN);
+    expect((await groupAudienceAllows(db.database, GROUP, 'schedule', everyone)).allowed).toBe(
+      true,
+    );
     const { ports: p, sends, direct } = ports();
 
     const turn = await stopInGroup(db.database, stop(GRAN, 'in-gran-stop'), p);
@@ -296,7 +305,7 @@ describe('stopInGroup', () => {
       );
     expect(withdrawn).toEqual([{ granted: false, scope: 'caregiver:grandparent' }]);
     expect(await liveChannel(granId)).toBe(true);
-    expect(await groupAudienceAllows(db.database, GROUP, 'schedule')).toEqual({
+    expect(await groupAudienceAllows(db.database, GROUP, 'schedule', everyone)).toEqual({
       allowed: false,
       reason: 'group_audience_empty',
     });
@@ -320,7 +329,9 @@ describe('stopInGroup', () => {
     expect(await memberStatus(DAD)).toEqual(['declined']);
     expect(await familyRoles(seeded.familyId)).toEqual(['co_parent', 'primary_parent']);
     expect(await liveChannel(dadId)).toBe(true);
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'schedule', inChat(PARENT, DAD))).allowed,
+    ).toBe(false);
     expect(sends).toHaveLength(1);
   });
 
@@ -361,7 +372,10 @@ describe('stopInGroup', () => {
 describe('removeRosterParticipant', () => {
   it('lets the group speak again once the person who was not family is removed', async () => {
     await seedConfirmedGroup([{ phone: GRAN, role: 'grandparent' }], FRIEND);
-    expect((await groupAudienceAllows(db.database, GROUP, 'schedule')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'schedule', inChat(PARENT, GRAN, FRIEND)))
+        .allowed,
+    ).toBe(false);
 
     const removed = await removeRosterParticipant(db.database, {
       chatId: GROUP,
@@ -371,11 +385,14 @@ describe('removeRosterParticipant', () => {
 
     expect(removed).toEqual({ outcome: 'roster_member_removed', role: null });
     expect(await memberStatus(FRIEND)).toEqual(['removed']);
-    expect(await groupAudienceAllows(db.database, GROUP, 'schedule')).toEqual({
+    const afterRemoval = inChat(PARENT, GRAN);
+    expect(await groupAudienceAllows(db.database, GROUP, 'schedule', afterRemoval)).toEqual({
       allowed: true,
       reason: 'in_scope',
     });
-    expect((await groupAudienceAllows(db.database, GROUP, 'registration')).allowed).toBe(false);
+    expect(
+      (await groupAudienceAllows(db.database, GROUP, 'registration', afterRemoval)).allowed,
+    ).toBe(false);
   });
 
   it('closes only presence when a co-parent is taken out of the chat: they stay a parent on Hale', async () => {

@@ -167,7 +167,7 @@ describe('fireDecision', () => {
     groupHeld: true,
     askerSeated: true,
     recipientSeated: null,
-    audienceAllowed: true,
+    audience: { allowed: true, reason: 'in_scope' },
     askerCustomer: true,
     quietNow: false,
     directReachable: true,
@@ -193,16 +193,28 @@ describe('fireDecision', () => {
     expect(fireDecision(row, { ...ok, groupHeld: false })).toMatchObject({ reason: 'group_gone' });
     const late = { ...ok, now: new Date(NOW.getTime() + 3 * 60 * 60_000) };
     expect(fireDecision(row, late)).toMatchObject({ reason: 'missed' });
-    expect(fireDecision(row, { ...ok, audienceAllowed: false })).toMatchObject({
+    const unresolved = { allowed: false, reason: 'participant_unresolved' } as const;
+    expect(fireDecision(row, { ...ok, audience: unresolved })).toEqual({
+      kind: 'drop',
       reason: 'audience_held',
     });
     expect(fireDecision(row, { ...ok, quietNow: true })).toMatchObject({ reason: 'quiet_hours' });
     expect(
       fireDecision({ ...row, delivery: 'direct' }, { ...ok, directReachable: false }),
     ).toMatchObject({ reason: 'direct_unreachable' });
-    expect(fireDecision({ ...row, delivery: 'direct' }, { ...ok, audienceAllowed: false })).toEqual(
-      { kind: 'send' },
-    );
+    expect(fireDecision({ ...row, delivery: 'direct' }, { ...ok, audience: null })).toEqual({
+      kind: 'send',
+    });
+  });
+
+  it('defers a group reminder whose participant read could not be made, until it is late', () => {
+    const unverified = { allowed: false, reason: 'participants_unverified' } as const;
+    expect(fireDecision(row, { ...ok, audience: unverified })).toEqual({
+      kind: 'defer',
+      reason: 'participants_unverified',
+    });
+    const late = { ...ok, now: new Date(NOW.getTime() + 3 * 60 * 60_000), audience: unverified };
+    expect(fireDecision(row, late)).toEqual({ kind: 'drop', reason: 'missed' });
   });
 
   it('drops a 1:1 reminder once its asker no longer counts as a customer, never posting it', () => {

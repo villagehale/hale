@@ -1,8 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, notInArray } from 'drizzle-orm';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
-import { linqGroupOnboardingV2Enabled } from './config';
-import { isUndefinedTable } from './roster';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { linqFromE164 } from './config';
+import { type ListChatHandles, isUndefinedTable } from './roster';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — what a family group may hear.
@@ -18,10 +21,15 @@ import { isUndefinedTable } from './roster';
  * Until the roster is `confirmed`, the only group lines are the roster's own (asks,
  * acknowledgements, STOP) and a direct `reply` to someone in the thread. A `confirmed`
  * chat whose scope is empty takes nothing at all. A send that names no content class
- * is refused once the flag is on: a class nobody stated cannot be proved to be in scope.
+ * is refused: a class nobody stated cannot be proved to be in scope. A chat with no
+ * roster that no family holds takes a `reply` only.
  *
- * Flag off is today's rule (a claimed chat takes everything). The roster tables are read
- * on every group send, so a missing table is the named `not_migrated` refusal.
+ * The roster is a cache of who was seated; the chat is the truth. Before a household
+ * line, the floor reads the chat's present participants once (`listChatHandles`). Every
+ * present handle other than Hale's line must be a live member of this roster by phone
+ * hash; an email, an unrostered phone or a failed read holds the line, and the scope is
+ * the narrowest role among the people actually present. The roster tables are read on
+ * every group send, so a missing table is the named `not_migrated` refusal.
  */
 
 export const GROUP_CONTENT: readonly ContentClass[] = [
@@ -37,10 +45,13 @@ export type GroupHoldReason =
   | 'not_migrated'
   | 'group_roles_unconfirmed'
   | 'group_audience_empty'
-  | 'group_audience_refused';
+  | 'group_audience_refused'
+  | 'participants_unverified'
+  | 'participant_unresolved'
+  | 'chat_not_group';
 
 export type GroupAudienceVerdict =
-  | { allowed: true; reason: 'flag_off' | 'not_household_group' | 'in_scope' }
+  | { allowed: true; reason: 'not_household_group' | 'in_scope' }
   | { allowed: false; reason: GroupHoldReason };
 
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
@@ -50,6 +61,8 @@ type AudienceMember = {
   status: schema.LinqRosterMemberStatus;
   confirmedRole: schema.LinqRosterConfirmedRole | null;
 };
+
+type RosterMember = AudienceMember & { phoneE164Hash: string };
 
 function memberScope(member: AudienceMember): ReadonlySet<ContentClass> {
   if (member.status === 'known_parent') return ROLE_SCOPE.primary_parent;
@@ -76,7 +89,7 @@ export type RosterAudience = {
   rosterId: string;
   familyId: string | null;
   status: schema.LinqGroupRosterStatus;
-  members: AudienceMember[];
+  members: RosterMember[];
 };
 
 export async function readRosterAudience(
@@ -97,6 +110,7 @@ export async function readRosterAudience(
       .select({
         status: schema.linqGroupRosterMembers.status,
         confirmedRole: schema.linqGroupRosterMembers.confirmedRole,
+        phoneE164Hash: schema.linqGroupRosterMembers.phoneE164Hash,
       })
       .from(schema.linqGroupRosterMembers)
       .where(
@@ -148,8 +162,8 @@ export async function groupAudienceAllows(
   database: Database,
   chatId: string,
   lineClass: GroupLineClass,
+  listChatHandles: ListChatHandles,
 ): Promise<GroupAudienceVerdict> {
-  if (!linqGroupOnboardingV2Enabled()) return { allowed: true, reason: 'flag_off' };
   const roster = await readRosterAudience(database, chatId);
   if (roster === 'not_migrated') return refused('not_migrated', lineClass);
 
@@ -159,8 +173,9 @@ export async function groupAudienceAllows(
       .from(schema.families)
       .where(eq(schema.families.linqGroupChatId, chatId))
       .limit(1);
-    if (!holder) return { allowed: true, reason: 'not_household_group' };
-    if (lineClass === 'reply') return { allowed: true, reason: 'in_scope' };
+    if (lineClass === 'reply') {
+      return { allowed: true, reason: holder ? 'in_scope' : 'not_household_group' };
+    }
     return refused('group_roles_unconfirmed', lineClass);
   }
 
@@ -174,11 +189,93 @@ export async function groupAudienceAllows(
     return refused('group_roles_unconfirmed', lineClass);
   }
 
-  const scope = audienceScope(roster.members);
-  if (scope.size === 0) return refused('group_audience_empty', lineClass);
-  if (lineClass === 'reply') return { allowed: true, reason: 'in_scope' };
-  if (lineClass === 'unclassified' || !scope.has(lineClass)) {
+  if (lineClass === 'reply') {
+    if (audienceScope(roster.members).size === 0) {
+      return refused('group_audience_empty', lineClass);
+    }
+    return { allowed: true, reason: 'in_scope' };
+  }
+  if (lineClass === 'unclassified' || !GROUP_CONTENT.includes(lineClass)) {
     return refused('group_audience_refused', lineClass);
   }
+  return livePresenceAllows(roster.members, chatId, lineClass, listChatHandles);
+}
+
+type LiveRead =
+  | { ok: true; handles: string[]; isGroup: boolean | null }
+  | { ok: false; status: string; code?: string; httpStatus?: number };
+
+async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
+  try {
+    const read = await listChatHandles({ chatId });
+    if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
+    if (read.status === 'refused') {
+      return { ok: false, status: read.status, code: read.code, httpStatus: read.httpStatus };
+    }
+    return { ok: false, status: read.status };
+  } catch (err) {
+    if (err instanceof LinqSendError) return { ok: false, status: 'threw', code: err.code };
+    throw err;
+  }
+}
+
+async function livePresenceAllows(
+  members: readonly RosterMember[],
+  chatId: string,
+  lineClass: ContentClass,
+  listChatHandles: ListChatHandles,
+): Promise<GroupAudienceVerdict> {
+  const startedAt = Date.now();
+  const read = await readPresent(chatId, listChatHandles);
+  const readMs = Date.now() - startedAt;
+  if (!read.ok) {
+    console.info(
+      {
+        outcome: 'participants_unverified',
+        lineClass,
+        status: read.status,
+        code: read.code,
+        httpStatus: read.httpStatus,
+        readMs,
+      },
+      'linq group audience: live participants read',
+    );
+    return { allowed: false, reason: 'participants_unverified' };
+  }
+
+  const from = linqFromE164();
+  const haleLine = from ? normalizePhoneE164(from) : null;
+  const byHash = new Map(members.map((member) => [member.phoneE164Hash, member]));
+  const matched = new Map<string, RosterMember>();
+  let present = 0;
+  let unresolved = 0;
+  for (const handle of new Set(read.handles)) {
+    const phone = normalizePhoneE164(handle);
+    if (phone && phone === haleLine) continue;
+    present += 1;
+    const member = phone ? byHash.get(phoneBlindIndex(phone)) : undefined;
+    if (!member) unresolved += 1;
+    else matched.set(member.phoneE164Hash, member);
+  }
+
+  const verdict = presenceVerdict(read.isGroup, unresolved, [...matched.values()], lineClass);
+  console.info(
+    { outcome: verdict.reason, lineClass, present, unresolved, readMs },
+    'linq group audience: live participants read',
+  );
+  return verdict;
+}
+
+function presenceVerdict(
+  isGroup: boolean | null,
+  unresolved: number,
+  matched: readonly RosterMember[],
+  lineClass: ContentClass,
+): GroupAudienceVerdict {
+  if (isGroup === false) return { allowed: false, reason: 'chat_not_group' };
+  if (unresolved > 0) return { allowed: false, reason: 'participant_unresolved' };
+  const scope = audienceScope(matched);
+  if (scope.size === 0) return { allowed: false, reason: 'group_audience_empty' };
+  if (!scope.has(lineClass)) return { allowed: false, reason: 'group_audience_refused' };
   return { allowed: true, reason: 'in_scope' };
 }
