@@ -742,6 +742,55 @@ describe('a push renewal racing a disconnect never revives the watch', () => {
     expect(calls.filter((call) => call.url.endsWith('/channels/stop'))).toHaveLength(0);
   });
 
+  function gmailGoogle(onWatch: () => Promise<void>) {
+    const calls: string[] = [];
+    const google: GoogleJsonClient = {
+      async request({ url }) {
+        calls.push(url);
+        if (url.endsWith('/users/me/profile')) {
+          return { ok: true, status: 200, json: async () => ({ emailAddress: 'a@example.test' }) };
+        }
+        if (url.endsWith('/users/me/watch')) {
+          await onWatch();
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ expiration: String(NOW.getTime() + DAY_MS * 6) }),
+          };
+        }
+        return { ok: true, status: 204, json: async () => ({}) };
+      },
+    };
+    return { google, calls };
+  }
+  const GMAIL_PUSH_ON = { ...PUSH_ON, GOOGLE_PUBSUB_TOPIC: 'projects/hale-test/topics/mail' };
+
+  it('Gmail: a disconnect during users.watch leaves no push row, and the mailbox watch is stopped', async () => {
+    const mailId = await connect(parentUserId, 'gmail', MAIL);
+    const { google, calls } = gmailGoogle(async () => {
+      await disconnect(parentUserId, 'gmail', scriptedPorts(OK));
+    });
+
+    const summary = await renewDueGooglePushWatches(db.database, GMAIL_PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 0, integrationEnded: 1, failed: 0 });
+    expect(await loadPushWatch(db.database, mailId)).toBeNull();
+    expect(calls.filter((url) => url.endsWith('/users/me/stop'))).toEqual([
+      'https://gmail.googleapis.com/gmail/v1/users/me/stop',
+    ]);
+  });
+
+  it('Gmail positive control: with no disconnect, the watch is opened and saved, never stopped', async () => {
+    const mailId = await connect(parentUserId, 'gmail', MAIL);
+    const { google, calls } = gmailGoogle(async () => {});
+
+    const summary = await renewDueGooglePushWatches(db.database, GMAIL_PUSH_ON, google);
+
+    expect(summary).toMatchObject({ opened: 1, integrationEnded: 0, failed: 0 });
+    expect((await loadPushWatch(db.database, mailId))?.provider).toBe('gmail');
+    expect(calls.filter((url) => url.endsWith('/users/me/stop'))).toHaveLength(0);
+  });
+
   it('a row a disconnect ended after the listing is never sent to Google at all', async () => {
     await connect(parentUserId, 'gcal', CAL);
     await connect(coParentUserId, 'gcal', CO);

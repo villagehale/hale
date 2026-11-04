@@ -55,13 +55,24 @@ describe('ConnectionsView: a Google revoke Hale stopped asking about', () => {
     expect(markup).toContain('href="/api/integrations/gcal/connect"');
   });
 
+  it('says so for a Drive-only parent too, whose Drive row is otherwise gone once disconnected', () => {
+    const markup = render([ended('gdrive', { googleRevokeUnconfirmed: true })]);
+    expect(markup).toContain('<h3>Google Drive</h3>');
+    expect(markup.split(UNCONFIRMED)).toHaveLength(2);
+    // Drive is not offered for a new connect (VIL-556), so the row carries no Connect link.
+    expect(markup).not.toContain('/api/integrations/gdrive/connect');
+  });
+
   it('positive control: a confirmed disconnect, or a co-parent’s row, shows no warning', () => {
     const markup = render([
       ended('gmail'),
       ended('gcal'),
+      ended('gdrive'),
       ended('gcal', { ownedByViewer: false, googleRevokeUnconfirmed: true }),
+      ended('gdrive', { ownedByViewer: false, googleRevokeUnconfirmed: true }),
     ]);
     expect(markup).not.toContain(UNCONFIRMED);
+    expect(markup).not.toContain('Google Drive');
     expect(markup).toContain('Catches class invites and trip dates');
     expect(markup).toContain('href="/api/integrations/gmail/connect"');
   });

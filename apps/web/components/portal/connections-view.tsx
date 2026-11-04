@@ -134,6 +134,13 @@ export function ConnectionsView({
                 </>
               }
             />
+          ) : unconfirmed(connections, 'gdrive') ? (
+            <SourceRow
+              icon={<FolderOpen aria-hidden="true" />}
+              title="Google Drive"
+              meta={GOOGLE_UNCONFIRMED}
+              action={null}
+            />
           ) : null}
           <p className={styles.text}>Disconnect anytime here, or tell Hale in your texts.</p>
         </section>
