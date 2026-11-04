@@ -17,8 +17,9 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import {
   claimCrisisReply,
+  confirmCrisisReply,
   crisisClaimFor,
-  crisisReplyClaimed,
+  crisisReplyState,
   releaseCrisisReply,
 } from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
@@ -59,9 +60,10 @@ import type { ChannelTransport } from './transport';
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
  * person who sent it still holds the number. When no reply can leave, the crisis pages
  * like a live one (`where late_read`) and the row stays, so a later tick tries the writer
- * again. Once a crisis is recorded for the text it is never read again. A reply is marked
- * before it leaves, live (off-domain/lane.ts) or late, and a marked text is released
- * without a second one.
+ * again. Once a crisis is recorded for the text it is never read again. A crisis counts as
+ * answered only once its reply was SENT, live (router/route.ts) or late: such a text is
+ * released without a second reply. A reply still leaving holds it back for the turn
+ * deadline; one whose send failed, timed out or died is answered late.
  */
 
 export const HELD_READ_OUTCOMES = [
@@ -90,6 +92,9 @@ export const HELD_READ_OUTCOMES = [
   /** A crisis reply to this text already left, live or on an earlier tick: released, and
    * nothing is sent again. */
   'crisis_already_answered',
+  /** A crisis reply to this text began to leave within the turn deadline and has not come
+   * back: kept held, nothing read or sent, and looked at again on the next tick. */
+  'crisis_reply_in_flight',
   'read_leave_group',
   'read_failed',
   'not_yet_recorded',
@@ -115,6 +120,7 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'unrecorded',
   'claimed_elsewhere',
   'crisis_unanswered',
+  'crisis_reply_in_flight',
 ]);
 
 export interface OptOutRecoveryDeps {
@@ -262,8 +268,11 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
-  // A reply already left for this text: nothing is read, and nothing is sent again.
-  if (await crisisReplyClaimed(database, row.providerMessageId)) {
+  // A reply to this text was sent: nothing is read, and nothing is sent again. One still
+  // leaving is waited for; one that never left is not a reply.
+  const reply = await crisisReplyState(database, row.providerMessageId, now);
+  if (reply === 'in_flight') return 'crisis_reply_in_flight';
+  if (reply === 'answered') {
     await releaseHeldMessage(database, row.providerMessageId);
     return 'crisis_already_answered';
   }
@@ -429,7 +438,7 @@ interface CrisisRead {
  * A held text read late as a crisis. The reply is the live one, written from facts only,
  * sent one-to-one to the number, and only while the person who sent it still holds it.
  * Nobody to reply to: paged, and released once the page is claimed. No reply left:
- * paged, and kept. After a send nothing can send it again: the row goes first.
+ * paged, and kept. After a send it is marked answered, then the row goes: nothing sends it again.
  */
 async function lateCrisis(
   database: Database,
@@ -468,11 +477,12 @@ async function lateCrisis(
     writer: deps.saidLine,
   });
   if (crisis.status === 'unanswered') return 'crisis_unanswered';
-  // The mark goes first, as a page's claim does: whatever fails after the send, a later tick
-  // finds it and sends nothing. A reply already marked (the live turn's) is not sent again.
-  if (!(await claimCrisisReply(database, row.providerMessageId, deps.now))) {
-    return 'crisis_already_answered';
-  }
+  // The leaving mark goes first, so a live turn's send and this one never overlap. It counts
+  // as answered only once confirmed below; one this tick never confirms goes stale and the
+  // text is answered late.
+  const claim = await claimCrisisReply(database, row.providerMessageId, deps.now);
+  if (claim === 'answered') return 'crisis_already_answered';
+  if (claim === 'in_flight') return 'crisis_reply_in_flight';
   let sent: ResolvedOutbound;
   try {
     sent = await sendResolvingNewChat(deps.transport, { to: held.phoneE164, body: crisis.body });
@@ -487,7 +497,7 @@ async function lateCrisis(
       writes: crisis.attempts,
     });
     await releaseCrisisReply(database, row.providerMessageId).catch((releaseErr: unknown) => {
-      // Paged above with its reference: a human finds the text, though no tick resends it.
+      // It goes stale after the turn deadline, and a later tick answers the text then.
       console.error(
         { outcome: 'crisis_unanswered', err: errName(releaseErr) },
         'opt-out recovery: late_crisis_reply_mark_stuck',
@@ -495,6 +505,13 @@ async function lateCrisis(
     });
     return 'crisis_unanswered';
   }
+  // Sent: answered, before the row goes, so a release that throws never sends it again.
+  await confirmCrisisReply(database, row.providerMessageId, deps.now).catch((err: unknown) => {
+    console.error(
+      { outcome: 'crisis_replied', err: errName(err) },
+      'opt-out recovery: late_crisis_reply_unconfirmed',
+    );
+  });
   await releaseHeldMessage(database, row.providerMessageId);
   await recordLateCrisisReply(database, deps, held, holder.then, crisis.body, sent);
   return 'crisis_replied';

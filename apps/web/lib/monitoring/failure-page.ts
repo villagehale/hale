@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
+import { TURN_DEADLINE_MS } from '~/lib/channel/config';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import type {
@@ -87,9 +88,11 @@ import {
  * in, so a later tick replies in it without the text being read again. A paged claim
  * whose text is still held is kept past the lookback: the held row still needs it.
  *
- * A crisis reply that is about to leave, live or late, is marked on `ops:crisis-answered`
- * (identifier: the inbound key alone), so the opt-out recovery pass never sends a held
- * copy of the text a second reply. The late path takes the mark before its send.
+ * A crisis reply is marked on `ops:crisis-answered` (identifier: the inbound key alone):
+ * count 0 as it leaves, count 1 once the transport accepted it. Only a sent mark counts
+ * as answered, and the opt-out recovery pass releases a held copy of that text with no
+ * second reply. A leaving mark holds the copy back for the turn deadline, then the text
+ * is answered late: a send that failed, timed out or died is never taken for a reply.
  *
  * VIL-602 · every other path that pages #ops goes through {@link pageOps}: a body-free
  * URGENT log, then one claim per site per hour on `ops:page`, then the post. This module
@@ -1551,60 +1554,120 @@ export async function crisisClaimFor(
   return { id: row.id, kind, language: parsed.language };
 }
 
+/** A crisis reply's mark: taken as it leaves, and turned to sent once the transport accepted it. */
+const REPLY_LEAVING_COUNT = UNALERTED_COUNT;
+const REPLY_SENT_COUNT = ALERTED_COUNT;
+
 /**
- * Takes the mark that this inbound's crisis reply is leaving, before the send, under the
- * crisis claim's per-inbound lock. True when this call took it; false when a reply was
- * already marked. Throws when it cannot be recorded, so nothing is sent unmarked.
+ * Where the reply to one inbound's crisis stands (VIL-602). `answered` only once the
+ * transport accepted it. `in_flight` while a send that began within the turn deadline has
+ * not come back. Otherwise `unanswered`: no mark, or a leaving mark older than any turn
+ * may run, whose send failed, timed out or died with its process. No reply is known to
+ * have left, so the held text is answered late.
  */
-export async function claimCrisisReply(
+export type CrisisReplyState = 'unanswered' | 'in_flight' | 'answered';
+
+type ReplyMarkRow = { id: string; count: number; windowStart: Date };
+
+function replyState(row: ReplyMarkRow | undefined, now: Date): CrisisReplyState {
+  if (!row) return 'unanswered';
+  if (row.count === REPLY_SENT_COUNT) return 'answered';
+  return row.windowStart.getTime() > now.getTime() - TURN_DEADLINE_MS ? 'in_flight' : 'unanswered';
+}
+
+async function replyMark(database: Database, key: string): Promise<ReplyMarkRow | undefined> {
+  const [row] = await database
+    .select({
+      id: schema.rateLimits.id,
+      count: schema.rateLimits.count,
+      windowStart: schema.rateLimits.windowStart,
+    })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        eq(schema.rateLimits.identifier, key),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/** Runs `write` under the crisis claim's per-inbound lock, with this inbound's mark. */
+async function underReplyLock<T>(
   database: Database,
   inboundId: string,
-  now: Date,
-): Promise<boolean> {
+  write: (tx: Database, key: string, prior: ReplyMarkRow | undefined) => Promise<T>,
+): Promise<T> {
   const key = crisisInboundKey(inboundId);
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     await tx.execute(
       sql`select pg_advisory_xact_lock(${CRISIS_CLAIM_LOCK_NS}::int, hashtext(${key}))`,
     );
-    const [prior] = await tx
-      .select({ id: schema.rateLimits.id })
-      .from(schema.rateLimits)
-      .where(
-        and(
-          eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
-          eq(schema.rateLimits.identifier, key),
-        ),
-      )
-      .limit(1);
-    if (prior) return false;
-    await tx.insert(schema.rateLimits).values({
-      identifier: key,
-      route: CRISIS_ANSWERED_ROUTE,
-      windowStart: now,
-      count: ALERTED_COUNT,
-    });
-    return true;
+    return write(tx, key, await replyMark(tx, key));
   });
 }
 
-/** A reply to this inbound's crisis was marked as leaving, live or late. */
-export async function crisisReplyClaimed(database: Database, inboundId: string): Promise<boolean> {
-  if (inboundId.trim() === '') return false;
-  const [row] = await database
-    .select({ id: schema.rateLimits.id })
-    .from(schema.rateLimits)
-    .where(
-      and(
-        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
-        eq(schema.rateLimits.identifier, crisisInboundKey(inboundId)),
-      ),
-    )
-    .limit(1);
-  return row !== undefined;
+async function setReplyMark(
+  tx: Database,
+  key: string,
+  prior: ReplyMarkRow | undefined,
+  count: number,
+  now: Date,
+): Promise<void> {
+  if (prior) {
+    await tx
+      .update(schema.rateLimits)
+      .set({ count, windowStart: now })
+      .where(eq(schema.rateLimits.id, prior.id));
+    return;
+  }
+  await tx
+    .insert(schema.rateLimits)
+    .values({ identifier: key, route: CRISIS_ANSWERED_ROUTE, windowStart: now, count });
 }
 
-/** The mark comes off when the send it was taken for threw: no reply left. */
+export async function crisisReplyState(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisReplyState> {
+  if (inboundId.trim() === '') return 'unanswered';
+  return replyState(await replyMark(database, crisisInboundKey(inboundId)), now);
+}
+
+/**
+ * Takes the leaving mark just before a send, so the recovery pass leaves the held copy of
+ * the text alone while it is out. `claimed`: this call took it and may send. Otherwise the
+ * state it found, and nothing is sent. Throws when it cannot be recorded.
+ */
+export async function claimCrisisReply(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<'claimed' | 'in_flight' | 'answered'> {
+  return underReplyLock(database, inboundId, async (tx, key, prior) => {
+    const state = replyState(prior, now);
+    if (state !== 'unanswered') return state;
+    await setReplyMark(tx, key, prior, REPLY_LEAVING_COUNT, now);
+    return 'claimed';
+  });
+}
+
+/** The transport accepted the reply: only now is the crisis answered. Throws. */
+export async function confirmCrisisReply(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<void> {
+  await underReplyLock(database, inboundId, (tx, key, prior) =>
+    setReplyMark(tx, key, prior, REPLY_SENT_COUNT, now),
+  );
+}
+
+/** The send threw: its leaving mark comes off, never a sent one. A mark that cannot be
+ * removed goes stale after the turn deadline, and the text is answered late. */
 export async function releaseCrisisReply(database: Database, inboundId: string): Promise<void> {
   await database
     .delete(schema.rateLimits)
@@ -1612,31 +1675,57 @@ export async function releaseCrisisReply(database: Database, inboundId: string):
       and(
         eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
         eq(schema.rateLimits.identifier, crisisInboundKey(inboundId)),
+        eq(schema.rateLimits.count, REPLY_LEAVING_COUNT),
       ),
     );
 }
 
-export type CrisisAnsweredMark = 'marked' | 'already_marked' | 'not_marked';
+export type CrisisReplyMark = 'marked' | 'already_marked' | 'not_marked';
 
 /**
- * A live crisis reply is about to leave: mark it, so the recovery pass never answers a held
- * copy of the text again. Never throws and never holds the reply back; a mark that did not
- * land is logged and named.
+ * A live crisis reply is written and about to leave: the leaving mark. Never throws and
+ * never holds the reply back; a mark that did not land is logged and named.
  */
-export async function noteCrisisAnswered(
+export async function noteCrisisReplyLeaving(
   database: Database,
   inboundId: string,
   now: Date,
-): Promise<CrisisAnsweredMark> {
+): Promise<CrisisReplyMark> {
+  return noteReplyMark('leaving', inboundId, async () =>
+    (await claimCrisisReply(database, inboundId, now)) === 'claimed' ? 'marked' : 'already_marked',
+  );
+}
+
+/**
+ * A live crisis reply the transport accepted: answered. Never throws. A mark that did not
+ * land is logged and named; the held copy is then answered again late, two replies and
+ * never none.
+ */
+export async function noteCrisisReplySent(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisReplyMark> {
+  return noteReplyMark('sent', inboundId, async () => {
+    await confirmCrisisReply(database, inboundId, now);
+    return 'marked';
+  });
+}
+
+async function noteReplyMark(
+  stage: 'leaving' | 'sent',
+  inboundId: string,
+  mark: () => Promise<CrisisReplyMark>,
+): Promise<CrisisReplyMark> {
   if (inboundId.trim() === '') {
-    console.error({ mark: 'not_marked', reason: 'inbound_id_missing' }, 'crisis reply mark');
+    console.error({ mark: 'not_marked', stage, reason: 'inbound_id_missing' }, 'crisis reply mark');
     return 'not_marked';
   }
   try {
-    return (await claimCrisisReply(database, inboundId, now)) ? 'marked' : 'already_marked';
+    return await mark();
   } catch (err) {
     console.error(
-      { mark: 'not_marked', err: err instanceof Error ? err.name : 'unknown' },
+      { mark: 'not_marked', stage, err: err instanceof Error ? err.name : 'unknown' },
       'crisis reply mark',
     );
     return 'not_marked';

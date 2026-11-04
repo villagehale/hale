@@ -113,7 +113,11 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { failurePageCrisisPager, reportTurnFailures } from '~/lib/monitoring/failure-page';
+import {
+  failurePageCrisisPager,
+  noteCrisisReplySent,
+  reportTurnFailures,
+} from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -1603,6 +1607,12 @@ async function routeChannelMessageInner(
         undefined,
         verdict.pendingAsk,
       );
+      // `answer` returns only once the transport accepted the reply: a crisis counts as
+      // answered from here, never before, so a held copy whose reply never left is still
+      // answered late (VIL-602).
+      if (verdict.crisisReply) {
+        await noteCrisisReplySent(deps.database, job.provider_message_id, deps.now());
+      }
       return done(deps, job, {
         status: 'deflected',
         handler: null,

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -16,8 +17,10 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import {
+  CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
   failurePageCrisisPager,
+  noteCrisisReplySent,
   pageFailureAlerts,
 } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -759,7 +762,7 @@ describe('recoverHeldOptOutReads', () => {
     expect(await threadRoles(a.familyId)).toEqual(['assistant']);
   }, 30_000);
 
-  it('a crisis the router already answered live is released with no second reply', async () => {
+  it('a crisis the router answered live and SENT is released with no second reply', async () => {
     const a = await parent(PHONE_A);
     const channelMessageId = await inboundRow(a, 'pm-live', FR_CRISIS, ago(20));
     await hold(PHONE_A, 'pm-live', ago(20));
@@ -772,8 +775,10 @@ describe('recoverHeldOptOutReads', () => {
       now: ago(19),
       thread: { channel: 'sms', providerChatId: null, inGroup: false },
     });
-    expect(verdict.status).toBe('deflected');
+    expect(verdict).toMatchObject({ status: 'deflected', crisisReply: true });
     expect(live.moments).toEqual(['mental_crisis']);
+    // What the router does once the transport accepted that reply (route.ts).
+    expect(await noteCrisisReplySent(db.database, 'pm-live', ago(19))).toBe('marked');
     const transport = new FakeTransport();
     const r = reader({ [FR_CRISIS]: FR_MENTAL });
 
@@ -787,6 +792,98 @@ describe('recoverHeldOptOutReads', () => {
     expect(r.texts).toEqual([]);
     expect(await heldRow('pm-live')).toBeNull();
     expect(posted).toEqual([]);
+  }, 30_000);
+
+  it('a live crisis reply whose send failed is answered late once its turn is over', async () => {
+    const a = await parent(PHONE_A);
+    const channelMessageId = await inboundRow(a, 'pm-unsent', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-unsent', ago(20));
+    // The reply was written, and the router's send then threw: nothing confirmed it.
+    const verdict = await liveLane('written').lane.consider({
+      familyId: a.familyId,
+      parentUserId: a.parentUserId,
+      channelMessageId,
+      text: FR_CRISIS,
+      now: ago(19),
+      thread: { channel: 'sms', providerChatId: null, inGroup: false },
+    });
+    expect(verdict.status).toBe('deflected');
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, { saidLine: writer }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_already_answered).toBe(0);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+    expect(await heldRow('pm-unsent')).toBeNull();
+  }, 30_000);
+
+  it('a live crisis reply still leaving keeps its held text, then is answered late if never sent', async () => {
+    const a = await parent(PHONE_A);
+    const channelMessageId = await inboundRow(a, 'pm-flight', FR_CRISIS, ago(2));
+    await hold(PHONE_A, 'pm-flight', ago(2));
+    // The turn wrote its reply seconds ago and its send has not come back (it times out).
+    await liveLane('written').lane.consider({
+      familyId: a.familyId,
+      parentUserId: a.parentUserId,
+      channelMessageId,
+      text: FR_CRISIS,
+      now: new Date(NOW.getTime() - 10_000),
+      thread: { channel: 'sms', providerChatId: null, inGroup: false },
+    });
+    const transport = new FakeTransport();
+    const { writer } = recordedCrisisWriter();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+
+    const first = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, transport, { saidLine: writer }),
+    );
+
+    expect(first.outcomes.crisis_reply_in_flight).toBe(1);
+    expect(transport.sent).toEqual([]);
+    expect(r.texts).toEqual([]);
+    expect(await heldRow('pm-flight')).not.toBeNull();
+
+    const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, transport, { saidLine: writer, now: later }),
+    );
+
+    expect(second.outcomes.crisis_replied).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+    expect(await heldRow('pm-flight')).toBeNull();
+  }, 30_000);
+
+  it('a late reply mark left by a tick that died before its send came back is answered, not released', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-dead', FR_CRISIS, ago(40));
+    await hold(PHONE_A, 'pm-dead', ago(40));
+    // A tick took the mark before its send and was killed: no reply is known to have left.
+    await db.database.insert(schema.rateLimits).values({
+      route: CRISIS_ANSWERED_ROUTE,
+      identifier: createHash('sha256').update('pm-dead').digest('hex').slice(0, 32),
+      windowStart: ago(20),
+      count: 0,
+    });
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, { saidLine: writer }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_already_answered).toBe(0);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    expect(transport.sent).toHaveLength(1);
   }, 30_000);
 
   it('positive control: a crisis the router could not answer still gets its late reply', async () => {
@@ -1690,6 +1787,7 @@ describe('recoverHeldOptOutReads', () => {
         crisis_unanswered: 0,
         crisis_unreachable: 0,
         crisis_already_answered: 0,
+        crisis_reply_in_flight: 0,
         read_leave_group: 0,
         read_failed: 0,
         not_yet_recorded: 0,
