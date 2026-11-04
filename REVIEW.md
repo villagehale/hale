@@ -12,30 +12,39 @@ Hale is a planner that families with children in Canada and the US reach by SMS,
   - any other way raw teen content reaches a parent, a group chat, an outbound message or a log;
   - a decision about who is a teen that doesn't come from the date of birth;
   - child content written without the child's id, since redaction keys on it.
-- **STOP, opt-out and consent.** STOP and START are read by a model, the opt-out reader (`apps/web/lib/channel/intake/opt-out-reader.ts`). A failed read becomes the opt-out hold (`opt-out-hold.ts`); there is no keyword fallback. The state is read three ways:
+- **STOP, opt-out and consent.** STOP and START are read by a model, the opt-out reader (`apps/web/lib/channel/intake/opt-out-reader.ts`). A read that fails twice becomes the opt-out hold (`opt-out-hold.ts`); there is no keyword fallback. The state is read three ways:
   - Whether a number is unsubscribed is decided by the number: `findRevokedChannelOwner` in `apps/web/lib/channel/intake/channel-state.ts`. Re-entry requires a current seat: `findReenrollableChannelOwner`.
   - A user's enrollment is the live channel row: `loadSmsChannelState` in `apps/web/lib/channels/sms-consent-core.ts`.
   - A consent scope is the latest ledger row, by `grantedAt` then id, with `granted = true` and `revokedAt` null: `apps/web/lib/channel/outbound-gate.ts`.
 
   Flag a sender or a channel or seat writer that skips these, a keyword STOP matcher, a check keyed on the wrong identity (user or number), and a consent read that accepts any granting row.
-- **Autonomy, review and money.** `apps/worker/src/orchestrator/autonomy-gate.ts` sets the autonomy rules:
+- **Autonomy, review and money.** `apps/worker/src/orchestrator/autonomy-gate.ts` sets the autonomy rules (the web pipeline keeps its own copy of the 7-day window in `apps/web/lib/pipeline/ingest.ts`):
   - a family is observe-only for its first 7 days;
   - an action type runs on its own only after 5 approvals of that type in a row;
   - booking, registration and paying never run on their own (`AUTONOMY_BY_KIND`).
 
-  The Reviewer approves only when every check that `REQUIRED_CHECKS` (`packages/tools-contracts/src/index.ts`) lists for the action type ran and returned ok (`apps/worker/src/agents/reviewer.ts`). Any action with a cost runs the spending-cap check (`checkSpendingCap` in `apps/web/lib/coach/guards.ts` and `apps/web/lib/cron/guards.ts`), and a cap is a hard limit. An action affecting both parents needs both parents. Every action writes an immutable `audit_log` row.
+  The Reviewer approves only when every check that `REQUIRED_CHECKS` (`packages/tools-contracts/src/index.ts`) lists for the action type ran and returned ok (`apps/worker/src/agents/reviewer.ts`). Any action with a cost passes a spending cap, and a cap is a hard limit. There are three caps:
+  - the Reviewer's `check_spending_cap` (`apps/worker/src/tools/registry.ts`);
+  - `checkSpendingCap` (`apps/web/lib/coach/guards.ts`, which the cron guard reuses);
+  - `signupSpendingCap` for registration (`apps/web/lib/signup/run.ts`, up to `LINK_SPEND_CEILING_CENTS`).
 
-  Flag any loosening of these, and a new action type with no `REQUIRED_CHECKS` entry.
+  An action affecting both parents needs both parents (the co-parent hold, `coparent_ask` in `apps/web/lib/channel/outbound-gate.ts`). Every action path writes its own immutable `audit_log` row; there is no single seam.
+
+  Flag any loosening of these: an action type whose `REQUIRED_CHECKS` entry is empty or drops a check, a cost path that reaches a wallet or executor without one of the caps, and a new action path that writes no audit row.
 - **Group chats.** `apps/web/lib/channel/linq/group-audience.ts` decides what a group hears:
   - only the overlap of every member's role scope;
   - only the group content classes (schedule, pickup duty, event logistics). Health, registration, settings and suggestions stay 1:1, even in a chat of parents.
 
-  A line with no class is refused, and a participant Hale cannot identify holds household lines. Flag a group send that skips this check, omits its content class or widens the audience.
+  A line with no class is refused, and a participant Hale cannot identify holds household lines. A direct reply (class `reply`) carries no household content and needs no other class. Today the check is armed by `LINQ_GROUP_ONBOARDING_V2_ENABLED`, which is on in prod; its flag-off bypass is being removed. Flag a group send that skips this check, omits its content class or widens the audience.
 - **Personal data in a public repository.**
   - Logs and analytics events carry ids, counts and outcome names only.
-  - Audit rows may also carry masked phones and reversal handles (provider event or message ids). They never carry raw phone numbers, message bodies or free-text titles.
+  - Audit rows may also carry masked phones and reversal handles (provider event or message ids). They never carry raw phone numbers or message bodies. Two existing writers store a plan's title (`plan_created` in `apps/web/lib/plan/plan-core.ts`, `linq_group_plan_started` in `apps/web/lib/channel/linq/group-plan-rsvp/store.ts`); flag any new free-text title in an audit row.
   - PR bodies, commit messages, fixtures and recordings never carry real names, phone numbers, emails or real family or user ids. Use invented people; existing tests use fictional 555 numbers, and a new number should be 555-01xx.
-- **Time and place.** A family's local time comes from its own zone. Its place comes from its own rows: an active saved area, a stored city that matches the checked-in table, or the postal or ZIP area (`apps/web/lib/channel/off-domain/place.ts`, `apps/web/lib/channel/intake/postal-zone.ts`). An unknown zone or place is a named outcome, never a Toronto, Eastern or GTA default. Older code still has such defaults while they are removed: flag any new one. DST and every US and Canadian zone matter.
+- **Time and place.**
+  - A family's local time comes from its own zone, derived from its postal or ZIP code (`apps/web/lib/channel/intake/postal-zone.ts`). Mapping an Ontario or Quebec code to `America/Toronto` there is geography, not a default.
+  - Its place comes from its own rows: an active saved area, a stored city that matches the checked-in table, or the postal or ZIP area (`apps/web/lib/channel/off-domain/place.ts`).
+
+  An unknown zone or place is a named outcome, never a Toronto, Eastern or GTA default. Older code still has such defaults while they are removed: flag any new one. DST and every US and Canadian zone matter.
 - **Prompts.** Prompts and skills load by name, through the Langfuse sync (`apps/worker/scripts/sync-prompts.mjs`) or the skill seam (`packages/agent/skills`, whose lock file is drift-checked). An inline prompt string is a bug.
 - **Untrusted text.** Some text is data, never instructions:
   - web pages, emails and calendar titles;
