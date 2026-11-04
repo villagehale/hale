@@ -547,6 +547,10 @@ export const AUDIT_VERBS = [
   'workstream_followup_unsent',
   'workstream_followup_deferred',
   'workstream_followup_gave_up',
+  // ── open-loops ledger (VIL-297) ─────────────────────────────────────────
+  'commitment_recorded',
+  'commitment_fulfilled',
+  'commitment_cancelled',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -1967,6 +1971,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   workstream_followup_gave_up: {
     sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
+  },
+  commitment_recorded: { sentence: 'noted something it said it would do', family: 'note' },
+  commitment_fulfilled: { sentence: 'did something it said it would do', family: 'note' },
+  commitment_cancelled: {
+    sentence: 'stopped owing something it said it would do',
+    family: 'note',
   },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
