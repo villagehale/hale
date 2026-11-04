@@ -80,6 +80,11 @@ const TABLE_FOR_COUNTRY: ReadonlyMap<string, PostalCountry> = new Map([
   ['us', 'US'],
 ]);
 
+/** The postal table a stored country selects, or undefined for one Hale has no table for. */
+export function postalCountryOf(country: string): PostalCountry | undefined {
+  return TABLE_FOR_COUNTRY.get(country.trim().toLowerCase());
+}
+
 /** The country as the search is told it. */
 const COUNTRY_NAME: Record<PostalCountry, string> = { CA: 'Canada', US: 'United States' };
 
