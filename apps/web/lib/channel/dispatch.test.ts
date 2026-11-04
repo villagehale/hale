@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
@@ -12,6 +12,8 @@ import {
   recordAbandonedDispatch,
 } from './dispatch';
 import { fakeChannel, fakeRenderer } from './fakes';
+import type { DispatchShadowInput } from './reconcile/claim-shadow';
+import { claimsNoLedgerCanBack } from './reconcile/claims';
 import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
 
 /**
@@ -60,6 +62,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     },
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
+    claimShadow: { dispatch: () => 'off' },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -456,6 +459,7 @@ describe('the composed voice slot is reported off the render, never inferred fro
     render: (m: LoopMessage): RenderedContent => ({
       kind: 'sms' as const,
       text: m.templateKey,
+      modelWritten: false,
       voice,
     }),
   });
@@ -533,6 +537,7 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       kind: 'sms',
       text: TEXTS.join('\n\n'),
       texts: [...TEXTS],
+      modelWritten: true,
       recordBody: true,
     }),
   };
@@ -651,6 +656,7 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
         kind: 'sms',
         text: [SAME, 'see you there', SAME].join('\n\n'),
         texts: [SAME, 'see you there', SAME],
+        modelWritten: true,
         recordBody: true,
         bold: '4:30',
       }),
@@ -674,3 +680,134 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
     ]);
   });
 });
+
+describe('VIL-581 · the claim shadow reads model-written bodies only, and the leg is unchanged', () => {
+  const MODEL_BODY = 'Swim is at 10 on Saturday.';
+  function shadowPorts(modelWritten: boolean, text = MODEL_BODY) {
+    const shadowed: DispatchShadowInput[] = [];
+    const run = makePorts({
+      renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
+      claimShadow: {
+        dispatch: (input) => {
+          shadowed.push(input);
+          return 'started';
+        },
+      },
+    });
+    return { ...run, shadowed };
+  }
+
+  it('a model-written body is handed over once, with its own claims and no zone', async () => {
+    const { ports, shadowed } = shadowPorts(true);
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(shadowed).toHaveLength(1);
+    expect(shadowed[0]).toEqual({
+      familyId: 'fam-1',
+      parentUserId: 'user-1',
+      body: MODEL_BODY,
+      now: NOON,
+      claims: claimsNoLedgerCanBack(MODEL_BODY),
+    });
+    expect('timeZone' in (shadowed[0] as object)).toBe(false);
+    const baseline = await dispatchLoopMessage(
+      message(),
+      makePorts({
+        renderer: { render: () => ({ kind: 'sms', text: MODEL_BODY, modelWritten: true }) },
+      }).ports,
+    );
+    expect(result).toEqual(baseline);
+  });
+
+  it('a template body is never handed over (control)', async () => {
+    const { ports, shadowed } = shadowPorts(false);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(shadowed).toEqual([]);
+  });
+
+  it('an unbacked model-written body is refused exactly as before, and the shadow saw the claim', async () => {
+    const { ports, shadowed, ledger } = shadowPorts(
+      true,
+      "I'll stop sending the one-sec messages.",
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
+    expect(shadowed[0]?.claims.map((c) => c.kind)).toEqual(['self_referential']);
+  });
+});
+
+describe("VIL-581 · each renderer says whether its words are the model's", () => {
+  it('reminder, calendar invite and calendar cancel are model-written', async () => {
+    const { renderReminderSms } = await import('~/lib/loop/templates/reminder/sms');
+    const { calendarInviteSmsRenderer } = await import('~/lib/loop/templates/calendar-invite/sms');
+    const { calendarCancelSmsRenderer } = await import('~/lib/loop/templates/calendar-cancel/sms');
+    const reminder = renderReminderSms({ texts: ['Swim at 10.'] } as unknown as Parameters<
+      typeof renderReminderSms
+    >[0]);
+    const url = 'https://app.example.org/i/abc';
+    const invite = calendarInviteSmsRenderer.render(
+      message({ payload: { summary: 'Swim', when: 'Sat 10:00', url, line: `Add swim: ${url}` } }),
+      'sms',
+      'generic',
+    );
+    const cancel = calendarCancelSmsRenderer.render(
+      message({ payload: { summary: 'Swim', when: 'Sat 10:00', line: 'Swim is off.' } }),
+      'sms',
+      'generic',
+    );
+    expect([reminder.modelWritten, invite.modelWritten, cancel.modelWritten]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('the caregiver reminder and the default renderer are not (control)', async () => {
+    const { renderCaregiverReminderSms } = await import(
+      '~/lib/loop/templates/caregiver/reminder-sms'
+    );
+    const { defaultLoopRenderer } = await import('./renderer');
+    const caregiver = renderCaregiverReminderSms({
+      offset: '-PT1H',
+      timeZone: 'America/Denver',
+      events: [{ eventRef: 'e1', title: 'Swim', startsAt: '2026-11-07T17:00:00Z', location: null }],
+    } as unknown as Parameters<typeof renderCaregiverReminderSms>[0]);
+    const plain = defaultLoopRenderer.render(
+      message({ payload: { text: 'Hello.' } }),
+      'sms',
+      'generic',
+    );
+    expect([caregiver.modelWritten, plain.modelWritten]).toEqual([false, false]);
+  });
+});
+
+describe('VIL-581 · the production dispatch port is bound and does nothing while off', () => {
+  it('buildDispatchPorts wires a claim shadow that answers off with no env and no query', async () => {
+    const { buildDispatchPorts } = await import('./wiring');
+    vi.stubEnv('CLAIM_READER_MODE', '');
+    try {
+      const noQueries = new Proxy(
+        {},
+        {
+          get: () => () => {
+            throw new Error('the shadow queried the database while off');
+          },
+        },
+      ) as unknown as Parameters<typeof buildDispatchPorts>[0];
+      const ports = buildDispatchPorts(noQueries, { channels: {}, renderer: fakeRenderer });
+      expect(
+        ports.claimShadow.dispatch({
+          familyId: 'fam-1',
+          parentUserId: 'user-1',
+          body: MODEL_BODY_FOR_WIRING,
+          now: NOON,
+          claims: [],
+        }),
+      ).toBe('off');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+const MODEL_BODY_FOR_WIRING = 'Swim is at 10 on Saturday.';

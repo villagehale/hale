@@ -12,6 +12,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const SMS: Extract<RenderedContent, { kind: 'sms' }> = {
   kind: 'sms',
   text: 'A check-up is coming up',
+  modelWritten: false,
 };
 const PHONE = '+14165550100';
 

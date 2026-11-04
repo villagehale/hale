@@ -18,8 +18,9 @@ export const maxDuration = 300;
  *  - anything else: the warm, which compiles the output grammar on both lanes; skipped
  *    while CLAIM_READER_MODE is off.
  *
- * Not in vercel.json yet: PR 2 adds the schedule with the shadow reader. Always 200 with
- * the result in the body (`ok: false` names a wrong verdict). Cron-secret gated.
+ * Scheduled hourly in vercel.json (a no-op while CLAIM_READER_MODE is off) and skipped
+ * on Preview. Always 200 with the result in the body (`ok: false` names a wrong
+ * verdict). Cron-secret gated.
  */
 export const GET = cronRoute('claim-read-warm', async (req) => {
   if (new URL(req.url).searchParams.get('mode') === 'probe') {

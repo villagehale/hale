@@ -99,6 +99,24 @@ describe('segmentSentences — masks', () => {
       '好的。',
     ]);
   });
+
+  it('zh: a URL ending flush against 。 keeps the 。 as the end of its sentence', () => {
+    expect(texts(seg('详情见 https://example.org/a。你的游泳课已经约好了。', 'zh'))).toEqual([
+      '详情见 https://example.org/a。',
+      '你的游泳课已经约好了。',
+    ]);
+  });
+
+  it('zh: a URL ending flush against ！ splits the same way', () => {
+    expect(seg('链接 https://example.org/a！好的。', 'zh')).toHaveLength(2);
+  });
+
+  it('en: a URL ending in an ASCII "." still splits (control)', () => {
+    expect(texts(seg('See https://example.org/a. Your swim is booked.', 'en'))).toEqual([
+      'See https://example.org/a.',
+      'Your swim is booked.',
+    ]);
+  });
 });
 
 describe('segmentSentences — no merge', () => {

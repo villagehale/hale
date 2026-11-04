@@ -21,8 +21,9 @@ import { type Segment, claimReadLocale, segmentSentences } from './sentences';
  * compatibility (claim-verdict.ts). The answer is indices, kinds and aliases from fixed
  * enums: the model cannot put text into it.
  *
- * DARK in PR 1: nothing on a parent's path calls this. The warm/probe route and the
- * claim-read eval are its only callers.
+ * In SHADOW (PR 2) the parent-path caller is claim-shadow.ts, which reads after or
+ * beside the regex gate's decision and never changes it. The warm/probe route and the
+ * claim-read eval are its other callers.
  *
  * Every read ends in a typed outcome (rule #11): a read, or a NAMED failure. A failure
  * is never a refused claim, and never null.
@@ -48,6 +49,10 @@ export const CLAIM_READ_MAX_TOKENS = 2048;
 export const CLAIM_READ_MAX_BUDGET_MS = 15_000;
 /** Provisional: the recorded p95 sets it before anything enforces (PR 3). */
 export const CLAIM_READ_MIN_BUDGET_MS = 5_000;
+/** Code points. A longer body is not read at all: a cut body would fail open. */
+export const CLAIM_READ_MAX_BODY_CHARS = 8_000;
+/** Code points. Inbound is context only, so a longer one is cut. */
+export const CLAIM_READ_MAX_INBOUND_CHARS = 2_000;
 
 /**
  * Structure frozen: the output grammar is keyed on it, so one schema serves every call.
@@ -116,7 +121,11 @@ export type ClaimReadFailure =
   | 'refused'
   | 'unparseable'
   /** thinking 'off' on a lane with no thinking-off form: no call was made. */
-  | 'lane_unavailable';
+  | 'lane_unavailable'
+  /** The body is over CLAIM_READ_MAX_BODY_CHARS: no call was made. */
+  | 'oversize'
+  /** A provider 4xx none of the shapes above names (a non-billing 400, a 404, a 422). */
+  | 'provider_rejected';
 
 export type ClaimReadOutcome =
   | {
@@ -133,6 +142,8 @@ export type ClaimReadOutcome =
       incident?: IncidentFailure;
       attempts: 0 | 1 | 2;
       latencyMs: number;
+      /** True when the reader's OWN timer, not the caller's signal, aborted the call. */
+      deadline: boolean;
     };
 
 export interface ClaimReader {
@@ -147,6 +158,8 @@ export interface ClaimReaderDeps {
   clock: () => number;
   /** 'off' runs the skill's lane with as little thinking as the tier allows. */
   thinking: 'adaptive' | 'off';
+  /** The read's own deadline signal. Production: AbortSignal.timeout. */
+  timer: (ms: number) => AbortSignal;
 }
 
 /** `now` as the family's local ISO time with its offset: `2026-11-03T03:00-07:00`. */
@@ -183,7 +196,9 @@ export function claimReadUserMessage(input: {
   return JSON.stringify({
     languageHint: input.languageHint,
     now: input.now,
-    ...(input.inbound !== undefined ? { inbound: input.inbound } : {}),
+    ...(input.inbound !== undefined
+      ? { inbound: [...input.inbound].slice(0, CLAIM_READ_MAX_INBOUND_CHARS).join('') }
+      : {}),
     sentences: input.segments.map((s) => ({ i: s.index, text: s.text })),
     rows: input.candidates.projected,
   });
@@ -213,6 +228,7 @@ interface AttemptFailure {
   incident?: IncidentFailure;
   retryAfterMs: number;
   err: string;
+  deadline: boolean;
 }
 
 function errName(err: unknown): string {
@@ -237,19 +253,24 @@ function retryAfterMs(err: unknown): number {
 
 /**
  * The reader maps errors itself, never through classifyTurnFailure: our own deadline
- * abort is not a transport error there. An error none of these shapes names is a bug
- * and is thrown, not folded into an outcome.
+ * abort is not a transport error there. A provider error none of these shapes names is
+ * `provider_rejected`, logged by its class only. Any other error is a bug and is thrown,
+ * not folded into an outcome.
  */
-function classify(err: unknown, callerSignal: AbortSignal): AttemptFailure {
+function classify(err: unknown, callerSignal: AbortSignal, timer: AbortSignal): AttemptFailure {
   const named = (reason: ClaimReadFailure, extra: Partial<AttemptFailure> = {}) => ({
     reason,
     retryAfterMs: 0,
     err: errName(err),
+    deadline: false,
     ...extra,
   });
   const incident = classifyChainedProviderFailure(err);
   if (incident) return named('incident', { incident });
-  if (isAbort(err)) return named(callerSignal.aborted ? 'no_budget' : 'unreachable');
+  if (isAbort(err)) {
+    if (callerSignal.aborted) return named('no_budget');
+    return named('unreachable', { deadline: timer.aborted });
+  }
   if (err instanceof Anthropic.APIConnectionError) return named('unreachable');
   const status = (err as { status?: unknown } | null)?.status;
   if (typeof status === 'number' && status >= 500) return named('unreachable');
@@ -262,6 +283,7 @@ function classify(err: unknown, callerSignal: AbortSignal): AttemptFailure {
     return named('unparseable');
   }
   if (err instanceof z.ZodError) return named('unparseable');
+  if (err instanceof Anthropic.APIError) return named('provider_rejected');
   throw err;
 }
 
@@ -278,7 +300,8 @@ export function createClaimReader(deps: ClaimReaderDeps): ClaimReader {
     async read(input) {
       const start = deps.clock();
       const failed = (
-        failure: Pick<AttemptFailure, 'reason' | 'incident' | 'err'>,
+        failure: Pick<AttemptFailure, 'reason' | 'incident' | 'err'> &
+          Partial<Pick<AttemptFailure, 'deadline'>>,
         attempts: 0 | 1 | 2,
       ): ClaimReadOutcome => {
         console.error(
@@ -297,14 +320,19 @@ export function createClaimReader(deps: ClaimReaderDeps): ClaimReader {
           ...(failure.incident ? { incident: failure.incident } : {}),
           attempts,
           latencyMs: deps.clock() - start,
+          deadline: failure.deadline ?? false,
         };
       };
 
+      if ([...input.body].length > CLAIM_READ_MAX_BODY_CHARS) {
+        return failed({ reason: 'oversize', err: 'none' }, 0);
+      }
       if (input.budgetMs < CLAIM_READ_MIN_BUDGET_MS || input.signal.aborted) {
         return failed({ reason: 'no_budget', err: 'none' }, 0);
       }
       const deadline = start + Math.min(input.budgetMs, CLAIM_READ_MAX_BUDGET_MS);
-      const signal = AbortSignal.any([input.signal, AbortSignal.timeout(deadline - start)]);
+      const timer = deps.timer(deadline - start);
+      const signal = AbortSignal.any([input.signal, timer]);
 
       const skill = await loadCronSkill(CLAIM_READ_SKILL);
       const skillLane = pickLane(skill.meta.task);
@@ -349,9 +377,14 @@ export function createClaimReader(deps: ClaimReaderDeps): ClaimReader {
               attempts: attempt,
             };
           }
-          failure = { reason: 'unparseable', retryAfterMs: 0, err: 'ClaimReadInvalid' };
+          failure = {
+            reason: 'unparseable',
+            retryAfterMs: 0,
+            err: 'ClaimReadInvalid',
+            deadline: false,
+          };
         } catch (err) {
-          failure = classify(err, input.signal);
+          failure = classify(err, input.signal, timer);
         }
         if (attempt === 2 || !RETRYABLE.has(failure.reason)) return failed(failure, attempt);
         first = failure;
@@ -400,5 +433,6 @@ export function defaultClaimReader(thinking: 'adaptive' | 'off' = 'adaptive'): C
     wait: abortableWait,
     clock: Date.now,
     thinking,
+    timer: (ms) => AbortSignal.timeout(ms),
   });
 }

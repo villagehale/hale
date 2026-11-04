@@ -84,6 +84,7 @@ import {
 import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import type { ClaimShadow, CoachShadowAttempt } from '~/lib/channel/reconcile/claim-shadow';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import {
   type ReconcileVerdict,
@@ -595,6 +596,13 @@ export interface ChannelRouterDeps {
    * this dep exists to close, and it would do it invisibly.
    */
   reconcileView(database: Database, input: { familyId: string; now: Date }): Promise<ReconcileView>;
+  /**
+   * VIL-581 · the claim reader in SHADOW, started after the reply is sent. It is handed
+   * each attempt's reply and the verdict the gate already decided on, starts detached
+   * and never throws, so nothing the parent receives waits on it or depends on it.
+   * Required (rule #11): `off` is the flag's job, never an absent dep.
+   */
+  claimShadow: ClaimShadow;
   /**
    * Write down the registration watch the coach just promised, against the message that
    * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
@@ -2069,8 +2077,16 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
-      await composeReconciledReply(deps, args, view);
+    const {
+      reply,
+      planOffer,
+      activityPromise,
+      spotWatch,
+      mints,
+      experienceCard,
+      groupLeave,
+      attempts,
+    } = await composeReconciledReply(deps, args, view);
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
     if (!experienceCard && reply.trim() === '') {
@@ -2090,6 +2106,15 @@ async function runAgentTurn(
     }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
+    // AFTER the send: the shadow read adds no latency and cannot change what was sent.
+    deps.claimShadow.coachTurn(deps.database, {
+      familyId: args.turn.familyId,
+      parentUserId: args.turn.parentUserId,
+      now: args.turn.now,
+      inbound: args.turn.body,
+      view: await view,
+      attempts,
+    });
     if (card) {
       // AFTER the text, like every other send-time writer here, and never throws: the
       // parent already has the message. Any reason the card cannot go out (flag dark,
@@ -2432,11 +2457,18 @@ async function composeReconciledReply(
     groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
-): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
+): Promise<
+  ChannelTurnResult & {
+    mints: readonly RegistrationWatchMint[];
+    attempts: readonly CoachShadowAttempt[];
+  }
+> {
   const standingQuestions = args.questions.map((question) => question.subject);
   let rejected: readonly string[] = [];
   let result: ChannelTurnResult | null = null;
   let verdict: ReconcileVerdict | null = null;
+  // What each attempt wrote and what the gate decided about it, for the claim shadow.
+  const attempts: CoachShadowAttempt[] = [];
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
@@ -2463,8 +2495,16 @@ async function composeReconciledReply(
         ].filter((kind) => kind !== null),
       ),
     });
+    attempts.push({
+      reply: result.reply,
+      experienceCard: result.experienceCard ?? null,
+      groupLeave: result.groupLeave ?? null,
+      activityPromise: result.activityPromise,
+      spotWatch: result.spotWatch,
+      verdict,
+    });
     if (verdict.refused.length === 0) {
-      return { ...result, mints: verdict.mints };
+      return { ...result, mints: verdict.mints, attempts };
     }
     rejected = reconcileViolations(verdict);
     for (const refusal of verdict.refused) {
@@ -2506,13 +2546,13 @@ async function composeReconciledReply(
             { reason: 'model_unreachable' },
             'channel router: co-parent ask unreachable - nothing sent',
           );
-          return { ...composed, reply: '', spotWatch: null, mints: [] };
+          return { ...composed, reply: '', spotWatch: null, mints: [], attempts };
         }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
-        return { ...composed, reply: instruction, spotWatch: null, mints: [] };
+        return { ...composed, reply: instruction, spotWatch: null, mints: [], attempts };
       }
     }
     throw new Error(
@@ -2547,6 +2587,7 @@ async function composeReconciledReply(
     reply,
     spotWatch: ackSurvived ? armingAck : null,
     mints: refusedVerdict.mints,
+    attempts,
   };
 }
 

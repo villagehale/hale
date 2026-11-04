@@ -232,6 +232,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
     'the reconcile view — titles feed a token-overlap predicate and are never emitted to a recipient',
   ],
   [
+    'lib/channel/reconcile/candidate-rows.ts',
+    "the claim-reader candidate loader — a 13+ child's or sensitive row reaches the claim reader model only as 'A private calendar item' plus its time, through the branded claimRowLabel (isPrivateEvent); no location is read, and nothing here is sent to a recipient",
+  ],
+  [
     'lib/channel/nudge/saturday-plans.ts',
     'empty-Saturday occupancy — child id and start time only, never a title or a location, so a teen row can mark that child busy and cannot put their words on the wire',
   ],
