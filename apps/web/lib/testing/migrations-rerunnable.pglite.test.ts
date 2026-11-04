@@ -216,3 +216,42 @@ describe('opt_out_held_messages', () => {
     expect(legacy.rows).toEqual([{ column_name: 'repointed_at', is_nullable: 'YES' }]);
   });
 });
+
+/** VIL-602 · what a held text was read as, found by suffix so it survives renumbering at merge. */
+describe('opt_out_held_messages crisis read', () => {
+  const READ_FILE = migrationFiles().find((f) => f.endsWith('_opt_out_held_crisis_read.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(READ_FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'opt_out_held_messages' AND column_name LIKE 'crisis_%' ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds three nullable text columns', async () => {
+    expect(READ_FILE).toMatch(/^\d{4}_opt_out_held_crisis_read\.sql$/);
+    // Positive control: the table is there and the columns are not, before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(READ_FILE as string);
+    await expect(db.applyMigration(READ_FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual(
+      ['crisis_language', 'crisis_situation', 'crisis_who'].map((column_name) => ({
+        column_name,
+        is_nullable: 'YES',
+        data_type: 'text',
+      })),
+    );
+  });
+});

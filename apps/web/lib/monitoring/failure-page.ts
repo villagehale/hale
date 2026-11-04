@@ -89,10 +89,11 @@ import {
  * row (channel_messages.provider_message_id), a held text's row in opt_out_held_messages
  * (which gives phone_hash, and from there the channel or session), and, for a family, the
  * `crisis_unanswered` audit row. A crisis read late from a held text pages the same way,
- * `where late_read`. A claim may end in up to three more fields, the language, situation
- * and who the crisis was read with (empty when unread; situation and who from their closed
- * lists), so a later tick writes from the same facts without the text being read again. A paged claim
- * whose text is still held is kept past the lookback: the held row still needs it.
+ * `where late_read`. The claim says nothing of what the text said: the language, situation
+ * and who it was first read with (situation and who from their closed lists) are kept on
+ * the text's held row, so a later tick writes from the same facts without the text being
+ * read again, and they go when that row goes, by a read, a release or an erasure. A paged
+ * claim whose text is still held is kept past the lookback: the held row still needs it.
  *
  * A crisis reply is marked on `ops:crisis-answered` (identifier: the inbound key alone):
  * count 0 as it leaves, count 1 once the transport accepted it. Only a sent mark counts
@@ -427,14 +428,29 @@ export function composeCrisisUnansweredAlert(input: {
 
 const OPS_FACT_KEY_RE = /^[a-z][a-z_]{0,30}$/;
 
-/** Keys outside the closed shape are dropped; strings are categories, numbers counts. */
+/** A fact's value as it may travel: a short code, compared as is, never cleaned into one. */
+const OPS_FACT_CODE_RE = /^[a-z0-9_]{1,40}$/;
+const REDACTED_FACTS_KEY = 'redacted';
+
+function opsFactCode(value: string): string | null {
+  const code = value.toLowerCase();
+  return OPS_FACT_CODE_RE.test(code) && !/\d{7,}/.test(code) ? code : null;
+}
+
+/** Keys outside the closed shape are dropped. Numbers are counts; a string travels only
+ * when it already is a short code, so a formatted phone or an email never does: it is
+ * `redacted`, and how many were is the `redacted` fact. */
 function opsPageFacts(facts: OpsPage['facts']): Array<[string, string]> {
-  return Object.entries(facts)
-    .filter(([key]) => OPS_FACT_KEY_RE.test(key))
-    .map(([key, value]) => [
-      key,
-      typeof value === 'number' ? pageCount(value) : failureCategory(value),
-    ]);
+  let redacted = 0;
+  const shown = Object.entries(facts)
+    .filter(([key]) => OPS_FACT_KEY_RE.test(key) && key !== REDACTED_FACTS_KEY)
+    .map(([key, value]): [string, string] => {
+      if (typeof value === 'number') return [key, pageCount(value)];
+      const code = opsFactCode(value);
+      if (code === null) redacted += 1;
+      return [key, code ?? 'redacted'];
+    });
+  return redacted > 0 ? [...shown, [REDACTED_FACTS_KEY, String(redacted)]] : shown;
 }
 
 export function composeOpsPageAlert(page: OpsPage): string {
@@ -453,53 +469,26 @@ function crisisInboundKey(inboundId: string): string {
   return createHash('sha256').update(id).digest('hex').slice(0, 32);
 }
 
-/** A language tag fit to store beside a claim: never a word of the text. */
-const CLAIM_LANGUAGE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
+/** A language tag fit to keep with a held text: never a word of it. */
+const HELD_LANGUAGE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
 
 function crisisIdentifier(key: string, alert: CrisisUnanswered): string {
-  const read = [
-    alert.language && CLAIM_LANGUAGE_RE.test(alert.language) ? alert.language : '',
-    alert.situation && CRISIS_SITUATIONS.includes(alert.situation) ? alert.situation : '',
-    alert.who && CRISIS_WHO.includes(alert.who) ? alert.who : '',
-  ];
-  while (read.length > 0 && read[read.length - 1] === '') read.pop();
   return [
     key,
     failureCategory(alert.kind),
     failureCategory(alert.where),
     failureCategory(alert.reason),
     String(alert.writes),
-    ...read,
   ].join(':');
 }
 
-function parseCrisisIdentifier(identifier: string): {
-  kind: string;
-  where: string;
-  reason: string;
-  writes: number;
-  language: ReplyLanguage | null;
-  situation: CrisisSituation | null;
-  who: CrisisWho | null;
-} | null {
-  const [key, kind, where, reason, writes, language, situation, who, ...rest] =
-    identifier.split(':');
+function parseCrisisIdentifier(
+  identifier: string,
+): { kind: string; where: string; reason: string; writes: number } | null {
+  const [key, kind, where, reason, writes, ...rest] = identifier.split(':');
   if (rest.length > 0 || !key || !CRISIS_INBOUND_KEY_RE.test(key)) return null;
   if (!kind || !where || !reason || !writes || !/^\d$/.test(writes)) return null;
-  if (language && !CLAIM_LANGUAGE_RE.test(language)) return null;
-  const readSituation = CRISIS_SITUATIONS.find((value) => value === situation) ?? null;
-  const readWho = CRISIS_WHO.find((value) => value === who) ?? null;
-  if (situation && !readSituation) return null;
-  if (who && !readWho) return null;
-  return {
-    kind,
-    where,
-    reason,
-    writes: Number(writes),
-    language: language || null,
-    situation: readSituation,
-    who: readWho,
-  };
+  return { kind, where, reason, writes: Number(writes) };
 }
 
 function providerIncidentWindow(now: Date): Date {
@@ -1184,15 +1173,7 @@ async function pageCrisesUnanswered(
         { outcome: 'unreadable', claimId: row.id },
         'failure page: crisis claim unreadable - paging it as is',
       );
-      recorded = {
-        kind: 'unreadable',
-        where: 'unreadable',
-        reason: 'unreadable',
-        writes: 0,
-        language: null,
-        situation: null,
-        who: null,
-      };
+      recorded = { kind: 'unreadable', where: 'unreadable', reason: 'unreadable', writes: 0 };
     }
     const text = composeCrisisUnansweredAlert({ ...recorded, ref: row.id });
     await deliver(
@@ -1603,11 +1584,29 @@ interface CrisisClaim {
 }
 
 /**
+ * What a crisis was read as, kept on the held row of its text, never on the claim: it goes
+ * when the row goes (read, released or erased), so a later tick writes from the same facts
+ * while the text is held, and nothing about the crisis outlives it. No held row, nothing kept.
+ */
+async function keepHeldCrisisRead(tx: Database, alert: CrisisUnanswered): Promise<void> {
+  const language = alert.language && HELD_LANGUAGE_RE.test(alert.language) ? alert.language : null;
+  const situation =
+    alert.situation && CRISIS_SITUATIONS.includes(alert.situation) ? alert.situation : null;
+  const who = alert.who && CRISIS_WHO.includes(alert.who) ? alert.who : null;
+  if (language === null && situation === null && who === null) return;
+  await tx
+    .update(schema.optOutHeldMessages)
+    .set({ crisisLanguage: language, crisisSituation: situation, crisisWho: who })
+    .where(eq(schema.optOutHeldMessages.providerMessageId, alert.inboundId));
+}
+
+/**
  * The claim for this inbound's crisis, recorded once: an owed row the sweep pages from.
  * Whichever delivery of the inbound recorded it, and for whatever reason, there is one row:
- * the lookup and the insert run under a per-inbound advisory lock. The first record also
- * writes the audit row when there is a family to write it against, after the commit, so a
- * failed audit write cannot roll the claim back.
+ * the lookup and the insert run under a per-inbound advisory lock. What the first record
+ * read the text as goes on the text's held row, if it is held, in the same transaction.
+ * The first record also writes the audit row when there is a family to write it against,
+ * after the commit, so a failed audit write cannot roll the claim back.
  */
 async function recordCrisisClaim(
   database: Database,
@@ -1650,6 +1649,7 @@ async function recordCrisisClaim(
         windowStart: schema.rateLimits.windowStart,
       });
     if (!row) throw new Error('crisis claim insert returned no row');
+    await keepHeldCrisisRead(tx, alert);
     return { claim: row, inserted: true };
   });
   if (inserted && alert.familyId !== null) {
@@ -1678,9 +1678,9 @@ async function claimCrisisPage(
 }
 
 /**
- * The crisis already recorded for this inbound, live or late: its claim id, kind, and the
- * language, situation and who it was read with. Null when there is none (or the inbound
- * has no id to key it by).
+ * The crisis already recorded for this inbound, live or late: its claim id and kind, and
+ * the language, situation and who it was first read with, from the text's held row. Null
+ * when there is none (or the inbound has no id to key it by).
  */
 export async function crisisClaimFor(
   database: Database,
@@ -1703,11 +1703,24 @@ export async function crisisClaimFor(
       ),
     )
     .limit(1);
-  const parsed = row ? parseCrisisIdentifier(row.identifier) : null;
-  const kind = parsed?.kind;
-  if (!row || !parsed || (kind !== 'emergency' && kind !== 'mental')) return null;
-  const { language, situation, who } = parsed;
-  return { id: row.id, kind, language, situation, who };
+  const kind = row ? parseCrisisIdentifier(row.identifier)?.kind : undefined;
+  if (!row || (kind !== 'emergency' && kind !== 'mental')) return null;
+  const [held] = await database
+    .select({
+      language: schema.optOutHeldMessages.crisisLanguage,
+      situation: schema.optOutHeldMessages.crisisSituation,
+      who: schema.optOutHeldMessages.crisisWho,
+    })
+    .from(schema.optOutHeldMessages)
+    .where(eq(schema.optOutHeldMessages.providerMessageId, inboundId))
+    .limit(1);
+  return {
+    id: row.id,
+    kind,
+    language: held?.language && HELD_LANGUAGE_RE.test(held.language) ? held.language : null,
+    situation: CRISIS_SITUATIONS.find((value) => value === held?.situation) ?? null,
+    who: CRISIS_WHO.find((value) => value === held?.who) ?? null,
+  };
 }
 
 /** A crisis reply's mark: taken as it leaves, and turned to sent once the transport accepted it. */

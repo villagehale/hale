@@ -102,7 +102,7 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
     expect(posted[0]).toContain('reason no_writer.');
     const claims = await crisisClaims();
     expect(claims).toHaveLength(1);
-    expect(claims[0]?.identifier).toMatch(/^[0-9a-f]{32}:emergency:intake_crisis:no_writer:0:en$/);
+    expect(claims[0]?.identifier).toMatch(/^[0-9a-f]{32}:emergency:intake_crisis:no_writer:0$/);
     expect(claims[0]?.count).toBe(1);
   }, 30_000);
 

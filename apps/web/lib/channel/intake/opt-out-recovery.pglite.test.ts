@@ -19,6 +19,7 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import {
   CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
+  crisisReplyState,
   failurePageCrisisPager,
   noteCrisisReplySent,
   pageFailureAlerts,
@@ -310,6 +311,16 @@ function deps(
     }),
     ...over,
   };
+}
+
+/** Every table a crisis claim or a held text lives in, by name, where a row holds `word`. */
+async function rowsNaming(word: string): Promise<string[]> {
+  const { rows } = await db.client.query<{ source: string; row: string }>(
+    `select 'rate_limits' as source, row_to_json(r)::text as row from rate_limits r
+     union all select 'opt_out_held_messages', row_to_json(h)::text from opt_out_held_messages h
+     union all select 'audit_log', row_to_json(a)::text from audit_log a`,
+  );
+  return rows.filter((row) => row.row.includes(word)).map((row) => row.source);
 }
 
 async function crisisClaimIds(): Promise<string[]> {
@@ -1020,6 +1031,9 @@ describe('recoverHeldOptOutReads', () => {
       heldAt: ago(20),
       nextReadAt: ago(20),
       readAttempts: 0,
+      crisisLanguage: null,
+      crisisSituation: null,
+      crisisWho: null,
     });
 
     expect((await resolveHeldText(db.database, row('pm-us', PHONE_A)))?.region).toBe('US');
@@ -1683,6 +1697,73 @@ describe('recoverHeldOptOutReads', () => {
     expect(JSON.stringify(inputs[0])).toContain('chok');
   }, 30_000);
 
+  const OVERDOSE: OptOutReading = {
+    intent: 'crisis_emergency',
+    confirmation: '',
+    language: 'en',
+    situation: 'poisoning_or_overdose',
+    who: 'child',
+  };
+  const OVERDOSE_TEXT = 'she swallowed the pills';
+
+  it('an erased family takes what its crisis was read as: no row still names it', async () => {
+    // The parent also sits in a second family on the same number, so the held row stays.
+    const erased = await seedFamily(db.database, 'First Family');
+    const kept = await seedFamily(db.database, 'Second Family');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: kept.familyId, userId: erased.parentUserId, role: 'co_parent' });
+    await channel({ familyId: kept.familyId, parentUserId: erased.parentUserId }, PHONE_A, {
+      verifiedAt: ago(7 * 24 * 60),
+      revokedAt: null,
+    });
+    await inboundRow(erased, 'pm-od', OVERDOSE_TEXT, ago(20));
+    await hold(PHONE_A, 'pm-od', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const read = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [OVERDOSE_TEXT]: OVERDOSE }).reader, new FakeTransport(), {
+        saidLine: downWriter,
+      }),
+    );
+    expect(read.outcomes.crisis_unanswered).toBe(1);
+    // Positive control: while the text is held for its retry, its facts are kept somewhere.
+    expect(await rowsNaming('poisoning_or_overdose')).not.toEqual([]);
+
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, erased.familyId));
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(await heldRow('pm-od')).not.toBeNull();
+    expect(await crisisClaimIds()).toHaveLength(1);
+    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+  }, 30_000);
+
+  it('a held crisis row released takes what it was read as with it', async () => {
+    const a = await pendingParent(PHONE_B);
+    await inboundRow(a, 'pm-od-ns', OVERDOSE_TEXT, ago(20));
+    await hold(PHONE_B, 'pm-od-ns', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [OVERDOSE_TEXT]: OVERDOSE }).reader, new FakeTransport(), {
+        saidLine: downWriter,
+      }),
+    );
+
+    expect(result.outcomes.crisis_unreachable).toBe(1);
+    expect(await heldRow('pm-od-ns')).toBeNull();
+    // The page's claim stays for its lookback, and names only kind, where and why.
+    expect(await crisisClaimIds()).toHaveLength(1);
+    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+    expect(await rowsNaming(':child')).toEqual([]);
+  }, 30_000);
+
   it('a crisis read late from a number that changed hands is paged, not answered', async () => {
     const sessionId = await frenchIntake(PHONE_C, 'pm-moved', FR_CRISIS);
     await db.database
@@ -1735,6 +1816,88 @@ describe('recoverHeldOptOutReads', () => {
     expect(posted[0]).toContain('reason send_failed.');
     expect(posted[0]).toContain('where late_read.');
     expect(await heldRow('pm-st')).not.toBeNull();
+  }, 30_000);
+
+  it('a failed late send never takes off the sent mark a live reply put on meanwhile', async () => {
+    const a = await parent(PHONE_A);
+    // Due first, so the first send out is this text's.
+    await inboundRow(a, 'pm-both', FR_CRISIS, ago(21));
+    await hold(PHONE_A, 'pm-both', ago(21));
+    await inboundRow(a, 'pm-late-only', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-late-only', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The live turn's send of pm-both lands while the late one is out; then the late one fails.
+    let sends = 0;
+    class LiveLandsMeanwhile extends FakeTransport {
+      override async send(): Promise<{ providerMessageId: string }> {
+        sends += 1;
+        if (sends === 1) await noteCrisisReplySent(db.database, 'pm-both', NOW);
+        throw new Error('carrier timed out');
+      }
+    }
+    const { writer, misses } = recordedCrisisWriter();
+
+    const first = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, new LiveLandsMeanwhile(), {
+        saidLine: writer,
+      }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(sends).toBe(2);
+
+    expect(first.outcomes.crisis_unanswered).toBe(2);
+    expect(await crisisReplyState(db.database, 'pm-both', NOW)).toBe('answered');
+    // Positive control: with no live reply, the failed send's own mark does come off.
+    expect(await crisisReplyState(db.database, 'pm-late-only', NOW)).toBe('unanswered');
+  }, 30_000);
+
+  it('a late reply whose parent check throws still writes the read row, once', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-pc', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-pc', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop !== 'select') return Reflect.get(target, prop, receiver);
+        return (...args: Parameters<Database['select']>) => {
+          const builder = target.select(...args);
+          return new Proxy(builder, {
+            get(b, p, r) {
+              if (p !== 'from') return Reflect.get(b, p, r);
+              return (table: unknown) => {
+                if (table === schema.familyMembers) throw new Error('members down');
+                return b.from(table as typeof schema.familyMembers);
+              };
+            },
+          });
+        };
+      },
+    }) as Database;
+    const transport = new FakeTransport();
+    const { writer } = recordedCrisisWriter();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+
+    const first = await recoverHeldOptOutReads(
+      failing,
+      deps(r.reader, transport, { saidLine: writer }),
+    );
+    const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
+    await recoverHeldOptOutReads(
+      failing,
+      deps(r.reader, transport, { saidLine: writer, now: later }),
+    );
+
+    expect(first.outcomes.crisis_replied).toBe(1);
+    expect(first.outcomes.recovery_failed).toBe(0);
+    expect(transport.sent).toHaveLength(1);
+    expect(await auditReads(a.familyId)).toEqual([readRow(a.parentUserId)]);
+    expect(await heldRow('pm-pc')).toBeNull();
+    expect(console.error).toHaveBeenCalledWith(
+      { err: 'Error' },
+      'opt-out recovery: late_crisis_parent_check_failed',
+    );
   }, 30_000);
 
   /** A parent whose only channel on the number was asked for and never verified. */

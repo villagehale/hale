@@ -575,8 +575,15 @@ async function recordLateCrisisReply(
   if (held.familyId && held.authorUserId) {
     const owner = { familyId: held.familyId, parentUserId: held.authorUserId };
     // Read live, as threadIfParent reads it: a parent who left keeps the reply, and the
-    // family they left gets no trace of it.
-    if (!(await isParentOf(database, owner))) {
+    // family they left gets no trace of it. A check that throws records nothing.
+    let parentNow: boolean;
+    try {
+      parentNow = await isParentOf(database, owner);
+    } catch (err) {
+      console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_parent_check_failed');
+      return;
+    }
+    if (!parentNow) {
       console.info(
         { trace: 'late_crisis_not_recorded_left_family' },
         'opt-out recovery: late crisis reply sent, not recorded - the author is no longer a parent of that family',

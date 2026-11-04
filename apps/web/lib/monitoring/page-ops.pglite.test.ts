@@ -229,6 +229,35 @@ describe('pageOps: the one primitive', () => {
     expect(posted[0]).not.toContain('kept');
   });
 
+  it('a fact that is not a short code is redacted and counted, in the page and the log', async () => {
+    await pageOps(
+      db.database,
+      {
+        site: 'opt_out_hold_unwritten',
+        facts: {
+          phone: '555-555-0199',
+          email: 'a@b.com',
+          spaced: 'two words',
+          err: 'PostgresError',
+        },
+      },
+      { post, now: new Date(BASE.getTime() + 80 * HOUR) },
+    );
+    const urgent = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[1] === 'URGENT: opt_out_hold_unwritten - paging #ops');
+    for (const leak of ['555', '0199', 'a@b', 'b.com', 'b_com', 'two']) {
+      expect(posted[0]).not.toContain(leak);
+      expect(JSON.stringify(urgent?.[0])).not.toContain(leak);
+    }
+    expect(posted[0]).toContain('phone redacted.');
+    expect(posted[0]).toContain('email redacted.');
+    expect(posted[0]).toContain('redacted 3.');
+    expect(urgent?.[0]).toMatchObject({ phone: 'redacted', email: 'redacted', redacted: '3' });
+    // Positive control: a code, whatever its case, still travels.
+    expect(posted[0]).toContain('err postgreserror.');
+  });
+
   it('a claim that throws is deduped in this process, per site and hour', async () => {
     const failing = claimsThrow(db.database);
     // An hour no other test uses: the in-process memo outlives one test.
