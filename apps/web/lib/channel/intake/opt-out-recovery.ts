@@ -27,15 +27,14 @@ import type { ChannelTransport } from './transport';
  * close, and the model's own confirmation. An empty confirmation sends nothing.
  */
 
-/** The audit verb written per held text this pass read and released. */
-export const OPT_OUT_HOLD_READ_AUDIT_ACTION = 'opt_out_hold_read';
-
 export const HELD_READ_OUTCOMES = [
   'stopped',
   'stopped_confirmation_unsent',
   'stopped_confirmation_failed',
   /** The number has a new holder: only the author's own channel is revoked, nothing sent. */
   'stopped_previous_holder',
+  /** The number has a new holder and its author no longer holds it: nothing revoked or sent. */
+  'previous_holder_already_stopped',
   /** The stop path threw before the number stopped being sendable: kept held, retried. */
   'stop_failed',
   'already_stopped',
@@ -201,7 +200,7 @@ async function recoverRow(
     await database.insert(schema.auditLog).values({
       familyId: held.owner.familyId,
       actor: held.owner.parentUserId,
-      actionTaken: OPT_OUT_HOLD_READ_AUDIT_ACTION,
+      actionTaken: 'opt_out_hold_read',
       targetTable: 'channel_messages',
       targetId: held.owner.channelMessageId,
       after: { outcome },
@@ -257,18 +256,31 @@ async function lateStop(
   // The stop path acts on the phone number. A number that now belongs to someone else
   // (a recycled number, a new intake) must not be stopped for its previous holder.
   const author = held.owner;
-  const current = await resolveVerifiedChannelByPhone(database, held.phoneE164);
-  const otherHolder =
-    author !== null &&
-    ((current !== null && current.userId !== author.parentUserId) ||
-      (held.session !== null && held.session.userId !== author.parentUserId));
-  if (author && otherHolder) {
-    await revokeSmsChannel(
-      database,
-      { userId: author.parentUserId, familyId: author.familyId },
-      { now: deps.now },
-    );
-    return 'stopped_previous_holder';
+  const current = await activeHolder(database, row.phoneHash);
+  if (author) {
+    const otherHolder =
+      (current !== null && current.userId !== author.parentUserId) ||
+      (held.session !== null && held.session.userId !== author.parentUserId);
+    if (otherHolder) {
+      // revokeSmsChannel acts on the author's active channel, whichever number it is on.
+      if (current?.userId !== author.parentUserId) {
+        return 'previous_holder_already_stopped';
+      }
+      await revokeSmsChannel(
+        database,
+        { userId: author.parentUserId, familyId: author.familyId },
+        { now: deps.now },
+      );
+      return 'stopped_previous_holder';
+    }
+  } else if (
+    held.session === null &&
+    current?.verifiedAt != null &&
+    current.verifiedAt.getTime() > held.inbound.receivedAt.getTime()
+  ) {
+    // Only a closed intake with no family recorded the text, and the number was verified
+    // by its holder after it was sent: the text is not theirs to stop them with.
+    return 'previous_holder_already_stopped';
   }
   const sendable = await stillSendable(database, held.phoneE164, row.phoneHash);
   try {
@@ -309,6 +321,27 @@ async function lateStop(
     );
     return 'stopped_confirmation_failed';
   }
+}
+
+/** The number's one active channel (a partial unique index), verified or not. */
+async function activeHolder(
+  database: Database,
+  phoneHash: string,
+): Promise<{ userId: string; verifiedAt: Date | null } | null> {
+  const [holder] = await database
+    .select({
+      userId: schema.parentChannels.userId,
+      verifiedAt: schema.parentChannels.verifiedAt,
+    })
+    .from(schema.parentChannels)
+    .where(
+      and(
+        eq(schema.parentChannels.phoneE164Hash, phoneHash),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .limit(1);
+  return holder ?? null;
 }
 
 async function stillSendable(
@@ -513,25 +546,39 @@ async function inboundIdsSince(
   phoneHash: string,
   since: Date,
 ): Promise<string[]> {
-  const owners = await database
-    .select({ userId: schema.parentChannels.userId })
+  // The ledger names a user, not the number a text came from. A user holds one active
+  // channel at a time, so a text the user sent while their channel on this number stood
+  // came from this number; email and the user's other numbers are left out.
+  const holdings = await database
+    .select({
+      userId: schema.parentChannels.userId,
+      verifiedAt: schema.parentChannels.verifiedAt,
+      revokedAt: schema.parentChannels.revokedAt,
+    })
     .from(schema.parentChannels)
     .where(eq(schema.parentChannels.phoneE164Hash, phoneHash));
-  const userIds = [...new Set(owners.map((owner) => owner.userId))];
-  const ledger =
-    userIds.length === 0
-      ? []
-      : await database
-          .select({ id: schema.channelMessages.providerMessageId })
-          .from(schema.channelMessages)
-          .where(
-            and(
-              inArray(schema.channelMessages.parentUserId, userIds),
-              eq(schema.channelMessages.direction, 'in'),
-              gte(schema.channelMessages.sentAt, since),
-              isNotNull(schema.channelMessages.providerMessageId),
-            ),
-          );
+  const ledger: { id: string | null }[] = [];
+  for (const holding of holdings) {
+    const from =
+      holding.verifiedAt && holding.verifiedAt.getTime() > since.getTime()
+        ? holding.verifiedAt
+        : since;
+    ledger.push(
+      ...(await database
+        .select({ id: schema.channelMessages.providerMessageId })
+        .from(schema.channelMessages)
+        .where(
+          and(
+            eq(schema.channelMessages.parentUserId, holding.userId),
+            eq(schema.channelMessages.direction, 'in'),
+            inArray(schema.channelMessages.channel, ['sms', 'imessage']),
+            gte(schema.channelMessages.sentAt, from),
+            holding.revokedAt ? lte(schema.channelMessages.sentAt, holding.revokedAt) : undefined,
+            isNotNull(schema.channelMessages.providerMessageId),
+          ),
+        )),
+    );
+  }
   const open = await openSessionRow(database, phoneHash);
   const transcript = open
     ? decodeIntakeForRecovery(open.dataEncrypted)

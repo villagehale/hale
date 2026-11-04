@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -61,19 +61,30 @@ const ago = (minutes: number): Date => new Date(NOW.getTime() - minutes * MINUTE
 
 async function parent(
   phone: string,
-  over: { revoked?: boolean } = {},
+  over: { revoked?: boolean; verifiedAt?: Date } = {},
 ): Promise<{ familyId: string; parentUserId: string }> {
   const seeded = await seedFamily(db.database, 'Held Family');
-  await db.database.insert(schema.parentChannels).values({
-    userId: seeded.parentUserId,
-    familyId: seeded.familyId,
-    kind: 'sms',
-    phoneE164Encrypted: encryptString(phone),
-    phoneE164Hash: phoneBlindIndex(phone),
-    verifiedAt: ago(60 * 24 * 7),
+  await channel(seeded, phone, {
+    verifiedAt: over.verifiedAt ?? ago(60 * 24 * 7),
     revokedAt: over.revoked ? ago(60) : null,
   });
   return seeded;
+}
+
+async function channel(
+  owner: { familyId: string; parentUserId: string },
+  phone: string,
+  at: { verifiedAt: Date; revokedAt: Date | null },
+): Promise<void> {
+  await db.database.insert(schema.parentChannels).values({
+    userId: owner.parentUserId,
+    familyId: owner.familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: at.verifiedAt,
+    revokedAt: at.revokedAt,
+  });
 }
 
 async function inboundRow(
@@ -81,14 +92,14 @@ async function inboundRow(
   providerMessageId: string,
   body: string,
   sentAt: Date,
-  over: { inGroup?: boolean; chatId?: string } = {},
+  over: { inGroup?: boolean; chatId?: string; channel?: 'email' } = {},
 ): Promise<string> {
   const [row] = await db.database
     .insert(schema.channelMessages)
     .values({
       familyId: owner.familyId,
       parentUserId: owner.parentUserId,
-      channel: over.chatId ? 'imessage' : 'sms',
+      channel: over.channel ?? (over.chatId ? 'imessage' : 'sms'),
       direction: 'in',
       category: 'reply',
       providerMessageId,
@@ -635,6 +646,43 @@ describe('recoverHeldOptOutReads', () => {
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(PHONE_A);
     expect(JSON.stringify(transport.sent[0])).not.toContain('chat-group-1');
+    // The ledger row of the confirmation names no chat, never the family group's.
+    const outbound = await db.database
+      .select({ chatId: schema.channelMessages.providerChatId })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.parentUserId, a.parentUserId),
+          eq(schema.channelMessages.direction, 'out'),
+        ),
+      );
+    expect(outbound).toEqual([{ chatId: null }]);
+  }, 30_000);
+
+  it('n: a stop read late from a one-to-one iMessage keeps its own chat on the ledger', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-n2', 'stop texting me', ago(20), {
+      inGroup: false,
+      chatId: 'chat-direct-1',
+    });
+    await hold(PHONE_A, 'pm-n2', ago(20));
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader().reader, new FakeTransport()),
+    );
+
+    expect(result.outcomes.stopped).toBe(1);
+    const outbound = await db.database
+      .select({ chatId: schema.channelMessages.providerChatId })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.parentUserId, a.parentUserId),
+          eq(schema.channelMessages.direction, 'out'),
+        ),
+      );
+    expect(outbound).toEqual([{ chatId: 'chat-direct-1' }]);
   }, 30_000);
 
   it("a late stop from a number's previous holder never touches its new holder", async () => {
@@ -646,16 +694,146 @@ describe('recoverHeldOptOutReads', () => {
 
     const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
 
-    expect(result.outcomes.stopped_previous_holder).toBe(1);
+    expect(result.outcomes.previous_holder_already_stopped).toBe(1);
+    expect(result.outcomes.stopped_previous_holder).toBe(0);
     expect(await channelRevoked(now.parentUserId)).toBe(false);
     expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-old-holder')).toBeNull();
+    expect(await auditOutcomes(before.familyId)).toEqual([
+      { outcome: 'previous_holder_already_stopped' },
+    ]);
     // Positive control: the new holder's own late stop does revoke them.
     await inboundRow(now, 'pm-new-holder', 'stop texting me', ago(10));
     await hold(PHONE_A, 'pm-new-holder', ago(10));
     const own = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
     expect(own.outcomes.stopped).toBe(1);
     expect(await channelRevoked(now.parentUserId)).toBe(true);
+  }, 30_000);
+
+  it("a late stop from a number its author left never revokes the author's new number", async () => {
+    const alice = await parent(PHONE_A, { revoked: true });
+    await channel(alice, PHONE_C, { verifiedAt: ago(50), revokedAt: null });
+    const bob = await parent(PHONE_A, { verifiedAt: ago(40) });
+    await inboundRow(alice, 'pm-moved', 'stop texting me', ago(70));
+    await hold(PHONE_A, 'pm-moved', ago(70));
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+
+    expect(result.outcomes.previous_holder_already_stopped).toBe(1);
+    const aliceActive = await db.database
+      .select({ id: schema.parentChannels.id })
+      .from(schema.parentChannels)
+      .where(
+        and(
+          eq(schema.parentChannels.userId, alice.parentUserId),
+          eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(PHONE_C)),
+          isNull(schema.parentChannels.revokedAt),
+        ),
+      );
+    expect(aliceActive).toHaveLength(1);
+    expect(await channelRevoked(bob.parentUserId)).toBe(false);
+    const withdrawals = await db.database
+      .select({ userId: schema.consentRecords.userId })
+      .from(schema.consentRecords);
+    expect(withdrawals).toEqual([]);
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-moved')).toBeNull();
+  }, 30_000);
+
+  async function closedPreFamilyText(phone: string, providerId: string, at: Date): Promise<void> {
+    const session = await createSession(db.database, {
+      phoneE164: phone,
+      state: 'awaiting_details',
+      sourceCode: null,
+    });
+    await saveSession(
+      db.database,
+      session,
+      {
+        transcript: [
+          { direction: 'in', body: 'stop texting me', providerId, at: at.toISOString() },
+        ],
+        state: 'superseded',
+        closedAt: new Date(at.getTime() + MINUTE),
+      },
+      new Date(at.getTime() + MINUTE),
+    );
+    await hold(phone, providerId, at);
+  }
+
+  it('a late stop only a closed pre-family session recorded never stops a later holder', async () => {
+    await closedPreFamilyText(PHONE_A, 'pm-p2', ago(40));
+    const bob = await parent(PHONE_A, { verifiedAt: ago(20) });
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+
+    expect(result.outcomes.previous_holder_already_stopped).toBe(1);
+    expect(result.outcomes.stopped).toBe(0);
+    expect(await channelRevoked(bob.parentUserId)).toBe(false);
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-p2')).toBeNull();
+  }, 30_000);
+
+  it('a late stop only a closed pre-family session recorded stops a holder verified before it', async () => {
+    const own = await parent(PHONE_A, { verifiedAt: ago(60) });
+    await closedPreFamilyText(PHONE_A, 'pm-p2-own', ago(40));
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+
+    expect(result.outcomes.stopped).toBe(1);
+    expect(await channelRevoked(own.parentUserId)).toBe(true);
+    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
+      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
+    ]);
+  }, 30_000);
+
+  it('a row another tick claimed first is named claimed_elsewhere and never read', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-taken', 'taken by the other tick', ago(30));
+    await inboundRow(a, 'pm-mine', 'read by this tick', ago(20));
+    await hold(PHONE_A, 'pm-taken', ago(30));
+    await hold(PHONE_A, 'pm-mine', ago(20));
+    const r = reader();
+    const otherTick = async () => {
+      await db.database
+        .update(schema.optOutHeldMessages)
+        .set({ nextReadAt: new Date(NOW.getTime() + 15 * MINUTE) })
+        .where(eq(schema.optOutHeldMessages.providerMessageId, 'pm-taken'));
+      return { proceed: true as const, health: null };
+    };
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, new FakeTransport(), { preflight: otherTick }),
+    );
+
+    expect(result.outcomes.claimed_elsewhere).toBe(1);
+    expect(result.outcomes.read_not_stop).toBe(1);
+    expect(r.texts).toEqual(['read by this tick']);
+    expect((await heldRow('pm-taken'))?.readAttempts).toBe(0);
+  }, 30_000);
+
+  it('l: a legacy hold re-points only texts and only those sent while that number was theirs', async () => {
+    const u = await parent(PHONE_A, { revoked: true });
+    await channel(u, PHONE_C, { verifiedAt: ago(60), revokedAt: null });
+    const heldAt = ago(120);
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: phoneBlindIndex(PHONE_A), heldAt });
+    await inboundRow(u, 'pm-from-a', 'a text from the old number', ago(100));
+    await inboundRow(u, 'pm-email', 'an email reply', ago(90), { channel: 'email' });
+    await inboundRow(u, 'pm-from-c', 'a text from the new number', ago(30));
+    const r = reader();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(r.reader, new FakeTransport()));
+
+    expect(result.repointed).toBe(1);
+    expect(r.texts).toEqual(['a text from the old number']);
+    expect(await heldRow('pm-email')).toBeNull();
+    expect(await heldRow('pm-from-c')).toBeNull();
   }, 30_000);
 
   it('a held text only a closed intake session recorded is still read', async () => {
@@ -751,6 +929,7 @@ describe('recoverHeldOptOutReads', () => {
         stopped_confirmation_unsent: 0,
         stopped_confirmation_failed: 0,
         stopped_previous_holder: 0,
+        previous_holder_already_stopped: 0,
         stop_failed: 0,
         already_stopped: 0,
         read_not_stop: 0,
