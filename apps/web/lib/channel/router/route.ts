@@ -83,6 +83,7 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
+import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimShadow, CoachShadowAttempt } from '~/lib/channel/reconcile/claim-shadow';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
@@ -97,7 +98,12 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type { CrisisKind } from '~/lib/channel/voice/crisis-check';
+import {
+  type CrisisPager,
+  type SaidLineWriter,
+  logCrisisUnanswered,
+} from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
@@ -107,7 +113,7 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { reportTurnFailures } from '~/lib/monitoring/failure-page';
+import { failurePageCrisisPager, reportTurnFailures } from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -417,6 +423,9 @@ export interface ChannelRouterDeps {
   calendarOffers: CalendarOfferPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
+  /** Pages #ops when a crisis moment gets no reply. Absent: the real pager
+   * (failure-page.ts) on this turn's database, never a way to withhold the page. */
+  crisisPager?: CrisisPager;
   /** #868: the turn reader; decides an identity challenge in any language. */
   turnReader?: OptOutReader;
   /**
@@ -693,6 +702,13 @@ export class TurnDeferred extends Error {
     this.name = 'TurnDeferred';
     this.reason = reason;
   }
+}
+
+/** The crisis a moment is, or null for a moment that is not one. */
+function momentCrisisKind(moment: Moment): CrisisKind | null {
+  if (moment === 'mental_crisis') return 'mental';
+  if (moment === 'emergency') return 'emergency';
+  return null;
 }
 
 export type RouterStatus =
@@ -1551,6 +1567,18 @@ async function routeChannelMessageInner(
         { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
         'channel router: moment reply unwritten',
       );
+      const crisis = momentCrisisKind(verdict.moment);
+      if (crisis !== null) {
+        // A crisis nobody could answer reaches a human now, not on the re-drive.
+        await logCrisisUnanswered(deps.crisisPager ?? failurePageCrisisPager(deps.database), {
+          kind: crisis,
+          where: 'router moment',
+          ...momentUnwritten(verdict.reason),
+          inboundId: job.provider_message_id,
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+        });
+      }
       try {
         await deps.turns.recordDeferred({
           familyId: job.family_id,

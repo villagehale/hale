@@ -55,6 +55,7 @@ import {
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
+  type CrisisPager,
   type SaidLineWriter,
   crisisReplyLanguage,
   deliverCrisisReply,
@@ -65,7 +66,7 @@ import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
-import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
+import { failurePageCrisisPager, reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -225,6 +226,10 @@ export interface IntakeDeps {
   optOutReader?: OptOutReader;
   /** #868: writes the lines that used to be fixed (identity, a crisis the answer model flagged). */
   saidLine?: SaidLineWriter;
+  /** Pages #ops when a crisis gets no reply. Optional because the DEFAULT IS THE REAL
+   * EFFECT (failure-page.ts on this turn's database): a test seam, never a way to
+   * withhold the page. */
+  crisisPager?: CrisisPager;
   /** #868 · failed-read hold store; defaults to opt_out_read_holds. */
   optOutHold?: OptOutHoldPort;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
@@ -1031,6 +1036,7 @@ async function offScriptReply(
   },
   deps: IntakeDeps,
   turn: Inbound,
+  page: { database: Database; familyId: string | null; parentUserId: string | null },
 ): Promise<{
   body: string;
   source: 'composed' | 'safety' | 'identity';
@@ -1072,6 +1078,7 @@ async function offScriptReply(
       situation: null,
       who: null,
       where: 'intake answer crisis',
+      ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
     return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
@@ -1409,11 +1416,13 @@ function sessionPlaceTokens(session: IntakeSession | null): readonly (string | n
 }
 
 async function crisisReply(
+  database: Database,
+  session: IntakeSession | null,
   inbound: Inbound,
   language: ReplyLanguage | null,
-  region: 'CA' | 'US' | null,
   deps: IntakeDeps,
 ): Promise<{ body: string | null } | null> {
+  const region = crisisRegionForSession(session);
   const reading = await readTurnOnce(deps.optOutReader, inbound, {
     text: inbound.body,
     language,
@@ -1430,9 +1439,26 @@ async function crisisReply(
     situation: reading.situation ?? null,
     who: reading.who ?? null,
     where: 'intake crisis',
+    ...crisisPage(database, deps, inbound, session?.familyId ?? null, session?.userId ?? null),
     writer: deps.saidLine,
   });
   return { body: crisis.status === 'sent' ? crisis.body : null };
+}
+
+/** Who hears about a crisis that got no reply, and which inbound, household and parent it was. */
+function crisisPage(
+  database: Database,
+  deps: IntakeDeps,
+  inbound: Inbound,
+  familyId: string | null,
+  parentUserId: string | null,
+): { pager: CrisisPager; inboundId: string; familyId: string | null; parentUserId: string | null } {
+  return {
+    pager: deps.crisisPager ?? failurePageCrisisPager(database),
+    inboundId: inbound.providerId,
+    familyId,
+    parentUserId,
+  };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1713,7 +1739,7 @@ async function friendOnboardingTurn(
   let language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
@@ -2188,7 +2214,7 @@ async function friendColdTurn(
   }
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
@@ -3210,7 +3236,7 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
@@ -3254,7 +3280,7 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  const crisis = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const crisis = await crisisReply(database, session, inbound, language, deps);
   if (crisis) {
     if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -3282,6 +3308,7 @@ async function handleLadder(
       },
       deps,
       inbound,
+      { database, familyId, parentUserId: userId },
     );
     if (offScript) {
       if (offScript.body) {

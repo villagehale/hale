@@ -40,6 +40,8 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
+  'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472. One recorder writes the tapback and the sticker moment.
   'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
   // VIL-226. One audit helper writes every verb of the hourly proactive review, and a
