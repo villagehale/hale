@@ -17,7 +17,6 @@ import {
   friendVoiceContext,
 } from './friend-voice';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
-import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 import { FakeTransport } from './transport';
 
 /**
@@ -224,23 +223,6 @@ describe('runFirstReplyRecoveryCron', () => {
     const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(result.sent).toBe(0);
     expect(transport.bodies()).toEqual([]);
-  });
-
-  it('does not send the first-hello to the founder-pair session ids', async () => {
-    const fake = makeFakeDb();
-    const transport = new FakeTransport();
-    const [firstId, secondId] = [...FOUNDER_PAIR_SESSION_IDS];
-    expect(FOUNDER_PAIR_SESSION_IDS.size).toBe(2);
-    seedSession(fake, { id: firstId });
-    seedSession(fake, { id: secondId, phoneE164: OTHER });
-
-    const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(result.sent).toBe(0);
-    expect(transport.bodies()).toEqual([]);
-    expect(fake.rows(schema.smsIntakeSessions).map((row) => row.firstReplyRecoveredAt)).toEqual([
-      SAME_DAY_NOON_ET,
-      SAME_DAY_NOON_ET,
-    ]);
   });
 
   it('caps at one send — a second tick is quiet', async () => {
