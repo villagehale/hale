@@ -28,6 +28,11 @@ describe('registration page network boundary', () => {
     'https://example.com/a?token[0]=x',
     'https://example.com/a?token%5B0%5D=x',
     'https://example.com/a?newPassword=x',
+    // A credential name inside brackets: `user[password]` is the password, not `user`.
+    'https://example.com/a?user[password]=x',
+    'https://example.com/a?user[access_token]=x',
+    'https://example.com/a?credentials[client_secret]=x',
+    'https://example.com/a#user[password]=x',
     // SPA hash routes carry their own query after the first '?'.
     'https://example.com/a#/cb?password=x',
     'https://example.com/a#/cb?season=fall&access_token=x',
@@ -99,6 +104,8 @@ describe('registration page network boundary', () => {
     'https://example.com/a;b/c',
     'https://example.com./a',
     'https://example.com/a#%zz&season=fall',
+    'https://example.com/a?filter[season]=fall',
+    'https://example.com/a?page[2]=x',
   ])('allows the ordinary link %s', (url) => {
     expect(registrationPageUrl(url)).toEqual({ outcome: 'allowed', url });
   });

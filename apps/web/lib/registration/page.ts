@@ -67,7 +67,7 @@ export type RegistrationPageFetch =
   | { outcome: 'refused'; reason: 'http_status'; status: number }
   | { outcome: 'failed'; reason: 'timeout' | 'network_error' };
 
-// URL keys are URL structure, not parent text. Both sets are written separator-free (urlKey).
+// URL keys are URL structure, not parent text. Both sets are written separator-free.
 const CREDENTIAL_KEYS = new Set([
   'password',
   'passwd',
@@ -99,17 +99,24 @@ const CREDENTIAL_KEY_SUFFIXES = ['token', 'password'];
 const AMBIGUOUS_QUERY_KEYS = new Set(['session', 'code', 'key', 'ticket', 'sid']);
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
-function urlKey(raw: string): string {
-  // Any trailing index: `token[]`, `token[0]`, `token[a][b]`.
+/** The base key, then every bracket segment: `user[password]` → `user`, `password`. */
+function urlKeySegments(raw: string): string[] {
   return raw
     .toLowerCase()
-    .replace(/(\[[^\]]*\])+$/, '')
-    .replace(/[-_.]/g, '');
+    .replace(/[-_.]/g, '')
+    .split(/[[\]]+/)
+    .filter(Boolean);
 }
 
 function isCredentialKey(raw: string): boolean {
-  const key = urlKey(raw);
-  return CREDENTIAL_KEYS.has(key) || CREDENTIAL_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix));
+  return urlKeySegments(raw).some(
+    (key) =>
+      CREDENTIAL_KEYS.has(key) || CREDENTIAL_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix)),
+  );
+}
+
+function isAmbiguousKey(raw: string): boolean {
+  return AMBIGUOUS_QUERY_KEYS.has(urlKeySegments(raw)[0] ?? '');
 }
 
 /** Run by run, so one malformed `%zz` or stray byte cannot leave the rest of the text encoded. */
@@ -186,7 +193,7 @@ export function registrationPageUrl(raw: string, base?: string): RegistrationUrl
   if (isNonPublicHost(url)) return refuse('non_public_host');
   if (href.length > REGISTRATION_COURSE_URL_MAX_CHARS) return refuse('url_too_long');
   // Last on purpose: only a link that would otherwise be fetched lands here.
-  if ([...url.searchParams.keys()].some((key) => AMBIGUOUS_QUERY_KEYS.has(urlKey(key)))) {
+  if ([...url.searchParams.keys()].some(isAmbiguousKey)) {
     return refuse('ambiguous_query_key');
   }
   return { outcome: 'allowed', url: href };
