@@ -11,8 +11,8 @@
 // digit), then the REAL time judge (calendar-invite-time.md: names this event, in any
 // language, at this start). A reply the code gate refuses is not judged, as in production.
 //
-// NOT YET RECORDED. This suite has no cached responses and no CI step until a live run
-// records them (a paid call — the founder runs it):
+// Recorded; CI replays it --cached-only. A skill or model change re-keys it, and a live run
+// (a paid call) records the misses:
 //   node --env-file=../../.env evals/run-calendar-cancel-voice-eval.mjs            # live, then caches
 //   node --env-file=../../.env evals/run-calendar-cancel-voice-eval.mjs --broken   # calibration: must FAIL
 //   node evals/run-calendar-cancel-voice-eval.mjs --cached-only                    # CI: replay only
@@ -94,30 +94,11 @@ function zonedStart(startsAt, timeZone) {
   };
 }
 
-/** Mirrors `startNumbers` in calendar-invite-voice.ts. */
-function startNumbers(starts) {
-  const numbers = new Set();
-  const hour12 = starts.hour % 12 || 12;
-  for (const n of [starts.year, starts.month, starts.day, starts.hour, hour12, starts.minute]) {
-    numbers.add(String(n));
-    numbers.add(String(n).padStart(2, '0'));
-  }
-  return numbers;
-}
-
-/** Mirrors `destinationNumbers`. */
-function destinationNumbers(starts) {
-  const numbers = startNumbers(starts);
-  numbers.add(String(starts.year - 1));
-  numbers.add(String(starts.year + 1));
-  return numbers;
-}
-
 /** Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts. */
-function refusals(body, request, starts, textDestination) {
+function refusals(body, request, textDestination) {
   if (body === '') return ['empty'];
   const found = [];
-  if (textDestination(body, destinationNumbers(starts))) found.push('carries_destination');
+  if (textDestination(body)) found.push('carries_destination');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
@@ -196,7 +177,7 @@ async function main() {
     const body = flatten(raw);
     const { request } = fixture;
     const starts = zonedStart(new Date(request.startsAt), request.timeZone);
-    const failures = refusals(body, request, starts, textDestination);
+    const failures = refusals(body, request, textDestination);
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source}`);
     }

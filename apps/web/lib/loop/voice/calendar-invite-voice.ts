@@ -106,18 +106,6 @@ export function startNumbers(event: ZonedStart): Set<string> {
   return numbers;
 }
 
-/**
- * The numbers a calendar text may join into a phone-shaped run without it being one:
- * the start's own, plus the years either side, so a season title like "Fall swim
- * 2026-2027" is a fact and not a number to dial. Not used for invented digits.
- */
-export function destinationNumbers(event: ZonedStart): Set<string> {
-  const numbers = startNumbers(event);
-  numbers.add(String(event.year - 1));
-  numbers.add(String(event.year + 1));
-  return numbers;
-}
-
 function allowedDigits(summary: string, event: ZonedStart): Set<string> {
   const allowed = startNumbers(event);
   for (const n of summary.match(/\d+/g) ?? []) allowed.add(n);
@@ -125,10 +113,8 @@ function allowedDigits(summary: string, event: ZonedStart): Set<string> {
 }
 
 /** The slot is read as a gap, so its neighbours never join into a domain. */
-function carriesDestination(text: string, event: ZonedStart): boolean {
-  return (
-    textDestination(text.split(INVITE_LINK_SLOT).join(' '), destinationNumbers(event)) !== null
-  );
+function carriesDestination(text: string): boolean {
+  return textDestination(text.split(INVITE_LINK_SLOT).join(' ')) !== null;
 }
 
 /**
@@ -146,7 +132,7 @@ export function calendarInviteRefusals(
   if (!request.url || slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
   const starts = zonedStart(request.startsAt, request.timeZone);
-  const carriesLink = carriesDestination(body, starts);
+  const carriesLink = carriesDestination(body);
   if (carriesLink) found.push('carries_destination');
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
   const allowed = allowedDigits(request.summary, starts);
@@ -321,10 +307,7 @@ export function createCalendarInviteVoice(
       if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
         return deferred('summary_too_long', String(request.summary.length));
       }
-      const held = titleDestination(
-        request.summary,
-        destinationNumbers(zonedStart(request.startsAt, request.timeZone)),
-      );
+      const held = titleDestination(request.summary);
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {

@@ -50,54 +50,79 @@ function normalize(raw: string, stops: StopReading): string {
 /*
  * The table. A TLD starts with two letters of any script: "com", "рф", and "xn--p1ai"
  * alike. "2.5 km", "St. Mary's", "a.m." and "U.S." are not a label, a dot and two
- * letters. A phone run is seven or more digits joined only by separators a dialer skips;
- * ':' and '/' between digits are a clock or a date, never a separator.
+ * letters. An email needs only a local part, an @ and a label: "desk@pool" mails too.
  */
 const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
   { shape: 'scheme', pattern: /[a-z][a-z0-9+.-]*:\/\//iu },
-  { shape: 'email', pattern: /[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]+\.[\p{L}\p{M}\p{N}-]/u },
+  { shape: 'email', pattern: /[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
   { shape: 'domain', pattern: /[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
 ];
 
-const PHONE_RUN = /\+?\d(?:[\s.()\p{Pd}]*\d){6,}/gu;
+/**
+ * Seven or more digits of any script, joined only by separators a dialer skips. ':' and
+ * '/' between digits are a clock or a date, never a separator.
+ */
+const PHONE_RUN = /\+?\p{Nd}(?:[\s.()\p{Pd}_\u00B7\u2027]*\p{Nd}){6,}/gu;
+
+const YEAR = /^(?:19|20)\d\d$/;
+
+function isSeason(chunk: string): boolean {
+  const m = /^((?:19|20)\d\d)-(\d{4}|\d{2})$/.exec(chunk);
+  if (!m) return false;
+  const next = Number(m[1]) + 1;
+  return m[2] === String(next) || m[2] === String(next).slice(2);
+}
+
+function isDate(chunk: string): boolean {
+  const ymd = /^((?:19|20)\d\d)([.-])(\d{1,2})\2(\d{1,2})$/.exec(chunk);
+  if (ymd)
+    return (
+      Number(ymd[3]) >= 1 && Number(ymd[3]) <= 12 && Number(ymd[4]) >= 1 && Number(ymd[4]) <= 31
+    );
+  const dmy = /^(\d{1,2})([.-])(\d{1,2})\2(?:19|20)\d\d$/.exec(chunk);
+  if (!dmy) return false;
+  const [a, b] = [Number(dmy[1]), Number(dmy[3])];
+  return a >= 1 && b >= 1 && a <= 31 && b <= 31 && (a <= 12 || b <= 12);
+}
 
 /**
- * A phone-shaped run is the writer's own fact only when every digit group in it is one
- * of the numbers code handed (the start's year, month, day, hour and minute), so
- * "23.07.2026" for a start on that day passes and "23.07.2031" does not.
+ * Judged by the run's own structure, never by the event's numbers: a sender controls the
+ * title and the start alike. A run is a phone unless it is calendar words — whole dates,
+ * a season ("2026-2027", "2026-27"), one lone year — plus at most one short number of up
+ * to four digits ("U12", "Level 3", "Ages 10-14"). A leading '+' is always a phone.
  */
-function phoneRun(text: string, ownNumbers: ReadonlySet<string>): boolean {
-  for (const run of text.match(PHONE_RUN) ?? []) {
-    const groups = run.match(/\d+/g) ?? [];
-    if (!groups.every((group) => ownNumbers.has(group))) return true;
+function isPhone(run: string): boolean {
+  if (run.startsWith('+')) return true;
+  let loneYear = false;
+  let others = 0;
+  for (const chunk of run.replace(/\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
+    const digits = chunk.match(/\p{Nd}/gu)?.length ?? 0;
+    const bare = chunk.replace(/^[^\d]+|[^\d]+$/g, '');
+    if (digits === 0 || isSeason(bare) || isDate(bare)) continue;
+    if (YEAR.test(bare) && !loneYear) {
+      loneYear = true;
+      continue;
+    }
+    others += 1;
+    if (others > 1 || digits > 4) return true;
   }
   return false;
 }
 
-function destinationIn(
-  text: string,
-  ownNumbers: ReadonlySet<string>,
-  stops: StopReading,
-): DestinationShape | null {
+function destinationIn(text: string, stops: StopReading): DestinationShape | null {
   const normalized = normalize(text, stops);
   for (const { shape, pattern } of SHAPES) {
     if (pattern.test(normalized)) return shape;
   }
-  return phoneRun(normalized, ownNumbers) ? 'phone' : null;
+  return (normalized.match(PHONE_RUN) ?? []).some(isPhone) ? 'phone' : null;
 }
 
 /** The event title, before any model call. A destination in it holds the text. */
-export function titleDestination(
-  title: string,
-  ownNumbers: ReadonlySet<string>,
-): DestinationShape | null {
-  return destinationIn(title, ownNumbers, 'title');
+export function titleDestination(title: string): DestinationShape | null {
+  return destinationIn(title, 'title');
 }
 
 /** A writer's text, with the link slot already taken out by the caller. */
-export function textDestination(
-  text: string,
-  ownNumbers: ReadonlySet<string>,
-): DestinationShape | null {
-  return destinationIn(text, ownNumbers, 'text');
+export function textDestination(text: string): DestinationShape | null {
+  return destinationIn(text, 'text');
 }

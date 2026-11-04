@@ -61,6 +61,25 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a +1 number', destination: '+1 555 010 4477' },
   { row: 'an email address', destination: 'desk@example.test' },
   { row: 'a bare domain', destination: 'pool.example.org' },
+  { row: 'a +1 number in year and day groups', destination: '+1 2027 2026 23' },
+  { row: "a +1 number in the start's own numbers", destination: '+1 2026 07 23 10 30' },
+  { row: 'a number in year groups next to the start', destination: '2027 2026 23' },
+  { row: 'a +44 number shaped as a season', destination: '+44 2026-2027' },
+  {
+    row: 'a phone in Arabic-Indic digits',
+    destination: '\u0665\u0665\u0665\u0660\u0661\u0660\u0664\u0664\u0667\u0667',
+  },
+  {
+    row: 'a phone in Devanagari digits',
+    destination: '\u096B\u096B\u096B\u0966\u0967\u0966\u096A\u096A\u096D\u096D',
+  },
+  { row: 'a phone with middle dots', destination: '555\u00B7010\u00B74477' },
+  { row: 'a phone with hyphenation points', destination: '555\u2027010\u20274477' },
+  { row: 'a phone with underscores', destination: '555_010_4477' },
+  { row: 'a lookalike dot (Vai full stop)', destination: 'swim\uA60Eexample' },
+  { row: 'an email address with no dotted domain', destination: 'desk@pool' },
+  { row: 'a mailto address', destination: 'mailto:desk@pool' },
+  { row: 'a scheme with no dotted host', destination: 'swimclub://join' },
 ];
 
 /** Words that look dotted or numbered and are not a destination. */
@@ -71,6 +90,15 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a date', words: '11/04' },
   { row: 'a time range', words: '9:30-10:30' },
   { row: 'a school year around the start', words: 'Fall swim 2026-2027' },
+  { row: 'a short season', words: 'Fall swim 2026-27' },
+  { row: 'an age group and a season', words: 'Soccer U12 2026-2027' },
+  { row: 'a grade and a season', words: 'Grade 5 2026-2027 swim' },
+  { row: 'a level and a spaced season', words: 'Swim Level 3 2026 - 2027' },
+  { row: 'a course number and a year', words: 'Swim 101 2026' },
+  { row: 'an age range and a year', words: 'Ages 6-12 2026' },
+  { row: 'a wide age range and a year', words: 'Ages 10-14 2026' },
+  { row: 'a class year and a season', words: 'Class of 2030 2026-2027' },
+  { row: 'a spaced at sign', words: 'Swim @ Riverside' },
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
 ];
@@ -194,7 +222,7 @@ describe('VIL-588 · positive controls: dotted or numbered words are not a desti
     expect(calendarCancelRefusals(zh, CANCEL)).not.toContain('carries_destination');
   });
 
-  it("the start's own date is not a phone number; another date of that shape is", () => {
+  it('a day.month.year date is a date, not a phone number; the same digits as no date are', () => {
     expect(
       calendarInviteRefusals(`Swim class am 23.07.2026 um 10:30. ${INVITE_LINK_SLOT}`, INVITE),
     ).not.toContain('carries_destination');
@@ -202,11 +230,96 @@ describe('VIL-588 · positive controls: dotted or numbered words are not a desti
       calendarCancelRefusals('Swim class am 23.07.2026 um 10:30 ist abgesagt.', CANCEL),
     ).not.toContain('carries_destination');
     expect(
-      calendarInviteRefusals(`Swim class am 23.07.2031 um 10:30. ${INVITE_LINK_SLOT}`, INVITE),
+      calendarInviteRefusals(`Swim class am 23.17.2026 um 10:30. ${INVITE_LINK_SLOT}`, INVITE),
     ).toContain('carries_destination');
     expect(
-      calendarCancelRefusals('Swim class am 23.07.2031 um 10:30 ist abgesagt.', CANCEL),
+      calendarCancelRefusals('Swim class am 23.17.2026 um 10:30 ist abgesagt.', CANCEL),
     ).toContain('carries_destination');
+  });
+
+  it('another day is a date too; a digit the writer invented is refused as one', () => {
+    const invite = calendarInviteRefusals(
+      `Swim class am 23.07.2031 um 10:30. ${INVITE_LINK_SLOT}`,
+      INVITE,
+    );
+    expect(invite).toContain('invented_number');
+    expect(invite).not.toContain('carries_destination');
+    const cancel = calendarCancelRefusals(
+      'Swim class am 23.07.2031 um 10:30 ist abgesagt.',
+      CANCEL,
+    );
+    expect(cancel).toContain('invented_number');
+    expect(cancel).not.toContain('carries_destination');
+  });
+});
+
+describe('VIL-588 · a phone number is a phone even when every group is a number of the start', () => {
+  /** Fri, Jan 23 2026, 8:30 AM in Denver (MST, UTC-7): 1, 2026, 23, 8 and 30 are all its own. */
+  const january = { startsAt: new Date('2026-01-23T15:30:00.000Z'), timeZone: TIME_ZONE };
+  const when = 'Fri, Jan 23 at 8:30 AM';
+  const numbers = ['+1 2027 2026 23', '+1 2026 01 23 08 30', '2027 2026 23'];
+
+  for (const number of numbers) {
+    it(`holds the title and refuses the text: ${number}`, async () => {
+      const summary = `Swim class ${number}`;
+      const invite = writer(echoInvite);
+      expect(
+        await createCalendarInviteVoice(() => invite.client, agrees()).compose({
+          ...INVITE,
+          ...january,
+          when,
+          summary,
+        }),
+      ).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+      const cancel = writer(echoCancel);
+      expect(
+        await createCalendarCancelVoice(() => cancel.client, agrees()).compose({
+          ...CANCEL,
+          ...january,
+          when,
+          summary,
+        }),
+      ).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+      expect(invite.calls() + cancel.calls()).toBe(0);
+      expect(
+        calendarInviteRefusals(`Swim class, ${when}, call ${number} ${INVITE_LINK_SLOT}`, {
+          ...INVITE,
+          ...january,
+          when,
+        }),
+      ).toContain('carries_destination');
+      expect(
+        calendarCancelRefusals(`Swim class, ${when}, is off, call ${number}`, {
+          ...CANCEL,
+          ...january,
+          when,
+        }),
+      ).toContain('carries_destination');
+    });
+  }
+});
+
+describe('VIL-588 · in an event title every ideographic stop is a dot', () => {
+  const summary = '\u4F8B\u5B50\u3002\u4E2D\u56FD';
+
+  it('invite: a Han-label domain written with the ideographic stop is held', async () => {
+    const w = writer(echoInvite);
+    const outcome = await createCalendarInviteVoice(() => w.client, agrees()).compose({
+      ...INVITE,
+      summary,
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+    expect(w.calls()).toBe(0);
+  });
+
+  it('cancel: a Han-label domain written with the ideographic stop is held', async () => {
+    const w = writer(echoCancel);
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      ...CANCEL,
+      summary,
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+    expect(w.calls()).toBe(0);
   });
 });
 

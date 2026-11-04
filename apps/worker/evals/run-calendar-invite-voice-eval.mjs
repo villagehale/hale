@@ -117,14 +117,6 @@ function startNumbers(starts) {
   return numbers;
 }
 
-/** Mirrors `destinationNumbers`. */
-function destinationNumbers(starts) {
-  const numbers = startNumbers(starts);
-  numbers.add(String(starts.year - 1));
-  numbers.add(String(starts.year + 1));
-  return numbers;
-}
-
 /** Mirrors `calendarInviteRefusals`. */
 function refusals(body, request, starts, smsSegments, textDestination) {
   if (body === '') return ['empty'];
@@ -132,8 +124,7 @@ function refusals(body, request, starts, smsSegments, textDestination) {
   const slotCount = body.split(SLOT).length - 1;
   if (slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
-  const carriesLink =
-    textDestination(body.split(SLOT).join(' '), destinationNumbers(starts)) !== null;
+  const carriesLink = textDestination(body.split(SLOT).join(' ')) !== null;
   if (carriesLink) found.push('carries_destination');
   const allowed = startNumbers(starts);
   for (const n of request.summary.match(/\d+/g) ?? []) allowed.add(n);

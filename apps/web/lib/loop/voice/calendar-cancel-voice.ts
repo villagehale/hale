@@ -10,7 +10,6 @@ import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
   createCalendarInviteTimeJudge,
-  destinationNumbers,
   zonedStart,
 } from './calendar-invite-voice';
 
@@ -57,8 +56,7 @@ export function calendarCancelRefusals(
 ): CalendarCancelRefusal[] {
   if (body === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  const starts = zonedStart(request.startsAt, request.timeZone);
-  if (textDestination(body, destinationNumbers(starts))) found.push('carries_destination');
+  if (textDestination(body)) found.push('carries_destination');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
@@ -128,10 +126,7 @@ export function createCalendarCancelVoice(
 ): CalendarCancelVoice {
   return {
     async compose(request) {
-      const held = titleDestination(
-        request.summary,
-        destinationNumbers(zonedStart(request.startsAt, request.timeZone)),
-      );
+      const held = titleDestination(request.summary);
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
