@@ -113,6 +113,9 @@ export type SuppressReason =
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
   | 'kid_relevance_backfill'
+  /** The calendar mirror dropped this row's copy (not the kids', covered by a Hale row, or
+   * gone from the calendar). Restoring that copy schedules these rows again. */
+  | 'calendar_mirror_dropped'
   /** The parent's reminder text could not be written by the model (or no model client
    * is configured). Nothing is sent: there is no fallback copy. */
   | 'unwritten'

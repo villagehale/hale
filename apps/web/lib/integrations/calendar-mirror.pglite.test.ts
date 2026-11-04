@@ -1077,4 +1077,43 @@ describe('reconcileCalendarMirrors - the kid gate (VIL-548)', () => {
     expect(judged.calls).toHaveLength(1);
     expect(await liveLinks()).toEqual({ 'ev-lesson': 'kid' });
   });
+
+  it('T12: a mirror restored after an adult drop gets back exactly the reminders the drop cancelled', async () => {
+    const { client } = scriptedKidClient(JUDGE_RULES);
+    await gate([lesson()], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    const [mirror] = await rows();
+    const lessonId = mirror?.id ?? '';
+    // Control: a reminder cancelled for another reason before the drop stays cancelled.
+    await db.database
+      .update(schema.eventReminders)
+      .set({ status: 'cancelled', suppressReason: 'kid_relevance_backfill' })
+      .where(eq(schema.eventReminders.offset, '-P1D'));
+
+    await gate([lesson({ summary: 'Quarterly budget review' })], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    const dropped = await reminders();
+    expect(
+      dropped.map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort(),
+    ).toEqual(['-P1D/cancelled/kid_relevance_backfill', '-PT1H/cancelled/calendar_mirror_dropped']);
+
+    const counts = await gate([lesson()], model(client));
+    expect(counts).toMatchObject({ updated: 1, notKid: 0 });
+    await runReminderCron(db.database, reminderDeps(), NOW);
+
+    const after = await reminders();
+    expect(after.map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort()).toEqual([
+      '-P1D/cancelled/kid_relevance_backfill',
+      '-PT1H/scheduled/null',
+    ]);
+    expect(after.every((row) => row.eventRef === lessonId)).toBe(true);
+    const mirrorAudits = (await audits())
+      .filter((row) => row.targetId === lessonId)
+      .map((row) => [row.actionTaken, row.after]);
+    expect(mirrorAudits).toEqual([
+      ['calendar_mirror_added', { source: 'parent' }],
+      ['calendar_mirror_removed', { source: 'parent', reason: 'not_kid', remindersCancelled: 1 }],
+      ['calendar_mirror_added', { source: 'parent', remindersRestored: 1 }],
+    ]);
+  });
 });

@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type FamilyEventNotes, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
-import { REMINDER_HORIZON_MS } from '~/lib/loop/reminders/schedule';
+import { REMINDER_HORIZON_MS, type SuppressReason } from '~/lib/loop/reminders/schedule';
 import { zonedMidnight } from '~/lib/memory/period';
 import {
   EVENT_NOTES_CONCURRENCY,
@@ -59,6 +59,9 @@ const TITLE_MAX = 180;
 const LOCATION_MAX = 80;
 const START_MATCH_MS = 60_000;
 const GENERIC_TITLE = 'Something on your calendar';
+
+/** Why a dropped mirror's reminders were cancelled, and so which ones its restore revives. */
+const MIRROR_DROPPED: SuppressReason = 'calendar_mirror_dropped';
 
 const BUSY_EVENT_TYPES = new Set(['outOfOffice', 'focusTime', 'workingLocation']);
 const BUSY_TITLES = new Set(['busy', 'out of office']);
@@ -510,6 +513,24 @@ export async function reconcileCalendarMirrors(
       })
       .where(eq(schema.familyEvents.id, existing.id));
     counts.updated += 1;
+    // Devin #1007: the reminders this copy's drop cancelled come back with it; any other
+    // cancelled, suppressed or sent row stays as it is.
+    const remindersRestored =
+      existing.deletedAt === null
+        ? 0
+        : (
+            await database
+              .update(schema.eventReminders)
+              .set({ status: 'scheduled', suppressReason: null, updatedAt: input.now })
+              .where(
+                and(
+                  eq(schema.eventReminders.eventRef, existing.id),
+                  eq(schema.eventReminders.status, 'cancelled'),
+                  eq(schema.eventReminders.suppressReason, MIRROR_DROPPED),
+                ),
+              )
+              .returning({ id: schema.eventReminders.id })
+          ).length;
     // Devin #930: a logistics-only change (parking / what-to-bring facts) is audited too.
     // A failed-read counter bump alone is bookkeeping, not a change the parent would see,
     // and so is a new kid link.
@@ -529,7 +550,10 @@ export async function reconcileCalendarMirrors(
         actionTaken,
         targetTable: 'family_events',
         targetId: existing.id,
-        after: { source: 'parent' },
+        after:
+          existing.deletedAt !== null
+            ? { source: 'parent', remindersRestored }
+            : { source: 'parent' },
       });
     }
   }
@@ -613,29 +637,44 @@ async function softDeleteMirror(
   id: string,
   reason?: 'not_kid',
 ): Promise<void> {
-  // The title and location are the parent's own calendar words, and a removed mirror has
-  // no reader that needs them: a later sighting rewrites both from Google. `title` is NOT
-  // NULL, so it is emptied rather than nulled.
-  await database
-    .update(schema.familyEvents)
-    .set({
-      deletedAt: input.now,
-      title: '',
-      location: null,
-      notes: null,
-      dutyOwnerLabel: null,
-      sourceChangedField: null,
-      sourceChangedFromStartsAt: null,
-      sourceChangedFromLocation: null,
-      sourceChangedAt: null,
-    })
-    .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
-  await database.insert(schema.auditLog).values({
-    familyId: input.familyId,
-    actor: 'system',
-    actionTaken: 'calendar_mirror_removed',
-    targetTable: 'family_events',
-    targetId: id,
-    after: reason ? { source: 'parent', reason } : { source: 'parent' },
+  // One transaction, so the reminder cron never sees the copy dropped with its reminders
+  // still scheduled and cancels them with no reason a restore could recognise.
+  await database.transaction(async (tx) => {
+    // The title and location are the parent's own calendar words, and a removed mirror has
+    // no reader that needs them: a later sighting rewrites both from Google. `title` is NOT
+    // NULL, so it is emptied rather than nulled.
+    await tx
+      .update(schema.familyEvents)
+      .set({
+        deletedAt: input.now,
+        title: '',
+        location: null,
+        notes: null,
+        dutyOwnerLabel: null,
+        sourceChangedField: null,
+        sourceChangedFromStartsAt: null,
+        sourceChangedFromLocation: null,
+        sourceChangedAt: null,
+      })
+      .where(and(eq(schema.familyEvents.id, id), isNull(schema.familyEvents.deletedAt)));
+    const cancelled = await tx
+      .update(schema.eventReminders)
+      .set({ status: 'cancelled', suppressReason: MIRROR_DROPPED, updatedAt: input.now })
+      .where(
+        and(eq(schema.eventReminders.eventRef, id), eq(schema.eventReminders.status, 'scheduled')),
+      )
+      .returning({ id: schema.eventReminders.id });
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'calendar_mirror_removed',
+      targetTable: 'family_events',
+      targetId: id,
+      after: {
+        source: 'parent',
+        ...(reason ? { reason } : {}),
+        remindersCancelled: cancelled.length,
+      },
+    });
   });
 }
