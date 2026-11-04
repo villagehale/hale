@@ -287,6 +287,7 @@ export const AUDIT_VERBS = [
   'calendar_mirror_notes_updated',
   'calendar_mirror_removed',
   'reminder_suppressed',
+  'reminder_held_at_send',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -1136,6 +1137,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // started. The row's `after` is the reason and the offset only — no title, no time.
   reminder_suppressed: {
     sentence: 'Hale skipped a reminder that no longer applied',
+    family: 'note',
+  },
+  // VIL-562. The row's `after` is the offset and the hold reason only — no title, no time.
+  reminder_held_at_send: {
+    sentence: 'Hale held a reminder back for quiet hours',
     family: 'note',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent

@@ -1,6 +1,7 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
+import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
@@ -41,6 +42,13 @@ import type {
 /** The one leg the dispatch sends on. */
 const EXCHANGE_CHANNEL: ChannelKind = 'sms';
 
+/**
+ * VIL-562 · why a leg was held for quiet hours, stored in `channel_messages.error_code`
+ * and counted there. DATA, not code names: never renamed along with the code.
+ */
+export const PROACTIVE_FLOOR_HOLD = 'proactive_floor';
+export const PARENT_WINDOW_HOLD = 'parent_window';
+
 export type SuppressionStatus =
   | 'suppressed_pref'
   | 'suppressed_consent'
@@ -71,6 +79,9 @@ export interface DispatchPorts {
   now(): Date;
   loadPrefs(userId: string): Promise<LoopPrefsView>;
   loadParent(userId: string): Promise<{ timezone: string }>;
+  /** The parent's sendable number. Read only for a reminder while cadence is armed, when a
+   * Florida or Oklahoma number starts the proactive floor at 20:00. */
+  parentPhone(userId: string): Promise<string | null>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
   /** A prior send (not a suppression) already carries this per-channel dedupe key. */
@@ -127,9 +138,10 @@ export interface LegResult {
   outcome: LegOutcome;
   /**
    * The ledger's `error_code` behind a 'failed' leg — the channel's own skip reason
-   * ('not_configured' | 'no_address' | 'disabled') or the provider's error code. A
-   * caller that must tell "nothing is wired" from "the provider refused" reads this
-   * instead of re-reading the row it just caused (VIL-249).
+   * ('not_configured' | 'no_address' | 'disabled') or the provider's error code — or
+   * which quiet window held a 'suppressed_quiet_hours' leg ({@link PROACTIVE_FLOOR_HOLD}
+   * | {@link PARENT_WINDOW_HOLD}). A caller that must tell "nothing is wired" from "the
+   * provider refused" reads this instead of re-reading the row it just caused (VIL-249).
    */
   reason?: string;
   /**
@@ -220,11 +232,12 @@ async function dispatchLeg(
   now: Date,
   ports: DispatchPorts,
 ): Promise<LegResult> {
-  const suppressed = async (status: SuppressionStatus): Promise<LegResult> => {
+  const suppressed = async (status: SuppressionStatus, errorCode?: string): Promise<LegResult> => {
     // A suppression never carries the dedupe key — a legitimate re-attempt (e.g.
     // after quiet hours) must not be blocked; only a real send consumes the key.
-    await writeLedgerRow(ports, msg, channel, status, { dedupeKey: null });
-    return { channel, outcome: status };
+    const named = errorCode === undefined ? {} : { errorCode };
+    await writeLedgerRow(ports, msg, channel, status, { dedupeKey: null, ...named });
+    return { channel, outcome: status, ...(errorCode === undefined ? {} : { reason: errorCode }) };
   };
 
   if (!categoryEnabled(prefs, msg.category)) {
@@ -233,7 +246,20 @@ async function dispatchLeg(
 
   const timeSensitive = msg.urgency === 'time_sensitive';
   if (!deliverableNow(prefs, now, parent.timezone, timeSensitive)) {
-    return suppressed('suppressed_quiet_hours');
+    return suppressed('suppressed_quiet_hours', PARENT_WINDOW_HOLD);
+  }
+  // VIL-562 · the floor the run checked before it enqueued, checked again where the text
+  // actually leaves: a retry or a drain backlog can carry a send past 21:00, and the
+  // parent's own window (and its urgent bypass) is narrower than the floor.
+  if (
+    msg.category === 'reminder' &&
+    (await proactiveQuietNow({
+      now,
+      timeZone: parent.timezone,
+      phone: () => ports.parentPhone(msg.parentUserId),
+    }))
+  ) {
+    return suppressed('suppressed_quiet_hours', PROACTIVE_FLOOR_HOLD);
   }
 
   // Per-channel dedupe: this exact leg already sent / is in flight → no-op (a
