@@ -1,7 +1,7 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
-import { matchPostalToken, placeOf } from '~/lib/channel/off-domain/place';
+import { matchPostalToken, placeOf, postalCountryOf } from '~/lib/channel/off-domain/place';
 import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
@@ -142,7 +142,9 @@ const HOME_METRO_NORMALISED = new Set(HOME_METRO.map(normalise));
  * prefers, which is where they are now and is the wrong question for "did they leave".
  *
  * The GTA when the row's postal area belongs to a GTA municipality (an FSA that straddles
- * two of them included), or when {@link placeOf} names a {@link HOME_METRO} place in
+ * two of them included) and the row's country is Canada or unstated — a stated country
+ * chooses the table, as in {@link placeOf}, so a GTA-shaped code on a US row is not the
+ * GTA — or when {@link placeOf} names a {@link HOME_METRO} place in
  * Canada — Ontario's, when the name is one more than one province has. The second half is
  * the four GTA towns the FSA table does not cover. Otherwise the city {@link placeOf}
  * names, or its reason.
@@ -156,7 +158,13 @@ export async function travelHomeOf(family: {
 }): Promise<TravelHome> {
   const code = family.postalCode ?? family.areaCoarse;
   const postal = code === null ? null : matchPostalToken(code);
-  if (postal?.country === 'CA' && municipalitiesForFsa(postal.areaKey).length > 0) {
+  const country = family.country?.trim() || null;
+  const canadianOrUnstated = country === null || postalCountryOf(country) === 'CA';
+  if (
+    canadianOrUnstated &&
+    postal?.country === 'CA' &&
+    municipalitiesForFsa(postal.areaKey).length > 0
+  ) {
     return { status: 'gta' };
   }
   const place = await placeOf(family);

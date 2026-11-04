@@ -261,6 +261,20 @@ describe('travelHomeOf', () => {
     expect(await travelHomeOf({ ...row, country: 'Canada', areaCoarse: 'L3T' })).toEqual(GTA);
   });
 
+  /** A GTA-shaped code on a row whose country says otherwise is not the GTA: the stored
+   * country chooses the table, as it does in {@link placeOf}. */
+  it('does not read a GTA-shaped code as the GTA when the row says another country', async () => {
+    expect(
+      await travelHomeOf({ ...row, country: 'United States', city: 'Seattle', postalCode: 'M4K' }),
+    ).toEqual({ status: 'city', city: 'Seattle' });
+    expect(await travelHomeOf({ ...row, country: 'United States', areaCoarse: 'M4K' })).toEqual({
+      status: 'unknown',
+      reason: 'unmapped',
+    });
+    // Positive control: the same code with Canada stated is the GTA.
+    expect(await travelHomeOf({ ...row, country: 'Canada', areaCoarse: 'M4K' })).toEqual(GTA);
+  });
+
   /** The four GTA towns with no verified registration calendar have no FSA entry; the
    * city the postal table gives them is what makes them the GTA. */
   it('reads a GTA town outside the FSA table as the GTA by its city', async () => {
