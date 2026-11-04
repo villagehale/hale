@@ -172,6 +172,7 @@ export const AUDIT_VERBS = [
   'linq_group_held',
   'linq_group_member_seated',
   'linq_group_member_unseated',
+  'linq_group_member_presence_closed',
   'linq_group_member_refused',
   'linq_group_stranger_held',
   'linq_group_roster_fetched',
@@ -750,6 +751,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_member_unseated: {
     sentence: 'Hale unseated someone from the household thread',
+    family: 'note',
+  },
+  linq_group_member_presence_closed: {
+    sentence:
+      'Someone was taken out of the household thread; their place in the family is unchanged',
     family: 'note',
   },
   linq_group_member_refused: {
