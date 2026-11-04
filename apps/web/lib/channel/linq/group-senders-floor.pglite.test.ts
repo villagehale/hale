@@ -14,7 +14,9 @@ import {
   sendGroupPlanRsvpLine,
 } from './group-plan-rsvp/send';
 import { fakeGroupPlanRsvpComposer } from './group-plan-rsvp/voice-fake';
+import { type FloorPass, chatFloorAllows, sendFlooredChatMessage } from './group-audience';
 import { sendChoicePoll } from './poll';
+import { listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-399 follow-up: the duty restatement, the choice poll and the RSVP tally reach a
@@ -158,7 +160,8 @@ async function householdGroup(): Promise<{ familyId: string; parentUserId: strin
 async function recordInbound(
   sender: { familyId: string; parentUserId: string },
   chatId: string,
-  inGroup: boolean,
+  inGroup: boolean | null,
+  turn = 1,
 ): Promise<void> {
   await db.database.insert(schema.channelMessages).values({
     familyId: sender.familyId,
@@ -166,7 +169,7 @@ async function recordInbound(
     channel: 'imessage',
     direction: 'in',
     category: 'reply',
-    providerMessageId: `in-${chatId}-${sender.parentUserId}`,
+    providerMessageId: `in-${chatId}-${sender.parentUserId}-${turn}`,
     providerChatId: chatId,
     status: 'delivered',
     inGroup,
@@ -356,6 +359,80 @@ describe('a choice poll in a family group goes through the floor', () => {
       `${BASE}/chats/${DIRECT}/messages`,
       `${BASE}/chats/${DIRECT}/polls`,
     ]);
+  });
+
+  it('a chat where Linq once said is_group false and later true is a group: the floor reads it', async () => {
+    const seeded = await householdGroup();
+    await recordInbound(seeded, GROUP, false, 1);
+    await recordInbound(seeded, GROUP, true, 2);
+    const wire = linqWire([MOM, DAD, EMAIL]);
+
+    await expect(poll(seeded, GROUP, wire.fetch)).resolves.toEqual({
+      status: 'held',
+      reason: 'participant_unresolved',
+    });
+    expect(wire.reads().map((c) => c.url)).toEqual([`${BASE}/chats/${GROUP}`]);
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it('positive control: an intake turn with no is_group beside a 1:1 turn still sends as a 1:1', async () => {
+    const seeded = await householdGroup();
+    await recordInbound(seeded, DIRECT, null, 1);
+    await recordInbound(seeded, DIRECT, false, 2);
+    const wire = linqWire([MOM, DAD, EMAIL]);
+
+    const sent = await poll(seeded, DIRECT, wire.fetch);
+
+    expect(sent.status).toBe('sent');
+    expect(wire.reads()).toEqual([]);
+    expect(wire.posts().map((c) => c.url)).toEqual([
+      `${BASE}/chats/${DIRECT}/messages`,
+      `${BASE}/chats/${DIRECT}/polls`,
+    ]);
+  });
+});
+
+describe('a floored send needs the pass the floor gave for that chat', () => {
+  const floor = (recipientUserId: string, chatId: string, wire: ReturnType<typeof linqWire>) =>
+    chatFloorAllows(db.database, {
+      chatId,
+      recipientUserId,
+      lineClass: 'event_logistics',
+      listChatHandles: (i) => listLinqParticipantHandles({ ...i, fetch: wire.fetch }),
+    });
+
+  it('a pass made by a cast is refused and nothing is posted', async () => {
+    const wire = linqWire([MOM, DAD]);
+    const forged = { chatId: GROUP } as unknown as FloorPass;
+
+    await expect(
+      sendFlooredChatMessage(forged, { chatId: GROUP, text: 'x', fetch: wire.fetch }),
+    ).rejects.toThrow('floor');
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it("the pass for the recipient's 1:1 does not send into another chat", async () => {
+    const seeded = await householdGroup();
+    await recordInbound(seeded, DIRECT, false);
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const verdict = await floor(seeded.parentUserId, DIRECT, wire);
+    if (!verdict.allowed) throw new Error(`expected a pass, got ${verdict.reason}`);
+
+    await expect(
+      sendFlooredChatMessage(verdict.pass, { chatId: GROUP, text: 'x', fetch: wire.fetch }),
+    ).rejects.toThrow('floor');
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it('positive control: the same pass sends into the chat it was given for', async () => {
+    const seeded = await householdGroup();
+    await recordInbound(seeded, DIRECT, false);
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const verdict = await floor(seeded.parentUserId, DIRECT, wire);
+    if (!verdict.allowed) throw new Error(`expected a pass, got ${verdict.reason}`);
+
+    await sendFlooredChatMessage(verdict.pass, { chatId: DIRECT, text: 'x', fetch: wire.fetch });
+    expect(wire.posts().map((c) => c.url)).toEqual([`${BASE}/chats/${DIRECT}/messages`]);
   });
 });
 

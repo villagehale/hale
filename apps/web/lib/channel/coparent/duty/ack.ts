@@ -2,10 +2,14 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { type GroupHoldReason, chatFloorAllows } from '~/lib/channel/linq/group-audience';
+import {
+  type GroupHoldReason,
+  chatFloorAllows,
+  sendFlooredChatMessage,
+} from '~/lib/channel/linq/group-audience';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
-import { reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { reactToLinqMessage } from '~/lib/channel/outbound-transport';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
@@ -117,7 +121,8 @@ export async function acknowledgeDutyWrite(input: {
     );
     return { status: 'audience_held', reason, tapback, sent: false, text: null };
   };
-  const restate = input.source === 'llm' && !heldBy;
+  const pass = audience?.allowed ? audience.pass : null;
+  const restate = pass !== null;
   const templateKey = restate ? 'linq:duty_restate' : 'linq:duty_tapback';
   const facts = [input.name, input.kid, input.event, input.day, input.time].flatMap((value) =>
     value?.trim() ? [value.trim()] : [],
@@ -165,9 +170,9 @@ export async function acknowledgeDutyWrite(input: {
       .where(eq(schema.channelMessages.id, claimed.id));
   };
 
-  if (restate && line) {
+  if (pass && line) {
     try {
-      await sendLinqChatMessage({
+      await sendFlooredChatMessage(pass, {
         chatId: input.inboundChatId,
         text: line,
         fetch: input.fetch,

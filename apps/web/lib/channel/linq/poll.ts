@@ -2,10 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
-import { type GroupHoldReason, chatFloorAllows } from './group-audience';
+import {
+  type GroupHoldReason,
+  chatFloorAllows,
+  sendFlooredChatMessage,
+  sendFlooredPoll,
+} from './group-audience';
 import type { ListChatHandles } from './roster';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
@@ -215,14 +219,14 @@ export async function sendChoicePoll(
   let prompted = false;
   try {
     if (args.prompt) {
-      await sendLinqChatMessage({
+      await sendFlooredChatMessage(audience.pass, {
         chatId: args.chatId,
         text: args.prompt,
         fetch: args.fetch,
       });
       prompted = true;
     }
-    const poll = await sendLinqPoll({
+    const poll = await sendFlooredPoll(audience.pass, {
       chatId: args.chatId,
       options: args.options.map((option) => option.text),
       idempotencyKey: args.idempotencyKey,
