@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CLAIM_READ_BARS,
   DEGENERATE_READERS,
   READ_CLAIM_KINDS,
   compatibleRefs,
+  failLines,
   failedBars,
   scoreClaimRead,
 } from './claim-read-score.mjs';
@@ -254,5 +256,43 @@ describe('degenerate readers', () => {
       'wrong-kind': 'truePassed',
       'silent-on-injection': 'caught',
     });
+  });
+});
+
+describe('failLines: fixture text is printed only for an invented fixture (review item 6)', () => {
+  const scored = {
+    id: 'en-toy',
+    gold: { claims: [{ kind: 'scheduled_event', row: 'none' }], refused: [{ reason: 'x' }] },
+    got: { claims: [], refused: [] },
+  };
+  const fixture = (provenance) => ({
+    id: 'en-toy',
+    body: 'ZQXJ-BODY is booked.',
+    ...(provenance ? { provenance } : {}),
+  });
+  const REASON = 'ZQXJ-REASON';
+
+  it('an invented fixture prints its body and the reason', () => {
+    const lines = failLines(fixture('invented'), scored, REASON).join('\n');
+    expect(lines).toContain('FAIL  en-toy');
+    expect(lines).toContain('body:   "ZQXJ-BODY is booked."');
+    expect(lines).toContain('reason: "ZQXJ-REASON"');
+  });
+
+  it('a shadow sample prints neither (the invented case above is the positive control)', () => {
+    const lines = failLines(fixture('shadow_sample'), scored, REASON).join('\n');
+    expect(lines).toContain('FAIL  en-toy');
+    expect(lines).not.toContain('ZQXJ-BODY');
+    expect(lines).not.toContain('ZQXJ-REASON');
+  });
+
+  it('a fixture with no provenance throws (fail closed)', () => {
+    expect(() => failLines(fixture(undefined), scored, REASON)).toThrow(/provenance/);
+  });
+
+  it('the runner prints a FAIL only through failLines', () => {
+    const runner = readFileSync(new URL('../run-claim-read-eval.mjs', import.meta.url), 'utf8');
+    expect(runner).not.toContain('`      body:   ');
+    expect(runner).toContain('failLines(');
   });
 });

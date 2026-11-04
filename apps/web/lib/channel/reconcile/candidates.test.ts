@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLAIM_ROW_ALIASES,
+  CLAIM_ROW_MAX_HOST_CHARS,
+  CLAIM_ROW_MAX_WHAT_CHARS,
   type ClaimCandidateRow,
   ForeignCandidateRow,
   buildClaimCandidates,
 } from './candidates';
+import { claimRowLabel } from './claim-label';
 
 /**
  * VIL-581 · the citation namespace. The alias enum is static (one grammar for every
@@ -15,42 +18,61 @@ import {
 const FAM = 'fam-a';
 const TZ = 'America/Denver';
 const AT = new Date('2026-11-07T15:00:00Z');
+const NOW = new Date('2026-11-03T12:00:00Z');
+
+/** Test labels go through the one constructor, as an adult non-sensitive row would. */
+const label = (text: string) => claimRowLabel({ from: 'pending', text }, NOW);
 
 const cal = (what: string, startsAt = AT): ClaimCandidateRow => ({
   familyId: FAM,
   source: 'calendar',
   kind: 'scheduled_event',
-  what,
+  what: label(what),
   startsAt,
 });
 const ROWS: ClaimCandidateRow[] = [
   cal('Swim lesson'),
   cal('Dentist visit'),
-  { familyId: FAM, source: 'parent_stated', kind: 'scheduled_event', what: '18-month checkup' },
-  { familyId: FAM, source: 'open_commitment', kind: 'activity_followup', what: 'Swim classes' },
+  {
+    familyId: FAM,
+    source: 'parent_stated',
+    kind: 'scheduled_event',
+    what: label('18-month checkup'),
+  },
+  {
+    familyId: FAM,
+    source: 'open_commitment',
+    kind: 'activity_followup',
+    what: label('Swim classes'),
+  },
   {
     familyId: FAM,
     source: 'watched_page',
     kind: 'spot_watch',
-    what: 'Saturday swim, ages 3-5',
+    what: label('Saturday swim, ages 3-5'),
     host: 'register.example.org',
   },
   {
     familyId: FAM,
     source: 'live_sequence',
     kind: 'registration_watch',
-    what: 'Maple Bend aquatics winter registration',
+    what: label('Maple Bend aquatics winter registration'),
     opensAt: new Date('2026-12-01T14:00:00Z'),
   },
   {
     familyId: FAM,
     source: 'mintable_window',
     kind: 'registration_watch',
-    what: 'Riverford recreation winter registration',
+    what: label('Riverford recreation winter registration'),
     opensForFamilyAt: new Date('2026-12-03T15:00:00Z'),
   },
-  { familyId: FAM, source: 'pending', kind: 'activity_followup', what: 'Toddler activities' },
-  { familyId: FAM, source: 'pending', kind: 'spot_watch', what: 'Swim class page' },
+  {
+    familyId: FAM,
+    source: 'pending',
+    kind: 'activity_followup',
+    what: label('Toddler activities'),
+  },
+  { familyId: FAM, source: 'pending', kind: 'spot_watch', what: label('Swim class page') },
 ];
 
 afterEach(() => {
@@ -179,5 +201,56 @@ describe('the projection', () => {
       p1: 'pending',
       p2: 'pending',
     });
+  });
+});
+
+describe('the brand', () => {
+  it('a raw string is not a label', () => {
+    const row: ClaimCandidateRow = {
+      familyId: FAM,
+      source: 'parent_stated',
+      kind: 'scheduled_event',
+      // @ts-expect-error a raw string is not a ClaimRowLabel
+      what: 'Swim lesson',
+    };
+    expect(row.what).toBe('Swim lesson');
+  });
+});
+
+describe('the projection is bounded', () => {
+  const lonePiece = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  const page = (what: string, host: string): ClaimCandidateRow => ({
+    familyId: FAM,
+    source: 'watched_page',
+    kind: 'spot_watch',
+    what: label(what),
+    host,
+  });
+
+  it('the bounds are 160 code points of label and 253 of host (the DNS name limit)', () => {
+    expect(CLAIM_ROW_MAX_WHAT_CHARS).toBe(160);
+    expect(CLAIM_ROW_MAX_HOST_CHARS).toBe(253);
+  });
+
+  it('a 161-code-point label is cut to 160; a 300-char host to 253', () => {
+    const set = buildClaimCandidates(FAM, [page('é'.repeat(161), 'h'.repeat(300))], TZ);
+    expect([...(set.projected[0]?.what ?? '')]).toHaveLength(160);
+    expect(set.projected[0]?.host).toHaveLength(253);
+  });
+
+  it('a label at the bound is unchanged (control)', () => {
+    const exact = 'é'.repeat(160);
+    const set = buildClaimCandidates(FAM, [page(exact, 'register.example.org')], TZ);
+    expect(set.projected[0]?.what).toBe(exact);
+    expect(set.projected[0]?.host).toBe('register.example.org');
+  });
+
+  it('an emoji label cut at the bound leaves no lone surrogate', () => {
+    const set = buildClaimCandidates(FAM, [cal('🏊'.repeat(200))], TZ);
+    const what = set.projected[0]?.what ?? '';
+    expect([...what]).toHaveLength(160);
+    expect(lonePiece.test(what)).toBe(false);
+    // Positive control: a naive UTF-16 cut does leave one.
+    expect(lonePiece.test('🏊'.repeat(200).slice(0, 159))).toBe(true);
   });
 });

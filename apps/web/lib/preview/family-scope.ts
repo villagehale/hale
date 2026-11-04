@@ -102,6 +102,8 @@ export const PREVIEW_CRON_POLICY: Readonly<Record<string, 'family_scoped' | 'own
     'connector-sync': 'skip',
     'inbound-canary': 'skip',
     'browser-use-watch': 'skip',
+    // Synthetic reads on the deploy's model key; Preview has no reason to spend them.
+    'claim-read-warm': 'skip',
   };
 
 export type PreviewCronSkip =

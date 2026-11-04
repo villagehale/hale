@@ -1,5 +1,6 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { type ClaimCandidateRow, buildClaimCandidates } from './candidates';
+import { claimRowLabel } from './claim-label';
 import {
   CLAIM_READ_MAX_BUDGET_MS,
   type ClaimReadFailure,
@@ -31,7 +32,16 @@ const PROBE_ROWS: readonly ClaimCandidateRow[] = [
     familyId: PROBE_FAMILY,
     source: 'calendar',
     kind: 'scheduled_event',
-    what: 'Swim lesson',
+    what: claimRowLabel(
+      {
+        from: 'calendar',
+        title: 'Swim lesson',
+        childId: null,
+        childDateOfBirth: null,
+        sensitive: false,
+      },
+      PROBE_NOW,
+    ),
     startsAt: new Date('2026-11-07T17:00:00Z'),
   },
 ];
@@ -160,6 +170,29 @@ export async function runClaimReadProbe(deps: { reader: ClaimReader }): Promise<
     });
   }
   return { mode: 'probe', ok: cases.every((c) => c.got === c.expected), cases };
+}
+
+export type ProbeTarget =
+  | { ok: true; url: URL }
+  | { ok: false; reason: 'no_url' | 'needs_i_mean_prod' | 'not_https' | 'not_app_host' };
+
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1']);
+
+/**
+ * Where the probe script may point. A local host needs nothing. Any other host costs
+ * model calls on that deploy's key, so it needs `--i-mean-prod`, `https:`, and the
+ * app's own host (`appHost`, from appBaseUrl()): never a marketing or a stray host.
+ */
+export function probeTargetFor(argv: readonly string[], appHost: string): ProbeTarget {
+  const at = argv.indexOf('--url');
+  const base = at >= 0 ? argv[at + 1] : undefined;
+  if (!base) return { ok: false, reason: 'no_url' };
+  const url = new URL(base);
+  if (LOCAL_HOSTS.has(url.hostname)) return { ok: true, url };
+  if (!argv.includes('--i-mean-prod')) return { ok: false, reason: 'needs_i_mean_prod' };
+  if (url.protocol !== 'https:') return { ok: false, reason: 'not_https' };
+  if (url.host !== appHost) return { ok: false, reason: 'not_app_host' };
+  return { ok: true, url };
 }
 
 /**

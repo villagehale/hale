@@ -258,3 +258,52 @@ const PRIVATE_SHAPES = [
 export function privacyViolations(strings) {
   return strings.filter((s) => PRIVATE_SHAPES.some((shape) => shape.test(s)));
 }
+
+// --- fixture provenance and size (review items 6 and 2)
+
+/** Where a fixture came from. Only an invented one may have its text printed. */
+export const FIXTURE_PROVENANCES = ['invented', 'shadow_sample'];
+
+/** Ids of fixtures with no known provenance. */
+export function provenanceViolations(fixtures) {
+  return fixtures.filter((f) => !FIXTURE_PROVENANCES.includes(f.provenance)).map((f) => f.id);
+}
+
+const codePoints = (s) => [...s].length;
+
+/** `<id>: <field>` for every fixture string over the bound the production request applies. */
+export function boundViolations(fixtures, bounds) {
+  const out = [];
+  for (const f of fixtures) {
+    if (codePoints(f.body) > bounds.body) out.push(`${f.id}: body`);
+    if (f.inbound && codePoints(f.inbound) > bounds.inbound) out.push(`${f.id}: inbound`);
+    if (f.candidates.some((c) => codePoints(c.what) > bounds.what)) out.push(`${f.id}: what`);
+    if (f.candidates.some((c) => c.host && codePoints(c.host) > bounds.host)) {
+      out.push(`${f.id}: host`);
+    }
+  }
+  return out;
+}
+
+/**
+ * What a FAIL prints. The body and the model's reason are fixture text, so they are
+ * printed only for an INVENTED fixture: the day a real shadow sample becomes a fixture,
+ * its words never reach a public CI log. No provenance is a bug, and throws.
+ */
+export function failLines(fixture, r, reason) {
+  if (!FIXTURE_PROVENANCES.includes(fixture.provenance)) {
+    throw new Error(`claim-read: fixture ${fixture.id} has no provenance`);
+  }
+  const lines = [
+    `FAIL  ${r.id.padEnd(30)} ${r.gold.refused.length > 0 ? 'false claim passed' : 'true reply refused'}`,
+  ];
+  const invented = fixture.provenance === 'invented';
+  if (invented) lines.push(`      body:   ${JSON.stringify(fixture.body)}`);
+  lines.push(
+    `      gold:   ${JSON.stringify(r.gold.claims.map((c) => [c.kind, c.row]))}`,
+    `      got:    ${JSON.stringify(r.got.claims.map((c) => [c.kind, c.row]))} refused=${JSON.stringify(r.got.refused.map((x) => x.reason))}`,
+  );
+  // The reason field is printed only here, for invented fixtures; production never reads it.
+  if (invented) lines.push(`      reason: ${JSON.stringify(reason)}`);
+  return lines;
+}

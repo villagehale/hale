@@ -314,7 +314,17 @@ describe('runReminderCron — batching + compose-not-send', () => {
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.offset).toBe('-P1D');
-    expect(payload.deepLink).toMatch(/\/plan$/);
+    // /plan is retired, so the evening-before writer is handed no link. It is still asked
+    // once for the batch, and what it wrote is what is sent.
+    expect(composeText).toHaveBeenCalledTimes(1);
+    expect(composeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: '-P1D', planLink: null }),
+      'fam-1',
+      expect.any(Function),
+    );
+    expect(payload.texts).toEqual(['Reminder text.']);
+    expect(payload.deepLink).toBeNull();
     expect((payload.events as { eventRef: string }[]).map((e) => e.eventRef)).toEqual(['e1', 'e2']);
     // Both merged rows are marked sent; telemetry is coarse (offset + count).
     expect(marked).toEqual([

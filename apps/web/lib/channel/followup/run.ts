@@ -495,6 +495,8 @@ async function sendFollowup(
     familyId: input.familyId,
     body,
     now: input.now,
+    lane: 'followup_ask',
+    parentUserId: input.parentUserId,
   });
   if (unbacked.length > 0) {
     console.error(

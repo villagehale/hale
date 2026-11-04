@@ -670,11 +670,15 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         familyId,
         title: input.title,
         startsAt: startsAt.toISOString(),
+        childId: input.childId ?? null,
       });
-      if (already) {
+      if (already?.outcome === 'group_chat_unknown') {
+        return { drafted: false as const, outcome: already.outcome };
+      }
+      if (already?.outcome === 'already_pending' || already?.outcome === 'already_asked') {
         return {
           drafted: true as const,
-          actionId: already,
+          actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
         };

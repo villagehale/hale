@@ -142,7 +142,7 @@ describe('preview capture transport', () => {
     const channel = createSmsChannel({ resolveTarget: async () => '+14375550101' });
     const out = await channel.send({
       userId: 'u1',
-      rendered: { kind: 'sms', text: 'Demain 15 h' },
+      rendered: { kind: 'sms', text: 'Demain 15 h', modelWritten: false },
     });
     expect(out.status).toBe('sent');
     expect(capturedSends()[0]).toMatchObject({ to: '+14375550101', body: 'Demain 15 h' });
@@ -154,7 +154,10 @@ describe('preview capture transport', () => {
     vi.stubEnv('LINQ_FROM_E164', '');
     vi.stubEnv('PREVIEW_CAPTURE_TRANSPORT', '');
     const channel = createSmsChannel({ resolveTarget: async () => '+14375550101' });
-    const out = await channel.send({ userId: 'u1', rendered: { kind: 'sms', text: 'x' } });
+    const out = await channel.send({
+      userId: 'u1',
+      rendered: { kind: 'sms', text: 'x', modelWritten: false },
+    });
     expect(out).toEqual({ status: 'skipped', reason: 'not_configured' });
   });
 });

@@ -25,6 +25,7 @@ import {
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
+import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
@@ -429,6 +430,11 @@ function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } 
 /** A family Hale owes nothing and has nothing booked for — the state in which every
  * claim is false. The default, so a test that says nothing about the ledger cannot
  * accidentally be relying on one. */
+/** The claim shadow as production runs it with the flag unset. */
+function offShadow(): ClaimShadow {
+  return { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' };
+}
+
 function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
   return {
     openKinds: new Set(),
@@ -465,6 +471,7 @@ function harness(
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
+    claimShadow?: ChannelRouterDeps['claimShadow'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
@@ -515,6 +522,7 @@ function harness(
         options.recordActivityPromise ??
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      claimShadow: options.claimShadow ?? offShadow(),
       // VIL-294. Nothing is stated by default, so a test that says nothing about the
       // inbound half cannot accidentally be relying on a write.
       recordStatedState:
@@ -4484,6 +4492,89 @@ describe('the weekday-care answer', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
+  it('declines every hidden unapproved draft when NO answers the offer, and YES does not approve them', async () => {
+    const declined: string[] = [];
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-held', actionType: 'calendar_add', reviewerApproved: false },
+        { actionId: 'a-held-2', actionType: 'calendar_add', reviewerApproved: false },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const offer = {
+      id: 'offer-1',
+      kind: 'email_alert_add' as const,
+      description: 'An offer to put Picture day on your week',
+      subject: 'putting Picture day on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      declinesActionId: 'a-held',
+      declinesActionIds: ['a-held', 'a-held-2'],
+    };
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const no = harness({
+      context: { body: 'NO' },
+      coach: fakeCoach(),
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    await routeChannelMessage(no.deps, job());
+    expect(declined).toEqual(['a-held', 'a-held-2']);
+    expect(approved).toEqual([]);
+
+    const yesHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
+    };
+    const yes = harness({
+      context: { body: 'YES' },
+      coach: fakeCoach(),
+      handlers: [yesHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(yes.deps, job());
+    expect(approved).toEqual([]);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+  });
+
   it('a yes to the finder ask searches and does not write a care fact', async () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({
@@ -5872,5 +5963,85 @@ describe('VIL-463 group scope', () => {
     expect(flood.calls).toBe(1);
     expect(h.transport.sent).toEqual([]);
     expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
+  });
+});
+
+describe('VIL-581 · the claim shadow starts after the send and changes nothing', () => {
+  type CoachTurnCall = Parameters<ClaimShadow['coachTurn']>;
+  function recordingShadow() {
+    const calls: Array<{ args: CoachTurnCall; sentBefore: number }> = [];
+    const seen: { transport?: FakeReplyTransport } = {};
+    const shadow: ClaimShadow = {
+      coachTurn: (...args) => {
+        calls.push({ args, sentBefore: seen.transport?.sent.length ?? -1 });
+        return 'started';
+      },
+      sweep: () => 'off',
+      dispatch: () => 'off',
+    };
+    return { shadow, calls, seen };
+  }
+  function scripted(replies: readonly string[]): ChannelCoachRuntime {
+    let attempt = 0;
+    return {
+      async respond() {
+        const reply = replies[Math.min(attempt, replies.length - 1)] ?? '';
+        attempt += 1;
+        return { reply, planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    };
+  }
+
+  it('a clean turn: one call, after the transport took the reply, with the sent reply', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: fakeCoach('Saturday has two indoor options.'),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(rec.calls).toHaveLength(1);
+    const call = rec.calls[0] as (typeof rec.calls)[number];
+    expect(call.sentBefore).toBe(1);
+    const [database, input] = call.args;
+    expect(database).toBe(h.deps.database);
+    expect(input.attempts).toHaveLength(1);
+    expect(input.attempts[0]?.reply).toBe(h.transport.bodies()[0]);
+    expect(input.inbound).toBe('anything indoors this weekend?');
+    expect(input.familyId).toBe(FAMILY);
+    expect(input.parentUserId).toBe(PARENT);
+
+    const baseline = harness({ coach: fakeCoach('Saturday has two indoor options.') });
+    await routeChannelMessage(baseline.deps, job());
+    expect(h.transport.bodies()).toEqual(baseline.transport.bodies());
+  });
+
+  it('a re-asked turn hands over both attempts, the first with its refusal', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: scripted([
+        "I'm watching that morning and I'll text you before it goes live.",
+        'Riverford has not published a winter date yet.',
+      ]),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Riverford has not published a winter date yet.']);
+    const attempts = rec.calls[0]?.args[1].attempts ?? [];
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.verdict.refused).toHaveLength(1);
+    expect(attempts[1]?.verdict.refused).toHaveLength(0);
+  });
+
+  it('an empty reply sends nothing and starts no shadow (control)', async () => {
+    const rec = recordingShadow();
+    const h = harness({ coach: fakeCoach(''), claimShadow: rec.shadow });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.sent).toEqual([]);
+    expect(rec.calls).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type ClaimCandidateRow, type ClaimRowAlias, buildClaimCandidates } from './candidates';
+import { claimRowLabel } from './claim-label';
 import type { ReadClaim, ReadClaimKind } from './claim-reader';
 import { verifyClaimRead } from './claim-verdict';
 import { segmentSentences } from './sentences';
@@ -12,51 +13,62 @@ import { segmentSentences } from './sentences';
 const FAM = 'fam-a';
 const TZ = 'America/Denver';
 const TUE_9 = new Date('2026-11-03T16:00:00Z');
+const label = (text: string) => claimRowLabel({ from: 'pending', text }, TUE_9);
 
 const ROW = {
   e: {
     familyId: FAM,
     source: 'calendar',
     kind: 'scheduled_event',
-    what: 'Swim lesson',
+    what: label('Swim lesson'),
     startsAt: TUE_9,
   },
-  s: { familyId: FAM, source: 'parent_stated', kind: 'scheduled_event', what: '18-month checkup' },
+  s: {
+    familyId: FAM,
+    source: 'parent_stated',
+    kind: 'scheduled_event',
+    what: label('18-month checkup'),
+  },
   cRegistration: {
     familyId: FAM,
     source: 'open_commitment',
     kind: 'registration_watch',
-    what: 'Maple Bend swim registration',
+    what: label('Maple Bend swim registration'),
   },
   cFollowup: {
     familyId: FAM,
     source: 'open_commitment',
     kind: 'activity_followup',
-    what: 'Art classes',
+    what: label('Art classes'),
   },
   g: {
     familyId: FAM,
     source: 'watched_page',
     kind: 'spot_watch',
-    what: 'Saturday swim',
+    what: label('Saturday swim'),
     host: 'register.example.org',
   },
   q: {
     familyId: FAM,
     source: 'live_sequence',
     kind: 'registration_watch',
-    what: 'Riverford swim',
+    what: label('Riverford swim'),
     opensAt: null,
   },
   w: {
     familyId: FAM,
     source: 'mintable_window',
     kind: 'registration_watch',
-    what: 'Riverford winter registration',
+    what: label('Riverford winter registration'),
     opensForFamilyAt: new Date('2026-12-01T15:00:00Z'),
   },
-  p1: { familyId: FAM, source: 'pending', kind: 'activity_followup', what: 'Toddler activities' },
-  p2: { familyId: FAM, source: 'pending', kind: 'spot_watch', what: 'Swim class page' },
+  p1: {
+    familyId: FAM,
+    source: 'pending',
+    kind: 'activity_followup',
+    what: label('Toddler activities'),
+  },
+  p2: { familyId: FAM, source: 'pending', kind: 'spot_watch', what: label('Swim class page') },
 } satisfies Record<string, ClaimCandidateRow>;
 
 function verdict(

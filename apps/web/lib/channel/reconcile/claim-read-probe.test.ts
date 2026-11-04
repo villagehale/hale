@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CLAIM_READ_PROBE_CASES,
   probeExitFor,
+  probeTargetFor,
   runClaimReadProbe,
   runClaimReadWarm,
 } from './claim-read-probe';
@@ -45,8 +46,15 @@ const readersOver = (client: AgentClient) => ({
     wait: async () => {},
     clock: Date.now,
     thinking: 'adaptive',
+    timer: () => new AbortController().signal,
   }),
-  off: createClaimReader({ client, wait: async () => {}, clock: Date.now, thinking: 'off' }),
+  off: createClaimReader({
+    client,
+    wait: async () => {},
+    clock: Date.now,
+    thinking: 'off',
+    timer: () => new AbortController().signal,
+  }),
 });
 
 /** A scripted reader that answers each probe case by its body: the correct citation, or
@@ -153,7 +161,13 @@ describe('runClaimReadProbe', () => {
 
   it('names a failed read as failed, never as a verdict', async () => {
     const failing: ClaimReader = {
-      read: async () => ({ status: 'failed', reason: 'unreachable', attempts: 2, latencyMs: 3 }),
+      read: async () => ({
+        status: 'failed',
+        reason: 'unreachable',
+        attempts: 2,
+        latencyMs: 3,
+        deadline: false,
+      }),
     };
     const result = await runClaimReadProbe({ reader: failing });
     expect(result.ok).toBe(false);
@@ -190,5 +204,44 @@ describe('probeExitFor', () => {
     const out = probeExitFor(200, await correct());
     expect(out.code).toBe(0);
     expect(out.lines).toHaveLength(8);
+  });
+});
+
+describe('probeTargetFor (review item 5)', () => {
+  const APP = 'app.example.org';
+  const argv = (...rest: string[]) => ['node', 'probe-claim-reader.mts', ...rest];
+
+  it('a production host over http is refused, even with the flag', () => {
+    expect(probeTargetFor(argv('--url', 'http://app.example.org', '--i-mean-prod'), APP)).toEqual({
+      ok: false,
+      reason: 'not_https',
+    });
+  });
+
+  it('a host that is not the app is refused, even over https with the flag', () => {
+    expect(probeTargetFor(argv('--url', 'https://evil.example.org', '--i-mean-prod'), APP)).toEqual(
+      { ok: false, reason: 'not_app_host' },
+    );
+  });
+
+  it('the app host without the flag is refused', () => {
+    expect(probeTargetFor(argv('--url', 'https://app.example.org'), APP)).toEqual({
+      ok: false,
+      reason: 'needs_i_mean_prod',
+    });
+  });
+
+  it('the app host over https with the flag is the target', () => {
+    const target = probeTargetFor(argv('--url', 'https://app.example.org', '--i-mean-prod'), APP);
+    expect(target.ok && target.url.href).toBe('https://app.example.org/');
+  });
+
+  it('localhost over http needs no flag (control)', () => {
+    const target = probeTargetFor(argv('--url', 'http://localhost:3000'), APP);
+    expect(target.ok && target.url.href).toBe('http://localhost:3000/');
+  });
+
+  it('no url is a usage error', () => {
+    expect(probeTargetFor(argv(), APP)).toEqual({ ok: false, reason: 'no_url' });
   });
 });

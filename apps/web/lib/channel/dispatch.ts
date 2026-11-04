@@ -1,6 +1,7 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
 import { boldTextIndex } from '~/lib/channel/bold';
+import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
@@ -104,6 +105,12 @@ export interface DispatchPorts {
    */
   threadMessage(input: { familyId: string; parentUserId: string; body: string }): Promise<void>;
   channels: Partial<Record<ChannelKind, Channel>>;
+  /**
+   * VIL-581 · the claim reader in shadow, for model-written bodies. Required (rule #11);
+   * it starts detached, never throws, and the leg's outcome never reads it. No db
+   * handle here either: wiring.ts binds it.
+   */
+  claimShadow: DispatchClaimShadow;
   renderer: {
     render: (
       m: LoopMessage,
@@ -257,6 +264,15 @@ async function dispatchLeg(
   // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
   // artifact instead of a loud row saying the template needs fixing.
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  if (rendered.modelWritten) {
+    ports.claimShadow.dispatch({
+      familyId: msg.familyId,
+      parentUserId: msg.parentUserId,
+      body: claimText(rendered),
+      now,
+      claims: unbacked,
+    });
+  }
   if (unbacked.length > 0) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
     return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
@@ -366,6 +382,7 @@ async function dispatchTexts(
         rendered: {
           kind: 'sms',
           text,
+          modelWritten: rendered.modelWritten,
           recordBody: rendered.recordBody,
           ...(bolded ? { bold: bolded } : {}),
         },

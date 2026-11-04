@@ -30,6 +30,7 @@ describe('the caregiver reminder', () => {
     ).toEqual({
       kind: 'sms',
       text: 'Sat, Jul 25 - Swim class at 4:15, Stouffville Public School',
+      modelWritten: false,
     });
   });
 

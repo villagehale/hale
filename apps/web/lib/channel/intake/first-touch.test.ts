@@ -23,7 +23,7 @@ import { runFirstReplyRecoveryCron } from './first-reply-recovery';
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE } from './onboarding-turn';
-import { loadOpenSession } from './session';
+import { type FirstTouchPersisted, loadOpenSession } from './session';
 import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
 
@@ -125,6 +125,8 @@ function seedSession(
     ladderNext?: string;
     familyId?: string;
     userId?: string;
+    collected?: IntakeCollected;
+    firstTouch?: FirstTouchPersisted;
   },
 ): void {
   fake.db.insert(schema.smsIntakeSessions).values({
@@ -133,7 +135,8 @@ function seedSession(
     state: over.state,
     dataEncrypted: encryptString(
       JSON.stringify({
-        collected: EMPTY,
+        collected: over.collected ?? EMPTY,
+        ...(over.firstTouch ? { firstTouch: over.firstTouch } : {}),
         transcript: [{ direction: 'in', body: 'hi', at: NOW.toISOString() }],
         ...(over.ladderLanguage ? { ladderLanguage: over.ladderLanguage } : {}),
         ...(over.ladderNext ? { ladderNext: over.ladderNext } : {}),
@@ -1422,7 +1425,10 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
   const FAMILY = '00000000-0000-4000-8000-00000000f001';
   const USER = '00000000-0000-4000-8000-00000000a001';
 
-  function ladder(reply: string | null): {
+  function ladder(
+    reply: string | null,
+    postalCode: string | null = null,
+  ): {
     fake: FakeDb;
     transport: FakeTransport;
     deps: IntakeDeps;
@@ -1435,6 +1441,7 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
       ladderNext: 'turtle',
       familyId: FAMILY,
       userId: USER,
+      ...(postalCode ? { collected: { children: [], postalCode } } : {}),
     });
     let reads = 0;
     deps.optOutReader = {
@@ -1471,6 +1478,18 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
     expect(reads()).toBe(1);
   });
 
+  it("a US ZIP gets the US crisis line alone, from the session's place", async () => {
+    const reply = 'اتصل أو أرسل رسالة إلى 988 الآن.';
+    const { fake, transport, deps, calls } = ladder(reply, '98101');
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion('US', 'mental'),
+      replyLanguage: 'العربية',
+    });
+    expect(transport.bodies()).toEqual([reply]);
+  });
+
   it('a reply that fails the crisis check twice sends nothing and pages #ops', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fake, transport, deps, calls } = ladder('Call 911.');
@@ -1481,5 +1500,132 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
       expect.objectContaining({ urgent: true, kind: 'mental', reason: 'missing_line' }),
       'URGENT: crisis flagged, no reply sent - page #ops now',
     );
+  });
+});
+
+describe("ladder: a safety outcome names the health line for the family's region", () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f002';
+  const USER = '00000000-0000-4000-8000-00000000a002';
+  const DOCTOR_LINE = "your child's doctor's after-hours line";
+  const ONTARIO_LINE = 'Health811 (Ontario), call 811, any time';
+  const HURT = 'she fell off the slide and her arm looks wrong';
+
+  function ladder(
+    place: { collected?: string | null; firstTouch?: string },
+    reply: 'echo' | null = 'echo',
+  ): { fake: FakeDb; transport: FakeTransport; deps: IntakeDeps; calls: SaidLineInput[] } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: place.collected ?? null },
+      ...(place.firstTouch
+        ? {
+            firstTouch: {
+              language: null,
+              place: {
+                kind: 'postal',
+                areaCoarse: place.firstTouch.slice(0, 3),
+                postalCode: place.firstTouch,
+                municipality: null,
+                city: null,
+              },
+              locationRequest: null,
+            },
+          }
+        : {}),
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'en' }),
+    };
+    deps.answerComposer = new FakeAnswerComposer({ status: 'safety' });
+    const calls: SaidLineInput[] = [];
+    // A fake at the said-line port, not the model: it hands back the facts it was given.
+    deps.saidLine = {
+      async write(input) {
+        calls.push(input);
+        if (reply === null) return null;
+        return `${input.facts.healthLine} / ${(input.mustInclude ?? []).join(' ')}`;
+      },
+    };
+    return { fake, transport, deps, calls };
+  }
+
+  it('a US ZIP gets 911 and their doctor, and no 811 (the US dig line)', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: '98101' });
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.purpose).toBe('health');
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+    const bodies = transport.bodies();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain('911');
+    expect(bodies[0]).not.toMatch(/\b811\b/);
+    expect(result).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(result).not.toHaveProperty('held');
+  });
+
+  it('a family Hale cannot place gets 911 and their doctor', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: null });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+    expect(transport.bodies().join(' ')).not.toMatch(/\b811\b/);
+  });
+
+  it('an Ontario code still gets Health811 and 911', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: 'K7L 3N6' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: ONTARIO_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['811', '911']);
+    expect(transport.bodies()[0]).toMatch(/\b811\b/);
+  });
+
+  it('a province with no verified line gets 911 and their doctor', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: 'V6B 1A1' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+  });
+
+  it('the first code Hale reads decides both country and province', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: '98101', firstTouch: 'K7L 3N6' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+  });
+
+  it('a write that fails sends nothing and names the hold', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = ladder({ collected: '98101' }, null);
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(transport.bodies()).toEqual([]);
+    expect(result).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+      held: 'write_failed',
+    });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ basis: 'united_states', reason: 'write_failed' }),
+      expect.stringContaining('intake health: no line written'),
+    );
+  });
+
+  it('no writer sends nothing and names the hold', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = ladder({ collected: '98101' });
+    deps.saidLine = undefined;
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(transport.bodies()).toEqual([]);
+    expect(result).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+      held: 'writer_absent',
+    });
   });
 });

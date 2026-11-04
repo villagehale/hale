@@ -1,8 +1,8 @@
 /**
- * VIL-581 · the claim reader's mode. Unset is `off`, and nothing reads a parent's
- * reply through the reader in PR 1 whatever the value: the warm route is its only
- * consumer (`off` skips the warm). `shadow` and `enforce` get their consumers in
- * PRs 2 and 3.
+ * VIL-581 · the claim reader's mode. Unset is `off`: nothing reads, nothing is queried
+ * and the warm skips. `shadow` reads every gated body beside or after the regex
+ * decision and only counts the comparison (claim-shadow.ts); no send changes. `enforce`
+ * is not built yet and runs as `shadow`, with the event naming which was set.
  *
  * Strict equality, no trim: a trailing newline from `vercel env add` must not arm it.
  */

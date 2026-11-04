@@ -20,6 +20,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
+import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -46,6 +47,7 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
@@ -86,6 +88,7 @@ import {
   venueForCode,
 } from './copy';
 import {
+  type PostalContext,
   crisisRegionForPlace,
   deriveDateOfBirth,
   parseIntakePostal,
@@ -291,9 +294,10 @@ export type IntakeOutcome =
   | { status: 'provisioned'; familyId: string }
   /**
    * One ladder beat. `step` is the job this reply settled. `closed` is the
-   * co-parent ask, after which the next text belongs to the coach.
+   * co-parent ask, after which the next text belongs to the coach. `held` is set
+   * only when a health reply was owed and nothing went out (VIL-589).
    */
-  | { status: 'ladder_advanced'; step: IntakeLadderStep; closed: boolean }
+  | { status: 'ladder_advanced'; step: IntakeLadderStep; closed: boolean; held?: HealthHeld }
   /** `nameAsked` is whether "What should I call you?" went out as its own text,
    * after the turtle card and before the inbox. Never a tail on the assent line.
    * A French reply skips the English line (PR #689). A parent who already has a
@@ -988,21 +992,50 @@ async function writeChannelMessage(
 /** A turn that is answered by silence: the seam ends the turn and sends nothing. */
 const HELD_SILENT = { body: '', source: 'safety' as const };
 
+/** Why a health reply that was owed went unsent (rule #11). */
+type HealthHeld = 'write_failed' | 'writer_absent';
+
+/** The first token that is a Canadian or US code, with what it says. */
+function firstIntakePostal(
+  tokens: readonly (string | null | undefined)[],
+): { token: string; parsed: PostalContext } | null {
+  for (const token of tokens) {
+    if (typeof token !== 'string') continue;
+    const parsed = parseIntakePostal(token);
+    if (parsed) return { token, parsed };
+  }
+  return null;
+}
+
+/** The health line's place, from the same token that gave the region. */
+async function healthPlaceOf(
+  hit: { token: string; parsed: PostalContext } | null,
+): Promise<HealthPlace | null> {
+  if (!hit) return null;
+  if (hit.parsed.countryCode === 'US') return { country: 'US', provinceOrState: null };
+  return { country: 'CA', provinceOrState: await provinceOfPostal(hit.token) };
+}
+
 async function offScriptReply(
   args: {
     parentWords: string;
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
-    /** Canada or the US when a postal token already says so. Never guessed. */
-    region?: 'CA' | 'US' | null;
+    /** Every place the session holds, in order. The first Canadian or US code gives
+     * both the crisis region and the health line's province. Never guessed. */
+    placeTokens: readonly (string | null | undefined)[];
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
     language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
   turn: Inbound,
-): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
+): Promise<{
+  body: string;
+  source: 'composed' | 'safety' | 'identity';
+  held?: HealthHeld;
+} | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
   const identity = await identityChallengeReply(
@@ -1017,14 +1050,15 @@ async function offScriptReply(
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
-  const { numberOrigin: _origin, region: _region, ...composeArgs } = args;
+  const { numberOrigin: _origin, placeTokens: _placeTokens, ...composeArgs } = args;
   const outcome = await deps.answerComposer.compose(composeArgs);
+  const placed = firstIntakePostal(args.placeTokens);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. The same facts-only writer and
     // check as every crisis reply; a miss has already paged #ops. The turn's one read
     // still named the text's language.
     const language = args.language ?? null;
-    const region = args.region ?? null;
+    const region = placed?.parsed.countryCode ?? null;
     const reading = await readTurnOnce(deps.optOutReader, turn, {
       text: args.parentWords,
       language,
@@ -1043,17 +1077,25 @@ async function offScriptReply(
     return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
-    // #868: the 811 line is the model's words; the code checks both numbers are in it.
-    const written = await deps.saidLine?.write({
-      purpose: 'health',
-      language: null,
-      parentWords: args.parentWords,
-      facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
-      mustInclude: ['811', '911'],
-    });
+    // #868, VIL-589: the model words the line for where this family is; the code checks
+    // every number the facts require is in it. 811 is a dig line in the US.
+    const health = healthLineFacts(await healthPlaceOf(placed));
+    const written = deps.saidLine
+      ? await deps.saidLine.write({
+          purpose: 'health',
+          language: null,
+          parentWords: args.parentWords,
+          facts: health.facts,
+          mustInclude: health.mustInclude,
+        })
+      : null;
     if (!written) {
-      console.error('intake health: no line written - nothing sent, page #ops');
-      return HELD_SILENT;
+      const held: HealthHeld = deps.saidLine ? 'write_failed' : 'writer_absent';
+      console.error(
+        { basis: health.basis, reason: held },
+        'intake health: no line written - nothing sent, page #ops',
+      );
+      return { body: '', source: 'safety', held };
     }
     return { body: written, source: 'safety' };
   }
@@ -1354,12 +1396,16 @@ function friendFields(
  * still ends there (no onboarding ask to a person in crisis).
  */
 function crisisRegionForSession(session: IntakeSession | null): 'CA' | 'US' | null {
-  if (!session) return null;
-  return crisisRegionForPlace([
+  return crisisRegionForPlace(sessionPlaceTokens(session));
+}
+
+function sessionPlaceTokens(session: IntakeSession | null): readonly (string | null | undefined)[] {
+  if (!session) return [];
+  return [
     session.collected.postalCode,
     session.firstTouch?.place?.postalCode,
     session.firstTouch?.place?.areaCoarse,
-  ]);
+  ];
 }
 
 async function crisisReply(
@@ -3218,6 +3264,7 @@ async function handleLadder(
   let next: IntakeLadderStep | null = step;
   let closed = false;
   let heldForQuestion = false;
+  let held: HealthHeld | undefined;
 
   // A question right after the find is answered first; the model decides whether
   // the parent's words are a question (offScriptReply returns null when not).
@@ -3229,7 +3276,7 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
-        region: crisisRegionForSession(session),
+        placeTokens: sessionPlaceTokens(session),
         numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },
@@ -3240,6 +3287,7 @@ async function handleLadder(
       if (offScript.body) {
         await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
       }
+      held = offScript.held;
       heldForQuestion = true;
     }
   }
@@ -3343,7 +3391,7 @@ async function handleLadder(
     },
     now,
   );
-  return { status: 'ladder_advanced', step, closed };
+  return { status: 'ladder_advanced', step, closed, ...(held ? { held } : {}) };
 }
 
 /**

@@ -2075,14 +2075,12 @@ export function targetNoun(targetTable: string | null): string {
 
 /**
  * A stored (`target_table`, `target_id`) → a deep link to the surface where the
- * parent can actually SEE that record — never a bare UUID. Only tables with a
- * real viewable surface link (plans → the plan page). The Approvals page is
- * gone, so an action row keeps its noun and does not link at a missing route.
- * Everything else returns null so the row shows its noun without a dead link.
+ * parent can actually SEE that record — never a bare UUID. Only a table with a
+ * real viewable surface links, and while the portal is cut down (VIL-432) no
+ * table has one: the Approvals page is gone and the plan page is retired. So
+ * every row returns null and shows its noun without a dead link.
  */
-const TARGET_ROUTES: Record<string, string> = {
-  family_plans: '/plan',
-};
+const TARGET_ROUTES: Record<string, string> = {};
 
 export function targetLink(targetTable: string | null, targetId: string | null): string | null {
   if (targetTable === null || targetId === null) return null;
