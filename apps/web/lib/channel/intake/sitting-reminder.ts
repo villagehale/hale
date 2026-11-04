@@ -205,9 +205,20 @@ export async function runSittingReminderCron(
       continue;
     }
     // Decoded only once the row is owed. The blob is read without decrypting the phone.
-    const timeZone = sittingSessionZone(
-      decodeIntakeForRecovery(candidate.dataEncrypted).firstTouch,
-    );
+    // An unreadable blob (GCM refuses a tampered or wrong-key one) fails this row loudly
+    // and leaves it unclaimed; it must not stop every later row's morning.
+    let firstTouch: FirstTouchPersisted | null;
+    try {
+      firstTouch = decodeIntakeForRecovery(candidate.dataEncrypted).firstTouch;
+    } catch {
+      result.failed += 1;
+      console.error(
+        { code: 'session_unreadable' },
+        'sitting reminder: session unreadable, not sent',
+      );
+      continue;
+    }
+    const timeZone = sittingSessionZone(firstTouch);
     if (timeZone === null) {
       zoneUnknown += 1;
       continue;

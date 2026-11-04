@@ -662,6 +662,28 @@ describe("runSittingReminderCron - the family's own morning (VIL-562)", () => {
     );
   });
 
+  it('S6: an unreadable session is one named failure, and the run goes on to the next row', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
+    const wrongKeyBlob = placeBlob(EASTERN_FSA);
+    process.env.APP_ENCRYPTION_KEY = KEY;
+    const bad = seedSession(fake, { dataEncrypted: wrongKeyBlob });
+    seedSession(fake, { phoneE164: OTHER, dataEncrypted: placeBlob(EASTERN_FSA) });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(result).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 1 });
+    expect(transport.sent.map((s) => s.to)).toEqual([OTHER]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === bad)).toMatchObject({
+      sittingReminderSentAt: null,
+    });
+    expect(error).toHaveBeenCalledWith(
+      { code: 'session_unreadable' },
+      'sitting reminder: session unreadable, not sent',
+    );
+  });
+
   it('S5: an in-slot row is reached behind fifty out-of-slot rows', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
