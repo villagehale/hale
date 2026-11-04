@@ -353,6 +353,8 @@ export async function loadAwaitingSequence(
       courseOpensAt: schema.registrationSequences.courseOpensAt,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never asked a check-in
+    // yet (VIL-423, run.ts `linkWatchFate`), so it has no answer to hear.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
