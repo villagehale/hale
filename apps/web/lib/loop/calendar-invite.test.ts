@@ -420,8 +420,10 @@ describe('the tap-to-add link a text-only family gets', () => {
   /**
    * The Preview's forced defer, run here instead: the REAL composer, renderer and
    * dispatch, and a fake sms channel. Two ports are fakes. The writer's client returns
-   * this test's own words or fails; what a real model writes is the eval's job (rule #8).
-   * The time judge has its own cached eval. Each reason comes from the composer's code.
+   * this test's own words or fails. What a real model writes is pinned by the cached
+   * writer eval (apps/worker/evals/run-calendar-invite-voice-eval.mjs), and the time judge
+   * by its own (run-calendar-invite-time-eval.mjs), rule #8. Each reason comes from the
+   * composer's code.
    */
   describe('VIL-515 · a deferred compose sends nothing through the real composer', () => {
     function writer(fail: boolean): AgentClient {
