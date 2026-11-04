@@ -88,7 +88,7 @@ const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
     shape: 'domain',
     pattern: /(?<![\p{L}\p{M}\p{N}\p{S}-])[\p{L}\p{M}\p{N}\p{S}-]+\.\p{L}[\p{L}\p{M}]/u,
   },
-  { shape: 'ip', pattern: /(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?!\d)/u },
+  { shape: 'ip', pattern: /(?<!\d)\d{1,3}(?:\.\d{1,3}){3}(?!\d)/u },
 ];
 
 /** The event's start date in the family's zone: the only date a title may carry beside 7+ digits. */

@@ -126,6 +126,8 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a domain with a snowman label', destination: '\u2603.net' },
   { row: 'a bare IPv4 address', destination: '10.0.0.1' },
   { row: 'a bare IPv4 address with no letter and six digits', destination: '3.14.15.9' },
+  { row: 'a bare IPv4 address right after a dot', destination: '.10.0.0.1' },
+  { row: 'a bare IPv4 address joined to a word by a dot', destination: 'at.3.14.15.9' },
   { row: 'a phone joined by swung dashes', destination: '202\u2053555\u20530142' },
   { row: 'a phone joined by tilde operators', destination: '202\u223C555\u223C0142' },
   { row: 'a phone with a bracketed area code', destination: '[202]555-0142' },
@@ -695,6 +697,13 @@ describe('VIL-588 · symbols are label characters, and a bare IPv4 address is a 
       }
     });
   }
+  for (const words of ['Swim .10.0.0.1', 'Info at.3.14.15.9']) {
+    it(`${words}: a dot before the address does not hide it`, () => {
+      for (const read of [titleDestination, textDestination]) {
+        expect(read(words, july)).toBe('ip');
+      }
+    });
+  }
   it("the event's own dotted date and a three-part number are no host", () => {
     for (const read of [titleDestination, textDestination]) {
       expect(read('Swim class 23.11.2026', november)).toBeNull();
@@ -736,7 +745,11 @@ describe('VIL-588 · the gate reads a title of any length in linear time', () =>
       words: `a${'\u0316\u0301\u0345'.repeat(Math.floor(n / 3))}`,
       shape: null,
     },
-    { row: 'halfwidth sound marks', words: `\uFF76${'\uFF9E\uFF9F'.repeat(n / 2)}`, shape: null },
+    {
+      row: 'a halfwidth sound mark and a combining mark of another class repeated',
+      words: `\uFF76${'\uFF9E\u0316'.repeat(n / 2)}`,
+      shape: null,
+    },
   ];
   for (const { row, words, shape } of LONG) {
     it(`${row}: read within ${BUDGET_MS} ms`, () => {
