@@ -844,6 +844,67 @@ describe('the emails’ own order decides the last word', () => {
     expect(h.transport.sent).toHaveLength(2);
   });
 
+  it('T20c: an older receipt read late does not make the booking older than its newest receipt', async () => {
+    const h = harness({ r2: receipt('r2'), r1: receipt('r1'), c1: off('c1'), c2: off('c2') });
+    await expect(sweep(h, [inbound('r2', 't-swim', 30)])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+    ]);
+    // The same receipt state again is a repeat, not news; it still refreshes the booking.
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'already_sent', booking: 'refreshed', going: null },
+    ]);
+
+    // Newer than the late receipt, older than the newest one: the booking stays open.
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual([
+      'stale_news',
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    // The control: newer than both receipts, it closes.
+    await expect(sweep(h, [inbound('c2', 't-swim', 40)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+  });
+
+  it('T21b: a booking recorded from a stale receipt is not closed by a cancellation older than that receipt', async () => {
+    const h = harness({ c1: off('c1'), r1: receipt('r1'), c0: off('c0'), c2: off('c2') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+
+    // Another thread, an email older than the receipt: the booking stays open.
+    await expect(sweep(h, [inbound('c0', 't-early', 5)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    // The control: a cancellation newer than the receipt closes it.
+    await expect(sweep(h, [inbound('c2', 't-late', 15)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+  });
+
+  it('T24: the backfill keeps each email’s own time, on the booking it records and on the cancellation it reads', async () => {
+    const h = harness({ r1: receipt('r1'), c0: off('c0'), c2: off('c2') });
+    const backfill = (envelope: GmailAlertEnvelope) =>
+      alertParentForGmailSweep(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId,
+          seeding: false,
+          backfill: true,
+          envelopes: [envelope],
+          now: NOW,
+        },
+        h.ports,
+      ).then(alerts);
+
+    await expect(backfill(inbound('r1', 't-old', 10))).resolves.toEqual(['backfill_suppressed']);
+    // A live cancellation older than the backfilled receipt leaves it open.
+    await expect(sweep(h, [inbound('c0', 't-early', 5)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    // The control: a backfilled cancellation newer than the receipt closes it.
+    await expect(backfill(inbound('c2', 't-old', 15))).resolves.toEqual(['backfill_suppressed']);
+    await expect(cancelledAt()).resolves.toEqual([NOW]);
+  });
+
   it('T22: "last" is the order the emails were received in, not the order their claims were written', async () => {
     const h = harness({
       a: on('a'),
