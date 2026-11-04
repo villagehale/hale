@@ -1215,6 +1215,51 @@ export const COACH_CHANNEL_FIXTURES = [
         'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
     },
   },
+  {
+    id: 'postal-home-unmarked-place',
+    // Cached-only miss is not a corpus failure until a recording exists.
+    unrecorded: true,
+    text: 'anything fun Lin could do this Sunday afternoon?',
+    city: 'Markham',
+    postalTown: 'Markham',
+    olderPlace: 'Georgetown',
+    children: [{ id: 'kid-lin', name: 'Lin', gender: 'girl', dateOfBirth: '2016-05-01' }],
+    village: { candidates: [], inVerification: 0, standingOption: null },
+    // 20 days before FIXTURE_NOW, parent_message, no record mark. Still inside the
+    // 365-day window, so the find slice would still hand it over. The postal town wins.
+    memoryFacts: [
+      {
+        childId: null,
+        factType: 'logistic',
+        factKey: 'home_city',
+        factValue: 'Georgetown',
+        confidence: 1,
+      },
+    ],
+    memoryBrief: {
+      status: 'ok',
+      text: 'memory_brief status=ok\nlife: logistic:home_city=Georgetown (source=parent_message confidence=1 valid_from=2026-07-14)',
+      asOf: '2026-08-03T13:00:00.000Z',
+      digestFreshness: 'unavailable',
+    },
+    webPick: {
+      name: 'Sunday drop-in at the museum',
+      ageFit: 'ages 6-12',
+      sourceName: 'Markham Museum',
+      when: 'Sunday afternoon',
+      price: null,
+      url: 'https://www.markham.ca/museum',
+    },
+    judgeHome:
+      "Home is Markham, from the postal code. Georgetown is an older or unconfirmed place from memory. Score 1 if the reply states Georgetown as where they live or as the place that was searched. One question, in the reply's own words, about whether that other place still matters is not that failure. Do not require particular wording.",
+    note: 'Sloane, VIL-519. Postal town is home. A 20-day unmarked home_city must not be named as home and must not be the search. The model judges the conflict. Unrecorded until a live cache exists.',
+    expect: {
+      mustNotDraft: true,
+      mustCall: ['find_activities'],
+      searchTown: 'Markham',
+      subjectMustNotName: 'Georgetown',
+    },
+  },
 ];
 
 /**

@@ -4,9 +4,11 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
+import { isFactFresh } from './freshness';
 import { isExpiredTemporary } from './kinds';
 import { isReceiptKey, valueText } from './lexicon';
 import { digestWindows } from './period';
+import { heldFromFamilyPrompt } from './record-field';
 
 /**
  * The memory one-pager injected at the start of an agent turn.
@@ -65,6 +67,8 @@ interface BriefFact {
   childId: string | null;
   memoryKind?: string | null;
   memorySource?: string | null;
+  /** When the source was seen. Absent on an in-memory fixture, which is treated as fresh. */
+  sourcedAt?: Date | null;
   expiresAt?: Date | string | null;
 }
 
@@ -157,6 +161,12 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
       return false;
     }
+    // Marked age/place always. Unmarked facts only once they are past the
+    // same freshness window. A missing sourcedAt is a fixture, treated as fresh.
+    const fresh = fact.sourcedAt
+      ? isFactFresh(fact.memorySource ?? 'legacy', fact.sourcedAt, input.now)
+      : true;
+    if (heldFromFamilyPrompt(fact.factValue, fresh)) return false;
     return true;
   });
 
@@ -268,6 +278,7 @@ export async function assembleMemoryBrief(
           childId: schema.familyMemoryFacts.childId,
           memoryKind: schema.familyMemoryFacts.memoryKind,
           memorySource: schema.familyMemoryFacts.memorySource,
+          sourcedAt: schema.familyMemoryFacts.sourcedAt,
           expiresAt: schema.familyMemoryFacts.expiresAt,
         })
         .from(schema.familyMemoryFacts)

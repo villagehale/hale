@@ -95,6 +95,27 @@ describe('memory inferencer save_memory', () => {
     expect(fact?.validFrom).toEqual(RUN_AT);
   });
 
+  it('stores record: place on a non-English key when extraction sets it', async () => {
+    const { familyId } = await seedFamily(db.database);
+    const save = toolNamed(buildInferenceTools(db.database, RUN_AT), 'save_memory');
+
+    await save.handler(
+      {
+        factType: 'logistic',
+        factKey: 'ville',
+        factValue: 'Georgetown',
+        confidence: 0.9,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+        record: 'place',
+      },
+      ctx(familyId),
+    );
+
+    const [fact] = await liveFact(familyId, 'ville');
+    expect(fact?.factValue).toMatchObject({ record: 'place', text: 'Georgetown' });
+  });
+
   it('ignores a source time the model invented in the future', async () => {
     const { familyId } = await seedFamily(db.database);
     const save = toolNamed(buildInferenceTools(db.database, RUN_AT), 'save_memory');

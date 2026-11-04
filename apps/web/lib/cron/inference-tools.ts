@@ -226,7 +226,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
@@ -299,6 +299,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         observedAt: input.observedAt,
         expiresAt: input.expiresAt,
         correctsKey: input.correctsKey,
+        record: input.record,
       });
       return { saved: true as const, factId };
     },
@@ -525,7 +526,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   const saveChildFact = defineTool({
     name: 'save_child_fact',
     description:
-      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
+      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullish(),
       category: distillCategory,
@@ -611,6 +612,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         observedAt: input.observedAt,
         expiresAt: input.expiresAt,
         correctsKey: input.correctsKey,
+        record: input.record,
       });
       return { saved: true as const, factId };
     },

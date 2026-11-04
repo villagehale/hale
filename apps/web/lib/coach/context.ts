@@ -8,7 +8,10 @@ import {
   deriveStage,
 } from '@hale/types';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { townFromStoredArea } from '../channel/town-from-area';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { isFactFresh } from '../memory/freshness';
+import { heldFromFamilyPrompt } from '../memory/record-field';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -344,6 +347,8 @@ export async function loadAgentContext(
         city: schema.families.city,
         province: schema.families.province,
         country: schema.families.country,
+        postalCode: schema.families.postalCode,
+        areaCoarse: schema.families.areaCoarse,
       })
       .from(schema.families)
       .where(eq(schema.families.id, input.familyId))
@@ -402,6 +407,8 @@ export async function loadAgentContext(
       factKey: schema.familyMemoryFacts.factKey,
       factValue: schema.familyMemoryFacts.factValue,
       confidence: schema.familyMemoryFacts.confidence,
+      memorySource: schema.familyMemoryFacts.memorySource,
+      sourcedAt: schema.familyMemoryFacts.sourcedAt,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -438,19 +445,32 @@ export async function loadAgentContext(
 
   return {
     parentName: parentRows[0]?.name ?? null,
-    location: { city: family.city, province: family.province, country: family.country },
+    // The postal code is the current home. A stored city (a seed, an old edit) loses
+    // when the code names one town — L3P is Markham even if city still says Georgetown.
+    location: {
+      city:
+        townFromStoredArea(family.postalCode) ??
+        townFromStoredArea(family.areaCoarse) ??
+        family.city,
+      province: family.province,
+      country: family.country,
+    },
     planTier: family.planTier,
     children,
     focusedChild,
     stages,
     memoryFacts: redactFactsForTeens(
-      factRows.map((r) => ({
-        childId: r.childId,
-        factType: r.factType,
-        factKey: r.factKey,
-        factValue: r.factValue,
-        confidence: r.confidence,
-      })),
+      factRows
+        .filter(
+          (r) => !heldFromFamilyPrompt(r.factValue, isFactFresh(r.memorySource, r.sourcedAt, now)),
+        )
+        .map((r) => ({
+          childId: r.childId,
+          factType: r.factType,
+          factKey: r.factKey,
+          factValue: r.factValue,
+          confidence: r.confidence,
+        })),
       stageByChild,
     ),
     memoryBrief,

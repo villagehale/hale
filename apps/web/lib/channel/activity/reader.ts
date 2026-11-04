@@ -1,7 +1,13 @@
 import { type Database, type Municipality, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
+import { townFromStoredArea } from '~/lib/channel/town-from-area';
+import { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
+import { FACT_FRESH_DAYS, type FactSource, isFactFresh } from '~/lib/memory/freshness';
+import { heldFromFamilyPrompt } from '~/lib/memory/record-field';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+
+export { FACT_FRESH_DAYS, isFactFresh, townFromStoredArea };
 
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
@@ -47,6 +53,22 @@ export interface FamilyFitPreference {
   childId: string | null;
   key: string;
   value: unknown;
+  /** VIL-519. Where Hale learned it: the parent said it, a calendar or receipt showed
+   * it, or Hale inferred it. `legacy` is a row from before sources were kept. */
+  source: FactSource;
+  /** VIL-519. The day (UTC, YYYY-MM-DD) the source was seen — how fresh it is. */
+  seenOn: string;
+}
+
+export type { FactSource };
+
+/** Kept on the result so a caller can see there is nothing to re-ask. Always empty:
+ * a stale guess's key would name the interest (`loves_swimming`), so it is omitted
+ * rather than handed to the finder. */
+export interface FamilyFitRecheck {
+  childId: string | null;
+  key: string;
+  seenOn: string;
 }
 
 export interface FamilyFit {
@@ -54,6 +76,8 @@ export interface FamilyFit {
   /** The home municipality the search looked around, or null when unknown. */
   homeArea: Municipality | null;
   preferences: FamilyFitPreference[];
+  /** Always empty. Stale guesses are left out of the result so their key cannot name an interest. */
+  recheck: FamilyFitRecheck[];
 }
 
 /** Durable facts that steer a pick: tastes (indoor, not scary, swim) and logistics
@@ -61,7 +85,19 @@ export interface FamilyFit {
 const FIT_FACT_TYPES = ['preference', 'logistic'] as const;
 /** Small on purpose: a slice, not the memory. */
 export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
-
+/** How many candidate rows the read pulls before `selectFitPreferences` caps them. */
+export const FAMILY_FIT_READ_LIMIT = FAMILY_FIT_PREFERENCE_LIMIT * 4;
+/**
+ * VIL-519 (Devin #981). Which source a ranked slot goes to first: what the parent said
+ * or a receipt showed outranks a calendar, which outranks Hale's own guess. Lower wins.
+ */
+export const FACT_SOURCE_RANK: Readonly<Record<FactSource, number>> = {
+  parent_message: 0,
+  receipt: 0,
+  calendar: 1,
+  legacy: 2,
+  inferred: 3,
+};
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
@@ -171,46 +207,77 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );
+      const factColumns = {
+        childId: schema.familyMemoryFacts.childId,
+        key: schema.familyMemoryFacts.factKey,
+        value: schema.familyMemoryFacts.factValue,
+        confidence: schema.familyMemoryFacts.confidence,
+        source: schema.familyMemoryFacts.memorySource,
+        sourcedAt: schema.familyMemoryFacts.sourcedAt,
+      };
+      const factWhere = and(
+        eq(freshSql(now), 1),
+
+        eq(schema.familyMemoryFacts.familyId, familyId),
+        inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
+        isNull(schema.familyMemoryFacts.validUntil),
+        // A passing question (`one_off`) is not a family preference (Devin, #980).
+        ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
+        or(isNull(schema.familyMemoryFacts.expiresAt), gt(schema.familyMemoryFacts.expiresAt, now)),
+        // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
+        teenIds.size > 0
+          ? or(
+              isNull(schema.familyMemoryFacts.childId),
+              notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
+            )
+          : undefined,
+      );
+      // Stale rows are not read. A stale key (`loves_swimming`) would name the
+      // interest to the finder, so it never enters the result.
       const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          key: schema.familyMemoryFacts.factKey,
-          value: schema.familyMemoryFacts.factValue,
-        })
+        .select(factColumns)
         .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
-            isNull(schema.familyMemoryFacts.validUntil),
-            // A passing question (`one_off`) is not a family preference (Devin, #980).
-            ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
-            or(
-              isNull(schema.familyMemoryFacts.expiresAt),
-              gt(schema.familyMemoryFacts.expiresAt, now),
-            ),
-            // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
-            teenIds.size > 0
-              ? or(
-                  isNull(schema.familyMemoryFacts.childId),
-                  notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
-                )
-              : undefined,
-          ),
-        )
+        .where(factWhere)
+        // Parent/receipt ahead of calendar ahead of inferred, then newest. Applied
+        // BEFORE the LIMIT so 32 newer guesses cannot push out what the parent said.
         .orderBy(
+          asc(sourceRankSql()),
+          desc(schema.familyMemoryFacts.sourcedAt),
           desc(schema.familyMemoryFacts.confidence),
           desc(schema.familyMemoryFacts.validFrom),
           schema.familyMemoryFacts.id,
         )
-        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
+        .limit(FAMILY_FIT_READ_LIMIT);
       return {
         children,
         homeArea,
-        preferences: selectFitPreferences(factRows, teenIds),
+        ...selectFitPreferences(factRows, teenIds, now),
       };
     },
   };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** SQL twin of `asSource` + `FACT_SOURCE_RANK`: unknown sources rank as `legacy`. */
+function sourceRankSql() {
+  const col = schema.familyMemoryFacts.memorySource;
+  const cases = (Object.keys(FACT_SOURCE_RANK) as FactSource[]).map(
+    (source) => sql`when ${col} = ${source} then ${FACT_SOURCE_RANK[source]}`,
+  );
+  return sql`(case ${sql.join(cases, sql` `)} else ${FACT_SOURCE_RANK.legacy} end)`;
+}
+
+/** SQL twin of the per-source window in `selectFitPreferences`: 1 when still fresh. */
+function freshSql(now: Date) {
+  const col = schema.familyMemoryFacts.memorySource;
+  const at = schema.familyMemoryFacts.sourcedAt;
+  const cutoff = (source: FactSource) =>
+    new Date(now.getTime() - FACT_FRESH_DAYS[source] * DAY_MS).toISOString();
+  const cases = (Object.keys(FACT_FRESH_DAYS) as FactSource[])
+    .filter((source) => source !== 'legacy')
+    .map((source) => sql`when ${col} = ${source} then ${at} >= ${cutoff(source)}::timestamptz`);
+  return sql`(case ${sql.join(cases, sql` `)} else ${at} >= ${cutoff('legacy')}::timestamptz end)::int`;
 }
 
 export function toFitChild(
@@ -227,13 +294,59 @@ export function toFitChild(
   };
 }
 
-/** A teen's preferences never ride (rule #1/#5); the rest are capped to the slice. */
+export interface FitFactRow {
+  childId: string | null;
+  key: string;
+  value: unknown;
+  confidence: number;
+  source: string;
+  sourcedAt: Date;
+}
+
+function asSource(source: string): FactSource {
+  return source in FACT_FRESH_DAYS ? (source as FactSource) : 'legacy';
+}
+
+/**
+ * Which remembered facts may steer a pick (VIL-518/519).
+ *
+ * - A teen's facts never ride (rule #1/#5).
+ * - A hunch below the write floor never ranks, even if an old writer let one in.
+ * - A fact extraction marked `record: age` or `record: place` is dropped. The
+ *   key's spelling is not consulted.
+ * - A fact older than its source's freshness window is omitted, mark or not.
+ *   An unmarked row from before `record` existed is dropped once it is stale,
+ *   on that same window. A fresh unmarked fact stays.
+ * - One per (child, key): `writeFact` keeps one live row per identity, and a row seen
+ *   later than another for the same key wins should two ever reach here.
+ */
 export function selectFitPreferences(
-  rows: readonly { childId: string | null; key: string; value: unknown }[],
+  rows: readonly FitFactRow[],
   teenIds: ReadonlySet<string>,
-): FamilyFitPreference[] {
-  return rows
-    .filter((row) => row.childId === null || !teenIds.has(row.childId))
-    .slice(0, FAMILY_FIT_PREFERENCE_LIMIT)
-    .map((row) => ({ childId: row.childId, key: row.key, value: row.value }));
+  now: Date = new Date(),
+): { preferences: FamilyFitPreference[]; recheck: FamilyFitRecheck[] } {
+  const newest = new Map<string, FitFactRow>();
+  for (const row of rows) {
+    if (row.childId !== null && teenIds.has(row.childId)) continue;
+    if (!(row.confidence >= CONFIDENCE_FLOOR)) continue;
+    const id = `${row.childId ?? ''}\u0000${row.key}`;
+    const seen = newest.get(id);
+    if (!seen || row.sourcedAt.getTime() > seen.sourcedAt.getTime()) newest.set(id, row);
+  }
+  const preferences: FamilyFitPreference[] = [];
+  // Parent/receipt fill the cap before inferred guesses, newest first within a source.
+  const ordered = [...newest.values()].sort(
+    (a, b) =>
+      FACT_SOURCE_RANK[asSource(a.source)] - FACT_SOURCE_RANK[asSource(b.source)] ||
+      b.sourcedAt.getTime() - a.sourcedAt.getTime(),
+  );
+  for (const row of ordered) {
+    const source = asSource(row.source);
+    const seenOn = row.sourcedAt.toISOString().slice(0, 10);
+    if (heldFromFamilyPrompt(row.value, isFactFresh(source, row.sourcedAt, now))) continue;
+    if (preferences.length < FAMILY_FIT_PREFERENCE_LIMIT) {
+      preferences.push({ childId: row.childId, key: row.key, value: row.value, source, seenOn });
+    }
+  }
+  return { preferences, recheck: [] };
 }
