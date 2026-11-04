@@ -206,8 +206,8 @@ describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
     expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
-  it('links a plan target to the plan surface', () => {
-    expect(targetLink('family_plans', 'plan-3')).toBe('/plan');
+  it('does not link a plan at the retired plan page', () => {
+    expect(targetLink('family_plans', 'plan-3')).toBeNull();
   });
 
   it('returns null (no fake link) for a target with no viewable surface', () => {
