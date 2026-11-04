@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
@@ -280,8 +280,16 @@ export function emailAlertOccasionKey(
   threadId: string,
   occasion: string,
 ): string {
-  const digest = createHash('sha256').update(occasion).digest('hex').slice(0, 32);
-  return `email_alert_occasion:${integrationId}:${threadId}:${digest}`;
+  return `email_alert_occasion:${integrationId}:${threadId}:${shortDigest(occasion)}`;
+}
+
+/** One instant (or, with none, the event or message) a claim was about, in this thread. */
+function emailAlertAnchorKey(integrationId: string, threadId: string, anchor: string): string {
+  return `email_alert_anchor:${integrationId}:${threadId}:${shortDigest(anchor)}`;
+}
+
+function shortDigest(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 32);
 }
 
 /**
@@ -302,39 +310,121 @@ export function emailAlertOccasion(
   },
   messageId: string,
 ): string {
-  const { state, anchor } = OCCASION[extraction.kind](extraction.event);
-  if (anchor !== null) return `${state}|${anchor}`;
-  if (extraction.matchedEventRef !== null) {
-    return `${state}|ref:${extraction.matchedEventRef.table}:${extraction.matchedEventRef.id}`;
-  }
-  return `msg:${messageId}`;
+  return occasionOf(extraction, messageId).occasion;
 }
 
-/** Per kind, whether the occasion is on, off or moved, and the field(s) it sits at.
- * `OFFERED_TIME` cannot be reused: it has no instant for a cancellation. */
+/** The occasion, and what it is ABOUT: the instant(s) it sits at, or failing those the
+ * matched event, or failing that the message. On, off and moved about one instant share
+ * that instant, which is how a later email finds what this thread last said about it. */
+function occasionOf(
+  extraction: Parameters<typeof emailAlertOccasion>[0],
+  messageId: string,
+): { occasion: string; anchors: readonly string[] } {
+  const { state, anchor, instants } = OCCASION[extraction.kind](extraction.event);
+  if (anchor !== null) {
+    const occasion = `${state}|${anchor}`;
+    return { occasion, anchors: instants.length > 0 ? instants : [occasion] };
+  }
+  if (extraction.matchedEventRef !== null) {
+    const ref = `ref:${extraction.matchedEventRef.table}:${extraction.matchedEventRef.id}`;
+    return { occasion: `${state}|${ref}`, anchors: [ref] };
+  }
+  const own = `msg:${messageId}`;
+  return { occasion: own, anchors: [own] };
+}
+
+/** Per kind, whether the occasion is on, off or moved, the field(s) it sits at, and the
+ * instants among them. `OFFERED_TIME` cannot be reused: it has no instant for a
+ * cancellation. */
 const OCCASION: Record<
   ExtractionKind,
-  (event: ExtractedEvent) => { state: 'on' | 'off' | 'moved'; anchor: string | null }
+  (event: ExtractedEvent) => {
+    state: 'on' | 'off' | 'moved';
+    anchor: string | null;
+    instants: readonly string[];
+  }
 > = {
-  new_event: (event) => ({ state: 'on', anchor: instantIso(event.newTime) }),
-  booking_confirmation: (event) => ({ state: 'on', anchor: instantIso(event.newTime) }),
-  reminder_only: (event) => ({ state: 'on', anchor: instantIso(event.originalTime) }),
-  cancellation: (event) => ({ state: 'off', anchor: instantIso(event.originalTime) }),
+  new_event: (event) => ({ state: 'on', ...at(event.newTime) }),
+  booking_confirmation: (event) => ({ state: 'on', ...at(event.newTime) }),
+  reminder_only: (event) => ({ state: 'on', ...at(event.originalTime) }),
+  cancellation: (event) => ({ state: 'off', ...at(event.originalTime) }),
   // A move back to an earlier time, or to another place at the same time, is a different
   // occasion from the announcement it moves.
   reschedule: (event) => {
     const from = instantIso(event.originalTime);
     const to = instantIso(event.newTime);
     const place = event.location?.trim().toLowerCase() ?? '';
-    if (from === null && to === null && place === '') return { state: 'moved', anchor: null };
-    return { state: 'moved', anchor: `${from ?? ''}>${to ?? ''}@${place}` };
+    const instants = [from, to].filter((instant): instant is string => instant !== null);
+    if (from === null && to === null && place === '') {
+      return { state: 'moved', anchor: null, instants };
+    }
+    return { state: 'moved', anchor: `${from ?? ''}>${to ?? ''}@${place}`, instants };
   },
   // Never reaches the key: `unclear` returns before it.
-  unclear: () => ({ state: 'on', anchor: null }),
+  unclear: () => ({ state: 'on', anchor: null, instants: [] }),
 };
+
+function at(iso: string | null): { anchor: string | null; instants: readonly string[] } {
+  const instant = instantIso(iso);
+  return { anchor: instant, instants: instant === null ? [] : [instant] };
+}
 
 function instantIso(iso: string | null): string | null {
   return offsetInstant(iso)?.toISOString() ?? null;
+}
+
+type Told = 'already_sent' | 'occasion_send_failed';
+
+/**
+ * AN OCCASION IS A STATE CHANGE, so whether this email is news is decided by what this
+ * thread LAST told about the same instant(s): the same occasion is a repeat, anything else
+ * (a cancellation after an announcement, the class back on after its cancellation) is
+ * news. The claim key carries the claim it follows, so on, off, on, off are four keys and
+ * two sweeps reading the same history still compute one. With nothing told about these
+ * instants the key is the bare occasion key, which is also every claim written before the
+ * anchors existed.
+ */
+async function occasionClaim(
+  database: Database,
+  integrationId: string,
+  threadId: string,
+  extraction: Parameters<typeof emailAlertOccasion>[0],
+  messageId: string,
+): Promise<{ occasionKey: string; anchorKeys: string[]; told: Told | null }> {
+  const { occasion, anchors } = occasionOf(extraction, messageId);
+  const base = emailAlertOccasionKey(integrationId, threadId, occasion);
+  const anchorKeys = anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor));
+  const [last] = await database
+    .select({
+      occasionKey: schema.emailAlertOccasions.occasionKey,
+      channelMessageId: schema.emailAlertOccasions.channelMessageId,
+      status: schema.channelMessages.status,
+    })
+    .from(schema.emailAlertOccasions)
+    .innerJoin(
+      schema.channelMessages,
+      eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+    )
+    .where(
+      and(
+        // One text param per key: a bare JS array is expanded into a row, not a text[].
+        sql`${schema.emailAlertOccasions.anchorKeys} && ARRAY[${sql.join(
+          anchorKeys.map((key) => sql`${key}`),
+          sql`, `,
+        )}]::text[]`,
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    )
+    .orderBy(desc(schema.emailAlertOccasions.createdAt))
+    .limit(1);
+  if (
+    last !== undefined &&
+    (last.occasionKey === base || last.occasionKey.startsWith(`${base}:`))
+  ) {
+    return { occasionKey: last.occasionKey, anchorKeys, told: toldBy(last.status) };
+  }
+  const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
+  return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
 }
 
 /**
@@ -342,10 +432,7 @@ function instantIso(iso: string | null): string | null {
  * points at: a send that went (or is going) is `already_sent`; a send that failed is its
  * own name, because "never told" is not "told" (rule #11). The claim is not freed either way.
  */
-async function occasionAlreadyTold(
-  database: Database,
-  occasionKey: string,
-): Promise<'already_sent' | 'occasion_send_failed' | null> {
+async function occasionAlreadyTold(database: Database, occasionKey: string): Promise<Told | null> {
   const [row] = await database
     .select({ status: schema.channelMessages.status })
     .from(schema.emailAlertOccasions)
@@ -361,7 +448,11 @@ async function occasionAlreadyTold(
     )
     .limit(1);
   if (row === undefined) return null;
-  return (SENT_STATUSES as readonly string[]).includes(row.status)
+  return toldBy(row.status);
+}
+
+function toldBy(status: string): Told {
+  return (SENT_STATUSES as readonly string[]).includes(status)
     ? 'already_sent'
     : 'occasion_send_failed';
 }
@@ -554,12 +645,13 @@ export async function alertParentForEmail(
   // quiet-booking writes (every message is evidence) and before the writer (a second text
   // is not). The key needs the extraction, so this costs the classifier call; a receipt
   // still refreshes its booking and a cancellation still closes, as on the first message.
-  const occasionKey = emailAlertOccasionKey(
+  const { occasionKey, anchorKeys, told } = await occasionClaim(
+    database,
     integrationId,
     threadId,
-    emailAlertOccasion(extraction, messageId),
+    extraction,
+    messageId,
   );
-  const told = await occasionAlreadyTold(database, occasionKey);
   if (told !== null) {
     await closeIfCancelled();
     return {
@@ -701,7 +793,7 @@ export async function alertParentForEmail(
     if (!row) return null;
     const [occasion] = await tx
       .insert(schema.emailAlertOccasions)
-      .values({ occasionKey, channelMessageId: row.id })
+      .values({ occasionKey, channelMessageId: row.id, anchorKeys })
       .onConflictDoNothing()
       .returning({ occasionKey: schema.emailAlertOccasions.occasionKey });
     if (!occasion) {

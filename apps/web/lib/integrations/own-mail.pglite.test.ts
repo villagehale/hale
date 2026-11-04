@@ -523,6 +523,43 @@ describe('one occasion in one thread is told once', () => {
     ]);
   });
 
+  it('T4f: a class cancelled and then put back on at the same time is told again; a repeat is not', async () => {
+    const on = (messageId: string) =>
+      classified({ kind: 'new_event', newTime: SATURDAY }, messageId);
+    const off = (messageId: string) =>
+      classified({ kind: 'cancellation', originalTime: SATURDAY, newTime: null }, messageId);
+    const h = harness({ k1: on('k1'), k2: off('k2'), k3: on('k3'), k4: on('k4'), k5: off('k5') });
+    const one = (messageId: string, minute: number) =>
+      sweep(h, [inbound(messageId, 't-swim', minute)]).then(alerts);
+
+    await expect(one('k1', 0)).resolves.toEqual(['sent']);
+    await expect(one('k2', 10)).resolves.toEqual(['sent']);
+    // Back on: the parent's last word from Hale must not stay "cancelled".
+    await expect(one('k3', 20)).resolves.toEqual(['sent']);
+    // The control: the same "on" again is a repeat of what was just told.
+    await expect(one('k4', 30)).resolves.toEqual(['already_sent']);
+    // And off a second time is a change again, not the first cancellation's repeat.
+    await expect(one('k5', 40)).resolves.toEqual(['sent']);
+    expect(h.transport.sent).toHaveLength(4);
+    expect(h.writer.seen).toHaveLength(4);
+  });
+
+  it('T4g: another date told in the same thread does not make a repeat of this one news', async () => {
+    const sunday = '2026-11-15T16:00:00.000Z';
+    const h = harness({
+      k1: classified({ kind: 'new_event', newTime: SATURDAY }, 'k1'),
+      k2: classified({ kind: 'new_event', newTime: sunday }, 'k2'),
+      k3: classified({ kind: 'reminder_only', originalTime: SATURDAY, newTime: null }, 'k3'),
+    });
+    const one = (messageId: string, minute: number) =>
+      sweep(h, [inbound(messageId, 't-swim', minute)]).then(alerts);
+
+    await expect(one('k1', 0)).resolves.toEqual(['sent']);
+    await expect(one('k2', 10)).resolves.toEqual(['sent']);
+    await expect(one('k3', 20)).resolves.toEqual(['already_sent']);
+    expect(h.transport.sent).toHaveLength(2);
+  });
+
   it("T10: a parent's 'not mine' on an alert names the Gmail message that told it", async () => {
     integrationId = await seedIntegration(
       db.database,
@@ -653,6 +690,21 @@ describe('the occasion claim', () => {
       "select to_regclass('email_alert_occasions')::text as name",
     );
     expect(result.rows).toEqual([{ name: 'email_alert_occasions' }]);
+  });
+});
+
+describe('migration 0200', () => {
+  it('T14: applies a second time over itself and leaves the column and its index', async () => {
+    await expect(
+      db.applyMigration('0200_email_alert_occasion_anchors.sql'),
+    ).resolves.toBeUndefined();
+    const result = await db.client.query<{ type: string | null; idx: string | null }>(
+      `select
+         (select data_type from information_schema.columns
+           where table_name = 'email_alert_occasions' and column_name = 'anchor_keys') as type,
+         to_regclass('email_alert_occasions_anchor_keys_idx')::text as idx`,
+    );
+    expect(result.rows).toEqual([{ type: 'ARRAY', idx: 'email_alert_occasions_anchor_keys_idx' }]);
   });
 });
 
