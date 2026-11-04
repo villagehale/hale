@@ -1124,6 +1124,50 @@ describe('a cancellation the parent was told outlives an older receipt read late
     );
     expect(byTitle).toEqual({ 'Swim Level 1': minute(20), 'Swim Level 2': null });
   });
+
+  it('T25h: a receipt newer than the told cancellation and never texted (the backfill) records an open booking', async () => {
+    const h = harness({ c1: off('c1'), r3: receipt('r3') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    // The backfill tells nothing, so the told cancellation stays the thread's last claim:
+    // only the receipt's own newer time keeps the booking open. T25e is the older control.
+    await expect(
+      alertParentForGmailSweep(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId,
+          seeding: false,
+          backfill: true,
+          envelopes: [inbound('r3', 't-swim', 30)],
+          now: NOW,
+        },
+        h.ports,
+      ),
+    ).resolves.toEqual([{ alert: 'backfill_suppressed', booking: 'recorded', going: null }]);
+    expect(h.transport.sent).toHaveLength(1);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+  });
+
+  it('T25i: an older receipt read late refreshes a booking recorded from an email newer than the cancellation, and leaves it open', async () => {
+    const h = harness({ c1: off('c1'), r0: receipt('r0'), r1: receipt('r1') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(sweep(h, [inbound('r0', 't-other', 30)])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+    ]);
+
+    // The told cancellation is newer than this receipt but older than the email the row was
+    // recorded from, so the refresh keeps it open (the closer's rule). T25d is the control
+    // where the row's email is older than the cancellation and the refresh closes it.
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'refreshed', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    await expect(
+      bookingRows().then((rows) => rows.map((row) => row.sourceReceivedAt)),
+    ).resolves.toEqual([minute(30)]);
+  });
 });
 
 describe('the occasion claim', () => {
