@@ -66,6 +66,18 @@ const PHONE_RUN = /\+?\p{Nd}(?:[\s.()\p{Pd}_\u00B7\u2027]*\p{Nd}){6,}/gu;
 
 const YEAR = /^(?:19|20)\d\d$/;
 
+const DECIMAL = /\p{Nd}/u;
+
+/** Unicode encodes every decimal digit in runs of ten, from 0 to 9, so a digit's place in its run is its value. */
+function asciiDigits(text: string): string {
+  return text.replace(/\p{Nd}/gu, (digit) => {
+    const cp = digit.codePointAt(0) as number;
+    let zero = cp;
+    while (DECIMAL.test(String.fromCodePoint(zero - 1))) zero -= 1;
+    return String((cp - zero) % 10);
+  });
+}
+
 function isSeason(chunk: string): boolean {
   const m = /^((?:19|20)\d\d)-(\d{4}|\d{2})$/.exec(chunk);
   if (!m) return false;
@@ -89,16 +101,24 @@ function isDate(chunk: string): boolean {
  * Judged by the run's own structure, never by the event's numbers: a sender controls the
  * title and the start alike. A run is a phone unless it is calendar words — whole dates,
  * a season ("2026-2027", "2026-27"), one lone year — plus at most one short number of up
- * to four digits ("U12", "Level 3", "Ages 10-14"). A leading '+' is always a phone.
+ * to four digits ("U12", "Level 3", "Ages 10-14"), and no other number beside a date
+ * ("20 23.07.2026" dials). A leading '+' is always a phone. Digits of any script read alike.
  */
 function isPhone(run: string): boolean {
   if (run.startsWith('+')) return true;
   let loneYear = false;
+  let date = false;
   let others = 0;
-  for (const chunk of run.replace(/\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
-    const digits = chunk.match(/\p{Nd}/gu)?.length ?? 0;
+  for (const chunk of asciiDigits(run)
+    .replace(/\s*\p{Pd}\s*/gu, '-')
+    .split(/\s+/)) {
+    const digits = chunk.match(/\d/g)?.length ?? 0;
     const bare = chunk.replace(/^[^\d]+|[^\d]+$/g, '');
-    if (digits === 0 || isSeason(bare) || isDate(bare)) continue;
+    if (digits === 0 || isSeason(bare)) continue;
+    if (isDate(bare)) {
+      date = true;
+      continue;
+    }
     if (YEAR.test(bare) && !loneYear) {
       loneYear = true;
       continue;
@@ -106,7 +126,7 @@ function isPhone(run: string): boolean {
     others += 1;
     if (others > 1 || digits > 4) return true;
   }
-  return false;
+  return date && others > 0;
 }
 
 function destinationIn(text: string, stops: StopReading): DestinationShape | null {

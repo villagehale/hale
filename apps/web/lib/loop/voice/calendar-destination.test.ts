@@ -65,6 +65,7 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: "a +1 number in the start's own numbers", destination: '+1 2026 07 23 10 30' },
   { row: 'a number in year groups next to the start', destination: '2027 2026 23' },
   { row: 'a +44 number shaped as a season', destination: '+44 2026-2027' },
+  { row: 'a short number in front of a date', destination: '20 23.07.2026' },
   {
     row: 'a phone in Arabic-Indic digits',
     destination: '\u0665\u0665\u0665\u0660\u0661\u0660\u0664\u0664\u0667\u0667',
@@ -99,6 +100,14 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a wide age range and a year', words: 'Ages 10-14 2026' },
   { row: 'a class year and a season', words: 'Class of 2030 2026-2027' },
   { row: 'a spaced at sign', words: 'Swim @ Riverside' },
+  {
+    row: 'a date in Arabic-Indic digits',
+    words: 'Swim class \u0662\u0663.\u0660\u0667.\u0662\u0660\u0662\u0666',
+  },
+  {
+    row: 'a season in Devanagari digits',
+    words: 'Swim \u0968\u0966\u0968\u096C-\u0968\u0966\u0968\u096D',
+  },
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
 ];
