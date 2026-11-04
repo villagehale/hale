@@ -618,6 +618,47 @@ describe('a 1:1 decision syncs the group', () => {
     expect(later.linqUrls()).toEqual([]);
   });
 
+  it('a participant read that times out (408) keeps the sync queued, and the next sweep sends it', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const timedOut = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 408 });
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', timedOut);
+
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 10 * 60 * 1000),
+        fetch: timedOut as unknown as typeof fetch,
+      }),
+    ).toEqual({ sent: 0, held: 1 });
+    const [waiting] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(waiting?.flushedAt).toBeNull();
+
+    const recovered = wire();
+    const sent = await flushGroupDecisionSyncs(db.database, {
+      now: new Date(NOW.getTime() + 20 * 60 * 1000),
+      fetch: recovered.fetch,
+    });
+    expect(sent.sent).toBe(1);
+    expect(recovered.linqUrls()).toEqual([GROUP_MESSAGES]);
+  });
+
   it('positive control: someone Hale cannot identify at the sweep still closes the sync unsent', async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {

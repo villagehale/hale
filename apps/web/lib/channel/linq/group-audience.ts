@@ -212,11 +212,14 @@ type LiveRead =
   | { ok: false; failure: 'temporary'; status: string; code?: string; httpStatus?: number }
   | { ok: false; failure: 'permanent'; status: string; httpStatus?: number };
 
+/** The transport calls every 4xx but the rate limit permanent; a timed-out read is not. */
+const HTTP_REQUEST_TIMEOUT = 408;
+
 async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
   try {
     const read = await listChatHandles({ chatId });
     if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
-    if (read.status === 'refused' && read.permanent) {
+    if (read.status === 'refused' && read.permanent && read.httpStatus !== HTTP_REQUEST_TIMEOUT) {
       return { ok: false, failure: 'permanent', status: read.status, httpStatus: read.httpStatus };
     }
     if (read.status === 'refused') {

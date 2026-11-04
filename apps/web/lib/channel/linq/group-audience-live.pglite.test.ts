@@ -224,10 +224,10 @@ describe('groupAudienceAllows reads the live participant list', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('positive control: a 5xx or a 429 through the real read stays participants_unverified', async () => {
+  it('positive control: a 5xx, a 429 or a 408 through the real read stays participants_unverified', async () => {
     await seedRoster(await seedFamily(CHAT), PARENTS);
 
-    for (const status of [429, 500, 503]) {
+    for (const status of [408, 429, 500, 503]) {
       const failing = (async () => Response.json({}, { status })) as typeof fetch;
       await expect(
         groupAudienceAllows(db.database, CHAT, 'schedule', realList(failing)),
