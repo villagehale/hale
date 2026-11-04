@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/caregiver/invites';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { storeParentRole } from '~/lib/channel/identity/parent-role';
+import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { decryptString } from '~/lib/crypto/string-cipher';
@@ -25,7 +26,9 @@ import type { RosterParentRole } from './roster-reading';
  * invite closes `accepted`. `extended` has no grant door, so it is never seated here. A
  * phone already verified in another family is refused and named; nothing about this
  * family is written for it. So is someone this family already seated in another role: a
- * reply never changes a role the family gave.
+ * reply never changes a role the family gave. So is a number whose channel was revoked
+ * and not re-opened, before or during the seat (VIL-596): a STOP is the person's no, it
+ * outranks any grant, and nothing is written for them until they opt back in themselves.
  */
 
 export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter' | 'extended';
@@ -36,7 +39,12 @@ export type SeatReading =
   | { role: 'parent'; parentRole: RosterParentRole }
   | { role: CaregiverRole; parentRole: null };
 
-export type SeatRefusal = 'other_family' | 'other_chat' | 'co_parent_seat_taken' | 'role_conflict';
+export type SeatRefusal =
+  | 'other_family'
+  | 'other_chat'
+  | 'co_parent_seat_taken'
+  | 'role_conflict'
+  | 'opted_out';
 
 export type SeatOutcome =
   | { outcome: 'seated'; userId: string; role: SeatRole; groupRole: GroupSeatRole }
@@ -62,6 +70,14 @@ const OPEN_ROSTER: readonly schema.LinqGroupRosterStatus[] = [
   'partial',
   'confirmed',
 ];
+
+/** The live channel the seat read before its transaction was revoked inside it; it rolls back. */
+class SeatChannelRevokedError extends Error {
+  constructor() {
+    super('seat_channel_revoked');
+    this.name = 'SeatChannelRevokedError';
+  }
+}
 
 const GROUP_ROLE: Record<SeatRole, GroupSeatRole> = {
   co_parent: 'co_parent',
@@ -216,6 +232,9 @@ export async function seatConfirmedMember(
   if (existing && existing.familyId !== member.familyId) {
     return refuse(database, member, 'other_family', input.now);
   }
+  if (!existing && (await findRevokedChannelOwner(database, member.phone))) {
+    return refuse(database, member, 'opted_out', input.now);
+  }
   if (existing) {
     const [held] = await database
       .select({ role: schema.familyMembers.role })
@@ -273,6 +292,21 @@ export async function seatConfirmedMember(
     });
     if (held?.inviteId !== grant.inviteId || held.open !== grant.open) {
       throw new SeatGrantChangedError();
+    }
+    if (existing) {
+      // Holds the channel against a STOP until the seat commits; a STOP already in
+      // flight commits first, and the re-check then finds the row revoked.
+      const [live] = await tx
+        .select({ id: schema.parentChannels.id })
+        .from(schema.parentChannels)
+        .where(
+          and(
+            eq(schema.parentChannels.id, existing.channelId),
+            isNull(schema.parentChannels.revokedAt),
+          ),
+        )
+        .for('share');
+      if (!live) throw new SeatChannelRevokedError();
     }
     const externalAuthId = `sms:${member.phoneE164Hash}`;
     await tx
@@ -426,7 +460,15 @@ export async function seatConfirmedMember(
     await settleRosterStatus(tx, member.rosterId, input.now);
     return seatedUserId;
   });
-  const userId = await unlessSeatGrantChanged(seat);
+  let userId: string | null;
+  try {
+    userId = await unlessSeatGrantChanged(seat);
+  } catch (error) {
+    if (error instanceof SeatChannelRevokedError) {
+      return refuse(database, member, 'opted_out', input.now);
+    }
+    throw error;
+  }
   if (!userId) {
     console.info({ outcome: 'grant_changed_during_seat' }, 'linq roster: not seated');
     return { outcome: 'grant_changed_during_seat' };

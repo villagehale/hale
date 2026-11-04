@@ -1,18 +1,25 @@
 import { schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { encryptString } from '~/lib/crypto/string-cipher';
 import {
   INVITE_SILENCE_MS,
   acceptInvite,
   closeInviteOnGroupSeat,
+  declineOpenInviteOnStop,
   loadOpenInviteByPhone,
   recordedSeatGrant,
 } from '~/lib/channel/caregiver/invites';
 import type { AddRole } from '~/lib/channel/caregiver/parse';
 import { acceptCoParentInvite } from '~/lib/channel/coparent/accept';
 import { departCoParent } from '~/lib/channel/coparent/depart';
+import { reenrolOnStart } from '~/lib/channel/intake/channel-state';
+import {
+  resolveSendablePhone,
+  resolveVerifiedChannelByPhone,
+  revokeSmsChannel,
+} from '~/lib/channels/sms-consent-core';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { type ListChatHandles, startGroupRoster } from './roster';
@@ -725,29 +732,65 @@ describe('seatConfirmedMember without a parent grant', () => {
   });
 });
 
+/** The same database, with `before` run just as the seat opens its transaction. */
+function interleaved(before: () => Promise<void>): TestDb['database'] {
+  const target = db.database;
+  return new Proxy(target, {
+    get(object, property) {
+      if (property === 'transaction') {
+        return async (...args: Parameters<typeof target.transaction>) => {
+          await before();
+          return object.transaction(...args);
+        };
+      }
+      const value = Reflect.get(object, property, object);
+      return typeof value === 'function' ? value.bind(object) : value;
+    },
+  });
+}
+
+/** A grandparent who accepted 1:1 and still holds the role: an accepted (not open) grant. */
+async function acceptedGran() {
+  const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+  await recordSeatGrant(db.database, {
+    familyId,
+    parentUserId,
+    phoneE164: GRAN,
+    role: 'grandparent',
+    now: NOW,
+  });
+  const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
+  if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
+  await acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW });
+  await askedRoster([PARENT, GRAN]);
+  const [gran] = await db.database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'grandparent'),
+      ),
+    );
+  if (!gran) throw new Error('accept left no grandparent member');
+  return { familyId, parentUserId, granUserId: gran.userId };
+}
+
+async function claimGran(database: TestDb['database']) {
+  return seatConfirmedMember(database, {
+    rosterMemberId: (await memberFor(GRAN)).id,
+    reading: { role: 'grandparent', parentRole: null },
+    verbatimReply: "I'm grandma",
+    now: NOW,
+  });
+}
+
 /**
  * VIL-582 security P2: the grant is read before the seat's transaction, so the seat
  * re-reads it inside, with the invite row locked. A grant that ended in between rolls
  * the seat back and names it.
  */
 describe('seatConfirmedMember when the grant ends between the read and the seat', () => {
-  /** The same database, with `before` run just as the seat opens its transaction. */
-  function interleaved(before: () => Promise<void>): TestDb['database'] {
-    const target = db.database;
-    return new Proxy(target, {
-      get(object, property) {
-        if (property === 'transaction') {
-          return async (...args: Parameters<typeof target.transaction>) => {
-            await before();
-            return object.transaction(...args);
-          };
-        }
-        const value = Reflect.get(object, property, object);
-        return typeof value === 'function' ? value.bind(object) : value;
-      },
-    });
-  }
-
   async function grantedGuest() {
     const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
     const inviteId = await recordSeatGrant(db.database, {
@@ -847,42 +890,6 @@ describe('seatConfirmedMember when the grant ends between the read and the seat'
     expect(invite?.state).toBe('awaiting_caregiver_reply');
   });
 
-  /** A grandparent who accepted 1:1 and still holds the role: an accepted (not open) grant. */
-  async function acceptedGran() {
-    const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
-    await recordSeatGrant(db.database, {
-      familyId,
-      parentUserId,
-      phoneE164: GRAN,
-      role: 'grandparent',
-      now: NOW,
-    });
-    const invite = await loadOpenInviteByPhone(db.database, GRAN, NOW);
-    if (!invite || invite.role === 'co_parent') throw new Error('no open caregiver invite');
-    await acceptInvite(db.database, { invite, verbatimReply: 'yes', now: NOW });
-    await askedRoster([PARENT, GRAN]);
-    const [gran] = await db.database
-      .select({ userId: schema.familyMembers.userId })
-      .from(schema.familyMembers)
-      .where(
-        and(
-          eq(schema.familyMembers.familyId, familyId),
-          eq(schema.familyMembers.role, 'grandparent'),
-        ),
-      );
-    if (!gran) throw new Error('accept left no grandparent member');
-    return { familyId, granUserId: gran.userId };
-  }
-
-  async function claimGran(database: TestDb['database']) {
-    return seatConfirmedMember(database, {
-      rosterMemberId: (await memberFor(GRAN)).id,
-      reading: { role: 'grandparent', parentRole: null },
-      verbatimReply: "I'm grandma",
-      now: NOW,
-    });
-  }
-
   it("rolls the seat back when the accepted grant's member leaves in between, and does not re-add them", async () => {
     const { granUserId } = await acceptedGran();
     const departing = interleaved(async () => {
@@ -923,6 +930,220 @@ describe('seatConfirmedMember when the grant ends between the read and the seat'
     });
 
     expect(result).toMatchObject({ outcome: 'seated', role: 'co_parent' });
+  });
+});
+
+async function channelsFor(phone: string) {
+  return db.database
+    .select({ revokedAt: schema.parentChannels.revokedAt })
+    .from(schema.parentChannels)
+    .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(phone)));
+}
+
+async function grantedCaregiverConsents(userId: string) {
+  return db.database
+    .select({ id: schema.consentRecords.id })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, userId),
+        eq(schema.consentRecords.consentType, 'caregiver_scoped_messages'),
+        eq(schema.consentRecords.granted, true),
+      ),
+    );
+}
+
+async function inviteState(familyId: string, phone: string) {
+  const [invite] = await db.database
+    .select({ state: schema.caregiverInvites.state })
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.familyId, familyId),
+        eq(schema.caregiverInvites.phoneE164Hash, phoneBlindIndex(phone)),
+      ),
+    );
+  return invite?.state;
+}
+
+/**
+ * VIL-596: a STOP is the person's no, and it outranks every household grant. A number
+ * whose channel was revoked and never re-opened is refused `opted_out` by the seat, with
+ * nothing written into the family, until the person opts back in themselves. And the seat
+ * holds the rows its grant rests on, so a removal or a STOP cannot commit underneath it.
+ */
+describe('seatConfirmedMember for a number that texted STOP', () => {
+  /** The two writers the 1:1 STOP runs for an accepted caregiver. */
+  async function granTextsStop(familyId: string, granUserId: string) {
+    expect(await declineOpenInviteOnStop(db.database, GRAN, NOW)).toBe(false);
+    expect(
+      await revokeSmsChannel(db.database, { userId: granUserId, familyId }, { now: NOW }),
+    ).toEqual({ status: 'revoked' });
+  }
+
+  it('refuses an accepted caregiver who texted STOP 1:1, and re-opens no channel for them', async () => {
+    const { familyId, parentUserId, granUserId } = await acceptedGran();
+    expect(await resolveVerifiedChannelByPhone(db.database, GRAN)).toMatchObject({
+      userId: granUserId,
+      familyId,
+    });
+    const grant = {
+      familyId,
+      phoneE164Hash: phoneBlindIndex(GRAN),
+      role: 'grandparent' as const,
+      now: NOW,
+    };
+    expect(await recordedSeatGrant(db.database, grant)).toMatchObject({
+      grantedByUserId: parentUserId,
+      open: false,
+    });
+
+    await granTextsStop(familyId, granUserId);
+    expect(await recordedSeatGrant(db.database, grant)).toMatchObject({
+      grantedByUserId: parentUserId,
+      open: false,
+    });
+    expect(await resolveVerifiedChannelByPhone(db.database, GRAN)).toBeNull();
+
+    expect(await claimGran(db.database)).toEqual({ outcome: 'seat_refused', reason: 'opted_out' });
+    const channels = await channelsFor(GRAN);
+    expect(channels).toHaveLength(1);
+    expect(channels[0]?.revokedAt).not.toBeNull();
+    expect(await resolveVerifiedChannelByPhone(db.database, GRAN)).toBeNull();
+    expect(await resolveSendablePhone(db.database, granUserId)).toBeNull();
+    expect(await grantedCaregiverConsents(granUserId)).toHaveLength(1);
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect((await memberFor(GRAN)).status).toBe('refused');
+    const audits = await verbs(familyId);
+    expect(audits).toContainEqual({
+      actionTaken: 'linq_group_member_refused',
+      after: { reason: 'opted_out', via: 'own_reply' },
+    });
+    expect(audits.map((row) => row.actionTaken)).not.toContain('linq_group_member_seated');
+    expect(await inviteState(familyId, GRAN)).toBe('accepted');
+  });
+
+  it.each([
+    ['this family', false],
+    ['another family', true],
+  ])(
+    'refuses a number whose channel was revoked in %s, though a parent granted it again',
+    async (_, elsewhere) => {
+      const { familyId, userId: parentUserId } = await seedHousehold(PARENT, 'Parent');
+      const stoppedIn = elsewhere
+        ? (await seedHousehold(OTHER_PARENT, 'Other parent')).familyId
+        : familyId;
+      const [guest] = await db.database
+        .insert(schema.users)
+        .values({ externalAuthId: `sms:${phoneBlindIndex(GUEST)}`, name: null })
+        .returning({ id: schema.users.id });
+      await db.database.insert(schema.parentChannels).values({
+        userId: guest?.id as string,
+        familyId: stoppedIn,
+        kind: 'sms',
+        phoneE164Encrypted: encryptString(GUEST),
+        phoneE164Hash: phoneBlindIndex(GUEST),
+        verifiedAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000),
+        revokedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+        consentRecordId: null,
+      });
+      await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId,
+        phoneE164: GUEST,
+        role: 'co_parent',
+        now: NOW,
+      });
+      await askedRoster([PARENT, GUEST]);
+      expect(
+        await recordedSeatGrant(db.database, {
+          familyId,
+          phoneE164Hash: phoneBlindIndex(GUEST),
+          role: 'co_parent',
+          now: NOW,
+        }),
+      ).toMatchObject({ open: true });
+
+      const result = await seatConfirmedMember(db.database, {
+        rosterMemberId: (await memberFor(GUEST)).id,
+        reading: { role: 'parent', parentRole: 'mother' },
+        verbatimReply: "I'm Mila's mom",
+        now: NOW,
+      });
+
+      expect(result).toEqual({ outcome: 'seat_refused', reason: 'opted_out' });
+      const channels = await channelsFor(GUEST);
+      expect(channels).toHaveLength(1);
+      expect(channels[0]?.revokedAt).not.toBeNull();
+      expect(
+        await db.database
+          .select({ role: schema.familyMembers.role })
+          .from(schema.familyMembers)
+          .where(eq(schema.familyMembers.familyId, familyId)),
+      ).toEqual([{ role: 'primary_parent' }]);
+      expect(
+        await db.database
+          .select()
+          .from(schema.consentRecords)
+          .where(eq(schema.consentRecords.consentScope, 'linq_group_role_reply')),
+      ).toEqual([]);
+      expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+      expect(await inviteState(familyId, GUEST)).toBe('awaiting_caregiver_reply');
+      expect(await verbs(familyId)).toContainEqual({
+        actionTaken: 'linq_group_member_refused',
+        after: { reason: 'opted_out', via: 'own_reply' },
+      });
+    },
+  );
+
+  it('seats the same caregiver once they texted START themselves, on the channel START opened', async () => {
+    const { familyId, granUserId } = await acceptedGran();
+    await granTextsStop(familyId, granUserId);
+    await reenrolOnStart(
+      db.database,
+      { userId: granUserId, familyId, phoneE164: GRAN, verbatimReply: 'START' },
+      NOW,
+    );
+
+    expect(await claimGran(db.database)).toMatchObject({
+      outcome: 'seated',
+      role: 'grandparent',
+      userId: granUserId,
+    });
+    expect(await channelsFor(GRAN)).toHaveLength(2);
+  });
+
+  it('honours a STOP that lands after the pre-check, and writes no consent after it', async () => {
+    const { familyId, granUserId } = await acceptedGran();
+    const stopping = interleaved(async () => {
+      expect(
+        await revokeSmsChannel(db.database, { userId: granUserId, familyId }, { now: NOW }),
+      ).toEqual({ status: 'revoked' });
+    });
+
+    expect(await claimGran(stopping)).toEqual({ outcome: 'seat_refused', reason: 'opted_out' });
+    const channels = await channelsFor(GRAN);
+    expect(channels).toHaveLength(1);
+    expect(channels[0]?.revokedAt).not.toBeNull();
+    expect(await grantedCaregiverConsents(granUserId)).toHaveLength(1);
+    const [newest] = await db.database
+      .select({
+        consentType: schema.consentRecords.consentType,
+        granted: schema.consentRecords.granted,
+      })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.userId, granUserId))
+      .orderBy(desc(schema.consentRecords.grantedAt))
+      .limit(1);
+    expect(newest).toEqual({ consentType: 'sms_service_messages', granted: false });
+    expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
+    expect((await memberFor(GRAN)).status).toBe('refused');
+    const audits = await verbs(familyId);
+    expect(audits).toContainEqual({
+      actionTaken: 'linq_group_member_refused',
+      after: { reason: 'opted_out', via: 'own_reply' },
+    });
+    expect(audits.map((row) => row.actionTaken)).not.toContain('linq_group_member_seated');
   });
 });
 
@@ -980,6 +1201,7 @@ describe('seatConfirmedMember with a grant that no longer stands', () => {
       now: NOW,
     });
     expect(await activeChannels(DAD)).toEqual([]);
+    expect(await grantFor(familyId, DAD, 'co_parent', LATER)).toBeNull();
     await askedRoster([PARENT, DAD]);
 
     const result = await seatConfirmedMember(db.database, {
@@ -989,7 +1211,9 @@ describe('seatConfirmedMember with a grant that no longer stands', () => {
       now: LATER,
     });
 
-    expect(result).toEqual({ outcome: 'seat_needs_parent_grant' });
+    // Departure revoked his channel and nothing re-opened it, so the seat reads him as
+    // opted out before it reads any grant (VIL-596).
+    expect(result).toEqual({ outcome: 'seat_refused', reason: 'opted_out' });
     expect(await activeChannels(DAD)).toEqual([]);
     expect(
       await db.database
