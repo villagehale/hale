@@ -16,6 +16,7 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -57,6 +58,13 @@ const NOW = new Date('2026-10-28T18:00:00.000Z');
 const THURSDAY_FOUR = new Date('2026-10-29T20:00:00.000Z');
 
 let db: TestDb;
+/** Who Linq lists in CHAT now: the floor's live read. */
+let inChat: string[] = [];
+const liveList: ListChatHandles = async () => ({
+  status: 'ok',
+  handles: [...inChat],
+  isGroup: true,
+});
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -73,6 +81,7 @@ beforeEach(() => {
   vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_TURN_AI_ENABLED', 'true');
   vi.stubEnv('LINQ_GROUP_REMINDERS_ENABLED', 'true');
+  inChat = [PRIYA, DAN, RUTH];
 });
 
 afterEach(async () => {
@@ -251,6 +260,7 @@ function turnPorts(read: GroupReminderReading | null, options: { voiceFails?: bo
     now: NOW,
     reader,
     voice,
+    listChatHandles: liveList,
     send: async (input) => {
       sends.push(input);
       return { providerMessageId: `out-${sends.length}` };
@@ -290,6 +300,7 @@ function tickPorts(now: Date, options: { voiceFails?: boolean } = {}) {
     ports: {
       now,
       voice,
+      listChatHandles: liveList,
       send: async (input: { chatId: string; text: string; replyTo?: string }) => {
         sends.push(input);
         return { providerMessageId: `out-tick-${sends.length}` };
@@ -325,6 +336,7 @@ async function someoneJoins() {
     phoneE164Hash: phoneBlindIndex(NEWCOMER),
     status: 'asked',
   });
+  inChat.push(NEWCOMER);
 }
 
 /** A voice that adds someone to the chat while it writes, then writes as usual. */
@@ -1628,6 +1640,7 @@ describe('the Linq door', () => {
       groupTurnReader: addressed,
       groupReminderReader: fakeGroupReminderReader(read),
       groupReminderVoice: fakeGroupReminderVoice(),
+      listChatHandles: liveList,
       sendGroupText: async (input: { chatId: string; text: string; replyTo?: string }) => {
         sends.push(input);
         return { providerMessageId: `out-${sends.length}` };

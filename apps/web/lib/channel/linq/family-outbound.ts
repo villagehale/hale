@@ -21,7 +21,8 @@ import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
 import { namesTeen } from './kid-event';
-import { LinqSendError } from './transport';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * Where a Hale-initiated message for this family goes.
@@ -32,9 +33,8 @@ import { LinqSendError } from './transport';
  * A parent who texts Hale 1:1 is answered in that thread; this resolver is not
  * the reply door.
  *
- * With `LINQ_GROUP_ONBOARDING_V2_ENABLED`, a claimed chat is the target only for
- * a `contentClass` everyone in it may see (group-audience.ts); otherwise the
- * caller's 1:1 door, with the hold named in `reason`.
+ * A claimed chat is the target only for a `contentClass` everyone in it may see
+ * (group-audience.ts); otherwise the caller's 1:1 door, with the hold named in `reason`.
  */
 export type FamilyOutboundTarget =
   | { channel: 'group'; chatId: string; familyId: string }
@@ -68,7 +68,7 @@ export type GroupBubbleKind =
 export async function familyOutboundTarget(
   database: Database,
   familyId: string,
-  options: { contentClass?: ContentClass } = {},
+  options: { contentClass?: ContentClass; listChatHandles?: ListChatHandles } = {},
 ): Promise<FamilyOutboundTarget> {
   if (!linqGroupCoparentEnabled()) return { channel: 'legacy' };
   // A unit double with no query surface has no group to claim. Production
@@ -85,6 +85,7 @@ export async function familyOutboundTarget(
     database,
     chatId,
     options.contentClass ?? 'unclassified',
+    options.listChatHandles ?? listLinqParticipantHandles,
   );
   if (!audience.allowed) return { channel: 'legacy', reason: audience.reason };
   return { channel: 'group', chatId, familyId };
@@ -679,6 +680,7 @@ export async function sendClaimedGroupLine(
     dedupeKey: string;
     templateKey: string;
     contentClass: ContentClass;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<
   | 'sent'
@@ -697,7 +699,11 @@ export async function sendClaimedGroupLine(
   if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) {
     return 'not_the_group';
   }
-  if (!(await groupAudienceAllows(database, input.chatId, input.contentClass)).allowed) {
+  const listChatHandles = input.listChatHandles ?? listLinqParticipantHandles;
+  if (
+    !(await groupAudienceAllows(database, input.chatId, input.contentClass, listChatHandles))
+      .allowed
+  ) {
     return 'group_audience_refused';
   }
   const [claimed] = await database

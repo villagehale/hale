@@ -3,7 +3,9 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { primaryParentId } from '~/lib/channel/linq/roster-ask';
+import { listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { threadIfParent } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -72,6 +74,7 @@ export interface GroupReminderTickPorts {
   send?: GroupLineSend;
   /** Hale's 1:1 line, for a customer's own reminder. */
   oneToOne: ChannelTransport;
+  listChatHandles?: ListChatHandles;
 }
 
 export type GroupReminderTickSummary =
@@ -247,7 +250,14 @@ async function fireOne(
   const groupHeld = await familyHoldsChat(database, row.familyId, row.chatId);
   const audienceAllowed =
     row.delivery === 'group'
-      ? (await groupAudienceAllows(database, row.chatId, 'schedule')).allowed
+      ? (
+          await groupAudienceAllows(
+            database,
+            row.chatId,
+            'schedule',
+            ports.listChatHandles ?? listLinqParticipantHandles,
+          )
+        ).allowed
       : true;
   const askerCustomer =
     row.delivery === 'direct'
@@ -324,6 +334,7 @@ async function fireOne(
     dedupeKey: sendKey,
     now,
     send: ports.send,
+    listChatHandles: ports.listChatHandles,
   });
   return settle(database, row, sendKey, posted, now, async () => {
     const conversationId = await resolveOrCreateNoteConversation(

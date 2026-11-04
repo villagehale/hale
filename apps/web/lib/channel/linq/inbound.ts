@@ -128,7 +128,7 @@ import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './ros
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
-import type { LinqEffectResult, LinqTapback } from './transport';
+import { type LinqEffectResult, type LinqTapback, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.
@@ -842,7 +842,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           sentAt: message.receivedAt,
           now: deps.now?.() ?? new Date(),
         },
-        { reader: deps.groupPickupClaimReader },
+        { reader: deps.groupPickupClaimReader, listChatHandles: deps.listChatHandles },
       );
       if (claim !== 'flag_off') {
         deps.log.info(
@@ -876,6 +876,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           send: deps.sendGroupText,
           reader: deps.carpoolReader,
           voice: deps.carpoolVoice,
+          listChatHandles: deps.listChatHandles,
         });
         if (carpool.handled && carpool.outcome === 'carpool_asked') {
           deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool ask');
@@ -934,7 +935,12 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       return json({ outcome });
     }
     if (turn.route === 'coach') {
-      const audience = await groupAudienceAllows(deps.database, message.chatId, GROUP_COACH_LINE);
+      const audience = await groupAudienceAllows(
+        deps.database,
+        message.chatId,
+        GROUP_COACH_LINE,
+        deps.listChatHandles ?? listLinqParticipantHandles,
+      );
       if (!audience.allowed) {
         if (mapped.status === 'same_family') {
           await deps.database.insert(schema.auditLog).values({
@@ -1022,6 +1028,7 @@ async function groupReminderTurn(
           : sharedGroupReminderVoice(),
       send: deps.sendGroupText,
       recordInbound: (inbound, owner) => recordHandledInbound(deps, inbound, owner),
+      listChatHandles: deps.listChatHandles,
     });
     return turn.handled ? turn.outcome : null;
   } catch (err) {
@@ -1141,6 +1148,7 @@ async function claimGroupFromTrigger(
     templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
     now,
     send: deps.sendGroupText,
+    lineClass: 'reply',
   });
   const outcome = accepted ? 'group_claimed' : 'group_claim_refused';
   deps.log.info({ outcome, claim: claim.status, notice }, 'linq inbound: group claim');
@@ -1177,6 +1185,7 @@ async function answerGroupTriggerInOneToOne(
     templateKey: LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
     now: deps.now?.() ?? new Date(),
     send: deps.sendGroupText,
+    lineClass: 'reply',
   });
   return { count: 'intake', body: { outcome: 'group_trigger_in_1to1', notice } };
 }
@@ -1710,6 +1719,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
           now: deps.now?.() ?? new Date(),
           send: deps.sendGroupText,
           voice: deps.carpoolVoice,
+          listChatHandles: deps.listChatHandles,
         });
         if (carpool.handled) {
           deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool tapback');
