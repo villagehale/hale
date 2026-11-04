@@ -43,5 +43,12 @@ export const GET = cronRoute('connector-sync', async (req: Request) => {
   const origin = process.env.APP_URL ?? new URL(req.url).origin;
   after(() => kickDrain(origin));
 
-  return NextResponse.json(legs, { status: legs.ok ? 200 : 500 });
+  // cronRoute stamps the heartbeat whenever the handler RETURNS, even a 500. A leg that
+  // throws every run must read stale on /api/health/crons and page, so the run throws
+  // once here, after every leg has run; the outcomes stay in the log.
+  if (!legs.ok) {
+    console.error(legs, 'connector-sync: a leg failed, heartbeat withheld');
+    throw new Error('connector-sync: a leg failed');
+  }
+  return NextResponse.json(legs, { status: 200 });
 });

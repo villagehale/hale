@@ -16,10 +16,15 @@ import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 const holder = vi.hoisted(() => ({
   database: null as unknown,
   atSync: null as null | { stalePending: string | null; revokePosts: number },
+  stamped: [] as string[],
 }));
 
 vi.mock('~/lib/db', () => ({ db: () => holder.database }));
-vi.mock('~/lib/cron/heartbeat', () => ({ stampCronHeartbeat: async () => {} }));
+vi.mock('~/lib/cron/heartbeat', () => ({
+  stampCronHeartbeat: async (_db: unknown, name: string) => {
+    holder.stamped.push(name);
+  },
+}));
 vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: async () => {} }));
 vi.mock('~/lib/queue', () => ({ getQueue: async () => ({}) }));
 vi.mock('next/server', async (importActual) => ({
@@ -122,6 +127,7 @@ beforeEach(async () => {
     return new Response('{}', { status: 200 });
   });
   holder.atSync = null;
+  holder.stamped = [];
   runConnectorSync.mockReset().mockImplementation(async () => {
     holder.atSync = {
       stalePending: await pendingFor(staleUserId),
@@ -157,6 +163,28 @@ describe('GET /api/cron/connector-sync: the revoke legs are wired, and run first
     expect(await pendingFor(youngUserId)).toBeNull();
     // Both legs had finished when the poll sweep started.
     expect(holder.atSync).toEqual({ stalePending: null, revokePosts: 1 });
+    expect(renewDueGooglePushWatches).toHaveBeenCalledTimes(1);
+    // Positive control for the dead-man below: every leg ok, so the run is stamped.
+    expect(holder.stamped).toEqual(['connector-sync']);
+  });
+
+  it('a poll sync that throws every run is not stamped, so the dead-man pages; the revoke legs still ran', async () => {
+    runConnectorSync.mockReset().mockRejectedValue(new Error('poll sweep broke'));
+    const { GET } = await import('./route');
+
+    await expect(
+      GET(
+        new Request('https://hale.test/api/cron/connector-sync', {
+          headers: { authorization: `Bearer ${SECRET}` },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(holder.stamped).toEqual([]);
+    expect(revokePosts).toEqual([YOUNG.refreshToken]);
+    expect(await pendingFor(staleUserId)).toBeNull();
+    expect(await pendingFor(youngUserId)).toBeNull();
+    // The leg after the broken one ran too.
     expect(renewDueGooglePushWatches).toHaveBeenCalledTimes(1);
   });
 
