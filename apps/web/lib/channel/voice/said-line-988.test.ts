@@ -319,7 +319,12 @@ describe('the reply is mostly in the script of its language', () => {
     ],
     ['an English reply with one Hindi word', 'mental', 'Please call or text 988 now. मदद', 'hi'],
     ['a Cyrillic reply with one Arabic word', 'emergency', 'Позвоните 911 الآن', 'ar'],
-    ['English split by zero-width spaces', 'mental', 'C​all or text 988 n​ow ​الآن', 'ar'],
+    [
+      'English split by zero-width spaces',
+      'mental',
+      'C\u200ball or text 988 n\u200bow \u200bالآن',
+      'ar',
+    ],
     [
       'full-width English with one Han character',
       'mental',
@@ -347,11 +352,48 @@ describe('the reply is mostly in the script of its language', () => {
     [
       'Arabic naming the Canada line split by zero-width spaces',
       'mental',
-      'اتصل أو أرسل إلى 988، 9-8-8 Sui​cide Cri​sis Help​line',
+      'اتصل أو أرسل إلى 988، 9-8-8 Sui\u200bcide Cri\u200bsis Help\u200bline',
       'ar',
+    ],
+    // No space between the name and the reply's own script.
+    [
+      'Chinese running into the US line name',
+      'mental',
+      '请拨打988 Suicide & Crisis Lifeline求助。',
+      'zh',
+    ],
+    [
+      'Japanese running into the US line name',
+      'mental',
+      '988 Suicide & Crisis Lifelineにでんわしてください',
+      'ja',
+    ],
+    [
+      'Arabic running into the US line name',
+      'mental',
+      'اتصل بـ988 Suicide & Crisis Lifelineالآن',
+      'ar',
+    ],
+    [
+      'Hindi running into the Canada line name',
+      'mental',
+      'कृपया 988 Suicide Crisis Helplineपर कॉल करें',
+      'hi',
     ],
   ] as const)('%s passes', (_name, kind, text, language) => {
     expect(crisisReplyViolation(kind, text, language)).toBeNull();
+  });
+
+  it('a Latin word that only contains the line name still counts', () => {
+    // 'Helplines' is not the name, so its 24 Latin letters outnumber 3 Han.
+    expect(crisisReplyViolation('mental', '请拨打988 Suicide Crisis Helplines', 'zh')).toBe(
+      'wrong_script',
+    );
+    expect(crisisReplyViolation('mental', '请拨打988 XSuicide Crisis Helpline', 'zh')).toBe(
+      'wrong_script',
+    );
+    // Positive control: the name itself is left out.
+    expect(crisisReplyViolation('mental', '请拨打988 Suicide Crisis Helpline', 'zh')).toBeNull();
   });
 
   it('a reply of only the line name and its number is not in any language', () => {
