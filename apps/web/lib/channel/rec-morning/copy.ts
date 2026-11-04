@@ -8,7 +8,7 @@ import {
   YMCA_PORTAL,
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
-import { matchRecMorning, postalMentioned } from './match';
+import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './match';
 
 /**
  * VIL-308 rec-morning FACTS. VIL-508 (absolute zero fixed copy): nothing in this file is
@@ -47,13 +47,11 @@ const JACK_OF_SPORTS = `Jack of Sports is a swim backup if the city or YMCA lane
  * The topic a parent asked about, answered as of `now`. A city topic reads the
  * dataset; everything else is a reviewed constant that no calendar can age.
  */
-type RecMorningLine = (now: Date, where?: RecMorningWhere | null) => string | null;
+type RecMorningLine = (now: Date, where: RecMorningWhere) => string | null;
 
 export const REC_MORNING_FACTS: Record<RecMorningTopic, RecMorningLine> = {
-  toronto_swim: (now, where) =>
-    cityRecLine('toronto', now, 'swim', undefined, where?.postal ?? null),
-  toronto_rec: (now, where) =>
-    cityRecLine('toronto', now, 'rec_program', undefined, where?.postal ?? null),
+  toronto_swim: (now, where) => cityRecLine('toronto', now, 'swim', undefined, where.postal),
+  toronto_rec: (now, where) => cityRecLine('toronto', now, 'rec_program', undefined, where.postal),
   toronto_waitlist: () => TORONTO_FOLLOW,
   toronto_wishlist: () => TORONTO_FOLLOW,
   toronto_efun: () => EFUN_GONE,
@@ -86,29 +84,29 @@ export const REC_MORNING_FACTS: Record<RecMorningTopic, RecMorningLine> = {
 
 export function recMorningBody(
   topic: RecMorningTopic,
-  now: Date = new Date(),
-  where?: RecMorningWhere | null,
+  now: Date,
+  where: RecMorningWhere,
 ): string | null {
   return REC_MORNING_FACTS[topic](now, where);
 }
 
 /**
- * The C1 / post-intake body. Null when this text is not a rec-morning question, and
- * null when it names a town the dataset holds no window for — Hale says nothing
- * rather than describe a season it has no record of.
+ * The C1 / post-intake body. Null when the family has no GTA place on file (VIL-591),
+ * when this text is not a rec-morning question, and when it names a town the dataset
+ * holds no window for — Hale says nothing rather than describe a season it has no
+ * record of.
  */
 export function recMorningReply(
   body: string,
-  now: Date = new Date(),
-  where?: RecMorningWhere | null,
+  now: Date,
+  where: RecMorningWhere | null,
 ): string | null {
+  if (where === null) return null;
   const topic = matchRecMorning(body, where);
   if (topic === null) return null;
-  // A postal in the ask is the family's district even when nothing is on file yet.
+  // A postal in the ask is the family's district when none is on file.
   // cityRecLine already ignores one that belongs to a different town.
-  const postal = where?.postal ?? postalMentioned(body);
-  const asked = postal === (where?.postal ?? null) ? (where ?? null) : { ...where, postal };
-  return recMorningBody(topic, now, asked);
+  return recMorningBody(topic, now, { ...where, postal: where.postal ?? postalMentioned(body) });
 }
 
 export function recMorningReturnLine(pendingAsk: string): string {
@@ -128,10 +126,11 @@ export function recMorningIntakeReply(input: {
   postal?: string | null;
   city?: string | null;
 }): string | null {
-  const sms = recMorningReply(input.parentWords, input.now ?? new Date(), {
-    postal: input.postal,
-    city: input.city,
-  });
+  const sms = recMorningReply(
+    input.parentWords,
+    input.now ?? new Date(),
+    resolveRecMorningWhere({ city: input.city ?? null, postal: input.postal ?? null }),
+  );
   if (sms === null) return null;
   const joined = [sms, recMorningReturnLine(input.pendingAsk)]
     .filter((part) => part.length > 0)
@@ -149,13 +148,14 @@ function verbatimFrom(facts: string): string[] {
 
 /**
  * VIL-508: the parent's rec-morning text, written by the model from the topic's facts.
- * Null when this is not a rec-morning question, when the dataset holds no window, or
- * when the model wrote nothing usable — the caller sends nothing from this lane.
+ * Null when the family has no GTA place, when this is not a rec-morning question, when
+ * the dataset holds no window, or when the model wrote nothing usable — the caller sends
+ * nothing from this lane.
  */
 export async function writeRecMorningReply(
   body: string,
-  now: Date = new Date(),
-  where?: RecMorningWhere | null,
+  now: Date,
+  where: RecMorningWhere | null,
   language: ReplyLanguage | null = null,
   write: typeof speak = speak,
 ): Promise<string | null> {
@@ -193,7 +193,7 @@ export async function writeRecMorningIntakeReply(
   const text = await writeRecMorningReply(
     input.parentWords,
     input.now ?? new Date(),
-    { postal: input.postal, city: input.city },
+    resolveRecMorningWhere({ city: input.city ?? null, postal: input.postal ?? null }),
     input.language ?? null,
     write,
   );
