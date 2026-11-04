@@ -372,8 +372,9 @@ export async function runDeletionSweep(
     try {
       settled = await endGoogleForFamilyErasure(database, familyId);
     } catch (err) {
+      // The error class only: the family is being erased, and the sweep counts it.
       console.error(
-        { familyId, error: err instanceof Error ? err.name : 'unknown' },
+        { error: err instanceof Error ? err.name : 'unknown' },
         'deletion sweep: google end failed',
       );
     }

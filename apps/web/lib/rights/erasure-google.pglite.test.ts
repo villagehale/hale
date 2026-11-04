@@ -213,6 +213,27 @@ describe('the erasure promise wins after a bounded wait for Google', () => {
     }
   });
 
+  it('the google-end-failed log names the error only, never the family being erased', async () => {
+    const failing = await household('Failing');
+    await connect(failing.familyId, failing.parentUserId, 'gcal', '1//failing-cal');
+    await scheduleAt(failing.familyId, new Date(NOW.getTime() - 6 * DAY_MS));
+    const drop = await failErasureEndFor(failing.familyId);
+    try {
+      const errors = vi.mocked(console.error);
+      await runDeletionSweep(db.database, NOW, async () => {}, recordingPager().page);
+
+      const lines = errors.mock.calls.filter(
+        ([, message]) => message === 'deletion sweep: google end failed',
+      );
+      // Positive control: the end did fail, and the line says what kind of error.
+      expect(lines).toHaveLength(1);
+      expect(lines[0]?.[0]).toEqual({ error: expect.stringMatching(/\w+/) });
+      expect(JSON.stringify(lines[0])).not.toContain(failing.familyId);
+    } finally {
+      await drop();
+    }
+  });
+
   it('a revoke Google still has not answered past the wait: erased, its token with it, named and paged', async () => {
     const erased = await household('Erased');
     await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
@@ -467,7 +488,53 @@ describe('erasing one household never revokes a Google account another household
 });
 
 describe('a live Google row with no owner', () => {
-  it('is ended locally and named, never skipped', async () => {
+  async function ownerlessRow(familyId: string, refreshToken: string, googleAccountKey?: string) {
+    await db.database.insert(schema.integrations).values({
+      familyId,
+      userId: null,
+      provider: 'gcal',
+      status: 'active',
+      oauthTokensEncrypted: encryptTokens({ accessToken: `ya29.${refreshToken}`, refreshToken }),
+      ...(googleAccountKey ? { googleAccountKey } : {}),
+    });
+  }
+
+  it('whose Google account is known and used nowhere else is revoked at Google', async () => {
+    const erased = await household('Erased');
+    await ownerlessRow(erased.familyId, '1//unowned-known', 'account-known');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual(['1//unowned-known']);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'revoked' }),
+    ]);
+  });
+
+  it('whose Google account is live in another household ends locally only', async () => {
+    const erased = await household('Erased');
+    const other = await seedFamily(db.database, 'Other');
+    await ownerlessRow(erased.familyId, '1//unowned-shared', 'account-shared');
+    await connect(other.familyId, other.parentUserId, 'gcal', '1//other', 'account-shared');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual([]);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'grant_kept_other_household' }),
+    ]);
+    const [there] = await db.database
+      .select({ status: schema.integrations.status, enc: schema.integrations.oauthTokensEncrypted })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.familyId, other.familyId));
+    expect(there).toMatchObject({ status: 'active', enc: expect.any(String) });
+  });
+
+  it('with no account key either is ended locally and named, never skipped', async () => {
     const erased = await household('Erased');
     await db.database.insert(schema.integrations).values({
       familyId: erased.familyId,

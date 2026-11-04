@@ -5,10 +5,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type RunConnectorSyncDeps, runConnectorSync } from '~/lib/cron/connector-sync';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  GOOGLE_REVOKE_PENDING_RETENTION_MS,
   type GoogleDisconnectPorts,
   type GoogleRevokeResult,
   disconnectGoogle,
   endGoogleForFamilyErasure,
+  expireStaleGoogleRevocations,
   retryPendingGoogleRevocations,
   settleSupersededGoogleRevoke,
 } from './google-disconnect';
@@ -175,6 +177,18 @@ async function rowOf(familyId: string) {
   return row;
 }
 
+async function coParentIn(familyId: string) {
+  const [co] = await db.database
+    .insert(schema.users)
+    .values({ email: `co-${randomUUID()}@example.test`, name: 'Co Parent' })
+    .returning({ id: schema.users.id });
+  if (!co) throw new Error('co-parent insert returned no row');
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: co.id, role: 'co_parent' });
+  return co.id;
+}
+
 describe('a calendar sync keeps the Google account key', () => {
   it('erasure after a sync: the same account live in another household (another Hale user) is never revoked', async () => {
     const erased = await household('Erased');
@@ -224,7 +238,7 @@ describe('a calendar sync keeps the Google account key', () => {
       { familyId: other.familyId, userId: other.userId, via: 'settings', named: 'gcal' },
       scriptedPorts(OK).ports,
     );
-    expect(await rowOf(other.familyId)).toMatchObject({ enc: null, pending: null, key: ACCOUNT });
+    expect(await rowOf(other.familyId)).toMatchObject({ enc: null, pending: null, key: null });
 
     const { ports, revoked } = scriptedPorts(OK);
     const settled = await endGoogleForFamilyErasure(db.database, erased.familyId, ports);
@@ -447,18 +461,6 @@ describe('a row whose key is unknown falls back to the Hale user, for both decis
 });
 
 describe('the own-link check reads the stored account key', () => {
-  async function coParentIn(familyId: string) {
-    const [co] = await db.database
-      .insert(schema.users)
-      .values({ email: `co-${randomUUID()}@example.test`, name: 'Co Parent' })
-      .returning({ id: schema.users.id });
-    if (!co) throw new Error('co-parent insert returned no row');
-    await db.database
-      .insert(schema.familyMembers)
-      .values({ familyId, userId: co.id, role: 'co_parent' });
-    return co.id;
-  }
-
   it("the co-parent's row in the same family under the same key: held", async () => {
     const home = await household('Home');
     const coParent = await coParentIn(home.familyId);
@@ -486,5 +488,117 @@ describe('the own-link check reads the stored account key', () => {
         accountKey: ACCOUNT,
       }),
     ).toBe(false);
+  });
+});
+
+describe('an ended connection keeps no Google account key, and blocks nobody', () => {
+  async function keyOf(familyId: string, userId: string) {
+    const [row] = await db.database
+      .select({
+        key: schema.integrations.googleAccountKey,
+        pending: schema.integrations.googleRevokePendingEncrypted,
+      })
+      .from(schema.integrations)
+      .where(
+        and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.userId, userId)),
+      );
+    if (!row) throw new Error('no integrations row');
+    return row;
+  }
+
+  /** The co-parent holds ACCOUNT; may the parent link it? */
+  async function parentBlocked(home: { familyId: string; userId: string }) {
+    return otherParentHoldsGoogleAccount(db.database, {
+      familyId: home.familyId,
+      userId: home.userId,
+      accountKey: ACCOUNT,
+    });
+  }
+
+  async function coParentDisconnects(familyId: string, userId: string, answer = OK) {
+    return disconnectGoogle(
+      db.database,
+      { familyId, userId, via: 'settings', named: 'gcal' },
+      scriptedPorts(answer).ports,
+    );
+  }
+
+  it('the co-parent disconnects and Google confirms: the parent can link that account', async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    await connect(home.familyId, coParent, '1//co', ACCOUNT);
+    // Positive control: the co-parent's LIVE row on the account blocks the parent.
+    expect(await parentBlocked(home)).toBe(true);
+
+    await coParentDisconnects(home.familyId, coParent);
+
+    expect(await keyOf(home.familyId, coParent)).toEqual({ key: null, pending: null });
+    expect(await parentBlocked(home)).toBe(false);
+  });
+
+  it('while the revoke is still pending the key stays; the retry that ends it drops the key', async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    await connect(home.familyId, coParent, '1//co', ACCOUNT);
+
+    await coParentDisconnects(home.familyId, coParent, DOWN);
+
+    // The cancel and erasure decisions still need the key while a token waits.
+    expect(await keyOf(home.familyId, coParent)).toEqual({
+      key: ACCOUNT,
+      pending: expect.any(String),
+    });
+    expect(await parentBlocked(home)).toBe(true);
+
+    const { ports, revoked } = scriptedPorts(OK);
+    await retryPendingGoogleRevocations(db.database, ports);
+
+    expect(revoked).toEqual(['1//co']);
+    expect(await keyOf(home.familyId, coParent)).toEqual({ key: null, pending: null });
+    expect(await parentBlocked(home)).toBe(false);
+  });
+
+  it('a revoke abandoned at seven days drops the key with the token', async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    await connect(home.familyId, coParent, '1//co', ACCOUNT);
+    await coParentDisconnects(home.familyId, coParent, DOWN);
+
+    const later = new Date(NOW.getTime() + GOOGLE_REVOKE_PENDING_RETENTION_MS + 60_000);
+    expect(await expireStaleGoogleRevocations(db.database, later)).toEqual({ abandoned: 1 });
+
+    expect(await keyOf(home.familyId, coParent)).toEqual({ key: null, pending: null });
+    expect(await parentBlocked(home)).toBe(false);
+  });
+
+  it('a revoke cancelled by the same account connecting elsewhere drops the ended row’s key', async () => {
+    const first = await household('First');
+    const second = await household('Second');
+    await connect(first.familyId, first.userId, '1//first', ACCOUNT);
+    await coParentDisconnects(first.familyId, first.userId, DOWN);
+
+    await connect(second.familyId, second.userId, '1//second', ACCOUNT);
+
+    expect(await keyOf(first.familyId, first.userId)).toEqual({ key: null, pending: null });
+    // Positive control: the live row the cancel came from keeps its key.
+    expect(await keyOf(second.familyId, second.userId)).toEqual({ key: ACCOUNT, pending: null });
+  });
+
+  it('an end that keeps no token for Google drops the key at once', async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    await saveConnection(db.database, {
+      familyId: home.familyId,
+      userId: coParent,
+      provider: 'gcal',
+      scopes: [],
+      tokens: { accessToken: '' },
+      googleAccountKey: ACCOUNT,
+    });
+
+    await coParentDisconnects(home.familyId, coParent);
+
+    expect(await keyOf(home.familyId, coParent)).toEqual({ key: null, pending: null });
+    expect(await parentBlocked(home)).toBe(false);
   });
 });
