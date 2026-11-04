@@ -2,8 +2,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
+import {
+  CRISIS_SITUATIONS,
+  CRISIS_WHO,
+  type CrisisSituation,
+  type CrisisWho,
+} from '~/lib/channel/crisis-resources';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import type {
+  CrisisKind,
   CrisisPageOutcome,
   CrisisPager,
   CrisisUnanswered,
@@ -70,7 +78,32 @@ import {
  * most intake crises come before a family exists, and audit_log needs one. Identifier
  * is `<inbound key>:<kind>:<where>:<reason>:<writes>`, the inbound key a hash of the
  * provider's inbound id, so a redelivered inbound pages once. Once a family exists a
- * body-free `crisis_unanswered` audit row is written beside it (rule #6).
+ * body-free `crisis_unanswered` audit row is written beside it (rule #6). The claim is
+ * recorded under a per-inbound advisory lock, so two deliveries that failed for different
+ * reasons still find one row. window_start is the record time, so a paged claim ages out
+ * after the lookback; an owed one never does.
+ *
+ * Every crisis page carries one opaque reference, `ref <rate_limits.id>`, and nothing that
+ * names a person. Ops resolves it from that row: the identifier's first field is the first
+ * 32 hex characters of sha256(provider message id). That hash matches the inbound's ledger
+ * row (channel_messages.provider_message_id), a held text's row in opt_out_held_messages
+ * (which gives phone_hash, and from there the channel or session), and, for a family, the
+ * `crisis_unanswered` audit row. A crisis read late from a held text pages the same way,
+ * `where late_read`. The claim says nothing of what the text said: the language, situation
+ * and who it was first read with (situation and who from their closed lists) are kept on
+ * the text's held row, so a later tick writes from the same facts without the text being
+ * read again, and they go when that row goes, by a read, a release or an erasure. A paged
+ * claim whose text is still held is kept past the lookback: the held row still needs it.
+ *
+ * A crisis reply is marked on `ops:crisis-answered` (identifier: the inbound key alone):
+ * count 0 as it leaves, count 1 once the transport accepted it. Only a sent mark counts
+ * as answered, and the opt-out recovery pass releases a held copy of that text with no
+ * second reply. A leaving mark holds the copy back for its lease, then the text is
+ * answered late: a send that failed, timed out or died is never taken for a reply.
+ *
+ * VIL-602 · every other path that pages #ops goes through {@link pageOps}: a body-free
+ * URGENT log, then one claim per site per hour on `ops:page`, then the post. This module
+ * is the only place that writes an URGENT or page-#ops log line (ops-page-claims.test.ts).
  *
  * PostHog error tracking is not fed from here. The server has no PostHog
  * client: browser `posthog-js` can `captureException`, and server capture is a
@@ -99,20 +132,62 @@ export const DEFERRED_PILEUP_PAGE_ROUTE = 'ops:deferred-pileup';
 /** One Slack page per inbound crisis that got no reply, sent at once. */
 export const CRISIS_UNANSWERED_PAGE_ROUTE = 'ops:crisis-unanswered';
 
+/** The reply to an inbound's crisis is leaving or left: one row per inbound key. */
+export const CRISIS_ANSWERED_ROUTE = 'ops:crisis-answered';
+
 /** The audit row for a crisis that got no reply, once the parent has a family. */
 export const CRISIS_UNANSWERED_AUDIT_ACTION = 'crisis_unanswered';
 
 /**
  * VIL-553 · numbers held for an unread opt-out read. Hourly while a hold is under an
- * hour old or a held text read late as a crisis; once a UTC day while older holds stand.
+ * hour old; once a UTC day while older holds stand.
  */
 export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
 /**
- * A held text read late as a crisis. The row IS the record, as for a first hello: a
- * sender with no family has no audit row to count. Identifier is a hash of the provider
- * message id (one mark per text), never the id itself.
+ * The old count of held texts read late as a crisis. Nothing writes it since VIL-602 (a
+ * late crisis is answered, or paged as a crisis); rows already written age out in a day.
  */
 export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
+
+/** VIL-602 · one page per site per hour, for every path that pages #ops outside a sweep. */
+export const OPS_PAGE_ROUTE = 'ops:page';
+
+/** Every site that pages through {@link pageOps}. A closed list, so the claim key is too. */
+export const OPS_PAGE_SITES = [
+  'group_plan_unwritten',
+  'group_conflict_unwritten',
+  'spoken_line_unwritten',
+  'shared_group_unwritten',
+  'intake_health_unwritten',
+  'opt_out_hold_unwritten',
+  'opt_out_unread',
+] as const;
+
+export type OpsPageSite = (typeof OPS_PAGE_SITES)[number];
+
+/** A page's facts: closed-vocabulary codes and counts, never a body, phone or name. */
+export interface OpsPage {
+  site: OpsPageSite;
+  facts: Readonly<Record<string, string | number>>;
+}
+
+/** Same vocabulary as CrisisPageOutcome. A page that did not leave is its own outcome,
+ * never folded into `paged` (rule #11). */
+export type OpsPagerOutcome = 'paged' | 'already_paged' | 'page_failed' | 'page_not_configured';
+
+/** The port a writer with no database of its own pages through. */
+export interface OpsPager {
+  page(page: OpsPage): Promise<OpsPagerOutcome>;
+}
+
+/** Serializes crisis claims for one inbound across instances (pg_advisory_xact_lock's
+ * first key; the second is the inbound key's hash). Any fixed 32-bit value. */
+const CRISIS_CLAIM_LOCK_NS = 602_001;
+
+/** A crisis with no provider inbound id: it is never keyed, so it never dedupes. */
+export class CrisisInboundIdMissing extends Error {
+  override name = 'CrisisInboundIdMissing';
+}
 /**
  * VIL-156 · families erased past their Google wait with Google unconfirmed (a revoke never
  * answered, or a local end that kept throwing). The claim row IS the record, as for a
@@ -299,7 +374,6 @@ export function composeOptOutHoldAlert(input: {
   notInLedger: number;
   legacy: number;
   oldestHours: number;
-  lateCrisis: number;
 }): string {
   return [
     'Hale: opt-out reads held.',
@@ -308,7 +382,6 @@ export function composeOptOutHoldAlert(input: {
     `not in ledger ${pageCount(input.notInLedger)}.`,
     `legacy ${pageCount(input.legacy)}.`,
     `oldest ${pageCount(input.oldestHours)}h.`,
-    `crisis read late ${pageCount(input.lateCrisis)}.`,
   ].join(' ');
 }
 
@@ -338,6 +411,8 @@ export function composeCrisisUnansweredAlert(input: {
   where: string;
   reason: string;
   writes: number;
+  /** The crisis claim's rate_limits id: the one reference ops looks the crisis up by. */
+  ref: string | null;
 }): string {
   const writes =
     Number.isSafeInteger(input.writes) && input.writes >= 0 ? String(input.writes) : '0';
@@ -347,13 +422,55 @@ export function composeCrisisUnansweredAlert(input: {
     `where ${failureCategory(input.where)}.`,
     `reason ${failureCategory(input.reason)}.`,
     `writes ${writes}.`,
+    `ref ${uuidOr(input.ref, 'none')}.`,
   ].join(' ');
 }
 
-/** Fixed-shape, so the identifier parses; the provider's id is never stored as is. */
-function crisisInboundKey(inboundId: string): string {
-  return createHash('sha256').update(inboundId).digest('hex').slice(0, 32);
+const OPS_FACT_KEY_RE = /^[a-z][a-z_]{0,30}$/;
+
+/** A fact's value as it may travel: a short code, compared as is, never cleaned into one. */
+const OPS_FACT_CODE_RE = /^[a-z0-9_]{1,40}$/;
+const REDACTED_FACTS_KEY = 'redacted';
+
+function opsFactCode(value: string): string | null {
+  const code = value.toLowerCase();
+  return OPS_FACT_CODE_RE.test(code) && !/\d{7,}/.test(code) ? code : null;
 }
+
+/** Keys outside the closed shape are dropped. Numbers are counts; a string travels only
+ * when it already is a short code, so a formatted phone or an email never does: it is
+ * `redacted`, and how many were is the `redacted` fact. */
+function opsPageFacts(facts: OpsPage['facts']): Array<[string, string]> {
+  let redacted = 0;
+  const shown = Object.entries(facts)
+    .filter(([key]) => OPS_FACT_KEY_RE.test(key) && key !== REDACTED_FACTS_KEY)
+    .map(([key, value]): [string, string] => {
+      if (typeof value === 'number') return [key, pageCount(value)];
+      const code = opsFactCode(value);
+      if (code === null) redacted += 1;
+      return [key, code ?? 'redacted'];
+    });
+  return redacted > 0 ? [...shown, [REDACTED_FACTS_KEY, String(redacted)]] : shown;
+}
+
+export function composeOpsPageAlert(page: OpsPage): string {
+  return [
+    'Hale: ops page.',
+    `site ${failureCategory(page.site)}.`,
+    ...opsPageFacts(page.facts).map(([key, value]) => `${key} ${value}.`),
+  ].join(' ');
+}
+
+/** Fixed-shape, so the identifier parses; the provider's id is never stored as is. An
+ * empty id has no key: hashing it would make every such crisis one inbound. */
+function crisisInboundKey(inboundId: string): string {
+  const id = inboundId.trim();
+  if (id === '') throw new CrisisInboundIdMissing('crisis inbound id is empty');
+  return createHash('sha256').update(id).digest('hex').slice(0, 32);
+}
+
+/** A language tag fit to keep with a held text: never a word of it. */
+const HELD_LANGUAGE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
 
 function crisisIdentifier(key: string, alert: CrisisUnanswered): string {
   return [
@@ -379,7 +496,7 @@ function providerIncidentWindow(now: Date): Date {
   return new Date(Math.floor(now.getTime() / windowMs) * windowMs);
 }
 
-function pileupWindowStart(now: Date): Date {
+function hourWindowStart(now: Date): Date {
   return new Date(
     Math.floor(now.getTime() / DEFERRED_PILEUP_WINDOW_MS) * DEFERRED_PILEUP_WINDOW_MS,
   );
@@ -469,8 +586,8 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         lt(schema.rateLimits.count, staleBefore),
       ),
     );
-  // A late-crisis mark only feeds the page's last-hour count. A day keeps it past a
-  // Slack outage; after that it is deleted, so no mark of one parent's crisis outlives it.
+  // The retired late-crisis count (nothing writes it now): rows already written go after
+  // a day, so no mark of one parent's crisis outlives it.
   await database
     .delete(schema.rateLimits)
     .where(
@@ -491,14 +608,47 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         lt(schema.rateLimits.count, staleBefore),
       ),
     );
-  // So is an unanswered crisis's.
+  // So is an unanswered crisis's, whatever its window.
   await database
     .update(schema.rateLimits)
     .set({ count: UNALERTED_COUNT })
     .where(
       and(
         eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
-        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        gt(schema.rateLimits.count, ALERTED_COUNT),
+        lt(schema.rateLimits.count, staleBefore),
+      ),
+    );
+  const lookback = new Date(now.getTime() - FAILURE_PAGE_LOOKBACK_MS);
+  // A paged crisis claim is kept for the lookback, then goes, so no mark of one parent's
+  // crisis outlives it. An owed one (count 0) is never deleted: it keeps paging. Neither a
+  // claim nor a reply mark goes while its text is still held: the recovery pass reads them
+  // so it never re-reads, re-pages or re-answers that text.
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+        eq(schema.rateLimits.count, ALERTED_COUNT),
+        lt(schema.rateLimits.windowStart, lookback),
+        notStillHeld(sql`split_part(${schema.rateLimits.identifier}, ':', 1)`),
+      ),
+    );
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        lt(schema.rateLimits.windowStart, lookback),
+        notStillHeld(sql`${schema.rateLimits.identifier}`),
+      ),
+    );
+  // An ops page claim is only the "already paged" mark, like a pile-up's.
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, OPS_PAGE_ROUTE),
         gt(schema.rateLimits.count, ALERTED_COUNT),
         lt(schema.rateLimits.count, staleBefore),
       ),
@@ -515,6 +665,16 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         lt(schema.rateLimits.count, staleBefore),
       ),
     );
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(eq(schema.rateLimits.route, OPS_PAGE_ROUTE), lt(schema.rateLimits.windowStart, lookback)),
+    );
+}
+
+/** No held text has this inbound key ({@link crisisInboundKey}, computed in SQL). */
+function notStillHeld(key: SQL): SQL {
+  return sql`not exists (select 1 from ${schema.optOutHeldMessages} where left(encode(sha256(convert_to(btrim(${schema.optOutHeldMessages.providerMessageId}), 'UTF8')), 'hex'), 32) = ${key})`;
 }
 
 async function claimInsert(
@@ -565,6 +725,7 @@ async function claimOwed(
   route: string,
   identifier: string,
   stamp: number,
+  windowStart: Date,
 ): Promise<boolean> {
   const claimed = await database
     .update(schema.rateLimits)
@@ -573,7 +734,7 @@ async function claimOwed(
       and(
         eq(schema.rateLimits.route, route),
         eq(schema.rateLimits.identifier, identifier),
-        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        eq(schema.rateLimits.windowStart, windowStart),
         eq(schema.rateLimits.count, UNALERTED_COUNT),
       ),
     )
@@ -978,12 +1139,15 @@ async function pageCrisesUnanswered(
   counts: FailurePageCounts,
 ): Promise<void> {
   const rows = await database
-    .select({ id: schema.rateLimits.id, identifier: schema.rateLimits.identifier })
+    .select({
+      id: schema.rateLimits.id,
+      identifier: schema.rateLimits.identifier,
+      windowStart: schema.rateLimits.windowStart,
+    })
     .from(schema.rateLimits)
     .where(
       and(
         eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
-        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
         eq(schema.rateLimits.count, UNALERTED_COUNT),
       ),
     )
@@ -991,7 +1155,15 @@ async function pageCrisesUnanswered(
   const stamp = claimStamp(now);
   for (const row of rows) {
     let recorded = parseCrisisIdentifier(row.identifier);
-    if (!(await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, row.identifier, stamp))) {
+    if (
+      !(await claimOwed(
+        database,
+        CRISIS_UNANSWERED_PAGE_ROUTE,
+        row.identifier,
+        stamp,
+        row.windowStart,
+      ))
+    ) {
       counts.deduped += 1;
       continue;
     }
@@ -1003,7 +1175,7 @@ async function pageCrisesUnanswered(
       );
       recorded = { kind: 'unreadable', where: 'unreadable', reason: 'unreadable', writes: 0 };
     }
-    const text = composeCrisisUnansweredAlert(recorded);
+    const text = composeCrisisUnansweredAlert({ ...recorded, ref: row.id });
     await deliver(
       database,
       CRISIS_UNANSWERED_PAGE_ROUTE,
@@ -1012,6 +1184,7 @@ async function pageCrisesUnanswered(
       stamp,
       post,
       counts,
+      row.windowStart,
     );
   }
 }
@@ -1036,7 +1209,7 @@ async function pageDeferredPileup(
   now: Date,
   counts: FailurePageCounts,
 ): Promise<void> {
-  const windowStart = pileupWindowStart(now);
+  const windowStart = hourWindowStart(now);
   const count = await countDeferredRows(database, windowStart);
   if (count < DEFERRED_PILEUP_THRESHOLD) return;
   const stamp = claimStamp(now);
@@ -1090,7 +1263,9 @@ async function pageErasureGoogle(
     .limit(MAX_PER_RUN);
   const stamp = claimStamp(now);
   for (const row of rows) {
-    if (!(await claimOwed(database, ERASURE_GOOGLE_PAGE_ROUTE, row.identifier, stamp))) {
+    if (
+      !(await claimOwed(database, ERASURE_GOOGLE_PAGE_ROUTE, row.identifier, stamp, CLAIM_EPOCH))
+    ) {
       counts.deduped += 1;
       continue;
     }
@@ -1135,21 +1310,11 @@ async function pageOptOutHolds(
       heldAt: schema.optOutReadHolds.heldAt,
     })
     .from(schema.optOutReadHolds);
-  const crises = await database
-    .select({ id: schema.rateLimits.id })
-    .from(schema.rateLimits)
-    .where(
-      and(
-        eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE),
-        gte(schema.rateLimits.windowStart, new Date(now.getTime() - HOUR_MS)),
-      ),
-    );
   const holds = [...messages, ...legacy];
-  if (holds.length === 0 && crises.length === 0) return;
+  if (holds.length === 0) return;
 
   const oldest = Math.min(...holds.map((row) => row.heldAt.getTime()));
-  const fresh =
-    crises.length > 0 || holds.some((row) => now.getTime() - row.heldAt.getTime() < HOUR_MS);
+  const fresh = holds.some((row) => now.getTime() - row.heldAt.getTime() < HOUR_MS);
   const windowMs = fresh ? HOUR_MS : DAY_MS;
   const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
   // Two subjects, so a standing day's claim at 00:00 cannot swallow a new hold's hour.
@@ -1164,8 +1329,7 @@ async function pageOptOutHolds(
     numbers: new Set(holds.map((row) => row.phoneHash)).size,
     notInLedger: messages.filter((row) => row.ledgerId === null).length,
     legacy: legacy.length,
-    oldestHours: holds.length === 0 ? 0 : Math.floor((now.getTime() - oldest) / HOUR_MS),
-    lateCrisis: crises.length,
+    oldestHours: Math.floor((now.getTime() - oldest) / HOUR_MS),
   });
   await deliver(
     database,
@@ -1177,29 +1341,6 @@ async function pageOptOutHolds(
     counts,
     windowStart,
   );
-}
-
-/** VIL-553 · remember a held text read late as a crisis, family or not, for the page's count. */
-export async function noteLateOptOutCrisis(
-  database: Database,
-  providerMessageId: string,
-  now: Date,
-): Promise<void> {
-  await database
-    .insert(schema.rateLimits)
-    .values({
-      identifier: crisisInboundKey(providerMessageId),
-      route: OPT_OUT_LATE_CRISIS_ROUTE,
-      windowStart: now,
-      count: ALERTED_COUNT,
-    })
-    .onConflictDoNothing({
-      target: [
-        schema.rateLimits.identifier,
-        schema.rateLimits.route,
-        schema.rateLimits.windowStart,
-      ],
-    });
 }
 
 /**
@@ -1430,54 +1571,91 @@ export async function noteDeadLetteredTurn(
   return pageFailureAlerts(database, deps);
 }
 
-function crisisPageOutcome(outcome: OpsPageOutcome): CrisisPageOutcome {
+function pagerOutcome(outcome: OpsPageOutcome): OpsPagerOutcome {
   if (outcome === 'sent') return 'paged';
   if (outcome === 'skipped_not_configured') return 'page_not_configured';
   return 'page_failed';
 }
 
+interface CrisisClaim {
+  id: string;
+  identifier: string;
+  windowStart: Date;
+}
+
+/**
+ * What a crisis was read as, kept on the held row of its text, never on the claim: it goes
+ * when the row goes (read, released or erased), so a later tick writes from the same facts
+ * while the text is held, and nothing about the crisis outlives it. No held row, nothing kept.
+ */
+async function keepHeldCrisisRead(tx: Database, alert: CrisisUnanswered): Promise<void> {
+  const language = alert.language && HELD_LANGUAGE_RE.test(alert.language) ? alert.language : null;
+  const situation =
+    alert.situation && CRISIS_SITUATIONS.includes(alert.situation) ? alert.situation : null;
+  const who = alert.who && CRISIS_WHO.includes(alert.who) ? alert.who : null;
+  if (language === null && situation === null && who === null) return;
+  await tx
+    .update(schema.optOutHeldMessages)
+    .set({ crisisLanguage: language, crisisSituation: situation, crisisWho: who })
+    .where(eq(schema.optOutHeldMessages.providerMessageId, alert.inboundId));
+}
+
 /**
  * The claim for this inbound's crisis, recorded once: an owed row the sweep pages from.
- * Its identifier, whichever delivery of the inbound recorded it. The first record also
- * writes the audit row when there is a family to write it against.
+ * Whichever delivery of the inbound recorded it, and for whatever reason, there is one row:
+ * the lookup and the insert run under a per-inbound advisory lock. What the first record
+ * read the text as goes on the text's held row, if it is held, in the same transaction.
+ * The first record also writes the audit row when there is a family to write it against,
+ * after the commit, so a failed audit write cannot roll the claim back.
  */
-async function recordCrisisClaim(database: Database, alert: CrisisUnanswered): Promise<string> {
+async function recordCrisisClaim(
+  database: Database,
+  alert: CrisisUnanswered,
+  now: Date,
+): Promise<CrisisClaim> {
   const key = crisisInboundKey(alert.inboundId);
-  const prior = await database
-    .select({ identifier: schema.rateLimits.identifier })
-    .from(schema.rateLimits)
-    .where(
-      and(
-        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
-        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
-        like(schema.rateLimits.identifier, `${key}:%`),
-      ),
-    )
-    .limit(1);
-  let identifier = prior[0]?.identifier;
-  if (!identifier) {
-    identifier = crisisIdentifier(key, alert);
-    const inserted = await database
+  const { claim, inserted } = await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${CRISIS_CLAIM_LOCK_NS}::int, hashtext(${key}))`,
+    );
+    const [prior] = await tx
+      .select({
+        id: schema.rateLimits.id,
+        identifier: schema.rateLimits.identifier,
+        windowStart: schema.rateLimits.windowStart,
+      })
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+          like(schema.rateLimits.identifier, `${key}:%`),
+        ),
+      )
+      .limit(1);
+    if (prior) return { claim: prior, inserted: false };
+    const identifier = crisisIdentifier(key, alert);
+    const [row] = await tx
       .insert(schema.rateLimits)
       .values({
         identifier,
         route: CRISIS_UNANSWERED_PAGE_ROUTE,
-        windowStart: CLAIM_EPOCH,
+        windowStart: now,
         count: UNALERTED_COUNT,
       })
-      .onConflictDoNothing({
-        target: [
-          schema.rateLimits.identifier,
-          schema.rateLimits.route,
-          schema.rateLimits.windowStart,
-        ],
-      })
-      .returning({ id: schema.rateLimits.id });
-    if (inserted.length > 0 && alert.familyId !== null) {
-      await auditCrisis(database, alert.familyId, alert);
-    }
+      .returning({
+        id: schema.rateLimits.id,
+        identifier: schema.rateLimits.identifier,
+        windowStart: schema.rateLimits.windowStart,
+      });
+    if (!row) throw new Error('crisis claim insert returned no row');
+    await keepHeldCrisisRead(tx, alert);
+    return { claim: row, inserted: true };
+  });
+  if (inserted && alert.familyId !== null) {
+    await auditCrisis(database, alert.familyId, alert);
   }
-  return identifier;
+  return claim;
 }
 
 /** The claim for this inbound's crisis, recorded, then taken. Null when this inbound is
@@ -1485,11 +1663,253 @@ async function recordCrisisClaim(database: Database, alert: CrisisUnanswered): P
 async function claimCrisisPage(
   database: Database,
   alert: CrisisUnanswered,
+  now: Date,
   stamp: number,
-): Promise<string | null> {
-  const identifier = await recordCrisisClaim(database, alert);
-  const claimed = await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, identifier, stamp);
-  return claimed ? identifier : null;
+): Promise<CrisisClaim | null> {
+  const claim = await recordCrisisClaim(database, alert, now);
+  const claimed = await claimOwed(
+    database,
+    CRISIS_UNANSWERED_PAGE_ROUTE,
+    claim.identifier,
+    stamp,
+    claim.windowStart,
+  );
+  return claimed ? claim : null;
+}
+
+/**
+ * The crisis already recorded for this inbound, live or late: its claim id and kind, and
+ * the language, situation and who it was first read with, from the text's held row. Null
+ * when there is none (or the inbound has no id to key it by).
+ */
+export async function crisisClaimFor(
+  database: Database,
+  inboundId: string,
+): Promise<{
+  id: string;
+  kind: CrisisKind;
+  language: ReplyLanguage | null;
+  situation: CrisisSituation | null;
+  who: CrisisWho | null;
+} | null> {
+  if (inboundId.trim() === '') return null;
+  const [row] = await database
+    .select({ id: schema.rateLimits.id, identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+        like(schema.rateLimits.identifier, `${crisisInboundKey(inboundId)}:%`),
+      ),
+    )
+    .limit(1);
+  const kind = row ? parseCrisisIdentifier(row.identifier)?.kind : undefined;
+  if (!row || (kind !== 'emergency' && kind !== 'mental')) return null;
+  const [held] = await database
+    .select({
+      language: schema.optOutHeldMessages.crisisLanguage,
+      situation: schema.optOutHeldMessages.crisisSituation,
+      who: schema.optOutHeldMessages.crisisWho,
+    })
+    .from(schema.optOutHeldMessages)
+    .where(eq(schema.optOutHeldMessages.providerMessageId, inboundId))
+    .limit(1);
+  return {
+    id: row.id,
+    kind,
+    language: held?.language && HELD_LANGUAGE_RE.test(held.language) ? held.language : null,
+    situation: CRISIS_SITUATIONS.find((value) => value === held?.situation) ?? null,
+    who: CRISIS_WHO.find((value) => value === held?.who) ?? null,
+  };
+}
+
+/** A crisis reply's mark: taken as it leaves, and turned to sent once the transport accepted it. */
+const REPLY_LEAVING_COUNT = UNALERTED_COUNT;
+const REPLY_SENT_COUNT = ALERTED_COUNT;
+
+/**
+ * How long a leaving mark holds a held text back. The turn deadline does not cancel a send
+ * (router/deadline.ts), so the lease outlives the process that took the mark: past the
+ * drain's 800s maxDuration (app/api/cron/drain/route.ts), the longest any function runs.
+ * By then its send has landed, failed or died with it. The recovery pass's first back-off
+ * rests on the same bound.
+ */
+const CRISIS_REPLY_LEASE_MS = 15 * 60_000;
+
+/**
+ * Where the reply to one inbound's crisis stands (VIL-602). `answered` only once the
+ * transport accepted it. `in_flight` while a leaving mark is within its lease: its send may
+ * still land. Otherwise `unanswered`: no mark, or a leaving mark older than any process
+ * that could still be sending, whose send failed, timed out or died with it. No reply is
+ * known to have left, so the held text is answered late.
+ */
+export type CrisisReplyState = 'unanswered' | 'in_flight' | 'answered';
+
+type ReplyMarkRow = { id: string; count: number; windowStart: Date };
+
+function replyState(row: ReplyMarkRow | undefined, now: Date): CrisisReplyState {
+  if (!row) return 'unanswered';
+  if (row.count === REPLY_SENT_COUNT) return 'answered';
+  return row.windowStart.getTime() > now.getTime() - CRISIS_REPLY_LEASE_MS
+    ? 'in_flight'
+    : 'unanswered';
+}
+
+async function replyMark(database: Database, key: string): Promise<ReplyMarkRow | undefined> {
+  const [row] = await database
+    .select({
+      id: schema.rateLimits.id,
+      count: schema.rateLimits.count,
+      windowStart: schema.rateLimits.windowStart,
+    })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        eq(schema.rateLimits.identifier, key),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/** Runs `write` under the crisis claim's per-inbound lock, with this inbound's mark. */
+async function underReplyLock<T>(
+  database: Database,
+  inboundId: string,
+  write: (tx: Database, key: string, prior: ReplyMarkRow | undefined) => Promise<T>,
+): Promise<T> {
+  const key = crisisInboundKey(inboundId);
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${CRISIS_CLAIM_LOCK_NS}::int, hashtext(${key}))`,
+    );
+    return write(tx, key, await replyMark(tx, key));
+  });
+}
+
+async function setReplyMark(
+  tx: Database,
+  key: string,
+  prior: ReplyMarkRow | undefined,
+  count: number,
+  now: Date,
+): Promise<void> {
+  if (prior) {
+    await tx
+      .update(schema.rateLimits)
+      .set({ count, windowStart: now })
+      .where(eq(schema.rateLimits.id, prior.id));
+    return;
+  }
+  await tx
+    .insert(schema.rateLimits)
+    .values({ identifier: key, route: CRISIS_ANSWERED_ROUTE, windowStart: now, count });
+}
+
+export async function crisisReplyState(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisReplyState> {
+  if (inboundId.trim() === '') return 'unanswered';
+  return replyState(await replyMark(database, crisisInboundKey(inboundId)), now);
+}
+
+/**
+ * Takes the leaving mark just before a send, so the recovery pass leaves the held copy of
+ * the text alone while it is out. `claimed`: this call took it and may send. Otherwise the
+ * state it found, and nothing is sent. Throws when it cannot be recorded.
+ */
+export async function claimCrisisReply(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<'claimed' | 'in_flight' | 'answered'> {
+  return underReplyLock(database, inboundId, async (tx, key, prior) => {
+    const state = replyState(prior, now);
+    if (state !== 'unanswered') return state;
+    await setReplyMark(tx, key, prior, REPLY_LEAVING_COUNT, now);
+    return 'claimed';
+  });
+}
+
+/** The transport accepted the reply: only now is the crisis answered. Throws. */
+export async function confirmCrisisReply(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<void> {
+  await underReplyLock(database, inboundId, (tx, key, prior) =>
+    setReplyMark(tx, key, prior, REPLY_SENT_COUNT, now),
+  );
+}
+
+/** The send threw: its leaving mark comes off, never a sent one. A mark that cannot be
+ * removed goes stale after its lease, and the text is answered late. */
+export async function releaseCrisisReply(database: Database, inboundId: string): Promise<void> {
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        eq(schema.rateLimits.identifier, crisisInboundKey(inboundId)),
+        eq(schema.rateLimits.count, REPLY_LEAVING_COUNT),
+      ),
+    );
+}
+
+export type CrisisReplyMark = 'marked' | 'already_marked' | 'not_marked';
+
+/**
+ * A live crisis reply is written and about to leave: the leaving mark. Never throws and
+ * never holds the reply back; a mark that did not land is logged and named.
+ */
+export async function noteCrisisReplyLeaving(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisReplyMark> {
+  return noteReplyMark('leaving', inboundId, async () =>
+    (await claimCrisisReply(database, inboundId, now)) === 'claimed' ? 'marked' : 'already_marked',
+  );
+}
+
+/**
+ * A live crisis reply the transport accepted: answered. Never throws. A mark that did not
+ * land is logged and named; the held copy is then answered again late, two replies and
+ * never none.
+ */
+export async function noteCrisisReplySent(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisReplyMark> {
+  return noteReplyMark('sent', inboundId, async () => {
+    await confirmCrisisReply(database, inboundId, now);
+    return 'marked';
+  });
+}
+
+async function noteReplyMark(
+  stage: 'leaving' | 'sent',
+  inboundId: string,
+  mark: () => Promise<CrisisReplyMark>,
+): Promise<CrisisReplyMark> {
+  if (inboundId.trim() === '') {
+    console.error({ mark: 'not_marked', stage, reason: 'inbound_id_missing' }, 'crisis reply mark');
+    return 'not_marked';
+  }
+  try {
+    return await mark();
+  } catch (err) {
+    console.error(
+      { mark: 'not_marked', stage, err: err instanceof Error ? err.name : 'unknown' },
+      'crisis reply mark',
+    );
+    return 'not_marked';
+  }
 }
 
 /**
@@ -1532,31 +1952,56 @@ export async function noteCrisisUnanswered(
   const now = deps.now ?? new Date();
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
   const stamp = claimStamp(now);
-  let identifier: string | null;
+  const { kind, where, reason } = alert;
+  console.error(
+    { kind, where, reason, writes: alert.writes },
+    'URGENT: crisis flagged, no reply sent - paging #ops',
+  );
+  let claim: CrisisClaim | null;
   try {
-    identifier = await claimCrisisPage(database, alert, stamp);
+    claim = await claimCrisisPage(database, alert, now, stamp);
   } catch (err) {
     console.error('failure page: crisis claim threw - paging without one', {
       err: err instanceof Error ? err.name : 'unknown',
     });
-    const unrecorded = composeCrisisUnansweredAlert(alert);
-    return crisisPageOutcome(await postAlert(post, CRISIS_UNANSWERED_PAGE_ROUTE, unrecorded));
+    const unrecorded = composeCrisisUnansweredAlert({ ...alert, ref: null });
+    return crisisPageResult(
+      alert,
+      pagerOutcome(await postAlert(post, CRISIS_UNANSWERED_PAGE_ROUTE, unrecorded)),
+    );
   }
-  if (identifier === null) return 'already_paged';
+  if (claim === null) return 'already_paged';
   // The claim an earlier delivery recorded is the one paged, so the page says what the
   // sweep would have said.
-  const text = composeCrisisUnansweredAlert(parseCrisisIdentifier(identifier) ?? alert);
-  return crisisPageOutcome(
-    await deliver(
-      database,
-      CRISIS_UNANSWERED_PAGE_ROUTE,
-      identifier,
-      text,
-      stamp,
-      post,
-      emptyCounts(),
+  const text = composeCrisisUnansweredAlert({
+    ...(parseCrisisIdentifier(claim.identifier) ?? alert),
+    ref: claim.id,
+  });
+  return crisisPageResult(
+    alert,
+    pagerOutcome(
+      await deliver(
+        database,
+        CRISIS_UNANSWERED_PAGE_ROUTE,
+        claim.identifier,
+        text,
+        stamp,
+        post,
+        emptyCounts(),
+        claim.windowStart,
+      ),
     ),
   );
+}
+
+function crisisPageResult(alert: CrisisUnanswered, page: CrisisPageOutcome): CrisisPageOutcome {
+  if (page === 'page_failed' || page === 'page_not_configured') {
+    console.error(
+      { kind: alert.kind, where: alert.where, reason: alert.reason, page },
+      'URGENT: crisis page did not go out - nobody in #ops was told yet',
+    );
+  }
+  return page;
 }
 
 /** The production crisis pager (said-line.ts's port). */
@@ -1566,9 +2011,96 @@ export function failurePageCrisisPager(
 ): CrisisPager {
   return {
     record: async (alert) => {
-      await recordCrisisClaim(database, alert);
+      await recordCrisisClaim(database, alert, deps.now ?? new Date());
     },
     page: (alert) => noteCrisisUnanswered(database, alert, deps),
+  };
+}
+
+/**
+ * Process-local dedupe for an ops page whose claim insert threw (the database is
+ * failing). Keyed on the same hour bucket as the claim, so a flood is still one page per
+ * site per hour on this instance. Entries from older hours are pruned on insert.
+ */
+const opsPagesWithoutClaim = new Set<string>();
+
+function takeInProcess(site: string, windowStart: Date): string | null {
+  const hour = windowStart.toISOString();
+  for (const key of opsPagesWithoutClaim) {
+    if (!key.endsWith(`@${hour}`)) opsPagesWithoutClaim.delete(key);
+  }
+  const key = `${site}@${hour}`;
+  if (opsPagesWithoutClaim.has(key)) return null;
+  opsPagesWithoutClaim.add(key);
+  return key;
+}
+
+/** A page with no claim row to take: deduped in this process only, per site and hour. */
+async function pageWithoutClaim(page: OpsPage, deps: FailurePageDeps): Promise<OpsPagerOutcome> {
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+  const key = takeInProcess(failureCategory(page.site), hourWindowStart(deps.now ?? new Date()));
+  if (key === null) return 'already_paged';
+  const outcome = pagerOutcome(await postAlert(post, OPS_PAGE_ROUTE, composeOpsPageAlert(page)));
+  if (outcome !== 'paged') opsPagesWithoutClaim.delete(key);
+  return outcome;
+}
+
+/**
+ * VIL-602 · the one way a path pages #ops. A body-free URGENT log, then a claim on
+ * `ops:page` for this site and hour, then the post. A second page of the same site in the
+ * same hour is `already_paged`; a post that did not leave releases the claim, so the next
+ * occurrence tries again. Never throws.
+ */
+export async function pageOps(
+  database: Database,
+  page: OpsPage,
+  deps: FailurePageDeps = {},
+): Promise<OpsPagerOutcome> {
+  const now = deps.now ?? new Date();
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+  const site = failureCategory(page.site);
+  console.error(
+    { ...Object.fromEntries(opsPageFacts(page.facts)), page: site },
+    `URGENT: ${site} - paging #ops`,
+  );
+  const text = composeOpsPageAlert(page);
+  const windowStart = hourWindowStart(now);
+  const stamp = claimStamp(now);
+  let claimed: boolean;
+  try {
+    claimed = await claimInsert(database, OPS_PAGE_ROUTE, site, stamp, windowStart);
+  } catch (err) {
+    console.error(
+      { page: site, err: err instanceof Error ? err.name : 'unknown' },
+      'ops page: claim threw - deduped in this process only',
+    );
+    return pageWithoutClaim(page, deps);
+  }
+  if (!claimed) return 'already_paged';
+  return pagerOutcome(
+    await deliver(database, OPS_PAGE_ROUTE, site, text, stamp, post, emptyCounts(), windowStart),
+  );
+}
+
+/** The ops pager for a writer that holds no database: resolved at page time. */
+export function failurePageOpsPager(
+  database: () => Database,
+  deps: FailurePageDeps = {},
+): OpsPager {
+  return {
+    async page(page) {
+      let resolved: Database;
+      try {
+        resolved = database();
+      } catch (err) {
+        console.error(
+          { page: failureCategory(page.site), err: err instanceof Error ? err.name : 'unknown' },
+          'URGENT: ops page has no database - paging #ops, deduped in this process only',
+        );
+        return pageWithoutClaim(page, deps);
+      }
+      return pageOps(resolved, page, deps);
+    },
   };
 }
 

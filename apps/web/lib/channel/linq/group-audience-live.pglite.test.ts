@@ -202,14 +202,42 @@ describe('groupAudienceAllows reads the live participant list', () => {
     }
   });
 
-  it('a read Linq refuses for this chat (403, 404) is participants_unreadable, not a hold', async () => {
+  it('a read Linq refuses for this chat by its own code (404/2001, 403/2005) is participants_unreadable', async () => {
     await seedRoster(await seedFamily(CHAT), PARENTS);
 
-    for (const status of [403, 404]) {
-      const refusing = (async () => Response.json({}, { status })) as typeof fetch;
+    for (const [status, code] of [
+      [404, 2001],
+      [403, 2005],
+    ] as const) {
+      const refusing = (async () => Response.json({ error: { code } }, { status })) as typeof fetch;
       await expect(
         groupAudienceAllows(db.database, CHAT, 'schedule', realList(refusing)),
       ).resolves.toEqual({ allowed: false, reason: 'participants_unreadable' });
+    }
+  });
+
+  it('a 403 or 404 that carries no Linq code, or another one, is not Linq naming the chat, so it holds', async () => {
+    await seedRoster(await seedFamily(CHAT), PARENTS);
+    const edgeBlock = (status: number) =>
+      (async () =>
+        new Response('<html>blocked</html>', {
+          status,
+          headers: { 'content-type': 'text/html' },
+        })) as typeof fetch;
+    const coded = (status: number, code: number) =>
+      (async () => Response.json({ error: { code } }, { status })) as typeof fetch;
+
+    for (const fetchImpl of [
+      edgeBlock(403),
+      edgeBlock(404),
+      (async () => Response.json({}, { status: 403 })) as typeof fetch,
+      coded(403, 2001),
+      coded(404, 2005),
+      coded(404, 1001),
+    ]) {
+      await expect(
+        groupAudienceAllows(db.database, CHAT, 'schedule', realList(fetchImpl)),
+      ).resolves.toEqual({ allowed: false, reason: 'participants_unverified' });
     }
   });
 

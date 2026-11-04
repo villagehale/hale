@@ -32,6 +32,12 @@ export const optOutHeldMessages = pgTable(
     heldAt: timestamp('held_at', { withTimezone: true }).notNull(),
     nextReadAt: timestamp('next_read_at', { withTimezone: true }).notNull(),
     readAttempts: integer('read_attempts').notNull().default(0),
+    /** VIL-602 · what the text was first read as, when it was read as a crisis: its
+     * language, and the situation and who from their closed lists. Here, not on the crisis
+     * claim, so they go when the row goes, and an erasure clears them. */
+    crisisLanguage: text('crisis_language'),
+    crisisSituation: text('crisis_situation'),
+    crisisWho: text('crisis_who'),
   },
   (t) => ({
     phoneIdx: index('opt_out_held_messages_phone_idx').on(t.phoneHash),

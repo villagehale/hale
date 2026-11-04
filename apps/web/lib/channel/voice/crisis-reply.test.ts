@@ -20,7 +20,6 @@ import {
   emergencySituationFact,
 } from './said-line';
 
-const PAGE = 'URGENT: crisis flagged, no reply sent - page #ops now';
 const INBOUND = 'provider-inbound-crisis-1';
 const FAMILY = '00000000-0000-4000-8000-00000000c559';
 const PARENT = '00000000-0000-4000-8000-00000000a559';
@@ -374,6 +373,9 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
+        situation: null,
+        who: null,
       },
     ]);
     const handed = JSON.stringify(alerts);
@@ -381,16 +383,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(handed).not.toContain('988');
     // The re-ask told the writer the first draft carried a link.
     expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.link);
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({
-        urgent: true,
-        kind: 'mental',
-        where: 'intake crisis',
-        reason: 'link',
-      }),
-      PAGE,
-    );
+    // The urgent log is the pager's (failure-page.ts); a page that went out adds none here.
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('a write that returns nothing is re-asked once, the same as a failed check', async () => {
@@ -453,11 +447,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(calls).toHaveLength(2);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({ reason: 'write_failed', writes: 2 });
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental', reason: 'write_failed' }),
-      PAGE,
-    );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('no writer wired is named and paged, never silent', async () => {
@@ -483,12 +473,12 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
+        situation: null,
+        who: null,
       },
     ]);
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
-      PAGE,
-    );
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('the alert check sees a word the alert does carry (positive control for the absences above)', async () => {
@@ -533,11 +523,14 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
+        situation: null,
+        who: null,
       },
     ]);
   });
 
-  it('a record that throws is logged urgent and the page still goes', async () => {
+  it('a record that throws is logged and the page still goes', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { pager, alerts } = recordingPager();
     pager.record = async () => {
@@ -556,12 +549,12 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'paged' });
     expect(alerts).toHaveLength(1);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
-      'URGENT: crisis record did not land - the page is its only trace',
+      expect.objectContaining({ kind: 'emergency', reason: 'no_writer', err: 'Error' }),
+      'crisis record did not land - the page is its only trace',
     );
   });
 
-  it('a pager that throws is named page_failed, and that failure is logged urgent too', async () => {
+  it('a pager that throws is named page_failed, and that failure is logged', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { pager, alerts } = recordingPager(new Error('slack down'));
     const outcome = await deliverCrisisReply({
@@ -577,9 +570,37 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'page_failed' });
     expect(alerts).toHaveLength(1);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental', page: 'page_failed' }),
-      'URGENT: crisis page did not go out - nobody in #ops was told',
+      expect.objectContaining({ kind: 'mental', page: 'page_failed' }),
+      'crisis page did not go out',
     );
+  });
+
+  it('an inbound with no provider id gets one fresh id, shared by its record and page', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts, recorded } = recordingPager();
+    const ask = (inboundId: string) =>
+      deliverCrisisReply({
+        kind: 'mental',
+        language: null,
+        region: null,
+        situation: null,
+        who: null,
+        where: 'intake crisis',
+        ...onTurn(pager),
+        inboundId,
+        writer: null,
+      });
+    await ask('');
+    await ask('  ');
+    expect(alerts.map((alert) => alert.inboundId)).toEqual(
+      recorded.map((alert) => alert.inboundId),
+    );
+    expect(alerts[0]?.inboundId).toMatch(/^missing-[0-9a-f-]{36}$/);
+    expect(alerts[1]?.inboundId).toMatch(/^missing-[0-9a-f-]{36}$/);
+    expect(alerts[0]?.inboundId).not.toBe(alerts[1]?.inboundId);
+    // Positive control: a real id is passed through as is.
+    await ask(INBOUND);
+    expect(alerts[2]?.inboundId).toBe(INBOUND);
   });
 
   it('a page that could not leave is carried as is, never as paged', async () => {

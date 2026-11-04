@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
@@ -22,6 +23,7 @@ import {
 import {
   type OffDomainLane,
   type OffDomainVerdict,
+  crisisMarkingLane,
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
@@ -34,6 +36,7 @@ import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
 import {
+  CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_AUDIT_ACTION,
   CRISIS_UNANSWERED_PAGE_ROUTE,
 } from '~/lib/monitoring/failure-page';
@@ -6359,5 +6362,202 @@ describe('VIL-581 · the claim shadow starts after the send and changes nothing'
     await routeChannelMessage(h.deps, job());
     expect(h.transport.sent).toEqual([]);
     expect(rec.calls).toEqual([]);
+  });
+});
+
+/**
+ * VIL-602 · a live crisis reply counts as answered only once the transport accepted it.
+ * The opt-out recovery pass releases a held copy of the text without replying when it is
+ * marked answered, so a mark taken on a reply that never left would leave a crisis with
+ * nothing. The lane is production's marking wrapper over faked model ports; the mark is
+ * real SQL.
+ */
+describe('a live crisis reply is marked answered only once it is sent', () => {
+  let db: TestDb;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const CRISIS_TEXT = 'i cannot keep going';
+
+  function crisisLane(): OffDomainLane {
+    return crisisMarkingLane(db.database, {
+      screen: {
+        read: async () => ({
+          lane: 'safety_critical',
+          category: 'mental-health',
+          fallback: null,
+          language: 'en',
+        }),
+      },
+      answer: {
+        compose: async () => {
+          throw new Error('a crisis is never composed as a general answer');
+        },
+        continueAsk: async () => ({ status: 'unrelated' }),
+      },
+      moment: { write: async () => ({ status: 'written', reply: 'a written crisis reply' }) },
+      today: async () => '2026-10-20',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical text');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+    });
+  }
+
+  /** One crisis text through the router; `transport` replaces the harness's own. */
+  async function crisisTurn(
+    providerMessageId: string,
+    transport: ChannelRouterDeps['transport'] | null,
+    options: Parameters<typeof harness>[0] = {},
+  ) {
+    const parent = await seedFamily(db.database);
+    const h = harness({
+      offDomain: crisisLane(),
+      ...options,
+      context: { body: CRISIS_TEXT, reply: SMS_ROUTE },
+    });
+    h.deps.database = db.database;
+    h.deps.now = () => new Date();
+    if (transport) h.deps.transport = transport;
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerMessageId,
+        body: CRISIS_TEXT,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const outcome = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inbound?.id as string,
+        provider_message_id: providerMessageId,
+      }),
+    ).then(
+      () => 'routed' as const,
+      () => 'threw' as const,
+    );
+    return { h, outcome };
+  }
+
+  /** The reply marks for one inbound: 1 is answered, 0 is a reply still leaving. */
+  async function marks(providerMessageId: string): Promise<number[]> {
+    const rows = await db.database
+      .select({ count: schema.rateLimits.count })
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+          eq(
+            schema.rateLimits.identifier,
+            createHash('sha256').update(providerMessageId).digest('hex').slice(0, 32),
+          ),
+        ),
+      );
+    return rows.map((row) => row.count);
+  }
+
+  it('a crisis reply whose send throws is never marked answered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { outcome } = await crisisTurn('pm-route-refused', {
+      send: async () => {
+        throw new Error('carrier refused');
+      },
+    });
+
+    expect(outcome).toBe('threw');
+    expect(await marks('pm-route-refused')).toEqual([0]);
+  });
+
+  it('a crisis reply whose send never comes back is never marked answered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { outcome } = await crisisTurn(
+      'pm-route-hung',
+      { send: () => new Promise(() => {}) },
+      { turnDeadlineMs: 200 },
+    );
+
+    expect(outcome).toBe('threw');
+    expect(await marks('pm-route-hung')).toEqual([0]);
+  });
+
+  it('a crisis reply the transport accepted is marked answered even when its receipt write throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const receiptless = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop === 'insert') {
+          return (table: unknown) => {
+            if (table === schema.channelMessages) throw new Error('receipt lost');
+            return target.insert(table as typeof schema.auditLog);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as typeof db.database;
+    const parent = await seedFamily(db.database);
+    const h = harness({
+      offDomain: crisisLane(),
+      context: { body: CRISIS_TEXT, reply: SMS_ROUTE },
+    });
+    h.deps.database = receiptless;
+    h.deps.now = () => new Date();
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerMessageId: 'pm-route-receiptless',
+        body: CRISIS_TEXT,
+      })
+      .returning({ id: schema.channelMessages.id });
+
+    const outcome = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inbound?.id as string,
+        provider_message_id: 'pm-route-receiptless',
+      }),
+    ).then(
+      () => 'routed',
+      () => 'threw',
+    );
+
+    // Positive control: the fault fired after the parent had the reply.
+    expect(outcome).toBe('threw');
+    expect(h.transport.bodies()).toEqual(['a written crisis reply']);
+    expect(await marks('pm-route-receiptless')).toEqual([1]);
+  });
+
+  it('positive control: a crisis reply the transport accepted is marked answered', async () => {
+    const { h, outcome } = await crisisTurn('pm-route-sent', null);
+
+    expect(outcome).toBe('routed');
+    expect(h.transport.bodies()).toEqual(['a written crisis reply']);
+    expect(await marks('pm-route-sent')).toEqual([1]);
   });
 });

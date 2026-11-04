@@ -66,7 +66,11 @@ import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
-import { failurePageCrisisPager, reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
+import {
+  failurePageCrisisPager,
+  pageOps,
+  reportFirstHelloFailure,
+} from '~/lib/monitoring/failure-page';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -932,7 +936,7 @@ async function recordInbound(
 /** One channel_messages row + its audit row (rule #6: no message without a trail).
  * Keyed on the OWNER rather than the session: the keyword acks (STOP/START/HELP)
  * can know who a number belongs to without holding an open session. */
-async function writeChannelMessage(
+export async function writeChannelMessage(
   database: Database,
   owner: { familyId: string; parentUserId: string },
   entry: TranscriptEntry,
@@ -1098,10 +1102,10 @@ async function offScriptReply(
       : null;
     if (!written) {
       const held: HealthHeld = deps.saidLine ? 'write_failed' : 'writer_absent';
-      console.error(
-        { basis: health.basis, reason: held },
-        'intake health: no line written - nothing sent, page #ops',
-      );
+      await pageOps(page.database, {
+        site: 'intake_health_unwritten',
+        facts: { basis: health.basis, reason: held },
+      });
       return { body: '', source: 'safety', held };
     }
     return { body: written, source: 'safety' };
@@ -3638,11 +3642,14 @@ async function settleOptOutHold(
     if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
     else await port.settled(inbound.providerId);
   } catch (err) {
-    // The hold is a guard, never a reason to drop the turn: logged, and the turn goes on.
-    console.error(
-      { urgent: reading === null, err: err instanceof Error ? err.name : 'unknown' },
-      'opt-out hold: write failed',
-    );
+    // The hold is a guard, never a reason to drop the turn: the turn goes on. A hold that
+    // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
+    const name = err instanceof Error ? err.name : 'unknown';
+    if (reading === null) {
+      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: { err: name } });
+    } else {
+      console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
+    }
   }
 }
 

@@ -25,9 +25,9 @@ export async function holdSender(
     })
     .onConflictDoNothing()
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
-  console.error(
-    { urgent: true, hold: 'opt_out_unread' },
-    'URGENT: opt-out read failed twice - sender held from proactive sends until the text is re-read; the failure-page cron pages #ops',
+  console.warn(
+    { hold: 'opt_out_unread' },
+    'opt-out read failed twice - sender held from proactive sends until the text is re-read; the opt-out hold sweep pages it',
   );
   return inserted.length > 0 ? 'held' : 'already_held';
 }
@@ -93,11 +93,18 @@ export async function erasedFamilyHolds(
  * text alone, so an erasure takes its own here: held texts the family sent, and every row
  * on its numbers, but only where nobody holds that number now. A number someone still
  * holds keeps every row on it, since any may be their own unread stop (a parent seated in
- * a second family, or the number's next holder). Such a row carries no family content
- * (a phone hash, a provider id, a time); once its text is gone it reads as unrecorded,
- * so the hold stays fail closed and is paged.
+ * a second family, or the number's next holder). Such a row keeps no family content (a
+ * phone hash, a provider id, a time): what a text the family sent was read as when it was
+ * read as a crisis is cleared from it. Once its text is gone it reads as unrecorded, so
+ * the hold stays fail closed and is paged.
  */
 export async function releaseErasedHolds(database: Database, erased: ErasedHolds): Promise<void> {
+  if (erased.providerMessageIds.length > 0) {
+    await database
+      .update(schema.optOutHeldMessages)
+      .set({ crisisLanguage: null, crisisSituation: null, crisisWho: null })
+      .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
+  }
   const texts =
     erased.providerMessageIds.length === 0
       ? []

@@ -1,14 +1,41 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
+import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
+import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
+import { isParentRole } from '~/lib/channel/role-scope';
+import type { threadIfParent } from '~/lib/channel/thread';
+import {
+  type CrisisKind,
+  type CrisisPager,
+  type SaidLineWriter,
+  crisisReplyLanguage,
+  deliverCrisisReply,
+  logCrisisUnanswered,
+} from '~/lib/channel/voice/said-line';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
-import { noteLateOptOutCrisis } from '~/lib/monitoring/failure-page';
+import {
+  claimCrisisReply,
+  confirmCrisisReply,
+  crisisClaimFor,
+  crisisReplyState,
+  releaseCrisisReply,
+} from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
-import { type Inbound, handleStop } from './machine';
+import { crisisRegionForPlace } from './derive';
+import { type Inbound, handleStop, writeChannelMessage } from './machine';
 import { releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
-import { type IntakeSession, decodeIntakeForRecovery, loadOpenSession } from './session';
+import {
+  type IntakeSession,
+  type TranscriptEntry,
+  appendTranscript,
+  decodeIntakeForRecovery,
+  loadOpenSession,
+  saveSession,
+} from './session';
 import type { ChannelTransport } from './transport';
 
 /**
@@ -28,6 +55,15 @@ import type { ChannelTransport } from './transport';
  * holder of its number at the time only while they still hold it and the number's owner
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
  * that number alone.
+ *
+ * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
+ * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
+ * person who sent it still holds the number. When no reply can leave, the crisis pages
+ * like a live one (`where late_read`) and the row stays, so a later tick tries the writer
+ * again. Once a crisis is recorded for the text it is never read again. A crisis counts as
+ * answered only once its reply was SENT, live (router/route.ts) or late: such a text is
+ * released without a second reply. A reply still leaving holds it back while its send may
+ * still land; one whose send failed, timed out or died is answered late.
  */
 
 export const HELD_READ_OUTCOMES = [
@@ -45,7 +81,20 @@ export const HELD_READ_OUTCOMES = [
   'read_not_stop',
   'read_start',
   'read_identity',
-  'read_crisis',
+  /** Read late as a crisis: the crisis reply went out, one-to-one. */
+  'crisis_replied',
+  /** Read late as a crisis, and no reply left (writer down, check failed, send threw):
+   * paged as a crisis, kept held, tried again. */
+  'crisis_unanswered',
+  /** Read late as a crisis, but nobody can be replied to on the number (not sendable, or
+   * it changed hands): paged as a crisis, released once the page is claimed. */
+  'crisis_unreachable',
+  /** A crisis reply to this text already left, live or on an earlier tick: released, and
+   * nothing is sent again. */
+  'crisis_already_answered',
+  /** A crisis reply to this text is leaving and its send may still land: kept held,
+   * nothing read or sent, and looked at again on the next tick. */
+  'crisis_reply_in_flight',
   'read_leave_group',
   'read_failed',
   'not_yet_recorded',
@@ -70,12 +119,21 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'not_yet_recorded',
   'unrecorded',
   'claimed_elsewhere',
+  'crisis_unanswered',
+  'crisis_reply_in_flight',
 ]);
 
 export interface OptOutRecoveryDeps {
   reader: OptOutReader;
-  /** The confirmation of a stop read late — REQUIRED (rule #11). */
+  /** The confirmation of a stop, or the reply to a crisis, read late — REQUIRED (rule #11). */
   transport: ChannelTransport;
+  /** Writes the reply to a crisis read late — REQUIRED (rule #11). */
+  saidLine: SaidLineWriter;
+  /** Pages #ops when a crisis read late gets no reply — REQUIRED (rule #11). */
+  crisisPager: CrisisPager;
+  /** Puts a late crisis reply in a parent's coach thread, which the next turn reads —
+   * REQUIRED (rule #11). The ledger stores no outbound body. Only ever a parent's thread. */
+  threadMessage: typeof threadIfParent;
   /** Asked once per tick, and only when a row is due. */
   preflight: () => Promise<ProviderPreflightResult>;
   now: Date;
@@ -156,8 +214,8 @@ export async function recoverHeldOptOutReads(
       // The row was claimed, so it is due again after its back-off. The name only: a
       // message from inside the read may carry what it was reading.
       console.error(
-        { urgent: true, outcome: 'recovery_failed', err: errName(err) },
-        'URGENT: opt-out recovery: a held text could not be settled - kept held',
+        { outcome: 'recovery_failed', err: errName(err) },
+        'opt-out recovery: a held text could not be settled - kept held; the opt-out hold sweep pages it',
       );
       return 'recovery_failed' as const;
     });
@@ -186,6 +244,8 @@ export interface HeldText {
   authorUserId: string | null;
   /** The author's family, when there is one. The read's audit row needs it. */
   familyId: string | null;
+  /** The crisis lines' country, from a place the store holds; null names both. Never guessed. */
+  region: CrisisRegion | null;
 }
 
 async function recoverRow(
@@ -208,6 +268,14 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
+  // A reply to this text was sent: nothing is read, and nothing is sent again. One still
+  // leaving is waited for; one that never left is not a reply.
+  const reply = await crisisReplyState(database, row.providerMessageId, now);
+  if (reply === 'in_flight') return 'crisis_reply_in_flight';
+  if (reply === 'answered') {
+    await releaseHeldMessage(database, row.providerMessageId);
+    return 'crisis_already_answered';
+  }
 
   const held = await resolveHeldText(database, row);
   if (!held) {
@@ -221,14 +289,26 @@ async function recoverRow(
     return 'no_channel';
   }
 
-  const reading = await deps.reader.read({
-    text: held.inbound.body,
-    language: held.language,
-    late: { receivedAt: held.inbound.receivedAt, readAt: now },
-  });
-  if (reading === null) return 'read_failed';
-
-  const outcome = await settleReading(database, deps, row, held, reading);
+  // A crisis already recorded for this text (live, or on an earlier tick) stays one, and the
+  // text is never handed to the model again: the reply is written from what was read then.
+  const crisis = await crisisClaimFor(database, row.providerMessageId);
+  let outcome: HeldReadOutcome;
+  if (crisis) {
+    const { language, situation, who } = crisis;
+    outcome = await lateCrisis(database, deps, row, held, crisis.kind, {
+      language,
+      situation,
+      who,
+    });
+  } else {
+    const reading = await deps.reader.read({
+      text: held.inbound.body,
+      language: held.language,
+      late: { receivedAt: held.inbound.receivedAt, readAt: now },
+    });
+    if (reading === null) return 'read_failed';
+    outcome = await settleReading(database, deps, row, held, reading);
+  }
   if (KEPT.has(outcome)) return outcome;
   if (held.familyId && held.authorUserId) {
     await database.insert(schema.auditLog).values({
@@ -269,13 +349,14 @@ async function settleReading(
       return 'read_leave_group';
     case 'crisis_emergency':
     case 'crisis_mental':
-      // The crisis lane owns the reply (crisis-check.ts). A late one is paged by count.
-      console.error(
-        { urgent: true, outcome: 'read_crisis' },
-        'URGENT: opt-out recovery: a held text read late as a crisis - no late reply sent',
+      return lateCrisis(
+        database,
+        deps,
+        row,
+        held,
+        reading.intent === 'crisis_emergency' ? 'emergency' : 'mental',
+        reading,
       );
-      await noteLateOptOutCrisis(database, row.providerMessageId, deps.now);
-      return 'read_crisis';
     case 'stop':
       return lateStop(database, deps, row, held, reading.confirmation);
   }
@@ -293,8 +374,8 @@ async function lateStop(
   if (verdict === 'superseded') return 'stop_superseded';
   if (verdict === 'unresolved') {
     console.error(
-      { urgent: true, outcome: 'timeline_unresolved' },
-      'URGENT: opt-out recovery: a stop read late, but the number timeline cannot say whose it is - kept held, nobody stopped',
+      { outcome: 'timeline_unresolved' },
+      'opt-out recovery: a stop read late, but the number timeline cannot say whose it is - kept held, nobody stopped; the opt-out hold sweep pages it',
     );
     return 'timeline_unresolved';
   }
@@ -334,8 +415,8 @@ async function lateStop(
     // Nothing was to be sent, or the number can still be texted: the stop itself failed.
     if (!sendable || (await stillSendable(database, held.phoneE164))) {
       console.error(
-        { urgent: true, outcome: 'stop_failed', err: name },
-        'URGENT: opt-out recovery: stop read late but the stop path failed - kept held',
+        { outcome: 'stop_failed', err: name },
+        'opt-out recovery: stop read late but the stop path failed - kept held; the opt-out hold sweep pages it',
       );
       return 'stop_failed';
     }
@@ -345,6 +426,206 @@ async function lateStop(
     );
     return 'stopped_confirmation_failed';
   }
+}
+
+const LATE_READ = 'late_read';
+
+/** What a read said about a crisis: on a later tick, what was kept with its claim. */
+interface CrisisRead {
+  language?: ReplyLanguage | null;
+  situation?: CrisisSituation | null;
+  who?: CrisisWho | null;
+}
+
+/**
+ * A held text read late as a crisis. The reply is the live one, written from facts only,
+ * sent one-to-one to the number, and only while the person who sent it still holds it.
+ * Nobody to reply to: paged, and released once the page is claimed. No reply left:
+ * paged, and kept. After a send it is marked answered, then the row goes: nothing sends it again.
+ */
+async function lateCrisis(
+  database: Database,
+  deps: OptOutRecoveryDeps,
+  row: HeldRow,
+  held: HeldText,
+  kind: CrisisKind,
+  read: CrisisRead,
+): Promise<HeldReadOutcome> {
+  const language = crisisReplyLanguage(held.language, read);
+  const alert = {
+    kind,
+    where: LATE_READ,
+    inboundId: row.providerMessageId,
+    familyId: held.familyId,
+    parentUserId: held.authorUserId,
+    language,
+    situation: read.situation ?? null,
+    who: read.who ?? null,
+  };
+  const holder = await lateCrisisHolder(database, row, held);
+  if (holder.status !== 'reachable') {
+    const page = await logCrisisUnanswered(deps.crisisPager, {
+      ...alert,
+      reason: holder.status,
+      writes: 0,
+    });
+    return page === 'paged' || page === 'already_paged'
+      ? 'crisis_unreachable'
+      : 'crisis_unanswered';
+  }
+  const crisis = await deliverCrisisReply({
+    ...alert,
+    region: held.region,
+    pager: deps.crisisPager,
+    writer: deps.saidLine,
+  });
+  if (crisis.status === 'unanswered') return 'crisis_unanswered';
+  // The leaving mark goes first, so a live turn's send and this one never overlap. It counts
+  // as answered only once confirmed below; one this tick never confirms goes stale and the
+  // text is answered late.
+  const claim = await claimCrisisReply(database, row.providerMessageId, deps.now);
+  if (claim === 'answered') return 'crisis_already_answered';
+  if (claim === 'in_flight') return 'crisis_reply_in_flight';
+  let sent: ResolvedOutbound;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: held.phoneE164, body: crisis.body });
+  } catch (err) {
+    console.error(
+      { outcome: 'crisis_unanswered', err: errName(err) },
+      'opt-out recovery: late crisis reply send threw - kept held',
+    );
+    await logCrisisUnanswered(deps.crisisPager, {
+      ...alert,
+      reason: 'send_failed',
+      writes: crisis.attempts,
+    });
+    await releaseCrisisReply(database, row.providerMessageId).catch((releaseErr: unknown) => {
+      // It goes stale after its lease, and a later tick answers the text then.
+      console.error(
+        { outcome: 'crisis_unanswered', err: errName(releaseErr) },
+        'opt-out recovery: late_crisis_reply_mark_stuck',
+      );
+    });
+    return 'crisis_unanswered';
+  }
+  // Sent: answered, before the row goes, so a release that throws never sends it again.
+  await confirmCrisisReply(database, row.providerMessageId, deps.now).catch((err: unknown) => {
+    console.error(
+      { outcome: 'crisis_replied', err: errName(err) },
+      'opt-out recovery: late_crisis_reply_unconfirmed',
+    );
+  });
+  await releaseHeldMessage(database, row.providerMessageId);
+  await recordLateCrisisReply(database, deps, held, holder.then, crisis.body, sent);
+  return 'crisis_replied';
+}
+
+/** Whether the person who sent the text holds the number now and can still be texted. */
+async function lateCrisisHolder(
+  database: Database,
+  row: HeldRow,
+  held: HeldText,
+): Promise<
+  { status: 'reachable'; then: NumberHolding } | { status: 'not_sendable' | 'holder_changed' }
+> {
+  const timeline = await numberHolderTimeline(database, row.phoneHash);
+  const then = holderAt(timeline, held.inbound.receivedAt);
+  const now = currentHolder(timeline);
+  if (now === null) return { status: 'not_sendable' };
+  if (then === 'ambiguous' || now === 'ambiguous' || then === null) {
+    return { status: 'holder_changed' };
+  }
+  if (held.authorUserId !== null && held.authorUserId !== then.userId) {
+    return { status: 'holder_changed' };
+  }
+  if (!samePerson(then, now)) return { status: 'holder_changed' };
+  if (!(await stillSendable(database, held.phoneE164))) return { status: 'not_sendable' };
+  return { status: 'reachable', then };
+}
+
+/** One person behind both: the same user, or, before anyone is a user, the same holding. */
+function samePerson(a: NumberHolding, b: NumberHolding): boolean {
+  if (a.userId !== null || b.userId !== null) return a.userId === b.userId;
+  return a.kind === b.kind && a.id === b.id;
+}
+
+/**
+ * The reply's trace, best-effort once it has left: the ledger and the coach thread for a
+ * family, else the transcript of the intake that held the number, so the next turn knows
+ * a crisis reply went out. A failure here is named and never sends again.
+ */
+async function recordLateCrisisReply(
+  database: Database,
+  deps: OptOutRecoveryDeps,
+  held: HeldText,
+  then: NumberHolding,
+  body: string,
+  sent: ResolvedOutbound,
+): Promise<void> {
+  const { now } = deps;
+  const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
+  const entry: TranscriptEntry = {
+    direction: 'out',
+    body,
+    providerId: sent.providerMessageId,
+    at: now.toISOString(),
+    channel,
+    chatId: sent.chatId ?? null,
+  };
+  if (held.familyId && held.authorUserId) {
+    const owner = { familyId: held.familyId, parentUserId: held.authorUserId };
+    // Read live, as threadIfParent reads it: a parent who left keeps the reply, and the
+    // family they left gets no trace of it. A check that throws records nothing.
+    let parentNow: boolean;
+    try {
+      parentNow = await isParentOf(database, owner);
+    } catch (err) {
+      console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_parent_check_failed');
+      return;
+    }
+    if (!parentNow) {
+      console.info(
+        { trace: 'late_crisis_not_recorded_left_family' },
+        'opt-out recovery: late crisis reply sent, not recorded - the author is no longer a parent of that family',
+      );
+      return;
+    }
+    try {
+      await writeChannelMessage(database, owner, entry, now);
+    } catch (err) {
+      console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_ledger_failed');
+    }
+    try {
+      await deps.threadMessage(database, { ...owner, body });
+    } catch (err) {
+      console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_thread_failed');
+    }
+    return;
+  }
+  try {
+    const open = await loadOpenSession(database, held.phoneE164);
+    if (!open || then.kind !== 'session' || then.id !== open.id) return;
+    await saveSession(database, open, { transcript: appendTranscript(open, entry) }, now);
+  } catch (err) {
+    console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_transcript_failed');
+  }
+}
+
+async function isParentOf(
+  database: Database,
+  owner: { familyId: string; parentUserId: string },
+): Promise<boolean> {
+  const [member] = await database
+    .select({ role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, owner.familyId),
+        eq(schema.familyMembers.userId, owner.parentUserId),
+      ),
+    )
+    .limit(1);
+  return member !== undefined && isParentRole(member.role);
 }
 
 /** One holding of a number: a parent channel until it is revoked, an intake session
@@ -577,11 +858,18 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
     if (channel) {
       const phoneE164 = decryptString(channel.phoneE164Encrypted);
       const transport = message.channel === 'imessage' ? 'imessage' : 'sms';
+      // Never families.country_code: it defaults to CA, which would be a guess.
+      const [family] = await database
+        .select({ postalCode: schema.families.postalCode })
+        .from(schema.families)
+        .where(eq(schema.families.id, message.familyId))
+        .limit(1);
       return {
         phoneE164,
         language: (await loadOpenSession(database, phoneE164))?.ladderLanguage ?? null,
         authorUserId: message.parentUserId,
         familyId: message.familyId,
+        region: crisisRegionForPlace([family?.postalCode]),
         inbound: {
           from: phoneE164,
           body: message.body,
@@ -625,6 +913,10 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
       language: data.ladderLanguage,
       authorUserId: candidate.userId,
       familyId: candidate.userId ? candidate.familyId : null,
+      region: crisisRegionForPlace([
+        data.firstTouch?.place?.postalCode,
+        data.firstTouch?.place?.areaCoarse,
+      ]),
       // No chat: a late confirmation always goes one-to-one.
       inbound: {
         from: phoneE164,
@@ -683,8 +975,8 @@ async function repointLegacyHolds(
   for (const row of legacy) {
     await repointLegacyHold(database, now, result, row).catch((err: unknown) => {
       console.error(
-        { urgent: true, outcome: 'legacy_failed', err: errName(err) },
-        'URGENT: opt-out recovery: a legacy hold could not be re-pointed - left standing',
+        { outcome: 'legacy_failed', err: errName(err) },
+        'opt-out recovery: a legacy hold could not be re-pointed - left standing; the opt-out hold sweep pages it',
       );
       result.legacyFailed += 1;
     });

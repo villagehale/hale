@@ -115,7 +115,11 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { failurePageCrisisPager, reportTurnFailures } from '~/lib/monitoring/failure-page';
+import {
+  failurePageCrisisPager,
+  noteCrisisReplySent,
+  reportTurnFailures,
+} from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -1175,6 +1179,7 @@ async function routeChannelMessageInner(
     templateKey: string | null = null,
     groupSync?: GroupActivityDecision,
     pendingAsk: PendingAsk | null = null,
+    onSent?: () => Promise<unknown>,
   ) =>
     sendReply(deps, {
       route,
@@ -1188,6 +1193,7 @@ async function routeChannelMessageInner(
       groupSync,
       templateKey,
       beforeSend: stopTyping,
+      onSent,
       inboundBody: context.body,
       stickerRead: {
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
@@ -1660,6 +1666,11 @@ async function routeChannelMessageInner(
         null,
         undefined,
         verdict.pendingAsk,
+        // A crisis counts as answered once the transport accepted its reply, never before,
+        // so a held copy whose reply never left is still answered late (VIL-602).
+        verdict.crisisReply
+          ? () => noteCrisisReplySent(deps.database, job.provider_message_id, deps.now())
+          : undefined,
       );
       return done(deps, job, {
         status: 'deflected',
@@ -2779,7 +2790,8 @@ async function disposeOfFailedTurn(
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
     // a provider outage the off-domain screen fails open and no model can write a
-    // crisis reply; since #868 there is no fixed one, so the alarm pages #ops urgently.
+    // crisis reply; since #868 there is no fixed one. The alarm never fires today (it
+    // returns not_an_outage or unjudged), so it pages nobody.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -2917,6 +2929,9 @@ async function sendReply(
     /** Runs before the transport call. The iMessage think-section uses it to
      * stop the typing bubble before the reply goes out. */
     beforeSend?: () => Promise<void> | void;
+    /** Runs once the transport accepted the text, before any receipt is written, so what
+     * it records holds even when a receipt write then throws. */
+    onSent?: () => Promise<unknown>;
     /** The parent's words, when this reply is the turn's answer. A tapback or
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
@@ -3020,6 +3035,7 @@ async function sendReply(
       );
     }
   }
+  if (args.onSent) await args.onSent();
   await mirrorActivityDecision(deps, args);
 
   // The channel the send reported. The ledger records that door, which is what a

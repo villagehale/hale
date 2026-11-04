@@ -42,7 +42,6 @@ import {
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
   noteFirstHelloFailure,
-  noteLateOptOutCrisis,
   pageErasureGoogleUnconfirmed,
   pageFailureAlerts,
   recordErasureGoogleUnconfirmed,
@@ -744,7 +743,11 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(texts[0]).not.toContain('988');
     expect(texts[0]).not.toContain(family.familyId);
     expect(texts[0]).not.toContain(INBOUND);
-    assertNoParentPayload(texts[0] ?? '');
+    // The claim's random uuid can hold a run of seven digits; it is the one reference.
+    assertNoParentPayload(
+      texts[0] ?? '',
+      ...(texts[0]?.match(/ref ([0-9a-f-]{36})\./)?.slice(1) ?? []),
+    );
     const audited = (await auditActions()).filter(
       (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
     );
@@ -960,7 +963,7 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
 
     expect(sweep.crisisUnanswered.posted).toBe(1);
     expect(texts).toEqual([
-      'Hale: URGENT crisis flagged, no reply sent. kind unreadable. where unreadable. reason unreadable. writes 0.',
+      `Hale: URGENT crisis flagged, no reply sent. kind unreadable. where unreadable. reason unreadable. writes 0. ref ${claim?.id}.`,
     ]);
     // Named by the claim row's own id, so ops can find it; never by what it holds.
     expect(error).toHaveBeenCalledWith(
@@ -979,8 +982,11 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
       where: PHONE_SHAPED,
       reason: PARENT_WORDS,
       writes: 2,
+      ref: PHONE_SHAPED,
     });
     expect(text).toContain('where redacted');
+    // The reference is a claim id or nothing: a non-uuid never rides along.
+    expect(text).toContain('ref none.');
     expect(text).not.toContain(PHONE_SHAPED);
     expect(text).not.toContain(PARENT_WORDS);
     assertNoParentPayload(text);
@@ -1033,11 +1039,10 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
         numbers: 3,
         notInLedger: 1,
         legacy: 1,
-        oldestHours: 5,
-        lateCrisis: Number.NaN,
+        oldestHours: Number.NaN,
       }),
     ).toBe(
-      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 5h. crisis read late 0.',
+      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 0h.',
     );
   });
 
@@ -1054,7 +1059,7 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
     expect(first.optOutHolds).toEqual({ posted: 1, deduped: 0, failed: 0 });
     expect(again.optOutHolds).toEqual({ posted: 0, deduped: 1, failed: 0 });
     expect(texts).toEqual([
-      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 5h. crisis read late 0.',
+      'Hale: opt-out reads held. messages 2. numbers 3. not in ledger 1. legacy 1. oldest 5h.',
     ]);
     for (const secret of ['hash-x', 'hash-y', 'hash-z', 'pm-ledger', 'pm-lost']) {
       expect(texts[0]).not.toContain(secret);
@@ -1087,33 +1092,33 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
     expect(texts[1]).toContain('oldest 16h.');
   });
 
-  it('a crisis read late pages within the hour, with nothing held', async () => {
-    await noteLateOptOutCrisis(db.database, 'pm-crisis', ago(10 * 60_000));
-    // Read more than an hour ago: no longer counted.
-    await noteLateOptOutCrisis(db.database, 'pm-crisis-old', ago(2 * HOUR));
+  it('a retired late-crisis mark pages nothing and is gone once a day old', async () => {
+    // Rows the pre-VIL-602 count wrote; nothing writes the route now.
+    await db.database.insert(schema.rateLimits).values([
+      {
+        identifier: 'a'.repeat(32),
+        route: OPT_OUT_LATE_CRISIS_ROUTE,
+        windowStart: ago(10 * 60_000),
+        count: 1,
+      },
+      {
+        identifier: 'b'.repeat(32),
+        route: OPT_OUT_LATE_CRISIS_ROUTE,
+        windowStart: ago(25 * HOUR),
+        count: 1,
+      },
+    ]);
     const { texts, post } = recorder();
 
     await pageFailureAlerts(db.database, { post, now: NOW });
 
-    expect(texts).toEqual([
-      'Hale: opt-out reads held. messages 0. numbers 0. not in ledger 0. legacy 0. oldest 0h. crisis read late 1.',
-    ]);
-  });
-
-  it('a late crisis mark names no message and is gone once a day old', async () => {
-    await noteLateOptOutCrisis(db.database, 'pm-crisis-fresh', ago(10 * 60_000));
-    await noteLateOptOutCrisis(db.database, 'pm-crisis-stale', ago(25 * HOUR));
-    const { post } = recorder();
-
-    await pageFailureAlerts(db.database, { post, now: NOW });
-
+    expect(texts).toEqual([]);
     const marks = await db.database
-      .select({ identifier: schema.rateLimits.identifier, at: schema.rateLimits.windowStart })
+      .select({ at: schema.rateLimits.windowStart })
       .from(schema.rateLimits)
       .where(eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE));
     // Positive control: the fresh mark stands; only the day-old one was deleted.
     expect(marks.map((mark) => mark.at)).toEqual([ago(10 * 60_000)]);
-    expect(marks[0]?.identifier).not.toContain('pm-crisis');
   });
 
   it('posts nothing when nothing is held', async () => {
