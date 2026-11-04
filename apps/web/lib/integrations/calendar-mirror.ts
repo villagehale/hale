@@ -566,8 +566,10 @@ export async function reconcileCalendarMirrors(
 
 /**
  * The kid judgement for each candidate, by event id. Each item is built field for field
- * the way the backfill builds one for a mirror row, keyed through `seriesKeyForEvent`, so
- * the input hash - and so the cached verdict, and a parent's "that's mine" - agree.
+ * the way the backfill builds one for a mirror row, so the input hash and the cached
+ * verdict agree. It is keyed by its own event id: an instance retitled on its own is
+ * judged on its own words. Its series, through `seriesKeyForEvent`, carries only a
+ * parent's "that's mine".
  */
 async function judgeCandidates(
   database: Database,
@@ -581,7 +583,8 @@ async function judgeCandidates(
       ref: candidate.eventId,
       source: 'google_calendar',
       integrationId: input.integrationId,
-      itemKey: await seriesKeyForEvent(database, input.integrationId, candidate.eventId),
+      itemKey: candidate.eventId,
+      seriesKey: await seriesKeyForEvent(database, input.integrationId, candidate.eventId),
       title: candidate.title,
       startsAt: candidate.startsAt.toISOString(),
       place: candidate.location,
