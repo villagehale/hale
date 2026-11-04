@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  GOOGLE_REVOKE_RETRY_BUDGET_MS,
   type GoogleDisconnectPorts,
   type GoogleRevokeResult,
   disconnectGoogle,
@@ -470,5 +471,83 @@ describe('reconnecting clears a pending revoke', () => {
       revoked: 1,
     });
     expect(ports.revoked).toEqual(['1//co-r']);
+  });
+});
+
+describe('the cron retry reaches every pending row during a long outage', () => {
+  it('stops at its time budget and starts the next run with the rows it did not reach', async () => {
+    const third = { accessToken: 'ya29.third', refreshToken: '1//third-r' };
+    const [thirdParent] = await db.database
+      .insert(schema.users)
+      .values({ email: `third-${randomUUID()}@example.test`, name: 'Third Parent' })
+      .returning({ id: schema.users.id });
+    if (!thirdParent) throw new Error('third parent insert returned no row');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: thirdParent.id, role: 'co_parent' });
+    await connect(parentUserId, 'gcal', CAL);
+    await connect(coParentUserId, 'gcal', CO);
+    await connect(thirdParent.id, 'gcal', third);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN, { now: NOW }));
+    await disconnect(
+      coParentUserId,
+      'gcal',
+      scriptedPorts(DOWN, { now: new Date(NOW.getTime() + 1000) }),
+    );
+    await disconnect(
+      thirdParent.id,
+      'gcal',
+      scriptedPorts(DOWN, { now: new Date(NOW.getTime() + 2000) }),
+    );
+
+    // Google hangs: each attempt costs more than half the budget, so one run reaches two.
+    let clock = NOW.getTime() + DAY_MS;
+    const hanging = (): GoogleDisconnectPorts & { revoked: string[] } => {
+      const ports = scriptedPorts(() => {
+        clock += GOOGLE_REVOKE_RETRY_BUDGET_MS / 2 + 1;
+        return { outcome: 'unavailable', status: null };
+      });
+      return { ...ports, now: () => new Date(clock) };
+    };
+
+    const first = hanging();
+    expect(await retryPendingGoogleRevocations(db.database, first)).toMatchObject({
+      attempted: 2,
+      pending: 2,
+    });
+    expect(first.revoked).toEqual(['1//cal-r', '1//co-r']);
+
+    const second = hanging();
+    await retryPendingGoogleRevocations(db.database, second);
+    expect(second.revoked[0]).toBe('1//third-r');
+  });
+});
+
+describe("Google's answer and its audit row land together", () => {
+  it('keeps the token pending when the audit row cannot be written, and records it on the retry', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await db.exec(`
+      create or replace function fail_grant_audit() returns trigger as $$
+      begin raise exception 'audit write refused'; end; $$ language plpgsql;
+      create trigger fail_grant_audit before insert on audit_log for each row
+        when (new.action_taken = 'integration_google_grant_revoked')
+        execute function fail_grant_audit();
+    `);
+    try {
+      const result = await disconnect(parentUserId, 'gcal', scriptedPorts(OK));
+      expect(result).toMatchObject({ google: 'pending_retry' });
+      expect((await rowFor(parentUserId, 'gcal'))?.pending).not.toBeNull();
+    } finally {
+      await db.exec(
+        'drop trigger fail_grant_audit on audit_log; drop function fail_grant_audit();',
+      );
+    }
+
+    expect(await retryPendingGoogleRevocations(db.database, scriptedPorts(OK))).toMatchObject({
+      attempted: 1,
+      revoked: 1,
+    });
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).toBeNull();
+    expect(await audits('integration_google_grant_revoked')).toHaveLength(1);
   });
 });

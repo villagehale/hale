@@ -11,6 +11,7 @@ import {
   endGoogleConnections,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
+  noteGoogleRevokeAttempt,
 } from './store';
 import {
   type RevokePendingToken,
@@ -44,6 +45,10 @@ export const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 export const GOOGLE_REVOKE_TIMEOUT_MS = 10_000;
 /** The deletion window for the pending token: past it, an unanswered revoke is abandoned. */
 export const GOOGLE_REVOKE_PENDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long one cron run spends asking Google again. The route shares a five-minute
+ * deadline with the poll sweep, and a hanging Google costs a full timeout per ask; rows
+ * not reached are first in line on the next run. */
+export const GOOGLE_REVOKE_RETRY_BUDGET_MS = 60_000;
 
 export type GoogleRevokeResult =
   | { outcome: 'revoked' }
@@ -266,31 +271,39 @@ async function record(
   db: Database,
   held: Held,
   result: { outcome: GoogleRowOutcome; status?: number | null },
+  now: Date,
 ): Promise<GoogleRowOutcome> {
-  if (result.outcome === 'pending_retry' || result.outcome === 'reconnected_meanwhile') {
+  if (result.outcome === 'reconnected_meanwhile') return result.outcome;
+  if (result.outcome === 'pending_retry') {
+    if (held.enc !== null) await noteGoogleRevokeAttempt(db, held.row.id, held.enc, now);
     return result.outcome;
   }
-  // Clear only what was read: a reconnect in between already cleared it, and its new
-  // grant is not this revoke's to report on.
-  if (held.enc !== null && !(await clearGoogleRevokePending(db, held.row.id, held.enc))) {
-    return 'reconnected_meanwhile';
-  }
   const done = DONE.has(result.outcome);
-  await db.insert(schema.auditLog).values({
-    familyId: held.row.familyId,
-    actor: 'system',
-    actionTaken: done
-      ? 'integration_google_grant_revoked'
-      : 'integration_google_grant_revoke_failed',
-    targetTable: 'integrations',
-    targetId: held.row.id,
-    after: {
-      provider: held.row.provider,
-      outcome: result.outcome,
-      ...(typeof result.status === 'number' ? { status: result.status } : {}),
-    },
+  // The clear and Google's audit row land together: a failed audit write leaves the token
+  // pending, so the retry asks again and records it, rather than losing both (rule #6).
+  return db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    // Clear only what was read: a reconnect in between already cleared it, and its new
+    // grant is not this revoke's to report on.
+    if (held.enc !== null && !(await clearGoogleRevokePending(tx, held.row.id, held.enc))) {
+      return 'reconnected_meanwhile' as const;
+    }
+    await tx.insert(schema.auditLog).values({
+      familyId: held.row.familyId,
+      actor: 'system',
+      actionTaken: done
+        ? 'integration_google_grant_revoked'
+        : 'integration_google_grant_revoke_failed',
+      targetTable: 'integrations',
+      targetId: held.row.id,
+      after: {
+        provider: held.row.provider,
+        outcome: result.outcome,
+        ...(typeof result.status === 'number' ? { status: result.status } : {}),
+      },
+    });
+    return result.outcome;
   });
-  return result.outcome;
 }
 
 function logSettlement(settlement: GoogleSettlement, status?: number | null): void {
@@ -335,7 +348,7 @@ export async function settleGoogleRevocations(
     }
     try {
       const result = await revokeHeld(entry, wired);
-      const google = await record(db, entry, result);
+      const google = await record(db, entry, result, wired.now());
       const settlement = {
         integrationId: entry.row.id,
         provider: entry.row.provider,
@@ -503,14 +516,21 @@ export async function retryPendingGoogleRevocations(
     pending: 0,
     reconnectedMeanwhile: 0,
   };
-  const ids = await listPendingGoogleRevocations(db);
-  const rows = await loadGoogleRevokePending(db, ids);
-  const settlements = await settleGoogleRevocations(
-    db,
-    rows.map((row) => ({ id: row.id, familyId: row.familyId, provider: row.provider })),
-    ports,
-  );
-  summary.attempted = settlements.length;
-  for (const settlement of settlements) summary[SUMMARY_KEY[settlement.google]] += 1;
+  const wired = ports ?? defaultGoogleDisconnectPorts();
+  const started = wired.now().getTime();
+  for (const id of await listPendingGoogleRevocations(db)) {
+    if (wired.now().getTime() - started >= GOOGLE_REVOKE_RETRY_BUDGET_MS) break;
+    const [row] = await loadGoogleRevokePending(db, [id]);
+    if (!row) continue;
+    const settlements = await settleGoogleRevocations(
+      db,
+      [{ id: row.id, familyId: row.familyId, provider: row.provider }],
+      wired,
+    );
+    for (const settlement of settlements) {
+      summary.attempted += 1;
+      summary[SUMMARY_KEY[settlement.google]] += 1;
+    }
+  }
   return summary;
 }

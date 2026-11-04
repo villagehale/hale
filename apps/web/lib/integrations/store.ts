@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
 import {
@@ -516,13 +516,35 @@ export async function endGoogleConnections(
   }));
 }
 
-/** Ids of every ended row still waiting on Google: the retry's work list. */
+/** Ids of every ended row still waiting on Google, least recently asked first: the
+ * retry's work list. Each unanswered ask moves its row to the back
+ * ({@link noteGoogleRevokeAttempt}), so a run cut short by a long outage hands the next
+ * run the rows it did not reach. */
 export async function listPendingGoogleRevocations(database: Database): Promise<string[]> {
   const rows = await database
     .select({ id: schema.integrations.id })
     .from(schema.integrations)
-    .where(isNotNull(schema.integrations.googleRevokePendingEncrypted));
+    .where(isNotNull(schema.integrations.googleRevokePendingEncrypted))
+    .orderBy(asc(schema.integrations.updatedAt), asc(schema.integrations.id));
   return rows.map((row) => row.id);
+}
+
+/** Google gave no answer this time: stamp the ask, so this row waits its turn. */
+export async function noteGoogleRevokeAttempt(
+  database: Database,
+  id: string,
+  expectedEnc: string,
+  now: Date,
+): Promise<void> {
+  await database
+    .update(schema.integrations)
+    .set({ updatedAt: now })
+    .where(
+      and(
+        eq(schema.integrations.id, id),
+        eq(schema.integrations.googleRevokePendingEncrypted, expectedEnc),
+      ),
+    );
 }
 
 export interface PendingGoogleRevocation {
