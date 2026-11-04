@@ -10,7 +10,8 @@ import { familyHasTeenager } from './trail-query';
 /**
  * "What Hale did" on /privacy: the emails Hale sent for the family and the calendar
  * changes it made, read from executed `actions` rows only — never `audit_log`, so an
- * internal step ("understood a new signal") cannot appear by construction.
+ * internal step ("understood a new signal") cannot appear by construction. Each row is
+ * a past-tense receipt with one time line in the family's own zone and locale.
  * Session-free; the session wrapper is loadWhatHaleDid in queries.ts.
  */
 
@@ -49,12 +50,40 @@ const GOOGLE_ONLY_TYPES: ReadonlySet<string> = new Set<ActionType>([
   'update_calendar_event',
 ]);
 
+const CALENDAR_LABEL: Record<CalendarTarget, string> = {
+  hale_calendar: 'Family calendar',
+  google_calendar: 'Google Calendar',
+};
+
+/** The past-tense verb for each email kind, and its line when the payload lost its fields. */
+const EMAIL_RECEIPT: Record<string, { verb: string; bare: string }> = {
+  send_email: { verb: 'Emailed', bare: 'Sent an email' },
+  reply_to_email: { verb: 'Replied to', bare: 'Replied to an email' },
+};
+
+/** The past-tense verb for each calendar kind, and how it joins the calendars it touched. */
+const CALENDAR_RECEIPT: Record<string, { verb: string; joiner: string }> = {
+  calendar_add: { verb: 'Added', joiner: 'to' },
+  create_calendar_event: { verb: 'Added', joiner: 'to' },
+  calendar_move: { verb: 'Moved', joiner: 'on' },
+  update_calendar_event: { verb: 'Updated', joiner: 'on' },
+  calendar_cancel: { verb: 'Removed', joiner: 'from' },
+};
+
+/** The zone and locale a family reads its own clock in. */
+export interface FamilyClock {
+  timeZone: string;
+  locale: string;
+}
+
 export interface WhatHaleDidItem {
   id: string;
   kind: WhatHaleDidKind;
-  /** The teen-safe preview line, which names the recipient for an email. */
+  /** The past-tense receipt, naming the recipient or the calendars; the teen
+   * placeholder when redacted. */
   what: string;
-  /** When it executed, in the family's own zone. */
+  /** One time line in the family's zone and locale: the event's own time and when Hale
+   * did it for a placement, when it was sent for an email. */
   when: string;
   calendars: readonly CalendarTarget[];
   teenRedacted: boolean;
@@ -85,20 +114,81 @@ function calendarsFor(
   return onGoogle(executorResult) ? ['hale_calendar', 'google_calendar'] : ['hale_calendar'];
 }
 
+/** A payload string field, trimmed; null when absent or blank. */
+function text(payload: Record<string, unknown> | null, key: string): string | null {
+  const value = payload?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/** The receipt line. A redacted row's payload is already null, so it keeps the
+ * placeholder preview and nothing of the payload can reach the line. */
+function receiptLine(view: HistoryView, calendars: readonly CalendarTarget[]): string {
+  if (view.teenRedacted || view.payload === null) return view.preview;
+  const email = EMAIL_RECEIPT[view.actionType];
+  if (email) {
+    const to = text(view.payload, 'to');
+    const subject = text(view.payload, 'subject');
+    if (!to) return email.bare;
+    return subject ? `${email.verb} ${to} about ${subject}` : `${email.verb} ${to}`;
+  }
+  const calendar = CALENDAR_RECEIPT[view.actionType];
+  if (!calendar) {
+    throw new Error(`receiptLine: ${view.actionType} is not an email or calendar action`);
+  }
+  const places = calendars.map((target) => CALENDAR_LABEL[target]).join(' and ');
+  return `${calendar.verb} ${text(view.payload, 'title') ?? 'an event'} ${calendar.joiner} ${places}`;
+}
+
+function yearIn(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone }).format(at);
+}
+
+/** An instant on the family's own clock, with the year only when it is not this year. */
+function stamp(at: Date, clock: FamilyClock, now: Date, weekday: boolean): string {
+  return new Intl.DateTimeFormat(clock.locale, {
+    weekday: weekday ? 'short' : undefined,
+    month: 'short',
+    day: 'numeric',
+    year: yearIn(at, clock.timeZone) === yearIn(now, clock.timeZone) ? undefined : 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: clock.timeZone,
+  }).format(at);
+}
+
+function timeLine(
+  view: HistoryView,
+  kind: WhatHaleDidKind,
+  doneAt: Date,
+  clock: FamilyClock,
+  now: Date,
+): string {
+  const done = stamp(doneAt, clock, now, false);
+  if (kind === 'email') return `Sent ${done}`;
+  const startsIso = text(view.payload, 'startsAt');
+  const startsAt = startsIso ? new Date(startsIso) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return `Done ${done}`;
+  return `${stamp(startsAt, clock, now, true)} · done ${done}`;
+}
+
 export function toWhatHaleDidItem(
   view: HistoryView,
+  doneAt: Date,
   executorResult: Record<string, unknown> | null,
+  clock: FamilyClock,
+  now: Date = new Date(),
 ): WhatHaleDidItem {
   const kind = WHAT_HALE_DID_KIND[view.actionType as ActionType];
   if (!kind) {
     throw new Error(`toWhatHaleDidItem: ${view.actionType} is not an email or calendar action`);
   }
+  const calendars = calendarsFor(view, kind, executorResult);
   return {
     id: view.id,
     kind,
-    what: view.preview,
-    when: view.resolvedAt,
-    calendars: calendarsFor(view, kind, executorResult),
+    what: receiptLine(view, calendars),
+    when: timeLine(view, kind, doneAt, clock, now),
+    calendars,
     teenRedacted: view.teenRedacted,
   };
 }
@@ -106,18 +196,22 @@ export function toWhatHaleDidItem(
 /** A family with no member has no zone. The message carries no family id (it is logged). */
 export class FamilyWithoutMembersError extends Error {
   constructor() {
-    super('readFamilyOwnTimezone: the family has no members, so it has no zone');
+    super('readFamilyOwnClock: the family has no members, so it has no zone');
     this.name = 'FamilyWithoutMembersError';
   }
 }
 
 /**
- * The family's own zone: the primary parent's `users.timezone`, or else the zone of the
- * earliest-joined member. No constant fallback; a family with no member has no zone.
+ * The family's own clock: the primary parent's `users.timezone` and `users.locale`, or
+ * else those of the earliest-joined member. No constant fallback; a family with no
+ * member has no zone.
  */
-export async function readFamilyOwnTimezone(database: Database, familyId: string): Promise<string> {
+export async function readFamilyOwnClock(
+  database: Database,
+  familyId: string,
+): Promise<FamilyClock> {
   const [row] = await database
-    .select({ timezone: schema.users.timezone })
+    .select({ timeZone: schema.users.timezone, locale: schema.users.locale })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
     .where(eq(schema.familyMembers.familyId, familyId))
@@ -127,7 +221,7 @@ export async function readFamilyOwnTimezone(database: Database, familyId: string
     )
     .limit(1);
   if (!row) throw new FamilyWithoutMembersError();
-  return row.timezone;
+  return row;
 }
 
 /** Executed email and calendar actions, newest first, teen-redacted for this viewer. */
@@ -136,9 +230,9 @@ export async function readWhatHaleDid(
   familyId: string,
   viewerUserId: string | null,
 ): Promise<WhatHaleDidItem[]> {
-  const [familyHasTeen, timeZone, unlocks] = await Promise.all([
+  const [familyHasTeen, clock, unlocks] = await Promise.all([
     familyHasTeenager(database, familyId),
-    readFamilyOwnTimezone(database, familyId),
+    readFamilyOwnClock(database, familyId),
     loadTeenAccessUnlocks(database, familyId, viewerUserId),
   ]);
   const rows = await readResolvedActionRows(database, {
@@ -151,6 +245,6 @@ export async function readWhatHaleDid(
     familyHasTeen,
   });
   return rows.map(({ row, executorResult }) =>
-    toWhatHaleDidItem(toHistoryView(row, timeZone), executorResult),
+    toWhatHaleDidItem(toHistoryView(row, clock.timeZone), row.resolvedAt, executorResult, clock),
   );
 }

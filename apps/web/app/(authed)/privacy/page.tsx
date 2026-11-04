@@ -7,7 +7,9 @@ import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
 import { connectionState } from '~/lib/integrations/connection-state';
 import { listUserConnections } from '~/lib/integrations/store';
+import { DELETION_GRACE_DAYS } from '~/lib/rights/delete';
 import { deleteAccountRole } from '~/lib/rights/delete-role';
+import { exportSeat } from '~/lib/rights/export-seat';
 
 export const metadata: Metadata = { title: 'Privacy & data' };
 
@@ -27,7 +29,14 @@ export default async function PrivacyPage() {
       ? await loadHousehold(database, familyId, userId)
       : null;
 
-  return <PrivacyPageView household={household} role={deleteAccountRole(seats, familyId)} />;
+  return (
+    <PrivacyPageView
+      household={household}
+      role={deleteAccountRole(seats, familyId)}
+      canExport={exportSeat(seats).outcome === 'export'}
+      holdDays={DELETION_GRACE_DAYS}
+    />
+  );
 }
 
 async function loadHousehold(database: Database, familyId: string, userId: string) {

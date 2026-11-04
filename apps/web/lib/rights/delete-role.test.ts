@@ -5,8 +5,8 @@ import { deleteAccountRole } from './delete-role';
  * Which erasure the Delete button may offer, from the viewer's seats. The cases are
  * the DeleteAccountRole contract (delete-account-button.tsx): more than one seat is
  * ambiguous (the route 409s), a lone co-parent seat is a departure, a named caregiver
- * has no erasure of its own, and a primary parent (or a viewer with no seat yet)
- * erases the family.
+ * has no erasure of its own, and nor does a viewer with no seat (the route refuses
+ * them 403). A primary parent erases the family.
  */
 
 const FAMILY = 'family-a';
@@ -34,8 +34,9 @@ describe('deleteAccountRole', () => {
     );
   });
 
-  it('keeps a viewer with no seat on the family erasure, as the settings page always has', () => {
-    expect(deleteAccountRole([], FAMILY)).toBe('primary_parent');
+  it('offers a viewer with no seat no erasure, because the route answers them 403', () => {
+    expect(deleteAccountRole([], FAMILY)).toBe('scoped');
+    expect(deleteAccountRole([], null)).toBe('scoped');
   });
 
   it('reads a named caregiver seat as scoped', () => {

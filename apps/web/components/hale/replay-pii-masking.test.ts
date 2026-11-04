@@ -236,8 +236,8 @@ describe('the privacy page masks each "What Hale did" row', () => {
             {
               id: 'act-a',
               kind: 'email',
-              what: 'Email coach@example.test — Practice moved',
-              when: 'Jun 19, 08:30',
+              what: 'Emailed coach@example.test about Practice moved',
+              when: 'Sent Jun 19, 8:30 a.m.',
               calendars: [],
               teenRedacted: false,
             },
@@ -245,12 +245,14 @@ describe('the privacy page masks each "What Hale did" row', () => {
           connections: { gmail: 'not_connected', gcal: 'connected', gdrive: 'not_connected' },
         },
         role: 'primary_parent',
+        canExport: true,
+        holdDays: 7,
       }),
     );
 
   it('leaves neither the recipient, the subject nor the time outside a masked subtree', () => {
     const residue = visibleText(stripMaskedSubtrees(render()));
-    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 08:30']) {
+    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 8:30 a.m.']) {
       expect(residue, `${value} must not survive the mask`).not.toContain(value);
     }
     expect(residue).toContain('What Hale did');
@@ -258,7 +260,7 @@ describe('the privacy page masks each "What Hale did" row', () => {
 
   it('is a real check — the same values ARE in the unmasked render', () => {
     const html = render();
-    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 08:30']) {
+    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 8:30 a.m.']) {
       expect(html).toContain(value);
     }
   });

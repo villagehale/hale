@@ -169,7 +169,9 @@ test('/privacy lists what Hale did, and nothing it did not do', async ({ browser
   const response = await page.goto('/privacy');
   expect(response?.status()).toBe(200);
   // The seed's email Hale sent on its own (scripts/fixtures/smoke-autonomy-trail.ts).
-  await expect(page.getByText('Email office@example.test — Pickup on Thursday')).toBeVisible();
+  await expect(
+    page.getByText('Emailed office@example.test about Pickup on Thursday'),
+  ).toBeVisible();
   // The seed's declined form is not something Hale did; the email above is the control.
   await expect(page.getByText('Fill a form')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Read the privacy policy' })).toBeVisible();

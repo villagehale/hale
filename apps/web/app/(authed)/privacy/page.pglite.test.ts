@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
@@ -8,6 +9,9 @@ import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/
  * (recipients, subjects, calendar titles) and the connection list names accounts, so
  * only the household's parents see either. A caregiver gets only what their seat
  * allows. Only the session is faked: which user and family the request is for.
+ *
+ * The parent's zone is Vancouver with the en-CA column default: 15:30Z in June (PDT,
+ * UTC−7) reads 8:30 a.m.
  */
 
 const session = vi.hoisted(() => ({ familyId: '', userId: '' }));
@@ -33,6 +37,10 @@ beforeAll(async () => {
   vi.stubEnv('DATABASE_URL', 'postgres://pglite.test/hale');
   const database = harness.db.database;
   fam = await seedFamily(database, 'Fixture Family');
+  await database
+    .update(schema.users)
+    .set({ timezone: 'America/Vancouver' })
+    .where(eq(schema.users.id, fam.parentUserId));
 
   const [caregiver] = await database
     .insert(schema.users)
@@ -94,9 +102,11 @@ describe('/privacy by seat', () => {
   it('shows the parent what Hale did and their connections (the positive control)', async () => {
     const html = await renderAs(fam.parentUserId);
     for (const present of FAMILY_WIDE) expect(html).toContain(present);
+    expect(html).toContain('Emailed coach@example.test about Practice moved');
+    expect(html).toContain('Sent Jun 19, 8:30 a.m.');
     expect(html).toContain('Gmail');
     expect(html).toContain('>Connected<');
-    expect(html).toContain('Delete everything');
+    expect(html).toContain('Delete your account');
     expect(html).toContain('Export your data');
   });
 
@@ -107,11 +117,12 @@ describe('/privacy by seat', () => {
       ...FAMILY_WIDE,
       'Gmail',
       'Google Calendar',
-      'Delete everything',
+      'Delete account',
       'Export your data',
+      '>Your data<',
     ]) {
       expect(html).not.toContain(absent);
     }
-    expect(html).toContain('>Your data<');
+    expect(html).toContain('You help out with this family. Its parents manage the family’s data.');
   });
 });

@@ -12,14 +12,15 @@ import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 import {
   FamilyWithoutMembersError,
   type WhatHaleDidItem,
-  readFamilyOwnTimezone,
+  readFamilyOwnClock,
   readWhatHaleDid,
 } from './what-hale-did';
 
 /**
  * "What Hale did" over the real DDL: only executed email and calendar actions, newest
- * first, in the family's own zone (Vancouver here, never the Eastern render default),
- * with a 13+ child's rows redacted. Every events row states its attribution, because a
+ * first, as past-tense receipts in the family's own zone and locale (Vancouver and
+ * en-US here, never the Eastern render default or the en-CA column default), with a
+ * 13+ child's rows redacted. Every events row states its attribution, because a
  * teen family redacts an unattributed child_content row by default.
  *
  * The clock is pinned after pglite boots: the formatter prints the year once an
@@ -29,6 +30,7 @@ import {
 
 const PINNED_NOW = new Date('2026-07-01T12:00:00Z');
 const PRIMARY_ZONE = 'America/Vancouver';
+const PRIMARY_LOCALE = 'en-US';
 
 let db: TestDb;
 let fam: SeededFamily;
@@ -67,7 +69,7 @@ beforeAll(async () => {
   fam = await seedFamily(db.database, 'Fixture Family');
   await db.database
     .update(schema.users)
-    .set({ timezone: PRIMARY_ZONE })
+    .set({ timezone: PRIMARY_ZONE, locale: PRIMARY_LOCALE })
     .where(eq(schema.users.id, fam.parentUserId));
   const young = await seedChild(db.database, fam.familyId, 'Wren', 48, undefined, PINNED_NOW);
   const teen = await seedChild(db.database, fam.familyId, 'Rowan', 168, undefined, PINNED_NOW);
@@ -189,22 +191,21 @@ describe('readWhatHaleDid', () => {
     expect(items.map((i) => i.id)).toEqual([ids.b, ids.a, ids.c, ids.c2]);
   });
 
-  it('says what Hale did, to whom, in the family’s own zone', async () => {
+  it('says what Hale did, to whom, in the family’s own zone and locale', async () => {
     const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
     const a = byId(items, 'a');
     const b = byId(items, 'b');
 
-    expect(a.what).toBe('Email coach@example.test — Practice moved');
+    expect(a.what).toBe('Emailed coach@example.test about Practice moved');
     expect(a.kind).toBe('email');
     expect(a.calendars).toEqual([]);
-    // June is PDT (UTC−7): 15:30Z is 08:30 in Vancouver, 11:30 in the Eastern default.
-    expect(a.when).toContain('Jun 19');
-    expect(a.when).toContain('08:30');
-    expect(a.when).not.toContain('11:30');
-    expect(a.when).not.toContain('15:30');
+    // June is PDT (UTC−7): 15:30Z is 8:30 AM in Vancouver (11:30 in the Eastern default).
+    expect(a.when).toBe('Sent Jun 19, 8:30 AM');
 
-    expect(b.what).toBe('Add to your calendar — Swim lesson, Jun 21, 10:00');
+    expect(b.what).toBe('Added Swim lesson to Family calendar and Google Calendar');
     expect(b.calendars).toEqual(['hale_calendar', 'google_calendar']);
+    // 17:00Z on Sunday Jun 21 is 10:00 AM PDT; it was placed at 16:00Z, 9:00 AM PDT.
+    expect(b.when).toBe('Sun, Jun 21, 10:00 AM · done Jun 20, 9:00 AM');
   });
 
   it('redacts a 13+ child’s row and an unattributed family-wide row, and only those', async () => {
@@ -214,6 +215,8 @@ describe('readWhatHaleDid', () => {
 
     expect(c.what).toBe(TEEN_REDACTED_PLACEHOLDER);
     expect(c.teenRedacted).toBe(true);
+    // The teen event's own start (Jun 22) is withheld with its payload; 12:00Z is 5:00 AM.
+    expect(c.when).toBe('Done Jun 18, 5:00 AM');
     expect(c2.what).toBe(TEEN_REDACTED_PLACEHOLDER);
     expect(c2.teenRedacted).toBe(true);
     expect(byId(items, 'a').teenRedacted).toBe(false);
@@ -253,10 +256,10 @@ describe('the family zone', () => {
     });
 
     const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
-    expect(byId(items, 'a').when).toContain('08:30');
+    expect(byId(items, 'a').when).toBe('Sent Jun 19, 8:30 AM');
   });
 
-  it('falls back to the earliest-joined member’s zone, never a constant', async () => {
+  it('falls back to the earliest-joined member’s zone and locale, never a constant', async () => {
     await db.database
       .delete(schema.familyMembers)
       .where(
@@ -267,11 +270,9 @@ describe('the family zone', () => {
       );
 
     const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
-    const when = byId(items, 'a').when;
-    // June is MDT (UTC−6): 15:30Z is 09:30 in Edmonton.
-    expect(when).toContain('09:30');
-    expect(when).not.toContain('11:30');
-    expect(when).not.toContain('08:30');
+    // June is MDT (UTC−6): 15:30Z is 9:30 in Edmonton, read in the co-parent's own
+    // en-CA (the column default), not the departed primary's en-US.
+    expect(byId(items, 'a').when).toBe('Sent Jun 19, 9:30 a.m.');
   });
 
   // Inserted AFTER the Edmonton co-parent but joined earlier, so a reader that took
@@ -294,10 +295,8 @@ describe('the family zone', () => {
     });
 
     const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
-    const when = byId(items, 'a').when;
     // June is ADT (UTC−3): 15:30Z is 12:30 in Halifax.
-    expect(when).toContain('12:30');
-    expect(when).not.toContain('09:30');
+    expect(byId(items, 'a').when).toBe('Sent Jun 19, 12:30 p.m.');
   });
 
   it('has no zone for a family with no members, and names that without the id', async () => {
@@ -305,7 +304,7 @@ describe('the family zone', () => {
       .delete(schema.familyMembers)
       .where(eq(schema.familyMembers.familyId, fam.familyId));
 
-    const failure = await readFamilyOwnTimezone(db.database, fam.familyId).then(
+    const failure = await readFamilyOwnClock(db.database, fam.familyId).then(
       () => null,
       (error: unknown) => error,
     );

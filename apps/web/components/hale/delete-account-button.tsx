@@ -35,6 +35,7 @@ export function DeleteAccountButton({
   role,
   idleLabel,
   buttonClassName,
+  cancelClassName,
 }: {
   role: DeleteAccountRole;
   /** Idle label for a family erasure. Co-parent departure keeps its own words. */
@@ -42,6 +43,8 @@ export function DeleteAccountButton({
   /** The ask and the confirm, on a surface that does not style the global btn classes
    * (the portal resets `button`, so `btn-secondary` and `link` read as plain text). */
   buttonClassName?: string;
+  /** The confirm step's way back, on the same kind of surface. */
+  cancelClassName?: string;
 }) {
   const [state, setState] = useState<State>('idle');
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
@@ -135,53 +138,14 @@ export function DeleteAccountButton({
 
   if (state === 'confirming' || state === 'pending' || state === 'error') {
     return (
-      <div className="flex flex-col gap-y-3" aria-live="polite">
-        <p className="text-spruce leading-relaxed max-w-md">
-          {leaving ? (
-            <>
-              You’ll leave this family <strong>right away</strong> — Hale will stop texting you
-              about them, and every app you connected is disconnected. The family’s own record stays
-              with them, and so does your side of the conversation and the number you texted from,
-              which is the proof you agreed to be texted.
-            </>
-          ) : (
-            <>
-              This removes <strong>everything</strong> Hale holds about your family — your children,
-              your history, and every connected service. Deletion begins after a grace period, so
-              you can still change your mind. This can&rsquo;t be undone once it completes.
-            </>
-          )}
-        </p>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button
-            type="button"
-            className={buttonClassName ?? 'btn-secondary'}
-            onClick={confirmDelete}
-            disabled={state === 'pending'}
-          >
-            {state === 'pending'
-              ? leaving
-                ? 'leaving…'
-                : 'scheduling…'
-              : leaving
-                ? 'yes, leave this family'
-                : 'yes, delete my account'}
-          </button>
-          <button
-            type="button"
-            className="link"
-            onClick={() => setState('idle')}
-            disabled={state === 'pending'}
-          >
-            {leaving ? 'stay in this family' : 'keep my account'}
-          </button>
-        </div>
-        {state === 'error' ? (
-          <p className="meta text-berry">
-            {leaving ? 'could not leave — try again.' : 'could not schedule deletion — try again.'}
-          </p>
-        ) : null}
-      </div>
+      <DeleteConfirm
+        leaving={leaving}
+        state={state}
+        buttonClassName={buttonClassName}
+        cancelClassName={cancelClassName}
+        onConfirm={confirmDelete}
+        onCancel={() => setState('idle')}
+      />
     );
   }
 
@@ -193,5 +157,76 @@ export function DeleteAccountButton({
     >
       {leaving ? 'leave this family' : (idleLabel ?? 'delete my account')}
     </button>
+  );
+}
+
+/**
+ * The step after the ask: the whole of what the act does, then the act and the way
+ * back. The card above it carries one line; this is where the explanation lives.
+ */
+export function DeleteConfirm({
+  leaving,
+  state,
+  buttonClassName,
+  cancelClassName,
+  onConfirm,
+  onCancel,
+}: {
+  leaving: boolean;
+  state: 'confirming' | 'pending' | 'error';
+  buttonClassName?: string;
+  cancelClassName?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-y-3" aria-live="polite">
+      <p className="text-spruce leading-relaxed max-w-md">
+        {leaving ? (
+          <>
+            You’ll leave this family <strong>right away</strong> — Hale will stop texting you about
+            them, and every app you connected is disconnected. The family’s own record stays with
+            them, and so does your side of the conversation and the number you texted from, which is
+            the proof you agreed to be texted.
+          </>
+        ) : (
+          <>
+            This removes <strong>everything</strong> Hale holds about your family: your kids’
+            profiles, your history and every connected service. Nothing is removed during the hold,
+            and you can cancel before it ends by emailing privacy@villagehale.com. Once it
+            completes, it can&rsquo;t be undone.
+          </>
+        )}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <button
+          type="button"
+          className={buttonClassName ?? 'btn-secondary'}
+          onClick={onConfirm}
+          disabled={state === 'pending'}
+        >
+          {state === 'pending'
+            ? leaving
+              ? 'leaving…'
+              : 'scheduling…'
+            : leaving
+              ? 'yes, leave this family'
+              : 'yes, delete my account'}
+        </button>
+        <button
+          type="button"
+          className={cancelClassName ?? 'link'}
+          onClick={onCancel}
+          disabled={state === 'pending'}
+        >
+          {leaving ? 'stay in this family' : 'keep my account'}
+        </button>
+      </div>
+      {state === 'error' ? (
+        <p className="meta text-berry">
+          {leaving ? 'could not leave — try again.' : 'could not schedule deletion — try again.'}
+        </p>
+      ) : null}
+    </div>
   );
 }

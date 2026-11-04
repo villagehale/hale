@@ -1,18 +1,18 @@
-import { Calendar, Download, FolderOpen, Mail } from 'lucide-react';
+import { Calendar, Download, FolderOpen, LogOut, Mail, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { DeleteAccountRole } from '~/components/hale/delete-account-button';
+import {
+  DeleteAccountButton,
+  type DeleteAccountRole,
+} from '~/components/hale/delete-account-button';
 import { ExportDataButton } from '~/components/hale/export-data-button';
-import type { CalendarTarget, WhatHaleDidItem } from '~/lib/dashboard/what-hale-did';
+import type { WhatHaleDidItem } from '~/lib/dashboard/what-hale-did';
 import type { ConnectionState } from '~/lib/integrations/connection-state';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { PortalHeading } from './heading';
 import styles from './portal.module.css';
-import { Danger } from './privacy-view';
 
-const CALENDAR_LABEL: Record<CalendarTarget, string> = {
-  hale_calendar: 'Family calendar',
-  google_calendar: 'Google Calendar',
-};
+const PARENT_LEDE = 'What Hale did for you, what it can reach, and how to take it back.';
+const SCOPED_LEDE = 'You help out with this family. Its parents manage the family’s data.';
 
 export interface PrivacyHousehold {
   activity: readonly WhatHaleDidItem[];
@@ -28,30 +28,39 @@ export interface PrivacyHousehold {
 export function PrivacyPageView({
   household,
   role,
+  canExport,
+  holdDays,
 }: {
   /** A parent's view of the household; null for every other seat, which sees none of it
    * and no export either: the export is the family's whole record, not the viewer's. */
   household: PrivacyHousehold | null;
   role: DeleteAccountRole;
+  /** Whether the export route serves this viewer's seats (exportSeat). */
+  canExport: boolean;
+  /** How long a family erasure is held before it runs. */
+  holdDays: number;
 }) {
   return (
-    <>
-      <PortalHeading
-        title="Privacy & data"
-        lede="What Hale did for you, what it can reach, and how to take it back."
-      />
+    <div className={styles.column}>
+      <PortalHeading title="Privacy & data" lede={household ? PARENT_LEDE : SCOPED_LEDE} />
       <div className={styles.one}>
-        {household ? <Household household={household} /> : null}
-        <Danger role={role} />
-        <p className={styles.text}>
+        {household ? <Household household={household} canExport={canExport} /> : null}
+        <Deletion role={role} holdDays={holdDays} />
+        {household ? null : (
+          <p className={`${styles.text} ${styles.span}`}>
+            To ask what Hale holds about you, email{' '}
+            <a href="mailto:privacy@villagehale.com">privacy@villagehale.com</a>.
+          </p>
+        )}
+        <p className={`${styles.text} ${styles.span}`}>
           <a href={PRIVACY_URL}>Read the privacy policy</a>
         </p>
       </div>
-    </>
+    </div>
   );
 }
 
-function Household({ household }: { household: PrivacyHousehold }) {
+function Household({ household, canExport }: { household: PrivacyHousehold; canExport: boolean }) {
   return (
     <>
       <section className={`${styles.card} ${styles.span}`}>
@@ -83,40 +92,70 @@ function Household({ household }: { household: PrivacyHousehold }) {
         ) : null}
         <p className={styles.text}>To change anything here, text Hale.</p>
       </section>
-      <section className={`${styles.card} ${styles.span}`}>
-        <div className={styles.row}>
-          <span className={styles.tile}>
-            <Download aria-hidden="true" />
-          </span>
-          <span>
-            <h3>Export your data</h3>
-            <p className={styles.meta}>A copy of everything Hale holds.</p>
-          </span>
-          <span className={styles.end}>
-            <ExportDataButton idleLabel="Export" className={styles.secondary} />
-          </span>
-        </div>
-      </section>
+      {canExport ? (
+        <section className={`${styles.card} ${styles.span}`}>
+          <div className={styles.row}>
+            <span className={styles.tile}>
+              <Download aria-hidden="true" />
+            </span>
+            <span>
+              <h3>Export your data</h3>
+              <p className={styles.meta}>A copy of everything Hale holds.</p>
+            </span>
+            <span className={styles.end}>
+              <ExportDataButton idleLabel="Export" className={styles.secondary} />
+            </span>
+          </div>
+        </section>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Deletion as a sibling of Export: the same card and row, red only on its button. The
+ * one line is the hold; the confirm step carries the full explanation. A scoped seat
+ * has no erasure of its own, so it gets no card rather than an empty one.
+ */
+function Deletion({ role, holdDays }: { role: DeleteAccountRole; holdDays: number }) {
+  if (role === 'scoped') return null;
+  const leaving = role === 'co_parent';
+  return (
+    <section className={`${styles.card} ${styles.span}`}>
+      <div className={`${styles.row} ${styles.rights}`}>
+        <span className={styles.tile}>
+          {leaving ? <LogOut aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+        </span>
+        <span>
+          <h3>{leaving ? 'Leave this family' : 'Delete your account'}</h3>
+          {role === 'ambiguous' ? null : (
+            <p className={styles.meta}>
+              {leaving
+                ? 'Takes effect right away. The family keeps its own record.'
+                : `Starts after a ${holdDays}-day hold you can cancel.`}
+            </p>
+          )}
+        </span>
+        <DeleteAccountButton
+          role={role}
+          idleLabel="Delete account…"
+          buttonClassName={`${styles.secondary} ${styles.destructive}`}
+          cancelClassName={styles.secondary}
+        />
+      </div>
+    </section>
   );
 }
 
 function ActivityRow({ item }: { item: WhatHaleDidItem }) {
   return (
-    <div className={styles.row}>
+    <div className={`${styles.row} ${styles.top}`}>
       <span className={styles.tile}>
         {item.kind === 'email' ? <Mail aria-hidden="true" /> : <Calendar aria-hidden="true" />}
       </span>
       <span data-hale-pii>
         <h3>{item.what}</h3>
         <p className={styles.meta}>{item.when}</p>
-        {item.calendars.length > 0 ? (
-          <span className={styles.chips}>
-            {item.calendars.map((calendar) => (
-              <span key={calendar}>{CALENDAR_LABEL[calendar]}</span>
-            ))}
-          </span>
-        ) : null}
       </span>
       <span />
     </div>
