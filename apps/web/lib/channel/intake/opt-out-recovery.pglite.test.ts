@@ -861,6 +861,33 @@ describe('recoverHeldOptOutReads', () => {
     expect(await heldRow('pm-flight')).toBeNull();
   }, 30_000);
 
+  it('a live send that outlives its turn still holds the held text back', async () => {
+    const a = await parent(PHONE_A);
+    const channelMessageId = await inboundRow(a, 'pm-slow', FR_CRISIS, ago(3));
+    await hold(PHONE_A, 'pm-slow', ago(3));
+    // Past the turn deadline, and the deadline does not cancel the send: it may still land.
+    await liveLane('written').lane.consider({
+      familyId: a.familyId,
+      parentUserId: a.parentUserId,
+      channelMessageId,
+      text: FR_CRISIS,
+      now: ago(2),
+      thread: { channel: 'sms', providerChatId: null, inGroup: false },
+    });
+    const transport = new FakeTransport();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, transport, { saidLine: recordedCrisisWriter().writer }),
+    );
+
+    expect(result.outcomes.crisis_reply_in_flight).toBe(1);
+    expect(transport.sent).toEqual([]);
+    expect(r.texts).toEqual([]);
+    expect(await heldRow('pm-slow')).not.toBeNull();
+  }, 30_000);
+
   it('a late reply mark left by a tick that died before its send came back is answered, not released', async () => {
     const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-dead', FR_CRISIS, ago(40));
@@ -1614,6 +1641,46 @@ describe('recoverHeldOptOutReads', () => {
     expect(languages).toEqual(['fr', 'fr', 'fr', 'fr', 'fr', 'fr']);
     expect(await heldRow('pm-again')).not.toBeNull();
     expect(posted).toHaveLength(1);
+  }, 30_000);
+
+  it('a recorded emergency is retried from the same facts it was first read with', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-choke', 'help he is choking', ago(20));
+    await hold(PHONE_A, 'pm-choke', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const emergency: OptOutReading = {
+      intent: 'crisis_emergency',
+      confirmation: '',
+      language: 'en',
+      situation: 'choking',
+      who: 'child',
+    };
+    const r = reader({ 'help he is choking': emergency });
+    // The real writer, provider down, watched for the facts it is asked to write from.
+    const inputs: unknown[] = [];
+    const watched: SaidLineWriter = {
+      write: async (input) => {
+        inputs.push(input);
+        return downWriter.write(input);
+      },
+    };
+    const transport = new FakeTransport();
+
+    await recoverHeldOptOutReads(db.database, deps(r.reader, transport, { saidLine: watched }));
+    const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
+    const second = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, transport, { saidLine: watched, now: later }),
+    );
+
+    expect(r.texts).toEqual(['help he is choking']);
+    expect(second.outcomes.crisis_unanswered).toBe(1);
+    // Two writes a tick (the draft and its re-ask): the retry is asked exactly as the first.
+    expect(inputs).toHaveLength(4);
+    expect(inputs[2]).toEqual(inputs[0]);
+    expect(inputs[3]).toEqual(inputs[1]);
+    // Positive control: the first read's situation reached the writer at all.
+    expect(JSON.stringify(inputs[0])).toContain('chok');
   }, 30_000);
 
   it('a crisis read late from a number that changed hands is paged, not answered', async () => {

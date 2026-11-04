@@ -448,6 +448,10 @@ export interface CrisisUnanswered {
   /** The language the crisis was read in, kept with the claim so a later reply needs no
    * second read of the text. Never on the page. */
   language?: ReplyLanguage | null;
+  /** What the reader read happening and who is in danger, from their closed lists, kept with
+   * the claim for the same reason. Never on the page. */
+  situation?: CrisisSituation | null;
+  who?: CrisisWho | null;
 }
 
 /** Pages #ops at once (monitoring/failure-page.ts). Required: a crisis with no reply
@@ -497,6 +501,8 @@ export async function deliverCrisisReply(input: {
       familyId,
       parentUserId,
       language,
+      situation,
+      who,
     });
     return { status: 'unanswered', reason, page };
   }
@@ -521,6 +527,8 @@ export async function deliverCrisisReply(input: {
     familyId,
     parentUserId,
     language,
+    situation,
+    who,
   });
   return { status: 'unanswered', reason: second.reason, page };
 }

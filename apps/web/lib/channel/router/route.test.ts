@@ -6346,6 +6346,58 @@ describe('a live crisis reply is marked answered only once it is sent', () => {
     expect(await marks('pm-route-hung')).toEqual([0]);
   });
 
+  it('a crisis reply the transport accepted is marked answered even when its receipt write throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const receiptless = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop === 'insert') {
+          return (table: unknown) => {
+            if (table === schema.channelMessages) throw new Error('receipt lost');
+            return target.insert(table as typeof schema.auditLog);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as typeof db.database;
+    const parent = await seedFamily(db.database);
+    const h = harness({
+      offDomain: crisisLane(),
+      context: { body: CRISIS_TEXT, reply: SMS_ROUTE },
+    });
+    h.deps.database = receiptless;
+    h.deps.now = () => new Date();
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerMessageId: 'pm-route-receiptless',
+        body: CRISIS_TEXT,
+      })
+      .returning({ id: schema.channelMessages.id });
+
+    const outcome = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inbound?.id as string,
+        provider_message_id: 'pm-route-receiptless',
+      }),
+    ).then(
+      () => 'routed',
+      () => 'threw',
+    );
+
+    // Positive control: the fault fired after the parent had the reply.
+    expect(outcome).toBe('threw');
+    expect(h.transport.bodies()).toEqual(['a written crisis reply']);
+    expect(await marks('pm-route-receiptless')).toEqual([1]);
+  });
+
   it('positive control: a crisis reply the transport accepted is marked answered', async () => {
     const { h, outcome } = await crisisTurn('pm-route-sent', null);
 

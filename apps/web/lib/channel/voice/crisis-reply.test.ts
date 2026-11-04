@@ -374,6 +374,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         familyId: FAMILY,
         parentUserId: PARENT,
         language: null,
+        situation: null,
+        who: null,
       },
     ]);
     const handed = JSON.stringify(alerts);
@@ -472,6 +474,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         familyId: FAMILY,
         parentUserId: PARENT,
         language: null,
+        situation: null,
+        who: null,
       },
     ]);
     expect(error).not.toHaveBeenCalled();
@@ -520,6 +524,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         familyId: FAMILY,
         parentUserId: PARENT,
         language: null,
+        situation: null,
+        who: null,
       },
     ]);
   });

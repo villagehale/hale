@@ -62,8 +62,8 @@ import type { ChannelTransport } from './transport';
  * like a live one (`where late_read`) and the row stays, so a later tick tries the writer
  * again. Once a crisis is recorded for the text it is never read again. A crisis counts as
  * answered only once its reply was SENT, live (router/route.ts) or late: such a text is
- * released without a second reply. A reply still leaving holds it back for the turn
- * deadline; one whose send failed, timed out or died is answered late.
+ * released without a second reply. A reply still leaving holds it back while its send may
+ * still land; one whose send failed, timed out or died is answered late.
  */
 
 export const HELD_READ_OUTCOMES = [
@@ -92,8 +92,8 @@ export const HELD_READ_OUTCOMES = [
   /** A crisis reply to this text already left, live or on an earlier tick: released, and
    * nothing is sent again. */
   'crisis_already_answered',
-  /** A crisis reply to this text began to leave within the turn deadline and has not come
-   * back: kept held, nothing read or sent, and looked at again on the next tick. */
+  /** A crisis reply to this text is leaving and its send may still land: kept held,
+   * nothing read or sent, and looked at again on the next tick. */
   'crisis_reply_in_flight',
   'read_leave_group',
   'read_failed',
@@ -290,12 +290,15 @@ async function recoverRow(
   }
 
   // A crisis already recorded for this text (live, or on an earlier tick) stays one, and the
-  // text is never handed to the model again: the reply takes the language read with it.
+  // text is never handed to the model again: the reply is written from what was read then.
   const crisis = await crisisClaimFor(database, row.providerMessageId);
   let outcome: HeldReadOutcome;
   if (crisis) {
+    const { language, situation, who } = crisis;
     outcome = await lateCrisis(database, deps, row, held, crisis.kind, {
-      language: crisis.language,
+      language,
+      situation,
+      who,
     });
   } else {
     const reading = await deps.reader.read({
@@ -427,7 +430,7 @@ async function lateStop(
 
 const LATE_READ = 'late_read';
 
-/** What a read said about a crisis: on a later tick, only the language kept with its claim. */
+/** What a read said about a crisis: on a later tick, what was kept with its claim. */
 interface CrisisRead {
   language?: ReplyLanguage | null;
   situation?: CrisisSituation | null;
@@ -456,6 +459,8 @@ async function lateCrisis(
     familyId: held.familyId,
     parentUserId: held.authorUserId,
     language,
+    situation: read.situation ?? null,
+    who: read.who ?? null,
   };
   const holder = await lateCrisisHolder(database, row, held);
   if (holder.status !== 'reachable') {
@@ -471,8 +476,6 @@ async function lateCrisis(
   const crisis = await deliverCrisisReply({
     ...alert,
     region: held.region,
-    situation: read.situation ?? null,
-    who: read.who ?? null,
     pager: deps.crisisPager,
     writer: deps.saidLine,
   });
@@ -497,7 +500,7 @@ async function lateCrisis(
       writes: crisis.attempts,
     });
     await releaseCrisisReply(database, row.providerMessageId).catch((releaseErr: unknown) => {
-      // It goes stale after the turn deadline, and a later tick answers the text then.
+      // It goes stale after its lease, and a later tick answers the text then.
       console.error(
         { outcome: 'crisis_unanswered', err: errName(releaseErr) },
         'opt-out recovery: late_crisis_reply_mark_stuck',

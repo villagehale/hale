@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
-import { TURN_DEADLINE_MS } from '~/lib/channel/config';
+import {
+  CRISIS_SITUATIONS,
+  CRISIS_WHO,
+  type CrisisSituation,
+  type CrisisWho,
+} from '~/lib/channel/crisis-resources';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import type {
@@ -84,15 +89,16 @@ import {
  * row (channel_messages.provider_message_id), a held text's row in opt_out_held_messages
  * (which gives phone_hash, and from there the channel or session), and, for a family, the
  * `crisis_unanswered` audit row. A crisis read late from a held text pages the same way,
- * `where late_read`. A claim may end in a sixth field, the language the crisis was read
- * in, so a later tick replies in it without the text being read again. A paged claim
+ * `where late_read`. A claim may end in up to three more fields, the language, situation
+ * and who the crisis was read with (empty when unread; situation and who from their closed
+ * lists), so a later tick writes from the same facts without the text being read again. A paged claim
  * whose text is still held is kept past the lookback: the held row still needs it.
  *
  * A crisis reply is marked on `ops:crisis-answered` (identifier: the inbound key alone):
  * count 0 as it leaves, count 1 once the transport accepted it. Only a sent mark counts
  * as answered, and the opt-out recovery pass releases a held copy of that text with no
- * second reply. A leaving mark holds the copy back for the turn deadline, then the text
- * is answered late: a send that failed, timed out or died is never taken for a reply.
+ * second reply. A leaving mark holds the copy back for its lease, then the text is
+ * answered late: a send that failed, timed out or died is never taken for a reply.
  *
  * VIL-602 · every other path that pages #ops goes through {@link pageOps}: a body-free
  * URGENT log, then one claim per site per hour on `ops:page`, then the post. This module
@@ -422,14 +428,19 @@ function crisisInboundKey(inboundId: string): string {
 const CLAIM_LANGUAGE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
 
 function crisisIdentifier(key: string, alert: CrisisUnanswered): string {
-  const language = alert.language && CLAIM_LANGUAGE_RE.test(alert.language) ? [alert.language] : [];
+  const read = [
+    alert.language && CLAIM_LANGUAGE_RE.test(alert.language) ? alert.language : '',
+    alert.situation && CRISIS_SITUATIONS.includes(alert.situation) ? alert.situation : '',
+    alert.who && CRISIS_WHO.includes(alert.who) ? alert.who : '',
+  ];
+  while (read.length > 0 && read[read.length - 1] === '') read.pop();
   return [
     key,
     failureCategory(alert.kind),
     failureCategory(alert.where),
     failureCategory(alert.reason),
     String(alert.writes),
-    ...language,
+    ...read,
   ].join(':');
 }
 
@@ -439,12 +450,27 @@ function parseCrisisIdentifier(identifier: string): {
   reason: string;
   writes: number;
   language: ReplyLanguage | null;
+  situation: CrisisSituation | null;
+  who: CrisisWho | null;
 } | null {
-  const [key, kind, where, reason, writes, language, ...rest] = identifier.split(':');
+  const [key, kind, where, reason, writes, language, situation, who, ...rest] =
+    identifier.split(':');
   if (rest.length > 0 || !key || !CRISIS_INBOUND_KEY_RE.test(key)) return null;
   if (!kind || !where || !reason || !writes || !/^\d$/.test(writes)) return null;
-  if (language !== undefined && !CLAIM_LANGUAGE_RE.test(language)) return null;
-  return { kind, where, reason, writes: Number(writes), language: language ?? null };
+  if (language && !CLAIM_LANGUAGE_RE.test(language)) return null;
+  const readSituation = CRISIS_SITUATIONS.find((value) => value === situation) ?? null;
+  const readWho = CRISIS_WHO.find((value) => value === who) ?? null;
+  if (situation && !readSituation) return null;
+  if (who && !readWho) return null;
+  return {
+    kind,
+    where,
+    reason,
+    writes: Number(writes),
+    language: language || null,
+    situation: readSituation,
+    who: readWho,
+  };
 }
 
 function providerIncidentWindow(now: Date): Date {
@@ -1122,6 +1148,8 @@ async function pageCrisesUnanswered(
         reason: 'unreadable',
         writes: 0,
         language: null,
+        situation: null,
+        who: null,
       };
     }
     const text = composeCrisisUnansweredAlert({ ...recorded, ref: row.id });
@@ -1530,13 +1558,20 @@ async function claimCrisisPage(
 }
 
 /**
- * The crisis already recorded for this inbound, live or late: its claim id and kind.
- * Null when there is none (or the inbound has no id to key it by).
+ * The crisis already recorded for this inbound, live or late: its claim id, kind, and the
+ * language, situation and who it was read with. Null when there is none (or the inbound
+ * has no id to key it by).
  */
 export async function crisisClaimFor(
   database: Database,
   inboundId: string,
-): Promise<{ id: string; kind: CrisisKind; language: ReplyLanguage | null } | null> {
+): Promise<{
+  id: string;
+  kind: CrisisKind;
+  language: ReplyLanguage | null;
+  situation: CrisisSituation | null;
+  who: CrisisWho | null;
+} | null> {
   if (inboundId.trim() === '') return null;
   const [row] = await database
     .select({ id: schema.rateLimits.id, identifier: schema.rateLimits.identifier })
@@ -1551,7 +1586,8 @@ export async function crisisClaimFor(
   const parsed = row ? parseCrisisIdentifier(row.identifier) : null;
   const kind = parsed?.kind;
   if (!row || !parsed || (kind !== 'emergency' && kind !== 'mental')) return null;
-  return { id: row.id, kind, language: parsed.language };
+  const { language, situation, who } = parsed;
+  return { id: row.id, kind, language, situation, who };
 }
 
 /** A crisis reply's mark: taken as it leaves, and turned to sent once the transport accepted it. */
@@ -1559,11 +1595,20 @@ const REPLY_LEAVING_COUNT = UNALERTED_COUNT;
 const REPLY_SENT_COUNT = ALERTED_COUNT;
 
 /**
+ * How long a leaving mark holds a held text back. The turn deadline does not cancel a send
+ * (router/deadline.ts), so the lease outlives the process that took the mark: past the
+ * drain's 800s maxDuration (app/api/cron/drain/route.ts), the longest any function runs.
+ * By then its send has landed, failed or died with it. The recovery pass's first back-off
+ * rests on the same bound.
+ */
+const CRISIS_REPLY_LEASE_MS = 15 * 60_000;
+
+/**
  * Where the reply to one inbound's crisis stands (VIL-602). `answered` only once the
- * transport accepted it. `in_flight` while a send that began within the turn deadline has
- * not come back. Otherwise `unanswered`: no mark, or a leaving mark older than any turn
- * may run, whose send failed, timed out or died with its process. No reply is known to
- * have left, so the held text is answered late.
+ * transport accepted it. `in_flight` while a leaving mark is within its lease: its send may
+ * still land. Otherwise `unanswered`: no mark, or a leaving mark older than any process
+ * that could still be sending, whose send failed, timed out or died with it. No reply is
+ * known to have left, so the held text is answered late.
  */
 export type CrisisReplyState = 'unanswered' | 'in_flight' | 'answered';
 
@@ -1572,7 +1617,9 @@ type ReplyMarkRow = { id: string; count: number; windowStart: Date };
 function replyState(row: ReplyMarkRow | undefined, now: Date): CrisisReplyState {
   if (!row) return 'unanswered';
   if (row.count === REPLY_SENT_COUNT) return 'answered';
-  return row.windowStart.getTime() > now.getTime() - TURN_DEADLINE_MS ? 'in_flight' : 'unanswered';
+  return row.windowStart.getTime() > now.getTime() - CRISIS_REPLY_LEASE_MS
+    ? 'in_flight'
+    : 'unanswered';
 }
 
 async function replyMark(database: Database, key: string): Promise<ReplyMarkRow | undefined> {
@@ -1667,7 +1714,7 @@ export async function confirmCrisisReply(
 }
 
 /** The send threw: its leaving mark comes off, never a sent one. A mark that cannot be
- * removed goes stale after the turn deadline, and the text is answered late. */
+ * removed goes stale after its lease, and the text is answered late. */
 export async function releaseCrisisReply(database: Database, inboundId: string): Promise<void> {
   await database
     .delete(schema.rateLimits)
