@@ -600,8 +600,48 @@ describe('corroborationFailure — every date is bound to its own quote', () => 
       ['day first with 8 h', '11/08/2026 à 8 h', '08:00'],
       ['CJK with 8点', '2026年8月11日8点', '08:00'],
       ['a month name, the clock a space after the day', 'Aug. 11 8 a.m.', '08:00'],
+      ['a month name, the clock a comma after the day', 'Aug. 11, 8 a.m.', '08:00'],
+      ['a month name, the clock a dash after the day', 'Aug 11 - 8:00', '08:00'],
+      ['space-separated with 8:00', '11 08 2026 8:00', '08:00'],
     ] as const)('accepts a time the quote prints: %s (control)', (_name, quote, time) => {
       expect(read(quote, time)).toBeNull();
+    });
+
+    it.each([
+      ['space-separated, the hour taken from the month', '11 08 2026', '08:00'],
+      ['spelled-out separators, the hour taken from the month', '11 de 08 de 2026', '08:00'],
+      ['an age, read as the hour', 'Aug 11 for ages 8 and up', '08:00'],
+      ['a session number, read as the hour', 'Aug 11 (session 2)', '02:00'],
+    ] as const)('refuses an hour no clock prints: %s', (_name, quote, time) => {
+      expect(read(quote, time)).toBe('uncorroborated');
+    });
+
+    it('accepts the space-separated date with no time (control)', () => {
+      expect(read('11 08 2026', null)).toBeNull();
+    });
+
+    it('refuses a minute the page does not print', () => {
+      expect(read('Aug 11 at 8 a.m.', '08:30')).toBe('uncorroborated');
+    });
+
+    it('refuses a minute that is not joined to the hour by a clock', () => {
+      expect(read('Aug 11 at 8 a.m., room 30', '08:30')).toBe('uncorroborated');
+    });
+
+    it('accepts the printed hour at minute zero (control)', () => {
+      expect(read('Aug 11 at 8 a.m.', '08:00')).toBeNull();
+    });
+
+    it('refuses a timed quote that prints a second clock', () => {
+      expect(read('Aug 11 8:00 to 9:15', '08:00')).toBe('uncorroborated');
+    });
+
+    it('accepts the same clock printed alone (control)', () => {
+      expect(read('Aug 11 8:00', '08:00')).toBeNull();
+    });
+
+    it('refuses a quote that prints the year twice', () => {
+      expect(read('2026-08-11, 2026', null)).toBe('uncorroborated');
     });
   });
 

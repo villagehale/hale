@@ -199,6 +199,14 @@ export function completeDates(extracted: ExtractedWindow): PublishedDate[] {
 /** A digit run in this range is a printed year and can only be read as one. */
 const YEAR_RUN = /^(19|20)\d{2}$/;
 
+/** What a printed hour is followed by: its minute after a colon (`8:00`), or a clock
+ * word (`8 a.m.`, `20h00`, `9 h`, `8 Uhr`, `8点`, `8時`, `8시`). A bare number is an
+ * age, a session, a room — never an hour. */
+const CLOCK_AFTER_HOUR = /^(?::\d|\s?(?:h(?![a-z])|[ap]\.?\s?m(?![a-z])|uhr(?![a-z])|[点時时시]))/;
+
+/** The only text a printed minute may sit behind: its hour's colon or clock word. */
+const HOUR_TO_MINUTE = /^\s?(?::|h|[点時时시])\s?$/;
+
 /**
  * Whether the numbers a quote prints are exactly this date's numbers, in any language.
  *
@@ -206,21 +214,23 @@ const YEAR_RUN = /^(19|20)\d{2}$/;
  * way an English one does, with no month or weekday tables. Every ASCII digit run in the
  * (normalised) quote must be consumed exactly once, and the DATE is read first: a
  * four-digit year (which must be this date's year), the day (required), and the month
- * number wherever the quote prints one joined to the day by exactly one non-space
- * character (`11/06`, `2026-06-11`, `6月11`). Those runs are the date's and only the date's.
- * The clock comes from what the date leaves: the hour (required when the date has a
- * time; 13-23 may be printed on a 12-hour clock), and the minute — the run straight
- * after the hour, absent when it is zero and the page prints none (`9 a.m.`, `9 h`). So
- * a date-only `2026-08-11` cannot lend its month to an 08:00 the page never printed, and
- * whitespace alone never joins a month to its day, so `Aug. 11 8 a.m.` keeps its hour.
- * A leftover run fails the date: a time on a date-only reading, a second date in the quote.
+ * number wherever the quote prints one beside the day with at most one non-space
+ * character between (`11/06`, `2026-06-11`, `6月11`, `11 06 2026`) and no clock form
+ * after it. Those runs are the date's and only the date's. The clock comes from what
+ * the date leaves, and only from a run the page prints AS a clock (`CLOCK_AFTER_HOUR`):
+ * the hour (required when the date has a time; 13-23 may be printed on a 12-hour
+ * clock), and the minute — behind the hour's colon or clock word, absent when it is
+ * zero and the page prints none (`9 a.m.`, `9 h`). So a date-only `2026-08-11` cannot
+ * lend its month to an 08:00 the page never printed, `ages 8` is never 08:00, and a
+ * month-valued hour keeps its clock (`Aug. 11, 8 a.m.`). A leftover run fails the date:
+ * a time on a date-only reading, a second date or clock in the quote.
  *
  * Known residuals, all fail-closed or caught by the eval's exact equality: a spelled-out
  * month and AM/PM are not checked; a day/hour swap at minute zero with both numbers
  * under 24 is not caught; a day/month swap in an all-numeric date with both numbers
- * 12 or under (`11/08/2026`) is not caught; a clock joined to the day by one character
- * whose hour equals the month number (`Sep. 22, 9 a.m.`) fails; `noon`, spelled-out
- * numbers and non-ASCII digit systems fail.
+ * 12 or under (`11/08/2026`) is not caught; a clock the pattern does not know
+ * (`8.30`, `8 heures`, `noon`), a month number behind a word (`11 de 08 de 2026`),
+ * spelled-out numbers and non-ASCII digit systems fail.
  */
 function quoteStatesDate(published: PublishedDate): boolean {
   const quote = normalizeQuote(published.quote);
@@ -234,8 +244,9 @@ function quoteStatesDate(published: PublishedDate): boolean {
   type Run = (typeof runs)[number];
   const joined = (a: Run, b: Run): boolean => {
     const [first, second] = a.start < b.start ? [a, b] : [b, a];
-    return quote.slice(first.end, second.start).replace(/\s/g, '').length === 1;
+    return quote.slice(first.end, second.start).replace(/\s/g, '').length <= 1;
   };
+  const isClock = (run: Run): boolean => CLOCK_AFTER_HOUR.test(quote.slice(run.end));
   const [year, month, day] = published.date.split('-').map(Number);
   const clock = published.time?.split(':').map(Number) ?? null;
 
@@ -247,20 +258,22 @@ function quoteStatesDate(published: PublishedDate): boolean {
     if (clock === null) return rest.length === 0;
     const [hour, minute] = clock as [number, number];
     const [hourRun, minuteRun, ...extra] = rest;
-    if (hourRun === undefined || extra.length > 0) return false;
+    if (hourRun === undefined || extra.length > 0 || !isClock(hourRun)) return false;
     const hourMatches =
       hourRun.value === hour ||
       (hour >= 13 && hourRun.value === hour - 12) ||
       (hour === 0 && hourRun.value === 12);
     if (!hourMatches) return false;
     if (minuteRun === undefined) return minute === 0;
-    return minuteRun.index === hourRun.index + 1 && minuteRun.value === minute;
+    return (
+      HOUR_TO_MINUTE.test(quote.slice(hourRun.end, minuteRun.start)) && minuteRun.value === minute
+    );
   };
 
   return others.some((dayRun) => {
     if (dayRun.value !== day) return false;
     const months = others.filter(
-      (run) => run !== dayRun && run.value === month && joined(dayRun, run),
+      (run) => run !== dayRun && run.value === month && joined(dayRun, run) && !isClock(run),
     );
     return (months.length > 0 ? months : [null]).some((monthRun) =>
       clockConsumes(others.filter((run) => run !== dayRun && run !== monthRun)),

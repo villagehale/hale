@@ -251,7 +251,7 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
         ),
       });
 
-    it.each(['2026-08-11', '08/11/2026', '11/08/2026'])(
+    it.each(['2026-08-11', '08/11/2026', '11/08/2026', '11 08 2026', 'Aug 11 for ages 8 and up'])(
       'drops a reading that takes the hour from the date-only quote %s',
       async (printed) => {
         const h = sweep(printed);
@@ -264,6 +264,14 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
 
     it('confirms the same row once the page prints the time (control)', async () => {
       const h = sweep('2026-08-11 at 8:00 a.m.');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'confirmed', fields: ['openAt'] });
+      expect(h.markVerified).toHaveBeenCalledWith({}, stored.id, NOW);
+    });
+
+    it('confirms a clock printed after a comma (control)', async () => {
+      const h = sweep('Aug. 11, 8 a.m.');
       const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
       expect(summary.rows[0]?.outcome).toEqual({ kind: 'confirmed', fields: ['openAt'] });

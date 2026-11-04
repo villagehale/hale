@@ -417,6 +417,8 @@ describe('a time the page does not print is never verified', () => {
     ['ISO, the hour taken from the day', '2026-08-11', '11:00'],
     ['month first', '08/11/2026', '08:00'],
     ['day first', '11/08/2026', '08:00'],
+    ['space-separated', '11 08 2026', '08:00'],
+    ['an age read as the hour', 'Aug 11 for ages 8 and up', '08:00'],
   ] as const)('refuses a time on a date-only quote: %s', (_name, quote, time) => {
     const result = normalizeExtractedRegistration(reading(quote, time), page(quote), SOURCE);
     expect(result).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
@@ -428,6 +430,8 @@ describe('a time the page does not print is never verified', () => {
     ['day first with 8 a.m.', '11/08/2026 8 a.m.', '08:00', '2026-08-11T12:00:00.000Z'],
     ['ISO with 20h00', '2026-08-11 20h00', '20:00', '2026-08-12T00:00:00.000Z'],
     ['CJK with 8点', '2026年8月11日8点', '08:00', '2026-08-11T12:00:00.000Z'],
+    ['space-separated with 8:00', '11 08 2026 8:00', '08:00', '2026-08-11T12:00:00.000Z'],
+    ['a comma before 8 a.m.', 'Aug. 11, 8 a.m.', '08:00', '2026-08-11T12:00:00.000Z'],
   ] as const)('verifies a time the quote prints: %s (control)', (_name, quote, time, instant) => {
     expect(
       anchors(normalizeExtractedRegistration(reading(quote, time), page(quote), SOURCE)),
