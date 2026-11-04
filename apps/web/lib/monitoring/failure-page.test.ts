@@ -41,10 +41,11 @@ import {
   failurePageCrisisPager,
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
-  noteErasureGoogleUnconfirmed,
   noteFirstHelloFailure,
   noteLateOptOutCrisis,
+  pageErasureGoogleUnconfirmed,
   pageFailureAlerts,
+  recordErasureGoogleUnconfirmed,
 } from './failure-page';
 import type { IncidentFailure } from './provider-health';
 
@@ -1157,30 +1158,27 @@ describe('VIL-156 · families erased with Google unconfirmed page #ops by count'
     );
   });
 
-  it('pages the counts at once, and only once', async () => {
+  it('pages a recorded erasure at once, and only once', async () => {
     const { texts, post } = recorder();
+    await recordErasureGoogleUnconfirmed(db.database, { unconfirmed: 1, endFailed: 0 });
 
-    const first = await noteErasureGoogleUnconfirmed(
-      db.database,
-      { unconfirmed: 1, endFailed: 2 },
-      { post, now: NOW },
-    );
+    const first = await pageErasureGoogleUnconfirmed(db.database, { post, now: NOW });
     const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
 
     expect(first).toEqual({ posted: 1, deduped: 0, failed: 0 });
     expect(sweep.erasureGoogle).toEqual({ posted: 0, deduped: 0, failed: 0 });
     expect(texts).toEqual([
-      'Hale: families erased with Google unconfirmed. revoke unanswered 1. end failed 2.',
+      'Hale: families erased with Google unconfirmed. revoke unanswered 1. end failed 0.',
     ]);
   });
 
   it('a page Slack refused stays owed, and the failure-page cron posts it', async () => {
+    await recordErasureGoogleUnconfirmed(db.database, { unconfirmed: 0, endFailed: 1 });
     const refused = recorder(() => 'failed');
-    const first = await noteErasureGoogleUnconfirmed(
-      db.database,
-      { unconfirmed: 0, endFailed: 1 },
-      { post: refused.post, now: NOW },
-    );
+    const first = await pageErasureGoogleUnconfirmed(db.database, {
+      post: refused.post,
+      now: NOW,
+    });
     expect(first).toEqual({ posted: 0, deduped: 0, failed: 1 });
 
     const { texts, post } = recorder();

@@ -12,7 +12,8 @@ import {
 import { CONNECTOR_PROVIDERS, type ConnectorProvider } from '../integrations/google-oauth.js';
 import {
   type FailurePageCounts,
-  noteErasureGoogleUnconfirmed,
+  pageErasureGoogleUnconfirmed,
+  recordErasureGoogleUnconfirmed,
 } from '../monitoring/failure-page.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
@@ -208,7 +209,8 @@ export interface DeletionSweepSummary {
    * hold the other families' erasure. */
   googleEndFailed: number;
   /** Families erased although Google never confirmed, because their wait ran out: the
-   * erasure promise wins. #ops is paged with these counts (`page`). */
+   * erasure promise wins. Each one's counts-only page claim commits with its DELETE, and
+   * `page` is what paging them at the end of this run did. */
   pastGoogleWait: {
     unconfirmed: number;
     endFailed: number;
@@ -227,11 +229,8 @@ export interface ErasureGoogleRow {
   google: ErasureGoogleOutcome | 'google_unconfirmed' | 'google_end_failed';
 }
 
-/** Pages #ops when families are erased past their Google wait (failure-page.ts). */
-type PageErasureGoogle = (counts: {
-  unconfirmed: number;
-  endFailed: number;
-}) => Promise<FailurePageCounts>;
+/** Pages #ops with every owed erasure claim (failure-page.ts). */
+type PageErasureGoogle = () => Promise<FailurePageCounts>;
 
 /**
  * How long a due family is kept waiting for Google: its scheduled deletion plus the same
@@ -337,8 +336,7 @@ export async function runDeletionSweep(
   database: Database,
   now: Date = new Date(),
   removeObject: RemoveObject = removeDocument,
-  pageErasureGoogle: PageErasureGoogle = (counts) =>
-    noteErasureGoogleUnconfirmed(database, counts, { now }),
+  pageErasureGoogle: PageErasureGoogle = () => pageErasureGoogleUnconfirmed(database, { now }),
 ): Promise<DeletionSweepSummary> {
   const due = await selectFamiliesDueForDeletion(database, now);
   // FIRST, because the cascade deletes keys and pending tokens and deleting a key revokes
@@ -353,6 +351,7 @@ export async function runDeletionSweep(
   let googleRevokePending = 0;
   let googleEndFailed = 0;
   const pastWait = { unconfirmed: 0, endFailed: 0 };
+  const erasedPastWait = new Map<string, { unconfirmed: number; endFailed: number }>();
   for (const familyId of due) {
     let settled: ErasureSettlement[] | null = null;
     try {
@@ -375,6 +374,10 @@ export async function runDeletionSweep(
       google.push(...(settled ?? []).map(({ push: _push, ...row }) => row));
       continue;
     }
+    erasedPastWait.set(familyId, {
+      unconfirmed: settled === null ? 0 : 1,
+      endFailed: settled === null ? 1 : 0,
+    });
     if (settled === null) {
       pastWait.endFailed += 1;
       for (const row of await googleRowsOf(database, familyId)) {
@@ -416,7 +419,18 @@ export async function runDeletionSweep(
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
-    await database.delete(schema.families).where(eq(schema.families.id, familyId));
+    const unconfirmed = erasedPastWait.get(familyId);
+    if (unconfirmed === undefined) {
+      await database.delete(schema.families).where(eq(schema.families.id, familyId));
+      continue;
+    }
+    // The page's record commits with the DELETE: a throw later in this sweep cannot lose
+    // it, and a DELETE that fails records nothing.
+    await database.transaction(async (rawTx) => {
+      const tx = rawTx as unknown as Database;
+      await recordErasureGoogleUnconfirmed(tx, unconfirmed);
+      await tx.delete(schema.families).where(eq(schema.families.id, familyId));
+    });
   }
   await releaseErasedHolds(database, erasedHolds);
   // AFTER the families, and on the same tick rather than a cron of its own: an erasure
@@ -429,11 +443,9 @@ export async function runDeletionSweep(
   // still there. The cost is that these people's audit rows have nowhere to live — see
   // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
   const orphans = await runOrphanUserSweep(database, now, stranded);
-  // After the deletes, so the page counts families that are really gone.
-  const page =
-    pastWait.unconfirmed + pastWait.endFailed > 0
-      ? await pageErasureGoogle(pastWait)
-      : ('nothing_to_page' as const);
+  // The claims were recorded with each DELETE above; this pages them now. A page that does
+  // not leave stays owed for the failure-page cron.
+  const page = erasedPastWait.size > 0 ? await pageErasureGoogle() : ('nothing_to_page' as const);
   return {
     erased: familyIds.length,
     purgedObjects,

@@ -63,7 +63,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  await db.exec('truncate table families, users cascade');
+  await db.exec('truncate table families, users, rate_limits cascade');
 });
 
 async function household(name: string) {
@@ -140,15 +140,23 @@ async function familyStands(familyId: string): Promise<boolean> {
   return rows.length === 1;
 }
 
+/** Stands in for the Slack post only; the owed claims it would page are real rows. */
 function recordingPager() {
-  const pages: Array<{ unconfirmed: number; endFailed: number }> = [];
+  let calls = 0;
   return {
-    pages,
-    page: async (counts: { unconfirmed: number; endFailed: number }) => {
-      pages.push(counts);
+    calls: () => calls,
+    page: async () => {
+      calls += 1;
       return { posted: 1, deduped: 0, failed: 0 };
     },
   };
+}
+
+async function erasureClaims() {
+  return db.database
+    .select({ identifier: schema.rateLimits.identifier, count: schema.rateLimits.count })
+    .from(schema.rateLimits)
+    .where(eq(schema.rateLimits.route, ERASURE_GOOGLE_PAGE_ROUTE));
 }
 
 describe('the erasure promise wins after a bounded wait for Google', () => {
@@ -171,7 +179,10 @@ describe('the erasure promise wins after a bounded wait for Google', () => {
       expect(summary.google).toEqual([
         { integrationId: expect.any(String), provider: 'gcal', google: 'google_end_failed' },
       ]);
-      expect(pager.pages).toEqual([{ unconfirmed: 0, endFailed: 1 }]);
+      expect(pager.calls()).toBe(1);
+      expect(await erasureClaims()).toEqual([
+        { identifier: expect.stringMatching(/^[0-9a-f-]{36}:0:1$/), count: 0 },
+      ]);
     } finally {
       await drop();
     }
@@ -192,7 +203,8 @@ describe('the erasure promise wins after a bounded wait for Google', () => {
         googleEndFailed: 1,
         pastGoogleWait: { unconfirmed: 0, endFailed: 0 },
       });
-      expect(pager.pages).toEqual([]);
+      expect(pager.calls()).toBe(0);
+      expect(await erasureClaims()).toEqual([]);
     } finally {
       await drop();
     }
@@ -216,13 +228,52 @@ describe('the erasure promise wins after a bounded wait for Google', () => {
     expect(summary.google).toEqual([
       expect.objectContaining({ provider: 'gcal', google: 'google_unconfirmed' }),
     ]);
-    expect(pager.pages).toEqual([{ unconfirmed: 1, endFailed: 0 }]);
+    expect(pager.calls()).toBe(1);
+    expect(await erasureClaims()).toEqual([
+      { identifier: expect.stringMatching(/^[0-9a-f-]{36}:1:0$/), count: 0 },
+    ]);
     // No pending token survives anywhere.
     const pendingLeft = await db.database
       .select({ id: schema.integrations.id })
       .from(schema.integrations)
       .where(eq(schema.integrations.familyId, erased.familyId));
     expect(pendingLeft).toEqual([]);
+  });
+});
+
+describe('the erasure page is recorded with the deletion, so a later throw cannot lose it', () => {
+  it('a family erased past the wait keeps its owed page when a later family purge throws', async () => {
+    const erased = await household('Erased');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
+    await scheduleAt(erased.familyId, PAST_GOOGLE_WAIT);
+    const broken = await household('Broken');
+    await db.database.insert(schema.chatAttachments).values({
+      familyId: broken.familyId,
+      storagePath: `chat/${broken.familyId}/photo.png`,
+      mime: 'image/png',
+      sizeBytes: 1,
+      originalName: 'photo.png',
+    });
+    await scheduleAt(broken.familyId, PAST);
+    googleStatus = 503;
+    const pager = recordingPager();
+
+    await expect(
+      runDeletionSweep(
+        db.database,
+        NOW,
+        async (path) => {
+          if (path.startsWith(`chat/${broken.familyId}/`)) throw new Error('bucket down');
+        },
+        pager.page,
+      ),
+    ).rejects.toThrow('bucket down');
+
+    expect(await familyStands(erased.familyId)).toBe(false);
+    expect(await familyStands(broken.familyId)).toBe(true);
+    expect(await erasureClaims()).toEqual([
+      { identifier: expect.stringMatching(/^[0-9a-f-]{36}:1:0$/), count: 0 },
+    ]);
   });
 });
 
@@ -249,7 +300,6 @@ describe('the production pager records the page where the failure-page cron find
       { identifier: expect.stringMatching(/^[0-9a-f-]{36}:1:0$/), count: 0 },
     ]);
     expect(claims[0]?.identifier).not.toContain(erased.familyId);
-    await db.exec('delete from rate_limits');
   });
 });
 

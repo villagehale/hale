@@ -1285,23 +1285,30 @@ export async function pageFailureAlerts(
 }
 
 /**
- * VIL-156 · the deletion sweep erased families past their Google wait with Google
- * unconfirmed: record the counts, then page every owed erasure claim now. A page that did
- * not leave stays owed, and the failure-page cron retries it.
+ * VIL-156 · one family erased past its Google wait with Google unconfirmed. Recorded in
+ * the caller's transaction, beside the family's DELETE, so the page cannot be lost to a
+ * throw later in the sweep: the claim is owed until a page leaves.
  */
-export async function noteErasureGoogleUnconfirmed(
+export async function recordErasureGoogleUnconfirmed(
   database: Database,
   input: { unconfirmed: number; endFailed: number },
-  deps: FailurePageDeps = {},
-): Promise<FailurePageCounts> {
-  const now = deps.now ?? new Date();
-  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+): Promise<void> {
   await database.insert(schema.rateLimits).values({
     identifier: `${randomUUID()}:${pageCount(input.unconfirmed)}:${pageCount(input.endFailed)}`,
     route: ERASURE_GOOGLE_PAGE_ROUTE,
     windowStart: CLAIM_EPOCH,
     count: UNALERTED_COUNT,
   });
+}
+
+/** Page every owed erasure claim now. One that does not leave stays owed, and the
+ * failure-page cron retries it. */
+export async function pageErasureGoogleUnconfirmed(
+  database: Database,
+  deps: FailurePageDeps = {},
+): Promise<FailurePageCounts> {
+  const now = deps.now ?? new Date();
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
   const counts = emptyCounts();
   await pageErasureGoogle(database, post, now, counts);
   return counts;
