@@ -234,7 +234,8 @@ describe('local registration PDF text extraction', () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
 
-      expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
+      // The control read gets the default budget: under CI load a cold worker can take longer than the bomb's 400 ms.
+      expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE))).toContain(
         'Winter registration begins November 10, 2026',
       );
     }, 30_000);
