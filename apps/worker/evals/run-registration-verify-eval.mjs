@@ -29,8 +29,9 @@
 // by reading each text, never from what the model produced.
 //
 // VIL-423: each date must also verify from its own quote through production's gate
-// (corroborationFailure, normalizeExtractedRegistration), and the zone must come from
-// the page or be null — there is no fallback zone anywhere in this runner.
+// (corroborationFailure, normalizeExtractedRegistration): the date and time words the
+// model labels in its quote must parse whole to the values it extracted. The zone must
+// come from the page or be null — there is no fallback zone anywhere in this runner.
 //
 //   node --env-file=../../.env evals/run-registration-verify-eval.mjs           # live (populates cache)
 //   node --env-file=../../.env evals/run-registration-verify-eval.mjs --broken  # calibration: must FAIL
@@ -455,6 +456,8 @@ function brokenAnswer(fixture) {
     value
       ? {
           quote: 'Registration starts',
+          date_text: 'Registration starts',
+          time_text: '9 a.m.',
           date: value.date ?? '2026-08-11',
           time: value.time ?? '09:00',
         }
@@ -476,9 +479,27 @@ function brokenAnswer(fixture) {
     return {
       ...guessed,
       evidence: 'Fall swimming lessons | Aug. 13 | Aug. 23 9 a.m. | Aug. 29 9 a.m.',
-      preview: { quote: 'Aug. 13', date: '2026-08-13', time: null },
-      resident_open: { quote: 'Aug. 23 9 a.m.', date: '2026-08-23', time: '09:00' },
-      general_open: { quote: 'Aug. 29 9 a.m.', date: '2026-08-29', time: '09:00' },
+      preview: {
+        quote: 'Aug. 13',
+        date_text: 'Aug. 13',
+        time_text: null,
+        date: '2026-08-13',
+        time: null,
+      },
+      resident_open: {
+        quote: 'Aug. 23 9 a.m.',
+        date_text: 'Aug. 23',
+        time_text: '9 a.m.',
+        date: '2026-08-23',
+        time: '09:00',
+      },
+      general_open: {
+        quote: 'Aug. 29 9 a.m.',
+        date_text: 'Aug. 29',
+        time_text: '9 a.m.',
+        date: '2026-08-29',
+        time: '09:00',
+      },
       unclassified_open: null,
     };
   }

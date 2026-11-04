@@ -49,7 +49,13 @@ function extraction(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
     evidence: 'Public registration opens October 20, 2026 at 9 a.m.',
     preview: null,
     residentOpen: null,
-    generalOpen: { quote: 'October 20, 2026 at 9 a.m.', date: '2026-10-20', time: '09:00' },
+    generalOpen: {
+      quote: 'October 20, 2026 at 9 a.m.',
+      dateText: 'October 20, 2026',
+      timeText: '9 a.m.',
+      date: '2026-10-20',
+      time: '09:00',
+    },
     unclassifiedOpen: null,
     partialDates: [],
     timeZone: 'America/New_York',
@@ -329,7 +335,13 @@ describe('a live window carries the preview the page states, and no stored one',
       ports(html(PREVIEW_PAGE), async () =>
         extraction({
           yearEvidence: 'October 13, 2026',
-          preview: { quote: 'October 13, 2026 at 9 a.m.', date: '2026-10-13', time: '09:00' },
+          preview: {
+            quote: 'October 13, 2026 at 9 a.m.',
+            dateText: 'October 13, 2026',
+            timeText: '9 a.m.',
+            date: '2026-10-13',
+            time: '09:00',
+          },
         }),
       ),
     );
@@ -356,6 +368,8 @@ describe('a resident-only date applies only to a family resolved to that one tow
           generalOpen: null,
           residentOpen: {
             quote: 'October 20, 2026 at 9 a.m.',
+            dateText: 'October 20, 2026',
+            timeText: '9 a.m.',
             date: '2026-10-20',
             time: '09:00',
           },
@@ -431,7 +445,13 @@ describe('a failed model read', () => {
           eligibility_evidence: null,
           preview: null,
           resident_open: null,
-          general_open: { quote: '', date: '2026-10-20', time: '09:00' },
+          general_open: {
+            quote: '',
+            date_text: '',
+            time_text: null,
+            date: '2026-10-20',
+            time: '09:00',
+          },
           unclassified_open: null,
           note: null,
           found: true,

@@ -20,7 +20,8 @@ import { loadVerifyRegistrationWindowSkill } from './skill';
  * Two gates stand between a model reading and a founder alert:
  *   1. CORROBORATION — every date arrives bound to its own verbatim quote, and the
  *      quote, the section it sits in and the text that supplied its YEAR must all
- *      appear in the fetched page, with the date's numbers the ones its quote prints.
+ *      appear in the fetched page; inside the quote, the words the model labels as the
+ *      date and as the time must each parse, whole, to exactly the values it extracted.
  *      A fabricated date cannot survive a check that looks for it in the source, and a
  *      prior-year date cannot survive a check that the page states that year (M1's
  *      stale-year trap, made structural).
@@ -61,10 +62,15 @@ export type UnfoundReason =
 /** The slot the model put an opening in — its eligibility verdict. */
 export type AiDateKind = 'preview' | 'resident_open' | 'general_open' | 'unclassified_open';
 
-/** A date as the page prints it: the verbatim words it was read from, a local calendar
- * day, and a wall-clock time only where the page actually publishes one. */
+/** A date as the page prints it: the verbatim words it was read from, the characters of
+ * those words that state the date and the time, a local calendar day, and a wall-clock time
+ * only where the page actually publishes one. */
 export interface PublishedDate {
   quote: string;
+  /** The characters of `quote` that state the date (`Aug. 11`, `lundi 7 décembre 2026`). */
+  dateText: string;
+  /** The characters of `quote` that state the time, or null when the page prints none. */
+  timeText: string | null;
   date: string;
   time: string | null;
 }
@@ -157,7 +163,7 @@ export type VerifyOutcome =
  * that local day — the seed's own convention, and the only reading that asserts no
  * time the town did not print.
  */
-export function publishedInstant(published: Omit<PublishedDate, 'quote'>): Date {
+export function publishedInstant(published: Pick<PublishedDate, 'date' | 'time'>): Date {
   return zonedLocalInstant(
     published.date,
     published.time ?? DATE_ONLY_WALL_CLOCK,
@@ -196,89 +202,309 @@ export function completeDates(extracted: ExtractedWindow): PublishedDate[] {
   ].filter((published): published is PublishedDate => published !== null);
 }
 
-/** A digit run in this range is a printed year and can only be read as one. */
-const YEAR_RUN = /^(19|20)\d{2}$/;
+/** Why one complete date was refused. Every one makes the reading `uncorroborated`, and
+ * each is logged by its own name. */
+export type DateSpanRefusal =
+  | 'span_missing'
+  | 'span_overlap'
+  | 'date_unparsed'
+  | 'date_ambiguous'
+  | 'date_mismatch'
+  | 'time_unparsed'
+  | 'time_mismatch';
 
-/** What a printed hour is followed by: its minute after a colon (`8:00`), or a clock
- * word (`8 a.m.`, `20h00`, `9 h`, `8 Uhr`, `8点`, `8時`, `8시`). A bare number is an
- * age, a session, a room — never an hour. */
-const CLOCK_AFTER_HOUR = /^(?::\d|\s?(?:h(?![a-z])|[ap]\.?\s?m(?![a-z])|uhr(?![a-z])|[点時时시]))/;
+/** Month names and abbreviations, lower-cased, in English, French and Spanish. Where two
+ * languages share a word (`mar`, `jun`) it names the same month. */
+const MONTHS: Readonly<Record<string, number>> = {
+  january: 1,
+  jan: 1,
+  janvier: 1,
+  janv: 1,
+  enero: 1,
+  ene: 1,
+  february: 2,
+  feb: 2,
+  février: 2,
+  févr: 2,
+  fév: 2,
+  febrero: 2,
+  march: 3,
+  mar: 3,
+  mars: 3,
+  marzo: 3,
+  april: 4,
+  apr: 4,
+  avril: 4,
+  avr: 4,
+  abril: 4,
+  abr: 4,
+  may: 5,
+  mai: 5,
+  mayo: 5,
+  june: 6,
+  jun: 6,
+  juin: 6,
+  junio: 6,
+  july: 7,
+  jul: 7,
+  juillet: 7,
+  juil: 7,
+  julio: 7,
+  august: 8,
+  aug: 8,
+  août: 8,
+  agosto: 8,
+  ago: 8,
+  september: 9,
+  sept: 9,
+  sep: 9,
+  septembre: 9,
+  septiembre: 9,
+  setiembre: 9,
+  october: 10,
+  oct: 10,
+  octobre: 10,
+  octubre: 10,
+  november: 11,
+  nov: 11,
+  novembre: 11,
+  noviembre: 11,
+  december: 12,
+  dec: 12,
+  décembre: 12,
+  déc: 12,
+  diciembre: 12,
+  dic: 12,
+};
 
-/** The only text a printed minute may sit behind: its hour's colon or clock word. */
-const HOUR_TO_MINUTE = /^\s?(?::|h|[点時时시])\s?$/;
+/** Weekday names and abbreviations a date may lead with. They are read past, not checked. */
+const WEEKDAYS = [
+  'monday',
+  'mon',
+  'tuesday',
+  'tues',
+  'tue',
+  'wednesday',
+  'wed',
+  'thursday',
+  'thurs',
+  'thur',
+  'thu',
+  'friday',
+  'fri',
+  'saturday',
+  'sat',
+  'sunday',
+  'sun',
+  'lundi',
+  'lun',
+  'mardi',
+  'mar',
+  'mercredi',
+  'mer',
+  'jeudi',
+  'jeu',
+  'vendredi',
+  'ven',
+  'samedi',
+  'sam',
+  'dimanche',
+  'dim',
+  'lunes',
+  'martes',
+  'miércoles',
+  'mié',
+  'jueves',
+  'jue',
+  'viernes',
+  'vie',
+  'sábado',
+  'sáb',
+  'domingo',
+  'dom',
+];
+
+const alternation = (words: readonly string[]) =>
+  [...words].sort((a, b) => b.length - a.length).join('|');
+const WEEKDAY = `(?:(?:${alternation(WEEKDAYS)})\\.?,?\\s)?`;
+const MONTH = `(${alternation(Object.keys(MONTHS))})\\.?`;
+const DAY = '(\\d{1,2})(?:st|nd|rd|th|er)?';
+const YEAR = '(\\d{4})';
+
+interface PrintedDate {
+  year: number | null;
+  month: number;
+  day: number;
+}
+
+/** The date grammar: the whole span must match one row, or it is not a date. */
+const DATE_FORMS: ReadonlyArray<{
+  pattern: RegExp;
+  read: (m: RegExpMatchArray) => PrintedDate | 'date_ambiguous';
+}> = [
+  {
+    // `Aug. 11`, `Aug, 3`, `Tuesday, November 17, 2026`, `August 11th`
+    pattern: new RegExp(`^${WEEKDAY}${MONTH},?\\s?${DAY}(?:,?\\s${YEAR})?$`, 'u'),
+    read: (m) => named(m[1], m[2], m[3]),
+  },
+  {
+    // `lundi 7 décembre 2026`, `11 de agosto de 2026`, `1er août`
+    pattern: new RegExp(`^${WEEKDAY}${DAY}\\s(?:de\\s)?${MONTH}(?:,?\\s(?:de\\s)?${YEAR})?$`, 'u'),
+    read: (m) => named(m[2], m[1], m[3]),
+  },
+  {
+    // `2026-08-11`, `2026/08/11`
+    pattern: /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/u,
+    read: (m) => numbers(m[1], m[3], m[4]),
+  },
+  {
+    // `2026年8月11日`, `8月11日`
+    pattern: /^(?:(\d{4})\s?年\s?)?(\d{1,2})\s?月\s?(\d{1,2})\s?日$/u,
+    read: (m) => numbers(m[1], m[2], m[3]),
+  },
+  {
+    // `15/08/2026` or `08/15/2026` — read only when the day cannot be the month.
+    pattern: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/u,
+    read: (m) => {
+      const [first, second] = [Number(m[1]), Number(m[2])];
+      if (first !== second && first <= 12 && second <= 12) return 'date_ambiguous';
+      return first > 12 ? numbers(m[3], m[2], m[1]) : numbers(m[3], m[1], m[2]);
+    },
+  },
+];
+
+function named(month: string | undefined, day: string | undefined, year: string | undefined) {
+  return {
+    year: year === undefined ? null : Number(year),
+    month: MONTHS[month ?? ''] ?? 0,
+    day: Number(day),
+  };
+}
+
+function numbers(year: string | undefined, month: string | undefined, day: string | undefined) {
+  return { year: year === undefined ? null : Number(year), month: Number(month), day: Number(day) };
+}
+
+function parseDateSpan(span: string): PrintedDate | 'date_unparsed' | 'date_ambiguous' {
+  for (const { pattern, read } of DATE_FORMS) {
+    const match = span.match(pattern);
+    if (match === null) continue;
+    const printed = read(match);
+    if (printed === 'date_ambiguous') return printed;
+    const valid =
+      printed.month >= 1 && printed.month <= 12 && printed.day >= 1 && printed.day <= 31;
+    return valid ? printed : 'date_unparsed';
+  }
+  return 'date_unparsed';
+}
+
+const MERIDIEM = '([ap])\\.?\\s?m\\.?';
+
+/** The clock grammar: the whole span must match one row, or it is not a time. Words for a
+ * time (`noon`, `midi`) and other separators (`8.30`) are not in it. */
+const CLOCK_FORMS: ReadonlyArray<{
+  pattern: RegExp;
+  read: (m: RegExpMatchArray) => [hour: string, minute: string, meridiem: string | undefined];
+}> = [
+  // `6:30`, `6:30 AM`, `7:00 p.m.`
+  {
+    pattern: new RegExp(`^(\\d{1,2}):(\\d{2})(?:\\s?${MERIDIEM})?$`, 'u'),
+    read: (m) => [m[1] ?? '', m[2] ?? '', m[3]],
+  },
+  // `7 a.m.`, `9pm`
+  { pattern: new RegExp(`^(\\d{1,2})\\s?${MERIDIEM}$`, 'u'), read: (m) => [m[1] ?? '', '0', m[2]] },
+  // `20h00`, `18 h 30`, `9 h`
+  { pattern: /^(\d{1,2})\s?h(?:\s?(\d{2}))?$/u, read: (m) => [m[1] ?? '', m[2] ?? '0', undefined] },
+  // `8点`, `8点30分`, `8点半`
+  {
+    pattern: /^(\d{1,2})\s?点(?:\s?(\d{1,2})\s?分|(半))?$/u,
+    read: (m) => [m[1] ?? '', m[3] ? '30' : (m[2] ?? '0'), undefined],
+  },
+  // `8時`, `8時30分`
+  {
+    pattern: /^(\d{1,2})\s?時(?:\s?(\d{1,2})\s?分)?$/u,
+    read: (m) => [m[1] ?? '', m[2] ?? '0', undefined],
+  },
+  // `8시`, `8시 30분`
+  {
+    pattern: /^(\d{1,2})\s?시(?:\s?(\d{1,2})\s?분)?$/u,
+    read: (m) => [m[1] ?? '', m[2] ?? '0', undefined],
+  },
+];
+
+/** The 24-hour `HH:MM` a clock span states, or null when it states none. */
+function parseClockSpan(span: string): string | null {
+  for (const { pattern, read } of CLOCK_FORMS) {
+    const match = span.match(pattern);
+    if (match === null) continue;
+    const [hourText, minuteText, meridiem] = read(match);
+    let hour = Number(hourText);
+    const minute = Number(minuteText);
+    if (minute > 59) return null;
+    if (meridiem !== undefined) {
+      if (hour < 1 || hour > 12) return null;
+      hour = (hour % 12) + (meridiem === 'p' ? 12 : 0);
+    } else if (hour > 23) {
+      return null;
+    }
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/** Every index at which `needle` starts in `haystack`. */
+function occurrences(haystack: string, needle: string): number[] {
+  const found: number[] = [];
+  if (needle === '') return found;
+  for (let at = haystack.indexOf(needle); at !== -1; at = haystack.indexOf(needle, at + 1)) {
+    found.push(at);
+  }
+  return found;
+}
 
 /**
- * Whether the numbers a quote prints are exactly this date's numbers, in any language.
+ * Why a complete date is not the one its own labelled spans state, or null when it is.
  *
- * Only the digits are checked, so a French, Spanish or Japanese quote verifies the same
- * way an English one does, with no month or weekday tables. Every ASCII digit run in the
- * (normalised) quote must be consumed exactly once, and the DATE is read first: a
- * four-digit year (which must be this date's year), the day (required), and the month
- * number wherever the quote prints one beside the day with at most one non-space
- * character between (`11/06`, `2026-06-11`, `6月11`, `11 06 2026`) and no clock form
- * after it. Those runs are the date's and only the date's. The clock comes from what
- * the date leaves, and only from a run the page prints AS a clock (`CLOCK_AFTER_HOUR`):
- * the hour (required when the date has a time; 13-23 may be printed on a 12-hour
- * clock), and the minute — behind the hour's colon or clock word, absent when it is
- * zero and the page prints none (`9 a.m.`, `9 h`). So a date-only `2026-08-11` cannot
- * lend its month to an 08:00 the page never printed, `ages 8` is never 08:00, and a
- * month-valued hour keeps its clock (`Aug. 11, 8 a.m.`). A leftover run fails the date:
- * a time on a date-only reading, a second date or clock in the quote.
- *
- * Known residuals, all fail-closed or caught by the eval's exact equality: a spelled-out
- * month and AM/PM are not checked; a day/hour swap at minute zero with both numbers
- * under 24 is not caught; a day/month swap in an all-numeric date with both numbers
- * 12 or under (`11/08/2026`) is not caught; a clock the pattern does not know
- * (`8.30`, `8 heures`, `noon`), a month number behind a word (`11 de 08 de 2026`),
- * spelled-out numbers and non-ASCII digit systems fail.
+ * The model labels the characters of its quote that state the date (`dateText`) and the
+ * time (`timeText`). Code never guesses which printed number is which: each span must be
+ * in the quote, the two must sit in separate characters, the date span must parse WHOLE
+ * under the date grammar to exactly this month and day (and year, when it prints one), and
+ * the time span WHOLE under the clock grammar to exactly this HH:MM. A null time needs a
+ * null time span and the other way round. Numbers outside the spans (an age, a room, a
+ * second date) are never read, so they can never stand in for the date or the clock.
  */
-function quoteStatesDate(published: PublishedDate): boolean {
+export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | null {
+  if (published.time !== null && published.timeText === null) return 'span_missing';
+  if (published.time === null && published.timeText !== null) return 'time_mismatch';
+
   const quote = normalizeQuote(published.quote);
-  const runs = Array.from(quote.matchAll(/\d+/g), (match, index) => ({
-    index,
-    text: match[0],
-    value: Number(match[0]),
-    start: match.index,
-    end: match.index + match[0].length,
-  }));
-  type Run = (typeof runs)[number];
-  const joined = (a: Run, b: Run): boolean => {
-    const [first, second] = a.start < b.start ? [a, b] : [b, a];
-    return quote.slice(first.end, second.start).replace(/\s/g, '').length <= 1;
-  };
-  const isClock = (run: Run): boolean => CLOCK_AFTER_HOUR.test(quote.slice(run.end));
+  const dateSpan = normalizeQuote(published.dateText);
+  const timeSpan = published.timeText === null ? null : normalizeQuote(published.timeText);
+  const dateAt = occurrences(quote, dateSpan);
+  const timeAt = timeSpan === null ? [] : occurrences(quote, timeSpan);
+  if (dateAt.length === 0 || (timeSpan !== null && timeAt.length === 0)) return 'span_missing';
+  if (
+    timeSpan !== null &&
+    !dateAt.some((d) => timeAt.some((t) => d + dateSpan.length <= t || t + timeSpan.length <= d))
+  ) {
+    return 'span_overlap';
+  }
+
+  const printed = parseDateSpan(dateSpan);
+  if (typeof printed === 'string') return printed;
   const [year, month, day] = published.date.split('-').map(Number);
-  const clock = published.time?.split(':').map(Number) ?? null;
+  if (
+    printed.month !== month ||
+    printed.day !== day ||
+    (printed.year !== null && printed.year !== year)
+  ) {
+    return 'date_mismatch';
+  }
 
-  const years = runs.filter((run) => YEAR_RUN.test(run.text));
-  if (years.length > 1 || years.some((run) => run.value !== year)) return false;
-  const others = runs.filter((run) => !YEAR_RUN.test(run.text));
-
-  const clockConsumes = (rest: readonly Run[]): boolean => {
-    if (clock === null) return rest.length === 0;
-    const [hour, minute] = clock as [number, number];
-    const [hourRun, minuteRun, ...extra] = rest;
-    if (hourRun === undefined || extra.length > 0 || !isClock(hourRun)) return false;
-    const hourMatches =
-      hourRun.value === hour ||
-      (hour >= 13 && hourRun.value === hour - 12) ||
-      (hour === 0 && hourRun.value === 12);
-    if (!hourMatches) return false;
-    if (minuteRun === undefined) return minute === 0;
-    return (
-      HOUR_TO_MINUTE.test(quote.slice(hourRun.end, minuteRun.start)) && minuteRun.value === minute
-    );
-  };
-
-  return others.some((dayRun) => {
-    if (dayRun.value !== day) return false;
-    const months = others.filter(
-      (run) => run !== dayRun && run.value === month && joined(dayRun, run) && !isClock(run),
-    );
-    return (months.length > 0 ? months : [null]).some((monthRun) =>
-      clockConsumes(others.filter((run) => run !== dayRun && run !== monthRun)),
-    );
-  });
+  if (timeSpan === null) return null;
+  const clock = parseClockSpan(timeSpan);
+  if (clock === null) return 'time_unparsed';
+  return clock === published.time ? null : 'time_mismatch';
 }
 
 /**
@@ -290,7 +516,8 @@ function quoteStatesDate(published: PublishedDate): boolean {
  *   - every date's own quote, complete or partial, appears in the page;
  *   - the text supplying the year, when given, appears in the page — and it is required,
  *     and must state each complete date's year, as soon as there is a complete date;
- *   - each complete date's numbers are the ones its quote prints.
+ *   - each complete date is the one its own labelled date and time spans state
+ *     (`dateSpanRefusal`), each refusal logged by name.
  *
  * The year check is the stale-year trap made structural. A model that rolls last
  * year's table forward has to produce a year the page does not state for that
@@ -320,7 +547,20 @@ export function corroborationFailure(
       return 'uncorroborated';
     }
   }
-  if (!complete.every(quoteStatesDate)) return 'uncorroborated';
+  const slots = [
+    ['preview', extracted.preview],
+    ['resident_open', extracted.residentOpen],
+    ['general_open', extracted.generalOpen],
+    ['unclassified_open', extracted.unclassifiedOpen],
+  ] as const;
+  for (const [slot, published] of slots) {
+    if (published === null) continue;
+    const refusal = dateSpanRefusal(published);
+    if (refusal !== null) {
+      console.info({ refusal, slot }, 'registration date: refused');
+      return 'uncorroborated';
+    }
+  }
   return null;
 }
 
@@ -432,8 +672,27 @@ export function withoutInferredEvidence(
 
 // ── the model read ───────────────────────────────────────────────────────────
 
+/**
+ * The longest text the model may write in each kind of field. The page is untrusted, so
+ * no field may carry an unbounded run of it (or an instruction planted in it) downstream:
+ * an answer past a bound fails the parse and is named `extract_failed`. The JSON schema
+ * states the same bounds to the model.
+ */
+const MAX_CHARS = {
+  /** A section or table row of the page, or the model's account of its labels. */
+  passage: 1500,
+  /** One sentence, heading or cell: a date's quote, the year or zone evidence. */
+  line: 300,
+  /** The words of one date or one clock inside a quote, or a date or time value. */
+  span: 100,
+  /** An IANA zone id. */
+  zone: 64,
+} as const;
+
 const publishedDateSchema = z.strictObject({
-  quote: z.string().trim().min(1),
+  quote: z.string().trim().min(1).max(MAX_CHARS.line),
+  date_text: z.string().max(MAX_CHARS.span),
+  time_text: z.string().max(MAX_CHARS.span).nullable(),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -457,17 +716,17 @@ const nullableWindowDate = z.preprocess((value) => {
 }, publishedDateSchema.nullable());
 
 const extractionSchema = z.strictObject({
-  cycle_on_page: z.string().nullable(),
-  evidence: z.string().nullable(),
-  year_evidence: z.string().nullable(),
-  time_zone_evidence: z.string().nullable(),
-  time_zone: z.string().nullable(),
-  eligibility_evidence: z.string().nullable(),
+  cycle_on_page: z.string().max(MAX_CHARS.line).nullable(),
+  evidence: z.string().max(MAX_CHARS.passage).nullable(),
+  year_evidence: z.string().max(MAX_CHARS.line).nullable(),
+  time_zone_evidence: z.string().max(MAX_CHARS.line).nullable(),
+  time_zone: z.string().max(MAX_CHARS.zone).nullable(),
+  eligibility_evidence: z.string().max(MAX_CHARS.passage).nullable(),
   preview: nullableWindowDate,
   resident_open: nullableWindowDate,
   general_open: nullableWindowDate,
   unclassified_open: nullableWindowDate,
-  note: z.string().nullable(),
+  note: z.string().max(MAX_CHARS.passage).nullable(),
   found: z.boolean(),
   reason: z.enum(['announced_later', 'different_cycle_only', 'not_published']).nullable(),
   confidence: z.number().min(0).max(1),
@@ -481,25 +740,30 @@ export const EXTRACTION_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    cycle_on_page: { type: ['string', 'null'] },
+    cycle_on_page: { type: ['string', 'null'], maxLength: MAX_CHARS.line },
     evidence: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.passage,
       description: 'Verbatim page text of the section the dates were read from.',
     },
     year_evidence: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.line,
       description: 'Verbatim page text stating the YEAR of every complete date.',
     },
     time_zone_evidence: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.line,
       description: 'Verbatim page text naming the time zone or the place the program is in.',
     },
     time_zone: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.zone,
       description: 'IANA time zone that time_zone_evidence establishes; null without it.',
     },
     eligibility_evidence: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.passage,
       description: 'Which label the page attaches to each opening, with the quoted label.',
     },
     preview: { $ref: '#/$defs/publishedDate' },
@@ -508,6 +772,7 @@ export const EXTRACTION_JSON_SCHEMA = {
     unclassified_open: { $ref: '#/$defs/publishedDate' },
     note: {
       type: ['string', 'null'],
+      maxLength: MAX_CHARS.passage,
       description: 'What the date fields cannot say, such as a year the page never states.',
     },
     found: { type: 'boolean' },
@@ -540,18 +805,31 @@ export const EXTRACTION_JSON_SCHEMA = {
       properties: {
         quote: {
           type: 'string',
+          maxLength: MAX_CHARS.line,
           description: 'The shortest verbatim page text stating this date and its time.',
+        },
+        date_text: {
+          type: 'string',
+          maxLength: MAX_CHARS.span,
+          description: 'The words of quote, copied exactly, that state the date.',
+        },
+        time_text: {
+          type: ['string', 'null'],
+          maxLength: MAX_CHARS.span,
+          description: 'The words of quote, copied exactly, that state the time; null if none.',
         },
         date: {
           type: ['string', 'null'],
+          maxLength: MAX_CHARS.span,
           description: 'YYYY-MM-DD, or null when the page does not establish the year or day',
         },
         time: {
           type: ['string', 'null'],
+          maxLength: MAX_CHARS.span,
           description: '24-hour HH:MM, or null when the page publishes no time',
         },
       },
-      required: ['quote', 'date', 'time'],
+      required: ['quote', 'date_text', 'time_text', 'date', 'time'],
     },
   },
 } as const;
@@ -594,7 +872,15 @@ export function toExtractedWindow(value: z.infer<typeof extractionSchema>): Extr
     ['unclassified_open', value.unclassified_open],
   ] as const;
   const complete = (slot: z.infer<typeof publishedDateSchema> | null): PublishedDate | null =>
-    slot?.date ? { quote: slot.quote, date: slot.date, time: slot.time } : null;
+    slot?.date
+      ? {
+          quote: slot.quote,
+          dateText: slot.date_text,
+          timeText: slot.time_text,
+          date: slot.date,
+          time: slot.time,
+        }
+      : null;
   return {
     found: value.found,
     reason: value.reason,

@@ -76,7 +76,6 @@ export type VerifiedRegistrationReading = RegistrationReadSource & {
   timeZone: string;
   dates: LiveRegistrationDate[];
   partialDates: readonly PartialRegistrationDate[];
-  note: string | null;
 };
 
 export type LiveRegistrationReading =
@@ -224,7 +223,6 @@ export function normalizeExtractedRegistration(
     timeZone,
     dates,
     partialDates: extracted.partialDates,
-    note: extracted.note,
   };
 }
 
@@ -280,6 +278,5 @@ export function readCourseRegistration(
     timeZone: portalTimeZone,
     dates,
     partialDates: [],
-    note: null,
   };
 }

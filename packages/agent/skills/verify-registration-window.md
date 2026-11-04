@@ -97,10 +97,10 @@ fields come in this order; write them in this order.
   "time_zone_evidence": null,
   "time_zone": null,
   "eligibility_evidence": "The page gives the registration opening no resident or non-resident label: \"Register starting Aug. 11 at 6:30 AM\".",
-  "preview":           { "quote": "Aug, 3", "date": "2026-08-03", "time": null },
+  "preview":           { "quote": "Aug, 3", "date_text": "Aug, 3", "time_text": null, "date": "2026-08-03", "time": null },
   "resident_open":     null,
   "general_open":      null,
-  "unclassified_open": { "quote": "Aug. 11 at 6:30 AM", "date": "2026-08-11", "time": "06:30" },
+  "unclassified_open": { "quote": "Aug. 11 at 6:30 AM", "date_text": "Aug. 11", "time_text": "6:30 AM", "date": "2026-08-11", "time": "06:30" },
   "note": null,
   "found": true,
   "reason": null,
@@ -148,9 +148,18 @@ Either null, or an object:
   numbers. In a table, the cell (`Aug. 22 9 a.m.`), not the row. The label
   belongs in `eligibility_evidence`. Every number in the quote must be part of
   this date or its time.
+- `date_text` — the words of YOUR `quote` that state the date, copied
+  character-for-character from it: the month, the day and, when the quote prints
+  it, the year and a leading weekday (`Aug. 11`, `lundi 7 décembre 2026`,
+  `2026年8月11日`, `2026-08-11`). Nothing else: not the time, not an age or a room
+  number printed beside the date.
+- `time_text` — the words of YOUR `quote` that state the time, copied
+  character-for-character from it (`6:30 AM`, `18 h 30`, `8点`), and nothing else.
+  Null exactly when `time` is null. `date_text` and `time_text` never share a
+  character.
 - `date` — `YYYY-MM-DD`. The year comes from `year_evidence`, never from
   anywhere else. Null when the page does not establish the year (or the day);
-  keep the `quote` and explain in `note`.
+  keep the `quote` and `date_text` and explain in `note`.
 - `time` — 24-hour `HH:MM`, zero-padded, or **null when the page publishes no
   time for that date**. Null is the right answer far more often than you expect;
   most preview dates and many registration dates print no time. Never invent

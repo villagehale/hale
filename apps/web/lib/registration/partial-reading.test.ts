@@ -68,7 +68,13 @@ describe('a partial date', () => {
       extracted({
         evidence: 'Preview December 1, 2026. Registration opens December 7.',
         yearEvidence: 'December 1, 2026',
-        preview: { quote: 'December 1, 2026', date: '2026-12-01', time: null },
+        preview: {
+          quote: 'December 1, 2026',
+          dateText: 'December 1, 2026',
+          timeText: null,
+          date: '2026-12-01',
+          time: null,
+        },
         timeZone: 'America/New_York',
         timeZoneEvidence: 'Eastern Time',
       }),

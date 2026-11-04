@@ -1,8 +1,9 @@
 import { strictToolSchema } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   EXTRACTION_JSON_SCHEMA,
   type ExtractedWindow,
+  type PublishedDate,
   type StoredWindow,
   type VerifyField,
   type VerifyOutcome,
@@ -52,9 +53,21 @@ function extracted(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
     cycleOnPage: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
     yearEvidence: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
     evidence: 'Register starting Aug. 11 at 6:30 AM',
-    preview: { quote: 'Aug, 3', date: '2026-08-03', time: null },
+    preview: {
+      quote: 'Aug, 3',
+      dateText: 'Aug, 3',
+      timeText: null,
+      date: '2026-08-03',
+      time: null,
+    },
     residentOpen: null,
-    generalOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+    generalOpen: {
+      quote: 'Aug. 11 at 6:30 AM',
+      dateText: 'Aug. 11',
+      timeText: '6:30 AM',
+      date: '2026-08-11',
+      time: '06:30',
+    },
     unclassifiedOpen: null,
     partialDates: [],
     timeZone: null,
@@ -114,7 +127,13 @@ describe('compareWindow — confirmed', () => {
       toronto,
       extracted({
         preview: null,
-        residentOpen: { quote: 'June 5, 2026, at 7 a.m.', date: '2026-06-05', time: '07:00' },
+        residentOpen: {
+          quote: 'June 5, 2026, at 7 a.m.',
+          dateText: 'June 5, 2026',
+          timeText: '7 a.m.',
+          date: '2026-06-05',
+          time: '07:00',
+        },
         generalOpen: null,
       }),
     );
@@ -186,8 +205,20 @@ describe('compareWindow — a page that states one unlabelled date', () => {
       extracted({
         cycleOnPage: '2027 Winter Programs',
         yearEvidence: '2027 Winter Programs',
-        preview: { quote: 'Jan. 5', date: '2027-01-05', time: null },
-        generalOpen: { quote: 'Jan. 12 at 9 a.m.', date: '2027-01-12', time: '09:00' },
+        preview: {
+          quote: 'Jan. 5',
+          dateText: 'Jan. 5',
+          timeText: null,
+          date: '2027-01-05',
+          time: null,
+        },
+        generalOpen: {
+          quote: 'Jan. 12 at 9 a.m.',
+          dateText: 'Jan. 12',
+          timeText: '9 a.m.',
+          date: '2027-01-12',
+          time: '09:00',
+        },
         evidence: 'Registration opens Jan. 12 at 9 a.m.',
       }),
     );
@@ -198,8 +229,20 @@ describe('compareWindow — a page that states one unlabelled date', () => {
     const outcome = compareWindow(
       tiered(),
       extracted({
-        residentOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
-        generalOpen: { quote: 'Aug. 12 at 6:30 AM', date: '2026-08-12', time: '06:30' },
+        residentOpen: {
+          quote: 'Aug. 11 at 6:30 AM',
+          dateText: 'Aug. 11',
+          timeText: '6:30 AM',
+          date: '2026-08-11',
+          time: '06:30',
+        },
+        generalOpen: {
+          quote: 'Aug. 12 at 6:30 AM',
+          dateText: 'Aug. 12',
+          timeText: '6:30 AM',
+          date: '2026-08-12',
+          time: '06:30',
+        },
       }),
     );
     expect(outcome).toEqual({
@@ -260,7 +303,13 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     const outcome = compareWindow(
       stored,
       extracted({
-        generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+        generalOpen: {
+          quote: 'Aug. 18 at 6:30 AM',
+          dateText: 'Aug. 18',
+          timeText: '6:30 AM',
+          date: '2026-08-18',
+          time: '06:30',
+        },
         evidence: 'Register starting Aug. 18 at 6:30 AM',
       }),
     );
@@ -283,7 +332,13 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     const outcome = compareWindow(
       markhamStored(),
       extracted({
-        generalOpen: { quote: 'Aug. 11 at 7:00 AM', date: '2026-08-11', time: '07:00' },
+        generalOpen: {
+          quote: 'Aug. 11 at 7:00 AM',
+          dateText: 'Aug. 11',
+          timeText: '7:00 AM',
+          date: '2026-08-11',
+          time: '07:00',
+        },
       }),
     );
     expect(outcome.kind).toBe('discrepancy');
@@ -297,7 +352,13 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     const outcome = compareWindow(
       markhamStored(),
       extracted({
-        residentOpen: { quote: 'Aug. 4 at 6:30 AM', date: '2026-08-04', time: '06:30' },
+        residentOpen: {
+          quote: 'Aug. 4 at 6:30 AM',
+          dateText: 'Aug. 4',
+          timeText: '6:30 AM',
+          date: '2026-08-04',
+          time: '06:30',
+        },
       }),
     );
     expect(outcome.kind).toBe('discrepancy');
@@ -315,7 +376,13 @@ describe('compareWindow — discrepancy NEVER becomes a change', () => {
     const outcome = compareWindow(
       markhamStored(),
       extracted({
-        generalOpen: { quote: 'Aug. 18 at 6:30 AM', date: '2026-08-18', time: '06:30' },
+        generalOpen: {
+          quote: 'Aug. 18 at 6:30 AM',
+          dateText: 'Aug. 18',
+          timeText: '6:30 AM',
+          date: '2026-08-18',
+          time: '06:30',
+        },
       }),
     );
     // Structural guard on rule "NEVER auto-change": there is no `apply`, no
@@ -339,7 +406,13 @@ describe('compareWindow — a guess is never a verification', () => {
       markhamStored(),
       extracted({
         confidence: 0.3,
-        generalOpen: { quote: 'Sep. 1 at 6:30 AM', date: '2026-09-01', time: '06:30' },
+        generalOpen: {
+          quote: 'Sep. 1 at 6:30 AM',
+          dateText: 'Sep. 1',
+          timeText: '6:30 AM',
+          date: '2026-09-01',
+          time: '06:30',
+        },
       }),
     );
     expect(outcome).toEqual({ kind: 'unverified', reason: 'low_confidence' });
@@ -407,15 +480,33 @@ describe('parseExtraction — {date:null} is the same absence as null', () => {
   it('keeps a real published date (positive control)', () => {
     const parsed = parseExtraction({
       ...RAW,
-      preview: { quote: 'Aug, 3', date: '2026-08-03', time: null },
+      preview: {
+        quote: 'Aug, 3',
+        date_text: 'Aug, 3',
+        time_text: null,
+        date: '2026-08-03',
+        time: null,
+      },
     });
-    expect(parsed.preview).toEqual({ quote: 'Aug, 3', date: '2026-08-03', time: null });
+    expect(parsed.preview).toEqual({
+      quote: 'Aug, 3',
+      dateText: 'Aug, 3',
+      timeText: null,
+      date: '2026-08-03',
+      time: null,
+    });
   });
 
   it('keeps a QUOTED {date:null} as a partial date, never as a date field', () => {
     const parsed = parseExtraction({
       ...RAW,
-      unclassified_open: { quote: 'August 11', date: null, time: null },
+      unclassified_open: {
+        quote: 'August 11',
+        date_text: 'August 11',
+        time_text: null,
+        date: null,
+        time: null,
+      },
     });
     expect(parsed.unclassifiedOpen).toBeNull();
     expect(parsed.partialDates).toEqual([{ kind: 'unclassified_open', quote: 'August 11' }]);
@@ -423,7 +514,16 @@ describe('parseExtraction — {date:null} is the same absence as null', () => {
 
   it('still rejects a malformed date — the collapse is not a catch-all', () => {
     expect(() =>
-      parseExtraction({ ...RAW, preview: { quote: 'August 3', date: 'August 3', time: null } }),
+      parseExtraction({
+        ...RAW,
+        preview: {
+          quote: 'August 3',
+          date_text: 'August 3',
+          time_text: null,
+          date: 'August 3',
+          time: null,
+        },
+      }),
     ).toThrow();
   });
 });
@@ -452,7 +552,13 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
       corroborationFailure(
         PAGE,
         extracted({
-          generalOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2025-08-11', time: '06:30' },
+          generalOpen: {
+            quote: 'Aug. 11 at 6:30 AM',
+            dateText: 'Aug. 11',
+            timeText: '6:30 AM',
+            date: '2025-08-11',
+            time: '06:30',
+          },
         }),
       ),
     ).toBe('uncorroborated');
@@ -475,7 +581,13 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
           yearEvidence: '2026 Fall Programs',
           evidence: 'Register starting Aug. 11 - 6:30 AM',
           preview: null,
-          generalOpen: { quote: 'Aug. 11 - 6:30 AM', date: '2026-08-11', time: '06:30' },
+          generalOpen: {
+            quote: 'Aug. 11 - 6:30 AM',
+            dateText: 'Aug. 11',
+            timeText: '6:30 AM',
+            date: '2026-08-11',
+            time: '06:30',
+          },
         }),
       ),
     ).toBeNull();
@@ -499,201 +611,271 @@ describe('corroborationFailure — the anti-fabrication gate', () => {
   });
 });
 
-describe('corroborationFailure — every date is bound to its own quote', () => {
-  const PAGE =
-    '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ' +
-    'Register starting Aug. 11 at 6:30 AM. You will have 48 hours to decide.';
-  const general = (quote: string, date: string, time: string | null) =>
-    extracted({ generalOpen: { quote, date, time } });
+/**
+ * Every complete date names the characters of its own quote that state its date
+ * (`dateText`) and its time (`timeText`). Code checks the labels, never a guess at which
+ * number is which: each span is in the quote, the two do not overlap, the date span parses
+ * WHOLE under the date grammar to exactly this month and day (and year, when it prints one),
+ * and the time span parses WHOLE under the clock grammar to exactly this HH:MM. Numbers
+ * outside the spans (an age, a room) are never read. Each refusal logs its own name.
+ */
+describe('corroborationFailure — every date is read from its own labelled spans', () => {
+  type Labels = Pick<PublishedDate, 'quote' | 'dateText' | 'timeText' | 'date' | 'time'>;
 
-  it('refuses a date whose quote is not on the page, though its numbers agree', () => {
-    expect(corroborationFailure(PAGE, general('Aug. 11 at 6:30 PM', '2026-08-11', '18:30'))).toBe(
-      'uncorroborated',
-    );
-  });
-
-  it('accepts the same date quoted from the page (control)', () => {
-    expect(
-      corroborationFailure(PAGE, general('Aug. 11 at 6:30 AM', '2026-08-11', '06:30')),
-    ).toBeNull();
-  });
-
-  it.each([
-    ['another day', '2026-08-12', '06:30'],
-    ['another hour', '2026-08-11', '07:30'],
-    ['another minute', '2026-08-11', '06:45'],
-    ['the day and the hour swapped', '2026-08-06', '11:30'],
-    ['no time, when the quote prints one', '2026-08-11', null],
-  ] as const)('refuses a date that disagrees with its own quote: %s', (_name, date, time) => {
-    expect(corroborationFailure(PAGE, general('Aug. 11 at 6:30 AM', date, time))).toBe(
-      'uncorroborated',
-    );
-  });
-
-  describe('a month number counts only where it is printed beside the day', () => {
-    const dateOnly = (sentence: string, quote: string) =>
-      corroborationFailure(
-        `2026 Fall Programs. ${sentence}`,
+  /** The gate's verdict and the refusal it logged, on a page that prints `quote` once. */
+  function verdict(published: Labels) {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const result = corroborationFailure(
+        `2026 Fall Programs. Register starting ${published.quote}.`,
         extracted({
           yearEvidence: '2026 Fall Programs',
-          evidence: sentence,
+          evidence: `Register starting ${published.quote}.`,
           preview: null,
-          generalOpen: { quote, date: '2026-06-11', time: null },
+          generalOpen: published,
         }),
       );
+      const logged = info.mock.calls.find(
+        ([, message]) => message === 'registration date: refused',
+      );
+      return {
+        result,
+        refusal: (logged?.[0] as { refusal?: string } | undefined)?.refusal ?? null,
+      };
+    } finally {
+      info.mockRestore();
+    }
+  }
+  const label = (
+    quote: string,
+    dateText: string,
+    timeText: string | null,
+    date: string,
+    time: string | null,
+  ): Labels => ({ quote, dateText, timeText, date, time });
+  const ACCEPTED = { result: null, refusal: null };
+  const refused = (refusal: string) => ({ result: 'uncorroborated', refusal });
 
-    it('refuses a date-only reading of a quote that prints an hour equal to the month', () => {
-      expect(dateOnly('Register starting June 11 at 6 a.m.', 'June 11 at 6 a.m.')).toBe(
+  describe('a number beside the date is never the date', () => {
+    it("refuses 'November 11 8+' read as Aug 11: the labelled date says November", () => {
+      expect(verdict(label('November 11 8+', 'November 11', null, '2026-08-11', null))).toEqual(
+        refused('date_mismatch'),
+      );
+    });
+
+    it("refuses a date span that swallows the age: 'November 11 8'", () => {
+      expect(verdict(label('November 11 8+', 'November 11 8', null, '2026-08-11', null))).toEqual(
+        refused('date_unparsed'),
+      );
+    });
+
+    it("accepts 'November 11 8+' as Nov 11 (control)", () => {
+      expect(verdict(label('November 11 8+', 'November 11', null, '2026-11-11', null))).toEqual(
+        ACCEPTED,
+      );
+    });
+
+    it('accepts an age after the date with no time; the age is never parsed (control)', () => {
+      expect(
+        verdict(label('Aug 11 for ages 8 and up', 'Aug 11', null, '2026-08-11', null)),
+      ).toEqual(ACCEPTED);
+    });
+
+    it('refuses the same quote with a time: no clock span stands behind 08:00', () => {
+      expect(
+        verdict(label('Aug 11 for ages 8 and up', 'Aug 11', null, '2026-08-11', '08:00')),
+      ).toEqual(refused('span_missing'));
+    });
+
+    it('refuses the age labelled as the clock', () => {
+      expect(
+        verdict(label('Aug 11 for ages 8 and up', 'Aug 11', '8', '2026-08-11', '08:00')),
+      ).toEqual(refused('time_unparsed'));
+    });
+  });
+
+  describe("a clock's minute is never the day", () => {
+    it('refuses a date span that runs into the clock', () => {
+      expect(
+        verdict(label('Aug. 8:30 a.m.', 'Aug. 8:30', '8:30 a.m.', '2026-08-30', '08:00')),
+      ).toEqual(refused('span_overlap'));
+    });
+
+    it('refuses a month with no day of its own', () => {
+      expect(verdict(label('Aug. 8:30 a.m.', 'Aug.', '8:30 a.m.', '2026-08-30', '08:30'))).toEqual(
+        refused('date_unparsed'),
+      );
+    });
+
+    it('refuses the minute labelled as the day', () => {
+      expect(verdict(label('Aug. 8:30 a.m.', 'Aug. 8:30', null, '2026-08-30', null))).toEqual(
+        refused('date_unparsed'),
+      );
+    });
+  });
+
+  describe('an all-numeric date is read only when it cannot be the other way round', () => {
+    it.each([
+      ['day first', '2026-08-11'],
+      ['month first', '2026-11-08'],
+    ])("refuses '11/08/2026' read %s as ambiguous", (_name, date) => {
+      expect(verdict(label('11/08/2026', '11/08/2026', null, date, null))).toEqual(
+        refused('date_ambiguous'),
+      );
+    });
+
+    it.each([
+      ['a day above 12 first', '15/08/2026'],
+      ['a day above 12 second', '08/15/2026'],
+    ])('accepts %s as Aug 15 (control)', (_name, printed) => {
+      expect(verdict(label(printed, printed, null, '2026-08-15', null))).toEqual(ACCEPTED);
+    });
+
+    it("refuses '15/08/2026' read as another day", () => {
+      expect(verdict(label('15/08/2026', '15/08/2026', null, '2026-08-16', null))).toEqual(
+        refused('date_mismatch'),
+      );
+    });
+
+    it("accepts the day equal to the month: '08/08/2026' (control)", () => {
+      expect(verdict(label('08/08/2026', '08/08/2026', null, '2026-08-08', null))).toEqual(
+        ACCEPTED,
+      );
+    });
+
+    it.each([
+      ['with no time', null, null],
+      ['with the month read as the hour', null, '08:00'],
+    ])("refuses '11 08 2026' %s: it is not in the date grammar", (_name, timeText, time) => {
+      expect(verdict(label('11 08 2026', '11 08 2026', timeText, '2026-08-11', time)).result).toBe(
         'uncorroborated',
       );
     });
-
-    it.each([
-      ['ISO', 'Register starting 2026-06-11.', '2026-06-11'],
-      ['day first', 'Register starting 11/06/2026.', '11/06/2026'],
-      ['month first', 'Register starting 06/11/2026.', '06/11/2026'],
-      ['CJK', '受付開始 2026年6月11日', '2026年6月11日'],
-    ] as const)('accepts a numeric month beside the day: %s (control)', (_name, sentence, quote) => {
-      expect(dateOnly(sentence, quote)).toBeNull();
-    });
   });
 
-  describe('the clock never comes from the date’s own numbers', () => {
-    const read = (quote: string, time: string | null) =>
-      corroborationFailure(
-        `2026 Fall Programs. Register starting ${quote}.`,
-        extracted({
-          yearEvidence: '2026 Fall Programs',
-          evidence: `Register starting ${quote}.`,
-          preview: null,
-          generalOpen: { quote, date: '2026-08-11', time },
-        }),
+  describe('the labels must be the quote’s own, separate characters', () => {
+    it('refuses a date span that is not in the quote', () => {
+      expect(
+        verdict(label('Aug. 11 at 6:30 AM', 'Aug. 12', '6:30 AM', '2026-08-12', '06:30')),
+      ).toEqual(refused('span_missing'));
+    });
+
+    it('refuses a time span that is not in the quote', () => {
+      expect(
+        verdict(label('Aug. 11 at 6:30 AM', 'Aug. 11', '7:30 AM', '2026-08-11', '07:30')),
+      ).toEqual(refused('span_missing'));
+    });
+
+    it('refuses an empty date span', () => {
+      expect(verdict(label('Aug. 11 at 6:30 AM', ' ', '6:30 AM', '2026-08-11', '06:30'))).toEqual(
+        refused('span_missing'),
       );
-
-    it.each([
-      ['ISO, the hour taken from the month', '2026-08-11', '08:00'],
-      ['ISO, an afternoon hour taken from the month', '2026-08-11', '20:00'],
-      ['ISO, the hour taken from the day', '2026-08-11', '11:00'],
-      ['month first, the hour taken from the month', '08/11/2026', '08:00'],
-      ['month first, the hour taken from the day', '08/11/2026', '11:00'],
-      ['day first, the hour taken from the month', '11/08/2026', '08:00'],
-      ['day first, the hour taken from the day', '11/08/2026', '11:00'],
-      ['CJK, the hour taken from the month', '2026年8月11日', '08:00'],
-    ] as const)('refuses a time on a date-only quote: %s', (_name, quote, time) => {
-      expect(read(quote, time)).toBe('uncorroborated');
     });
 
-    it.each([
-      ['ISO', '2026-08-11'],
-      ['month first', '08/11/2026'],
-      ['day first', '11/08/2026'],
-      ['CJK', '2026年8月11日'],
-    ] as const)('accepts the same date-only quote with no time: %s (control)', (_name, quote) => {
-      expect(read(quote, null)).toBeNull();
+    it('refuses overlapping spans', () => {
+      expect(
+        verdict(label('Aug. 11 at 6:30 AM', 'Aug. 11 at 6', '6:30 AM', '2026-08-11', '06:30')),
+      ).toEqual(refused('span_overlap'));
     });
 
+    it('refuses a time span with no time', () => {
+      expect(
+        verdict(label('Aug. 11 at 6:30 AM', 'Aug. 11', '6:30 AM', '2026-08-11', null)),
+      ).toEqual(refused('time_mismatch'));
+    });
+  });
+
+  describe('each span says exactly the extracted value', () => {
     it.each([
-      ['ISO with 8:00', '2026-08-11 8:00', '08:00'],
-      ['ISO with 8 a.m.', '2026-08-11 8 a.m.', '08:00'],
-      ['ISO with 20h00', '2026-08-11 20h00', '20:00'],
-      ['month first with 8:00 a.m.', '08/11/2026 at 8:00 a.m.', '08:00'],
-      ['day first with 8 h', '11/08/2026 à 8 h', '08:00'],
-      ['CJK with 8点', '2026年8月11日8点', '08:00'],
-      ['a month name, the clock a space after the day', 'Aug. 11 8 a.m.', '08:00'],
-      ['a month name, the clock a comma after the day', 'Aug. 11, 8 a.m.', '08:00'],
-      ['a month name, the clock a dash after the day', 'Aug 11 - 8:00', '08:00'],
-      ['space-separated with 8:00', '11 08 2026 8:00', '08:00'],
-    ] as const)('accepts a time the quote prints: %s (control)', (_name, quote, time) => {
-      expect(read(quote, time)).toBeNull();
+      ['another day', 'Aug. 11', '6:30 AM', '2026-08-12', '06:30', 'date_mismatch'],
+      [
+        'another year than the span prints',
+        'Aug. 11, 2027',
+        null,
+        '2026-08-11',
+        null,
+        'date_mismatch',
+      ],
+      ['another hour', 'Aug. 11', '6:30 AM', '2026-08-11', '07:30', 'time_mismatch'],
+      ['another minute', 'Aug. 11', '6:30 AM', '2026-08-11', '06:45', 'time_mismatch'],
+      ['the evening', 'Aug. 11', '6:30 AM', '2026-08-11', '18:30', 'time_mismatch'],
+    ] as const)('refuses %s', (_name, dateText, timeText, date, time, refusal) => {
+      const quote = dateText.includes('2027') ? 'Aug. 11, 2027' : 'Aug. 11 at 6:30 AM';
+      expect(verdict(label(quote, dateText, timeText, date, time))).toEqual(refused(refusal));
     });
 
     it.each([
-      ['space-separated, the hour taken from the month', '11 08 2026', '08:00'],
-      ['spelled-out separators, the hour taken from the month', '11 de 08 de 2026', '08:00'],
-      ['an age, read as the hour', 'Aug 11 for ages 8 and up', '08:00'],
-      ['a session number, read as the hour', 'Aug 11 (session 2)', '02:00'],
-    ] as const)('refuses an hour no clock prints: %s', (_name, quote, time) => {
-      expect(read(quote, time)).toBe('uncorroborated');
-    });
-
-    it('accepts the space-separated date with no time (control)', () => {
-      expect(read('11 08 2026', null)).toBeNull();
-    });
-
-    it('refuses a minute the page does not print', () => {
-      expect(read('Aug 11 at 8 a.m.', '08:30')).toBe('uncorroborated');
-    });
-
-    it('refuses a minute that is not joined to the hour by a clock', () => {
-      expect(read('Aug 11 at 8 a.m., room 30', '08:30')).toBe('uncorroborated');
-    });
-
-    it('accepts the printed hour at minute zero (control)', () => {
-      expect(read('Aug 11 at 8 a.m.', '08:00')).toBeNull();
-    });
-
-    it('refuses a timed quote that prints a second clock', () => {
-      expect(read('Aug 11 8:00 to 9:15', '08:00')).toBe('uncorroborated');
-    });
-
-    it('accepts the same clock printed alone (control)', () => {
-      expect(read('Aug 11 8:00', '08:00')).toBeNull();
-    });
-
-    it('refuses a quote that prints the year twice', () => {
-      expect(read('2026-08-11, 2026', null)).toBe('uncorroborated');
+      ['noon', 'Aug. 11 at noon', 'noon', '12:00'],
+      ['midnight', 'Aug. 11 at midnight', 'midnight', '00:00'],
+      ['a dotted clock', 'Aug. 11 at 8.30', '8.30', '08:30'],
+      ['a bare hour', 'Aug. 11 at 8', '8', '08:00'],
+      ['a meridiem on a 24-hour clock', 'Aug. 11 at 18:30 pm', '18:30 pm', '18:30'],
+    ] as const)('refuses a clock outside the grammar: %s', (_name, quote, timeText, time) => {
+      expect(verdict(label(quote, 'Aug. 11', timeText, '2026-08-11', time))).toEqual(
+        refused('time_unparsed'),
+      );
     });
   });
 
-  it('refuses a date whose quote prints another year', () => {
-    const page = `${PAGE} Last season: Aug. 11, 2025 at 6:30 AM.`;
-    expect(
-      corroborationFailure(page, general('Aug. 11, 2025 at 6:30 AM', '2026-08-11', '06:30')),
-    ).toBe('uncorroborated');
-  });
-
-  it.each([
-    ['an afternoon clock', 'Register starting Aug. 11 at 6:30 PM.', 'Aug. 11 at 6:30 PM', '18:30'],
-    ['a printed zero minute', 'Register starting Aug. 22 9:00 a.m.', 'Aug. 22 9:00 a.m.', '09:00'],
-  ] as const)('accepts %s (control)', (_name, sentence, quote, time) => {
-    const date = quote.includes('22') ? '2026-08-22' : '2026-08-11';
-    expect(
-      corroborationFailure(
-        `2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. ${sentence}`,
-        extracted({ evidence: sentence, generalOpen: { quote, date, time } }),
-      ),
-    ).toBeNull();
-  });
-
-  it('accepts digits the page prints full-width or behind a no-break space', () => {
-    const page =
-      '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. Register starting Aug.\u00a0１１ at 6:30 AM.';
-    expect(
-      corroborationFailure(page, general('Aug. 11 at 6:30 AM', '2026-08-11', '06:30')),
-    ).toBeNull();
-  });
-});
-
-describe('corroborationFailure — a quote must state ONE date', () => {
-  const PAGE =
-    'Fall 2026 Registration Schedule | Fall swimming lessons | Aug. 12 | Aug. 20 7 a.m. | Aug. 22 9 a.m.';
-  const resident = (quote: string) =>
-    extracted({
-      yearEvidence: 'Fall 2026 Registration Schedule',
-      evidence: 'Fall swimming lessons | Aug. 12 | Aug. 20 7 a.m. | Aug. 22 9 a.m.',
-      preview: null,
-      generalOpen: null,
-      residentOpen: { quote, date: '2026-08-22', time: '09:00' },
+  describe('the grammars read what pages print (controls)', () => {
+    it.each([
+      ['H:MM AM', 'Aug. 11 at 6:30 AM', 'Aug. 11', '6:30 AM', '2026-08-11', '06:30'],
+      ['H:MM PM', 'Aug. 11 at 6:30 PM', 'Aug. 11', '6:30 PM', '2026-08-11', '18:30'],
+      ['8:00', '2026-08-11 8:00', '2026-08-11', '8:00', '2026-08-11', '08:00'],
+      ['8 a.m.', 'Aug. 11 8 a.m.', 'Aug. 11', '8 a.m.', '2026-08-11', '08:00'],
+      ['8 a.m. after a comma', 'Aug. 11, 8 a.m.', 'Aug. 11', '8 a.m.', '2026-08-11', '08:00'],
+      ['8:00 after a dash', 'Aug 11 - 8:00', 'Aug 11', '8:00', '2026-08-11', '08:00'],
+      ['12 p.m.', 'Aug. 11 at 12 p.m.', 'Aug. 11', '12 p.m.', '2026-08-11', '12:00'],
+      ['20h00', '11 août 2026 20h00', '11 août 2026', '20h00', '2026-08-11', '20:00'],
+      [
+        '18 h 30',
+        'lundi 7 décembre 2026 à 18 h 30',
+        'lundi 7 décembre 2026',
+        '18 h 30',
+        '2026-12-07',
+        '18:30',
+      ],
+      [
+        '9 h',
+        'vendredi 11 décembre 2026 à 9 h',
+        'vendredi 11 décembre 2026',
+        '9 h',
+        '2026-12-11',
+        '09:00',
+      ],
+      ['8点', '2026年8月11日8点', '2026年8月11日', '8点', '2026-08-11', '08:00'],
+      ['8点半', '8月11日8点半', '8月11日', '8点半', '2026-08-11', '08:30'],
+      ['8時30分', '8月11日8時30分', '8月11日', '8時30分', '2026-08-11', '08:30'],
+      ['8시', '2026-08-11 8시', '2026-08-11', '8시', '2026-08-11', '08:00'],
+      [
+        'es, de',
+        '11 de agosto de 2026 a las 8:00',
+        '11 de agosto de 2026',
+        '8:00',
+        '2026-08-11',
+        '08:00',
+      ],
+      [
+        'a weekday and a year',
+        'Tuesday, August 11, 2026 at 7:00 p.m.',
+        'Tuesday, August 11, 2026',
+        '7:00 p.m.',
+        '2026-08-11',
+        '19:00',
+      ],
+      ['the time before the date', '9 a.m. on Aug. 11', 'Aug. 11', '9 a.m.', '2026-08-11', '09:00'],
+      ['ISO with a slash', '2026/08/11', '2026/08/11', null, '2026-08-11', null],
+      ['the source’s comma typo', 'Aug, 3', 'Aug, 3', null, '2026-08-03', null],
+      ['an ordinal', 'August 11th at 9 a.m.', 'August 11th', '9 a.m.', '2026-08-11', '09:00'],
+    ] as const)('accepts %s', (_name, quote, dateText, timeText, date, time) => {
+      expect(verdict(label(quote, dateText, timeText, date, time))).toEqual(ACCEPTED);
     });
 
-  it('refuses a quote that spans two dates', () => {
-    expect(corroborationFailure(PAGE, resident('Aug. 20 7 a.m. | Aug. 22 9 a.m.'))).toBe(
-      'uncorroborated',
-    );
-  });
-
-  it("accepts the date's own cell (control)", () => {
-    expect(corroborationFailure(PAGE, resident('Aug. 22 9 a.m.'))).toBeNull();
+    it('accepts digits the page prints full-width or behind a no-break space', () => {
+      const page =
+        '2026 Fall Programs, Swim Lessons and Winter Break Camps. Preview starting Aug, 3. Register starting Aug. １１ at 6:30 AM.';
+      expect(corroborationFailure(page, extracted())).toBeNull();
+    });
   });
 });
 
@@ -720,7 +902,13 @@ describe('corroborationFailure — year evidence is required only for a complete
         PAGE,
         extracted({
           ...partialOnly,
-          generalOpen: { quote: 'August 11', date: '2026-08-11', time: null },
+          generalOpen: {
+            quote: 'August 11',
+            dateText: 'August 11',
+            timeText: null,
+            date: '2026-08-11',
+            time: null,
+          },
         }),
       ),
     ).toBe('uncorroborated');
@@ -737,6 +925,65 @@ describe('EXTRACTION_JSON_SCHEMA', () => {
     expect(EXTRACTION_JSON_SCHEMA.properties.reason.enum).not.toContain('no_year_stated');
     expect(EXTRACTION_JSON_SCHEMA.properties.reason.enum).toContain('announced_later');
   });
+
+  it('asks for the date and time spans before the values they justify', () => {
+    const slot = Object.keys(EXTRACTION_JSON_SCHEMA.$defs.publishedDate.properties);
+    expect(slot).toEqual(['quote', 'date_text', 'time_text', 'date', 'time']);
+    expect(EXTRACTION_JSON_SCHEMA.$defs.publishedDate.required).toEqual(slot);
+  });
+
+  it('bounds the length of every string the model writes', () => {
+    const strings: string[] = [];
+    const unbounded: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (!node || typeof node !== 'object') return;
+      const schema = node as Record<string, unknown>;
+      const type = schema.type;
+      if (type === 'string' || (Array.isArray(type) && type.includes('string'))) {
+        strings.push(path);
+        if (!schema.enum && typeof schema.maxLength !== 'number') unbounded.push(path);
+      }
+      for (const key of ['properties', '$defs']) {
+        const children = schema[key];
+        if (!children || typeof children !== 'object') continue;
+        for (const [name, child] of Object.entries(children)) walk(child, `${path}.${name}`);
+      }
+    };
+    walk(EXTRACTION_JSON_SCHEMA, '');
+    // Positive control: the walk reaches the free-text fields it is meant to bound.
+    expect(strings).toEqual(
+      expect.arrayContaining([
+        '.evidence',
+        '.note',
+        '.publishedDate.quote',
+        '.publishedDate.date_text',
+        '.publishedDate.time_text',
+      ]),
+    );
+    expect(unbounded).toEqual([]);
+  });
+
+  it('enforces the same bounds on the answer, so an overlong quote never reaches the gate', () => {
+    const limit = (EXTRACTION_JSON_SCHEMA.properties.evidence as { maxLength: number }).maxLength;
+    const raw = (evidence: string) => ({
+      cycle_on_page: 'Fall 2026',
+      evidence,
+      year_evidence: null,
+      time_zone_evidence: null,
+      time_zone: null,
+      eligibility_evidence: null,
+      preview: null,
+      resident_open: null,
+      general_open: null,
+      unclassified_open: null,
+      note: null,
+      found: true,
+      reason: null,
+      confidence: 0.9,
+    });
+    expect(() => parseExtraction(raw('x'.repeat(limit + 1)))).toThrow();
+    expect(parseExtraction(raw('x'.repeat(limit))).evidence).toHaveLength(limit);
+  });
 });
 
 describe('compareWindow — an unlabelled opening is compared as before (VIL-347)', () => {
@@ -748,7 +995,13 @@ describe('compareWindow — an unlabelled opening is compared as before (VIL-347
     });
   const unlabelled = extracted({
     generalOpen: null,
-    unclassifiedOpen: { quote: 'Aug. 11 at 6:30 AM', date: '2026-08-11', time: '06:30' },
+    unclassifiedOpen: {
+      quote: 'Aug. 11 at 6:30 AM',
+      dateText: 'Aug. 11',
+      timeText: '6:30 AM',
+      date: '2026-08-11',
+      time: '06:30',
+    },
   });
 
   it('reads it as the resident date when that is what it matches', () => {
@@ -803,7 +1056,13 @@ describe('isTrustworthyFind — a find needs a complete date', () => {
       ...partialOnly,
       yearEvidence: 'August 11, 2026',
       evidence: 'Register August 11, 2026.',
-      generalOpen: { quote: 'August 11, 2026', date: '2026-08-11', time: null },
+      generalOpen: {
+        quote: 'August 11, 2026',
+        dateText: 'August 11, 2026',
+        timeText: null,
+        date: '2026-08-11',
+        time: null,
+      },
     });
     expect(isTrustworthyFind(PAGE, complete)).toBe(true);
   });
