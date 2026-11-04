@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { connectorSyncDeps } from '~/lib/cron/connector-sync';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
-import { type ConnectorProvider, refreshAccessToken } from './google-oauth';
+import { type ConnectorProvider, type FetchLike, refreshAccessToken } from './google-oauth';
 import { type PushEnv, googlePushSyncEnabled } from './google-push-flag';
 import { productionPushDeps } from './google-push-handle';
 import { deletePushWatch, loadPushWatch, savePushWatch } from './google-push-store';
@@ -22,7 +22,7 @@ import {
   saveConnectionTokensById,
 } from './store';
 import { ConnectorSyncError } from './sync-error';
-import type { OAuthTokens } from './token-vault';
+import type { OAuthTokens, RevokePendingToken } from './token-vault';
 import { decryptTokens } from './token-vault';
 
 /**
@@ -202,56 +202,75 @@ export async function ensurePushWatchAfterConnect(
   });
 }
 
+export type EndedPushStop =
+  | 'flag_off'
+  | 'not_push_provider'
+  | 'no_watch'
+  | 'no_token'
+  | 'token_refresh_failed'
+  | 'stopped'
+  | 'stop_failed'
+  | 'no_channel';
+
+/** An access token from the held token, never persisted. Null: the refresh failed. */
+async function accessTokenFor(
+  pending: RevokePendingToken,
+  tokenFetch: FetchLike,
+): Promise<string | null> {
+  if (pending.kind === 'access') return pending.token;
+  try {
+    return (await refreshAccessToken(pending.token, tokenFetch)).accessToken;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Stop Google's channel before the tokens are purged. Flag off does not call Google.
- * The local subscription row is removed only when the flag is on and a row exists;
- * a stop that Google refuses is still named, and the revoke proceeds either way.
+ * Stop Google's channel for a connection a disconnect has already ended, BEFORE its
+ * grant is revoked (google-disconnect.ts runs every stop, then every revoke): after the
+ * revoke the stop would be refused and the channel would outlive the grant.
+ *
+ * It never reads or writes the token column, which is already empty. It uses the one
+ * token the revoke is holding, refreshing an access token from it without saving it
+ * anywhere. Flag off does not call Google. The local watch row is deleted whenever the
+ * flag is on, whatever Google answered: a failed stop is named, and a channel that
+ * outlives it lapses at expiry with its pushes dropped (the row is no longer sweepable).
  */
-export async function stopGooglePushOnDisconnect(
+export async function stopGooglePushForEndedConnection(
   database: Database,
-  familyId: string,
-  userId: string,
-  provider: ConnectorProvider,
-  env: PushEnv = process.env,
-  google: GoogleJsonClient = googleJsonClient,
-): Promise<{ outcome: string }> {
+  input: {
+    integrationId: string;
+    provider: ConnectorProvider;
+    pending: RevokePendingToken | null;
+  },
+  env: PushEnv,
+  google: GoogleJsonClient,
+  tokenFetch: FetchLike,
+): Promise<{ outcome: EndedPushStop }> {
   if (!googlePushSyncEnabled(env)) return { outcome: 'flag_off' };
-  if (provider === 'gdrive') return { outcome: 'not_push_provider' };
-  const rows = await database
-    .select({
-      id: schema.integrations.id,
-      enc: schema.integrations.oauthTokensEncrypted,
-    })
-    .from(schema.integrations)
-    .where(
-      and(
-        eq(schema.integrations.familyId, familyId),
-        eq(schema.integrations.userId, userId),
-        eq(schema.integrations.provider, provider),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return { outcome: 'not_found' };
-  const watch = await loadPushWatch(database, row.id);
-  let outcome = 'no_watch';
-  if (watch && row.enc) {
-    try {
-      const tokens = decryptTokens(row.enc);
-      const accessToken = await freshAccessToken(database, row.id, tokens);
-      const stopped = await stopGooglePushChannel({
-        provider,
-        accessToken,
-        channelId: watch.channelId,
-        resourceId: watch.resourceId,
-        google,
-      });
-      outcome = stopped.outcome;
-    } catch (err) {
-      outcome = err instanceof ConnectorSyncError ? err.code : 'stop_failed';
+  if (input.provider === 'gdrive') return { outcome: 'not_push_provider' };
+  const watch = await loadPushWatch(database, input.integrationId);
+  let outcome: EndedPushStop = 'no_watch';
+  if (watch && !input.pending) outcome = 'no_token';
+  if (watch && input.pending) {
+    const accessToken = await accessTokenFor(input.pending, tokenFetch);
+    if (accessToken === null) outcome = 'token_refresh_failed';
+    else {
+      try {
+        const stopped = await stopGooglePushChannel({
+          provider: input.provider,
+          accessToken,
+          channelId: watch.channelId,
+          resourceId: watch.resourceId,
+          google,
+        });
+        outcome = stopped.outcome;
+      } catch {
+        outcome = 'stop_failed';
+      }
     }
   }
-  await deletePushWatch(database, row.id);
+  await deletePushWatch(database, input.integrationId);
   return { outcome };
 }
 

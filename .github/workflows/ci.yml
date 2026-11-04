@@ -393,6 +393,9 @@ jobs:
       - name: Calendar offer read eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-offer-read
 
+      - name: Connector disconnect read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:connector-disconnect-read
+
       - name: Crisis reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:crisis-reply
 

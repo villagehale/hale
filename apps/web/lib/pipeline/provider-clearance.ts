@@ -22,10 +22,10 @@ import type { AuditVerb } from '~/lib/trail/verbs';
  *
  * WHAT THE family_state WITNESS RELIES ON. A family is "with Google" when EITHER holds:
  *  - an integrations row for a Google provider, in any status. Revoking keeps the row and
- *    nulls its tokens (integrations/store.ts, revokeConnection; coparent/depart.ts does
- *    the same), so a disconnect does not blind it. But integrations.user_id is ON DELETE
- *    CASCADE: deleting the parent who connected takes the row, while the family's
- *    Google-derived events, memory and messages stay.
+ *    nulls its tokens (integrations/store.ts, endGoogleConnections, which every
+ *    disconnect and coparent/depart.ts go through), so a disconnect does not blind it.
+ *    But integrations.user_id is ON DELETE CASCADE: deleting the parent who connected
+ *    takes the row, while the family's Google-derived events, memory and messages stay.
  *  - an audit_log 'integration_connected' row naming a Google provider. saveConnection,
  *    the only writer of integrations, writes it in the same transaction, and audit_log
  *    is append-only and cascades only with the family (rule #6). This is what still
