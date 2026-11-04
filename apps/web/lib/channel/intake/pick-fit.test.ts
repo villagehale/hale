@@ -39,3 +39,49 @@ describe('fitsHouseholdAges', () => {
     expect(fitsHouseholdAges({ ageFit: 'under 2' }, [TODDLER_EXACT])).toBe(true);
   });
 });
+
+describe('fitsHouseholdAges on labels the band does not wholly read', () => {
+  it('keeps a grade label, which is not an age in years', () => {
+    // A 7-year-old is in grade 1-3; the label is school years, not ages 1-3.
+    expect(
+      fitsHouseholdAges({ ageFit: 'Grades 1-3' }, [{ ageMonths: 84, dobPrecision: 'exact' }]),
+    ).toBe(true);
+  });
+
+  it('keeps a label that carries a second age statement in another unit', () => {
+    // 2-5 years is 24..60 months and 36 is inside; the trailing months clause must not
+    // turn the whole label into months.
+    expect(
+      fitsHouseholdAges({ ageFit: '2-5 years (under 18 months free)' }, [
+        { ageMonths: 36, dobPrecision: 'exact' },
+      ]),
+    ).toBe(true);
+    expect(
+      fitsHouseholdAges({ ageFit: 'Ages 3-6, infants 6 months+ welcome' }, [
+        { ageMonths: 48, dobPrecision: 'exact' },
+      ]),
+    ).toBe(true);
+  });
+
+  it('still drops a plain band the child is past (control)', () => {
+    expect(fitsHouseholdAges({ ageFit: 'Ages 0-1' }, [TODDLER_EXACT])).toBe(false);
+  });
+});
+
+describe('fitsHouseholdAges at the edges of the rule', () => {
+  it('keeps a child exactly at the lower bound and drops one a month under it', () => {
+    // 2-5 years starts at 24 months.
+    expect(
+      fitsHouseholdAges({ ageFit: '2-5 years' }, [{ ageMonths: 24, dobPrecision: 'exact' }]),
+    ).toBe(true);
+    expect(
+      fitsHouseholdAges({ ageFit: '2-5 years' }, [{ ageMonths: 23, dobPrecision: 'exact' }]),
+    ).toBe(false);
+  });
+
+  it('never counts a child of unknown age as fitting a readable band, yet keeps all-ages', () => {
+    const unknown = [{ ageMonths: null, dobPrecision: 'derived' as const }];
+    expect(fitsHouseholdAges({ ageFit: '2-5 years' }, unknown)).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'All ages' }, unknown)).toBe(true);
+  });
+});

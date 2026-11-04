@@ -213,9 +213,9 @@ function flatten(groups: ActivityMapGroup[], finder: ActivityMapFinder): Activit
  * One live search per fitting category, in parallel. A pick outside every
  * child's age is left out before the group is cut to size (pick-fit.ts), and a
  * category whose search returned nothing for these kids is left off the map
- * rather than filled. Civic weekend
- * finds join the free-and-public group when that group is shown, since they
- * are the free sessions a community centre or library publishes.
+ * rather than filled. Civic weekend finds join the free-and-public group when
+ * that group is shown, since they are the free sessions a community centre or
+ * library publishes.
  */
 export async function collectActivityMap(input: {
   finder: ActivityFinder | null;
