@@ -12,7 +12,7 @@ import {
   type SittingReminderDeps,
   defaultSittingReminderDeps,
   findNudgeEligible,
-  isNextTorontoMorning,
+  isNextLocalMorning,
   isSittingReminderSlot,
   runSittingReminderCron,
   sittingSessionEligible,
@@ -48,7 +48,36 @@ const NEXT_NIGHT_825PM_ET = new Date('2026-08-28T00:25:00.000Z');
 /** Wednesday 27 Aug 2026, 7:00 a.m. Toronto — same calendar morning as the 8:00 slot. */
 const FIRST_HELLO_SAME_MORNING = new Date('2026-08-27T11:00:00.000Z');
 
+/** Postal places, by FSA only. K2P resolves to the Eastern zone, V5K to the Pacific. */
+const EASTERN_FSA = 'K2P';
+const PACIFIC_FSA = 'V5K';
+const EASTERN = 'America/Toronto';
+
+function firstTouchAt(areaCoarse: string) {
+  return {
+    language: 'en',
+    place: { kind: 'postal', areaCoarse, postalCode: null, municipality: null, city: null },
+    locationRequest: null,
+  };
+}
+
+/** A session that already gave a postal code (the place-carrying states). */
+function placeBlob(areaCoarse: string = EASTERN_FSA): string {
+  return encryptString(
+    JSON.stringify({
+      collected: { children: [], postalCode: null },
+      transcript: [],
+      firstTouch: firstTouchAt(areaCoarse),
+    }),
+  );
+}
+
 function dataBlob(): string {
+  return placeBlob(EASTERN_FSA);
+}
+
+/** greetNewFamily's first-hello blob: nothing collected, no place, so no zone. */
+function firstHelloBlob(): string {
   return encryptString(
     JSON.stringify({ collected: { children: [], postalCode: null }, transcript: [] }),
   );
@@ -122,25 +151,39 @@ describe('sitting reminder', () => {
 });
 
 describe('isSittingReminderSlot', () => {
-  it('is true for the 8:00 Toronto hour and false for 7:00 and 9:00', () => {
-    expect(isSittingReminderSlot(TORONTO_8AM)).toBe(true);
-    expect(isSittingReminderSlot(new Date('2026-08-27T12:59:00.000Z'))).toBe(true);
-    expect(isSittingReminderSlot(TORONTO_7AM)).toBe(false);
-    expect(isSittingReminderSlot(TORONTO_9AM)).toBe(false);
+  it('is true for the 8:00 Eastern hour and false for 7:00 and 9:00', () => {
+    expect(isSittingReminderSlot(TORONTO_8AM, EASTERN)).toBe(true);
+    expect(isSittingReminderSlot(new Date('2026-08-27T12:59:00.000Z'), EASTERN)).toBe(true);
+    expect(isSittingReminderSlot(TORONTO_7AM, EASTERN)).toBe(false);
+    expect(isSittingReminderSlot(TORONTO_9AM, EASTERN)).toBe(false);
+  });
+
+  it("is the family's own 8:00: 12:00Z is 05:00 in Vancouver, 15:00Z is 08:00", () => {
+    expect(isSittingReminderSlot(TORONTO_8AM, 'America/Vancouver')).toBe(false);
+    expect(isSittingReminderSlot(new Date('2026-08-27T15:00:00.000Z'), 'America/Vancouver')).toBe(
+      true,
+    );
   });
 });
 
-describe('isNextTorontoMorning', () => {
-  it('is true the Toronto calendar morning after first-hello, false the same morning', () => {
-    expect(isNextTorontoMorning(FIRST_HELLO_PREVIOUS_EVENING, TORONTO_8AM)).toBe(true);
-    expect(isNextTorontoMorning(FIRST_HELLO_SAME_MORNING, TORONTO_8AM)).toBe(false);
-    expect(isNextTorontoMorning(TORONTO_8AM, TORONTO_8AM)).toBe(false);
+describe('isNextLocalMorning', () => {
+  it('is true the local calendar morning after first-hello, false the same morning', () => {
+    expect(isNextLocalMorning(FIRST_HELLO_PREVIOUS_EVENING, TORONTO_8AM, EASTERN)).toBe(true);
+    expect(isNextLocalMorning(FIRST_HELLO_SAME_MORNING, TORONTO_8AM, EASTERN)).toBe(false);
+    expect(isNextLocalMorning(TORONTO_8AM, TORONTO_8AM, EASTERN)).toBe(false);
   });
 
   it('is a calendar morning, not 24 hours later to the minute', () => {
-    expect(isNextTorontoMorning(FIRST_HELLO_825PM_ET, TORONTO_8AM)).toBe(true);
-    expect(isNextTorontoMorning(FIRST_HELLO_928PM_ET, TORONTO_8AM)).toBe(true);
-    expect(isSittingReminderSlot(NEXT_NIGHT_825PM_ET)).toBe(false);
+    expect(isNextLocalMorning(FIRST_HELLO_825PM_ET, TORONTO_8AM, EASTERN)).toBe(true);
+    expect(isNextLocalMorning(FIRST_HELLO_928PM_ET, TORONTO_8AM, EASTERN)).toBe(true);
+    expect(isSittingReminderSlot(NEXT_NIGHT_825PM_ET, EASTERN)).toBe(false);
+  });
+
+  it("reads the day in the family's zone, not Eastern's", () => {
+    const pacificLate = new Date('2026-08-27T05:30:00.000Z'); // 22:30 PDT on 26 Aug
+    const pacific8am = new Date('2026-08-27T15:00:00.000Z'); // 08:00 PDT on 27 Aug
+    expect(isNextLocalMorning(pacificLate, pacific8am, 'America/Vancouver')).toBe(true);
+    expect(isNextLocalMorning(pacificLate, pacific8am, EASTERN)).toBe(false);
   });
 });
 
@@ -152,6 +195,7 @@ describe('sittingSessionEligible', () => {
     firstReplyRecoveredAt: null,
     familyId: null,
     createdAt: FIRST_HELLO_PREVIOUS_EVENING,
+    timeZone: EASTERN,
   };
 
   it('accepts an open awaiting_details session the next Toronto morning at 8:00', () => {
@@ -204,6 +248,7 @@ describe('sittingSessionEligible', () => {
       firstReplyRecoveredAt: null,
       familyId: 'fam-1',
       createdAt: FIRST_HELLO_PREVIOUS_EVENING,
+      timeZone: EASTERN,
     };
     expect(findNudgeEligible(parked, TORONTO_8AM)).toBe(true);
     expect(findNudgeEligible({ ...parked, createdAt: FIRST_HELLO_SAME_MORNING }, TORONTO_8AM)).toBe(
@@ -343,7 +388,7 @@ describe('runSittingReminderCron', () => {
     seedSession(fake);
 
     const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_9AM);
-    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 1, failed: 0 });
     expect(transport.bodies()).toEqual([]);
   });
 
@@ -376,26 +421,48 @@ describe('runSittingReminderCron', () => {
     });
   });
 
-  it('nudges a parent stuck on the postal code once, and only while friend voice is on', async () => {
+  it('holds a parent stuck on the postal code: no place means no zone, so no nudge (D3)', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
-    seedSession(fake, { state: 'awaiting_place' });
+    const id = seedSession(fake, { state: 'awaiting_place', dataEncrypted: firstHelloBlob() });
+
+    for (const at of [TORONTO_8AM, new Date('2026-08-27T15:00:00.000Z')]) {
+      const held = await runSittingReminderCron(fake.db, voiceDeps(transport), at);
+      expect(held).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, zoneUnknown: 1 });
+    }
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: null,
+    });
+  });
+
+  it('positive control: a parent stuck on the ages with a place is nudged once', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_ages' });
 
     const first = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
-    expect(transport.bodies()).toHaveLength(1);
-    expect(transport.bodies()[0]?.match(/\?/g)).toHaveLength(1);
-    expect(transport.bodies()[0]).toMatch(/postal code/i);
+    expect(transport.bodies()).toEqual(['How old are your kids?']);
 
     const second = await runSittingReminderCron(fake.db, voiceDeps(transport), TORONTO_8AM);
     expect(second.sent).toBe(0);
     expect(transport.bodies()).toHaveLength(1);
   });
 
+  it('a held awaiting_place row never reaches the composer, so nothing fails', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { state: 'awaiting_place', dataEncrypted: firstHelloBlob() });
+    const result = await runSittingReminderCron(fake.db, { transport }, TORONTO_8AM);
+    expect(result).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, zoneUnknown: 1 });
+    expect(transport.bodies()).toEqual([]);
+  });
+
   it('does not send a canned nudge when the model is missing', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
-    seedSession(fake, { state: 'awaiting_place' });
+    seedSession(fake, { state: 'awaiting_ages' });
     const result = await runSittingReminderCron(fake.db, { transport }, TORONTO_8AM);
     expect(result.failed).toBe(1);
     expect(result.sent).toBe(0);
@@ -472,9 +539,7 @@ describe('runSittingReminderCron', () => {
             },
           ],
           firstTouch: {
-            language: 'en',
-            place: null,
-            locationRequest: null,
+            ...firstTouchAt(EASTERN_FSA),
             coldStart: {
               step: 'names',
               group: false,
@@ -508,6 +573,7 @@ describe('runSittingReminderCron', () => {
           collected: { children: [], postalCode: null },
           transcript: [],
           ladderLanguage: 'fr',
+          firstTouch: firstTouchAt(EASTERN_FSA),
         }),
       ),
     });
@@ -523,5 +589,92 @@ describe('runSittingReminderCron', () => {
     await expect(transport.send({ to: PHONE, body: 'A reminder (test fixture).' })).rejects.toThrow(
       /not_configured/,
     );
+  });
+});
+
+describe("runSittingReminderCron - the family's own morning (VIL-562)", () => {
+  /** 27 Aug 2026: 12:00Z is 08:00 EDT and 05:00 PDT; 15:00Z is 08:00 PDT. */
+  const PACIFIC_5AM = TORONTO_8AM;
+  const PACIFIC_8AM = new Date('2026-08-27T15:00:00.000Z');
+
+  beforeEach(() => {
+    process.env.APP_ENCRYPTION_KEY = KEY;
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    process.env.APP_ENCRYPTION_KEY = '';
+    vi.restoreAllMocks();
+  });
+
+  it('S1: a Pacific session is not nudged at 05:00 local, and is at 08:00 local', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const id = seedSession(fake, { dataEncrypted: placeBlob(PACIFIC_FSA) });
+
+    await runSittingReminderCron(fake.db, deps(transport), PACIFIC_5AM);
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: null,
+    });
+
+    const morning = await runSittingReminderCron(fake.db, deps(transport), PACIFIC_8AM);
+    expect(morning.sent).toBe(1);
+    expect(transport.sent.map((s) => s.to)).toEqual([PHONE]);
+  });
+
+  it('S2: positive control - an Eastern session is nudged at 08:00 EDT and not at 07:00', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, { dataEncrypted: placeBlob(EASTERN_FSA) });
+
+    expect((await runSittingReminderCron(fake.db, deps(transport), TORONTO_7AM)).sent).toBe(0);
+    expect((await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM)).sent).toBe(1);
+  });
+
+  it('S3: a 22:30 PDT first-hello is nudged at 08:00 PDT the next local morning', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    seedSession(fake, {
+      dataEncrypted: placeBlob(PACIFIC_FSA),
+      createdAt: new Date('2026-08-27T05:30:00.000Z'), // 22:30 PDT on 26 Aug
+    });
+
+    const morning = await runSittingReminderCron(fake.db, deps(transport), PACIFIC_8AM);
+    expect(morning.sent).toBe(1);
+  });
+
+  it('S4: the first-hello with no place has no zone - held at every hour, never claimed (D3)', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const id = seedSession(fake, { dataEncrypted: firstHelloBlob() });
+
+    for (const at of [TORONTO_8AM, PACIFIC_8AM]) {
+      const held = await runSittingReminderCron(fake.db, deps(transport), at);
+      expect(held).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, zoneUnknown: 1 });
+    }
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: null,
+    });
+    expect(console.info).toHaveBeenCalledWith(
+      { zoneUnknown: 1 },
+      'sitting reminder: held, no zone for the session',
+    );
+  });
+
+  it('S5: an in-slot row is reached behind fifty out-of-slot rows', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    for (let i = 0; i < 50; i += 1) {
+      seedSession(fake, {
+        phoneE164: `+1604555${String(1000 + i)}`,
+        dataEncrypted: placeBlob(PACIFIC_FSA),
+      });
+    }
+    seedSession(fake, { phoneE164: OTHER, dataEncrypted: placeBlob(EASTERN_FSA) });
+
+    const result = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(transport.sent.map((s) => s.to)).toEqual([OTHER]);
+    expect(result.sent).toBe(1);
   });
 });
