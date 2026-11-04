@@ -23,9 +23,9 @@ describe('runtime tzdata through the real timezoneOffsetMs, 2026-12-15T12:00Z', 
     ['America/Fort_Nelson', -420], // northamerica:2233 "-7:00 - MST" (since 2015)
     ['America/Dawson_Creek', -420], // northamerica:2227 "-7:00 - MST" (since 1972)
     ['America/Creston', -420], // backward:195 "Link America/Phoenix America/Creston"; northamerica:828 "-7:00 - MST"
-    ['America/Regina', -360], // northamerica:2009 "-6:00 - CST"
+    ['America/Regina', -360], // northamerica:2004 "-6:00 - CST"
     ['America/Chicago', -360], // northamerica:438 "-6:00 US C%sT" (CST in December)
-    ['America/Halifax', -240], // northamerica:1571 "-4:00 Canada A%sT" (AST in December)
+    ['America/Halifax', -240], // northamerica:1565 "-4:00 Canada A%sT" (AST in December)
   ])('%s is %i minutes from UTC', (zone, expectedMinutes) => {
     const minutes = timezoneOffsetMs(new Date('2026-12-15T12:00:00Z'), zone) / 60_000;
     expect(minutes, STALE).toBe(expectedMinutes);
