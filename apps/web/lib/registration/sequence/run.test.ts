@@ -13,6 +13,7 @@ import type { EveningComposeInput } from './evening-compose.js';
 import type { MorningComposeInput } from './morning-compose.js';
 import {
   type LiveSequence,
+  MAX_SEQUENCE_FAMILIES_PER_RUN,
   type SequenceFamily,
   type SequenceRunDeps,
   defaultSequenceRunDeps,
@@ -1985,5 +1986,28 @@ describe('VIL-484 · the moved morning is composed, with no fallback', () => {
     const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
     expect(result).toMatchObject({ sent: 0, unwritten: 1 });
     expect(h.transport.bodies()).toEqual([]);
+  });
+});
+
+describe('VIL-423 · a watch a parent’s link created', () => {
+  /** Link watches are evaluated outside the per-run cap, so a family that pasted many
+   * links cannot push a dated catalog ladder off the end of the run. */
+  it('never takes a catalog ladder’s place under the per-run cap', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const linkWatches = Array.from({ length: MAX_SEQUENCE_FAMILIES_PER_RUN }, (_, index) =>
+      live({
+        sequenceId: `link-${index}`,
+        window: null,
+        courseUrl: `https://register.example.org/courses/c-${index}`,
+        courseOpensAt: null,
+      }),
+    );
+    const h = harness({ sequences: [...linkWatches, live()] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.undated).toBe(MAX_SEQUENCE_FAMILIES_PER_RUN);
+    expect(result.sent).toBe(1);
+    expect(result.failed).toBe(0);
   });
 });
