@@ -1630,6 +1630,16 @@ function takeInProcess(site: string, windowStart: Date): string | null {
   return key;
 }
 
+/** A page with no claim row to take: deduped in this process only, per site and hour. */
+async function pageWithoutClaim(page: OpsPage, deps: FailurePageDeps): Promise<OpsPagerOutcome> {
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+  const key = takeInProcess(failureCategory(page.site), hourWindowStart(deps.now ?? new Date()));
+  if (key === null) return 'already_paged';
+  const outcome = pagerOutcome(await postAlert(post, OPS_PAGE_ROUTE, composeOpsPageAlert(page)));
+  if (outcome !== 'paged') opsPagesWithoutClaim.delete(key);
+  return outcome;
+}
+
 /**
  * VIL-602 · the one way a path pages #ops. A body-free URGENT log, then a claim on
  * `ops:page` for this site and hour, then the post. A second page of the same site in the
@@ -1659,11 +1669,7 @@ export async function pageOps(
       { page: site, err: err instanceof Error ? err.name : 'unknown' },
       'ops page: claim threw - deduped in this process only',
     );
-    const key = takeInProcess(site, windowStart);
-    if (key === null) return 'already_paged';
-    const outcome = pagerOutcome(await postAlert(post, OPS_PAGE_ROUTE, text));
-    if (outcome !== 'paged') opsPagesWithoutClaim.delete(key);
-    return outcome;
+    return pageWithoutClaim(page, deps);
   }
   if (!claimed) return 'already_paged';
   return pagerOutcome(
@@ -1684,9 +1690,9 @@ export function failurePageOpsPager(
       } catch (err) {
         console.error(
           { page: failureCategory(page.site), err: err instanceof Error ? err.name : 'unknown' },
-          'URGENT: ops page has no database - #ops not paged',
+          'URGENT: ops page has no database - paging #ops, deduped in this process only',
         );
-        return 'page_failed';
+        return pageWithoutClaim(page, deps);
       }
       return pageOps(resolved, page, deps);
     },

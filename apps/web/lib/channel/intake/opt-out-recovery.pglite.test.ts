@@ -1256,6 +1256,127 @@ describe('recoverHeldOptOutReads', () => {
     expect(await heldRow('pm-moved')).toBeNull();
   }, 30_000);
 
+  it('a late crisis reply whose send throws pages send_failed and keeps the row', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-st', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-st', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    class FailingTransport extends FakeTransport {
+      override async send(): Promise<{ providerMessageId: string }> {
+        throw new Error('carrier timed out');
+      }
+    }
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, new FailingTransport(), {
+        saidLine: writer,
+      }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_unanswered).toBe(1);
+    expect(result.outcomes.crisis_replied).toBe(0);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('reason send_failed.');
+    expect(posted[0]).toContain('where late_read.');
+    expect(await heldRow('pm-st')).not.toBeNull();
+  }, 30_000);
+
+  /** A parent whose only channel on the number was asked for and never verified. */
+  async function pendingParent(phone: string): Promise<{ familyId: string; parentUserId: string }> {
+    const seeded = await seedFamily(db.database, 'Pending Family');
+    await channel(seeded, phone, { verifiedAt: null, revokedAt: null, createdAt: ago(60 * 24) });
+    return seeded;
+  }
+
+  it('a crisis read late from a number that cannot be texted is paged not_sendable, sending nothing', async () => {
+    const a = await pendingParent(PHONE_B);
+    await inboundRow(a, 'pm-ns', FR_CRISIS, ago(20));
+    await hold(PHONE_B, 'pm-ns', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: recordedCrisisWriter().writer,
+      }),
+    );
+
+    expect(result.outcomes.crisis_unreachable).toBe(1);
+    expect(transport.sent).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('reason not_sendable.');
+    expect(await heldRow('pm-ns')).toBeNull();
+  }, 30_000);
+
+  it('an unreachable late crisis whose page did not leave keeps the row', async () => {
+    const a = await pendingParent(PHONE_B);
+    await inboundRow(a, 'pm-pf', FR_CRISIS, ago(20));
+    await hold(PHONE_B, 'pm-pf', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: recordedCrisisWriter().writer,
+        crisisPager: failurePageCrisisPager(db.database, {
+          now: NOW,
+          post: async () => 'failed',
+        }),
+      }),
+    );
+
+    expect(result.outcomes.crisis_unanswered).toBe(1);
+    expect(result.outcomes.crisis_unreachable).toBe(0);
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-pf')).not.toBeNull();
+  }, 30_000);
+
+  it('a late crisis reply that left is never sent again when the read audit row throws', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-au', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-au', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    const { writer } = recordedCrisisWriter();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+    // A real database fault on the read's audit row, after the reply has left.
+    await db.exec(`
+      create function refuse_hold_read_audit() returns trigger language plpgsql
+        as $$ begin
+          if new.action_taken = 'opt_out_hold_read' then raise exception 'refused for the test'; end if;
+          return new;
+        end $$;
+      create trigger refuse_hold_read_audit before insert on audit_log
+        for each row execute function refuse_hold_read_audit();
+    `);
+    let first: Awaited<ReturnType<typeof recoverHeldOptOutReads>>;
+    try {
+      first = await recoverHeldOptOutReads(
+        db.database,
+        deps(r.reader, transport, { saidLine: writer }),
+      );
+      const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
+      await recoverHeldOptOutReads(
+        db.database,
+        deps(r.reader, transport, { saidLine: writer, now: later }),
+      );
+    } finally {
+      await db.exec(
+        'drop trigger refuse_hold_read_audit on audit_log; drop function refuse_hold_read_audit();',
+      );
+    }
+
+    // Positive control: the fault fired, so the first pass did not finish the row.
+    expect(first.outcomes.recovery_failed).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+    expect(await heldRow('pm-au')).toBeNull();
+  }, 30_000);
+
   it('names every outcome, zero by default, when nothing is held', async () => {
     const result = await recoverHeldOptOutReads(
       db.database,

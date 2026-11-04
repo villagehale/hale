@@ -13,7 +13,7 @@ import {
   fakeNoOpenQuestions,
 } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
-import { createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
+import { type OptOutReading, createOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { createGroupConflictWriter } from '~/lib/channel/linq/group-conflict-voice';
 import { composeSharedGroupLine } from '~/lib/channel/linq/shared-group-voice';
@@ -217,15 +217,19 @@ describe('pageOps: the one primitive', () => {
     expect(posted).toHaveLength(2);
   });
 
-  it('a pager whose database cannot be resolved names page_failed and posts nothing', async () => {
+  it('a pager whose database cannot be resolved still pages, deduped in this process', async () => {
+    // An hour no other test uses: the in-process memo outlives one test.
+    const at = new Date(BASE.getTime() + 60 * HOUR);
     const pager = failurePageOpsPager(
       () => {
         throw new Error('DATABASE_URL is not set');
       },
-      { post, now: BASE },
+      { post, now: at },
     );
-    expect(await pager.page({ site: 'opt_out_unread', facts: {} })).toBe('page_failed');
-    expect(posted).toEqual([]);
+    const page = { site: 'opt_out_unread' as const, facts: {} };
+    expect([await pager.page(page), await pager.page(page)]).toEqual(['paged', 'already_paged']);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('site opt_out_unread.');
   });
 });
 
@@ -395,6 +399,66 @@ describe('the intake health line', () => {
     expect(posted[0]).toContain('site intake_health_unwritten.');
     expect(posted[0]).toContain('reason writer_absent.');
     expect(posted[0]).not.toContain('5555550177');
+  }, 30_000);
+});
+
+describe('the opt-out hold', () => {
+  /** An over-limit turn: read once, the hold settled, nothing else run or paged. */
+  function overLimitTurn(reading: OptOutReading | null, fault: 'hold' | 'settled'): IntakeDeps {
+    const refuse = async () => {
+      throw new Error('hold store down');
+    };
+    return {
+      transport: new FakeTransport(),
+      threadMessage: async () => 'conv-1',
+      openQuestions: fakeNoOpenQuestions,
+      extractor: new FakeExtractor([]),
+      intentReader: new FakeIntentReader([]),
+      radar: {
+        async compose() {
+          throw new Error('an over-limit turn never reaches the radar');
+        },
+      },
+      answerComposer: new FakeAnswerComposer({ status: 'safety' }),
+      identityAsk: new FakeIdentityAsk(),
+      limiter: { check: async () => ({ allowed: false, retryAfterSec: 60, firstDenied: false }) },
+      optOutReader: { read: async () => reading },
+      optOutHold: {
+        hold: fault === 'hold' ? refuse : async () => {},
+        settled: fault === 'settled' ? refuse : async () => {},
+      },
+      now: new Date(),
+    };
+  }
+
+  it('a failed read whose hold did not land pages opt_out_hold_unwritten', async () => {
+    stubWebhook();
+    const turn = overLimitTurn(null, 'hold');
+
+    const result = await handleInboundSms(
+      db.database,
+      (turn.transport as FakeTransport).inbound('+15555550178', 'words nobody read'),
+      turn,
+    );
+
+    expect(result.status).toBe('rate_limited');
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('site opt_out_hold_unwritten.');
+    expect(posted[0]).not.toContain('5555550178');
+  }, 30_000);
+
+  it('a read whose release did not land pages nobody: the row is read again', async () => {
+    stubWebhook();
+    const turn = overLimitTurn({ intent: 'none', confirmation: '', language: 'en' }, 'settled');
+
+    const result = await handleInboundSms(
+      db.database,
+      (turn.transport as FakeTransport).inbound('+15555550179', 'words read fine'),
+      turn,
+    );
+
+    expect(result.status).toBe('rate_limited');
+    expect(posted).toEqual([]);
   }, 30_000);
 });
 

@@ -246,10 +246,17 @@ function unlistedPagers(importers: readonly string[]): string[] {
   return importers.filter((file) => !DIRECT_PAGERS.has(file));
 }
 
+/** Every mention of the module; group 1 is set only on a type-only import, which posts nothing. */
+const OPS_SLACK_MODULE = /(import\s+type\s[^;]*?from\s*)?['"][^'"]*\/monitoring\/ops-slack['"]/g;
+
+function reachesOpsSlack(source: string): boolean {
+  return [...source.matchAll(OPS_SLACK_MODULE)].some((match) => match[1] === undefined);
+}
+
 function postOpsSlackImporters(files: Array<{ file: string; source: string }>): string[] {
   return files
     .filter(({ file }) => !file.startsWith('lib/monitoring/') && !file.startsWith('app/api/cron/'))
-    .filter(({ source }) => /import\s*\{[^}]*\bpostOpsSlack\b[^}]*\}\s*from/.test(source))
+    .filter(({ source }) => reachesOpsSlack(source))
     .map(({ file }) => file)
     .sort();
 }
@@ -328,6 +335,23 @@ describe('ops page claims', () => {
         'lib/new-pager.ts',
       ]);
       expect(unlistedPagers(['lib/channel/linq/carpool-voice.ts'])).toEqual([]);
+    });
+
+    it('any value import or re-export of ops-slack counts as a direct caller', () => {
+      const reaches = (source: string) => postOpsSlackImporters([{ file: 'lib/x.ts', source }]);
+      expect(reaches("import { postOpsSlack } from '~/lib/monitoring/ops-slack';")).toEqual([
+        'lib/x.ts',
+      ]);
+      expect(reaches("import * as slack from '~/lib/monitoring/ops-slack';")).toEqual(['lib/x.ts']);
+      expect(reaches("export { postOpsSlack } from '~/lib/monitoring/ops-slack';")).toEqual([
+        'lib/x.ts',
+      ]);
+      expect(reaches("const m = await import('~/lib/monitoring/ops-slack');")).toEqual([
+        'lib/x.ts',
+      ]);
+      expect(reaches("import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';")).toEqual(
+        [],
+      );
     });
   });
 });

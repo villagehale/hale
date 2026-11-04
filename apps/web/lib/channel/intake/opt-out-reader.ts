@@ -18,8 +18,8 @@ import {
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { readerConfirmationViolation } from '~/lib/channel/voice/crisis-check';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { db } from '~/lib/db';
-import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -431,10 +431,7 @@ export function isCrisisReading(
 let shared: OptOutReader | null = null;
 
 export function sharedOptOutReader(): OptOutReader {
-  shared ??= createOptOutReader(
-    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
-    failurePageOpsPager(db),
-  );
+  shared ??= createOptOutReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS), sharedOpsPager);
   return shared;
 }
 

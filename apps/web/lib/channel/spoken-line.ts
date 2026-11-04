@@ -1,8 +1,8 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { db } from '~/lib/db';
-import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
+import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -120,7 +120,7 @@ let shared: SpokenLineWriter | null = null;
 export function sharedSpokenLineWriter(): SpokenLineWriter {
   shared ??= createSpokenLineWriter(
     () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
-    failurePageOpsPager(db),
+    sharedOpsPager,
   );
   return shared;
 }
