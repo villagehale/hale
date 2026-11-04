@@ -548,6 +548,13 @@ export async function flushGroupDecisionSyncs(
             isNull(schema.groupDecisionSync.flushedAt),
           ),
         );
+      await database.insert(schema.auditLog).values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'group_decision_sync_closed_unsent',
+        targetTable: 'group_decision_sync',
+        after: { reason: target.reason, count: queued.length },
+      });
       console.info(
         { familyId, queued: queued.length, reason: target.reason },
         'family outbound: sync closed unsent',

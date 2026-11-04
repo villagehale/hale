@@ -291,6 +291,8 @@ export const AUDIT_VERBS = [
   'kid_relevance_reminder_cancelled',
   'kid_relevance_event_restored',
   'group_decision_sync_sent',
+  // VIL-399 · queued decision lines the sweep closed without sending them.
+  'group_decision_sync_closed_unsent',
   // VIL-443 (T17) · a plan the household group made, reported back to that group.
   'group_plan.drafted',
   'group_plan.calendar_reported',
@@ -1154,6 +1156,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale told the household group about a decision you made',
     family: 'done',
   },
+  // VIL-399. The group could not hear the queued decisions, so they were closed unsaid.
+  // `after` is the hold reason and a count only. History hides the row.
+  group_decision_sync_closed_unsent: {
+    sentence: 'Hale did not pass a decision on to the household group',
+    family: 'note',
+  },
   // VIL-443 (T17). Which drafts came from the household group, so the placement is
   // reported there. The draft itself has its own row; history hides this one.
   'group_plan.drafted': {
@@ -2006,6 +2014,7 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_plan.report_released',
   'calendar_alert_debt_retired',
   'crisis_unanswered',
+  'group_decision_sync_closed_unsent',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
