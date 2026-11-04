@@ -42,7 +42,7 @@ async function sentEmail(
   payload: { to: string; subject: string },
   executedAt: string,
   approvedBy: string | null,
-) {
+): Promise<string> {
   const database = harness.db.database;
   const sentAt = new Date(executedAt);
   const [event] = await database
@@ -71,15 +71,17 @@ async function sentEmail(
     })
     .returning({ id: schema.actions.id });
   if (!action) throw new Error(`fixture: no action for ${key}`);
-  if (approvedBy === null) return;
-  await database.insert(schema.auditLog).values({
-    familyId: fam.familyId,
-    actor: approvedBy,
-    actionTaken: 'action.approved_by_human',
-    targetTable: 'actions',
-    targetId: action.id,
-    occurredAt: new Date(sentAt.getTime() - 60_000),
-  });
+  if (approvedBy !== null) {
+    await database.insert(schema.auditLog).values({
+      familyId: fam.familyId,
+      actor: approvedBy,
+      actionTaken: 'action.approved_by_human',
+      targetTable: 'actions',
+      targetId: action.id,
+      occurredAt: new Date(sentAt.getTime() - 60_000),
+    });
+  }
+  return action.id;
 }
 
 beforeAll(async () => {
@@ -120,7 +122,7 @@ beforeAll(async () => {
     .insert(schema.familyMembers)
     .values({ familyId: fam.familyId, userId: coParentUserId, role: 'co_parent' });
 
-  await sentEmail(
+  const fromPrimary = await sentEmail(
     'from-primary',
     { to: 'coach@example.test', subject: 'Practice moved' },
     '2026-06-19T15:30:00Z',
@@ -132,12 +134,33 @@ beforeAll(async () => {
     '2026-06-18T15:30:00Z',
     coParentUserId,
   );
-  await sentEmail(
+  const noApprover = await sentEmail(
     'no-approver',
     { to: 'unnamed@example.test', subject: 'Nobody approved' },
     '2026-06-17T15:30:00Z',
     null,
   );
+
+  // Rows that name an adult against an email but are not its approval: the co-parent
+  // touching the first parent's email after it was approved, and an approval recorded
+  // under another family for this family's unapproved email. Neither makes a sender.
+  await database.insert(schema.auditLog).values({
+    familyId: fam.familyId,
+    actor: coParentUserId,
+    actionTaken: 'action.drafted',
+    targetTable: 'actions',
+    targetId: fromPrimary,
+    occurredAt: new Date('2026-06-19T16:00:00Z'),
+  });
+  const otherFamily = await seedFamily(database, 'Other Fixture Family');
+  await database.insert(schema.auditLog).values({
+    familyId: otherFamily.familyId,
+    actor: fam.parentUserId,
+    actionTaken: 'action.approved_by_human',
+    targetTable: 'actions',
+    targetId: noApprover,
+    occurredAt: new Date('2026-06-17T15:00:00Z'),
+  });
 });
 
 afterAll(async () => {
