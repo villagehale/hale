@@ -278,6 +278,7 @@ export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecove
     transport: createOutboundTransport(),
     saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
     crisisPager: failurePageCrisisPager(database),
+    threadMessage: threadProactiveMessage,
     preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),
     now,
   };

@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -293,6 +294,7 @@ function deps(
     preflight: async () => ({ proceed: true, health: null }),
     now,
     saidLine: unusedWriter,
+    threadMessage: threadProactiveMessage,
     crisisPager: failurePageCrisisPager(db.database, {
       now,
       post: async (text) => {
@@ -555,15 +557,26 @@ describe('recoverHeldOptOutReads', () => {
     await hold(PHONE_A, 'pm-h', ago(20));
     const transport = new FakeTransport();
     const { writer, misses } = recordedCrisisWriter();
+    const threaded: Array<{ familyId: string; parentUserId: string; body: string }> = [];
 
     const result = await recoverHeldOptOutReads(
       db.database,
-      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, { saidLine: writer }),
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: writer,
+        threadMessage: async (_database, input) => {
+          threaded.push(input);
+          return 'conv-1';
+        },
+      }),
     );
 
     expect(misses).toEqual([]);
     expect(result.outcomes.crisis_replied).toBe(1);
     expect(transport.sent).toHaveLength(1);
+    // The coach reads the thread, not the ledger (body null): the next turn sees the reply.
+    expect(threaded).toEqual([
+      { familyId: a.familyId, parentUserId: a.parentUserId, body: transport.sent[0]?.body },
+    ]);
     // One-to-one, to the number the text came from, never into the family group.
     expect(transport.sent[0]?.to).toBe(PHONE_A);
     expect(Object.keys(transport.sent[0] ?? {}).sort()).toEqual(['body', 'to']);

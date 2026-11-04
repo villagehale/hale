@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { CrisisRegion } from '~/lib/channel/crisis-resources';
 import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   type CrisisKind,
   type CrisisPager,
@@ -112,6 +113,9 @@ export interface OptOutRecoveryDeps {
   saidLine: SaidLineWriter;
   /** Pages #ops when a crisis read late gets no reply — REQUIRED (rule #11). */
   crisisPager: CrisisPager;
+  /** Puts a late crisis reply in a parent's coach thread, which the next turn reads —
+   * REQUIRED (rule #11). The ledger stores no outbound body. */
+  threadMessage: typeof threadProactiveMessage;
   /** Asked once per tick, and only when a row is due. */
   preflight: () => Promise<ProviderPreflightResult>;
   now: Date;
@@ -454,7 +458,7 @@ async function lateCrisis(
     return 'crisis_unanswered';
   }
   await releaseHeldMessage(database, row.providerMessageId);
-  await recordLateCrisisReply(database, held, holder.then, crisis.body, sent, deps.now);
+  await recordLateCrisisReply(database, deps, held, holder.then, crisis.body, sent);
   return 'crisis_replied';
 }
 
@@ -488,18 +492,19 @@ function samePerson(a: NumberHolding, b: NumberHolding): boolean {
 }
 
 /**
- * The reply's trace, best-effort once it has left: the ledger for a family, else the
- * transcript of the intake that held the number, so its next turn knows a crisis reply
- * went out. A failure here is named and never sends again.
+ * The reply's trace, best-effort once it has left: the ledger and the coach thread for a
+ * family, else the transcript of the intake that held the number, so the next turn knows
+ * a crisis reply went out. A failure here is named and never sends again.
  */
 async function recordLateCrisisReply(
   database: Database,
+  deps: OptOutRecoveryDeps,
   held: HeldText,
   then: NumberHolding,
   body: string,
   sent: ResolvedOutbound,
-  now: Date,
 ): Promise<void> {
+  const { now } = deps;
   const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
   const entry: TranscriptEntry = {
     direction: 'out',
@@ -510,15 +515,16 @@ async function recordLateCrisisReply(
     chatId: sent.chatId ?? null,
   };
   if (held.familyId && held.authorUserId) {
+    const owner = { familyId: held.familyId, parentUserId: held.authorUserId };
     try {
-      await writeChannelMessage(
-        database,
-        { familyId: held.familyId, parentUserId: held.authorUserId },
-        entry,
-        now,
-      );
+      await writeChannelMessage(database, owner, entry, now);
     } catch (err) {
       console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_ledger_failed');
+    }
+    try {
+      await deps.threadMessage(database, { ...owner, body });
+    } catch (err) {
+      console.error({ err: errName(err) }, 'opt-out recovery: late_crisis_thread_failed');
     }
     return;
   }
