@@ -95,7 +95,11 @@ export const GET = cronRoute('delete-sweep', async () => {
   return NextResponse.json(
     {
       ok: true,
-      ...summary,
+      // Counts only, like the log lines: summary.google names each row by integration id.
+      erased: summary.erased,
+      purgedObjects: summary.purgedObjects,
+      orphans: summary.orphans,
+      google,
       checkInNotesPurged,
       messageRetention,
       groupRosterRetention,

@@ -3,15 +3,24 @@ import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS } from './fetch';
 import { MAX_PDF_PAGES, PDF_READ_MEMORY_POLL_MS, registrationPdfText } from './pdf';
 import { registrationPdfFixture, registrationPdfFlateFixture } from './pdf-fixture.test-helper';
 
-// Spy-through: the real Worker runs; this only records when each one exits, because a read's
-// slot frees on its worker's exit, which can trail the read's own result.
+// Spy-through: the real Worker runs; this only records when each one loads its reader, posts a
+// result and exits, because a read's slot frees on its worker's exit, which can trail its result.
 const exits = vi.hoisted(() => [] as Promise<number>[]);
+const readerLoads = vi.hoisted(() => [] as { at: number; cpu: NodeJS.CpuUsage }[]);
+const readerResults = vi.hoisted(() => [] as number[]);
 vi.mock('node:worker_threads', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:worker_threads')>();
   class ExitRecordingWorker extends actual.Worker {
     constructor(...args: ConstructorParameters<typeof actual.Worker>) {
       super(...args);
       exits.push(new Promise((resolve) => this.once('exit', resolve)));
+      this.on('message', (message: { kind?: string }) => {
+        if (message.kind === 'reader_loaded') {
+          readerLoads.push({ at: performance.now(), cpu: process.cpuUsage() });
+        } else {
+          readerResults.push(performance.now());
+        }
+      });
     }
   }
   return { ...actual, Worker: ExitRecordingWorker };
@@ -27,12 +36,17 @@ const TWO_PAGE_GUIDE = [
 // "[PDF page n]\n" marker and the trailing newline.
 const CHARS_PER_TEXT_PAGE = 3_053;
 const FLATE_BOMB_INFLATED_BYTES = 128 * 1024 * 1024;
+// Long enough for a cold worker to load the reader on a busy CI runner, well short of the
+// ~2.1 s this bomb takes to finish on a fast laptop.
+const BOMB_DEADLINE_MS = 1_200;
+// µs of CPU per ms of wall time: a twentieth of a core, ~6× below the slowest parse rate seen on a
+// loaded CI runner.
+const MIN_PARSE_CPU_PER_MS = 50;
 // Calibrated: the largest legal read stays under the ceiling; this bomb grows it by ~965 MiB within
 // 3 s even after the deadline test has already raised the process's RSS high-water mark,
 // which freed-and-reused pages hide from a smaller bomb (128 MiB grows only ~36 MiB then).
 const MEMORY_BOMB_INFLATED_BYTES = 512 * 1024 * 1024;
 const MEMORY_CEILING_BYTES = 128 * 1024 * 1024;
-const MICROS_PER_MS = 1_000;
 // 100 pages of this stay just under MAX_PAGE_TEXT_CHARS once page markers are added.
 const LARGEST_LEGAL_PAGE_CHARS = 1_900;
 const DENSE_MEMORY_POLL_MS = 1;
@@ -212,27 +226,43 @@ describe('local registration PDF text extraction', () => {
 
     it('is killed at the deadline, and burns no CPU after the kill', async () => {
       const budget = {
-        timeoutMs: 400,
+        timeoutMs: BOMB_DEADLINE_MS,
         maxRssGrowthBytes: Number.MAX_SAFE_INTEGER,
         memoryPollMs: PDF_READ_MEMORY_POLL_MS,
       };
       expect(flateBomb.byteLength).toBeLessThanOrEqual(MAX_PAGE_BYTES);
 
+      const loadsBefore = readerLoads.length;
+      const resultsBefore = readerResults.length;
       const started = performance.now();
-      const readCpuStart = process.cpuUsage();
       const outcome = await registrationPdfText(flateBomb, budget);
-      const readCpu = cpuMicros(process.cpuUsage(readCpuStart));
-      const elapsed = performance.now() - started;
+      const refusedAt = performance.now();
+      const elapsed = refusedAt - started;
 
       expect(outcome).toEqual(refused('pdf_read_budget', 'time'));
       expect(elapsed).toBeLessThan(budget.timeoutMs + 1_000);
-      expect(readCpu).toBeGreaterThanOrEqual(0.5 * budget.timeoutMs * MICROS_PER_MS);
+      // The reader loaded before the deadline, so the deadline cut off the parse, not the load.
+      expect(readerLoads).toHaveLength(loadsBefore + 1);
+      const load = readerLoads[loadsBefore];
+      if (!load) throw new Error('the bomb reader never loaded');
+      const parseCpu = cpuMicros(process.cpuUsage(load.cpu));
+      const parseMs = refusedAt - load.at;
 
-      // The read resolves before its worker stops; the kill is done once the worker exits.
+      // The read resolves before its worker stops; the kill is done once the worker exits. It cut the
+      // parse short: the bomb's worker exited promptly without ever delivering a result.
       await readersExited();
+      expect(readerResults).toHaveLength(resultsBefore);
+      expect(performance.now() - refusedAt).toBeLessThan(1_000);
       const afterKillStart = process.cpuUsage();
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-      expect(cpuMicros(process.cpuUsage(afterKillStart))).toBeLessThan(300_000);
+      const afterKillWindowMs = 1_000;
+      await new Promise((resolve) => setTimeout(resolve, afterKillWindowMs));
+      const afterKillCpu = cpuMicros(process.cpuUsage(afterKillStart));
+      expect(afterKillCpu).toBeLessThan(300_000);
+      // The parse kept the worker busy: above an absolute floor, and above three times the after-kill
+      // rate measured on the same runner at the same time, so contention slows both.
+      expect(parseCpu / parseMs).toBeGreaterThan(
+        Math.max(MIN_PARSE_CPU_PER_MS, (3 * afterKillCpu) / afterKillWindowMs),
+      );
 
       expect(await readText(registrationPdfFixture(TWO_PAGE_GUIDE), budget)).toContain(
         'Winter registration begins November 10, 2026',
