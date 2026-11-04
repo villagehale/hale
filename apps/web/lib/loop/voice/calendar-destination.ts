@@ -22,6 +22,7 @@ const LOOKALIKE_DOTS = /[\u0701\u0702\uA60E\u{10A50}\u{1D16D}]/gu;
 /**
  * Dashes that are not \p{Pd}, so a dial run would end at them: minus signs (NFKC turns the
  * super- and subscript minus into U+2212), the hyphen bullet and the prolonged sound mark.
+ * Folded only where dial runs are read: U+30FC is a letter, and a TLD like "セール" holds one.
  */
 const LOOKALIKE_DASHES = /[\u02D7\u2043\u2212\u2796\u30FC]/gu;
 
@@ -40,9 +41,8 @@ type StopReading = 'title' | 'text';
 function normalize(raw: string, stops: StopReading): string {
   const folded = raw
     .normalize('NFKC')
-    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
-    .replace(LOOKALIKE_DOTS, '.')
-    .replace(LOOKALIKE_DASHES, '-');
+    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
+    .replace(LOOKALIKE_DOTS, '.');
   if (stops === 'title') return folded.split(IDEOGRAPHIC_STOP).join('.');
   const chars = Array.from(folded);
   return chars
@@ -65,7 +65,7 @@ const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
   {
     shape: 'scheme',
     pattern:
-      /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime|facetime-audio):(?![\s\p{Pe}\p{Pf}]|$)/iu,
+      /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime|facetime-audio):(?!\s|$|[\p{Pe}\p{Pf}](?:\s|$))/iu,
   },
   { shape: 'email', pattern: /[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
   { shape: 'domain', pattern: /[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
@@ -78,8 +78,11 @@ export interface EventDate {
   day: number;
 }
 
-/** An hour, a colon and two minute digits, with no digit on either side ("2314:30" is no clock). */
-const CLOCK = /(?<!\p{Nd})\p{Nd}{1,2}:\p{Nd}{2}(?!\p{Nd})/gu;
+/**
+ * A real clock, hour 0-23 and minutes 00-59, with no digit on either side ("2314:30" and
+ * "01:99" are no clock). Read after the digits are ASCII.
+ */
+const CLOCK = /(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?!\d)/g;
 
 /** Separators a dialer skips, bullets among them. ':' and '/' are not. */
 const DIAL_RUN = /(?:\+[\s.()\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s.()\p{Pd}_·‧•∙]*\p{Nd})*/gu;
@@ -157,7 +160,8 @@ function destinationIn(
   for (const { shape, pattern } of SHAPES) {
     if (pattern.test(normalized)) return shape;
   }
-  const runs = asciiDigits(normalized.replace(CLOCK, ' : ')).match(DIAL_RUN) ?? [];
+  const dialable = asciiDigits(normalized.replace(LOOKALIKE_DASHES, '-')).replace(CLOCK, ' : ');
+  const runs = dialable.match(DIAL_RUN) ?? [];
   return runs.some((run) => isPhone(run, start)) ? 'phone' : null;
 }
 

@@ -5,11 +5,13 @@ import {
   calendarCancelRefusals,
   createCalendarCancelVoice,
 } from './calendar-cancel-voice';
+import { textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
   type CalendarInviteVoiceRequest,
   INVITE_LINK_SLOT,
+  MAX_INVITE_SUMMARY_CHARS,
   calendarInviteRefusals,
   createCalendarInviteVoice,
 } from './calendar-invite-voice';
@@ -55,10 +57,10 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   },
   { row: 'punycode TLD', destination: 'swim.xn--p1ai' },
   { row: 'zero-width joiners inside a domain', destination: 'swim\u200D.\u200Dexample' },
-  { row: 'phone with dots', destination: '555.010.4477' },
-  { row: 'phone with spaces', destination: '555 010 4477' },
-  { row: 'phone with dashes', destination: '555-010-4477' },
-  { row: 'a +1 number', destination: '+1 555 010 4477' },
+  { row: 'phone with dots', destination: '202.555.0142' },
+  { row: 'phone with spaces', destination: '202 555 0142' },
+  { row: 'phone with dashes', destination: '202-555-0142' },
+  { row: 'a +1 number', destination: '+1 202 555 0142' },
   { row: 'an email address', destination: 'desk@example.test' },
   { row: 'a bare domain', destination: 'pool.example.org' },
   { row: 'a +1 number in year and day groups', destination: '+1 2027 2026 23' },
@@ -68,15 +70,15 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a short number in front of a date', destination: '20 23.07.2026' },
   {
     row: 'a phone in Arabic-Indic digits',
-    destination: '\u0665\u0665\u0665\u0660\u0661\u0660\u0664\u0664\u0667\u0667',
+    destination: '\u0662\u0660\u0662\u0665\u0665\u0665\u0660\u0661\u0664\u0662',
   },
   {
     row: 'a phone in Devanagari digits',
-    destination: '\u096B\u096B\u096B\u0966\u0967\u0966\u096A\u096A\u096D\u096D',
+    destination: '\u0968\u0966\u0968\u096B\u096B\u096B\u0966\u0967\u096A\u0968',
   },
-  { row: 'a phone with middle dots', destination: '555\u00B7010\u00B74477' },
-  { row: 'a phone with hyphenation points', destination: '555\u2027010\u20274477' },
-  { row: 'a phone with underscores', destination: '555_010_4477' },
+  { row: 'a phone with middle dots', destination: '202\u00B7555\u00B70142' },
+  { row: 'a phone with hyphenation points', destination: '202\u2027555\u20270142' },
+  { row: 'a phone with underscores', destination: '202_555_0142' },
   { row: 'a lookalike dot (Vai full stop)', destination: 'swim\uA60Eexample' },
   { row: 'an email address with no dotted domain', destination: 'desk@pool' },
   { row: 'a mailto address', destination: 'mailto:desk@pool' },
@@ -85,14 +87,23 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'an email address with a numeric host', destination: 'desk@10.0.0.1' },
   { row: 'an sms link', destination: 'sms://5550104' },
   { row: 'a mailto with one-letter parts', destination: 'mailto:a@b' },
-  { row: 'a tel link', destination: 'tel:+14165550199' },
+  { row: 'a tel link', destination: 'tel:+12025550142' },
   { row: 'an sms short code', destination: 'sms:55501' },
   { row: 'a facetime handle', destination: 'facetime:swimdesk' },
   { row: 'a facetime-audio handle', destination: 'facetime-audio:swimdesk' },
+  { row: 'an smsto link', destination: 'smsto:55501' },
+  { row: 'an sms short code behind a closing bracket', destination: 'sms:)55501' },
+  { row: 'a facetime handle behind a closing quote', destination: 'facetime:\u201Dswimdesk' },
+  { row: 'a tel link with a bracketed area code', destination: 'tel:(202)5550142' },
+  { row: 'a Katakana TLD with the prolonged sound mark', destination: 'shop.\u30BB\u30FC\u30EB' },
+  {
+    row: 'another Katakana TLD with the prolonged sound mark',
+    destination: 'example.\u30B0\u30FC\u30B0\u30EB',
+  },
   ...['\u2212', '\u207B', '\u2796', '\u2043', '\u02D7', '\u30FC', '\u2022', '\u2219'].map(
     (sep) => ({
       row: `a phone joined by U+${(sep.codePointAt(0) as number).toString(16).toUpperCase()}`,
-      destination: `416${sep}555${sep}0199`,
+      destination: `202${sep}555${sep}0142`,
     }),
   ),
   ...['\u034F', '\uFE0F', '\u{E0100}', '\u180B', '\u17B4'].flatMap((mark) => {
@@ -100,6 +111,14 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
     return [
       { row: `default-ignorable U+${hex} after the dot`, destination: `swim.${mark}example` },
       { row: `default-ignorable U+${hex} before ://`, destination: `swimclub${mark}://join` },
+    ];
+  }),
+  ...['\uFFF9', '\uFFFA', '\uFFFB'].flatMap((mark) => {
+    const hex = (mark.codePointAt(0) as number).toString(16).toUpperCase();
+    return [
+      { row: `format char U+${hex} after the dot`, destination: `swim.${mark}example` },
+      { row: `format char U+${hex} after the at sign`, destination: `desk@${mark}pool` },
+      { row: `format char U+${hex} inside a phone`, destination: `202${mark}555${mark}0142` },
     ];
   }),
 ];
@@ -129,7 +148,6 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a Chinese name', words: '游泳课' },
   { row: 'an emoji with a variation selector', words: 'Picnic \u2600\uFE0F' },
   { row: 'a scheme name inside a word', words: 'Hotel:Lobby' },
-  { row: 'a scheme name with nothing after it', words: 'Swim (bring tel:)' },
 ];
 
 /** A writer at the client port: answers every call with the text `write` builds from the facts. */
@@ -478,14 +496,16 @@ const PHONES: readonly string[] = [
   '23 23 23 23',
   '+1 2026 11 23',
   '2026-07-23 14',
-  '416 555 0199',
-  '(416) 555-0199',
-  '416.555.0199',
-  '1-416-555-0199',
-  '202 607 2314:30',
-  '٤١٦ ٥٥٥ ٠١٩٩',
-  '४१६ ५५५ ०१९९',
-  '10:5550199',
+  '202 555 0142',
+  '(202) 555-0142',
+  '202.555.0142',
+  '1-202-555-0142',
+  '202 555 0122:30',
+  '٢٠٢ ٥٥٥ ٠١٤٢',
+  '२०२ ५५५ ०१४२',
+  '10:5550142',
+  '202 555 01:99',
+  '202-555-01:99',
   '2031-2032',
   '2026-11-23 2026-11-23',
   '2026-27 4 1',
@@ -562,4 +582,96 @@ describe('VIL-588 · fail-closed costs: a number with no fact of this event is h
       expect(await verdicts(words, NOV_23)).toEqual(HELD);
     });
   }
+});
+
+describe('VIL-588 · the dash fold is for dial runs only: a letter that looks like a dash stays a letter', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  const cases: readonly { words: string; shape: string }[] = [
+    { words: 'shop.\u30BB\u30FC\u30EB', shape: 'domain' },
+    { words: 'example.\u30B0\u30FC\u30B0\u30EB', shape: 'domain' },
+    { words: '202\u30FC555\u30FC0142', shape: 'phone' },
+  ];
+  for (const { words, shape } of cases) {
+    it(`${words} is a ${shape} in a title and in a text`, () => {
+      expect(titleDestination(`Swim class ${words}`, july)).toBe(shape);
+      expect(textDestination(`Swim class ${words}`, july)).toBe(shape);
+    });
+  }
+});
+
+describe('VIL-588 · a format character never hides a destination', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  for (const mark of ['\uFFF9', '\uFFFA', '\uFFFB']) {
+    const hex = (mark.codePointAt(0) as number).toString(16).toUpperCase();
+    it(`U+${hex} inside a domain, an email and a phone`, () => {
+      for (const read of [titleDestination, textDestination]) {
+        expect(read(`swim.${mark}example`, july)).toBe('domain');
+        expect(read(`desk@${mark}pool`, july)).toBe('email');
+        expect(read(`202${mark}555${mark}0142`, july)).toBe('phone');
+      }
+    });
+  }
+});
+
+describe('VIL-588 · only a real clock leaves a dial run', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  it('01:99 is no clock, so its digits stay in the number', () => {
+    for (const read of [titleDestination, textDestination]) {
+      expect(read('202 555 01:99', july)).toBe('phone');
+      expect(read('202-555-01:99', july)).toBe('phone');
+    }
+  });
+});
+
+describe('VIL-588 · six digits are short of a phone number', () => {
+  it('a 6-digit run is sent; one more digit is held', async () => {
+    const v = await verdicts('202 555', NOV_23);
+    expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);
+    expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    expect(await verdicts('202 5550', NOV_23)).toEqual(HELD);
+  });
+});
+
+describe('VIL-588 · the cancel voice holds a title longer than any event name, as the invite voice does', () => {
+  const titleOf = (length: number) => 'Swim class '.repeat(40).slice(0, length);
+
+  it('one over the bound: held before any model or judge call', async () => {
+    const w = writer(echoCancel);
+    const j = judge(true);
+    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
+      ...CANCEL,
+      summary: titleOf(MAX_INVITE_SUMMARY_CHARS + 1),
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_too_long' });
+    expect(w.calls()).toBe(0);
+    expect(j.seen).toEqual([]);
+  });
+
+  it('at the bound: written and sent', async () => {
+    const summary = titleOf(MAX_INVITE_SUMMARY_CHARS);
+    expect(summary.length).toBe(MAX_INVITE_SUMMARY_CHARS);
+    const w = writer(echoCancel);
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      ...CANCEL,
+      summary,
+    });
+    expect(outcome).toEqual({ status: 'composed', body: `${summary}, ${WHEN}, is off.` });
+  });
+});
+
+describe('VIL-588 · a scheme name is exempt only when a closing mark and then nothing follow its colon', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  it('"bring tel:)" ending the words, or before a space, is no destination', () => {
+    for (const read of [titleDestination, textDestination]) {
+      expect(read('Swim (bring tel:)', july)).toBeNull();
+      expect(read('Swim (bring tel:) on Thu', july)).toBeNull();
+      expect(read('Swim (bring tel:', july)).toBeNull();
+    }
+  });
+  it('fail-closed cost: any other character after the closing mark reads as a scheme', () => {
+    for (const read of [titleDestination, textDestination]) {
+      expect(read('Swim (bring tel:), Thu', july)).toBe('scheme');
+      expect(read('sms:)55501', july)).toBe('scheme');
+    }
+  });
 });

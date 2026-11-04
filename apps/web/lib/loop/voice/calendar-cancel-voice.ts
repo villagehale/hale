@@ -9,6 +9,7 @@ import { textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
+  MAX_INVITE_SUMMARY_CHARS,
   createCalendarInviteTimeJudge,
   zonedStart,
 } from './calendar-invite-voice';
@@ -79,6 +80,7 @@ export function calendarCancelUserMessage(
 }
 
 export type CalendarCancelDeferral =
+  | 'summary_too_long'
   | 'summary_carries_destination'
   | 'client_unavailable'
   | 'skill_unavailable'
@@ -128,6 +130,9 @@ export function createCalendarCancelVoice(
 ): CalendarCancelVoice {
   return {
     async compose(request) {
+      if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
+        return deferred('summary_too_long', String(request.summary.length));
+      }
       const held = titleDestination(
         request.summary,
         zonedStart(request.startsAt, request.timeZone),
