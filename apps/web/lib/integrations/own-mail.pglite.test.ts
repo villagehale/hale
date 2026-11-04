@@ -4,6 +4,7 @@ import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { readDueBookings } from '~/lib/integrations/booking';
 import type {
   CorrelatedEventRef,
   ExtractedEvent,
@@ -865,8 +866,14 @@ describe('the emails’ own order decides the last word', () => {
   });
 
   it('T21b: a booking recorded from a stale receipt is not closed by a cancellation older than that receipt', async () => {
-    const h = harness({ c1: off('c1'), r1: receipt('r1'), c0: off('c0'), c2: off('c2') });
-    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    // The thread's last word is newer than the receipt and is not a cancellation: the class
+    // moved onto this Saturday. (After a told cancellation the booking is born closed: T25.)
+    const movedHere = classified(
+      { kind: 'reschedule', title: 'Swim Level 2', originalTime: SUNDAY, newTime: SATURDAY },
+      'm1',
+    );
+    const h = harness({ m1: movedHere, r1: receipt('r1'), c0: off('c0'), c2: off('c2') });
+    await expect(sweep(h, [inbound('m1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
     await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
       { alert: 'stale_news', booking: 'recorded', going: null },
     ]);
@@ -944,6 +951,141 @@ describe('the emails’ own order decides the last word', () => {
     // The control: the key still finds the claim, so the same "on" again is a repeat.
     await expect(sweep(h, [inbound('k2', 't-swim', 10)]).then(alerts)).resolves.toEqual([
       'already_sent',
+    ]);
+  });
+});
+
+/**
+ * A BOOKING IS OPEN ONLY IF THE THREAD'S LAST WORD ABOUT ITS INSTANT IS NOT A NEWER
+ * CANCELLATION. A receipt read after the parent was told the class is off, but sent before
+ * that cancellation, is history: its booking is written closed at the cancellation's own
+ * time, so no "how did it go?" is ever due for it.
+ */
+describe('a cancellation the parent was told outlives an older receipt read late', () => {
+  const off = (messageId: string, title = 'Swim Level 2') =>
+    classified({ kind: 'cancellation', title, originalTime: SATURDAY, newTime: null }, messageId);
+  const receipt = (messageId: string) =>
+    classified({ kind: 'booking_confirmation', title: 'Swim Level 2' }, messageId);
+  const reminder = (messageId: string) =>
+    classified(
+      { kind: 'reminder_only', title: 'Swim Level 2', originalTime: SATURDAY, newTime: null },
+      messageId,
+    );
+  const minute = (m: number) => new Date(Number(at(m)));
+  const cancelledAt = () => bookingRows().then((rows) => rows.map((r) => r.cancelledAt));
+  const SATURDAY_WINDOW = {
+    floor: new Date('2026-11-14T00:00:00.000Z'),
+    latest: new Date('2026-11-15T00:00:00.000Z'),
+  };
+  const trailOf = (bookingId: string) =>
+    db.database
+      .select({ action: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetId, bookingId))
+      .then((rows) => rows.map((row) => row.action).sort());
+
+  beforeEach(() => {
+    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  });
+
+  it('T25: a receipt older than a told cancellation records its booking closed at the cancellation, and no ask is due', async () => {
+    const h = harness({ c1: off('c1'), r1: receipt('r1') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    await expect(bookingRows()).resolves.toHaveLength(0);
+
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'recorded', going: null },
+    ]);
+    expect(h.transport.sent).toHaveLength(1);
+    await expect(cancelledAt()).resolves.toEqual([minute(20)]);
+    await expect(readDueBookings(db.database, family.familyId, SATURDAY_WINDOW)).resolves.toEqual(
+      [],
+    );
+    const [booking] = await bookingRows();
+    await expect(trailOf(booking?.id ?? '')).resolves.toEqual([
+      'activity_booking_cancelled',
+      'activity_booking_recorded',
+    ]);
+  });
+
+  it('T25b: a receipt newer than the told cancellation is the class booked again, and its ask is due', async () => {
+    const h = harness({ c1: off('c1'), r2: receipt('r2') });
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(sweep(h, [inbound('r2', 't-swim', 30)])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+    const [booking] = await bookingRows();
+    await expect(
+      readDueBookings(db.database, family.familyId, SATURDAY_WINDOW).then((due) =>
+        due.map((row) => row.bookingId),
+      ),
+    ).resolves.toEqual([booking?.id]);
+  });
+
+  it('T25c: after the class was told back on, an older receipt read late records an open booking', async () => {
+    const h = harness({ c1: off('c1'), k2: reminder('k2'), r1: receipt('r1') });
+    await expect(
+      sweep(h, [inbound('c1', 't-swim', 20), inbound('k2', 't-swim', 30)]).then(alerts),
+    ).resolves.toEqual(['sent', 'sent']);
+
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'already_sent', booking: 'recorded', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([null]);
+  });
+
+  it('T25e: the backfill reads the same last word: an older receipt it records after a told cancellation is closed', async () => {
+    const h = harness({ c1: off('c1'), r1: receipt('r1'), r2: receipt('r2') });
+    const backfill = (envelope: GmailAlertEnvelope) =>
+      alertParentForGmailSweep(
+        db.database,
+        {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          integrationId,
+          seeding: false,
+          backfill: true,
+          envelopes: [envelope],
+          now: NOW,
+        },
+        h.ports,
+      );
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+
+    await expect(backfill(inbound('r1', 't-swim', 10))).resolves.toEqual([
+      { alert: 'backfill_suppressed', booking: 'recorded', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([minute(20)]);
+    // The control: a receipt in another thread has no told cancellation behind it.
+    await expect(backfill(inbound('r2', 't-other', 10))).resolves.toEqual([
+      { alert: 'backfill_suppressed', booking: 'recorded', going: null },
+    ]);
+    await expect(
+      cancelledAt().then((rows) => rows.map((row) => row?.toISOString() ?? 'open').sort()),
+    ).resolves.toEqual([minute(20).toISOString(), 'open']);
+  });
+
+  it('T25d: an older receipt read late that refreshes an open booking closes it at the told cancellation', async () => {
+    // The cancellation names the class in words the closer's title fold does not join to
+    // the booking; the receipt in its thread does, by the instant.
+    const h = harness({ r0: receipt('r0'), c1: off('c1', 'Aquatics program'), r1: receipt('r1') });
+    await expect(sweep(h, [inbound('r0', 't-first', 5)])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
+    ]);
+    await expect(sweep(h, [inbound('c1', 't-swim', 20)]).then(alerts)).resolves.toEqual(['sent']);
+    // The control: the closer left it open, so the refresh is what closes it.
+    await expect(cancelledAt()).resolves.toEqual([null]);
+
+    await expect(sweep(h, [inbound('r1', 't-swim', 10)])).resolves.toEqual([
+      { alert: 'stale_news', booking: 'refreshed', going: null },
+    ]);
+    await expect(cancelledAt()).resolves.toEqual([minute(20)]);
+    const [booking] = await bookingRows();
+    await expect(trailOf(booking?.id ?? '')).resolves.toEqual([
+      'activity_booking_cancelled',
+      'activity_booking_recorded',
     ]);
   });
 });

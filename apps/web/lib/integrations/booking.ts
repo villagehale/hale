@@ -271,11 +271,20 @@ export async function recordActivityBooking(
     /** The email's own received time, kept so a cancellation older than it cannot close the
      * row. Unset, the row may be closed by any cancellation, as before migration 0200. */
     receivedAt?: Date;
+    /** A cancellation the parent was told, newer than this email: a new row is written
+     * closed at it, and a refreshed row closes at it unless a newer email recorded it (the
+     * closer's own rule). */
+    cancelledAt?: Date;
     /** Set on live mail only. With it, a refresh whose booking is linked to a Hale event
      * applies the provider's new time or venue there and records the change (VIL-474). */
     timeZone?: string;
   },
-): Promise<{ outcome: 'recorded' | 'already_recorded' | 'refreshed'; bookingId: string | null }> {
+): Promise<{
+  outcome: 'recorded' | 'already_recorded' | 'refreshed';
+  bookingId: string | null;
+  /** The row, when this write left it cancelled: its offer and trail are the caller's. */
+  closed: ClosedBooking | null;
+}> {
   const [sameEmail] = await database
     .select({ id: schema.activityBookings.id })
     .from(schema.activityBookings)
@@ -285,7 +294,7 @@ export async function recordActivityBooking(
         eq(schema.activityBookings.messageId, input.messageId),
       ),
     );
-  if (sameEmail) return { outcome: 'already_recorded', bookingId: null };
+  if (sameEmail) return { outcome: 'already_recorded', bookingId: null, closed: null };
 
   const existing = await findLiveClassBooking(database, {
     familyId: input.familyId,
@@ -294,7 +303,7 @@ export async function recordActivityBooking(
     firstSessionAt: input.draft.firstSessionAt,
   });
   if (existing) {
-    await database
+    const [refreshed] = await database
       .update(schema.activityBookings)
       .set({
         dedupeKey: bookingDedupeKey({
@@ -310,8 +319,20 @@ export async function recordActivityBooking(
           : {
               sourceReceivedAt: sql`greatest(${schema.activityBookings.sourceReceivedAt}, ${input.receivedAt.toISOString()}::timestamptz)`,
             }),
+        // Read against the row's received time BEFORE this update, as the closer reads it.
+        ...(input.cancelledAt === undefined
+          ? {}
+          : {
+              cancelledAt: sql`case when ${schema.activityBookings.sourceReceivedAt} is null or ${schema.activityBookings.sourceReceivedAt} <= ${input.cancelledAt.toISOString()}::timestamptz then ${input.cancelledAt.toISOString()}::timestamptz else ${schema.activityBookings.cancelledAt} end`,
+            }),
       })
-      .where(eq(schema.activityBookings.id, existing.id));
+      .where(eq(schema.activityBookings.id, existing.id))
+      .returning({
+        id: schema.activityBookings.id,
+        integrationId: schema.activityBookings.integrationId,
+        messageId: schema.activityBookings.messageId,
+        cancelledAt: schema.activityBookings.cancelledAt,
+      });
     const linkedEventId = existing.eventId ?? input.draft.eventId;
     if (input.timeZone && linkedEventId) {
       // A re-sent receipt arrives by live email, so it RECORDS the change only and never
@@ -330,7 +351,18 @@ export async function recordActivityBooking(
       });
     }
     await noteBookingMemory(database, input.familyId, input.draft.title);
-    return { outcome: 'refreshed', bookingId: existing.id };
+    return {
+      outcome: 'refreshed',
+      bookingId: existing.id,
+      closed:
+        refreshed === undefined || refreshed.cancelledAt === null
+          ? null
+          : {
+              id: refreshed.id,
+              integrationId: refreshed.integrationId,
+              messageId: refreshed.messageId,
+            },
+    };
   }
 
   try {
@@ -354,11 +386,19 @@ export async function recordActivityBooking(
         eventId: input.draft.eventId,
         channelMessageId: input.channelMessageId,
         sourceReceivedAt: input.receivedAt,
+        cancelledAt: input.cancelledAt,
       })
       .returning({ id: schema.activityBookings.id });
-    if (!row) return { outcome: 'already_recorded', bookingId: null };
+    if (!row) return { outcome: 'already_recorded', bookingId: null, closed: null };
     await noteBookingMemory(database, input.familyId, input.draft.title);
-    return { outcome: 'recorded', bookingId: row.id };
+    return {
+      outcome: 'recorded',
+      bookingId: row.id,
+      closed:
+        input.cancelledAt === undefined
+          ? null
+          : { id: row.id, integrationId: input.integrationId, messageId: input.messageId },
+    };
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
     // The other writer won the class, or this email landed between the read and the
@@ -371,9 +411,9 @@ export async function recordActivityBooking(
     });
     if (raced) {
       await noteBookingMemory(database, input.familyId, input.draft.title);
-      return { outcome: 'refreshed', bookingId: raced.id };
+      return { outcome: 'refreshed', bookingId: raced.id, closed: null };
     }
-    return { outcome: 'already_recorded', bookingId: null };
+    return { outcome: 'already_recorded', bookingId: null, closed: null };
   }
 }
 

@@ -943,7 +943,7 @@ describe('the booking write', () => {
       channelMessageId,
       draft: { ...draft.draft, title: 'A DIFFERENT TITLE' },
     });
-    expect(second).toEqual({ outcome: 'already_recorded', bookingId: null });
+    expect(second).toEqual({ outcome: 'already_recorded', bookingId: null, closed: null });
 
     const rows = await bookingRows();
     expect(rows).toHaveLength(1);
@@ -981,7 +981,7 @@ describe('the booking write', () => {
         location: 'pool 2',
       },
     });
-    expect(second).toEqual({ outcome: 'refreshed', bookingId: first.bookingId });
+    expect(second).toEqual({ outcome: 'refreshed', bookingId: first.bookingId, closed: null });
 
     // A weekday abbreviation is the same class, not a second one.
     const abbrev = bookingDraft({
@@ -1007,7 +1007,11 @@ describe('the booking write', () => {
       channelMessageId: await sentAlertRow(),
       draft: { ...abbrev.draft, title: 'Parent and Tot (Tues)' },
     });
-    expect(abbrevAgain).toEqual({ outcome: 'refreshed', bookingId: abbrevRow.bookingId });
+    expect(abbrevAgain).toEqual({
+      outcome: 'refreshed',
+      bookingId: abbrevRow.bookingId,
+      closed: null,
+    });
 
     const rows = await bookingRows();
     expect(rows).toHaveLength(2);

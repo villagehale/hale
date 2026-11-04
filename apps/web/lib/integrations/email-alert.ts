@@ -41,6 +41,7 @@ import { bookedDetectionEnabledFor } from './booked';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   type BookingDraftResult,
+  type ClosedBooking,
   bookingDraft,
   closeCancelledBookings,
   familyHoldsLiveBooking,
@@ -322,15 +323,19 @@ function occasionOf(
 ): { occasion: string; anchors: readonly string[] } {
   const { state, anchor, instants } = OCCASION[extraction.kind](extraction.event);
   if (anchor !== null) {
-    const occasion = `${state}|${anchor}`;
+    const occasion = stated(state, anchor);
     return { occasion, anchors: instants.length > 0 ? instants : [occasion] };
   }
   if (extraction.matchedEventRef !== null) {
     const ref = `ref:${extraction.matchedEventRef.table}:${extraction.matchedEventRef.id}`;
-    return { occasion: `${state}|${ref}`, anchors: [ref] };
+    return { occasion: stated(state, ref), anchors: [ref] };
   }
   const own = `msg:${messageId}`;
   return { occasion: own, anchors: [own] };
+}
+
+function stated(state: 'on' | 'off' | 'moved', anchor: string): string {
+  return `${state}|${anchor}`;
 }
 
 /** Per kind, whether the occasion is on, off or moved, the field(s) it sits at, and the
@@ -399,6 +404,25 @@ async function occasionClaim(
   const { occasion, anchors } = occasionOf(extraction, messageId);
   const base = emailAlertOccasionKey(integrationId, threadId, occasion);
   const anchorKeys = anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor));
+  const last = await lastToldClaim(database, anchorKeys);
+  if (last !== undefined && isClaimOf(last.occasionKey, base)) {
+    return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
+  }
+  if (last?.receivedAt != null && receivedAt < last.receivedAt) {
+    return { occasionKey: base, anchorKeys, told: 'stale_news' };
+  }
+  const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
+  return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
+}
+
+/** A claim key is the occasion's bare key, or that key followed by the claim it came after. */
+function isClaimOf(occasionKey: string, base: string): boolean {
+  return occasionKey === base || occasionKey.startsWith(`${base}:`);
+}
+
+/** The newest claim, by the emails' own received time, that TOLD the parent something
+ * about any of these anchors. */
+async function lastToldClaim(database: Database, anchorKeys: readonly string[]) {
   const [last] = await database
     .select({
       occasionKey: schema.emailAlertOccasions.occasionKey,
@@ -428,17 +452,43 @@ async function occasionClaim(
       desc(schema.emailAlertOccasions.createdAt),
     )
     .limit(1);
-  if (
-    last !== undefined &&
-    (last.occasionKey === base || last.occasionKey.startsWith(`${base}:`))
-  ) {
-    return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
-  }
-  if (last?.receivedAt != null && receivedAt < last.receivedAt) {
-    return { occasionKey: base, anchorKeys, told: 'stale_news' };
-  }
-  const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
-  return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
+  return last;
+}
+
+/**
+ * A BOOKING IS OPEN ONLY IF THE THREAD'S LAST WORD ABOUT ITS INSTANT IS NOT A NEWER
+ * CANCELLATION. The receipt is history when, in its own thread, the newest thing the parent
+ * was told about the same instant is "it's off" and that email is newer than the receipt:
+ * the booking it records or refreshes is closed at the cancellation's received time. A
+ * newer "back on" told after the cancellation is the last word instead, and leaves it open.
+ *
+ * Returns that cancellation's received time, or `null` when the last word is not one.
+ * Anchors are per thread, so a cancellation in another thread is the closer's to apply.
+ */
+async function toldCancellationAfter(
+  database: Database,
+  input: {
+    integrationId: string;
+    threadId: string;
+    extraction: Parameters<typeof emailAlertOccasion>[0];
+    messageId: string;
+    receivedAt: Date;
+  },
+): Promise<Date | null> {
+  const { integrationId, threadId } = input;
+  const { anchors } = occasionOf(input.extraction, input.messageId);
+  const last = await lastToldClaim(
+    database,
+    anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor)),
+  );
+  if (last?.receivedAt == null || last.receivedAt <= input.receivedAt) return null;
+  const cancelled = anchors.some((anchor) =>
+    isClaimOf(
+      last.occasionKey,
+      emailAlertOccasionKey(integrationId, threadId, stated('off', anchor)),
+    ),
+  );
+  return cancelled ? last.receivedAt : null;
 }
 
 /**
@@ -594,6 +644,7 @@ export async function alertParentForEmail(
         familyId,
         parentUserId,
         integrationId,
+        threadId,
         messageId,
         envelope: input.envelope,
         extraction,
@@ -646,6 +697,7 @@ export async function alertParentForEmail(
               familyId,
               parentUserId,
               integrationId,
+              threadId,
               messageId,
               envelope: input.envelope,
               extraction,
@@ -878,7 +930,9 @@ export async function alertParentForEmail(
     draft,
     offered: offer !== null,
     receivedAt,
+    toldIn: { threadId, extraction },
     timeZone: input.timeZone,
+    now,
   });
   await passport.afterSend();
 
@@ -936,6 +990,7 @@ async function recordQuietBooking(
     familyId: string;
     parentUserId: string;
     integrationId: string;
+    threadId: string;
     messageId: string;
     envelope: EmailAlertInput['envelope'];
     extraction: NonNullable<SentinelClassification['extraction']>;
@@ -953,6 +1008,8 @@ async function recordQuietBooking(
     draft: bookingDraftFor(extraction, input.envelope.from, input.booked, input.now),
     offered: false,
     receivedAt: new Date(input.envelope.receivedAt),
+    toldIn: { threadId: input.threadId, extraction },
+    now: input.now,
   });
   const passport = await attachPassportToEmailAlert(database, {
     body: '',
@@ -1086,14 +1143,24 @@ async function closeBookingsFor(
     receivedAt: input.receivedAt,
     now: input.now,
   });
+  await recordClosedBookings(database, input.familyId, closed, input.now);
+}
+
+/** Each closed booking's calendar offer comes down, and its trail row is written. */
+async function recordClosedBookings(
+  database: Database,
+  familyId: string,
+  closed: readonly ClosedBooking[],
+  now: Date,
+): Promise<void> {
   for (const booking of closed) {
     const offer = await withdrawEmailAlertOffer(database, {
       integrationId: booking.integrationId,
       messageId: booking.messageId,
-      now: input.now,
+      now,
     });
     await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
+      familyId,
       actor: 'system',
       actionTaken: 'activity_booking_cancelled',
       targetTable: 'activity_bookings',
@@ -1134,9 +1201,13 @@ async function recordBooking(
     offered: boolean;
     /** The email's own received time: a cancellation older than it does not close the row. */
     receivedAt: Date;
+    /** The thread this email is read in and what it said: a cancellation that thread told,
+     * newer than this email, records the booking closed (`toldCancellationAfter`). */
+    toldIn: { threadId: string; extraction: Parameters<typeof emailAlertOccasion>[0] } | null;
     /** Live mail only: a registration refresh may apply the provider's move (VIL-474).
      * The backfill leaves it unset, because historical mail is not today's schedule. */
     timeZone?: string;
+    now: Date;
   },
 ): Promise<BookingOutcome> {
   const { draft } = input;
@@ -1145,6 +1216,16 @@ async function recordBooking(
 
   let recorded: Awaited<ReturnType<typeof recordActivityBooking>>;
   try {
+    const cancelledAt =
+      input.toldIn === null
+        ? null
+        : await toldCancellationAfter(database, {
+            integrationId: input.integrationId,
+            threadId: input.toldIn.threadId,
+            extraction: input.toldIn.extraction,
+            messageId: input.messageId,
+            receivedAt: input.receivedAt,
+          });
     recorded = await recordActivityBooking(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
@@ -1153,6 +1234,7 @@ async function recordBooking(
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
       receivedAt: input.receivedAt,
+      ...(cancelledAt === null ? {} : { cancelledAt }),
       timeZone: input.timeZone,
     });
   } catch (err) {
@@ -1184,6 +1266,9 @@ async function recordBooking(
       targetId: recorded.bookingId,
       after: { offered: input.offered },
     });
+  }
+  if (recorded.closed !== null) {
+    await recordClosedBookings(database, input.familyId, [recorded.closed], input.now);
   }
   return recorded.outcome;
 }
@@ -1396,6 +1481,12 @@ async function recordBackfillEnvelope(
     draft,
     offered: false,
     receivedAt,
+    // No thread, no claim in it: claims are keyed on the thread.
+    toldIn:
+      input.envelope.threadId === undefined
+        ? null
+        : { threadId: input.envelope.threadId, extraction },
+    now: input.now,
   });
   const passport = await attachPassportToEmailAlert(database, {
     body: '',
