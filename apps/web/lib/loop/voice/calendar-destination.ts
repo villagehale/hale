@@ -27,6 +27,12 @@ const LOOKALIKE_DOTS = /[\u0701\u0702\uA60E\u{10A50}\u{1D16D}]/gu;
  */
 const LOOKALIKE_DASHES = /[\u02D7\u2043\u2053\u2212\u223C\u2796\u30FC]/gu;
 
+/**
+ * Slashes NFKC leaves as they are (fraction slash, division slash, big solidus). Folded
+ * only where dial runs are read, like the dashes.
+ */
+const LOOKALIKE_SLASHES = /[\u2044\u2215\u29F8]/gu;
+
 const IDEOGRAPHIC_STOP = '\u3002';
 
 const CJK =
@@ -104,10 +110,20 @@ export interface EventDate {
  */
 const CLOCK = /(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?!\d)/g;
 
-/** Separators a dialer skips, bullets and square brackets among them. ':' and '/' are not. */
-const DIAL_RUN = /(?:\+[\s.()[\]\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s.()[\]\p{Pd}_·‧•∙]*\p{Nd})*/gu;
+/**
+ * Separators a dialer skips, bullets, square brackets and '/' among them. ':' is not: a
+ * real clock is blanked first. A slashed date is then one run, so only the event's own
+ * date (or a season around it) leaves 7+ of its digits unheld.
+ */
+const DIAL_RUN = /(?:\+[\s./()[\]\p{Pd}_·‧•∙]*)?\p{Nd}(?:[\s./()[\]\p{Pd}_·‧•∙]*\p{Nd})*/gu;
 
 const MIN_PHONE_DIGITS = 7;
+
+/**
+ * An SMS short code: 5 or 6 digits with no digit beside them. A date, a season and a
+ * clock never hold one (their groups have at most 4 digits, and clocks are blanked).
+ */
+const SHORT_CODE = /(?<!\d)\d{5,6}(?!\d)/;
 
 /** Ten digits, area code and exchange each [2-9]XX and not N11. */
 const NORTH_AMERICAN = /^(?!\d11)[2-9]\d\d(?!\d11)[2-9]\d{6}$/;
@@ -127,17 +143,17 @@ export function asciiDigits(text: string): string {
 function isStartDate(chunk: string, start: EventDate): boolean {
   const same = (y: string, m: string, d: string) =>
     Number(y) === start.year && Number(m) === start.month && Number(d) === start.day;
-  const ymd = /^(\d{4})([.-])(\d{1,2})\2(\d{1,2})$/.exec(chunk);
+  const ymd = /^(\d{4})([./-])(\d{1,2})\2(\d{1,2})$/.exec(chunk);
   if (ymd) return same(ymd[1] as string, ymd[3] as string, ymd[4] as string);
-  const xxy = /^(\d{1,2})([.-])(\d{1,2})\2(\d{4})$/.exec(chunk);
+  const xxy = /^(\d{1,2})([./-])(\d{1,2})\2(\d{4})$/.exec(chunk);
   if (!xxy) return false;
   const [a, b, y] = [xxy[1] as string, xxy[3] as string, xxy[4] as string];
   return same(y, b, a) || same(y, a, b);
 }
 
-/** Two consecutive years, "2026-2027" or "2026-27", one of them within a year of the start's. */
+/** Two consecutive years, "2026-2027", "2026/27" or alike, one of them within a year of the start's. */
 function isSeasonAround(chunk: string, start: EventDate): boolean {
-  const m = /^(\d{4})-(\d{4}|\d{2})$/.exec(chunk);
+  const m = /^(\d{4})[-/](\d{4}|\d{2})$/.exec(chunk);
   if (!m) return false;
   const first = Number(m[1]);
   const next = String(first + 1);
@@ -180,9 +196,11 @@ function isPhone(run: string, start: EventDate): boolean {
 }
 
 /**
- * A symbol or a lone combining mark is no separator a reader sees, and the GSM-7 fold
- * deletes it, so the shapes are read again with them taken out: "pool.\u2726org" and
- * "555\u2726010\u27264477" are a domain and a number.
+ * A symbol or a combining mark is no separator a reader sees, and the GSM-7 fold deletes
+ * it, so the shapes are read again with them taken out: "pool.\u2726org" and
+ * "555\u2726010\u27264477" are a domain and a number. Every mark, not only a lone one: a
+ * mark on a digit ("555\u0301010\u03014477") also ends a dial run, and this pass can
+ * only add a hold, never lift one.
  */
 const SKIPPED_MARKS = /[\p{So}\p{M}]/gu;
 
@@ -192,16 +210,28 @@ function destinationIn(
   stops: StopReading,
 ): DestinationShape | null {
   const normalized = normalize(text, stops);
-  return shapeIn(normalized, start) ?? shapeIn(normalized.replace(SKIPPED_MARKS, ''), start);
+  return (
+    shapeIn(normalized, start, stops) ??
+    shapeIn(normalized.replace(SKIPPED_MARKS, ''), start, stops)
+  );
 }
 
-function shapeIn(normalized: string, start: EventDate): DestinationShape | null {
+function shapeIn(
+  normalized: string,
+  start: EventDate,
+  stops: StopReading,
+): DestinationShape | null {
   for (const { shape, pattern } of SHAPES) {
     if (pattern.test(normalized)) return shape;
   }
-  const dialable = asciiDigits(normalized.replace(LOOKALIKE_DASHES, '-')).replace(CLOCK, ' : ');
+  const dialable = asciiDigits(
+    normalized.replace(LOOKALIKE_DASHES, '-').replace(LOOKALIKE_SLASHES, '/'),
+  ).replace(CLOCK, ' : ');
   const runs = dialable.match(DIAL_RUN) ?? [];
-  return runs.some((run) => isPhone(run, start)) ? 'phone' : null;
+  if (runs.some((run) => isPhone(run, start))) return 'phone';
+  // A title's digits count as handed to the writer, so a short code in it would be
+  // repeated. A writer's own short code is already refused as an invented number.
+  return stops === 'title' && SHORT_CODE.test(dialable) ? 'phone' : null;
 }
 
 /** The event title, before any model call. A destination in it holds the text. */
