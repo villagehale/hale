@@ -17,6 +17,12 @@ export const TORONTO_REC_PORTAL = 'toronto.ca/OnlineReg';
 export const YMCA_PORTAL = 'MyY.YMCAGTA.ORG';
 export const JACK_OF_SPORTS_PAGE = 'jackofsports.com';
 
+/**
+ * The morning YMCA GTA opened fall swim registration (#548): the Y's own published date
+ * and local clock. A dated fact, so copy.ts hands it out only until that day has passed.
+ */
+export const YMCA_SWIM_OPENS = { date: '2026-08-27', clock: '9:00 a.m.' } as const;
+
 export const TORONTO_WAITLIST_HOURS = 36;
 export const BRAMPTON_WAITLIST_HOURS = 24;
 

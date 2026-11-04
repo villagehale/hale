@@ -1152,7 +1152,11 @@ async function loadFamilyRecWhere(
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!row) return null;
-  return { city: row.city, postal: row.postalCode ?? row.areaCoarse };
+  return {
+    city: row.city,
+    postal: row.postalCode ?? row.areaCoarse,
+    timeZone: await readFamilyTimezone(database, familyId),
+  };
 }
 
 export function recMorningHandler(): DeterministicHandler {
