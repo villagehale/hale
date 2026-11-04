@@ -93,20 +93,46 @@ export async function saveConnection(
   },
 ): Promise<{ connectId: string }> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
+  const accountKey = input.providerMetadata?.googleAccountKey;
   return database.transaction(async (tx) => {
-    // A fresh consent cancels any revoke still waiting from an earlier disconnect, on
-    // EVERY row of this parent, in every household: Google revokes per project and
-    // account, so a retry that ran after this connect would end the grant the parent
-    // just gave, wherever they gave it (VIL-156).
-    await tx
-      .update(schema.integrations)
-      .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
-      .where(
-        and(
-          eq(schema.integrations.userId, input.userId),
-          isNotNull(schema.integrations.googleRevokePendingEncrypted),
-        ),
-      );
+    // A fresh consent cancels a revoke still waiting from an earlier disconnect of the
+    // SAME Google account, in every household: Google grants and revokes per account, so
+    // that retry would end the grant just given. Another account's revoke, or one whose
+    // account is unknown on either side, still runs (VIL-156).
+    if (typeof accountKey === 'string' && accountKey.length > 0) {
+      const cancelled = await tx
+        .update(schema.integrations)
+        .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
+        .where(
+          and(
+            eq(googleAccountKeyOf(), accountKey),
+            isNotNull(schema.integrations.googleRevokePendingEncrypted),
+          ),
+        )
+        .returning({
+          id: schema.integrations.id,
+          familyId: schema.integrations.familyId,
+          userId: schema.integrations.userId,
+          provider: schema.integrations.provider,
+        });
+      if (cancelled.length > 0) {
+        await tx.insert(schema.auditLog).values(
+          cancelled.map((row) => ({
+            familyId: row.familyId,
+            actor: 'system',
+            actionTaken: 'integration_google_revoke_cancelled',
+            // About one adult's account, so History and the family copy leave it out,
+            // and it names no other household.
+            ...(row.userId === null ? {} : { targetTable: 'users', targetId: row.userId }),
+            after: {
+              provider: row.provider,
+              integrationId: row.id,
+              reason: 'same_account_connected',
+            },
+          })),
+        );
+      }
+    }
     const upserted = await tx
       .insert(schema.integrations)
       .values({
@@ -554,8 +580,8 @@ async function endCalendarMirrors(tx: Database, integrationIds: string[], now: D
 
 /**
  * Family erasure's LOCAL-ONLY end (VIL-156): the rows' keys and any pending token leave,
- * and nothing is kept for Google. For a row whose owner still holds a live grant in
- * another household (Google revokes per account, so a revoke here would end that grant
+ * and nothing is kept for Google. For a row whose Google account still holds a live grant
+ * in another household (Google revokes per account, so a revoke here would end that grant
  * too, rule #5), and for a row with no owner. Same invariant as
  * {@link endGoogleConnections}: keys gone means status 'revoked'.
  */
@@ -586,24 +612,30 @@ export async function endGoogleConnectionsLocally(
   return ended.map((row) => ({ id: row.id, provider: row.provider as ConnectorProvider }));
 }
 
-/** Which of these users still hold a live Google grant in a household other than this one. */
-export async function usersHoldingGoogleElsewhere(
+/** The Google account a row was granted by, as the callback stored it (null if unread). */
+export function googleAccountKeyOf() {
+  return sql<string | null>`${schema.integrations.providerMetadata}->>'googleAccountKey'`;
+}
+
+/** Which of these Google accounts still hold a live grant in a household other than this
+ * one. Keyed on the account, never the Hale user: Google grants and revokes per account. */
+export async function googleAccountsHeldElsewhere(
   database: Database,
-  input: { familyId: string; userIds: string[] },
+  input: { familyId: string; accountKeys: string[] },
 ): Promise<Set<string>> {
-  if (input.userIds.length === 0) return new Set();
+  if (input.accountKeys.length === 0) return new Set();
   const rows = await database
-    .select({ userId: schema.integrations.userId })
+    .select({ accountKey: googleAccountKeyOf() })
     .from(schema.integrations)
     .where(
       and(
-        inArray(schema.integrations.userId, input.userIds),
+        inArray(googleAccountKeyOf(), input.accountKeys),
         ne(schema.integrations.familyId, input.familyId),
         inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
         isNotNull(schema.integrations.oauthTokensEncrypted),
       ),
     );
-  return new Set(rows.flatMap((row) => (row.userId === null ? [] : [row.userId])));
+  return new Set(rows.flatMap((row) => (row.accountKey === null ? [] : [row.accountKey])));
 }
 
 /** Ids of every ended row still waiting on Google, least recently asked first: the

@@ -451,6 +451,7 @@ export const AUDIT_VERBS = [
   'integration_ended_for_erasure',
   'integration_google_grant_revoked',
   'integration_google_grant_revoke_failed',
+  'integration_google_revoke_cancelled',
   'integration.google_calendar_written',
   'integration.google_calendar_failed',
   'integration.gmail_draft_written',
@@ -1682,6 +1683,13 @@ const VERBS: Record<AuditVerb, Verb> = {
       'Google did not confirm it removed Hale’s access to a disconnected account; Hale deleted its last copy of the key',
     family: 'problem',
   },
+  // About one adult's Google account, so History and the family copy leave it out, and
+  // it names no other household where that account was connected.
+  integration_google_revoke_cancelled: {
+    sentence:
+      'Hale stopped asking Google to remove its access to a disconnected account, because the same account was connected again',
+    family: 'note',
+  },
   'integration.google_calendar_written': {
     sentence: 'added it to your Google Calendar',
     family: 'done',
@@ -2047,6 +2055,8 @@ export const INTERNAL_TRAIL_VERBS = [
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
   'group_decision_sync_closed_unsent',
+  // VIL-156. About one adult's Google account, which another household may share.
+  'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

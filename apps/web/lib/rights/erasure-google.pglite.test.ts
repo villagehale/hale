@@ -7,12 +7,13 @@ import {
   GOOGLE_REVOKE_URL,
   type GoogleDisconnectPorts,
   disconnectGoogle,
+  endGoogleForFamilyErasure,
 } from '~/lib/integrations/google-disconnect';
 import { saveConnection } from '~/lib/integrations/store';
 import { encryptTokens } from '~/lib/integrations/token-vault';
 import { ERASURE_GOOGLE_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { runDeletionSweep } from './delete';
+import { erasureGoogleLogLine, runDeletionSweep } from './delete';
 
 /**
  * VIL-156 follow-up · erasing a family revokes its Google grants at Google first.
@@ -84,6 +85,7 @@ async function connect(
   userId: string,
   provider: 'gcal' | 'gmail',
   refreshToken: string,
+  googleAccountKey?: string,
 ) {
   await saveConnection(db.database, {
     familyId,
@@ -91,6 +93,7 @@ async function connect(
     provider,
     scopes: [],
     tokens: { accessToken: `ya29.${refreshToken}`, refreshToken },
+    ...(googleAccountKey ? { providerMetadata: { googleAccountKey } } : {}),
   });
 }
 
@@ -241,6 +244,64 @@ describe('the erasure promise wins after a bounded wait for Google', () => {
   });
 });
 
+describe('paging the erasure is its own leg', () => {
+  it('a pager that throws is named, the sweep still returns, and the claim stays owed', async () => {
+    const erased = await household('Erased');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
+    await scheduleAt(erased.familyId, PAST_GOOGLE_WAIT);
+    googleStatus = 503;
+
+    const summary = await runDeletionSweep(
+      db.database,
+      NOW,
+      async () => {},
+      async () => {
+        throw new Error('slack client exploded');
+      },
+    );
+
+    expect(summary).toMatchObject({
+      erased: 1,
+      pastGoogleWait: { unconfirmed: 1, endFailed: 0, page: 'page_failed' },
+    });
+    expect(await erasureClaims()).toEqual([
+      { identifier: expect.stringMatching(/^[0-9a-f-]{36}:1:0$/), count: 0 },
+    ]);
+  });
+
+  it('the cron log line carries counts and outcome codes only, never an id', async () => {
+    const erased = await household('Erased');
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
+    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-cal');
+    await scheduleAt(erased.familyId, PAST_GOOGLE_WAIT);
+    googleStatus = 503;
+    const pager = recordingPager();
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {}, pager.page);
+    const line = erasureGoogleLogLine(summary);
+
+    expect(line).toEqual({
+      googleRevokePending: 0,
+      googleEndFailed: 0,
+      pastGoogleWait: { unconfirmed: 1, endFailed: 0, page: { posted: 1, deduped: 0, failed: 0 } },
+      google: { google_unconfirmed: 2 },
+    });
+    const ids = [
+      erased.familyId,
+      erased.parentUserId,
+      ...summary.google.map((row) => row.integrationId),
+    ];
+    // Positive control: the summary itself does carry the row ids the line leaves out.
+    expect(summary.google).toHaveLength(2);
+    for (const id of ids) expect(JSON.stringify(line)).not.toContain(id);
+  });
+
+  it('positive control: a sweep that touched no Google row has no line to log', async () => {
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+    expect(erasureGoogleLogLine(summary)).toBeNull();
+  });
+});
+
 describe('the erasure page is recorded with the deletion, so a later throw cannot lose it', () => {
   it('a family erased past the wait keeps its owed page when a later family purge throws', async () => {
     const erased = await household('Erased');
@@ -303,16 +364,33 @@ describe('the production pager records the page where the failure-page cron find
   });
 });
 
-describe("erasing one household never revokes a parent's grant another household still uses", () => {
-  it('a co-parent seated in a second household keeps that grant; their row here ends locally only', async () => {
+describe('erasing one household never revokes a Google account another household still uses', () => {
+  /** The erased family, plus a second household its co-parent is also seated in. */
+  async function twoHouseholds() {
     const erased = await household('Erased');
     const other = await seedFamily(db.database, 'Other');
     await db.database
       .insert(schema.familyMembers)
       .values({ familyId: other.familyId, userId: erased.coParentUserId, role: 'co_parent' });
-    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal');
-    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here');
-    await connect(other.familyId, erased.coParentUserId, 'gcal', '1//co-there');
+    return { erased, otherFamilyId: other.familyId };
+  }
+
+  async function otherRow(otherFamilyId: string) {
+    const [there] = await db.database
+      .select({
+        status: schema.integrations.status,
+        enc: schema.integrations.oauthTokensEncrypted,
+      })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.familyId, otherFamilyId));
+    return there;
+  }
+
+  it('the same account live in another household: the row here ends locally only', async () => {
+    const { erased, otherFamilyId } = await twoHouseholds();
+    await connect(erased.familyId, erased.parentUserId, 'gcal', '1//erased-cal', 'account-p');
+    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here', 'account-x');
+    await connect(otherFamilyId, erased.coParentUserId, 'gcal', '1//co-there', 'account-x');
     await scheduleAt(erased.familyId, PAST);
 
     const summary = await runDeletionSweep(db.database, NOW, async () => {});
@@ -324,15 +402,61 @@ describe("erasing one household never revokes a parent's grant another household
       'grant_kept_other_household',
       'revoked',
     ]);
-    const [there] = await db.database
-      .select({
-        status: schema.integrations.status,
-        enc: schema.integrations.oauthTokensEncrypted,
-      })
-      .from(schema.integrations)
-      .where(eq(schema.integrations.familyId, other.familyId));
-    expect(there?.status).toBe('active');
-    expect(there?.enc).not.toBeNull();
+    expect(await otherRow(otherFamilyId)).toMatchObject({
+      status: 'active',
+      enc: expect.any(String),
+    });
+  });
+
+  it('the same parent with a DIFFERENT account in the other household: this account is revoked at Google', async () => {
+    const { erased, otherFamilyId } = await twoHouseholds();
+    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here', 'account-x');
+    await connect(otherFamilyId, erased.coParentUserId, 'gcal', '1//co-there', 'account-y');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual(['1//co-here']);
+    expect(summary.google.map((row) => row.google)).toEqual(['revoked']);
+    expect(await otherRow(otherFamilyId)).toMatchObject({
+      status: 'active',
+      enc: expect.any(String),
+    });
+  });
+
+  it('a row whose account Hale never read is revoked, failing toward revocation', async () => {
+    const { erased, otherFamilyId } = await twoHouseholds();
+    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here');
+    await connect(otherFamilyId, erased.coParentUserId, 'gcal', '1//co-there', 'account-x');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(posted).toEqual(['1//co-here']);
+    expect(summary.google.map((row) => row.google)).toEqual(['revoked']);
+  });
+
+  it("the erased family's own trail row says only that the row ended locally; the reason stays in the return value", async () => {
+    const { erased, otherFamilyId } = await twoHouseholds();
+    await connect(erased.familyId, erased.coParentUserId, 'gcal', '1//co-here', 'account-x');
+    await connect(otherFamilyId, erased.coParentUserId, 'gcal', '1//co-there', 'account-x');
+
+    const settled = await endGoogleForFamilyErasure(db.database, erased.familyId);
+
+    // Positive control: the reason is real, and it is named where #ops reads it.
+    expect(settled.map((row) => row.google)).toEqual(['grant_kept_other_household']);
+    const trail = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'integration_ended_for_erasure'));
+    expect(trail).toHaveLength(1);
+    expect(trail[0]?.after).toMatchObject({
+      provider: 'gcal',
+      pending: null,
+      google: 'ended_locally',
+    });
+    expect(JSON.stringify(trail)).not.toContain('household');
   });
 });
 

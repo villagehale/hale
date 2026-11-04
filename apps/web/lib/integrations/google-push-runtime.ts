@@ -137,10 +137,9 @@ export async function renewDueGooglePushWatches(
   for (const connection of connections) {
     if (connection.provider !== 'gcal' && connection.provider !== 'gmail') continue;
     try {
-      const tokens = decryptTokens(connection.enc);
-      const accessToken = await freshAccessToken(database, connection.id, tokens);
       // The listing above can be minutes old by now: a row a disconnect ended since is
-      // never sent to Google. The save re-checks under the row lock (savePushWatch).
+      // never sent to Google, not even its refresh token to the token endpoint. The save
+      // re-checks under the row lock (savePushWatch).
       if (!(await connectionHoldsKeys(database, connection.id))) {
         countOutcome(summary, 'integration_ended');
         console.info(
@@ -153,6 +152,8 @@ export async function renewDueGooglePushWatches(
         );
         continue;
       }
+      const tokens = decryptTokens(connection.enc);
+      const accessToken = await freshAccessToken(database, connection.id, tokens);
       const result = await ensureGooglePushWatch({
         integrationId: connection.id,
         provider: connection.provider,

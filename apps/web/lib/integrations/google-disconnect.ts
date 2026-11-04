@@ -11,10 +11,11 @@ import {
   deleteStaleGoogleRevokePending,
   endGoogleConnections,
   endGoogleConnectionsLocally,
+  googleAccountKeyOf,
+  googleAccountsHeldElsewhere,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
   noteGoogleRevokeAttempt,
-  usersHoldingGoogleElsewhere,
 } from './store';
 import {
   type RevokePendingToken,
@@ -580,9 +581,9 @@ export async function expireStaleGoogleRevocations(
 /** A family-erasure row's outcome: a settle outcome, or one of the two local-only ends. */
 export type ErasureGoogleOutcome =
   | GoogleRowOutcome
-  /** The owner still holds a live grant in another household. Google revokes per account,
-   * so a revoke here would end that household's grant too: ended here locally, nothing
-   * sent to Google (rule #5). */
+  /** This row's Google account still holds a live grant in another household. Google
+   * revokes per account, so a revoke here would end that household's grant too: ended here
+   * locally, nothing sent to Google (rule #5). */
   | 'grant_kept_other_household'
   /** A live row with no owner: ended locally, never skipped (rule #11). */
   | 'ended_without_owner';
@@ -604,8 +605,8 @@ export interface ErasureSettlement {
  * `pending_retry` holds the only token that can end its grant, and the cascade would
  * delete it: the caller keeps the family for a later sweep instead, for a bounded wait
  * (the sweep's own bound, rights/delete.ts). Two kinds of row end locally only and are
- * never revoked: one whose owner still holds a live grant in another household, and one
- * with no owner. Throws only when the local end fails, which leaves the family standing.
+ * never revoked: one whose Google account still holds a live grant in another household,
+ * and one with no owner. Throws only when the local end fails, which leaves the family standing.
  */
 export async function endGoogleForFamilyErasure(
   db: Database,
@@ -619,6 +620,7 @@ export async function endGoogleForFamilyErasure(
       provider: schema.integrations.provider,
       enc: schema.integrations.oauthTokensEncrypted,
       pending: schema.integrations.googleRevokePendingEncrypted,
+      accountKey: googleAccountKeyOf(),
     })
     .from(schema.integrations)
     .where(
@@ -629,14 +631,17 @@ export async function endGoogleForFamilyErasure(
     );
   const held = rows.filter((row) => row.enc !== null || row.pending !== null);
   if (held.length === 0) return [];
-  const elsewhere = await usersHoldingGoogleElsewhere(db, {
+  // A row whose account is unknown is revoked: it fails toward revocation.
+  const elsewhere = await googleAccountsHeldElsewhere(db, {
     familyId,
-    userIds: [...new Set(held.flatMap((row) => (row.userId === null ? [] : [row.userId])))],
+    accountKeys: [...new Set(held.flatMap((row) => (row.accountKey ? [row.accountKey] : [])))],
   });
   const localOnly = new Map<string, ErasureGoogleOutcome>();
   for (const row of held) {
     if (row.userId === null) localOnly.set(row.id, 'ended_without_owner');
-    else if (elsewhere.has(row.userId)) localOnly.set(row.id, 'grant_kept_other_household');
+    else if (row.accountKey && elsewhere.has(row.accountKey)) {
+      localOnly.set(row.id, 'grant_kept_other_household');
+    }
   }
   const revocable = held.filter((row) => !localOnly.has(row.id));
   const live = revocable.filter((row) => row.enc !== null);
@@ -645,15 +650,17 @@ export async function endGoogleForFamilyErasure(
   const now = wired.now();
   const { ended, endedLocally } = await db.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const out: EndedConnection[] = [];
-    for (const userId of new Set(live.map((row) => row.userId as string))) {
-      out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
-    }
+    // Local-only rows FIRST: one parent can hold a kept account and a revoked one here,
+    // and endGoogleConnections ends every row of that parent still holding keys.
     const local = await endGoogleConnectionsLocally(tx, {
       familyId,
       ids: [...localOnly.keys()],
       now,
     });
+    const out: EndedConnection[] = [];
+    for (const userId of new Set(live.map((row) => row.userId as string))) {
+      out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
+    }
     // The family stands until Google answers, so its trail says what ended (rule #6).
     const trail = [
       ...out.map((row) => ({
@@ -661,11 +668,13 @@ export async function endGoogleForFamilyErasure(
         provider: row.provider,
         pending: row.unrevocable ? null : revokePendingCustody(),
       })),
+      // Neutral here: why a row ended locally can be a fact about one adult's other
+      // household, so the reason lives only in the log and the return value.
       ...local.map((row) => ({
         id: row.id,
         provider: row.provider,
         pending: null,
-        google: localOnly.get(row.id),
+        google: 'ended_locally',
       })),
     ];
     if (trail.length > 0) {

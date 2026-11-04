@@ -214,7 +214,8 @@ export interface DeletionSweepSummary {
   pastGoogleWait: {
     unconfirmed: number;
     endFailed: number;
-    page: FailurePageCounts | 'nothing_to_page';
+    /** `page_failed`: the pager threw; each claim stays owed for the failure-page cron. */
+    page: FailurePageCounts | 'nothing_to_page' | 'page_failed';
   };
   /** Every Google row of every due family, by outcome, kept or erased. */
   google: ErasureGoogleRow[];
@@ -227,6 +228,20 @@ export interface ErasureGoogleRow {
   integrationId: string;
   provider: ConnectorProvider;
   google: ErasureGoogleOutcome | 'google_unconfirmed' | 'google_end_failed';
+}
+
+/**
+ * The Google half of a sweep summary as the cron logs it: counts and outcome codes only,
+ * never a family, user or integration id. Null when the sweep touched no Google row.
+ */
+export function erasureGoogleLogLine(summary: DeletionSweepSummary) {
+  const { googleRevokePending, googleEndFailed, pastGoogleWait } = summary;
+  if (summary.google.length === 0 && googleRevokePending === 0 && googleEndFailed === 0) {
+    return null;
+  }
+  const google: Partial<Record<ErasureGoogleRow['google'], number>> = {};
+  for (const row of summary.google) google[row.google] = (google[row.google] ?? 0) + 1;
+  return { googleRevokePending, googleEndFailed, pastGoogleWait, google };
 }
 
 /** Pages #ops with every owed erasure claim (failure-page.ts). */
@@ -444,8 +459,20 @@ export async function runDeletionSweep(
   // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
   const orphans = await runOrphanUserSweep(database, now, stranded);
   // The claims were recorded with each DELETE above; this pages them now. A page that does
-  // not leave stays owed for the failure-page cron.
-  const page = erasedPastWait.size > 0 ? await pageErasureGoogle() : ('nothing_to_page' as const);
+  // not leave stays owed for the failure-page cron, and a pager that throws is named here
+  // rather than skipping the cron's later retention sweeps.
+  let page: DeletionSweepSummary['pastGoogleWait']['page'] = 'nothing_to_page';
+  if (erasedPastWait.size > 0) {
+    try {
+      page = await pageErasureGoogle();
+    } catch (err) {
+      page = 'page_failed';
+      console.error(
+        { error: err instanceof Error ? err.name : 'unknown' },
+        'deletion sweep: erasure google page threw',
+      );
+    }
+  }
   return {
     erased: familyIds.length,
     purgedObjects,

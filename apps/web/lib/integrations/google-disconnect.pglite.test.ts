@@ -3,6 +3,8 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   GOOGLE_REVOKE_RETRY_BUDGET_MS,
@@ -123,6 +125,11 @@ function scriptedPorts(
 const OK = (): GoogleRevokeResult => ({ outcome: 'revoked' });
 const DOWN = (): GoogleRevokeResult => ({ outcome: 'unavailable', status: 503 });
 
+/** Each parent connects their own Google account: the callback stores its key. */
+function accountOf(userId: string): Record<string, unknown> {
+  return { googleAccountKey: `account-of-${userId}` };
+}
+
 async function connect(
   userId: string,
   provider: 'gcal' | 'gmail',
@@ -134,6 +141,7 @@ async function connect(
     provider,
     scopes: provider === 'gcal' ? CAL_SCOPES : MAIL_SCOPES,
     tokens,
+    providerMetadata: accountOf(userId),
   });
   const row = await rowFor(userId, provider);
   if (!row) throw new Error('connection was not saved');
@@ -477,22 +485,53 @@ describe('reconnecting clears a pending revoke', () => {
   });
 });
 
-describe('a connect in another household cancels the pending revoke of the same parent', () => {
-  it('the retry never ends the grant the parent just gave the other household', async () => {
-    await connect(parentUserId, 'gcal', CAL);
-    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+describe('a connect cancels a pending revoke of the same Google account only, in any household', () => {
+  const THERE = { accessToken: 'ya29.there', refreshToken: '1//there' };
+
+  async function secondHousehold() {
     const other = await seedFamily(db.database, 'Other');
     await db.database
       .insert(schema.familyMembers)
       .values({ familyId: other.familyId, userId: parentUserId, role: 'co_parent' });
+    return other.familyId;
+  }
 
-    await saveConnection(db.database, {
-      familyId: other.familyId,
+  function connectThere(otherFamilyId: string, providerMetadata?: Record<string, unknown>) {
+    return saveConnection(db.database, {
+      familyId: otherFamilyId,
       userId: parentUserId,
       provider: 'gcal',
       scopes: CAL_SCOPES,
-      tokens: { accessToken: 'ya29.there', refreshToken: '1//there' },
+      tokens: THERE,
+      ...(providerMetadata ? { providerMetadata } : {}),
     });
+  }
+
+  it("another account connected elsewhere leaves this household's pending revoke, and the retry ends it", async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+    const other = await secondHousehold();
+
+    await connectThere(other, { googleAccountKey: 'a-different-account' });
+    // A connect whose account Hale could not read is not the same account either.
+    await connectThere(other);
+
+    expect((await rowFor(parentUserId, 'gcal'))?.pending).not.toBeNull();
+    expect(await audits('integration_google_revoke_cancelled')).toEqual([]);
+    const ports = scriptedPorts(OK);
+    expect(await retryPendingGoogleRevocations(db.database, ports)).toMatchObject({
+      attempted: 1,
+      revoked: 1,
+    });
+    expect(ports.revoked).toEqual(['1//cal-r']);
+  });
+
+  it('the same account connected elsewhere cancels it, with a neutral row here that History and the family copy leave out', async () => {
+    const calId = await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+    const other = await secondHousehold();
+
+    await connectThere(other, accountOf(parentUserId));
 
     expect(await rowFor(parentUserId, 'gcal')).toMatchObject({ pending: null, since: null });
     const ports = scriptedPorts(OK);
@@ -500,7 +539,52 @@ describe('a connect in another household cancels the pending revoke of the same 
       attempted: 0,
     });
     expect(ports.revoked).toEqual([]);
-  });
+
+    const rows = await db.database
+      .select({
+        id: schema.auditLog.id,
+        familyId: schema.auditLog.familyId,
+        actor: schema.auditLog.actor,
+        targetTable: schema.auditLog.targetTable,
+        targetId: schema.auditLog.targetId,
+        after: schema.auditLog.after,
+      })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'integration_google_revoke_cancelled'));
+    // One row, in the household whose token was cleared, naming no other household.
+    expect(rows).toEqual([
+      {
+        id: expect.any(String),
+        familyId,
+        actor: 'system',
+        targetTable: 'users',
+        targetId: parentUserId,
+        after: { provider: 'gcal', integrationId: calId, reason: 'same_account_connected' },
+      },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain(other);
+
+    const [disconnected] = await db.database
+      .select({ id: schema.auditLog.id })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'integration_revoked'),
+        ),
+      );
+    const history = await loadTrailForFamily(db.database, familyId);
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    for (const trail of [history, copy.trail]) {
+      const ids = trail.map((row) => row.id);
+      expect(ids).not.toContain(rows[0]?.id);
+      // Positive control: the disconnect itself is on both.
+      expect(ids).toContain(disconnected?.id);
+    }
+  }, 30_000);
 });
 
 describe('the cron retry reaches every pending row during a long outage', () => {
@@ -875,5 +959,48 @@ describe('a push renewal racing a disconnect never revives the watch', () => {
     expect(summary).toMatchObject({ opened: 1, integrationEnded: 1, failed: 0 });
     expect(watchedWith).toHaveLength(1);
     expect(calls.filter((url) => url.endsWith('/channels/stop'))).toHaveLength(0);
+  });
+
+  it("an expired row a disconnect ended after the listing never sends its refresh token to Google's token endpoint", async () => {
+    const expired = { expiresAt: 0 };
+    await connect(parentUserId, 'gcal', { ...CAL, ...expired });
+    await connect(coParentUserId, 'gcal', { ...CO, ...expired });
+    const refreshedWith: string[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
+      const token = new URLSearchParams(init?.body ?? '').get('refresh_token') ?? '';
+      refreshedWith.push(token);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: `ya29.fresh-${token}`, expires_in: 3600 }),
+      };
+    });
+    const google: GoogleJsonClient = {
+      async request({ url }) {
+        if (url.endsWith('/events/watch') && refreshedWith.length === 1) {
+          // The first row reached ends the OTHER parent's row, which was listed as live.
+          const other = refreshedWith[0] === CAL.refreshToken ? coParentUserId : parentUserId;
+          await disconnect(other, 'gcal', scriptedPorts(OK));
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resourceId: 'resource-new',
+            expiration: String(NOW.getTime() + DAY_MS),
+          }),
+        };
+      },
+    };
+
+    try {
+      const summary = await renewDueGooglePushWatches(db.database, PUSH_ON, google);
+      expect(summary).toMatchObject({ opened: 1, integrationEnded: 1, failed: 0 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // Positive control: the live row was refreshed, once.
+    expect(refreshedWith).toHaveLength(1);
+    expect([CAL.refreshToken, CO.refreshToken]).toContain(refreshedWith[0]);
   });
 });
