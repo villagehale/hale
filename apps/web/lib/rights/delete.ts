@@ -19,8 +19,9 @@ export {
  * deletion — so an accidental or coerced request is recoverable.
  */
 
-/** The grace window before the worker erases a scheduled family — 7 days. */
-export const DELETION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+/** The grace window before the worker erases a scheduled family, in days. */
+export const DELETION_GRACE_DAYS = 7;
+export const DELETION_GRACE_MS = DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
 export interface ScheduleFamilyDeletionArgs {
   familyId: string;
