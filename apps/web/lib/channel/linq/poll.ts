@@ -219,14 +219,14 @@ export async function sendChoicePoll(
   let prompted = false;
   try {
     if (args.prompt) {
-      await sendFlooredChatMessage(audience.pass, {
+      await sendFlooredChatMessage(audience.pass, 'event_logistics', {
         chatId: args.chatId,
         text: args.prompt,
         fetch: args.fetch,
       });
       prompted = true;
     }
-    const poll = await sendFlooredPoll(audience.pass, {
+    const poll = await sendFlooredPoll(audience.pass, 'event_logistics', {
       chatId: args.chatId,
       options: args.options.map((option) => option.text),
       idempotencyKey: args.idempotencyKey,

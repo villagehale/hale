@@ -1,10 +1,31 @@
+import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acknowledgeDutyWrite } from '~/lib/channel/coparent/duty/ack';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from '~/lib/channel/coparent/duty/flag';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+} from '~/lib/channel/intake/fakes';
+import type { IntakeDeps } from '~/lib/channel/intake/machine';
+import { createSession } from '~/lib/channel/intake/session';
+import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
+import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import {
+  type FloorPass,
+  FloorPassRefused,
+  chatFloorAllows,
+  sendFlooredChatMessage,
+  sendFlooredPoll,
+} from './group-audience';
 import { runGroupPlanFollowups } from './group-plan-rsvp/followups';
 import { createMemoryGroupPlanRsvpStore, createMemoryWorld } from './group-plan-rsvp/memory-store';
 import {
@@ -14,7 +35,7 @@ import {
   sendGroupPlanRsvpLine,
 } from './group-plan-rsvp/send';
 import { fakeGroupPlanRsvpComposer } from './group-plan-rsvp/voice-fake';
-import { type FloorPass, chatFloorAllows, sendFlooredChatMessage } from './group-audience';
+import { handleLinqInboundRequest } from './inbound';
 import { sendChoicePoll } from './poll';
 import { listLinqParticipantHandles } from './transport';
 
@@ -70,7 +91,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await db.exec(
-    'truncate table families, users, linq_group_rosters, channel_messages, linq_poll_options cascade',
+    'truncate table families, users, linq_group_rosters, channel_messages, linq_poll_options, sms_intake_sessions, rate_limits cascade',
   );
 });
 
@@ -392,22 +413,40 @@ describe('a choice poll in a family group goes through the floor', () => {
   });
 });
 
-describe('a floored send needs the pass the floor gave for that chat', () => {
-  const floor = (recipientUserId: string, chatId: string, wire: ReturnType<typeof linqWire>) =>
+describe('a floored send needs the pass the floor gave for that chat and that class', () => {
+  const floor = (
+    recipientUserId: string,
+    chatId: string,
+    wire: ReturnType<typeof linqWire>,
+    lineClass: Parameters<typeof chatFloorAllows>[1]['lineClass'] = 'event_logistics',
+  ) =>
     chatFloorAllows(db.database, {
       chatId,
       recipientUserId,
-      lineClass: 'event_logistics',
+      lineClass,
       listChatHandles: (i) => listLinqParticipantHandles({ ...i, fetch: wire.fetch }),
     });
 
+  const refusalOf = (sent: Promise<unknown>) =>
+    sent.then(
+      () => null,
+      (err: unknown) => err,
+    );
+
   it('a pass made by a cast is refused and nothing is posted', async () => {
     const wire = linqWire([MOM, DAD]);
-    const forged = { chatId: GROUP } as unknown as FloorPass;
+    const forged = { chatId: GROUP, lineClass: 'event_logistics' } as unknown as FloorPass;
 
-    await expect(
-      sendFlooredChatMessage(forged, { chatId: GROUP, text: 'x', fetch: wire.fetch }),
-    ).rejects.toThrow('floor');
+    const refusal = await refusalOf(
+      sendFlooredChatMessage(forged, 'event_logistics', {
+        chatId: GROUP,
+        text: 'x',
+        fetch: wire.fetch,
+      }),
+    );
+
+    expect(refusal).toBeInstanceOf(FloorPassRefused);
+    expect((refusal as FloorPassRefused).reason).toBe('pass_forged');
     expect(wire.posts()).toEqual([]);
   });
 
@@ -418,9 +457,16 @@ describe('a floored send needs the pass the floor gave for that chat', () => {
     const verdict = await floor(seeded.parentUserId, DIRECT, wire);
     if (!verdict.allowed) throw new Error(`expected a pass, got ${verdict.reason}`);
 
-    await expect(
-      sendFlooredChatMessage(verdict.pass, { chatId: GROUP, text: 'x', fetch: wire.fetch }),
-    ).rejects.toThrow('floor');
+    const refusal = await refusalOf(
+      sendFlooredChatMessage(verdict.pass, 'event_logistics', {
+        chatId: GROUP,
+        text: 'x',
+        fetch: wire.fetch,
+      }),
+    );
+
+    expect(refusal).toBeInstanceOf(FloorPassRefused);
+    expect((refusal as FloorPassRefused).reason).toBe('pass_wrong_chat');
     expect(wire.posts()).toEqual([]);
   });
 
@@ -431,8 +477,85 @@ describe('a floored send needs the pass the floor gave for that chat', () => {
     const verdict = await floor(seeded.parentUserId, DIRECT, wire);
     if (!verdict.allowed) throw new Error(`expected a pass, got ${verdict.reason}`);
 
-    await sendFlooredChatMessage(verdict.pass, { chatId: DIRECT, text: 'x', fetch: wire.fetch });
+    await sendFlooredChatMessage(verdict.pass, 'event_logistics', {
+      chatId: DIRECT,
+      text: 'x',
+      fetch: wire.fetch,
+    });
     expect(wire.posts().map((c) => c.url)).toEqual([`${BASE}/chats/${DIRECT}/messages`]);
+  });
+
+  it("a 'reply' pass from an unclaimed group cannot carry a pickup_duty line", async () => {
+    const seeded = await householdGroup();
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const verdict = await floor(seeded.parentUserId, UNCLAIMED, wire, 'reply');
+    if (!verdict.allowed) throw new Error(`expected a reply pass, got ${verdict.reason}`);
+
+    const refusal = await refusalOf(
+      sendFlooredChatMessage(verdict.pass, 'pickup_duty', {
+        chatId: UNCLAIMED,
+        text: 'x',
+        fetch: wire.fetch,
+      }),
+    );
+
+    expect(refusal).toBeInstanceOf(FloorPassRefused);
+    expect((refusal as FloorPassRefused).reason).toBe('pass_wrong_class');
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it("a 'reply' pass copied with a household class written in is refused as forged", async () => {
+    const seeded = await householdGroup();
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const verdict = await floor(seeded.parentUserId, UNCLAIMED, wire, 'reply');
+    if (!verdict.allowed) throw new Error(`expected a reply pass, got ${verdict.reason}`);
+    const relabelled: FloorPass = { ...verdict.pass, lineClass: 'pickup_duty' };
+
+    const refusal = await refusalOf(
+      sendFlooredChatMessage(relabelled, 'pickup_duty', {
+        chatId: UNCLAIMED,
+        text: 'x',
+        fetch: wire.fetch,
+      }),
+    );
+
+    expect(refusal).toBeInstanceOf(FloorPassRefused);
+    expect((refusal as FloorPassRefused).reason).toBe('pass_forged');
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it("a 'reply' pass cannot carry the poll of a household choice either", async () => {
+    const seeded = await householdGroup();
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const verdict = await floor(seeded.parentUserId, UNCLAIMED, wire, 'reply');
+    if (!verdict.allowed) throw new Error(`expected a reply pass, got ${verdict.reason}`);
+
+    const refusal = await refusalOf(
+      sendFlooredPoll(verdict.pass, 'event_logistics', {
+        chatId: UNCLAIMED,
+        options: ['Saturday', 'Sunday'],
+        idempotencyKey: 'poll:reply-pass',
+        fetch: wire.fetch,
+      }),
+    );
+
+    expect(refusal).toBeInstanceOf(FloorPassRefused);
+    expect((refusal as FloorPassRefused).reason).toBe('pass_wrong_class');
+    expect(wire.posts()).toEqual([]);
+  });
+
+  it("positive control: a 'pickup_duty' pass for the household group sends the duty line", async () => {
+    const seeded = await householdGroup();
+    const wire = linqWire([MOM, DAD]);
+    const verdict = await floor(seeded.parentUserId, GROUP, wire, 'pickup_duty');
+    if (!verdict.allowed) throw new Error(`expected a duty pass, got ${verdict.reason}`);
+
+    await sendFlooredChatMessage(verdict.pass, 'pickup_duty', {
+      chatId: GROUP,
+      text: 'x',
+      fetch: wire.fetch,
+    });
+    expect(wire.posts().map((c) => c.url)).toEqual([`${BASE}/chats/${GROUP}/messages`]);
   });
 });
 
@@ -547,5 +670,184 @@ describe('RSVP follow-ups through the real sender', () => {
 
     expect(result).toMatchObject({ evaluated: 1, sent: 1, held: 0, failed: 0 });
     expect(wire.groupPosts()).toHaveLength(1);
+  });
+});
+
+describe('only Linq’s own is_group can make a chat 1:1', () => {
+  const SECRET_BYTES = Buffer.alloc(32, 9);
+  const TS = String(Math.floor(DAY.getTime() / 1000));
+
+  function signed(body: unknown): Request {
+    const raw = JSON.stringify(body);
+    const mac = createHmac('sha256', SECRET_BYTES)
+      .update(`evt_floor.${TS}.${raw}`)
+      .digest('base64');
+    return new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'webhook-id': 'evt_floor',
+        'webhook-timestamp': TS,
+        'webhook-signature': `v1,${mac}`,
+      },
+      body: raw,
+    });
+  }
+
+  /** A location share carries no is_group: Linq does not say what kind of chat it is in. */
+  function locationShare(chatId: string) {
+    return {
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'location.sharing.started',
+      event_id: 'evt_floor',
+      created_at: DAY.toISOString(),
+      data: { chat_id: chatId, shared_by: MOM, began_at: DAY.toISOString() },
+    };
+  }
+
+  function directText(chatId: string) {
+    return {
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'message.received',
+      event_id: 'evt_floor',
+      created_at: DAY.toISOString(),
+      data: {
+        chat: { id: chatId, is_group: false },
+        id: 'in-direct-text',
+        direction: 'inbound',
+        sender_handle: { handle: MOM, is_me: false },
+        parts: [{ type: 'text', value: 'is swim still on' }],
+        sent_at: DAY.toISOString(),
+        service: 'iMessage',
+      },
+    };
+  }
+
+  /** MOM is the household's verified parent, so a turn the intake does not keep reaches the coach. */
+  async function verifiedMom(seeded: { familyId: string; parentUserId: string }): Promise<void> {
+    await db.database.insert(schema.parentChannels).values({
+      userId: seeded.parentUserId,
+      familyId: seeded.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(MOM),
+      phoneE164Hash: phoneBlindIndex(MOM),
+      verifiedAt: DAY,
+    });
+  }
+
+  function door(readSharedLocality: () => Promise<{ status: 'locality'; locality: string }>) {
+    const outcomes: string[] = [];
+    const intake: IntakeDeps = {
+      transport: new FakeTransport(),
+      threadMessage: async () => 'conv-1',
+      extractor: new FakeExtractor([{ children: [], postalCode: null }]),
+      intentReader: new FakeIntentReader([
+        { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
+      ]),
+      optOutReader: { read: async () => ({ intent: 'none', confirmation: '' }) },
+      radar: fakeRadar,
+      answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
+      identityAsk: new FakeIdentityAsk(),
+      limiter: new PostgresRateLimiter(db.database),
+      now: DAY,
+    };
+    const deps = {
+      database: db.database,
+      intake: () => intake,
+      enqueue: async () => {},
+      log: { info: () => {}, warn: () => {}, error: () => {} },
+      countOutcome: async (outcome: string) => {
+        outcomes.push(outcome);
+      },
+      now: () => DAY,
+      markRead: async () => ({ status: 'sent' }),
+      readSharedLocality,
+    } as unknown as Parameters<typeof handleLinqInboundRequest>[1];
+    return { deps, outcomes };
+  }
+
+  async function inboundInGroup(chatId: string) {
+    return db.database
+      .select({ inGroup: schema.channelMessages.inGroup })
+      .from(schema.channelMessages)
+      .where(
+        and(
+          eq(schema.channelMessages.providerChatId, chatId),
+          eq(schema.channelMessages.direction, 'in'),
+        ),
+      );
+  }
+
+  const poll = (
+    seeded: { familyId: string; parentUserId: string },
+    chatId: string,
+    f: typeof fetch,
+  ) =>
+    sendChoicePoll(db.database, {
+      chatId,
+      prompt: 'Saturday or Sunday?',
+      options: [{ text: 'Saturday' }, { text: 'Sunday' }],
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      now: DAY,
+      fetch: f,
+      idempotencyKey: `poll:door:${chatId}`,
+    });
+
+  beforeEach(() => {
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', `whsec_${SECRET_BYTES.toString('base64')}`);
+    vi.stubEnv('FIRST_TOUCH_LADDER_ENABLED', 'on');
+  });
+
+  it('a location share in the family group records no group bit, so a later poll there is floored', async () => {
+    const seeded = await householdGroup();
+    await verifiedMom(seeded);
+    // The place ask is open when the share lands; the parent's other text closes the
+    // session while the locality is read, so the share is handed to the coach.
+    await createSession(db.database, { phoneE164: MOM, state: 'awaiting_place', sourceCode: null });
+    vi.stubGlobal('fetch', linqWire([MOM, DAD]).fetch);
+    const { deps } = door(async () => {
+      await db.database
+        .update(schema.smsIntakeSessions)
+        .set({ closedAt: DAY })
+        .where(eq(schema.smsIntakeSessions.phoneHash, phoneBlindIndex(MOM)));
+      return { status: 'locality', locality: 'Springfield' };
+    });
+
+    const shared = await handleLinqInboundRequest(signed(locationShare(GROUP)), deps);
+    await expect(shared.json()).resolves.toEqual({ outcome: 'handed_off' });
+
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    await expect(poll(seeded, GROUP, wire.fetch)).resolves.toEqual({
+      status: 'held',
+      reason: 'participant_unresolved',
+    });
+    expect(wire.reads().map((c) => c.url)).toEqual([`${BASE}/chats/${GROUP}`]);
+    expect(wire.posts()).toEqual([]);
+    expect(await inboundInGroup(GROUP)).toEqual([{ inGroup: null }]);
+  });
+
+  it('positive control: a real 1:1 text (Linq said is_group false) still sends the poll with no floor read', async () => {
+    const seeded = await householdGroup();
+    await verifiedMom(seeded);
+    vi.stubGlobal('fetch', linqWire([MOM, DAD]).fetch);
+    const { deps } = door(async () => ({ status: 'locality', locality: 'Springfield' }));
+
+    const texted = await handleLinqInboundRequest(signed(directText(DIRECT)), deps);
+    await expect(texted.json()).resolves.toEqual({ outcome: 'handed_off' });
+    expect(await inboundInGroup(DIRECT)).toEqual([{ inGroup: false }]);
+
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    const sent = await poll(seeded, DIRECT, wire.fetch);
+
+    expect(sent.status).toBe('sent');
+    expect(wire.reads()).toEqual([]);
+    expect(wire.posts().map((c) => c.url)).toEqual([
+      `${BASE}/chats/${DIRECT}/messages`,
+      `${BASE}/chats/${DIRECT}/polls`,
+    ]);
   });
 });
