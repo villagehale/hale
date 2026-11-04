@@ -25,13 +25,13 @@ import type { RosterReading } from './roster-reading';
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const HALE = '+14165550100';
-const PARENT = '+14165550111';
-const COPARENT = '+14165550112';
-const NANNY = '+14165550113';
-const OTHER_PARENT = '+14165550121';
-const UNKNOWN_A = '+14165550131';
-const UNKNOWN_B = '+14165550132';
+const HALE = '+15555550100';
+const PARENT = '+15555550111';
+const COPARENT = '+15555550112';
+const NANNY = '+15555550113';
+const OTHER_PARENT = '+15555550121';
+const UNKNOWN_A = '+15555550131';
+const UNKNOWN_B = '+15555550132';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
 const CHAT = 'chat-family-group';
 
@@ -913,6 +913,31 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
       .from(schema.familyMembers)
       .where(eq(schema.familyMembers.familyId, familyId));
     expect(roles.map((row) => row.role).sort()).toEqual(['grandparent', 'primary_parent']);
+  });
+
+  it("records the seated member's reply with Linq's own is_group, so it can never read as a 1:1", async () => {
+    const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: UNKNOWN_A,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const { deps } = door(handlesOk([PARENT, UNKNOWN_A]).list);
+    await handleLinqInboundRequest(signed(addedMe()), deps);
+
+    const reply = await handleLinqInboundRequest(
+      signed(groupMessage(UNKNOWN_A, 'grandma here!', 'in-gran')),
+      deps,
+    );
+
+    expect(await reply.json()).toMatchObject({ outcome: 'role_confirmed' });
+    const rows = await db.database
+      .select({ inGroup: schema.channelMessages.inGroup })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.providerMessageId, 'in-gran'));
+    expect(rows).toEqual([{ inGroup: true }]);
   });
 
   it('asks, and does not seat, someone added to a claimed group, whatever the co-parent flag says', async () => {

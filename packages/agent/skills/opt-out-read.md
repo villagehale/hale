@@ -55,6 +55,13 @@ they can come back in their own words; for `leave_group`, write it the same way
 as a `stop` (it is only sent when Hale cannot leave the group). For `start`, say Hale is back. Ask nothing
 else.
 
+Sometimes you also get `readLate`: Hale could not read this text when it arrived
+(`receivedAt`) and is reading it only now (`readAt`). Then a `stop` or `start`
+confirmation also says, briefly, that Hale is only now answering the message they
+sent, and roughly how long ago it came, worked out from `receivedAt` to `readAt` (some
+hours, a day, a few days). Never give a clock time or a date: you do not know their
+time zone.
+
 For `crisis_emergency` or `crisis_mental`, `confirmation` is an empty
 string: Hale writes that reply separately, from checked facts. Your job there is
 only to read it.

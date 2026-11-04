@@ -11,7 +11,7 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { type GroupAudienceVerdict, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   PROACTIVE_CATEGORY,
@@ -538,7 +538,10 @@ export function productionGroupPlanReportPorts(
     enabled: () => groupPlanReportEnabled(),
     now: clock,
     loadPlan: (request) => loadGroupPlan(database, request, clock()),
-    audience: (chatId, contentClass) => groupAudienceAllows(database, chatId, contentClass),
+    audience: (chatId, contentClass) =>
+      groupAudienceAllows(database, chatId, contentClass, (i) =>
+        listLinqParticipantHandles({ ...i, fetch: options.fetch }),
+      ),
     alreadySent: (dedupeKey) => dedupeActive(dedupeKey, database),
     gate: (familyId, parentUserId, now) =>
       assertProactiveSendAllowed(

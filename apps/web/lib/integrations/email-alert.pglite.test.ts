@@ -177,7 +177,6 @@ function alertPair(
       threadId: `t-${messageId}`,
       labelIds: ['INBOX'],
       envelope: ENVELOPE,
-      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now: NOW,
       ...over,
@@ -212,6 +211,7 @@ beforeEach(async () => {
   INTEGRATION = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -457,7 +457,7 @@ describe('alertParentForGmailSweep', () => {
     expect(h.classifyCalls).toBe(0);
   });
 
-  it('reads every dated envelope, newest first, and drops none for a count', async () => {
+  it('reads every dated envelope, oldest first, and drops none for a count', async () => {
     const h = harness();
     // 12 messages, m1 oldest .. m12 newest. All of them are told.
     const envelopes = Array.from({ length: 12 }, (_, i) =>
@@ -1284,7 +1284,6 @@ describe('the going count in the alert path', () => {
         threadId: `t-${messageId}`,
         labelIds: ['INBOX'],
         envelope: RECEIPT,
-        cancelledThisSweep: new Set<string>(),
         timeZone: 'America/Toronto',
         now: NOW,
       },

@@ -20,6 +20,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
+import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -46,6 +47,7 @@ import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
 import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
+import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
   plainTextWithoutLinks,
   readSendRefusal,
@@ -53,6 +55,7 @@ import {
 } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import {
+  type CrisisPager,
   type SaidLineWriter,
   crisisReplyLanguage,
   deliverCrisisReply,
@@ -63,7 +66,7 @@ import { recordCommitment } from '~/lib/commitments/ledger';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
-import { reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
+import { failurePageCrisisPager, reportFirstHelloFailure } from '~/lib/monitoring/failure-page';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -86,6 +89,7 @@ import {
   venueForCode,
 } from './copy';
 import {
+  type PostalContext,
   crisisRegionForPlace,
   deriveDateOfBirth,
   parseIntakePostal,
@@ -124,7 +128,7 @@ import {
   onboardingMissing,
   storedFromCapture,
 } from './onboarding-turn';
-import { holdSender, releaseSender } from './opt-out-hold';
+import { holdSender, releaseHeldMessage } from './opt-out-hold';
 import {
   type OptOutReader,
   type OptOutReading,
@@ -222,7 +226,11 @@ export interface IntakeDeps {
   optOutReader?: OptOutReader;
   /** #868: writes the lines that used to be fixed (identity, a crisis the answer model flagged). */
   saidLine?: SaidLineWriter;
-  /** #868 · failed-read hold store; defaults to opt_out_read_holds. */
+  /** Pages #ops when a crisis gets no reply. Optional because the DEFAULT IS THE REAL
+   * EFFECT (failure-page.ts on this turn's database): a test seam, never a way to
+   * withhold the page. */
+  crisisPager?: CrisisPager;
+  /** #868 · failed-read hold store; defaults to opt_out_held_messages (VIL-553). */
   optOutHold?: OptOutHoldPort;
   /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
    * Required, never nullable (rule #11): withholding it would restore the exact bug it
@@ -291,9 +299,10 @@ export type IntakeOutcome =
   | { status: 'provisioned'; familyId: string }
   /**
    * One ladder beat. `step` is the job this reply settled. `closed` is the
-   * co-parent ask, after which the next text belongs to the coach.
+   * co-parent ask, after which the next text belongs to the coach. `held` is set
+   * only when a health reply was owed and nothing went out (VIL-589).
    */
-  | { status: 'ladder_advanced'; step: IntakeLadderStep; closed: boolean }
+  | { status: 'ladder_advanced'; step: IntakeLadderStep; closed: boolean; held?: HealthHeld }
   /** `nameAsked` is whether "What should I call you?" went out as its own text,
    * after the turtle card and before the inbox. Never a tail on the assent line.
    * A French reply skips the English line (PR #689). A parent who already has a
@@ -374,7 +383,7 @@ export type IntakeOutcome =
   // (inbound-route.ts), and a redemption has already been answered.
   | JoinOutcome;
 
-interface Inbound {
+export interface Inbound {
   from: string;
   body: string;
   providerId: string;
@@ -438,7 +447,7 @@ export async function handleInboundSms(
         text: inbound.body,
         language: null,
       });
-      await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+      await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
       if (reading?.intent === 'stop') {
         return handleStop(
           database,
@@ -483,7 +492,7 @@ export async function handleInboundSms(
       language: session?.ladderLanguage ?? null,
       region: crisisRegionForSession(session),
     });
-    await settleOptOutHold(database, phoneHash, inbound.body, reading, now, deps.optOutHold);
+    await settleOptOutHold(database, phoneHash, inbound, reading, now, deps.optOutHold);
     if (reading?.intent === 'stop') {
       return handleStop(
         database,
@@ -988,21 +997,51 @@ async function writeChannelMessage(
 /** A turn that is answered by silence: the seam ends the turn and sends nothing. */
 const HELD_SILENT = { body: '', source: 'safety' as const };
 
+/** Why a health reply that was owed went unsent (rule #11). */
+type HealthHeld = 'write_failed' | 'writer_absent';
+
+/** The first token that is a Canadian or US code, with what it says. */
+function firstIntakePostal(
+  tokens: readonly (string | null | undefined)[],
+): { token: string; parsed: PostalContext } | null {
+  for (const token of tokens) {
+    if (typeof token !== 'string') continue;
+    const parsed = parseIntakePostal(token);
+    if (parsed) return { token, parsed };
+  }
+  return null;
+}
+
+/** The health line's place, from the same token that gave the region. */
+async function healthPlaceOf(
+  hit: { token: string; parsed: PostalContext } | null,
+): Promise<HealthPlace | null> {
+  if (!hit) return null;
+  if (hit.parsed.countryCode === 'US') return { country: 'US', provinceOrState: null };
+  return { country: 'CA', provinceOrState: await provinceOfPostal(hit.token) };
+}
+
 async function offScriptReply(
   args: {
     parentWords: string;
     pendingAsk: string;
     children: readonly ExtractedChild[];
     postalCode?: string | null;
-    /** Canada or the US when a postal token already says so. Never guessed. */
-    region?: 'CA' | 'US' | null;
+    /** Every place the session holds, in order. The first Canadian or US code gives
+     * both the crisis region and the health line's province. Never guessed. */
+    placeTokens: readonly (string | null | undefined)[];
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
     language?: ReplyLanguage | null;
   },
   deps: IntakeDeps,
   turn: Inbound,
-): Promise<{ body: string; source: 'composed' | 'safety' | 'identity' } | null> {
+  page: { database: Database; familyId: string | null; parentUserId: string | null },
+): Promise<{
+  body: string;
+  source: 'composed' | 'safety' | 'identity';
+  held?: HealthHeld;
+} | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
   const identity = await identityChallengeReply(
@@ -1017,14 +1056,15 @@ async function offScriptReply(
   if (identity.challenge) {
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
-  const { numberOrigin: _origin, region: _region, ...composeArgs } = args;
+  const { numberOrigin: _origin, placeTokens: _placeTokens, ...composeArgs } = args;
   const outcome = await deps.answerComposer.compose(composeArgs);
+  const placed = firstIntakePostal(args.placeTokens);
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. The same facts-only writer and
     // check as every crisis reply; a miss has already paged #ops. The turn's one read
     // still named the text's language.
     const language = args.language ?? null;
-    const region = args.region ?? null;
+    const region = placed?.parsed.countryCode ?? null;
     const reading = await readTurnOnce(deps.optOutReader, turn, {
       text: args.parentWords,
       language,
@@ -1038,22 +1078,31 @@ async function offScriptReply(
       situation: null,
       who: null,
       where: 'intake answer crisis',
+      ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
     return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
-    // #868: the 811 line is the model's words; the code checks both numbers are in it.
-    const written = await deps.saidLine?.write({
-      purpose: 'health',
-      language: null,
-      parentWords: args.parentWords,
-      facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
-      mustInclude: ['811', '911'],
-    });
+    // #868, VIL-589: the model words the line for where this family is; the code checks
+    // every number the facts require is in it. 811 is a dig line in the US.
+    const health = healthLineFacts(await healthPlaceOf(placed));
+    const written = deps.saidLine
+      ? await deps.saidLine.write({
+          purpose: 'health',
+          language: null,
+          parentWords: args.parentWords,
+          facts: health.facts,
+          mustInclude: health.mustInclude,
+        })
+      : null;
     if (!written) {
-      console.error('intake health: no line written - nothing sent, page #ops');
-      return HELD_SILENT;
+      const held: HealthHeld = deps.saidLine ? 'write_failed' : 'writer_absent';
+      console.error(
+        { basis: health.basis, reason: held },
+        'intake health: no line written - nothing sent, page #ops',
+      );
+      return { body: '', source: 'safety', held };
     }
     return { body: written, source: 'safety' };
   }
@@ -1354,20 +1403,26 @@ function friendFields(
  * still ends there (no onboarding ask to a person in crisis).
  */
 function crisisRegionForSession(session: IntakeSession | null): 'CA' | 'US' | null {
-  if (!session) return null;
-  return crisisRegionForPlace([
+  return crisisRegionForPlace(sessionPlaceTokens(session));
+}
+
+function sessionPlaceTokens(session: IntakeSession | null): readonly (string | null | undefined)[] {
+  if (!session) return [];
+  return [
     session.collected.postalCode,
     session.firstTouch?.place?.postalCode,
     session.firstTouch?.place?.areaCoarse,
-  ]);
+  ];
 }
 
 async function crisisReply(
+  database: Database,
+  session: IntakeSession | null,
   inbound: Inbound,
   language: ReplyLanguage | null,
-  region: 'CA' | 'US' | null,
   deps: IntakeDeps,
 ): Promise<{ body: string | null } | null> {
+  const region = crisisRegionForSession(session);
   const reading = await readTurnOnce(deps.optOutReader, inbound, {
     text: inbound.body,
     language,
@@ -1384,9 +1439,26 @@ async function crisisReply(
     situation: reading.situation ?? null,
     who: reading.who ?? null,
     where: 'intake crisis',
+    ...crisisPage(database, deps, inbound, session?.familyId ?? null, session?.userId ?? null),
     writer: deps.saidLine,
   });
   return { body: crisis.status === 'sent' ? crisis.body : null };
+}
+
+/** Who hears about a crisis that got no reply, and which inbound, household and parent it was. */
+function crisisPage(
+  database: Database,
+  deps: IntakeDeps,
+  inbound: Inbound,
+  familyId: string | null,
+  parentUserId: string | null,
+): { pager: CrisisPager; inboundId: string; familyId: string | null; parentUserId: string | null } {
+  return {
+    pager: deps.crisisPager ?? failurePageCrisisPager(database),
+    inboundId: inbound.providerId,
+    familyId,
+    parentUserId,
+  };
 }
 
 /** The kids as the model sees them: name and age only, so a line's age fit lands on the right kid. */
@@ -1667,7 +1739,7 @@ async function friendOnboardingTurn(
   let language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
   let transcript = recorded.transcript;
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
@@ -2142,7 +2214,7 @@ async function friendColdTurn(
   }
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
     if (safety.body) await sendAndRecord(database, ctx, safety.body, deps, recorded.transcript);
@@ -3164,7 +3236,7 @@ async function handleWatchReply(
   // The watch offer is retired under the friend voice: the find is the watch.
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
-  const safety = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const safety = await crisisReply(database, session, inbound, language, deps);
   const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
@@ -3208,7 +3280,7 @@ async function handleLadder(
   const ctx = sendContext(args);
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
-  const crisis = await crisisReply(inbound, language, crisisRegionForSession(session), deps);
+  const crisis = await crisisReply(database, session, inbound, language, deps);
   if (crisis) {
     if (crisis.body) await sendAndRecord(database, ctx, crisis.body, deps, recorded.transcript);
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -3218,6 +3290,7 @@ async function handleLadder(
   let next: IntakeLadderStep | null = step;
   let closed = false;
   let heldForQuestion = false;
+  let held: HealthHeld | undefined;
 
   // A question right after the find is answered first; the model decides whether
   // the parent's words are a question (offScriptReply returns null when not).
@@ -3229,17 +3302,19 @@ async function handleLadder(
         pendingAsk: '',
         children: session.collected.children,
         postalCode: session.collected.postalCode,
-        region: crisisRegionForSession(session),
+        placeTokens: sessionPlaceTokens(session),
         numberOrigin: { kind: 'texted_first', viaQr: sourceCodeIsQr(session.sourceCode) },
         language,
       },
       deps,
       inbound,
+      { database, familyId, parentUserId: userId },
     );
     if (offScript) {
       if (offScript.body) {
         await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
       }
+      held = offScript.held;
       heldForQuestion = true;
     }
   }
@@ -3343,7 +3418,7 @@ async function handleLadder(
     },
     now,
   );
-  return { status: 'ladder_advanced', step, closed };
+  return { status: 'ladder_advanced', step, closed, ...(held ? { held } : {}) };
 }
 
 /**
@@ -3531,30 +3606,37 @@ async function helpBody(
 
 /** #868 · where a failed read's hold is written (tests pass a recorder). */
 export interface OptOutHoldPort {
-  hold(phoneHash: string, now: Date): Promise<void>;
-  release(phoneHash: string): Promise<void>;
+  hold(phoneHash: string, providerMessageId: string, now: Date): Promise<void>;
+  /** This exact message was read. Releases only its own hold row. */
+  settled(providerMessageId: string): Promise<void>;
 }
 
 /**
- * #868 · after the turn's read: a failed read (null after the reader's retry) holds the
- * sender from proactive and queued sends; a successful read releases any hold.
+ * #868 · after the turn's read: a failed read (null after the reader's retry) holds this
+ * message, and so its sender, from proactive and queued sends. VIL-553: a successful
+ * read settles only the message it read; another unread text of the same number stays
+ * held until it is read (opt-out-recovery.ts).
  */
 async function settleOptOutHold(
   database: Database,
   phoneHash: string,
-  body: string,
+  inbound: Pick<Inbound, 'body' | 'providerId'>,
   reading: OptOutReading | null,
   now: Date,
   hold?: OptOutHoldPort,
 ): Promise<void> {
-  if (body.trim().length === 0) return;
-  const port = hold ?? {
-    hold: (hash: string, at: Date) => holdSender(database, hash, at),
-    release: (hash: string) => releaseSender(database, hash),
+  if (inbound.body.trim().length === 0) return;
+  const port: OptOutHoldPort = hold ?? {
+    hold: async (hash, providerMessageId, at) => {
+      await holdSender(database, { phoneHash: hash, providerMessageId, now: at });
+    },
+    settled: async (providerMessageId) => {
+      await releaseHeldMessage(database, providerMessageId);
+    },
   };
   try {
-    if (reading === null) await port.hold(phoneHash, now);
-    else await port.release(phoneHash);
+    if (reading === null) await port.hold(phoneHash, inbound.providerId, now);
+    else await port.settled(inbound.providerId);
   } catch (err) {
     // The hold is a guard, never a reason to drop the turn: logged, and the turn goes on.
     console.error(
@@ -3623,7 +3705,7 @@ async function restartFromReader(
   return { status: 'restarted', ack: 'sent' };
 }
 
-async function handleStop(
+export async function handleStop(
   database: Database,
   args: {
     phoneE164: string;
@@ -3637,7 +3719,7 @@ async function handleStop(
      * revocation above it has already run. */
     confirmation?: string;
   },
-  deps: IntakeDeps,
+  deps: Pick<IntakeDeps, 'transport'>,
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now, providerAnswered } = args;
 

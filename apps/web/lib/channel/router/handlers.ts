@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
-import { connectorRevokeReply } from '~/lib/channel/connect/copy';
+import { writeConnectorRevokeReply } from '~/lib/channel/connect/copy';
 import {
   type ConnectOfferTarget,
   connectOfferTarget,
@@ -10,6 +10,10 @@ import {
   matchConnectorRequest,
   matchFreshConnectorFollowUp,
 } from '~/lib/channel/connect/detect';
+import {
+  type DisconnectReader,
+  createDisconnectReader,
+} from '~/lib/channel/connect/disconnect-read';
 import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
 import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
@@ -30,8 +34,8 @@ import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
-  recMorningCouldUseWhere,
-  recMorningReply,
+  type RecMorningPlace,
+  resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
 import {
@@ -46,6 +50,10 @@ import {
   handleEmailAlertOfferReply,
   resolveEmailAlertOffer,
 } from '~/lib/integrations/email-alert-offer';
+import {
+  type GoogleDisconnectPorts,
+  defaultGoogleDisconnectPorts,
+} from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
@@ -305,9 +313,9 @@ export function connectorLinkHandler(
       if (!provider) {
         log.error(
           { familyId: ctx.familyId, provider: target, outcome: 'connector_not_offered' },
-          'connector link: no consent door for this connector - nothing minted, nothing sent',
+          'connector link: no consent door for this connector - nothing minted, the coach takes the turn',
         );
-        return { claimed: true, outcome: 'connector_not_offered', reply: null };
+        return { claimed: false };
       }
       if (await familyGroupTurn(database, ctx)) {
         const outcome = await textFreshConnectorLink(
@@ -415,22 +423,29 @@ export function connectorLinkHandler(
  * A COMMAND, never an answer. It reads only its own explicit verb+noun shape
  * (connect/detect.ts) and never consults the open questions, so it cannot claim a bare
  * YES or NO and cannot take a turn that belongs to an approval, a plan or a health
- * checkpoint. That is also why its position next to the connector link is free: the two
- * matchers are disjoint by construction and neither shape occurs in any other handler's
- * vocabulary.
+ * checkpoint. That is also why its position next to the connector link is free.
  *
- * UNGATED, like the connect half it mirrors. Connect-by-text is live for every family,
- * so gating the undo behind the F14 allowlist would leave most parents able to connect
- * by text and unable to un-connect the same way. A parent ending their own grant is an
+ * THE MODEL READS IT BEFORE ANYTHING ENDS (VIL-156). A disconnect now revokes Hale's whole
+ * Google grant, Gmail and Calendar together, so the regex only picks which turns are
+ * read; `connector-disconnect-read` decides. A question about disconnecting goes to the
+ * coach, which answers it.
+ *
+ * UNGATED, like the connect half it mirrors. A parent ending their own grant is an
  * instruction they gave, not a proactive send, so the dark-launch reasoning does not
  * reach it.
  *
- * Rule #11, all three ways out named and all three answered in the parent's own reply
- * language: `revoked`, `not_connected` (nothing of theirs matched — never a false
- * success), `revoke_failed` (nothing changed, said in French to a French parent).
+ * Rule #11, every way out named: `revoked`, `not_connected` (nothing of theirs matched —
+ * never a false success), `revoke_failed` (nothing changed), `disconnect_unread` (the read
+ * failed twice: nothing ended, nothing sent) and `reply_unwritten` (the disconnect stands
+ * and nothing is sent). The model writes every reply from facts; no link is minted.
  */
 export function connectorDisconnectHandler(
   log: Pick<Console, 'error'> = console,
+  saidLine: SaidLineWriter = createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+  google: GoogleDisconnectPorts = defaultGoogleDisconnectPorts(),
+  reader: DisconnectReader = createDisconnectReader(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+  ),
 ): DeterministicHandler {
   return {
     name: 'connector_disconnect',
@@ -447,11 +462,23 @@ export function connectorDisconnectHandler(
         return { claimed: true, outcome: 'group_member_not_authorized', reply: null };
       }
 
-      const outcome = await revokeConnectorByText(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        provider,
-      });
+      const language = await familySpeechLanguage(database, ctx.familyId);
+      const reading = await reader.read({ text: ctx.body, language });
+      if (reading === null) {
+        // Ids and the named outcome only, never the body (rule #1).
+        log.error(
+          { familyId: ctx.familyId, provider, outcome: 'disconnect_unread' },
+          'connector disconnect: the read failed - nothing ended, nothing sent',
+        );
+        return { claimed: true, outcome: 'disconnect_unread', reply: null };
+      }
+      if (reading !== 'disconnect') return { claimed: false };
+
+      const outcome = await revokeConnectorByText(
+        database,
+        { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider },
+        google,
+      );
       if (outcome.status === 'revoke_failed') {
         // Ids and the named outcome only, never the body and never a token (rule #1).
         log.error(
@@ -459,15 +486,19 @@ export function connectorDisconnectHandler(
           'connector disconnect: revoke did not land - nothing was changed',
         );
       }
-      return {
-        claimed: true,
-        outcome: outcome.status,
-        reply: await connectorRevokeReply(
-          await familySpeechLanguage(database, ctx.familyId),
-          provider,
-          outcome.status,
-        ),
-      };
+      const reply = await writeConnectorRevokeReply(saidLine, {
+        language,
+        parentWords: ctx.body,
+        outcome,
+      });
+      if (reply === null) {
+        log.error(
+          { familyId: ctx.familyId, provider, disconnect: outcome.status },
+          'connector disconnect: reply could not be written - nothing sent',
+        );
+        return { claimed: true, outcome: 'reply_unwritten', reply: null };
+      }
+      return { claimed: true, outcome: outcome.status, reply };
     },
   };
 }
@@ -1108,7 +1139,7 @@ async function preOpenReply(
 async function loadFamilyRecWhere(
   database: Database,
   familyId: string,
-): Promise<{ city: string | null; postal: string | null } | null> {
+): Promise<RecMorningPlace | null> {
   const [row] = await database
     .select({
       city: schema.families.city,
@@ -1131,14 +1162,9 @@ export function recMorningHandler(): DeterministicHandler {
       // The family's stored language. Null is not an English default: intake is the
       // path that has no family language yet, and that path follows parentWords.
       const language = await familySpeechLanguage(database, ctx.familyId);
-      if (recMorningReply(ctx.body, ctx.now) !== null) {
-        const named = await writeRecMorningReply(ctx.body, ctx.now, null, language);
-        return named === null
-          ? { claimed: false }
-          : { claimed: true, outcome: 'rec_morning', reply: named };
-      }
-      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
-      const where = await loadFamilyRecWhere(database, ctx.familyId);
+      // VIL-591: the facts are GTA facts, so the family's stored place - never the
+      // words of the text - decides whether this lane answers. No GTA place: unclaimed.
+      const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
       const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };

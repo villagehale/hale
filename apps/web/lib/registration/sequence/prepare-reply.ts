@@ -152,6 +152,8 @@ export async function loadPreparingSequence(
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: this binds a pasted link to a catalog window and rewrites
+    // `course_url`, which on a link-owned watch (VIL-423) is the watch's own identity.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -731,6 +733,8 @@ export async function approvedShortlistAskedOf(
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never sent a heads-up yet
+    // (VIL-423, run.ts `linkWatchFate`), so no YES can be answering one.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),

@@ -1,3 +1,4 @@
+import { CRISIS_LINE_NAMES } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
 
 /**
@@ -261,6 +262,45 @@ function replyScriptLetter(language: ReplyLanguage | null): RegExp | null {
   }
 }
 
+// A line's name as its letters, joined by anything that is not one ('Suicide & Crisis'
+// and 'Suicide Crisis'). The writer is handed the name in English, so a reply in any
+// language may carry it; it counts for neither script. The names are Latin, so only a
+// Latin letter continues the word: Han or Arabic written straight after it does not.
+const CRISIS_LINE_NAME = new RegExp(
+  CRISIS_LINE_NAMES.map(
+    (name) =>
+      `(?<!\\p{Script=Latin})${[...name.matchAll(/\p{L}+/gu)].map(([word]) => word).join('\\P{L}+')}(?!\\p{Script=Latin})`,
+  ).join('|'),
+  'giu',
+);
+
+const SCRIPTLESS_LETTER = /[\p{Script=Common}\p{Script=Inherited}]/u;
+
+/**
+ * Most of the reply's letters are in the script: counted after format characters go and
+ * NFKC folds full-width forms, with the line names left out (numbers are not letters).
+ * One native word in an English reply is not enough, and a reply with no letters but the
+ * name is in no language. It tells writing systems apart; it cannot tell one language of
+ * a script from another (fr, es and en are all Latin), so for those the language rests
+ * on the writer's replyLanguage fact and the crisis-reply eval. Only \p{L} is counted, so
+ * the vowel signs of Devanagari, Tamil or Thai (\p{M}) are not, and a dense script such
+ * as Han has one letter where Latin has a word: both lean toward refusing a reply that
+ * mixes in English, never toward passing one.
+ */
+function replyMostlyInScript(text: string, scriptLetter: RegExp): boolean {
+  const folded = text
+    .replace(/\p{Cf}/gu, '')
+    .normalize('NFKC')
+    .replace(CRISIS_LINE_NAME, ' ');
+  let inScript = 0;
+  let otherScript = 0;
+  for (const [letter] of folded.matchAll(/\p{L}/gu)) {
+    if (scriptLetter.test(letter)) inScript += 1;
+    else if (!SCRIPTLESS_LETTER.test(letter)) otherScript += 1;
+  }
+  return inScript > otherScript;
+}
+
 export type CrisisViolation =
   | 'missing_line'
   | 'emergency_988'
@@ -270,9 +310,9 @@ export type CrisisViolation =
 
 /**
  * The one acceptance check for every crisis reply: the required line is present, an
- * emergency carries no 988, no other number appears, no link, and the reply has a
- * letter of its language's script (a mojibake or wrong-language draft is not sent).
- * Null: it may be sent.
+ * emergency carries no 988, no other number appears, no link, and the reply is mostly
+ * in its language's script (a mojibake or wrong-script draft is not sent; see
+ * replyMostlyInScript for what that can and cannot prove). Null: it may be sent.
  */
 export function crisisReplyViolation(
   kind: CrisisKind,
@@ -292,7 +332,7 @@ export function crisisReplyViolation(
   if (!tokens.every(tokenIsCrisisLinesOnly)) return 'other_number';
   if (crisisTextHasLink(text)) return 'link';
   const scriptLetter = replyScriptLetter(language);
-  if (scriptLetter && !scriptLetter.test(text)) return 'wrong_script';
+  if (scriptLetter && !replyMostlyInScript(text, scriptLetter)) return 'wrong_script';
   return null;
 }
 

@@ -146,23 +146,38 @@ export async function recordCommitment(
     );
     return { status: 'not_recorded', reason: 'no_ledger_row' };
   }
+  const channelMessageId = input.channelMessageId;
   try {
-    const [row] = await database
-      .insert(schema.agentCommitments)
-      .values({
+    const row = await database.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(schema.agentCommitments)
+        .values({
+          familyId: input.familyId,
+          commitmentKind: input.kind,
+          summary: input.summary,
+          topic: input.topic ?? null,
+          subjectChildId: input.subjectChildId ?? null,
+          subjectFamilyId: input.subjectFamilyId ?? null,
+          dueAt: input.dueAt,
+          createdFrom: channelMessageId,
+        })
+        // The partial unique index refuses a second open promise of this kind. A tick that
+        // ran twice must cost one rejected insert, never a second debt.
+        .onConflictDoNothing()
+        .returning({ id: schema.agentCommitments.id });
+      if (!inserted) return null;
+      // `summary` and `topic` stay out of `after`: the summary is free text that may name a
+      // child, and an activity follow-up's topic is the search phrase it is built from.
+      await tx.insert(schema.auditLog).values({
         familyId: input.familyId,
-        commitmentKind: input.kind,
-        summary: input.summary,
-        topic: input.topic ?? null,
-        subjectChildId: input.subjectChildId ?? null,
-        subjectFamilyId: input.subjectFamilyId ?? null,
-        dueAt: input.dueAt,
-        createdFrom: input.channelMessageId,
-      })
-      // The partial unique index refuses a second open promise of this kind. A tick that
-      // ran twice must cost one rejected insert, never a second debt.
-      .onConflictDoNothing()
-      .returning({ id: schema.agentCommitments.id });
+        actor: 'system',
+        actionTaken: 'commitment_recorded',
+        targetTable: 'agent_commitments',
+        targetId: inserted.id,
+        after: { kind: input.kind, dueAt: input.dueAt },
+      });
+      return inserted;
+    });
     if (!row) return { status: 'already_open' };
     return { status: 'recorded', commitmentId: row.id };
   } catch (err) {
@@ -203,6 +218,10 @@ export async function fulfillCommitment(
     database,
     { familyId: input.familyId, kind: input.kind },
     { fulfilledAt: input.now, fulfilledBy: input.channelMessageId },
+    {
+      actionTaken: 'commitment_fulfilled',
+      after: { kind: input.kind, fulfilledBy: input.channelMessageId },
+    },
   );
 }
 
@@ -231,28 +250,44 @@ export async function cancelCommitment(
     database,
     { familyId: input.familyId, kind: input.kind },
     { cancelledAt: input.now, cancelledReason: input.reason },
+    { actionTaken: 'commitment_cancelled', after: { kind: input.kind, reason: input.reason } },
   );
 }
 
 /** The one closing write. Scoped by the open predicate, so a promise already kept or
- * already voided is never reopened or re-stamped by a later surface. */
+ * already voided is never reopened or re-stamped by a later surface. Each closed row gets
+ * its audit row in the same transaction, so a refused audit leaves the promise open. */
 async function close(
   database: Database,
   target: { familyId: string; kind: CommitmentKind },
   patch: Record<string, unknown>,
+  audit: Pick<typeof schema.auditLog.$inferInsert, 'actionTaken' | 'after'>,
 ): Promise<CommitmentCloseOutcome> {
   try {
-    const rows = await database
-      .update(schema.agentCommitments)
-      .set(patch)
-      .where(
-        and(
-          eq(schema.agentCommitments.familyId, target.familyId),
-          eq(schema.agentCommitments.commitmentKind, target.kind),
-          openPredicate(),
-        ),
-      )
-      .returning({ id: schema.agentCommitments.id });
+    const rows = await database.transaction(async (tx) => {
+      const closed = await tx
+        .update(schema.agentCommitments)
+        .set(patch)
+        .where(
+          and(
+            eq(schema.agentCommitments.familyId, target.familyId),
+            eq(schema.agentCommitments.commitmentKind, target.kind),
+            openPredicate(),
+          ),
+        )
+        .returning({ id: schema.agentCommitments.id });
+      if (closed.length === 0) return closed;
+      await tx.insert(schema.auditLog).values(
+        closed.map((row) => ({
+          familyId: target.familyId,
+          actor: 'system',
+          targetTable: 'agent_commitments',
+          targetId: row.id,
+          ...audit,
+        })),
+      );
+      return closed;
+    });
     if (rows.length === 0) return { status: 'none_open' };
     return { status: 'closed', commitmentIds: rows.map((row) => row.id) };
   } catch (err) {

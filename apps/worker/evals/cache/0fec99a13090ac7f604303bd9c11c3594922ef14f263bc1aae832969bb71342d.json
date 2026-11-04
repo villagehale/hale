@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 'Swim class jeudi à 10 h 30', meaning Thursday at 10:30. The event name matches 'Swim class'. The start is Thursday July 23, 2026 at 10:30 in America/Toronto, hour 10 minute 30. The text names the hour 10 with 'h 30', which is minute 30, matching the start. Thursday matches the weekday, and the text states no different day or time.",
+    "match": true
+  },
+  "latencyMs": 1760
+}

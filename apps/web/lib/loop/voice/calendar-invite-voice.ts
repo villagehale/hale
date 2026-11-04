@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -14,20 +15,34 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  * deferral after that is NAMED and the caller sends nothing (`compose_deferred`):
  * there is no fixed fallback line.
  *
- * Code checks three facts: the summary, the link slot, and digits that were not
- * handed. Whether the text states the event's start is a small judge call
- * (`calendar-invite-time`), in any language and any way of saying the hour. The
- * model's words are not folded.
+ * Code checks the link slot, that no other destination is written, the length, and
+ * digits that were not handed. Whether the text names the event and states its start
+ * is a small judge call (`calendar-invite-time`), in any language and any way of
+ * saying the hour. The model's words are not folded.
  */
 
 /** The placeholder the model writes. Code replaces it with the exact ICS url. */
 export const INVITE_LINK_SLOT = '[[link]]';
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+/**
+ * A destination a phone would open or a parent could type: a scheme, or a
+ * label(.label)*.tld token whose TLD is letters. Structural, over model output with
+ * the slot removed, so a bare domain an event title smuggled in cannot ride along.
+ * "2.5 km", "U.S." and "a.m." are not tokens (the TLD needs two letters after a dot).
+ * The ideographic full stop is left out: Chinese ends a sentence with it.
+ */
+const DESTINATION =
+  /[a-z][a-z0-9+.-]*:\/\/|[\p{L}\p{N}-]+(?:[.\uFF0E\uFF61][\p{L}\p{N}-]+)*[.\uFF0E\uFF61][a-z]{2}/iu;
+
+/** Longer than any event name: an input past it is not a name, and is not sent. */
+export const MAX_INVITE_SUMMARY_CHARS = 200;
+
+/** The filled text, link included, as the carrier bills it. */
+export const MAX_INVITE_SEGMENTS = 5;
 
 const MAX_ATTEMPTS = 3;
 const MAX_TOKENS = 500;
-const TIME_JUDGE_MAX_TOKENS = 80;
+const TIME_JUDGE_MAX_TOKENS = 300;
 
 export interface CalendarInviteVoiceRequest {
   /** The event, already rendered at this parent's own privacy level. */
@@ -51,9 +66,9 @@ export type CalendarInviteRefusal =
   | 'link_repeated'
   | 'link_damaged'
   | 'stray_slot'
-  | 'summary_missing'
   | 'when_missing'
-  | 'invented_number';
+  | 'invented_number'
+  | 'too_long';
 
 interface ZonedStart {
   year: number;
@@ -100,9 +115,14 @@ function allowedDigits(summary: string, event: ZonedStart): Set<string> {
   return allowed;
 }
 
+export function carriesDestination(text: string): boolean {
+  return DESTINATION.test(text.split(INVITE_LINK_SLOT).join(' '));
+}
+
 /**
- * Code facts only: summary, link slot, digits that were not in the summary or the
- * start. A time said as "10am", "à 10 h", or "上午10点" is not refused here.
+ * Code facts only: link slot, no other destination, length, digits that were not in
+ * the summary or the start. A time said as "10am", "à 10 h", or "上午10点" is not
+ * refused here, and neither is the event named in translation: the time judge reads both.
  */
 export function calendarInviteRefusals(
   body: string,
@@ -113,16 +133,19 @@ export function calendarInviteRefusals(
   const slotCount = body.split(INVITE_LINK_SLOT).length - 1;
   if (!request.url || slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
-  if (!body.includes(request.summary)) found.push('summary_missing');
+  const carriesLink = carriesDestination(body);
+  if (carriesLink) found.push('carries_link');
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
   const allowed = allowedDigits(request.summary, zonedStart(request.startsAt, request.timeZone));
   if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
-  if (slotCount === 1 && request.url && !LINK_SHAPE.test(body)) {
+  if (slotCount === 1 && request.url && !carriesLink) {
     const withoutSlot = body.replace(INVITE_LINK_SLOT, '');
     if (/\[\[[^\]]*\]\]/.test(withoutSlot)) found.push('stray_slot');
     const filled = fillCalendarInvite(body, request.url);
     if (!filled.includes(request.url)) found.push('link_damaged');
+  }
+  if (smsSegments(fillCalendarInvite(body, request.url)) > MAX_INVITE_SEGMENTS) {
+    found.push('too_long');
   }
   return found;
 }
@@ -186,16 +209,16 @@ export function calendarInviteTimeInput(
   };
 }
 
-/** True when the text states the event's start. Null: the judge could not say, so nothing is sent. */
+/** True when the text names the event and states its start. Null: the judge could not say, so nothing is sent. */
 export interface CalendarInviteTimeJudge {
   matches(input: CalendarInviteTimeInput): Promise<boolean | null>;
 }
 
-const timeSchema = z.object({ match: z.boolean() });
-const timeJsonSchema = {
+const timeSchema = z.object({ reason: z.string(), match: z.boolean() });
+export const timeJsonSchema = {
   type: 'object',
-  properties: { match: { type: 'boolean' } },
-  required: ['match'],
+  properties: { reason: { type: 'string' }, match: { type: 'boolean' } },
+  required: ['reason', 'match'],
 } as const;
 
 export function createCalendarInviteTimeJudge(client: () => AgentClient): CalendarInviteTimeJudge {
@@ -209,7 +232,8 @@ export function createCalendarInviteTimeJudge(client: () => AgentClient): Calend
           system: skill.instructions,
           userMessage: calendarInviteTimeUserMessage(input),
           toolName: 'time_match',
-          toolDescription: 'Whether the text states the same start as the facts.',
+          toolDescription:
+            'Whether the text names this event and states the same start as the facts.',
           inputJsonSchema: timeJsonSchema,
           schema: timeSchema,
           maxTokens: TIME_JUDGE_MAX_TOKENS,
@@ -227,6 +251,8 @@ export function createCalendarInviteTimeJudge(client: () => AgentClient): Calend
 }
 
 export type CalendarInviteDeferral =
+  | 'summary_too_long'
+  | 'summary_carries_link'
   | 'client_unavailable'
   | 'skill_unavailable'
   | 'model_failed'
@@ -258,7 +284,7 @@ function deferred(reason: CalendarInviteDeferral, detail?: string): CalendarInvi
 }
 
 /**
- * Code gate over one model write. `accepted` means the summary, the link, and the
+ * Code gate over one model write. `accepted` means the link, the length, and the
  * digits are fine. The time judge still has to agree before it is sent.
  */
 export function prepareCalendarInvite(
@@ -279,6 +305,10 @@ export function createCalendarInviteVoice(
 ): CalendarInviteVoice {
   return {
     async compose(request) {
+      if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
+        return deferred('summary_too_long', String(request.summary.length));
+      }
+      if (carriesDestination(request.summary)) return deferred('summary_carries_link');
       let resolved: AgentClient;
       try {
         resolved = client();

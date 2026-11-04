@@ -76,3 +76,25 @@ describe('dayTimeConflict', () => {
     expect(dayTimeConflict('موعد السباحة يوم الثلاثاء محجوز.', TUE_9, TZ, 'ar')).toBe(false);
   });
 });
+
+/** Review item 7: the three paths PR 1's cases never isolated. Row: Tuesday
+ * 2026-11-10 at 09:00 in America/Chicago (UTC−6). */
+describe('dayTimeConflict — mutant pins', () => {
+  const CHICAGO = 'America/Chicago';
+  const TUE_9_CHICAGO = new Date('2026-11-10T15:00:00Z');
+
+  it('English day names are read in a fr family (the en fallback)', () => {
+    expect(dayTimeConflict('Thursday swim is booked.', TUE_9_CHICAGO, CHICAGO, 'fr')).toBe(true);
+    expect(dayTimeConflict('Tuesday swim is booked.', TUE_9_CHICAGO, CHICAGO, 'fr')).toBe(false);
+  });
+
+  it('the minute is compared, not only the hour', () => {
+    expect(dayTimeConflict('Swim at 9:30 is booked.', TUE_9_CHICAGO, CHICAGO, 'en')).toBe(true);
+    expect(dayTimeConflict('Swim at 9:00 is booked.', TUE_9_CHICAGO, CHICAGO, 'en')).toBe(false);
+  });
+
+  it('the H点 clock form alone conflicts: 3点 is 3 or 15, never 9', () => {
+    expect(dayTimeConflict('下午3点的游泳课已经约好了。', TUE_9_CHICAGO, CHICAGO, 'zh')).toBe(true);
+    expect(dayTimeConflict('9点的游泳课已经约好了。', TUE_9_CHICAGO, CHICAGO, 'zh')).toBe(false);
+  });
+});

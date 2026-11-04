@@ -269,9 +269,9 @@ export async function runPreviewGroupPlanConversations(
     chatId: 'preview-picnic',
     language: 'en',
     people: [
-      { name: 'Priya', handle: '+14165550101', haleCustomer: true },
-      { name: 'Sam', handle: '+14165550102', haleCustomer: false },
-      { name: 'Maya', handle: '+14165550103', haleCustomer: false },
+      { name: 'Priya', handle: '+15555550101', haleCustomer: true },
+      { name: 'Sam', handle: '+15555550102', haleCustomer: false },
+      { name: 'Maya', handle: '+15555550103', haleCustomer: false },
     ],
     composer,
     beforeAfter: {
@@ -366,10 +366,10 @@ export async function runPreviewGroupPlanConversations(
     chatId: 'preview-museum',
     language: 'en',
     people: [
-      { name: 'Priya', handle: '+14165550111', haleCustomer: true },
-      { name: 'Maya', handle: '+14165550113', haleCustomer: false },
-      { name: 'Wei', handle: '+14165550114', haleCustomer: false },
-      { name: 'Sam', handle: '+14165550112', haleCustomer: false },
+      { name: 'Priya', handle: '+15555550111', haleCustomer: true },
+      { name: 'Maya', handle: '+15555550113', haleCustomer: false },
+      { name: 'Wei', handle: '+15555550114', haleCustomer: false },
+      { name: 'Sam', handle: '+15555550112', haleCustomer: false },
     ],
     composer,
     beforeAfter: {
@@ -418,8 +418,8 @@ export async function runPreviewGroupPlanConversations(
     chatId: 'preview-soccer',
     language: 'en',
     people: [
-      { name: 'Asha', handle: '+14165550121', haleCustomer: true },
-      { name: 'Ben', handle: '+14165550122', haleCustomer: false },
+      { name: 'Asha', handle: '+15555550121', haleCustomer: true },
+      { name: 'Ben', handle: '+15555550122', haleCustomer: false },
     ],
     composer,
     followUpAt: new Date('2026-10-31T18:00:00.000Z'),

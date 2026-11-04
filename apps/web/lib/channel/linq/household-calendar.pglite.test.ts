@@ -39,6 +39,18 @@ const DAY = new Date('2026-09-25T18:00:00.000Z');
 /** 17:30 America/Toronto — inside the evening handoff window, outside quiet hours. */
 const HANDOFF_AT = new Date('2026-09-24T21:30:00.000Z');
 
+/** The floor's live read of GROUP: the two parents, and nobody else. Not a send. */
+function chatRead(url: string, init?: RequestInit): Response | null {
+  if (init?.method !== 'GET' || !String(url).endsWith(`/chats/${GROUP}`)) return null;
+  return Response.json({
+    chat: {
+      id: GROUP,
+      is_group: true,
+      handles: [{ handle: PARENT_PHONE }, { handle: COPARENT_PHONE }],
+    },
+  });
+}
+
 let db: TestDb;
 
 beforeAll(async () => {
@@ -54,13 +66,14 @@ beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
 });
 
 afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
-  await db.exec('truncate table families, users cascade');
+  await db.exec('truncate table families, users, linq_group_rosters cascade');
 });
 
 function groupWire(over?: { status?: number }): {
@@ -81,12 +94,16 @@ function groupWire(over?: { status?: number }): {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      const read = chatRead(url, init);
+      if (read) return read;
       note(url, init);
       return new Response('{}', { status: 500 });
     }),
   );
   const status = over?.status ?? 200;
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const read = chatRead(url, init);
+    if (read) return read;
     note(url, init);
     if (status !== 200) {
       return new Response(JSON.stringify({ error: { code: status } }), { status });
@@ -105,7 +122,9 @@ function groupWire(over?: { status?: number }): {
 
 function linqFetch(): { fetch: typeof fetch; texts: () => string } {
   const bodies: unknown[] = [];
-  const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const read = chatRead(url, init);
+    if (read) return read;
     bodies.push(init?.body ? JSON.parse(String(init.body)) : null);
     return new Response(JSON.stringify({ message: { id: `m-${bodies.length}` } }), {
       status: 200,
@@ -211,6 +230,27 @@ async function seedPair(): Promise<{
     name: 'Maya',
     dateOfBirth: '2022-04-01',
   });
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: GROUP, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values([
+    {
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(PARENT_PHONE),
+      knownUserId: primaryUserId,
+      status: 'known_parent',
+    },
+    {
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(COPARENT_PHONE),
+      userId: coparentUserId,
+      status: 'confirmed',
+      confirmedRole: 'co_parent',
+    },
+  ]);
   const [primaryIntegration] = await db.database
     .insert(schema.integrations)
     .values({
@@ -950,6 +990,8 @@ function pollWire(): {
   const pollOptions: string[] = [];
   const urls: string[] = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const read = chatRead(url, init);
+    if (read) return read;
     urls.push(String(url));
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;

@@ -6,6 +6,7 @@ import type { TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
+import type { AuditVerb } from '~/lib/trail/verbs';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -26,6 +27,14 @@ import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
  * The export does include internal audit verbs History hides. The 7-day unsent
  * mark is an audit row the parent is owed a copy of, and it is not a History line.
  */
+
+/** Rows about one adult that a family-wide copy, which every parent seat gets, never carries. */
+const NOT_IN_FAMILY_EXPORT = [
+  // A crisis flag can endanger the parent who texted if another adult in the home reads it.
+  'crisis_unanswered',
+  // That Hale re-read one parent's held text to see whether they asked it to stop.
+  'opt_out_hold_read',
+] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
   /** ISO instant the export was assembled — the "copy taken at" stamp. */
@@ -283,7 +292,10 @@ export async function assembleFamilyExport(
   const loadTrail =
     deps.loadTrail ??
     ((trailDb: Database, trailFamilyId: string) =>
-      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, { includeInternal: true }));
+      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
+        includeInternal: true,
+        exclude: NOT_IN_FAMILY_EXPORT,
+      }));
   const now = deps.now ?? new Date();
 
   const [familyRow] = await database

@@ -314,7 +314,17 @@ describe('runReminderCron — batching + compose-not-send', () => {
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.offset).toBe('-P1D');
-    expect(payload.deepLink).toMatch(/\/plan$/);
+    // /plan is retired, so the evening-before writer is handed no link. It is still asked
+    // once for the batch, and what it wrote is what is sent.
+    expect(composeText).toHaveBeenCalledTimes(1);
+    expect(composeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: '-P1D', planLink: null }),
+      'fam-1',
+      expect.any(Function),
+    );
+    expect(payload.texts).toEqual(['Reminder text.']);
+    expect(payload.deepLink).toBeNull();
     expect((payload.events as { eventRef: string }[]).map((e) => e.eventRef)).toEqual(['e1', 'e2']);
     // Both merged rows are marked sent; telemetry is coarse (offset + count).
     expect(marked).toEqual([
@@ -914,5 +924,41 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
       'reminder: compose unavailable, held for the next slot',
     );
     error.mockRestore();
+  });
+
+  it('drops the reminder once when Hale’s own request was rejected: suppressed compose_rejected, audited', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    composeText.mockResolvedValue({
+      status: 'rejected',
+      cause: 'bad_request',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'compose_rejected' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'compose_rejected' },
+    ]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldComposeUnavailable: 0 });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        familyId: 'fam-1',
+        offset: '-PT1H',
+        cause: 'bad_request',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
+      'reminder: compose rejected, dropped',
+    );
+    error.mockRestore();
+    info.mockRestore();
   });
 });

@@ -15,7 +15,7 @@ import {
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
 import {
   approvalForCalendarYes,
-  pairedDraftForCalendarNo,
+  pairedDraftsForCalendarNo,
   questionsForCalendarReader,
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
@@ -83,7 +83,9 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
+import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import type { ClaimShadow, CoachShadowAttempt } from '~/lib/channel/reconcile/claim-shadow';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import {
   type ReconcileVerdict,
@@ -96,7 +98,12 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type { CrisisKind } from '~/lib/channel/voice/crisis-check';
+import {
+  type CrisisPager,
+  type SaidLineWriter,
+  logCrisisUnanswered,
+} from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
@@ -106,7 +113,7 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { reportTurnFailures } from '~/lib/monitoring/failure-page';
+import { failurePageCrisisPager, reportTurnFailures } from '~/lib/monitoring/failure-page';
 import {
   type IncidentFailure,
   classifyChainedProviderFailure,
@@ -416,6 +423,9 @@ export interface ChannelRouterDeps {
   calendarOffers: CalendarOfferPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
+  /** Pages #ops when a crisis moment gets no reply. Absent: the real pager
+   * (failure-page.ts) on this turn's database, never a way to withhold the page. */
+  crisisPager?: CrisisPager;
   /** #868: the turn reader; decides an identity challenge in any language. */
   turnReader?: OptOutReader;
   /**
@@ -596,6 +606,13 @@ export interface ChannelRouterDeps {
    */
   reconcileView(database: Database, input: { familyId: string; now: Date }): Promise<ReconcileView>;
   /**
+   * VIL-581 · the claim reader in SHADOW, started after the reply is sent. It is handed
+   * each attempt's reply and the verdict the gate already decided on, starts detached
+   * and never throws, so nothing the parent receives waits on it or depends on it.
+   * Required (rule #11): `off` is the flag's job, never an absent dep.
+   */
+  claimShadow: ClaimShadow;
+  /**
    * Write down the registration watch the coach just promised, against the message that
    * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
    * point of MINTING rather than refusing is that the promise gets kept, and a mint that
@@ -685,6 +702,13 @@ export class TurnDeferred extends Error {
     this.name = 'TurnDeferred';
     this.reason = reason;
   }
+}
+
+/** The crisis a moment is, or null for a moment that is not one. */
+function momentCrisisKind(moment: Moment): CrisisKind | null {
+  if (moment === 'mental_crisis') return 'mental';
+  if (moment === 'emergency') return 'emergency';
+  return null;
 }
 
 export type RouterStatus =
@@ -1543,6 +1567,18 @@ async function routeChannelMessageInner(
         { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
         'channel router: moment reply unwritten',
       );
+      const crisis = momentCrisisKind(verdict.moment);
+      if (crisis !== null) {
+        // A crisis nobody could answer reaches a human now, not on the re-drive.
+        await logCrisisUnanswered(deps.crisisPager ?? failurePageCrisisPager(deps.database), {
+          kind: crisis,
+          where: 'router moment',
+          ...momentUnwritten(verdict.reason),
+          inboundId: job.provider_message_id,
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+        });
+      }
       try {
         await deps.turns.recordDeferred({
           familyId: job.family_id,
@@ -1887,34 +1923,36 @@ async function resolveNaturalReply(
   // and closes the offer from afterSend, once the receipt has actually gone out.
   // Expiring the offer here would drop it before that send, and a retry would
   // have nothing left to answer. The approval handler's reply is null.
-  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
-  if (pairedDraft && verdict.outcome === 'declined') {
+  const pairedDrafts = pairedDraftsForCalendarNo(questions, reading);
+  if (pairedDrafts.length > 0 && verdict.outcome === 'declined') {
     const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
     if (!approval) {
       deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
     } else {
-      try {
-        const declined = await approval.handle(deps.database, {
-          ...turn,
-          resolved: {
-            kind: 'approval',
-            questionId: pairedDraft,
-            polarity: 'no',
-            confidence: reading.confidence,
-          },
-        });
-        deps.log.info(
-          {
-            claimed: declined.claimed,
-            outcome: declined.claimed ? declined.outcome : 'unclaimed',
-          },
-          'channel router: calendar ask declined, draft declined',
-        );
-      } catch (err) {
-        deps.log.error(
-          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
-          'channel router: calendar ask declined, draft not declined',
-        );
+      for (const pairedDraft of pairedDrafts) {
+        try {
+          const declined = await approval.handle(deps.database, {
+            ...turn,
+            resolved: {
+              kind: 'approval',
+              questionId: pairedDraft,
+              polarity: 'no',
+              confidence: reading.confidence,
+            },
+          });
+          deps.log.info(
+            {
+              claimed: declined.claimed,
+              outcome: declined.claimed ? declined.outcome : 'unclaimed',
+            },
+            'channel router: calendar ask declined, draft declined',
+          );
+        } catch (err) {
+          deps.log.error(
+            { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+            'channel router: calendar ask declined, draft not declined',
+          );
+        }
       }
     }
   }
@@ -2069,8 +2107,16 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
-      await composeReconciledReply(deps, args, view);
+    const {
+      reply,
+      planOffer,
+      activityPromise,
+      spotWatch,
+      mints,
+      experienceCard,
+      groupLeave,
+      attempts,
+    } = await composeReconciledReply(deps, args, view);
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
     if (!experienceCard && reply.trim() === '') {
@@ -2090,6 +2136,15 @@ async function runAgentTurn(
     }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
+    // AFTER the send: the shadow read adds no latency and cannot change what was sent.
+    deps.claimShadow.coachTurn(deps.database, {
+      familyId: args.turn.familyId,
+      parentUserId: args.turn.parentUserId,
+      now: args.turn.now,
+      inbound: args.turn.body,
+      view: await view,
+      attempts,
+    });
     if (card) {
       // AFTER the text, like every other send-time writer here, and never throws: the
       // parent already has the message. Any reason the card cannot go out (flag dark,
@@ -2432,11 +2487,18 @@ async function composeReconciledReply(
     groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
-): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
+): Promise<
+  ChannelTurnResult & {
+    mints: readonly RegistrationWatchMint[];
+    attempts: readonly CoachShadowAttempt[];
+  }
+> {
   const standingQuestions = args.questions.map((question) => question.subject);
   let rejected: readonly string[] = [];
   let result: ChannelTurnResult | null = null;
   let verdict: ReconcileVerdict | null = null;
+  // What each attempt wrote and what the gate decided about it, for the claim shadow.
+  const attempts: CoachShadowAttempt[] = [];
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
@@ -2463,8 +2525,16 @@ async function composeReconciledReply(
         ].filter((kind) => kind !== null),
       ),
     });
+    attempts.push({
+      reply: result.reply,
+      experienceCard: result.experienceCard ?? null,
+      groupLeave: result.groupLeave ?? null,
+      activityPromise: result.activityPromise,
+      spotWatch: result.spotWatch,
+      verdict,
+    });
     if (verdict.refused.length === 0) {
-      return { ...result, mints: verdict.mints };
+      return { ...result, mints: verdict.mints, attempts };
     }
     rejected = reconcileViolations(verdict);
     for (const refusal of verdict.refused) {
@@ -2506,13 +2576,13 @@ async function composeReconciledReply(
             { reason: 'model_unreachable' },
             'channel router: co-parent ask unreachable - nothing sent',
           );
-          return { ...composed, reply: '', spotWatch: null, mints: [] };
+          return { ...composed, reply: '', spotWatch: null, mints: [], attempts };
         }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
-        return { ...composed, reply: instruction, spotWatch: null, mints: [] };
+        return { ...composed, reply: instruction, spotWatch: null, mints: [], attempts };
       }
     }
     throw new Error(
@@ -2547,6 +2617,7 @@ async function composeReconciledReply(
     reply,
     spotWatch: ackSurvived ? armingAck : null,
     mints: refusedVerdict.mints,
+    attempts,
   };
 }
 

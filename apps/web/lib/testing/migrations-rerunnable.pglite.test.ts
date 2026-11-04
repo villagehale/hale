@@ -171,3 +171,48 @@ describe('0199 watch storage', () => {
     ).rejects.toThrow(/violate/);
   });
 });
+
+/** VIL-553 · the held-message table, found by suffix so it survives renumbering at merge. */
+describe('opt_out_held_messages', () => {
+  const HELD_FILE = migrationFiles().find((f) => f.endsWith('_opt_out_held_messages.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(HELD_FILE as string) - 1];
+  let db: TestDb;
+
+  // Booted in a hook, never inside it(): a replay through `before` runs past 5s on CI.
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice, keeps its indexes, and has row-level security on', async () => {
+    expect(HELD_FILE).toMatch(/^\d{4}_opt_out_held_messages\.sql$/);
+    const absent = await db.client.query<{ reg: string | null }>(
+      "SELECT to_regclass('public.opt_out_held_messages')::text AS reg",
+    );
+    expect(absent.rows).toEqual([{ reg: null }]);
+
+    await db.applyMigration(HELD_FILE as string);
+    await expect(db.applyMigration(HELD_FILE as string)).resolves.toBeUndefined();
+
+    const table = await db.client.query<{ relrowsecurity: boolean }>(
+      "SELECT relrowsecurity FROM pg_class WHERE oid = to_regclass('public.opt_out_held_messages')",
+    );
+    expect(table.rows).toEqual([{ relrowsecurity: true }]);
+    const indexes = await db.client.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'opt_out_held_messages' ORDER BY indexname",
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toEqual([
+      'opt_out_held_messages_next_read_idx',
+      'opt_out_held_messages_phone_idx',
+      'opt_out_held_messages_pkey',
+    ]);
+    const legacy = await db.client.query<{ column_name: string; is_nullable: string }>(
+      "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'opt_out_read_holds' AND column_name = 'repointed_at'",
+    );
+    expect(legacy.rows).toEqual([{ column_name: 'repointed_at', is_nullable: 'YES' }]);
+  });
+});

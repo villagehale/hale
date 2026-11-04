@@ -243,6 +243,15 @@ async function seedWatch(
     channelMessageId: 'CM-ack',
     expiresAt,
   });
+  // The seed's own mint row is setup, not the sweep's trail (store.pglite.test.ts proves it).
+  await database
+    .delete(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, family.familyId),
+        eq(schema.auditLog.actionTaken, 'commitment_recorded'),
+      ),
+    );
   return row.id;
 }
 
@@ -944,7 +953,8 @@ describe('runWatchedSpotsSweep — a page nobody could read is never a state', (
     expect(summary.released.unreadable_streak).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('unreadable_streak');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((r) => r.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((r) => r.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });
@@ -1022,7 +1032,9 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(summary.released.registration_closed).toBe(1);
     expect(summary.sent).toBe(0);
     expect((await readWatch(spotId)).releasedReason).toBe('registration_closed');
-    const [trail] = await auditVerbs(family.familyId);
+    const trail = (await auditVerbs(family.familyId)).find(
+      (entry) => entry.verb === 'watched_spot_released',
+    );
     expect(trail?.verb).toBe('watched_spot_released');
     expect(trail?.after).toMatchObject({ reason: 'registration_closed', readingReason: 'closed' });
     // Rule #1: the trail names the portal, never the page or the parent's own label.
@@ -1050,7 +1062,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const row = await readWatch(spotId);
     expect(row.releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
 
@@ -1058,7 +1071,7 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const again = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
 
     expect(again.released.expired).toBe(0);
-    expect((await auditVerbs(family.familyId)).length).toBe(1);
+    expect((await auditVerbs(family.familyId)).length).toBe(2);
   });
 
   it('leaves an expired watch to the fire that holds the slot, and ends it exactly once', async () => {
@@ -1095,7 +1108,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(third.released.expired).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });

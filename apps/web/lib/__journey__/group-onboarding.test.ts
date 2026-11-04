@@ -9,6 +9,7 @@ import { fakeGroupOnboardingComposer } from '~/lib/channel/linq/group-onboarding
 import { rememberAndNarrateCalendar } from '~/lib/channel/linq/household-calendar';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { RosterReading } from '~/lib/channel/linq/roster-reading';
+import { listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -87,6 +88,8 @@ function linq(members: readonly string[] = [HALE, PARENT, DAD, GRAN, FRIEND]) {
   const group: Sent[] = [];
   const direct: Sent[] = [];
   const opened: Array<{ to: string[]; text: string }> = [];
+  // Linq keeps a person who left on the chat, marked removed.
+  const gone = new Set<string>();
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const path = new URL(String(url)).pathname.replace('/api/partner/v3', '');
     const body = init?.body ? JSON.parse(String(init.body)) : null;
@@ -97,6 +100,7 @@ function linq(members: readonly string[] = [HALE, PARENT, DAD, GRAN, FRIEND]) {
         handles: members.map((handle) => ({
           handle,
           is_me: handle === HALE,
+          ...(gone.has(handle) ? { status: 'removed', left_at: NOW.toISOString() } : {}),
         })),
       });
     }
@@ -123,7 +127,8 @@ function linq(members: readonly string[] = [HALE, PARENT, DAD, GRAN, FRIEND]) {
   vi.stubGlobal('fetch', fetchMock);
   const groupText = () => group.flatMap((sent) => sent.parts.map((part) => part.value));
   const everything = () => JSON.stringify({ group, direct, opened: opened.map((row) => row.text) });
-  return { group, direct, opened, groupText, everything };
+  const leave = (handle: string) => gone.add(handle);
+  return { group, direct, opened, groupText, everything, leave };
 }
 
 function signed(body: unknown): Request {
@@ -438,16 +443,21 @@ describe('group onboarding v2 — Hale joins a family group', () => {
     expect(friend).toMatchObject({ outcome: 'role_declined', status: 'not_family' });
     state = await rosterState();
     expect(state.roster?.status).toBe('confirmed');
-    expect(await groupAudienceAllows(db.database, CHAT, 'schedule')).toEqual({
+    expect(
+      await groupAudienceAllows(db.database, CHAT, 'schedule', listLinqParticipantHandles),
+    ).toEqual({
       allowed: false,
       reason: 'group_audience_empty',
     });
     expect(wire.opened.map((row) => row.to)).toEqual([[DAD], [PARENT]]);
     expect(wire.opened[1]?.text).toMatch(/^group_quiet_notice:/);
     expect(wire.group).toHaveLength(3);
+    wire.leave(FRIEND);
     const removed = await post(participant('participant.removed', FRIEND));
     expect(removed).toMatchObject({ outcome: 'roster_member_removed' });
-    expect(await groupAudienceAllows(db.database, CHAT, 'schedule')).toEqual({
+    expect(
+      await groupAudienceAllows(db.database, CHAT, 'schedule', listLinqParticipantHandles),
+    ).toEqual({
       allowed: true,
       reason: 'in_scope',
     });

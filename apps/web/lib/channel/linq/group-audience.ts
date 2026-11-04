@@ -1,8 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, notInArray } from 'drizzle-orm';
+import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
-import { linqGroupOnboardingV2Enabled } from './config';
-import { isUndefinedTable } from './roster';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { linqFromE164 } from './config';
+import { type ListChatHandles, isUndefinedTable } from './roster';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — what a family group may hear.
@@ -18,10 +22,21 @@ import { isUndefinedTable } from './roster';
  * Until the roster is `confirmed`, the only group lines are the roster's own (asks,
  * acknowledgements, STOP) and a direct `reply` to someone in the thread. A `confirmed`
  * chat whose scope is empty takes nothing at all. A send that names no content class
- * is refused once the flag is on: a class nobody stated cannot be proved to be in scope.
+ * is refused: a class nobody stated cannot be proved to be in scope. A chat with no
+ * roster that no family holds takes a `reply` only.
  *
- * Flag off is today's rule (a claimed chat takes everything). The roster tables are read
- * on every group send, so a missing table is the named `not_migrated` refusal.
+ * The roster is a cache of who was seated; the chat is the truth. Before a household
+ * line, the floor reads the chat's present participants once (`listChatHandles`). Every
+ * present handle other than Hale's line must be a live member of this roster by phone
+ * hash; an email, an unrostered phone or a failed read holds the line, and the scope is
+ * the narrowest role among the people actually present. A read Linq refuses as a fact
+ * about this chat (403: not this account's chat; 404: no such chat) is
+ * `participants_unreadable`, a durable answer like any other refusal. Every other failed
+ * read is about Hale's side or the moment (a 401 or no Linq key is Hale's own credential;
+ * a 408, a rate limit, a 5xx, a timeout, a thrown transport error) and is
+ * `participants_unverified`, the one verdict queued work waits out.
+ * The roster tables are read on every group send, so a missing table is the named
+ * `not_migrated` refusal.
  */
 
 export const GROUP_CONTENT: readonly ContentClass[] = [
@@ -37,10 +52,14 @@ export type GroupHoldReason =
   | 'not_migrated'
   | 'group_roles_unconfirmed'
   | 'group_audience_empty'
-  | 'group_audience_refused';
+  | 'group_audience_refused'
+  | 'participants_unverified'
+  | 'participants_unreadable'
+  | 'participant_unresolved'
+  | 'chat_not_group';
 
 export type GroupAudienceVerdict =
-  | { allowed: true; reason: 'flag_off' | 'not_household_group' | 'in_scope' }
+  | { allowed: true; reason: 'not_household_group' | 'in_scope' }
   | { allowed: false; reason: GroupHoldReason };
 
 const GONE: schema.LinqRosterMemberStatus[] = ['left', 'removed'];
@@ -50,6 +69,8 @@ type AudienceMember = {
   status: schema.LinqRosterMemberStatus;
   confirmedRole: schema.LinqRosterConfirmedRole | null;
 };
+
+type RosterMember = AudienceMember & { phoneE164Hash: string };
 
 function memberScope(member: AudienceMember): ReadonlySet<ContentClass> {
   if (member.status === 'known_parent') return ROLE_SCOPE.primary_parent;
@@ -76,7 +97,7 @@ export type RosterAudience = {
   rosterId: string;
   familyId: string | null;
   status: schema.LinqGroupRosterStatus;
-  members: AudienceMember[];
+  members: RosterMember[];
 };
 
 export async function readRosterAudience(
@@ -97,6 +118,7 @@ export async function readRosterAudience(
       .select({
         status: schema.linqGroupRosterMembers.status,
         confirmedRole: schema.linqGroupRosterMembers.confirmedRole,
+        phoneE164Hash: schema.linqGroupRosterMembers.phoneE164Hash,
       })
       .from(schema.linqGroupRosterMembers)
       .where(
@@ -148,8 +170,8 @@ export async function groupAudienceAllows(
   database: Database,
   chatId: string,
   lineClass: GroupLineClass,
+  listChatHandles: ListChatHandles,
 ): Promise<GroupAudienceVerdict> {
-  if (!linqGroupOnboardingV2Enabled()) return { allowed: true, reason: 'flag_off' };
   const roster = await readRosterAudience(database, chatId);
   if (roster === 'not_migrated') return refused('not_migrated', lineClass);
 
@@ -159,8 +181,9 @@ export async function groupAudienceAllows(
       .from(schema.families)
       .where(eq(schema.families.linqGroupChatId, chatId))
       .limit(1);
-    if (!holder) return { allowed: true, reason: 'not_household_group' };
-    if (lineClass === 'reply') return { allowed: true, reason: 'in_scope' };
+    if (lineClass === 'reply') {
+      return { allowed: true, reason: holder ? 'in_scope' : 'not_household_group' };
+    }
     return refused('group_roles_unconfirmed', lineClass);
   }
 
@@ -174,11 +197,237 @@ export async function groupAudienceAllows(
     return refused('group_roles_unconfirmed', lineClass);
   }
 
-  const scope = audienceScope(roster.members);
-  if (scope.size === 0) return refused('group_audience_empty', lineClass);
-  if (lineClass === 'reply') return { allowed: true, reason: 'in_scope' };
-  if (lineClass === 'unclassified' || !scope.has(lineClass)) {
+  if (lineClass === 'reply') {
+    if (audienceScope(roster.members).size === 0) {
+      return refused('group_audience_empty', lineClass);
+    }
+    return { allowed: true, reason: 'in_scope' };
+  }
+  if (lineClass === 'unclassified' || !GROUP_CONTENT.includes(lineClass)) {
     return refused('group_audience_refused', lineClass);
   }
+  return livePresenceAllows(roster.members, chatId, lineClass, listChatHandles);
+}
+
+type LiveRead =
+  | { ok: true; handles: string[]; isGroup: boolean | null }
+  | { ok: false; failure: 'temporary'; status: string; code?: string; httpStatus?: number }
+  | { ok: false; failure: 'permanent'; status: string; httpStatus?: number };
+
+/** Linq 2005 "Access denied" (credentials valid, not this account's chat) and 2001 "Chat
+ * not found". A 401 is Hale's own credential, so it is not here. */
+const HTTP_FORBIDDEN = 403;
+const HTTP_NOT_FOUND = 404;
+const CHAT_REFUSALS: ReadonlySet<number> = new Set([HTTP_FORBIDDEN, HTTP_NOT_FOUND]);
+
+async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
+  try {
+    const read = await listChatHandles({ chatId });
+    if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
+    if (read.status === 'refused' && CHAT_REFUSALS.has(read.httpStatus)) {
+      return { ok: false, failure: 'permanent', status: read.status, httpStatus: read.httpStatus };
+    }
+    if (read.status === 'refused') {
+      const { status, code, httpStatus } = read;
+      return { ok: false, failure: 'temporary', status, code, httpStatus };
+    }
+    return { ok: false, failure: 'temporary', status: read.status };
+  } catch (err) {
+    // A thrown refusal (a Preview capture run among them) never settles queued work.
+    if (err instanceof LinqSendError) {
+      return { ok: false, failure: 'temporary', status: 'threw', code: err.code };
+    }
+    throw err;
+  }
+}
+
+async function livePresenceAllows(
+  members: readonly RosterMember[],
+  chatId: string,
+  lineClass: ContentClass,
+  listChatHandles: ListChatHandles,
+): Promise<GroupAudienceVerdict> {
+  const startedAt = Date.now();
+  const read = await readPresent(chatId, listChatHandles);
+  const readMs = Date.now() - startedAt;
+  if (!read.ok && read.failure === 'permanent') {
+    console.info(
+      {
+        outcome: 'participants_unreadable',
+        lineClass,
+        status: read.status,
+        httpStatus: read.httpStatus,
+        readMs,
+      },
+      'linq group audience: live participants read',
+    );
+    return { allowed: false, reason: 'participants_unreadable' };
+  }
+  if (!read.ok) {
+    console.info(
+      {
+        outcome: 'participants_unverified',
+        lineClass,
+        status: read.status,
+        code: read.code,
+        httpStatus: read.httpStatus,
+        readMs,
+      },
+      'linq group audience: live participants read',
+    );
+    return { allowed: false, reason: 'participants_unverified' };
+  }
+
+  const from = linqFromE164();
+  const haleLine = from ? normalizePhoneE164(from) : null;
+  const byHash = new Map(members.map((member) => [member.phoneE164Hash, member]));
+  const matched = new Map<string, RosterMember>();
+  let present = 0;
+  let unresolved = 0;
+  for (const handle of new Set(read.handles)) {
+    const phone = normalizePhoneE164(handle);
+    if (phone && phone === haleLine) continue;
+    present += 1;
+    const member = phone ? byHash.get(phoneBlindIndex(phone)) : undefined;
+    if (!member) unresolved += 1;
+    else matched.set(member.phoneE164Hash, member);
+  }
+
+  const verdict = presenceVerdict(read.isGroup, unresolved, [...matched.values()], lineClass);
+  console.info(
+    { outcome: verdict.reason, lineClass, present, unresolved, readMs },
+    'linq group audience: live participants read',
+  );
+  return verdict;
+}
+
+function presenceVerdict(
+  isGroup: boolean | null,
+  unresolved: number,
+  matched: readonly RosterMember[],
+  lineClass: ContentClass,
+): GroupAudienceVerdict {
+  if (isGroup === false) return { allowed: false, reason: 'chat_not_group' };
+  if (unresolved > 0) return { allowed: false, reason: 'participant_unresolved' };
+  const scope = audienceScope(matched);
+  if (scope.size === 0) return { allowed: false, reason: 'group_audience_empty' };
+  if (!scope.has(lineClass)) return { allowed: false, reason: 'group_audience_refused' };
   return { allowed: true, reason: 'in_scope' };
+}
+
+const FLOOR_PASS: unique symbol = Symbol('floor-pass');
+/** Every pass `chatFloorAllows` minted. A copy (a spread with another class) is not one. */
+const ISSUED = new WeakSet<FloorPass>();
+
+/**
+ * What `chatFloorAllows` hands back when a line may enter `chatId`. The floored sends
+ * below take nothing else, so a sender that may address a 1:1 or a group cannot decide
+ * the audience itself. Only a pass this module minted is honoured: a cast, or a copy
+ * with another chat or class written in, is refused at send time. A pass is good for one
+ * chat and the one class it was asked for: a `reply` pass from an unclaimed chat cannot
+ * carry a household line.
+ */
+export type FloorPass = {
+  readonly chatId: string;
+  readonly lineClass: GroupLineClass;
+  readonly [FLOOR_PASS]: true;
+};
+
+export type FloorPassRefusal = 'pass_forged' | 'pass_wrong_chat' | 'pass_wrong_class';
+
+/** A floored send that was not given a pass for this chat and this class. Nothing was sent. */
+export class FloorPassRefused extends Error {
+  constructor(readonly reason: FloorPassRefusal) {
+    super(`linq floor: no pass from chatFloorAllows for this send (${reason})`);
+    this.name = 'FloorPassRefused';
+  }
+}
+
+export type ChatFloorVerdict =
+  | {
+      allowed: true;
+      reason: 'direct' | Extract<GroupAudienceVerdict, { allowed: true }>['reason'];
+      pass: FloorPass;
+    }
+  | Extract<GroupAudienceVerdict, { allowed: false }>;
+
+/**
+ * The floor for a sender that may address a 1:1 or a group. It skips the floor only when
+ * the chat is provably the recipient's own 1:1: Linq said `is_group: false` on that
+ * recipient's own inbound in this chat (`channel_messages.in_group`), and never `true`.
+ * Household rows that are absent, or a caller's label, are not proof, so every other chat
+ * (unclaimed, multi-family, not yet rostered, never recorded) goes through
+ * {@link groupAudienceAllows} and is held unless it passes.
+ */
+export async function chatFloorAllows(
+  database: Database,
+  input: {
+    chatId: string;
+    recipientUserId: string;
+    lineClass: GroupLineClass;
+    listChatHandles: ListChatHandles;
+  },
+): Promise<ChatFloorVerdict> {
+  const [recorded] = await database
+    .select({ inGroup: schema.channelMessages.inGroup })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.recipientUserId),
+        eq(schema.channelMessages.providerChatId, input.chatId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.inGroup),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.inGroup))
+    .limit(1);
+  const pass: FloorPass = Object.freeze({
+    chatId: input.chatId,
+    lineClass: input.lineClass,
+    [FLOOR_PASS]: true as const,
+  });
+  ISSUED.add(pass);
+  if (recorded?.inGroup === false) return { allowed: true, reason: 'direct', pass };
+  const verdict = await groupAudienceAllows(
+    database,
+    input.chatId,
+    input.lineClass,
+    input.listChatHandles,
+  );
+  return verdict.allowed ? { ...verdict, pass } : verdict;
+}
+
+function requirePass(pass: FloorPass, chatId: string, lineClass: GroupLineClass): void {
+  const reason: FloorPassRefusal | null = !ISSUED.has(pass)
+    ? 'pass_forged'
+    : pass.chatId !== chatId
+      ? 'pass_wrong_chat'
+      : pass.lineClass !== lineClass
+        ? 'pass_wrong_class'
+        : null;
+  if (!reason) return;
+  console.warn(
+    { outcome: 'floor_pass_refused', reason, lineClass, passClass: pass.lineClass },
+    'linq floor: refused a send without its pass, nothing sent',
+  );
+  throw new FloorPassRefused(reason);
+}
+
+/** `lineClass` is the class of what this send carries, and must be the one the pass was given for. */
+export async function sendFlooredChatMessage(
+  pass: FloorPass,
+  lineClass: GroupLineClass,
+  input: Parameters<typeof sendLinqChatMessage>[0],
+): ReturnType<typeof sendLinqChatMessage> {
+  requirePass(pass, input.chatId, lineClass);
+  return sendLinqChatMessage(input);
+}
+
+export async function sendFlooredPoll(
+  pass: FloorPass,
+  lineClass: GroupLineClass,
+  input: Parameters<typeof sendLinqPoll>[0],
+): ReturnType<typeof sendLinqPoll> {
+  requirePass(pass, input.chatId, lineClass);
+  return sendLinqPoll(input);
 }

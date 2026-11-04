@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, strictToolSchema } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ClaimCandidateRow, buildClaimCandidates } from './candidates';
+import { claimRowLabel } from './claim-label';
 
 /**
  * VIL-581 · the reader's MECHANICS against a fake AgentClient: the request it builds,
@@ -25,7 +26,9 @@ vi.mock('~/lib/cron/skill', async (importOriginal) => {
 vi.resetModules();
 const {
   CLAIM_READ_JSON_SCHEMA,
+  CLAIM_READ_MAX_BODY_CHARS,
   CLAIM_READ_MAX_BUDGET_MS,
+  CLAIM_READ_MAX_INBOUND_CHARS,
   READ_CLAIM_KINDS,
   acceptClaimRead,
   claimReadNow,
@@ -39,7 +42,7 @@ const SWIM: ClaimCandidateRow = {
   familyId: FAM,
   source: 'calendar',
   kind: 'scheduled_event',
-  what: 'Swim lesson',
+  what: claimRowLabel({ from: 'pending', text: 'Swim lesson' }, new Date('2026-11-03T10:00:00Z')),
   startsAt: new Date('2026-11-07T17:00:00Z'),
 };
 
@@ -86,6 +89,7 @@ function reader(
     clock: () => number;
     wait: (ms: number, signal: AbortSignal) => Promise<void>;
     thinking: 'adaptive' | 'off';
+    timer: (ms: number) => AbortSignal;
   }> = {},
 ) {
   return createClaimReader({
@@ -93,6 +97,8 @@ function reader(
     wait: extra.wait ?? (async () => {}),
     clock: extra.clock ?? (() => 0),
     thinking: extra.thinking ?? 'adaptive',
+    // A deadline that never fires unless a test fires it.
+    timer: extra.timer ?? (() => new AbortController().signal),
   });
 }
 
@@ -460,5 +466,173 @@ describe('the failure log', () => {
       err: 'APIConnectionError',
     });
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain('ZQXJ-SENTINEL');
+  });
+});
+
+describe('size bounds (review item 2)', () => {
+  const sentPayload = (create: ReturnType<typeof fakeClient>['create']) =>
+    JSON.parse(
+      (create.mock.calls[0]?.[0] as { messages: { content: string }[] }).messages[0]?.content ?? '',
+    );
+
+  it('a body over the bound makes no call: oversize, zero attempts, not our deadline', async () => {
+    expect(CLAIM_READ_MAX_BODY_CHARS).toBe(8_000);
+    const { client, create } = fakeClient(CLEAN);
+    const out = await reader(client).read(input({ body: 'a'.repeat(8_001) }));
+    expect(out).toEqual({
+      status: 'failed',
+      reason: 'oversize',
+      attempts: 0,
+      deadline: false,
+      latencyMs: 0,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('a body at the bound is read (control)', async () => {
+    const { client, create } = fakeClient(CLEAN);
+    const out = await reader(client).read(input({ body: 'a'.repeat(8_000) }));
+    expect(out.status).toBe('read');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('inbound is cut to 2,000 code points; a short one is byte-identical (control)', async () => {
+    expect(CLAIM_READ_MAX_INBOUND_CHARS).toBe(2_000);
+    const long = fakeClient(CLEAN);
+    await reader(long.client).read(input({ inbound: 'é'.repeat(2_050) }));
+    expect([...sentPayload(long.create).inbound]).toHaveLength(2_000);
+    const short = fakeClient(CLEAN);
+    const thirty = 'Is the Saturday swim booked yet';
+    await reader(short.client).read(input({ inbound: thirty }));
+    expect(sentPayload(short.create).inbound).toBe(thirty);
+  });
+});
+
+describe('a provider error the reader does not recognise is named (review item 3)', () => {
+  for (const [status, type] of [
+    [400, 'invalid_request_error'],
+    [404, 'not_found_error'],
+    [422, 'invalid_request_error'],
+  ] as const) {
+    it(`a ${status} is provider_rejected, one attempt, logged by name only`, async () => {
+      const { client, create } = fakeClient(apiError(status, type, 'ZQXJ'), CLEAN);
+      const out = await reader(client).read(input());
+      expect(out).toMatchObject({
+        status: 'failed',
+        reason: 'provider_rejected',
+        attempts: 1,
+        deadline: false,
+      });
+      expect(create).toHaveBeenCalledTimes(1);
+      const logged = JSON.stringify(errorLog.mock.calls);
+      expect(logged).not.toContain('ZQXJ');
+      expect(logged).toContain('claim_read_failed');
+    });
+  }
+
+  it('the log names the 400 by its class', async () => {
+    await reader(fakeClient(apiError(400, 'invalid_request_error', 'ZQXJ')).client).read(input());
+    expect(JSON.stringify(errorLog.mock.calls)).toContain('BadRequestError');
+  });
+
+  it('a billing-shaped 400 is still an incident (classification order holds)', async () => {
+    const credit = apiError(
+      400,
+      'invalid_request_error',
+      'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.',
+    );
+    const out = await reader(fakeClient(credit).client).read(input());
+    expect(out).toMatchObject({ status: 'failed', reason: 'incident', incident: 'billing' });
+  });
+
+  it('a plain TypeError still rejects: a bug is not masked (control)', async () => {
+    const bug = new TypeError('not a provider error');
+    await expect(reader(fakeClient(bug).client).read(input())).rejects.toBe(bug);
+  });
+});
+
+describe('the deadline (review item 7)', () => {
+  it('the timer is the budget, capped at the max budget', async () => {
+    const timer = vi.fn((_ms: number) => new AbortController().signal);
+    await reader(fakeClient(CLEAN).client, { timer }).read(input({ budgetMs: 20_000 }));
+    expect(timer.mock.calls).toEqual([[15_000]]);
+  });
+
+  it('a budget under the max is the timer as given (control)', async () => {
+    const timer = vi.fn((_ms: number) => new AbortController().signal);
+    await reader(fakeClient(CLEAN).client, { timer }).read(input({ budgetMs: 8_000 }));
+    expect(timer.mock.calls).toEqual([[8_000]]);
+  });
+
+  it('our own timer firing mid-call is unreachable, deadline true', async () => {
+    const own = new AbortController();
+    let now = 0;
+    const midCall = (signal: AbortSignal) => {
+      own.abort();
+      now = 11_000;
+      return signal.aborted ? new Anthropic.APIUserAbortError() : new Error('signal not wired');
+    };
+    const out = await reader(fakeClient(midCall).client, {
+      timer: () => own.signal,
+      clock: () => now,
+    }).read(input());
+    expect(out).toMatchObject({
+      status: 'failed',
+      reason: 'unreachable',
+      deadline: true,
+      attempts: 1,
+    });
+  });
+
+  it("the caller's signal aborting mid-call is no_budget, deadline false (control)", async () => {
+    const caller = new AbortController();
+    let now = 0;
+    const midCall = (signal: AbortSignal) => {
+      caller.abort();
+      now = 11_000;
+      return signal.aborted ? new Anthropic.APIUserAbortError() : new Error('signal not wired');
+    };
+    const out = await reader(fakeClient(midCall).client, { clock: () => now }).read(
+      input({ signal: caller.signal }),
+    );
+    expect(out).toMatchObject({
+      status: 'failed',
+      reason: 'no_budget',
+      deadline: false,
+      attempts: 1,
+    });
+  });
+});
+
+describe('retry-after is subtracted from the remaining budget (review item 7)', () => {
+  const limited = (seconds: number) =>
+    apiError(429, 'rate_limit_error', 'Too many requests', {}, { 'retry-after': String(seconds) });
+
+  it('4,000 ms spent plus a 7 s retry-after leaves under the floor: no retry', async () => {
+    let now = 0;
+    const wait = vi.fn(async (_ms: number, _signal: AbortSignal) => {});
+    const spend = () => {
+      now = 4_000;
+      return limited(7);
+    };
+    const { client, create } = fakeClient(spend, CLEAN);
+    const out = await reader(client, { clock: () => now, wait }).read(input({ budgetMs: 15_000 }));
+    expect(out).toMatchObject({ status: 'failed', reason: 'rate_limited', attempts: 1 });
+    expect(wait).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 5 s retry-after leaves 6,000 ms: it waits and retries (control)', async () => {
+    let now = 0;
+    const wait = vi.fn(async (_ms: number, _signal: AbortSignal) => {});
+    const spend = () => {
+      now = 4_000;
+      return limited(5);
+    };
+    const { client, create } = fakeClient(spend, CLEAN);
+    const out = await reader(client, { clock: () => now, wait }).read(input({ budgetMs: 15_000 }));
+    expect(wait.mock.calls.map(([ms]) => ms)).toEqual([5_000]);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(out).toMatchObject({ status: 'read', attempts: 2 });
   });
 });

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 周四上午10点 (Thursday morning at 10 o'clock) for Swim class. 上午 places the hour in the morning, so 10 is 10:00 AM. The start is Thursday, July 23, 2026 at 10:00 in America/Toronto, with minute zero. The text names the event and the Thursday, morning 10 o'clock start, with no conflicting day or time, so it matches.",
+    "match": true
+  },
+  "latencyMs": 1815
+}

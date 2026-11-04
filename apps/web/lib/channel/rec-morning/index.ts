@@ -5,7 +5,6 @@ export {
   TORONTO_WAITLIST_HOURS,
   UNOFFICIAL,
   YMCA_PORTAL,
-  YMCA_SWIM_OPEN,
 } from './facts';
 export {
   EFUN_GONE,
@@ -22,10 +21,11 @@ export {
 export { cityRecLine } from './city-line';
 export {
   type RecHelloCity,
+  type RecMorningPlace,
   type RecMorningTopic,
   type RecMorningWhere,
   matchRecMorning,
-  recMorningCouldUseWhere,
   resolveHelloCity,
+  resolveRecMorningWhere,
 } from './match';
 export { namesRetiredRecPortal } from './retired-portal';

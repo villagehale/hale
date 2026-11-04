@@ -41,15 +41,15 @@
   },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
-    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
+    "sha256": "e199f7bad0c42615373dbbe869f05424c35fd1d995e6a58387141fec0035b3fb"
   },
   "calendar-invite-time.md": {
     "file": "calendar-invite-time.md",
-    "sha256": "1a07b041adce933d6bab2cb62ded5e6ef245a078630f58e650f2bd221b879289"
+    "sha256": "35c865876e1573a180b14a49d775a3170839936cf3daac858067ce0fcba86924"
   },
   "calendar-invite-voice.md": {
     "file": "calendar-invite-voice.md",
-    "sha256": "186475779c760f2d539d05b06edada16fd68b04b59d6d741dd5bc408a640be38"
+    "sha256": "8e9359cad3eb06966da050be62020602bc0572a9440a659239080e412f76eb81"
   },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
@@ -102,6 +102,10 @@
   "coach-plan.md": {
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
+  },
+  "connector-disconnect-read.md": {
+    "file": "connector-disconnect-read.md",
+    "sha256": "7b351171cf1c93807d6267ebfcb1909e52965e8e7cf1a2b3b1fe6d747cac2d2f"
   },
   "consent-ask.md": {
     "file": "consent-ask.md",
@@ -277,7 +281,7 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "3150b15c2756762ff331b1a19a3e2af98788b2c898a7a84c7fa45d77c70fd20b"
+    "sha256": "e4b872ab68fe701206dd87f9682634c85d04215f2bc81bbcb0f5f01945788eb7"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
@@ -345,7 +349,7 @@
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
-    "sha256": "fffd03ffa12917ac2a6304b0951aa1c8964515e91a92078f3b4c476699bc6814"
+    "sha256": "7a7a4350c4e133f709774debc8a5cfd261ca0e55bde8580e4ea61c6413d7246d"
   },
   "parse-village-search.md": {
     "file": "parse-village-search.md",
@@ -405,7 +409,7 @@
   },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "770ed88934fdcbe069ce783a5aa16af1fb51958de4a8660942eb768a70a96c0f"
+    "sha256": "6bd76029cfae6f5b53806179d3a5f3624c8ad0428d3873e7ef9057873de408ae"
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",

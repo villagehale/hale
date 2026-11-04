@@ -14,7 +14,12 @@ function ledgerDb(): Database {
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn().mockReturnValue({ where });
   const update = vi.fn().mockReturnValue({ set });
-  return { insert, update } as unknown as Database;
+  // The parent's own inbound here carried Linq's is_group: false, so the chat is their 1:1.
+  const limit = vi.fn().mockResolvedValue([{ inGroup: false }]);
+  const orderBy = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ orderBy }) });
+  const select = vi.fn().mockReturnValue({ from });
+  return { insert, update, select } as unknown as Database;
 }
 
 const CHAT = 'chat-parent-started';

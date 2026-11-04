@@ -15,10 +15,13 @@ import styles from './portal.module.css';
 export function PrivacyView({
   records,
   role,
+  canExport,
   basePath = '',
 }: {
   records: ViewerConsentRecord[];
   role: DeleteAccountRole;
+  /** Whether the export route serves this viewer's seats (exportSeat). */
+  canExport: boolean;
   basePath?: string;
 }) {
   return (
@@ -48,18 +51,20 @@ export function PrivacyView({
         </section>
         <section className={`${styles.card} ${styles.span}`}>
           <span className={styles.tag}>Your controls</span>
-          <div className={styles.row}>
-            <span className={styles.tile}>
-              <Download aria-hidden="true" />
-            </span>
-            <span>
-              <h3>Export your data</h3>
-              <p className={styles.meta}>A copy of everything Hale holds.</p>
-            </span>
-            <span className={styles.end}>
-              <ExportDataButton idleLabel="Export" />
-            </span>
-          </div>
+          {canExport ? (
+            <div className={styles.row}>
+              <span className={styles.tile}>
+                <Download aria-hidden="true" />
+              </span>
+              <span>
+                <h3>Export your data</h3>
+                <p className={styles.meta}>A copy of everything Hale holds.</p>
+              </span>
+              <span className={styles.end}>
+                <ExportDataButton idleLabel="Export" className={styles.secondary} />
+              </span>
+            </div>
+          ) : null}
           <details className={styles.disclosure}>
             <summary className={styles.row}>
               <span className={styles.tile}>
@@ -124,7 +129,11 @@ function Danger({ role }: { role: DeleteAccountRole }) {
           — belongs to the household and stays with it. To ask what Hale still holds for you, email{' '}
           <a href="mailto:privacy@villagehale.com">privacy@villagehale.com</a>.
         </p>
-        <DeleteAccountButton role={role} />
+        <DeleteAccountButton
+          role={role}
+          buttonClassName={styles.secondary}
+          cancelClassName={styles.secondary}
+        />
       </section>
     );
   }
@@ -143,7 +152,12 @@ function Danger({ role }: { role: DeleteAccountRole }) {
         it, reply to any Hale text or email{' '}
         <a href="mailto:privacy@villagehale.com">privacy@villagehale.com</a>.
       </p>
-      <DeleteAccountButton role={role} idleLabel="Delete everything" />
+      <DeleteAccountButton
+        role={role}
+        idleLabel="Delete everything"
+        buttonClassName={styles.secondary}
+        cancelClassName={styles.secondary}
+      />
     </section>
   );
 }

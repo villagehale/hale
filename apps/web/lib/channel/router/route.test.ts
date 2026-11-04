@@ -25,11 +25,17 @@ import {
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
+import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import {
+  CRISIS_UNANSWERED_AUDIT_ACTION,
+  CRISIS_UNANSWERED_PAGE_ROUTE,
+} from '~/lib/monitoring/failure-page';
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -429,6 +435,11 @@ function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } 
 /** A family Hale owes nothing and has nothing booked for — the state in which every
  * claim is false. The default, so a test that says nothing about the ledger cannot
  * accidentally be relying on one. */
+/** The claim shadow as production runs it with the flag unset. */
+function offShadow(): ClaimShadow {
+  return { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' };
+}
+
 function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
   return {
     openKinds: new Set(),
@@ -465,6 +476,7 @@ function harness(
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
+    claimShadow?: ChannelRouterDeps['claimShadow'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
@@ -479,6 +491,7 @@ function harness(
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
     floodLine?: FloodLineComposer;
+    crisisPager?: CrisisPager;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -515,6 +528,7 @@ function harness(
         options.recordActivityPromise ??
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      claimShadow: options.claimShadow ?? offShadow(),
       // VIL-294. Nothing is stated by default, so a test that says nothing about the
       // inbound half cannot accidentally be relying on a write.
       recordStatedState:
@@ -554,6 +568,7 @@ function harness(
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
       floodLine: options.floodLine ?? fakeFloodLine(),
+      crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -564,6 +579,29 @@ function harness(
         warn: (...args: unknown[]) => logs.push(args),
         error: (...args: unknown[]) => logs.push(args),
       } as unknown as Pick<Console, 'info' | 'warn' | 'error'>,
+    },
+  };
+}
+
+/** The crisis pager port, recorded: what it was asked to record, then to page. */
+function recordingCrisisPager(): {
+  pager: CrisisPager;
+  recorded: CrisisUnanswered[];
+  paged: CrisisUnanswered[];
+} {
+  const recorded: CrisisUnanswered[] = [];
+  const paged: CrisisUnanswered[] = [];
+  return {
+    recorded,
+    paged,
+    pager: {
+      async record(alert) {
+        recorded.push(alert);
+      },
+      async page(alert) {
+        paged.push(alert);
+        return 'paged';
+      },
     },
   };
 }
@@ -2393,6 +2431,60 @@ describe('the outage smoke alarm', () => {
     expect(again.status).toBe('deflected');
     expect(h.transport.bodies()).toEqual(['Get help where you are.']);
     expect(calls).toBe(2);
+  });
+
+  it('a crisis moment nobody could write pages #ops at once, then defers as before', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unwritten = (
+      moment: 'mental_crisis' | 'emergency' | 'could_not_answer',
+      reason: string,
+    ): OffDomainLane => ({
+      async consider() {
+        return {
+          status: 'unwritten' as const,
+          moment,
+          reason,
+          lane: 'safety_critical' as const,
+          category: 'other' as const,
+        };
+      },
+    });
+    const crisis = recordingCrisisPager();
+    const turn = job();
+
+    for (const [moment, reason] of [
+      ['mental_crisis', 'model_failed'],
+      ['emergency', 'client_unavailable'],
+    ] as const) {
+      const h = harness({ offDomain: unwritten(moment, reason), crisisPager: crisis.pager });
+      await expect(routeChannelMessage(h.deps, turn)).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+      expect(h.transport.bodies()).toEqual([]);
+    }
+
+    const at = {
+      where: 'router moment',
+      inboundId: turn.provider_message_id,
+      familyId: turn.family_id,
+      parentUserId: turn.parent_user_id,
+    };
+    expect(crisis.paged).toEqual([
+      { kind: 'mental', reason: 'model_failed', writes: 2, ...at },
+      { kind: 'emergency', reason: 'client_unavailable', writes: 0, ...at },
+    ]);
+    expect(crisis.recorded).toEqual(crisis.paged);
+
+    // Positive control: a could-not-answer moment is not a crisis. It defers and pages nobody.
+    const plain = harness({
+      offDomain: unwritten('could_not_answer', 'model_failed'),
+      crisisPager: crisis.pager,
+    });
+    await expect(routeChannelMessage(plain.deps, turn)).rejects.toMatchObject({
+      reason: 'moment_unwritten',
+    });
+    expect(crisis.paged).toHaveLength(2);
   });
 
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
@@ -4484,6 +4576,89 @@ describe('the weekday-care answer', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
+  it('declines every hidden unapproved draft when NO answers the offer, and YES does not approve them', async () => {
+    const declined: string[] = [];
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-held', actionType: 'calendar_add', reviewerApproved: false },
+        { actionId: 'a-held-2', actionType: 'calendar_add', reviewerApproved: false },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const offer = {
+      id: 'offer-1',
+      kind: 'email_alert_add' as const,
+      description: 'An offer to put Picture day on your week',
+      subject: 'putting Picture day on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      declinesActionId: 'a-held',
+      declinesActionIds: ['a-held', 'a-held-2'],
+    };
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const no = harness({
+      context: { body: 'NO' },
+      coach: fakeCoach(),
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    await routeChannelMessage(no.deps, job());
+    expect(declined).toEqual(['a-held', 'a-held-2']);
+    expect(approved).toEqual([]);
+
+    const yesHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
+    };
+    const yes = harness({
+      context: { body: 'YES' },
+      coach: fakeCoach(),
+      handlers: [yesHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(yes.deps, job());
+    expect(approved).toEqual([]);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+  });
+
   it('a yes to the finder ask searches and does not write a care fact', async () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({
@@ -5520,6 +5695,83 @@ describe('the reply row, written to a real database', () => {
       ]);
     });
   });
+
+  /** The production wiring: no `crisisPager` in the deps, so the router's default (the
+   * real failure-page pager on this turn's database) runs. Only the Slack post is faked. */
+  describe('a crisis moment nobody could write, through the default pager', () => {
+    const WEBHOOK = 'https://hooks.example.test/ops';
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("pages #ops once and leaves the claim and the texting parent's audit row", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+        if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+        return new Response('ok', { status: 200 });
+      });
+      const { h, familyId, parentUserId, turn } = await onRealDatabase(db, {
+        offDomain: {
+          async consider() {
+            return {
+              status: 'unwritten' as const,
+              moment: 'mental_crisis' as const,
+              reason: 'model_failed',
+              lane: 'safety_critical' as const,
+              category: 'other' as const,
+            };
+          },
+        },
+      });
+      h.deps.crisisPager = undefined;
+
+      await expect(routeChannelMessage(h.deps, turn())).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+
+      expect(h.transport.bodies()).toEqual([]);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain('kind mental.');
+      expect(posted[0]).toContain('where router_moment.');
+      expect(posted[0]).toContain('reason model_failed.');
+      expect(posted[0]).toContain('writes 2.');
+      const claims = await db.database
+        .select({ count: schema.rateLimits.count })
+        .from(schema.rateLimits)
+        .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+      expect(claims).toEqual([{ count: 1 }]);
+      const audit = await db.database
+        .select({
+          familyId: schema.auditLog.familyId,
+          targetId: schema.auditLog.targetId,
+          after: schema.auditLog.after,
+        })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, CRISIS_UNANSWERED_AUDIT_ACTION));
+      expect(audit).toEqual([
+        {
+          familyId,
+          targetId: parentUserId,
+          after: { kind: 'mental', where: 'router moment', reason: 'model_failed', writes: 2 },
+        },
+      ]);
+    });
+  });
 });
 
 /**
@@ -5872,5 +6124,85 @@ describe('VIL-463 group scope', () => {
     expect(flood.calls).toBe(1);
     expect(h.transport.sent).toEqual([]);
     expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
+  });
+});
+
+describe('VIL-581 · the claim shadow starts after the send and changes nothing', () => {
+  type CoachTurnCall = Parameters<ClaimShadow['coachTurn']>;
+  function recordingShadow() {
+    const calls: Array<{ args: CoachTurnCall; sentBefore: number }> = [];
+    const seen: { transport?: FakeReplyTransport } = {};
+    const shadow: ClaimShadow = {
+      coachTurn: (...args) => {
+        calls.push({ args, sentBefore: seen.transport?.sent.length ?? -1 });
+        return 'started';
+      },
+      sweep: () => 'off',
+      dispatch: () => 'off',
+    };
+    return { shadow, calls, seen };
+  }
+  function scripted(replies: readonly string[]): ChannelCoachRuntime {
+    let attempt = 0;
+    return {
+      async respond() {
+        const reply = replies[Math.min(attempt, replies.length - 1)] ?? '';
+        attempt += 1;
+        return { reply, planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    };
+  }
+
+  it('a clean turn: one call, after the transport took the reply, with the sent reply', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: fakeCoach('Saturday has two indoor options.'),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(rec.calls).toHaveLength(1);
+    const call = rec.calls[0] as (typeof rec.calls)[number];
+    expect(call.sentBefore).toBe(1);
+    const [database, input] = call.args;
+    expect(database).toBe(h.deps.database);
+    expect(input.attempts).toHaveLength(1);
+    expect(input.attempts[0]?.reply).toBe(h.transport.bodies()[0]);
+    expect(input.inbound).toBe('anything indoors this weekend?');
+    expect(input.familyId).toBe(FAMILY);
+    expect(input.parentUserId).toBe(PARENT);
+
+    const baseline = harness({ coach: fakeCoach('Saturday has two indoor options.') });
+    await routeChannelMessage(baseline.deps, job());
+    expect(h.transport.bodies()).toEqual(baseline.transport.bodies());
+  });
+
+  it('a re-asked turn hands over both attempts, the first with its refusal', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: scripted([
+        "I'm watching that morning and I'll text you before it goes live.",
+        'Riverford has not published a winter date yet.',
+      ]),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Riverford has not published a winter date yet.']);
+    const attempts = rec.calls[0]?.args[1].attempts ?? [];
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.verdict.refused).toHaveLength(1);
+    expect(attempts[1]?.verdict.refused).toHaveLength(0);
+  });
+
+  it('an empty reply sends nothing and starts no shadow (control)', async () => {
+    const rec = recordingShadow();
+    const h = harness({ coach: fakeCoach(''), claimShadow: rec.shadow });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.sent).toEqual([]);
+    expect(rec.calls).toEqual([]);
   });
 });
