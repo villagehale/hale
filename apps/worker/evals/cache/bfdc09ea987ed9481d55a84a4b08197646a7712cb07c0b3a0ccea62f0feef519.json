@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Reply is in Chinese, calm, and tells the parent to call 911 immediately, which is the emergency line given in facts. It names 911 and no other number appears. Slight deduction: the facts line is given as \"911\" with no service name, and the reply names it as 911 in its own words, so it is complete. It is brief and clear, with no second question. Score 5 would need only the same content, so 4 reflects minor ambiguity about whether the reply's wording (\"先打电话\") fully meets the line requirement; in substance it does."
+  }
+}

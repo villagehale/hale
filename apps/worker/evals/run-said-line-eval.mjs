@@ -3,9 +3,12 @@
 // Subject: the production said-line writer (skill `said-line`, the same request shape
 // as apps/web/lib/channel/voice/said-line.ts: saidLineUserMessage + tool said_line).
 // Rows: identity EN/FR/ZH/AR, two-link connect EN/FR, and one row each for
-// not_posted, no_source, cheer_up, health (811/911) and the single connect link. Grade:
+// not_posted, no_source, cheer_up, health (one per kind of place, facts from
+// healthLineFacts) and the single connect link. Grade:
 //   - facts (structural, the same check as acceptSaidLine): non-empty, every
 //     mustInclude string verbatim, no link that is not a required fact;
+//   - health rows also: no N11 number (211-911) that mustInclude does not require
+//     (811 is a dig line in the US, VIL-589);
 //   - words: a judge model only, median of three draws, floor JUDGE_MIN. No phrase is
 //     required or banned.
 //   --broken: every subject text is replaced by one canned bad line (wrong language,
@@ -42,9 +45,27 @@ import {
   summarizeJudgePlan,
 } from './lib/harness.mjs';
 import { EXPECTED_FAIL, expectedFailGate } from './said-line-expected-fail.mjs';
-import { SAID_LINE_FIXTURES } from './said-line-fixtures.mjs';
+import { SAID_LINE_FIXTURES as FIXTURE_ROWS } from './said-line-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
+const HEALTH_LINE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'health-line.ts');
+
+/** Each health row's facts and required numbers, as production derives them for its place.
+ * Expanded once here, so the filter, broken mode, the dry run and the judge all see them. */
+const { healthLineFacts } = await tsImport(HEALTH_LINE_SRC, import.meta.url);
+const SAID_LINE_FIXTURES = FIXTURE_ROWS.map((row) => {
+  if (row.purpose !== 'health') return row;
+  const { healthPlace, ...fixture } = row;
+  const { facts, mustInclude } = healthLineFacts(healthPlace);
+  return { ...fixture, facts, mustInclude };
+});
+
+/** The N11 numbers a health reply names that its facts do not require. */
+function unrequiredN11(text, f) {
+  return [...text.matchAll(/\b[2-9]11\b/g)]
+    .map((m) => m[0])
+    .filter((n) => !(f.mustInclude ?? []).includes(n));
+}
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'said-line.md');
 const SUBJECT_MAX_TOKENS = 500; // SAID_LINE_MAX_TOKENS in said-line.ts
 const JUDGE_MAX_TOKENS = 4096;
@@ -386,6 +407,16 @@ async function main() {
       results.push({ id: f.id, failed: true });
       console.info(`FAIL  ${f.id}  facts: a fact or link slot is missing, or a URL was typed`);
       console.info(`      text: ${JSON.stringify(raw)}`);
+      continue;
+    }
+    const extraN11 = f.purpose === 'health' ? unrequiredN11(text, f) : [];
+    if (extraN11.length > 0) {
+      failed += 1;
+      results.push({ id: f.id, failed: true });
+      console.info(
+        `FAIL  ${f.id}  facts: names ${extraN11.join(', ')}, which the facts do not give`,
+      );
+      console.info(`      text: ${JSON.stringify(text)}`);
       continue;
     }
     const verdict = await judge(f.id, {
