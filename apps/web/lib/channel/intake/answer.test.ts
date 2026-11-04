@@ -161,6 +161,8 @@ describe('intake answer · the emergency tripwire', () => {
     const outcome = await composer.compose({
       ...INPUT,
       parentWords: 'When does Toronto swim registration open?',
+      // VIL-591: rec-morning answers only a family whose collected place is in the GTA.
+      postalCode: 'M5V',
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;
@@ -187,6 +189,8 @@ describe('intake answer · the emergency tripwire', () => {
     const outcome = await composer.compose({
       ...INPUT,
       parentWords: 'Markham fall rec dates?',
+      // VIL-591: rec-morning answers only a family whose collected place is in the GTA.
+      postalCode: 'M5V',
     });
     expect(outcome.status).toBe('answered');
     if (outcome.status !== 'answered') return;

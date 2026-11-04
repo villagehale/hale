@@ -6,7 +6,11 @@ import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { sendWelcomeContactCard } from '~/lib/channel/intake/welcome-card';
 import { linqGroupOpenLine, linqGroupUnreachableLine } from '~/lib/channel/linq/group';
-import { recMorningReply, writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import {
+  recMorningReply,
+  resolveRecMorningWhere,
+  writeRecMorningIntakeReply,
+} from '~/lib/channel/rec-morning';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { recMorningHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
@@ -121,16 +125,23 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     quiet();
     setSharedSpokenLineWriter(SILENT_MODEL);
     const body = 'is efun still a thing?';
-    expect(recMorningReply(body, new Date())).not.toBeNull();
-    const verdict = await recMorningHandler().handle(
-      {} as Database,
-      {
-        body,
-        now: new Date(),
-        familyId: FAMILY,
-      } as unknown as HandlerContext,
-    );
+    // A GTA family (stored Toronto FSA), so the facts exist and only the model is silent.
+    const postal = 'M5V';
+    expect(
+      recMorningReply(body, new Date(), resolveRecMorningWhere({ city: null, postal })),
+    ).not.toBeNull();
+    const family = { primaryLanguage: null, city: null, postalCode: postal, areaCoarse: null };
+    const database = {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [family] }) }) }),
+    } as unknown as Database;
+    const verdict = await recMorningHandler().handle(database, {
+      body,
+      now: new Date(),
+      familyId: FAMILY,
+    } as unknown as HandlerContext);
     expect(verdict).toEqual({ claimed: false });
-    expect(await writeRecMorningIntakeReply({ parentWords: body, pendingAsk: '' })).toBeNull();
+    expect(
+      await writeRecMorningIntakeReply({ parentWords: body, pendingAsk: '', postal }),
+    ).toBeNull();
   });
 });

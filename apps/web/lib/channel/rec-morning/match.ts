@@ -31,9 +31,19 @@ export type RecHelloCity =
   | 'uxbridge'
   | 'milton';
 
+/** The place a family has on file: the families row's city and postal code. */
+export type RecMorningPlace = {
+  city: string | null;
+  postal: string | null;
+};
+
+/**
+ * A family's stored place, resolved to the one GTA municipality it is in. Every fact
+ * this lane holds is a GTA fact, so a family without one is never a rec-morning family.
+ */
 export type RecMorningWhere = {
-  city?: string | null;
-  postal?: string | null;
+  municipality: RecHelloCity;
+  postal: string | null;
 };
 
 export type RecMorningTopic =
@@ -125,9 +135,14 @@ export function postalMentioned(body: string): string | null {
   return fold(body).match(POSTAL_IN_TEXT)?.[1] ?? null;
 }
 
-function helloCityFromPostal(postal: string): RecHelloCity | null {
+function fsaOf(postal: string): string | null {
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  return /^[A-Z]\d[A-Z]$/.test(fsa) ? fsa : null;
+}
+
+function helloCityFromPostal(postal: string): RecHelloCity | null {
+  const fsa = fsaOf(postal);
+  if (fsa === null) return null;
   const towns = municipalitiesForFsa(fsa);
   if (towns.length !== 1) return null;
   const only = towns[0];
@@ -136,14 +151,25 @@ function helloCityFromPostal(postal: string): RecHelloCity | null {
 }
 
 /**
- * City for a first-hello: named in the ask, then a postal in the ask, then a
- * city/postal already on the intake or family. Ambiguous or unverified FSAs
- * resolve to nothing — no guessed town, no invented clock.
+ * The family's stored place as a GTA municipality: the city on file, then the postal on
+ * file. Null for anywhere else, and for an ambiguous or unverified FSA - no guessed town.
+ * A stored code that is not a Canadian FSA (a US ZIP) is never in the GTA, whatever
+ * town name sits beside it: Richmond Hill and Burlington are US towns too.
  */
-export function resolveHelloCity(
-  body: string,
-  where?: RecMorningWhere | null,
-): RecHelloCity | null {
+export function resolveRecMorningWhere(place: RecMorningPlace | null): RecMorningWhere | null {
+  if (place === null) return null;
+  if (place.postal && fsaOf(place.postal) === null) return null;
+  const fromCity = place.city ? namedHelloCity(fold(place.city)) : null;
+  const municipality = fromCity ?? (place.postal ? helloCityFromPostal(place.postal) : null);
+  if (municipality === null) return null;
+  return { municipality, postal: place.postal };
+}
+
+/**
+ * City for a first-hello: named in the ask, then a postal in the ask, then the family's
+ * own GTA municipality.
+ */
+export function resolveHelloCity(body: string, where: RecMorningWhere | null): RecHelloCity | null {
   const text = fold(body);
   const named = namedHelloCity(text);
   if (named) return named;
@@ -154,17 +180,7 @@ export function resolveHelloCity(
     if (fromText) return fromText;
   }
 
-  if (where?.city) {
-    const fromCity = namedHelloCity(fold(where.city));
-    if (fromCity) return fromCity;
-  }
-
-  if (where?.postal) {
-    const fromPostal = helloCityFromPostal(where.postal);
-    if (fromPostal) return fromPostal;
-  }
-
-  return null;
+  return where === null ? null : where.municipality;
 }
 
 function isCityRecAsk(text: string): boolean {
@@ -194,17 +210,6 @@ function isYmca(text: string): boolean {
 }
 
 /**
- * True when a known city/postal on file could turn this text into a first-hello.
- * False for a watch ask, a report, YMCA, or any ask the text already decides.
- */
-export function recMorningCouldUseWhere(body: string): boolean {
-  const text = fold(body);
-  if (text === '' || isNotOurs(text)) return false;
-  if (matchRecMorning(text) !== null) return false;
-  return isCityRecAsk(text);
-}
-
-/**
  * The rec-morning topic this text is asking about, or null when it is not one.
  *
  * First match wins, most specific first: Jack of Sports before "swim", YMCA follow
@@ -213,8 +218,10 @@ export function recMorningCouldUseWhere(body: string): boolean {
  */
 export function matchRecMorning(
   body: string,
-  where?: RecMorningWhere | null,
+  where: RecMorningWhere | null,
 ): RecMorningTopic | null {
+  // VIL-591: no GTA place on file, no topic - whatever the text names. The coach answers.
+  if (where === null) return null;
   const text = fold(body);
   if (text === '' || isNotOurs(text)) return null;
 

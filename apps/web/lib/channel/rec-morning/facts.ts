@@ -20,12 +20,4 @@ export const JACK_OF_SPORTS_PAGE = 'jackofsports.com';
 export const TORONTO_WAITLIST_HOURS = 36;
 export const BRAMPTON_WAITLIST_HOURS = 24;
 
-/** YMCA Greater Toronto Learn to Swim open — members and non-residents, same clock. */
-export const YMCA_SWIM_OPEN = {
-  isoDate: '2026-08-27',
-  weekday: 'Thursday',
-  time: '9:00 a.m.',
-  timeZone: 'America/Toronto',
-} as const;
-
 export const UNOFFICIAL = 'Hale is unofficial.';
