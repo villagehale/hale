@@ -16,7 +16,7 @@ import {
 } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
-import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
+import { unsubscribeUrl } from '~/lib/cron/email-compliance';
 import { type CaregiverSeat, selectCaregiverSeats } from '~/lib/loop/caregiver-audience';
 import {
   type ChildNameLevel,
@@ -911,12 +911,6 @@ export async function runReminderCron(
         continue;
       }
 
-      // Rule #6: no deep link on the glanceable T-1h; /plan on the evening-before T-24h.
-      // Never for a caregiver on either offset — /plan is behind an account they do not
-      // have, so the link would be a door with no key. For a parent it is a FACT the model
-      // may use; code never appends it.
-      const deepLink = !caregiver && batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
-
       // The parent's reminder is written whole by the model from facts. No client, or a
       // draft the model could not write usably, is NOTHING SENT and a logged, audited drop.
       // A writer that could not be reached is not the reminder's fault: it stays scheduled.
@@ -934,7 +928,7 @@ export async function runReminderCron(
                   timeZone: group.timezone,
                   offset: batch.offset,
                   now,
-                  planLink: deepLink,
+                  planLink: null,
                   language,
                 }),
                 group.familyId,
@@ -994,7 +988,7 @@ export async function runReminderCron(
         timeZone: group.timezone,
         events,
         children,
-        deepLink,
+        deepLink: null,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
         texts: texts ?? [],
         ...(bold ? { bold } : {}),

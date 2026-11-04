@@ -34,7 +34,7 @@ export interface ReminderPayload {
   timeZone: string;
   events: ReminderEventView[];
   children: ReminderChild[];
-  /** The /plan deep link for T-24h; NULL for T-1h (rule #6 — no links, glanceable). */
+  /** The reminder's deep link. Always null while /plan is retired. */
   deepLink: string | null;
   /** CASL unsubscribe for the email leg; null only when email is not a target. */
   unsubscribeUrl: string | null;
