@@ -3,7 +3,8 @@ import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activ
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
-import { type WeekendPick, asciiCopy } from './radar-decide';
+import { fitsHouseholdAges } from './pick-fit';
+import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
  * Step 4 of onboarding: a broad, skimmable map of what is on for these kids,
@@ -209,14 +210,16 @@ function flatten(groups: ActivityMapGroup[], finder: ActivityMapFinder): Activit
 }
 
 /**
- * One live search per fitting category, in parallel. A category whose search
- * returned nothing is left off the map rather than filled. Civic weekend
- * finds join the free-and-public group when that group is shown, since they
- * are the free sessions a community centre or library publishes.
+ * One live search per fitting category, in parallel. A pick outside every
+ * child's age is left out before the group is cut to size (pick-fit.ts), and a
+ * category whose search returned nothing for these kids is left off the map
+ * rather than filled. Civic weekend finds join the free-and-public group when
+ * that group is shown, since they are the free sessions a community centre or
+ * library publishes.
  */
 export async function collectActivityMap(input: {
   finder: ActivityFinder | null;
-  children: readonly { name: string | null; ageMonths: number | null }[];
+  children: readonly Pick<RadarChild, 'name' | 'ageMonths' | 'dobPrecision'>[];
   areaCoarse: string | null;
   civic: readonly WeekendPick[];
   familyId: string;
@@ -244,6 +247,7 @@ export async function collectActivityMap(input: {
   }
   let anyUsed = false;
   let anyFailed = false;
+  let droppedAge = 0;
   const groups = await Promise.all(
     categories.map(async (category): Promise<ActivityMapGroup> => {
       const query = categoryQuery(category, input);
@@ -253,7 +257,9 @@ export async function collectActivityMap(input: {
         const found = await input.finder?.find(query);
         if (!found || !found.found) return empty;
         anyUsed = true;
-        const picks = found.picks.slice(0, MAX_MAP_ITEMS_PER_GROUP);
+        const fitting = found.picks.filter((pick) => fitsHouseholdAges(pick, input.children));
+        droppedAge += found.picks.length - fitting.length;
+        const picks = fitting.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {
           category: category.id,
           lines: picks.map(webLine),
@@ -306,6 +312,7 @@ export async function collectActivityMap(input: {
       finder,
       groups: groups.filter((group) => group.lines.length > 0).length,
       lines: groups.reduce((sum, group) => sum + group.lines.length, 0),
+      droppedAge,
     },
     'intake activity map',
   );

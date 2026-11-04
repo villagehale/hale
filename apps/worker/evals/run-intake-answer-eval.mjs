@@ -96,7 +96,6 @@ const MAX_TOKENS = 300;
 
 // ── the composer's gates, replicated from answer.ts ─────────────────────────
 
-const MAX_REPLY_CHARS = 300;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const APP_POINTER =
   /\b((?:the|your|their|our) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
@@ -137,7 +136,6 @@ function flatten(text) {
 function gateFailures(answer, returnLine, fixture) {
   const failures = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) failures.push('over_char_cap');
   if (LINK_SHAPE.test(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
@@ -340,7 +338,6 @@ async function main() {
   const unsendable = results.filter((r) =>
     r.failures.some((f) =>
       [
-        'over_char_cap',
         'not_gsm7',
         'carries_link',
         'answer_carries_question',

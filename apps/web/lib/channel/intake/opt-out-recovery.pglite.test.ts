@@ -973,7 +973,7 @@ describe('recoverHeldOptOutReads', () => {
   }, 30_000);
 
   it('j: the sitting reminder skips a held mid-intake number, and owes it once read', async () => {
-    /** Wednesday 21 Oct 2026, 8:00 a.m. in the sitting reminder's zone. */
+    /** Wednesday 21 Oct 2026, 8:00 a.m. EDT, the morning of the session's Eastern postal place. */
     const morning = new Date('2026-10-21T12:00:00.000Z');
     const session = await createSession(db.database, {
       phoneE164: PHONE_B,
@@ -984,6 +984,17 @@ describe('recoverHeldOptOutReads', () => {
       db.database,
       session,
       {
+        firstTouch: {
+          language: 'en',
+          place: {
+            kind: 'postal',
+            areaCoarse: 'K2P',
+            postalCode: null,
+            municipality: null,
+            city: null,
+          },
+          locationRequest: null,
+        },
         transcript: [
           {
             direction: 'in',

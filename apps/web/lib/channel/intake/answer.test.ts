@@ -3,7 +3,6 @@ import { cityRecLine } from '~/lib/channel/rec-morning';
 import { adultLearnDoor } from './adult-learn';
 import {
   type IntakeAnswerInput,
-  MAX_REPLY_CHARS,
   createIntakeAnswerComposer,
   intakeAnswerContext,
   readPair,
@@ -28,6 +27,11 @@ const INPUT: IntakeAnswerInput = {
 };
 
 const RETURN = 'Still want me watching the registration dates?';
+
+const LONG_ANSWER = [
+  ...Array(6).fill('Most kids get a vision check at their regular visit, and it is free.'),
+  'Do it.',
+].join(' ');
 
 /** The composer reads the clock itself, and a city's rec line is derived against it,
  * so the rec-morning specs below pin the clock rather than the sentence. */
@@ -88,10 +92,15 @@ describe('intake answer · what may not go out', () => {
   it('refuses an invented time and sends an accented reply', () => {
     expect(problems('Clinics near you open at 9:30 most days.')).toContain('invented_fact');
     expect(problems('OHIP covers it — free every year.')).not.toContain('not_gsm7');
-    // The cap is on the JOINED body, because that is what a carrier bills: a long half
-    // riding behind a short one is a message that sends perfectly well.
-    expect(problems('x'.repeat(MAX_REPLY_CHARS), RETURN)).toContain('over_char_cap');
-    expect(problems('x'.repeat(MAX_REPLY_CHARS - RETURN.length - 1), RETURN)).toEqual([]);
+  });
+
+  it('never refuses an answer for its length (no character caps)', () => {
+    expect(LONG_ANSWER).toHaveLength(420);
+    expect(problems(LONG_ANSWER, RETURN)).toEqual([]);
+  });
+
+  it('still runs every other gate on a long answer', () => {
+    expect(problems(`${LONG_ANSWER} See https:// for more.`, RETURN)).toEqual(['carries_link']);
   });
 
   it('refuses a claim of being human unless it says what Hale actually is', () => {
@@ -118,6 +127,11 @@ describe('intake answer · reading the pair', () => {
   it('joins the two halves into one text', () => {
     const outcome = readPair({ answer: 'OHIP covers it.', returnLine: RETURN }, INPUT);
     expect(outcome).toEqual({ status: 'answered', body: `OHIP covers it. ${RETURN}` });
+  });
+
+  it('sends a long answer rather than swapping it for the script reply', () => {
+    const outcome = readPair({ answer: LONG_ANSWER, returnLine: RETURN }, INPUT);
+    expect(outcome).toEqual({ status: 'answered', body: `${LONG_ANSWER} ${RETURN}` });
   });
 
   it('reads an empty answer as "they did not ask anything" rather than a refusal', () => {

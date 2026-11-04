@@ -313,9 +313,9 @@ export function connectorLinkHandler(
       if (!provider) {
         log.error(
           { familyId: ctx.familyId, provider: target, outcome: 'connector_not_offered' },
-          'connector link: no consent door for this connector - nothing minted, nothing sent',
+          'connector link: no consent door for this connector - nothing minted, the coach takes the turn',
         );
-        return { claimed: true, outcome: 'connector_not_offered', reply: null };
+        return { claimed: false };
       }
       if (await familyGroupTurn(database, ctx)) {
         const outcome = await textFreshConnectorLink(
