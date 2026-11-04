@@ -59,16 +59,20 @@ function normalize(raw: string, stops: StopReading): string {
  * alike. "2.5 km", "St. Mary's", "a.m." and "U.S." are not a label, a dot and two
  * letters. An email needs only a local part, an @ and a label: "desk@pool" mails too.
  * The opaque schemes are the ones a phone opens with no "//" after the colon.
+ *
+ * Every pattern starts where its run starts (a lookbehind, or "://" read backwards), so a
+ * title of any length is read in one pass: an unanchored run is retried from each of its
+ * characters, and 100,000 letters took seconds.
  */
 const SHAPES: readonly { shape: DestinationShape; pattern: RegExp }[] = [
-  { shape: 'scheme', pattern: /[a-z][a-z0-9+.-]*:\/\//iu },
+  { shape: 'scheme', pattern: /:(?<=[a-z][a-z0-9+.-]*:)\/\//iu },
   {
     shape: 'scheme',
     pattern:
       /(?<![\p{L}\p{M}\p{N}])(?:mailto|tel|sms|smsto|facetime|facetime-audio):(?!\s|$|[\p{Pe}\p{Pf}](?:\s|$))/iu,
   },
-  { shape: 'email', pattern: /[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
-  { shape: 'domain', pattern: /[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
+  { shape: 'email', pattern: /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{M}\p{N}-]/u },
+  { shape: 'domain', pattern: /(?<![\p{L}\p{M}\p{N}-])[\p{L}\p{M}\p{N}-]+\.\p{L}[\p{L}\p{M}]/u },
 ];
 
 /** The event's start date in the family's zone: the only date a title may carry beside 7+ digits. */
@@ -134,7 +138,7 @@ function isCalendarFact(run: string, start: EventDate): boolean {
   let facts = 0;
   let others = 0;
   for (const chunk of run.replace(/\s*\p{Pd}\s*/gu, '-').split(/\s+/)) {
-    const bare = chunk.replace(/^\D+|\D+$/g, '');
+    const bare = chunk.replace(/^\D+|(?<=\d)\D+$/g, '');
     if (bare === '') continue;
     if (isStartDate(bare, start) || isSeasonAround(bare, start)) facts += 1;
     else if ((bare.match(/\d/g) ?? []).length <= 2) others += 1;

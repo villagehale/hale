@@ -506,6 +506,7 @@ const PHONES: readonly string[] = [
   '10:5550142',
   '202 555 01:99',
   '202-555-01:99',
+  '202 555 24:00',
   '2031-2032',
   '2026-11-23 2026-11-23',
   '2026-27 4 1',
@@ -632,30 +633,51 @@ describe('VIL-588 · six digits are short of a phone number', () => {
   });
 });
 
-describe('VIL-588 · the cancel voice holds a title longer than any event name, as the invite voice does', () => {
-  const titleOf = (length: number) => 'Swim class '.repeat(40).slice(0, length);
-
-  it('one over the bound: held before any model or judge call', async () => {
-    const w = writer(echoCancel);
-    const j = judge(true);
-    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
-      ...CANCEL,
-      summary: titleOf(MAX_INVITE_SUMMARY_CHARS + 1),
+describe('VIL-588 · the gate reads a title of any length in linear time', () => {
+  const july = { year: 2026, month: 7, day: 23 };
+  const n = 100_000;
+  const BUDGET_MS = 1000;
+  const LONG: readonly { row: string; words: string; shape: string | null }[] = [
+    { row: 'one long word', words: 'a'.repeat(n), shape: null },
+    { row: 'letters after digits', words: '1a'.repeat(n / 2), shape: null },
+    { row: 'plus signs', words: '+'.repeat(n), shape: null },
+    { row: 'a date run on by dots', words: `2026.07.23${'.'.repeat(n)}1`, shape: 'phone' },
+    { row: 'a date run on by brackets', words: `2026.07.23${'('.repeat(n)}1`, shape: 'phone' },
+  ];
+  for (const { row, words, shape } of LONG) {
+    it(`${row}: read within ${BUDGET_MS} ms`, () => {
+      for (const read of [titleDestination, textDestination]) {
+        const started = performance.now();
+        expect(read(words, july)).toBe(shape);
+        expect(performance.now() - started).toBeLessThan(BUDGET_MS);
+      }
     });
-    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_too_long' });
-    expect(w.calls()).toBe(0);
-    expect(j.seen).toEqual([]);
-  });
+  }
+});
 
-  it('at the bound: written and sent', async () => {
-    const summary = titleOf(MAX_INVITE_SUMMARY_CHARS);
-    expect(summary.length).toBe(MAX_INVITE_SUMMARY_CHARS);
+describe('VIL-588 · the cancel voice tells the parent about an event with a long title', () => {
+  it('a 10,000-character title is written and sent', async () => {
+    const summary = 'Swim class '.repeat(1000).slice(0, 10_000);
     const w = writer(echoCancel);
     const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
       ...CANCEL,
       summary,
     });
     expect(outcome).toEqual({ status: 'composed', body: `${summary}, ${WHEN}, is off.` });
+  });
+
+  it('a long title that carries a domain is held as a destination, before any call', async () => {
+    const summary = `${'Swim class '.repeat(20)}pool.example.org`;
+    expect(summary.length).toBeGreaterThan(MAX_INVITE_SUMMARY_CHARS);
+    const w = writer(echoCancel);
+    const j = judge(true);
+    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
+      ...CANCEL,
+      summary,
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+    expect(w.calls()).toBe(0);
+    expect(j.seen).toEqual([]);
   });
 });
 
@@ -673,5 +695,22 @@ describe('VIL-588 · a scheme name is exempt only when a closing mark and then n
       expect(read('Swim (bring tel:), Thu', july)).toBe('scheme');
       expect(read('sms:)55501', july)).toBe('scheme');
     }
+  });
+  it('a title ending "tel:)" is written and sent when the writer follows it with a space', async () => {
+    const words = 'Swim (bring tel:)';
+    const invite = writer((f) => `${f.summary} on ${f.when}. ${INVITE_LINK_SLOT}`);
+    expect(
+      await createCalendarInviteVoice(() => invite.client, agrees()).compose({
+        ...INVITE,
+        summary: words,
+      }),
+    ).toEqual({ status: 'composed', body: `${words} on ${WHEN}. ${LINK}` });
+    const cancel = writer((f) => `${f.summary} on ${f.when} is off.`);
+    expect(
+      await createCalendarCancelVoice(() => cancel.client, agrees()).compose({
+        ...CANCEL,
+        summary: words,
+      }),
+    ).toEqual({ status: 'composed', body: `${words} on ${WHEN} is off.` });
   });
 });
