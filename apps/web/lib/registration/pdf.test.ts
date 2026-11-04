@@ -37,7 +37,7 @@ const TWO_PAGE_GUIDE = [
 const CHARS_PER_TEXT_PAGE = 3_053;
 const FLATE_BOMB_INFLATED_BYTES = 128 * 1024 * 1024;
 // Long enough for a cold worker to load the reader on a busy CI runner, well short of the
-// ~2.4 s this bomb takes to finish on a fast laptop.
+// ~2.1 s this bomb takes to finish on a fast laptop.
 const BOMB_DEADLINE_MS = 1_200;
 // µs of CPU per ms of wall time: a twentieth of a core, ~6× below the slowest parse rate seen on a
 // loaded CI runner.
@@ -244,6 +244,7 @@ describe('local registration PDF text extraction', () => {
       // The reader loaded before the deadline, so the deadline cut off the parse, not the load.
       expect(readerLoads).toHaveLength(loadsBefore + 1);
       const load = readerLoads[loadsBefore];
+      if (!load) throw new Error('the bomb reader never loaded');
       const parseCpu = cpuMicros(process.cpuUsage(load.cpu));
       const parseMs = refusedAt - load.at;
 
