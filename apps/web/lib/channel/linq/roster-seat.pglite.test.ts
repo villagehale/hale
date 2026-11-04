@@ -933,6 +933,41 @@ describe('seatConfirmedMember when the grant ends between the read and the seat'
   });
 });
 
+/**
+ * Every statement the seat's transaction runs, in order. Drizzle's pglite session runs
+ * in-transaction statements on the Transaction PGlite hands it, so that object's `query`
+ * is wrapped and still delegates to the real one.
+ */
+async function withTransactionStatements<T>(run: () => Promise<T>) {
+  const statements: { text: string; params: unknown[] }[] = [];
+  const client = db.client;
+  const original = client.transaction;
+  client.transaction = ((callback) =>
+    original.call(client, async (tx) => {
+      const query = tx.query.bind(tx);
+      tx.query = ((text: string, params?: unknown[], options?: unknown) => {
+        statements.push({ text, params: params ?? [] });
+        return query(text, params as never, options as never);
+      }) as typeof tx.query;
+      return callback(tx);
+    })) as typeof client.transaction;
+  try {
+    return { result: await run(), statements };
+  } finally {
+    client.transaction = original;
+  }
+}
+
+/** The statements matching `pattern` that ran before the first `family_members` write. */
+function beforeMemberWrite(statements: { text: string; params: unknown[] }[], pattern: RegExp) {
+  const write = statements.findIndex((s) => /insert into "family_members"/i.test(s.text));
+  expect(write).toBeGreaterThan(-1);
+  return statements.slice(0, write).filter((s) => pattern.test(s.text));
+}
+
+const MEMBER_SHARE_LOCK = /from "family_members".*for share/is;
+const CHANNEL_SHARE_LOCK = /from "parent_channels".*for share/is;
+
 async function channelsFor(phone: string) {
   return db.database
     .select({ revokedAt: schema.parentChannels.revokedAt })
@@ -1144,6 +1179,62 @@ describe('seatConfirmedMember for a number that texted STOP', () => {
       after: { reason: 'opted_out', via: 'own_reply' },
     });
     expect(audits.map((row) => row.actionTaken)).not.toContain('linq_group_member_seated');
+  });
+
+  it("share-locks the caregiver's and the inviter's family rows, and the live channel, before writing", async () => {
+    const { parentUserId, granUserId } = await acceptedGran();
+
+    const { result, statements } = await withTransactionStatements(() => claimGran(db.database));
+
+    expect(statements.some((s) => /from "caregiver_invites".*for update/is.test(s.text))).toBe(
+      true,
+    );
+    const memberLocks = beforeMemberWrite(statements, MEMBER_SHARE_LOCK);
+    expect(memberLocks).toHaveLength(2);
+    expect(memberLocks[0]?.params).toContain(granUserId);
+    expect(memberLocks[1]?.params).toContain(parentUserId);
+    expect(beforeMemberWrite(statements, CHANNEL_SHARE_LOCK)).toHaveLength(1);
+    expect(result).toMatchObject({ outcome: 'seated', role: 'grandparent', userId: granUserId });
+  });
+
+  it("share-locks a co-parent inviter's row before seating on their open grant", async () => {
+    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:Coparent', name: 'Coparent' })
+      .returning({ id: schema.users.id });
+    const coParentUserId = coParent?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: coParentUserId, role: 'co_parent' });
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: coParentUserId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
+    await askedRoster([PARENT, GRAN]);
+
+    const { result, statements } = await withTransactionStatements(() => claimGran(db.database));
+
+    expect(statements.some((s) => /from "caregiver_invites".*for update/is.test(s.text))).toBe(
+      true,
+    );
+    const memberLocks = beforeMemberWrite(statements, MEMBER_SHARE_LOCK);
+    expect(memberLocks).toHaveLength(1);
+    expect(memberLocks[0]?.params).toContain(coParentUserId);
+    expect(result).toMatchObject({ outcome: 'seated', role: 'grandparent' });
+    const [seated] = await db.database
+      .select({ invitedByUserId: schema.familyMembers.invitedByUserId })
+      .from(schema.familyMembers)
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, familyId),
+          eq(schema.familyMembers.role, 'grandparent'),
+        ),
+      );
+    expect(seated?.invitedByUserId).toBe(coParentUserId);
   });
 });
 
