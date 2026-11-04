@@ -394,7 +394,6 @@ describe('connectorLinkHandler', () => {
 
     const drive = await handler.handle(db.database, turn('connect my google drive'));
 
-    // VIL-576: a claim with no reply is silence; declining hands the turn to the coach.
     expect(drive).toEqual({ claimed: false });
     expect(log.error).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'gdrive', outcome: 'connector_not_offered' }),
