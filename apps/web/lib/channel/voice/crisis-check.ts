@@ -264,11 +264,12 @@ function replyScriptLetter(language: ReplyLanguage | null): RegExp | null {
 
 // A line's name as its letters, joined by anything that is not one ('Suicide & Crisis'
 // and 'Suicide Crisis'). The writer is handed the name in English, so a reply in any
-// language may carry it; it counts for neither script.
+// language may carry it; it counts for neither script. The names are Latin, so only a
+// Latin letter continues the word: Han or Arabic written straight after it does not.
 const CRISIS_LINE_NAME = new RegExp(
   CRISIS_LINE_NAMES.map(
     (name) =>
-      `(?<!\\p{L})${[...name.matchAll(/\p{L}+/gu)].map(([word]) => word).join('\\P{L}+')}(?!\\p{L})`,
+      `(?<!\\p{Script=Latin})${[...name.matchAll(/\p{L}+/gu)].map(([word]) => word).join('\\P{L}+')}(?!\\p{Script=Latin})`,
   ).join('|'),
   'giu',
 );
