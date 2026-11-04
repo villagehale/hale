@@ -649,15 +649,12 @@ export async function expireStaleGoogleRevocations(
     return rows;
   });
   for (const row of expired) {
-    console.error(
-      { integrationId: row.id, provider: row.provider, google: 'abandoned' },
-      'google disconnect: abandoned',
-    );
+    console.error({ provider: row.provider, google: 'abandoned' }, 'google disconnect: abandoned');
   }
   return { abandoned: expired.length };
 }
 
-/** A family-erasure row's outcome: a settle outcome, or one of the two local-only ends. */
+/** A family-erasure row's outcome: a settle outcome, or one of the three local-only ends. */
 export type ErasureGoogleOutcome =
   | GoogleRowOutcome
   /** This row's Google account still holds a live grant in another household. Google
@@ -666,7 +663,12 @@ export type ErasureGoogleOutcome =
   | 'grant_kept_other_household'
   /** A live row with no owner and no account key, so nothing says which Google account a
    * revoke would end: ended locally, never skipped (rule #11). */
-  | 'ended_without_owner';
+  | 'ended_without_owner'
+  /** A row with no owner whose account is known, while a live grant in another household
+   * has no key (a sync overwrote it before the key had its own column), so it may be the
+   * same account. Fails closed: ended locally, since Hale's token copy goes either way and
+   * a cut grant would end another household's (rule #5). */
+  | 'ended_possibly_shared';
 
 export interface ErasureSettlement {
   integrationId: string;
@@ -684,11 +686,11 @@ export interface ErasureSettlement {
  * then settles those rows and every row an earlier disconnect left pending. A row still
  * `pending_retry` holds the only token that can end its grant, and the cascade would
  * delete it: the caller keeps the family for a later sweep instead, for a bounded wait
- * (the sweep's own bound, rights/delete.ts). Two kinds of row end locally only and are
+ * (the sweep's own bound, rights/delete.ts). Three kinds of row end locally only and are
  * never revoked: one whose Google account still holds a live grant in another household,
- * and one with neither an owner nor an account key. A row with no owner but a known
- * account is revoked like any other. Throws only when the local end fails, which leaves
- * the family standing.
+ * one with neither an owner nor an account key, and one with no owner while a live grant
+ * elsewhere has no key. Any other row with no owner but a known account is revoked like
+ * any other. Throws only when the local end fails, which leaves the family standing.
  */
 export async function endGoogleForFamilyErasure(
   db: Database,
@@ -719,6 +721,8 @@ export async function endGoogleForFamilyErasure(
     if (row.userId === null && row.key === null) localOnly.set(row.id, 'ended_without_owner');
     else if (elsewhere.some((other) => sameGoogleAccount(row, other))) {
       localOnly.set(row.id, 'grant_kept_other_household');
+    } else if (row.userId === null && elsewhere.some((other) => other.key === null)) {
+      localOnly.set(row.id, 'ended_possibly_shared');
     }
   }
   const revocable = held.filter((row) => !localOnly.has(row.id));
@@ -809,7 +813,6 @@ export async function endGoogleForFamilyErasure(
   for (const settlement of settlements) {
     console.info(
       {
-        integrationId: settlement.integrationId,
         provider: settlement.provider,
         push: settlement.push,
         google:

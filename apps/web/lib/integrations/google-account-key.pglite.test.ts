@@ -556,6 +556,27 @@ describe('an ended connection keeps no Google account key, and blocks nobody', (
     expect(await parentBlocked(home)).toBe(false);
   });
 
+  it('a row ended before the key was dropped, the key still on it, blocks nobody; the co-parent linking again does', async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    // As code before VIL-156's follow-up left an ended row: keys and pending gone, key kept.
+    await db.database.insert(schema.integrations).values({
+      familyId: home.familyId,
+      userId: coParent,
+      provider: 'gcal',
+      status: 'revoked',
+      oauthTokensEncrypted: null,
+      googleRevokePendingEncrypted: null,
+      googleAccountKey: ACCOUNT,
+    });
+
+    expect(await parentBlocked(home)).toBe(false);
+
+    // Positive control: the same row live again on the same account blocks the parent.
+    await connect(home.familyId, coParent, '1//co-again', ACCOUNT);
+    expect(await parentBlocked(home)).toBe(true);
+  });
+
   it('while the revoke is still pending the key stays; the retry that ends it drops the key', async () => {
     const home = await household('Home');
     const coParent = await coParentIn(home.familyId);
@@ -584,11 +605,15 @@ describe('an ended connection keeps no Google account key, and blocks nobody', (
     await connect(home.familyId, coParent, '1//co', ACCOUNT);
     await coParentDisconnects(home.familyId, coParent, DOWN);
 
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const later = new Date(NOW.getTime() + GOOGLE_REVOKE_PENDING_RETENTION_MS + 60_000);
     expect(await expireStaleGoogleRevocations(db.database, later)).toEqual({ abandoned: 1 });
 
     expect(await keyOf(home.familyId, coParent)).toEqual({ key: null, pending: null });
     expect(await parentBlocked(home)).toBe(false);
+    // Codes only in the log line: the abandon is named, the row is not.
+    const lines = errors.mock.calls.filter(([, line]) => line === 'google disconnect: abandoned');
+    expect(lines.map(([fields]) => fields)).toEqual([{ provider: 'gcal', google: 'abandoned' }]);
   });
 
   it('a revoke cancelled by the same account connecting elsewhere drops the ended row’s key', async () => {
