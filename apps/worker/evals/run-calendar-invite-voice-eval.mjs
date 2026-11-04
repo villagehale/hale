@@ -124,7 +124,7 @@ function refusals(body, request, starts, smsSegments, textDestination) {
   const slotCount = body.split(SLOT).length - 1;
   if (slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
-  const carriesLink = textDestination(body.split(SLOT).join(' ')) !== null;
+  const carriesLink = textDestination(body.split(SLOT).join(' '), starts) !== null;
   if (carriesLink) found.push('carries_destination');
   const allowed = startNumbers(starts);
   for (const n of request.summary.match(/\d+/g) ?? []) allowed.add(n);

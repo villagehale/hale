@@ -95,10 +95,10 @@ function zonedStart(startsAt, timeZone) {
 }
 
 /** Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts. */
-function refusals(body, request, textDestination) {
+function refusals(body, request, starts, textDestination) {
   if (body === '') return ['empty'];
   const found = [];
-  if (textDestination(body)) found.push('carries_destination');
+  if (textDestination(body, starts)) found.push('carries_destination');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
@@ -177,7 +177,7 @@ async function main() {
     const body = flatten(raw);
     const { request } = fixture;
     const starts = zonedStart(new Date(request.startsAt), request.timeZone);
-    const failures = refusals(body, request, textDestination);
+    const failures = refusals(body, request, starts, textDestination);
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source}`);
     }

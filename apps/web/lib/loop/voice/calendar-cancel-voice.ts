@@ -56,7 +56,9 @@ export function calendarCancelRefusals(
 ): CalendarCancelRefusal[] {
   if (body === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  if (textDestination(body)) found.push('carries_destination');
+  if (textDestination(body, zonedStart(request.startsAt, request.timeZone))) {
+    found.push('carries_destination');
+  }
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
@@ -126,7 +128,10 @@ export function createCalendarCancelVoice(
 ): CalendarCancelVoice {
   return {
     async compose(request) {
-      const held = titleDestination(request.summary);
+      const held = titleDestination(
+        request.summary,
+        zonedStart(request.startsAt, request.timeZone),
+      );
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {

@@ -81,6 +81,20 @@ const EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'an email address with no dotted domain', destination: 'desk@pool' },
   { row: 'a mailto address', destination: 'mailto:desk@pool' },
   { row: 'a scheme with no dotted host', destination: 'swimclub://join' },
+  { row: 'a lookalike dot (Syriac supralinear full stop)', destination: 'swim\u0701example' },
+  { row: 'an email address with a numeric host', destination: 'desk@10.0.0.1' },
+  { row: 'an sms link', destination: 'sms://5550104' },
+  { row: 'a mailto with one-letter parts', destination: 'mailto:a@b' },
+  { row: 'a tel link', destination: 'tel:+14165550199' },
+  { row: 'an sms short code', destination: 'sms:55501' },
+  { row: 'a facetime handle', destination: 'facetime:swimdesk' },
+  ...['\u034F', '\uFE0F', '\u{E0100}', '\u180B', '\u17B4'].flatMap((mark) => {
+    const hex = (mark.codePointAt(0) as number).toString(16).toUpperCase();
+    return [
+      { row: `default-ignorable U+${hex} after the dot`, destination: `swim.${mark}example` },
+      { row: `default-ignorable U+${hex} before ://`, destination: `swimclub${mark}://join` },
+    ];
+  }),
 ];
 
 /** Words that look dotted or numbered and are not a destination. */
@@ -95,10 +109,6 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'an age group and a season', words: 'Soccer U12 2026-2027' },
   { row: 'a grade and a season', words: 'Grade 5 2026-2027 swim' },
   { row: 'a level and a spaced season', words: 'Swim Level 3 2026 - 2027' },
-  { row: 'a course number and a year', words: 'Swim 101 2026' },
-  { row: 'an age range and a year', words: 'Ages 6-12 2026' },
-  { row: 'a wide age range and a year', words: 'Ages 10-14 2026' },
-  { row: 'a class year and a season', words: 'Class of 2030 2026-2027' },
   { row: 'a spaced at sign', words: 'Swim @ Riverside' },
   {
     row: 'a date in Arabic-Indic digits',
@@ -110,6 +120,7 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   },
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
+  { row: 'an emoji with a variation selector', words: 'Picnic \u2600\uFE0F' },
 ];
 
 /** A writer at the client port: answers every call with the text `write` builds from the facts. */
@@ -246,19 +257,19 @@ describe('VIL-588 · positive controls: dotted or numbered words are not a desti
     ).toContain('carries_destination');
   });
 
-  it('another day is a date too; a digit the writer invented is refused as one', () => {
+  it("another day is not this event's date, so its seven digits read as a number to dial", () => {
     const invite = calendarInviteRefusals(
       `Swim class am 23.07.2031 um 10:30. ${INVITE_LINK_SLOT}`,
       INVITE,
     );
     expect(invite).toContain('invented_number');
-    expect(invite).not.toContain('carries_destination');
+    expect(invite).toContain('carries_destination');
     const cancel = calendarCancelRefusals(
       'Swim class am 23.07.2031 um 10:30 ist abgesagt.',
       CANCEL,
     );
     expect(cancel).toContain('invented_number');
-    expect(cancel).not.toContain('carries_destination');
+    expect(cancel).toContain('carries_destination');
   });
 });
 
@@ -378,4 +389,133 @@ describe('VIL-588 · the cancel text names the event in any language: the time j
     const outcome = await createCalendarCancelVoice(() => w.client, judge(null)).compose(CANCEL);
     expect(outcome).toEqual({ status: 'deferred', reason: 'time_unjudged' });
   });
+});
+
+/*
+ * The phone rule, from the construction (round 2): clocks come out first, then a dial run
+ * of 7+ digits is a phone when it starts with '+', is a North American number, or is
+ * anything other than exactly ONE calendar fact of THIS event (its own start date in the
+ * family's zone, or a season around its year) plus at most one chunk of up to 2 digits.
+ */
+interface EventAt {
+  startsAt: Date;
+  timeZone: string;
+  when: string;
+}
+
+/** Mon, Nov 23 2026, 11:30 PM in Denver (MST, UTC-7): already Nov 24 in UTC. */
+const NOV_23: EventAt = {
+  startsAt: new Date('2026-11-24T06:30:00.000Z'),
+  timeZone: TIME_ZONE,
+  when: 'Mon, Nov 23 at 11:30 PM',
+};
+
+/** Mon, Jan 12 2026, 10:00 AM in Denver. */
+const JAN_12: EventAt = {
+  startsAt: new Date('2026-01-12T17:00:00.000Z'),
+  timeZone: TIME_ZONE,
+  when: 'Mon, Jan 12 at 10:00 AM',
+};
+
+async function verdicts(words: string, at: EventAt) {
+  const invite = writer(echoInvite);
+  const cancel = writer(echoCancel);
+  const inviteTitle = await createCalendarInviteVoice(() => invite.client, agrees()).compose({
+    ...INVITE,
+    ...at,
+    summary: `Swim class ${words}`,
+  });
+  const cancelTitle = await createCalendarCancelVoice(() => cancel.client, agrees()).compose({
+    ...CANCEL,
+    ...at,
+    summary: `Swim class ${words}`,
+  });
+  const inviteText = calendarInviteRefusals(
+    `Swim class ${words}, ${at.when}. ${INVITE_LINK_SLOT}`,
+    { ...INVITE, ...at },
+  ).includes('carries_destination');
+  const cancelText = calendarCancelRefusals(`Swim class ${words}, ${at.when}, is off.`, {
+    ...CANCEL,
+    ...at,
+  }).includes('carries_destination');
+  return { inviteTitle, cancelTitle, inviteText, cancelText };
+}
+
+const HELD = {
+  inviteTitle: { status: 'deferred', reason: 'summary_carries_destination' },
+  cancelTitle: { status: 'deferred', reason: 'summary_carries_destination' },
+  inviteText: true,
+  cancelText: true,
+};
+
+const PHONES: readonly string[] = [
+  '4-16-2055',
+  '2026-07-23',
+  '555 2026',
+  '9123 2019',
+  '2019-20 2021',
+  '2055-5-12 1-2-2026',
+  '2026 11 23 23',
+  '23 23 23 23',
+  '+1 2026 11 23',
+  '2026-07-23 14',
+  '416 555 0199',
+  '(416) 555-0199',
+  '416.555.0199',
+  '1-416-555-0199',
+  '202 607 2314:30',
+  '٤١٦ ٥٥٥ ٠١٩٩',
+  '४१६ ५५५ ०१९९',
+];
+
+const FACTS: readonly string[] = [
+  '23.11.2026 10:30',
+  'Grade 10 2026-2027',
+  'U12 2026-27',
+  '2026-2027 Swim Club',
+  '23.11.2026',
+  '2026-11-23',
+  '11.23.2026',
+  '2026-11-23 23:30',
+  'Level 3 Fall 2026',
+];
+
+describe('VIL-588 · a run of 7+ digits is a phone unless it is one calendar fact of this event', () => {
+  for (const words of PHONES) {
+    it(`held for a Nov 23 2026 event: ${words}`, async () => {
+      expect(await verdicts(words, NOV_23)).toEqual(HELD);
+    });
+  }
+
+  for (const words of FACTS) {
+    it(`sent for a Nov 23 2026 event: ${words}`, async () => {
+      const v = await verdicts(words, NOV_23);
+      expect(v.inviteTitle.status).toBe('composed');
+      expect(v.cancelTitle.status).toBe('composed');
+      expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    });
+  }
+
+  it("a session number beside the event's own date is sent; the same words on another day are held", async () => {
+    const v = await verdicts('Session 2 2026-01-12', JAN_12);
+    expect(v.inviteTitle.status).toBe('composed');
+    expect(v.cancelTitle.status).toBe('composed');
+    expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    expect(await verdicts('Session 2 2026-01-12', NOV_23)).toEqual(HELD);
+  });
+});
+
+/** Accepted fail-closed costs: these name no fact of this event, so their 7+ digits are held. */
+describe('VIL-588 · fail-closed costs: a number with no fact of this event is held', () => {
+  for (const words of [
+    'Swim 101 2026',
+    'Ages 6-12 2026',
+    'Class of 2030 2026-2027',
+    'Registration closes 2026-10-15',
+    'July 6-10 2026',
+  ]) {
+    it(`held: ${words}`, async () => {
+      expect(await verdicts(words, NOV_23)).toEqual(HELD);
+    });
+  }
 });

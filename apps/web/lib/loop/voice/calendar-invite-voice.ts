@@ -113,8 +113,8 @@ function allowedDigits(summary: string, event: ZonedStart): Set<string> {
 }
 
 /** The slot is read as a gap, so its neighbours never join into a domain. */
-function carriesDestination(text: string): boolean {
-  return textDestination(text.split(INVITE_LINK_SLOT).join(' ')) !== null;
+function carriesDestination(text: string, starts: ZonedStart): boolean {
+  return textDestination(text.split(INVITE_LINK_SLOT).join(' '), starts) !== null;
 }
 
 /**
@@ -132,7 +132,7 @@ export function calendarInviteRefusals(
   if (!request.url || slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
   const starts = zonedStart(request.startsAt, request.timeZone);
-  const carriesLink = carriesDestination(body);
+  const carriesLink = carriesDestination(body, starts);
   if (carriesLink) found.push('carries_destination');
   const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
   const allowed = allowedDigits(request.summary, starts);
@@ -307,7 +307,10 @@ export function createCalendarInviteVoice(
       if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
         return deferred('summary_too_long', String(request.summary.length));
       }
-      const held = titleDestination(request.summary);
+      const held = titleDestination(
+        request.summary,
+        zonedStart(request.startsAt, request.timeZone),
+      );
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
