@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, ne, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, notInArray } from 'drizzle-orm';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -122,37 +122,6 @@ export async function readRosterAudience(
     return { rosterId: roster.id, familyId: roster.familyId, status: roster.status, members };
   } catch (err) {
     if (isUndefinedTable(err)) return 'not_migrated';
-    throw err;
-  }
-}
-
-/**
- * Whether a chat is a family group the floor guards: a family holds it, or Hale seated a
- * roster for it that did not read it as a 1:1 (`not_group`). A sender that may address
- * either a 1:1 or a group asks this first; a missing roster table counts as a group, so
- * the floor then refuses it as `not_migrated`.
- */
-export async function isHouseholdGroupChat(database: Database, chatId: string): Promise<boolean> {
-  const [holder] = await database
-    .select({ id: schema.families.id })
-    .from(schema.families)
-    .where(eq(schema.families.linqGroupChatId, chatId))
-    .limit(1);
-  if (holder) return true;
-  try {
-    const [roster] = await database
-      .select({ id: schema.linqGroupRosters.id })
-      .from(schema.linqGroupRosters)
-      .where(
-        and(
-          eq(schema.linqGroupRosters.chatId, chatId),
-          ne(schema.linqGroupRosters.status, 'not_group'),
-        ),
-      )
-      .limit(1);
-    return Boolean(roster);
-  } catch (err) {
-    if (isUndefinedTable(err)) return true;
     throw err;
   }
 }
@@ -309,4 +278,40 @@ function presenceVerdict(
   if (scope.size === 0) return { allowed: false, reason: 'group_audience_empty' };
   if (!scope.has(lineClass)) return { allowed: false, reason: 'group_audience_refused' };
   return { allowed: true, reason: 'in_scope' };
+}
+
+export type ChatFloorVerdict = { allowed: true; reason: 'direct' } | GroupAudienceVerdict;
+
+/**
+ * The floor for a sender that may address a 1:1 or a group. It skips the floor only when
+ * the chat is provably the recipient's own 1:1: Linq said `is_group: false` on that
+ * recipient's own inbound in this chat (`channel_messages.in_group`), and never `true`.
+ * Household rows that are absent, or a caller's label, are not proof, so every other chat
+ * (unclaimed, multi-family, not yet rostered, never recorded) goes through
+ * {@link groupAudienceAllows} and is held unless it passes.
+ */
+export async function chatFloorAllows(
+  database: Database,
+  input: {
+    chatId: string;
+    recipientUserId: string;
+    lineClass: GroupLineClass;
+    listChatHandles: ListChatHandles;
+  },
+): Promise<ChatFloorVerdict> {
+  const [recorded] = await database
+    .select({ inGroup: schema.channelMessages.inGroup })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.recipientUserId),
+        eq(schema.channelMessages.providerChatId, input.chatId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.inGroup),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.inGroup))
+    .limit(1);
+  if (recorded?.inGroup === false) return { allowed: true, reason: 'direct' };
+  return groupAudienceAllows(database, input.chatId, input.lineClass, input.listChatHandles);
 }

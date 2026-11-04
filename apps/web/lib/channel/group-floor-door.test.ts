@@ -14,6 +14,12 @@ import { describe, expect, it } from 'vitest';
  * (it never addresses a group, and says why), or on `KNOWN_GROUP_BYPASS` (a group sender
  * another change owns). Both lists are ratchets: an entry whose module no longer calls a
  * send, or a bypass that now asks the floor, fails until it is removed.
+ *
+ * A sender never decides for itself whether a chat is a group. The only way to skip the
+ * floor is `chatFloorAllows`, which skips it only for the recipient's own recorded 1:1
+ * (Linq's `is_group: false`). A sending module that reads a group-ness signal of its own
+ * (household rows, a caller's `surface` label, an `isGroup` / `inGroup` bit) fails here,
+ * listed or not.
  */
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url)).replace(/\/$/, '');
@@ -25,7 +31,12 @@ const SEND_DEFINITIONS = new Set([
 ]);
 
 /** Calls that ask the floor before a group line: the floor, and the doors built on it. */
-const FLOOR_DOORS = ['groupAudienceAllows', 'deliverLinqGroupNotice', 'familyOutboundTarget'];
+const FLOOR_DOORS = [
+  'chatFloorAllows',
+  'groupAudienceAllows',
+  'deliverLinqGroupNotice',
+  'familyOutboundTarget',
+];
 
 const DIRECT_ONLY: Record<string, string> = {
   'apps/web/lib/channel/calendar-write/send.ts':
@@ -71,12 +82,18 @@ function sourceFiles(dir: string): string[] {
 
 const SENDS = /\b(?:sendLinqChatMessage|sendLinqPoll)\s*\(/;
 const ASKS_FLOOR = new RegExp(`\\b(?:${FLOOR_DOORS.join('|')})\\s*\\(`);
+const DECIDES_GROUPNESS =
+  /\bisHouseholdGroupChat\b|\b(?:isGroup|inGroup|is_group|in_group)\b|\bsurface\s*[!=]==?\s*['"](?:group|reply)['"]/;
 
-type Classified = { sends: boolean; asksFloor: boolean };
+type Classified = { sends: boolean; asksFloor: boolean; decidesGroupness: boolean };
 
 function classify(text: string): Classified {
   const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  return { sends: SENDS.test(code), asksFloor: ASKS_FLOOR.test(code) };
+  return {
+    sends: SENDS.test(code),
+    asksFloor: ASKS_FLOOR.test(code),
+    decidesGroupness: DECIDES_GROUPNESS.test(code),
+  };
 }
 
 function findings(rel: string, c: Classified): string[] {
@@ -89,6 +106,9 @@ function findings(rel: string, c: Classified): string[] {
   }
   if ((direct || known) && !c.sends) out.push(`${rel}: listed but no longer sends; remove it`);
   if (known && c.asksFloor) out.push(`${rel}: now asks the floor; remove it from the bypass list`);
+  if (c.sends && c.decidesGroupness) {
+    out.push(`${rel}: decides for itself whether the chat is a group; ask chatFloorAllows`);
+  }
   return out;
 }
 
@@ -147,6 +167,36 @@ describe('every group line passes the family-chat floor', () => {
     expect(findings(BYPASS_FIXTURE, classify(floored))).toEqual([]);
     const listed = 'apps/web/lib/channel/router/reply-transport.ts';
     expect(findings(listed, classify('sendLinqChatMessage({ chatId, text })'))).toEqual([]);
+  });
+
+  it('negative control: a sender that switches the floor on its own group-ness signal fails', () => {
+    const decided = `${BYPASS_FIXTURE}: decides for itself whether the chat is a group; ask chatFloorAllows`;
+    const byRows = [
+      'if (await isHouseholdGroupChat(db, chatId)) {',
+      `  await groupAudienceAllows(db, chatId, 'event_logistics', list);`,
+      '}',
+      'await sendLinqPoll({ chatId, options, idempotencyKey });',
+    ].join('\n');
+    expect(findings(BYPASS_FIXTURE, classify(byRows))).toEqual([decided]);
+    const byLabel = [
+      `const v = input.surface === 'group' ? await groupAudienceAllows(db, c, 'pickup_duty', l) : null;`,
+      'await sendLinqChatMessage({ chatId: c, text });',
+    ].join('\n');
+    expect(findings(BYPASS_FIXTURE, classify(byLabel))).toEqual([decided]);
+    const byBit =
+      'if (inbound.isGroup) await groupAudienceAllows(db, c, "schedule", l);\nsendLinqChatMessage(x);';
+    expect(findings(BYPASS_FIXTURE, classify(byBit))).toEqual([decided]);
+    expect(findings('apps/web/lib/channel/router/reply-transport.ts', classify(byBit))).toEqual([
+      'apps/web/lib/channel/router/reply-transport.ts: decides for itself whether the chat is a group; ask chatFloorAllows',
+    ]);
+  });
+
+  it('positive control: the same sender passes when chatFloorAllows decides the audience', () => {
+    const decided = [
+      'const v = await chatFloorAllows(db, { chatId, recipientUserId, lineClass, listChatHandles });',
+      'if (v.allowed) await sendLinqChatMessage({ chatId, text });',
+    ].join('\n');
+    expect(findings(BYPASS_FIXTURE, classify(decided))).toEqual([]);
   });
 
   it('ratchet: a listed bypass that now asks the floor, or a stale entry, fails', () => {

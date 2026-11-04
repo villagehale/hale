@@ -2,7 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { type GroupHoldReason, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
+import { type GroupHoldReason, chatFloorAllows } from '~/lib/channel/linq/group-audience';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { reactToLinqMessage, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
@@ -18,10 +18,10 @@ import { coparentDutyMemoryEnabled } from './flag';
  * hours, and neither starts a 1:1: the chat has to be the one the parent
  * just used.
  *
- * In a family group the restatement is a `pickup_duty` line, so it goes only when the
- * family-chat floor allows it. When the floor refuses, nothing is written or sent into
- * the group; the parent's message gets the tapback instead (a reaction carries no
- * household content), and the outcome names the floor's reason.
+ * The restatement is a `pickup_duty` line. Unless the chat is the parent's own recorded
+ * 1:1, it goes only when the family-chat floor allows it. When the floor refuses, nothing
+ * is written or sent into the chat; the parent's message gets the tapback instead (a
+ * reaction carries no household content), and the outcome names the floor's reason.
  */
 
 const QUIET_START = '21:00:00';
@@ -64,8 +64,6 @@ export async function acknowledgeDutyWrite(input: {
   timeZone: string;
   inboundChatId: string | null;
   inboundMessageId: string | null;
-  /** `group` when the inbound came from a family group chat; `reply` for a 1:1. */
-  surface: 'group' | 'reply';
   language: 'en' | 'fr';
   name: string | null;
   kid: string | null;
@@ -101,14 +99,15 @@ export async function acknowledgeDutyWrite(input: {
       : null;
   if (input.source === 'llm' && !plan) return skip('copy_locked');
   const audience =
-    input.source === 'llm' && input.surface === 'group'
-      ? await groupAudienceAllows(
-          input.database,
-          input.inboundChatId,
-          'pickup_duty',
-          input.listChatHandles ??
+    input.source === 'llm'
+      ? await chatFloorAllows(input.database, {
+          chatId: input.inboundChatId,
+          recipientUserId: input.actorUserId,
+          lineClass: 'pickup_duty',
+          listChatHandles:
+            input.listChatHandles ??
             ((i) => listLinqParticipantHandles({ ...i, fetch: input.fetch })),
-        )
+        })
       : null;
   const heldBy = audience && !audience.allowed ? audience.reason : null;
   const audienceHeld = (reason: GroupHoldReason, tapback: boolean): DutyAck => {

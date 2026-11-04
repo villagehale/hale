@@ -5,7 +5,7 @@ import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
-import { type GroupHoldReason, groupAudienceAllows, isHouseholdGroupChat } from './group-audience';
+import { type GroupHoldReason, chatFloorAllows } from './group-audience';
 import type { ListChatHandles } from './roster';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
@@ -179,8 +179,8 @@ async function offerPoll(
  * already landed. The poll ledger row is `linq:poll` / `reply`, so it does
  * not spend a second discretionary group bubble.
  *
- * In a family group the floor reads who is in the chat before either goes; a choice
- * among plans is `event_logistics`. A 1:1 chat is not read.
+ * Unless the chat is the parent's own recorded 1:1, the family-chat floor reads who is
+ * in it before either goes; a choice among plans is `event_logistics`.
  */
 export async function sendChoicePoll(
   database: Database,
@@ -198,20 +198,19 @@ export async function sendChoicePoll(
 ): Promise<LinqPollOffer> {
   if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
   if (args.options.length < 2) return { status: 'skipped', reason: 'not_a_choice' };
-  if (await isHouseholdGroupChat(database, args.chatId)) {
-    const audience = await groupAudienceAllows(
-      database,
-      args.chatId,
-      'event_logistics',
+  const audience = await chatFloorAllows(database, {
+    chatId: args.chatId,
+    recipientUserId: args.parentUserId,
+    lineClass: 'event_logistics',
+    listChatHandles:
       args.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: args.fetch })),
+  });
+  if (!audience.allowed) {
+    console.info(
+      { familyId: args.familyId, outcome: 'linq_poll_held', reason: audience.reason },
+      'linq poll: the family group may not hear it, nothing sent',
     );
-    if (!audience.allowed) {
-      console.info(
-        { familyId: args.familyId, outcome: 'linq_poll_held', reason: audience.reason },
-        'linq poll: the family group may not hear it, nothing sent',
-      );
-      return { status: 'held', reason: audience.reason };
-    }
+    return { status: 'held', reason: audience.reason };
   }
   let prompted = false;
   try {
