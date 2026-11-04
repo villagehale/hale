@@ -2,13 +2,9 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { type GoogleAccessOutcome, disconnectGoogle } from './google-disconnect';
 import { isConnectorProvider } from './google-oauth';
-import {
-  type ConnectionSummary,
-  listConnections,
-  listUserConnections,
-  revokeConnection,
-} from './store';
+import { type ConnectionSummary, listConnections, listUserConnections } from './store';
 
 /**
  * The connectors data access behind BOTH the web Settings page and the mobile
@@ -90,7 +86,8 @@ export async function loadConnectorsState(): Promise<ConnectorsStateResult> {
 }
 
 export type RevokeConnectorResult =
-  | { status: 'revoked' }
+  /** `google` is what Google confirmed, so the page can say no more than that. */
+  | { status: 'revoked'; google: GoogleAccessOutcome }
   | { status: 'not_found' }
   | { status: 'preview' }
   | { status: 'unauthenticated' }
@@ -98,11 +95,12 @@ export type RevokeConnectorResult =
   | { status: 'no_family' };
 
 /**
- * Revoke one connector for the signed-in family (purges tokens + writes the rule-#6
- * audit row, both inside revokeConnection). Scoped to the caller's own
- * (family,user,provider) (rule #1). A bad provider slug is rejected here so the route
- * carries no provider knowledge. When no row matched (nothing was the caller's to
- * disconnect) the result is 'not_found' — never a false 'revoked'.
+ * Disconnect for the signed-in parent through disconnectGoogle, the one door (VIL-156):
+ * every Google connector of theirs ends, each is revoked at Google, and every push watch
+ * stops. Scoped to the caller's own (family,user), and only when the named connector
+ * holds keys (rule #1). A bad provider slug is rejected here so the route carries no
+ * provider knowledge. When the named connector was not the caller's to disconnect the
+ * result is 'not_found' — never a false 'revoked'.
  */
 export async function revokeFamilyConnector(provider: string): Promise<RevokeConnectorResult> {
   if (!process.env.DATABASE_URL || !authConfigured()) return { status: 'preview' };
@@ -120,6 +118,13 @@ export async function revokeFamilyConnector(provider: string): Promise<RevokeCon
   ]);
   if (!familyId || !userId) return { status: 'no_family' };
 
-  const revokedCount = await revokeConnection(database, familyId, userId, provider, 'settings');
-  return revokedCount > 0 ? { status: 'revoked' } : { status: 'not_found' };
+  const result = await disconnectGoogle(database, {
+    familyId,
+    userId,
+    via: 'settings',
+    named: provider,
+  });
+  return result.status === 'disconnected'
+    ? { status: 'revoked', google: result.google }
+    : { status: 'not_found' };
 }

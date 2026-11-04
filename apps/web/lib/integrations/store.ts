@@ -2,7 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
-import { type OAuthTokens, decryptTokens, encryptTokens, tokenCustody } from './token-vault';
+import {
+  type OAuthTokens,
+  type RevokePendingToken,
+  decryptTokens,
+  encryptRevokePending,
+  encryptTokens,
+  tokenCustody,
+} from './token-vault';
 
 /**
  * Persistence for connector connections over the existing `integrations` table.
@@ -30,9 +37,8 @@ export interface ConnectionSummary {
   lastErrorCode?: string | null;
 }
 
-/** audit_log.action_taken values for a connector connect/disconnect (rule #6). */
+/** audit_log.action_taken value for a connector connect (rule #6). */
 const AUDIT_CONNECTED = 'integration_connected';
-const AUDIT_REVOKED = 'integration_revoked';
 
 /** WHICH surface a disconnect came from. One verb for both (rule #6's trail reads the
  * same sentence either way); the surface is a field on the row, not a second verb. */
@@ -75,6 +81,19 @@ export async function saveConnection(
 ): Promise<{ connectId: string }> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
   return database.transaction(async (tx) => {
+    // A fresh consent cancels any revoke still waiting from an earlier disconnect, on
+    // EVERY row of this parent: Google revokes per project, so a retry that ran after
+    // this connect would end the grant the parent just gave (VIL-156).
+    await tx
+      .update(schema.integrations)
+      .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
+      .where(
+        and(
+          eq(schema.integrations.familyId, input.familyId),
+          eq(schema.integrations.userId, input.userId),
+          isNotNull(schema.integrations.googleRevokePendingEncrypted),
+        ),
+      );
     const upserted = await tx
       .insert(schema.integrations)
       .values({
@@ -319,6 +338,17 @@ export async function getSweepableConnectorConnection(
   };
 }
 
+/**
+ * The three writers a running sync calls by row id match only a row that still holds
+ * keys. A sync already in flight when a disconnect commits would otherwise put refreshed
+ * keys back, flip the ended row to 'active', or park it in 'error' with no tokens
+ * (VIL-156). Writing nothing to an ended row is the right result, not a skipped effect:
+ * the sweep's next run no longer lists it.
+ */
+function holdingKeys(id: string) {
+  return and(eq(schema.integrations.id, id), isNotNull(schema.integrations.oauthTokensEncrypted));
+}
+
 /** Advance a connection's sync cursor after a SUCCESSFUL sync: persist the new
  * providerMetadata and stamp lastSyncAt. Only ever called once the batch's events
  * are enqueued, so the cursor can't move past un-emitted items. */
@@ -336,7 +366,7 @@ export async function saveConnectionCursor(
       lastErrorCode: null,
       updatedAt: new Date(),
     })
-    .where(eq(schema.integrations.id, id));
+    .where(holdingKeys(id));
 }
 
 /** Persist a refreshed token set (by row id), re-encrypted. The cursor is left
@@ -349,7 +379,7 @@ export async function saveConnectionTokensById(
   await database
     .update(schema.integrations)
     .set({ oauthTokensEncrypted: encryptTokens(tokens), updatedAt: new Date() })
-    .where(eq(schema.integrations.id, id));
+    .where(holdingKeys(id));
 }
 
 /** Mark a connection errored after a failed sync, RECORDING why. Deliberately does
@@ -365,84 +395,194 @@ export async function markConnectionError(
   await database
     .update(schema.integrations)
     .set({ status: 'error', lastErrorCode: code, updatedAt: new Date() })
-    .where(eq(schema.integrations.id, id));
+    .where(holdingKeys(id));
 }
 
-/** Disconnect: purge the encrypted tokens and mark revoked (stops sync). The
- * revoke and its immutable audit row (rule #6) land in one transaction. Returns the
- * number of rows revoked, so a no-op revoke (no matching row — nothing was
- * disconnected, no audit row written) is surfaced to the caller as 'not_found'
- * rather than a false 'revoked'.
+/** A connector row a disconnect ended. `unrevocable` names why no token was kept for
+ * Google: the row held no usable token, or its keys did not decrypt. */
+export interface EndedConnection {
+  id: string;
+  familyId: string;
+  provider: ConnectorProvider;
+  unrevocable?: 'no_token' | 'decrypt_failed';
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/** The one token Google's revoke needs: the refresh token when there is one. */
+function revokeToken(tokens: OAuthTokens): RevokePendingToken | null {
+  if (nonEmpty(tokens.refreshToken)) return { kind: 'refresh', token: tokens.refreshToken };
+  if (nonEmpty(tokens.accessToken)) return { kind: 'access', token: tokens.accessToken };
+  return null;
+}
+
+/**
+ * End EVERY Google connector this parent holds keys for, inside the caller's
+ * transaction (VIL-156). The only writer that nulls `oauth_tokens_encrypted`.
  *
- * `via` is REQUIRED rather than defaulted: a row that cannot say which surface asked
- * for the disconnect is a row that reads as Settings whether or not anyone opened
- * Settings, and the two surfaces are the whole reason this field exists.
+ * Google revokes per project, so one revoke ends Gmail and Calendar together; the rows
+ * end together too, rather than leave one holding keys Google has already killed. Each
+ * row's keys leave the live column at once. One token moves to the pending column, read
+ * only by the revoke (google-disconnect.ts), until Google answers.
  *
- * SCOPE IS THE KEY. The predicate is (family, user, provider) — the same triple the
- * connect wrote under — so a caregiver, or a parent naming the other parent's
- * connector, matches no row and gets 0 rather than reaching anyone else's grant.
+ * SCOPE IS THE KEY. The predicate is (family, user): a co-parent's grant is never
+ * reached, and a caregiver holds no row to match.
  *
- * AND IT ONLY MATCHES A ROW THAT STILL HOLDS KEYS. Holding tokens is what "connected"
- * means here (the sweep's work list is the same predicate, listActiveConnectorConnections),
- * so a row already purged matches nothing: saying it twice answers honestly the second
- * time and writes no second audit row. Rule #6's trail is a record of acts, and a
- * disconnect that disconnected nothing is not one. Before the texted surface existed
- * this was invisible — Settings hides the button on a revoked card — and by text there
- * is no such gate.
+ * THE INVARIANT, written down because two surfaces rest on it: a row whose tokens are
+ * gone is a row whose status is 'revoked'. This statement sets both together, and the
+ * three sync writers above match only a row that still holds keys, so nothing turns an
+ * ended row back into an 'active' or 'error' one. A future path that purged tokens while
+ * leaving the status 'error' would leave the Settings card showing a Disconnect button
+ * (it renders for any status but 'revoked') over a row no disconnect can match.
+ * SWEEPABLE_STATUSES above is the same invariant read the other way.
  *
- * THAT RESTS ON AN INVARIANT, so it is written down: a row whose tokens are gone is a
- * row whose status is 'revoked'. Every path that nulls the column sets the status in
- * the same statement (here, and coparent/depart.ts). A future path that purged tokens
- * while leaving the status 'error' — an invalid_grant cleanup, say — would leave the
- * Settings card showing its Disconnect button (it renders for any status but 'revoked')
- * over a row this predicate can no longer match, and the button would answer "nothing
- * to disconnect". Keep the two in one statement, or teach both surfaces the third
- * state. SWEEPABLE_STATUSES above is the same invariant read the other way. */
-export async function revokeConnection(
-  database: Database,
-  familyId: string,
-  userId: string,
-  provider: ConnectorProvider,
-  via: ConnectorRevokeVia,
-): Promise<number> {
-  return database.transaction(async (tx) => {
-    const revoked = await tx
+ * Writes no audit rows: each caller writes its own verb, because the parent's own
+ * disconnect and a co-parent's departure are different acts on the same trail.
+ */
+export async function endGoogleConnections(
+  tx: Database,
+  input: { familyId: string; userId: string; now: Date },
+): Promise<Array<EndedConnection & { calendarMirrorsRemoved: number }>> {
+  const live = await tx
+    .select({
+      id: schema.integrations.id,
+      provider: schema.integrations.provider,
+      enc: schema.integrations.oauthTokensEncrypted,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, input.familyId),
+        eq(schema.integrations.userId, input.userId),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+        isNotNull(schema.integrations.oauthTokensEncrypted),
+      ),
+    )
+    .for('update');
+  const ended: EndedConnection[] = [];
+  for (const row of live) {
+    let pending: string | null = null;
+    let unrevocable: EndedConnection['unrevocable'];
+    try {
+      const token = revokeToken(decryptTokens(row.enc as string));
+      if (token) pending = encryptRevokePending(token);
+      else unrevocable = 'no_token';
+    } catch {
+      // The live ciphertext did not decrypt: nothing revocable is left, and the row
+      // still ends. Named per row, never folded into a success.
+      unrevocable = 'decrypt_failed';
+    }
+    const updated = await tx
       .update(schema.integrations)
-      .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: new Date() })
-      .where(
-        and(
-          byFamilyUserProvider(familyId, userId, provider),
-          isNotNull(schema.integrations.oauthTokensEncrypted),
-        ),
-      )
+      .set({
+        oauthTokensEncrypted: null,
+        status: 'revoked',
+        googleRevokePendingEncrypted: pending,
+        googleRevokePendingSince: pending ? input.now : null,
+        updatedAt: input.now,
+      })
+      .where(holdingKeys(row.id))
       .returning({ id: schema.integrations.id });
-    if (revoked.length === 0) return 0;
-    // The integrations row outlives a revoke, so its ON DELETE CASCADE never reaches
-    // the mirrors. They end here; the reminder cron cancels what they had scheduled.
-    const mirrors = await tx
-      .update(schema.familyEvents)
-      .set({ deletedAt: new Date() })
-      .where(
-        and(
-          inArray(
-            schema.familyEvents.integrationId,
-            revoked.map((row) => row.id),
-          ),
-          isNotNull(schema.familyEvents.googleEventId),
-          isNull(schema.familyEvents.deletedAt),
-        ),
-      )
-      .returning({ id: schema.familyEvents.id });
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: userId,
-      actionTaken: AUDIT_REVOKED,
-      targetTable: 'integrations',
-      targetId: revoked[0]?.id,
-      // The custody the tokens HAD, kept on the row that ended it: "Hale deleted its
-      // keys" is only checkable if the row says which keys and where they were.
-      after: { provider, custody: tokenCustody(), via, calendarMirrorsRemoved: mirrors.length },
+    if (updated.length === 0) continue;
+    ended.push({
+      id: row.id,
+      familyId: input.familyId,
+      provider: row.provider as ConnectorProvider,
+      ...(unrevocable ? { unrevocable } : {}),
     });
-    return revoked.length;
-  });
+  }
+  if (ended.length === 0) return [];
+  // The integrations row outlives a disconnect, so its ON DELETE CASCADE never reaches
+  // the mirrors. They end here; the reminder cron cancels what they had scheduled.
+  const mirrors = await tx
+    .update(schema.familyEvents)
+    .set({ deletedAt: input.now })
+    .where(
+      and(
+        inArray(
+          schema.familyEvents.integrationId,
+          ended.map((row) => row.id),
+        ),
+        isNotNull(schema.familyEvents.googleEventId),
+        isNull(schema.familyEvents.deletedAt),
+      ),
+    )
+    .returning({ integrationId: schema.familyEvents.integrationId });
+  return ended.map((row) => ({
+    ...row,
+    calendarMirrorsRemoved: mirrors.filter((mirror) => mirror.integrationId === row.id).length,
+  }));
+}
+
+/** Ids of every ended row still waiting on Google: the retry's work list. */
+export async function listPendingGoogleRevocations(database: Database): Promise<string[]> {
+  const rows = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(isNotNull(schema.integrations.googleRevokePendingEncrypted));
+  return rows.map((row) => row.id);
+}
+
+export interface PendingGoogleRevocation {
+  id: string;
+  familyId: string;
+  provider: ConnectorProvider;
+  enc: string;
+  since: Date;
+}
+
+/** The pending ciphertext for these rows, opaque: decryption is per row, in the revoke. */
+export async function loadGoogleRevokePending(
+  database: Database,
+  ids: readonly string[],
+): Promise<PendingGoogleRevocation[]> {
+  if (ids.length === 0) return [];
+  const rows = await database
+    .select({
+      id: schema.integrations.id,
+      familyId: schema.integrations.familyId,
+      provider: schema.integrations.provider,
+      enc: schema.integrations.googleRevokePendingEncrypted,
+      since: schema.integrations.googleRevokePendingSince,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        inArray(schema.integrations.id, [...ids]),
+        isNotNull(schema.integrations.googleRevokePendingEncrypted),
+      ),
+    );
+  return rows.map((row) => ({
+    id: row.id,
+    familyId: row.familyId,
+    provider: row.provider as ConnectorProvider,
+    enc: row.enc as string,
+    // Written together with the ciphertext, and cleared together with it, everywhere.
+    since: row.since as Date,
+  }));
+}
+
+/**
+ * Delete the pending token, but only the one that was read: a reconnect in between has
+ * already cleared it (saveConnection), and a second settle must not count twice. True
+ * when this call cleared it.
+ */
+export async function clearGoogleRevokePending(
+  database: Database,
+  id: string,
+  expectedEnc: string,
+): Promise<boolean> {
+  const cleared = await database
+    .update(schema.integrations)
+    .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
+    .where(
+      and(
+        eq(schema.integrations.id, id),
+        eq(schema.integrations.googleRevokePendingEncrypted, expectedEnc),
+      ),
+    )
+    .returning({ id: schema.integrations.id });
+  return cleared.length > 0;
 }
