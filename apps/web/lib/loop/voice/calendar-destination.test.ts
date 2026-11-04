@@ -2,7 +2,6 @@ import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { calendarCancelSmsText } from '~/lib/loop/templates/calendar-cancel/sms';
 import { splitInviteSms } from '~/lib/loop/templates/calendar-invite/sms';
-import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import {
   type CalendarCancelRequest,
   calendarCancelRefusals,
@@ -265,11 +264,7 @@ describe('VIL-588 · positive controls: dotted or numbered words are not a desti
         ...CANCEL,
         summary: words,
       });
-      // The cancel body is the GSM-7 fold its renderer sends (round 7): the bytes on the wire.
-      expect(outcome).toEqual({
-        status: 'composed',
-        body: gsmSafe(`${words}, ${WHEN}, is off.`),
-      });
+      expect(outcome).toEqual({ status: 'composed', body: `${words}, ${WHEN}, is off.` });
     });
 
     it(`writer text: ${row} is not refused as a destination`, () => {
@@ -790,16 +785,12 @@ describe('VIL-588 · the cancel voice tells the parent about an event with a lon
   it('the cut counts code points, so an emoji is never split', async () => {
     const summary = '\u{1F3CA}'.repeat(MAX_INVITE_SUMMARY_CHARS + 50);
     const w = writer(echoCancel);
-    const j = judge(true);
-    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
       ...CANCEL,
       summary,
     });
-    expect(j.seen.map((input) => input.summary)).toEqual([
-      '\u{1F3CA}'.repeat(MAX_INVITE_SUMMARY_CHARS),
-    ]);
-    // GSM-7 cannot carry the emoji, so the wire (and the composed body) has none of them.
-    expect(outcome).toEqual({ status: 'composed', body: `, ${WHEN}, is off.` });
+    const short = '\u{1F3CA}'.repeat(MAX_INVITE_SUMMARY_CHARS);
+    expect(outcome).toEqual({ status: 'composed', body: `${short}, ${WHEN}, is off.` });
   });
 
   it('a destination only past the cut never reaches the writer or the text', async () => {
@@ -839,9 +830,7 @@ describe('VIL-588 · the cancel voice tells the parent about an event with a lon
       summary,
     });
     expect(performance.now() - started).toBeLessThan(1000);
-    expect(cut(summary).startsWith('a\u0316\u0301')).toBe(true);
-    // The fold deletes every lone mark, so the wire (and the composed body) keeps the 'a'.
-    expect(outcome).toEqual({ status: 'composed', body: `a, ${WHEN}, is off.` });
+    expect(outcome).toEqual({ status: 'composed', body: `${cut(summary)}, ${WHEN}, is off.` });
   });
 });
 
@@ -880,10 +869,9 @@ describe('VIL-588 · a scheme name is exempt only when a closing mark and then n
 });
 
 /*
- * Round 7 · the gate reads the bytes that go on the wire. The cancel renderer sends
- * gsmSafe(line), and gsmSafe DELETES a character GSM-7 cannot carry, so a symbol or a lone
- * combining mark between a label and its TLD, or between the groups of a number, vanishes
- * on the way out: "pool.\u2726org" reaches the parent as "pool.org".
+ * Round 7 · a symbol or a lone combining mark between a label and its TLD, or between the
+ * groups of a number, hides nothing: a reader skips it, and a GSM-7 fold (the cancel
+ * renderer's until this round) deletes it, so "pool.\u2726org" reads as "pool.org".
  */
 const WIRE_EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a symbol GSM-7 cannot carry inside a domain', destination: 'pool.\u2726org' },
@@ -950,79 +938,78 @@ describe('VIL-588 · round 7: a character the GSM-7 fold deletes never hides a d
         ...CANCEL,
         summary: words,
       }),
-    ).toEqual({ status: 'composed', body: `Swim class pool party, ${WHEN}, is off.` });
+    ).toEqual({ status: 'composed', body: `${words}, ${WHEN}, is off.` });
   });
 });
 
-describe('VIL-588 · round 7: each voice reads its own wire', () => {
-  it('cancel: punctuation only its GSM-7 fold deletes still holds the title and the text', async () => {
-    const destination = 'pool.\u30FBorg';
-    const w = writer(echoCancel);
-    expect(
-      await createCalendarCancelVoice(() => w.client, agrees()).compose({
-        ...CANCEL,
-        summary: `Swim class - ${destination}`,
-      }),
-    ).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
-    expect(w.calls()).toBe(0);
-    expect(
-      calendarCancelRefusals(`Swim class on ${WHEN} is cancelled, see ${destination}`, CANCEL),
-    ).toContain('carries_destination');
-  });
+/*
+ * Round 7 · the invariant by construction: no renderer changes a calendar text after the
+ * gate read it. The invite stopped folding in VIL-515; the cancel renderer's fold was the
+ * one step between the gate and the wire, and it is gone, so the gated line IS the wire.
+ */
+describe('VIL-588 · round 7: the text the gate read is the text that is sent, in both voices', () => {
+  const ASIS: readonly { row: string; summary: string }[] = [
+    { row: 'an accented name', summary: 'Lo\u00EFc swim class' },
+    { row: 'an emoji', summary: 'Picnic \u2600\uFE0F' },
+    { row: 'a Chinese name', summary: '\u6E38\u6CF3\u8BFE' },
+  ];
 
-  it('a CJK date: the invite sends it as written; the cancel fold would join its digits into a number', () => {
-    const zh = '\u6E38\u6CF3\u8BFE2026\u5E747\u670823\u65E5\u4E0A\u534810:30';
-    expect(calendarInviteRefusals(`${zh}\u3002${INVITE_LINK_SLOT}`, INVITE)).not.toContain(
-      'carries_destination',
-    );
-    expect(gsmSafe(zh)).toBe('202672310:30');
-    expect(calendarCancelRefusals(zh, CANCEL)).toContain('carries_destination');
-  });
-});
+  for (const { row, summary } of ASIS) {
+    it(`${row} reaches the phone exactly as the gate and the judge read it`, async () => {
+      const invite = writer(echoInvite);
+      const invited = await createCalendarInviteVoice(() => invite.client, agrees()).compose({
+        ...INVITE,
+        summary,
+      });
+      const inviteBody = `${summary}, ${WHEN}. ${LINK}`;
+      expect(invited).toEqual({ status: 'composed', body: inviteBody });
+      expect(splitInviteSms(inviteBody).join(' ')).toBe(inviteBody);
 
-describe('VIL-588 · round 7: the cancel text that was gated is the text that is sent', () => {
-  it('an accented name is sent folded the way GSM-7 carries it (\u00EF to i), and judged so', async () => {
-    const w = writer(echoCancel);
-    const j = judge(true);
-    const outcome = await createCalendarCancelVoice(() => w.client, j).compose({
-      ...CANCEL,
-      summary: 'Lo\u00EFc swim class',
-    });
-    const body = `Loic swim class, ${WHEN}, is off.`;
-    expect(outcome).toEqual({ status: 'composed', body });
-    expect(j.seen.map((input) => input.text)).toEqual([body]);
-    expect(gsmSafe(body)).toBe(body);
-    expect(calendarCancelSmsText({ summary: 'Lo\u00EFc swim class', when: WHEN, line: body })).toBe(
-      body,
-    );
-  });
-
-  it('the fold is idempotent on every composed cancel text, so the renderer sends it unchanged', async () => {
-    for (const summary of [
-      'Swim class \u2014 \u201Cdeep end\u201D\u2026',
-      'Picnic \u2600\uFE0F',
-      '\u6E38\u6CF3\u8BFE',
-    ]) {
-      const w = writer(echoCancel);
-      const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      const cancel = writer(echoCancel);
+      const j = judge(true);
+      const cancelled = await createCalendarCancelVoice(() => cancel.client, j).compose({
         ...CANCEL,
         summary,
       });
-      if (outcome.status !== 'composed') throw new Error(`not composed: ${summary}`);
-      expect(gsmSafe(outcome.body)).toBe(outcome.body);
-      expect(calendarCancelSmsText({ summary, when: WHEN, line: outcome.body })).toBe(outcome.body);
-    }
+      const cancelBody = `${summary}, ${WHEN}, is off.`;
+      expect(cancelled).toEqual({ status: 'composed', body: cancelBody });
+      expect(j.seen.map((input) => input.text)).toEqual([cancelBody]);
+      expect(calendarCancelSmsText({ summary, when: WHEN, line: cancelBody })).toBe(cancelBody);
+    });
+  }
+
+  it('a cancellation written in Chinese is sent, not emptied by a fold', async () => {
+    const zh = '\u6E38\u6CF3\u8BFE\u53D6\u6D88\u4E86';
+    const w = writer(() => zh);
+    const outcome = await createCalendarCancelVoice(() => w.client, agrees()).compose({
+      ...CANCEL,
+      summary: '\u6E38\u6CF3\u8BFE',
+    });
+    expect(outcome).toEqual({ status: 'composed', body: zh });
+    expect(calendarCancelSmsText({ summary: '\u6E38\u6CF3\u8BFE', when: WHEN, line: zh })).toBe(zh);
   });
 
-  it('the invite renderer does not fold: an accented name reaches the phone as written', async () => {
-    const w = writer(echoInvite);
-    const outcome = await createCalendarInviteVoice(() => w.client, agrees()).compose({
-      ...INVITE,
-      summary: 'Lo\u00EFc swim class',
-    });
-    const body = `Lo\u00EFc swim class, ${WHEN}. ${LINK}`;
-    expect(outcome).toEqual({ status: 'composed', body });
-    expect(splitInviteSms(body).join(' ')).toBe(body);
+  it('a CJK date in the title reaches the writer in both voices, and in the text is sent', async () => {
+    const title = '\u6E38\u6CF3\u8BFE2026\u5E747\u670823\u65E5';
+    const invite = writer((f) => `Swim class on ${f.when}. ${INVITE_LINK_SLOT}`);
+    expect(
+      await createCalendarInviteVoice(() => invite.client, agrees()).compose({
+        ...INVITE,
+        summary: title,
+      }),
+    ).toEqual({ status: 'composed', body: `Swim class on ${WHEN}. ${LINK}` });
+    const cancel = writer((f) => `Swim class on ${f.when} is off.`);
+    expect(
+      await createCalendarCancelVoice(() => cancel.client, agrees()).compose({
+        ...CANCEL,
+        summary: title,
+      }),
+    ).toEqual({ status: 'composed', body: `Swim class on ${WHEN} is off.` });
+    const zh = `${title}\u4E0A\u534810:30`;
+    expect(calendarInviteRefusals(`${zh}\u3002${INVITE_LINK_SLOT}`, INVITE)).not.toContain(
+      'carries_destination',
+    );
+    expect(calendarCancelRefusals(zh, CANCEL)).not.toContain('carries_destination');
   });
 });
 

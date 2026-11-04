@@ -3,10 +3,9 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { gsmSafe } from '~/lib/loop/templates/weekly-plan/core';
 import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { type DestinationShape, textDestination, titleDestination } from './calendar-destination';
+import { textDestination, titleDestination } from './calendar-destination';
 import {
   type CalendarInviteTimeInput,
   type CalendarInviteTimeJudge,
@@ -33,9 +32,8 @@ import {
  * checks facts: no destination, and no number that was not handed. Whether the text
  * names this event (in any language) at its start is the time judge's call (VIL-588).
  *
- * The renderer sends gsmSafe(line) (templates/calendar-cancel/sms.ts), and the fold deletes
- * what GSM-7 cannot carry. So every check reads that fold, the composed body IS that fold,
- * and the renderer's own fold leaves it unchanged: the bytes judged are the bytes sent.
+ * The renderer sends the composed line as is (templates/calendar-cancel/sms.ts), so the
+ * bytes the gate and the judge read are the bytes sent.
  */
 const MAX_ATTEMPTS = 3;
 const MAX_TOKENS = 160;
@@ -57,27 +55,17 @@ export type CalendarCancelRefusal =
   | 'when_missing'
   | 'invented_number';
 
-/** Read as written, and as the renderer's fold sends it ("pool.\u30FBorg" goes out as "pool.org"). */
-function wireTitleDestination(title: string, starts: ZonedStart): DestinationShape | null {
-  return titleDestination(title, starts) ?? titleDestination(gsmSafe(title), starts);
-}
-
-function wireTextDestination(text: string, starts: ZonedStart): DestinationShape | null {
-  return textDestination(text, starts) ?? textDestination(gsmSafe(text), starts);
-}
-
 export function calendarCancelRefusals(
-  text: string,
+  body: string,
   request: CalendarCancelRequest,
 ): CalendarCancelRefusal[] {
-  const wire = gsmSafe(text);
-  if (wire.trim() === '') return ['empty'];
+  if (body === '') return ['empty'];
   const found: CalendarCancelRefusal[] = [];
-  if (wireTextDestination(text, zonedStart(request.startsAt, request.timeZone))) {
+  if (textDestination(body, zonedStart(request.startsAt, request.timeZone))) {
     found.push('carries_destination');
   }
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
-  if ((wire.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
+  if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;
 }
 
@@ -166,7 +154,7 @@ export function createCalendarCancelVoice(
       } catch (err) {
         return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
       }
-      const held = wireTitleDestination(request.summary, starts);
+      const held = titleDestination(request.summary, starts);
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
       try {
@@ -199,13 +187,12 @@ export function createCalendarCancelVoice(
         } catch (err) {
           return deferred('model_failed', errorClass(err));
         }
-        const text = plainText(raw);
-        const problems = calendarCancelRefusals(text, request);
+        const body = plainText(raw);
+        const problems = calendarCancelRefusals(body, request);
         if (problems.length > 0) {
-          rejected.push({ text, problems });
+          rejected.push({ text: body, problems });
           continue;
         }
-        const body = gsmSafe(text);
         const match = await judge.matches(cancelTimeInput(body, request, starts));
         if (match === null) return deferred('time_unjudged');
         if (!match) {
