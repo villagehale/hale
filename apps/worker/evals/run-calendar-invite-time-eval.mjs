@@ -8,6 +8,8 @@
 //
 // Recorded 2026-11-01 @ a404b1874 (5/5 PASS). Re-keyed 2026-11-04 (VIL-588: reason
 // before match, and the judge now also reads whether the text names the event).
+// Re-keyed again for the destination gate (the summary is data, never an instruction;
+// the cancel voice asks this judge too).
 // CI replays it cached-only.
 // Re-record:
 //   HALE_SPEND_LEDGER=... HALE_MAX_USD=1 node --env-file=../../.env evals/run-calendar-invite-time-eval.mjs --live

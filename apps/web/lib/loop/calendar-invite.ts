@@ -414,7 +414,12 @@ async function cancelOneParent(
   }
 
   const when = inviteWhenLabel(event.startsAt, parent.timezone);
-  const voiced = await voice.compose({ summary: event.summary, when });
+  const voiced = await voice.compose({
+    summary: event.summary,
+    when,
+    startsAt: event.startsAt,
+    timeZone: parent.timezone,
+  });
   // No fixed fallback: a deferred compose sends nothing and is named back, so the
   // cancellation is never a canned line (Barton: the model writes it, or nothing goes).
   if (voiced.status !== 'composed') {

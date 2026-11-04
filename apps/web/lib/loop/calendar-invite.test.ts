@@ -49,7 +49,7 @@ vi.mock('~/lib/db', () => ({ db: () => routeDb.current }));
  * cannot be emailed says so in words the executor writes down, and never by omission.
  */
 
-const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in Toronto — outside quiet hours
+const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in New York — outside quiet hours
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+16475550123';
 
@@ -234,10 +234,10 @@ describe('the tap-to-add link a text-only family gets', () => {
     await clearEmail(seeded.parentUserId);
     await enrollSms(seeded.familyId, seeded.parentUserId);
     // Timezone comes from the postal code at signup now (VIL-413); this family's is
-    // Toronto, which is what the composed "10:30 AM" below is read in.
+    // New York, which is what the composed "10:30 AM" below is read in.
     await db.database
       .update(schema.users)
-      .set({ timezone: 'America/Toronto' })
+      .set({ timezone: 'America/New_York' })
       .where(eq(schema.users.id, seeded.parentUserId));
     return seeded;
   }
@@ -383,7 +383,14 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(cancelCalls).toEqual([{ summary: 'Swim class', when: 'Thu, Jul 23 at 10:30 AM' }]);
+    expect(cancelCalls).toEqual([
+      {
+        summary: 'Swim class',
+        when: 'Thu, Jul 23 at 10:30 AM',
+        startsAt: new Date('2026-07-23T14:30:00.000Z'),
+        timeZone: 'America/New_York',
+      },
+    ]);
     expect(lastText()).toBe(
       'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
     );
@@ -684,7 +691,7 @@ describe('the tap-to-add link a text-only family gets', () => {
   async function textingCoParent(familyId: string): Promise<string> {
     const [user] = await db.database
       .insert(schema.users)
-      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/Toronto' })
+      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/New_York' })
       .returning({ id: schema.users.id });
     const userId = user?.id as string;
     await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'co_parent' });

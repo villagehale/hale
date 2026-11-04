@@ -4,7 +4,8 @@
 // through the REAL forced-tool-JSON request shape apps/web/lib/loop/voice/calendar-invite-voice.ts
 // builds, REPLICATED here because that module sits behind the web app's `~/` alias.
 // `userMessage`, `refusals` and `zonedStart` below are the replicas, and
-// calendar-invite-voice.test.ts pins the originals. The skill bodies and model routing are
+// calendar-invite-voice.test.ts pins the originals. The destination gate is not
+// replicated: calendar-destination.ts has no `~/` imports, so it is loaded as is. The skill bodies and model routing are
 // imported live, so a skill edit re-keys the cache and shows up as a miss.
 //
 // Each reply goes through what production does before a send: the code gate (one slot,
@@ -42,6 +43,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
+const DESTINATION_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'loop',
+  'voice',
+  'calendar-destination.ts',
+);
 const WRITER_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'calendar-invite-voice.md');
 const TIME_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'calendar-invite-time.md');
 
@@ -61,8 +71,6 @@ const TIME_SCHEMA = {
   required: ['reason', 'match'],
 };
 const TIME_MAX_TOKENS = 300;
-const DESTINATION =
-  /[a-z][a-z0-9+.-]*:\/\/|[\p{L}\p{N}-]+(?:[.．｡][\p{L}\p{N}-]+)*[.．｡][a-z]{2}/iu;
 const MAX_INVITE_SEGMENTS = 5;
 
 /** Mirrors `calendarInviteUserMessage`. */
@@ -98,21 +106,28 @@ function zonedStart(startsAt, timeZone) {
   };
 }
 
+/** Mirrors `startNumbers`. */
+function startNumbers(starts) {
+  const numbers = new Set();
+  const hour12 = starts.hour % 12 || 12;
+  for (const n of [starts.year, starts.month, starts.day, starts.hour, hour12, starts.minute]) {
+    numbers.add(String(n));
+    numbers.add(String(n).padStart(2, '0'));
+  }
+  return numbers;
+}
+
 /** Mirrors `calendarInviteRefusals`. */
-function refusals(body, request, starts, smsSegments) {
+function refusals(body, request, starts, smsSegments, textDestination) {
   if (body === '') return ['empty'];
   const found = [];
   const slotCount = body.split(SLOT).length - 1;
   if (slotCount === 0) found.push('link_missing');
   if (slotCount > 1) found.push('link_repeated');
-  const carriesLink = DESTINATION.test(body.split(SLOT).join(' '));
-  if (carriesLink) found.push('carries_link');
-  const allowed = new Set(request.summary.match(/\d+/g) ?? []);
-  const hour12 = starts.hour % 12 || 12;
-  for (const n of [starts.year, starts.month, starts.day, starts.hour, hour12, starts.minute]) {
-    allowed.add(String(n));
-    allowed.add(String(n).padStart(2, '0'));
-  }
+  const carriesLink = textDestination(body.split(SLOT).join(' '), startNumbers(starts)) !== null;
+  if (carriesLink) found.push('carries_destination');
+  const allowed = startNumbers(starts);
+  for (const n of request.summary.match(/\d+/g) ?? []) allowed.add(n);
   const rest = body.split(request.summary).join(' ').split(SLOT).join(' ');
   if ((rest.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) found.push('invented_number');
   if (slotCount === 1 && !carriesLink && /\[\[[^\]]*\]\]/.test(body.replace(SLOT, ''))) {
@@ -148,6 +163,7 @@ async function main() {
   const cost = makeCost();
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsSegments } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
+  const { textDestination } = await tsImport(DESTINATION_SRC, import.meta.url);
   const writer = await agent.loadSkill(WRITER_SKILL);
   const time = await agent.loadSkill(TIME_SKILL);
   const writerModel = agent.pickModel(writer.meta.task);
@@ -190,7 +206,7 @@ async function main() {
           })
         ).value.text;
     const body = String(raw).trim();
-    const failures = refusals(body, request, starts, smsSegments);
+    const failures = refusals(body, request, starts, smsSegments, textDestination);
     // --dry prices both judges even on the stand-in reply the code gate refuses.
     if (failures.length === 0 || isDryRun()) {
       const { value } = await cachedToolCall({
