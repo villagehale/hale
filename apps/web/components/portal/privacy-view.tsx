@@ -113,7 +113,7 @@ function PromiseRow({ icon, title, meta }: { icon: ReactNode; title: string; met
   );
 }
 
-function Danger({ role }: { role: DeleteAccountRole }) {
+export function Danger({ role }: { role: DeleteAccountRole }) {
   if (role === 'co_parent') {
     return (
       <section className={`${styles.card} ${styles.span} ${styles.danger}`}>

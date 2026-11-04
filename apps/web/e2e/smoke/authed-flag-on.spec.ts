@@ -164,6 +164,25 @@ test('/trail shows a kind turning on, what Hale then did on its own, and the swi
   await assertHealthy(page, errors, '06b-trail-autonomy');
 });
 
+test('/privacy lists what Hale did, and nothing it did not do', async ({ browser }) => {
+  const { page, errors } = await openPage(browser, 'member');
+  const response = await page.goto('/privacy');
+  expect(response?.status()).toBe(200);
+  // The seed's email Hale sent on its own (scripts/fixtures/smoke-autonomy-trail.ts).
+  await expect(page.getByText('Email office@example.test — Pickup on Thursday')).toBeVisible();
+  // The seed's declined form is not something Hale did; the email above is the control.
+  await expect(page.getByText('Fill a form')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Read the privacy policy' })).toBeVisible();
+  await assertHealthy(page, errors, '06c-privacy');
+});
+
+test('/privacy sends a cookie-less visitor to sign-in with the way back', async ({ browser }) => {
+  const { page } = await openPage(browser, 'anonymous');
+  await page.goto('/privacy');
+  await expect(page).toHaveURL(/\/sign-in\?callbackUrl=%2Fprivacy$/);
+  await page.context().close();
+});
+
 test('/admin is gone: a plain portal 404, and the address does not move', async ({ browser }) => {
   const paths = ['/admin', '/admin/anything', '/admin/ledger/extra'];
   for (const viewer of ['anonymous', 'member'] as const) {

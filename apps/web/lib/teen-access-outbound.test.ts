@@ -47,6 +47,9 @@ const GRANT_READER_TOKENS = [
   // indirect — the grant-aware loaders themselves
   'loadPendingApprovals',
   'loadResolvedActions',
+  'readResolvedActionRows',
+  'readWhatHaleDid',
+  'loadWhatHaleDid',
   'loadTrail',
   'loadMessages',
   'planChildItems',
