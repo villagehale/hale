@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
-import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
 import type { DispatchPorts } from './dispatch';
 import { dedupeActive, recordChannelMessage } from './ledger';
@@ -35,6 +35,7 @@ export function buildDispatchPorts(
       const row = rows[0];
       return { timezone: row?.timezone ?? 'America/Toronto' };
     },
+    parentPhone: (userId) => resolveSendablePhone(database, userId),
     // The live SMS-consent gate is VIL-212's source of truth: an active, verified,
     // non-revoked parent_channels row (consent_records is its append-only CASL
     // ledger, not the live state).
