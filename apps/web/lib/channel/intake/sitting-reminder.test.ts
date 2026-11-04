@@ -689,7 +689,7 @@ describe("runSittingReminderCron - the family's own morning (VIL-562)", () => {
     const transport = new FakeTransport();
     for (let i = 0; i < 50; i += 1) {
       seedSession(fake, {
-        phoneE164: `+1604555${String(1000 + i)}`,
+        phoneE164: `+1604555${String(100 + i).padStart(4, '0')}`,
         dataEncrypted: placeBlob(PACIFIC_FSA),
       });
     }
