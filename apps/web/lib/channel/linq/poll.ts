@@ -2,10 +2,16 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { speak } from '~/lib/channel/spoken-line';
 import { linqPollsEnabled } from './config';
-import { LinqSendError } from './transport';
+import {
+  type GroupHoldReason,
+  chatFloorAllows,
+  sendFlooredChatMessage,
+  sendFlooredPoll,
+} from './group-audience';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 — the year-find poll, behind LINQ_POLLS=on.
@@ -74,6 +80,8 @@ export async function sandboxYearFindPollOptions(
 export type LinqPollOffer =
   | { status: 'sent'; providerMessageId: string; channelMessageId: string }
   | { status: 'prompted' }
+  /** A family group the floor refused: neither the question nor the poll went. */
+  | { status: 'held'; reason: GroupHoldReason }
   | {
       status: 'skipped';
       reason: 'flag_off' | 'not_a_choice' | 'not_imessage' | 'no_chat' | 'model_unreachable';
@@ -174,6 +182,9 @@ async function offerPoll(
  * the poll. A null prompt sends only the poll, for a turn whose text bubble
  * already landed. The poll ledger row is `linq:poll` / `reply`, so it does
  * not spend a second discretionary group bubble.
+ *
+ * Unless the chat is the parent's own recorded 1:1, the family-chat floor reads who is
+ * in it before either goes; a choice among plans is `event_logistics`.
  */
 export async function sendChoicePoll(
   database: Database,
@@ -186,21 +197,36 @@ export async function sendChoicePoll(
     now: Date;
     fetch?: typeof fetch;
     idempotencyKey: string;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<LinqPollOffer> {
   if (!linqPollsEnabled()) return { status: 'skipped', reason: 'flag_off' };
   if (args.options.length < 2) return { status: 'skipped', reason: 'not_a_choice' };
+  const audience = await chatFloorAllows(database, {
+    chatId: args.chatId,
+    recipientUserId: args.parentUserId,
+    lineClass: 'event_logistics',
+    listChatHandles:
+      args.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: args.fetch })),
+  });
+  if (!audience.allowed) {
+    console.info(
+      { familyId: args.familyId, outcome: 'linq_poll_held', reason: audience.reason },
+      'linq poll: the family group may not hear it, nothing sent',
+    );
+    return { status: 'held', reason: audience.reason };
+  }
   let prompted = false;
   try {
     if (args.prompt) {
-      await sendLinqChatMessage({
+      await sendFlooredChatMessage(audience.pass, {
         chatId: args.chatId,
         text: args.prompt,
         fetch: args.fetch,
       });
       prompted = true;
     }
-    const poll = await sendLinqPoll({
+    const poll = await sendFlooredPoll(audience.pass, {
       chatId: args.chatId,
       options: args.options.map((option) => option.text),
       idempotencyKey: args.idempotencyKey,

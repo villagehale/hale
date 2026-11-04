@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, notInArray } from 'drizzle-orm';
+import { sendLinqChatMessage, sendLinqPoll } from '~/lib/channel/outbound-transport';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -278,4 +279,85 @@ function presenceVerdict(
   if (scope.size === 0) return { allowed: false, reason: 'group_audience_empty' };
   if (!scope.has(lineClass)) return { allowed: false, reason: 'group_audience_refused' };
   return { allowed: true, reason: 'in_scope' };
+}
+
+const FLOOR_PASS: unique symbol = Symbol('floor-pass');
+
+/**
+ * What `chatFloorAllows` hands back when a line may enter `chatId`. The floored sends
+ * below take nothing else, so a sender that may address a 1:1 or a group cannot decide
+ * the audience itself. The key is private to this module: a pass from anywhere else (a
+ * cast) carries no key and is refused at send time.
+ */
+export type FloorPass = { readonly chatId: string; readonly [FLOOR_PASS]: true };
+
+export type ChatFloorVerdict =
+  | {
+      allowed: true;
+      reason: 'direct' | Extract<GroupAudienceVerdict, { allowed: true }>['reason'];
+      pass: FloorPass;
+    }
+  | Extract<GroupAudienceVerdict, { allowed: false }>;
+
+/**
+ * The floor for a sender that may address a 1:1 or a group. It skips the floor only when
+ * the chat is provably the recipient's own 1:1: Linq said `is_group: false` on that
+ * recipient's own inbound in this chat (`channel_messages.in_group`), and never `true`.
+ * Household rows that are absent, or a caller's label, are not proof, so every other chat
+ * (unclaimed, multi-family, not yet rostered, never recorded) goes through
+ * {@link groupAudienceAllows} and is held unless it passes.
+ */
+export async function chatFloorAllows(
+  database: Database,
+  input: {
+    chatId: string;
+    recipientUserId: string;
+    lineClass: GroupLineClass;
+    listChatHandles: ListChatHandles;
+  },
+): Promise<ChatFloorVerdict> {
+  const [recorded] = await database
+    .select({ inGroup: schema.channelMessages.inGroup })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, input.recipientUserId),
+        eq(schema.channelMessages.providerChatId, input.chatId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.inGroup),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.inGroup))
+    .limit(1);
+  const pass: FloorPass = { chatId: input.chatId, [FLOOR_PASS]: true };
+  if (recorded?.inGroup === false) return { allowed: true, reason: 'direct', pass };
+  const verdict = await groupAudienceAllows(
+    database,
+    input.chatId,
+    input.lineClass,
+    input.listChatHandles,
+  );
+  return verdict.allowed ? { ...verdict, pass } : verdict;
+}
+
+function requirePass(pass: FloorPass, chatId: string): void {
+  if (pass[FLOOR_PASS] !== true || pass.chatId !== chatId) {
+    throw new Error('linq floor: no pass from chatFloorAllows for this chat');
+  }
+}
+
+export async function sendFlooredChatMessage(
+  pass: FloorPass,
+  input: Parameters<typeof sendLinqChatMessage>[0],
+): ReturnType<typeof sendLinqChatMessage> {
+  requirePass(pass, input.chatId);
+  return sendLinqChatMessage(input);
+}
+
+export async function sendFlooredPoll(
+  pass: FloorPass,
+  input: Parameters<typeof sendLinqPoll>[0],
+): ReturnType<typeof sendLinqPoll> {
+  requirePass(pass, input.chatId);
+  return sendLinqPoll(input);
 }

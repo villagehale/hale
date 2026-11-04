@@ -1,6 +1,8 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   GROUP_OFFER_TALLY_SEAM,
@@ -30,7 +32,9 @@ beforeEach(() => {
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
-  await db.exec('truncate table families, users, channel_messages, linq_poll_options cascade');
+  await db.exec(
+    'truncate table families, users, channel_messages, linq_poll_options, linq_group_rosters cascade',
+  );
 });
 
 const DAY = new Date('2026-09-25T18:00:00.000Z');
@@ -61,6 +65,30 @@ async function seedFamily(): Promise<{ familyId: string; userId: string }> {
   return { familyId, userId };
 }
 
+const HALE = '+15555550100';
+const ANA = '+15555550131';
+
+/** The family holds CHAT and its confirmed roster is Ana alone, so the floor clears a
+ * chat whose live list is Hale and Ana. */
+async function clearedGroup(familyId: string): Promise<void> {
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  vi.stubEnv('LINQ_FROM_E164', HALE);
+  await db.database
+    .update(schema.families)
+    .set({ linqGroupChatId: CHAT })
+    .where(eq(schema.families.id, familyId));
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: CHAT, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values({
+    rosterId: roster?.id as string,
+    chatId: CHAT,
+    phoneE164Hash: phoneBlindIndex(ANA),
+    status: 'known_parent',
+  });
+}
+
 const fixed = (d: GroupPollOfferDecision | null): GroupPollOfferJudge & { calls: number } => {
   const judge = {
     calls: 0,
@@ -80,6 +108,18 @@ function pollWire(): {
   const texts: string[] = [];
   const pollOptions: string[] = [];
   const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+    if ((init?.method ?? 'GET') === 'GET') {
+      return Response.json({
+        chat: {
+          id: CHAT,
+          is_group: true,
+          handles: [
+            { handle: HALE, is_me: true },
+            { handle: ANA, is_me: false },
+          ],
+        },
+      });
+    }
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;
     for (const part of message?.parts ?? []) {
@@ -286,6 +326,7 @@ describe('group poll offer (VIL-458 slice 2)', () => {
 
   it('sends the model-written prompt and options through sendChoicePoll', async () => {
     const seeded = await seedFamily();
+    await clearedGroup(seeded.familyId);
     const judge = fixed(yes);
     const wire = pollWire();
     const out = await considerStuckGroupPoll(db.database, judge, {

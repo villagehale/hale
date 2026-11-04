@@ -89,8 +89,16 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     // An explicit null client is "no model" (resolveReplyClient). Nothing is
     // scripted onto messages.create: a miss sends no restate.
+    // The parent's own inbound in chat-1 carried Linq's is_group: false: their 1:1.
+    const oneToOne = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ orderBy: () => ({ limit: async () => [{ inGroup: false }] }) }),
+        }),
+      }),
+    } as unknown as Database;
     const ack = await acknowledgeDutyWrite({
-      database: db,
+      database: oneToOne,
       familyId: FAMILY,
       actorUserId: PARENT,
       source: 'llm',
