@@ -1,8 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { pageOps } from '~/lib/monitoring/failure-page';
+
+/** Joins a colliding provider id to the random suffix of the second number's own row. */
+const COLLISION_KEY_INFIX = '#collision:';
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -39,18 +43,26 @@ export async function holdSender(
   if (existing?.phoneHash === input.phoneHash) return 'already_held';
   // The id is the key across every transport, so another number's text already holds it.
   // Fail closed: this number's row gets a key no store can place, so recovery keeps it as
-  // unrecorded (paged) while the number can be texted, until a human resolves it.
-  const collision = await database
-    .insert(schema.optOutHeldMessages)
-    .values({
-      providerMessageId: `${input.providerMessageId}#collision:${input.phoneHash}`,
-      phoneHash: input.phoneHash,
-      heldAt: input.now,
-      nextReadAt: input.now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.optOutHeldMessages.providerMessageId });
-  if (collision.length === 0) return 'already_held';
+  // unrecorded (paged) while the number can be texted, until a human resolves it. The key
+  // names no number; a replay finds the row by the id it extends and its own phone_hash.
+  const prefix = `${input.providerMessageId}${COLLISION_KEY_INFIX}`;
+  const [replayed] = await database
+    .select({ id: schema.optOutHeldMessages.providerMessageId })
+    .from(schema.optOutHeldMessages)
+    .where(
+      and(
+        eq(schema.optOutHeldMessages.phoneHash, input.phoneHash),
+        sql`starts_with(${schema.optOutHeldMessages.providerMessageId}, ${prefix})`,
+      ),
+    )
+    .limit(1);
+  if (replayed) return 'already_held';
+  await database.insert(schema.optOutHeldMessages).values({
+    providerMessageId: `${prefix}${randomUUID()}`,
+    phoneHash: input.phoneHash,
+    heldAt: input.now,
+    nextReadAt: input.now,
+  });
   await pageOps(database, {
     site: 'opt_out_hold_unwritten',
     facts: { outcome: 'held_id_collision', numbers: 2 },

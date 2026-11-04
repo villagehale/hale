@@ -85,7 +85,11 @@ describe('#868 failed-read hold', () => {
       })
       .from(schema.optOutHeldMessages);
     expect(held.map((row) => row.phoneHash).sort()).toEqual(['hash-one', 'hash-two']);
-    expect(held.find((row) => row.phoneHash === 'hash-two')?.id).not.toBe('pm-shared');
+    const collisionKey = held.find((row) => row.phoneHash === 'hash-two')?.id;
+    expect(collisionKey).toEqual(expect.any(String));
+    expect(collisionKey).not.toBe('pm-shared');
+    // The key names no number: the blind index is the row's own column, never its key.
+    expect(collisionKey).not.toContain('hash-two');
     expect(await db.select().from(schema.optOutReadHolds)).toEqual([]);
     // Replaying the second number's text holds nothing new and pages nobody again.
     expect(
