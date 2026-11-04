@@ -34,8 +34,8 @@ import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { declinePrivilegedGroupSeat } from '~/lib/channel/linq/group-members';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
-  recMorningCouldUseWhere,
-  recMorningReply,
+  type RecMorningPlace,
+  resolveRecMorningWhere,
   writeRecMorningReply,
 } from '~/lib/channel/rec-morning';
 import {
@@ -1139,7 +1139,7 @@ async function preOpenReply(
 async function loadFamilyRecWhere(
   database: Database,
   familyId: string,
-): Promise<{ city: string | null; postal: string | null } | null> {
+): Promise<RecMorningPlace | null> {
   const [row] = await database
     .select({
       city: schema.families.city,
@@ -1162,14 +1162,9 @@ export function recMorningHandler(): DeterministicHandler {
       // The family's stored language. Null is not an English default: intake is the
       // path that has no family language yet, and that path follows parentWords.
       const language = await familySpeechLanguage(database, ctx.familyId);
-      if (recMorningReply(ctx.body, ctx.now) !== null) {
-        const named = await writeRecMorningReply(ctx.body, ctx.now, null, language);
-        return named === null
-          ? { claimed: false }
-          : { claimed: true, outcome: 'rec_morning', reply: named };
-      }
-      if (!recMorningCouldUseWhere(ctx.body)) return { claimed: false };
-      const where = await loadFamilyRecWhere(database, ctx.familyId);
+      // VIL-591: the facts are GTA facts, so the family's stored place - never the
+      // words of the text - decides whether this lane answers. No GTA place: unclaimed.
+      const where = resolveRecMorningWhere(await loadFamilyRecWhere(database, ctx.familyId));
       const reply = await writeRecMorningReply(ctx.body, ctx.now, where, language);
       if (reply === null) return { claimed: false };
       return { claimed: true, outcome: 'rec_morning', reply };

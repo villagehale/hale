@@ -29,8 +29,14 @@ import { LinqSendError } from './transport';
  * line, the floor reads the chat's present participants once (`listChatHandles`). Every
  * present handle other than Hale's line must be a live member of this roster by phone
  * hash; an email, an unrostered phone or a failed read holds the line, and the scope is
- * the narrowest role among the people actually present. The roster tables are read on
- * every group send, so a missing table is the named `not_migrated` refusal.
+ * the narrowest role among the people actually present. A read Linq refuses as a fact
+ * about this chat (403: not this account's chat; 404: no such chat) is
+ * `participants_unreadable`, a durable answer like any other refusal. Every other failed
+ * read is about Hale's side or the moment (a 401 or no Linq key is Hale's own credential;
+ * a 408, a rate limit, a 5xx, a timeout, a thrown transport error) and is
+ * `participants_unverified`, the one verdict queued work waits out.
+ * The roster tables are read on every group send, so a missing table is the named
+ * `not_migrated` refusal.
  */
 
 export const GROUP_CONTENT: readonly ContentClass[] = [
@@ -48,6 +54,7 @@ export type GroupHoldReason =
   | 'group_audience_empty'
   | 'group_audience_refused'
   | 'participants_unverified'
+  | 'participants_unreadable'
   | 'participant_unresolved'
   | 'chat_not_group';
 
@@ -204,18 +211,32 @@ export async function groupAudienceAllows(
 
 type LiveRead =
   | { ok: true; handles: string[]; isGroup: boolean | null }
-  | { ok: false; status: string; code?: string; httpStatus?: number };
+  | { ok: false; failure: 'temporary'; status: string; code?: string; httpStatus?: number }
+  | { ok: false; failure: 'permanent'; status: string; httpStatus?: number };
+
+/** Linq 2005 "Access denied" (credentials valid, not this account's chat) and 2001 "Chat
+ * not found". A 401 is Hale's own credential, so it is not here. */
+const HTTP_FORBIDDEN = 403;
+const HTTP_NOT_FOUND = 404;
+const CHAT_REFUSALS: ReadonlySet<number> = new Set([HTTP_FORBIDDEN, HTTP_NOT_FOUND]);
 
 async function readPresent(chatId: string, listChatHandles: ListChatHandles): Promise<LiveRead> {
   try {
     const read = await listChatHandles({ chatId });
     if (read.status === 'ok') return { ok: true, handles: read.handles, isGroup: read.isGroup };
-    if (read.status === 'refused') {
-      return { ok: false, status: read.status, code: read.code, httpStatus: read.httpStatus };
+    if (read.status === 'refused' && CHAT_REFUSALS.has(read.httpStatus)) {
+      return { ok: false, failure: 'permanent', status: read.status, httpStatus: read.httpStatus };
     }
-    return { ok: false, status: read.status };
+    if (read.status === 'refused') {
+      const { status, code, httpStatus } = read;
+      return { ok: false, failure: 'temporary', status, code, httpStatus };
+    }
+    return { ok: false, failure: 'temporary', status: read.status };
   } catch (err) {
-    if (err instanceof LinqSendError) return { ok: false, status: 'threw', code: err.code };
+    // A thrown refusal (a Preview capture run among them) never settles queued work.
+    if (err instanceof LinqSendError) {
+      return { ok: false, failure: 'temporary', status: 'threw', code: err.code };
+    }
     throw err;
   }
 }
@@ -229,6 +250,19 @@ async function livePresenceAllows(
   const startedAt = Date.now();
   const read = await readPresent(chatId, listChatHandles);
   const readMs = Date.now() - startedAt;
+  if (!read.ok && read.failure === 'permanent') {
+    console.info(
+      {
+        outcome: 'participants_unreadable',
+        lineClass,
+        status: read.status,
+        httpStatus: read.httpStatus,
+        readMs,
+      },
+      'linq group audience: live participants read',
+    );
+    return { allowed: false, reason: 'participants_unreadable' };
+  }
   if (!read.ok) {
     console.info(
       {

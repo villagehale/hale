@@ -17,7 +17,7 @@ import type { GroupTurnReader } from '~/lib/channel/linq/group-turn-reader';
 import { handleLinqInboundRequest } from '~/lib/channel/linq/inbound';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
 import type { ListChatHandles } from '~/lib/channel/linq/roster';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -1607,6 +1607,63 @@ describe('when a group reminder is due', () => {
       { chatId: CHAT, text: 'reminder for Ruth', replyTo: `in-${RUTH}` },
     ]);
     expect(await onlyReminder()).toMatchObject({ status: 'sent' });
+  });
+
+  it('drops a due group line, by name, when Linq refuses the participant read for good (403)', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const forbidden: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 403 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: forbidden }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 1, retrying: 0 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({
+      status: 'dropped',
+      statusReason: 'audience_held',
+    });
+  });
+
+  it("keeps a due group line when the participant read is refused for Hale's own credential (401)", async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const unauthorized: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 401 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: unauthorized }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
+  });
+
+  it('positive control: keeps a due group line when the participant read answers a 5xx', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await seedHousehold();
+    await setFor(RUTH);
+    const tick = tickPorts(THURSDAY_FOUR);
+    const unavailable: ListChatHandles = (input) =>
+      listLinqParticipantHandles({
+        ...input,
+        fetch: (async () => Response.json({}, { status: 503 })) as typeof fetch,
+      });
+
+    expect(
+      await runGroupReminderTick(db.database, { ...tick.ports, listChatHandles: unavailable }),
+    ).toMatchObject({ due: 1, sent: 0, dropped: 0, retrying: 1 });
+    expect(tick.sends).toEqual([]);
+    expect(await onlyReminder()).toMatchObject({ status: 'sending', statusReason: null });
   });
 
   it('drops a line whose participant read keeps failing as missed, once it is too late to send', async () => {
