@@ -28,7 +28,7 @@ const CHAT = 'chat-saturday';
 const PRIYA = '+15555550101';
 const SAM = '+15555550102';
 const MAYA = '+15555550103';
-const NOT_HALE = '+14165550199';
+const NOT_HALE = '+15555550199';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 
 beforeAll(() => {

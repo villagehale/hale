@@ -25,13 +25,13 @@ import type { RosterReading } from './roster-reading';
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const HALE = '+14165550100';
-const PARENT = '+14165550111';
-const COPARENT = '+14165550112';
-const NANNY = '+14165550113';
-const OTHER_PARENT = '+14165550121';
-const UNKNOWN_A = '+14165550131';
-const UNKNOWN_B = '+14165550132';
+const HALE = '+15555550100';
+const PARENT = '+15555550111';
+const COPARENT = '+15555550112';
+const NANNY = '+15555550113';
+const OTHER_PARENT = '+15555550121';
+const UNKNOWN_A = '+15555550131';
+const UNKNOWN_B = '+15555550132';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
 const CHAT = 'chat-family-group';
 
