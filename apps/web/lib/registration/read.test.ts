@@ -300,6 +300,52 @@ describe('a URL the fetcher refuses', () => {
   });
 });
 
+describe('what a catalog window asks the reader', () => {
+  it("names the district in the cycle label, so the model reads that district's dates", () => {
+    const window = registrationWindowFixture({ cycleLabel: 'Fall 2026', district: 'east_end' });
+    expect(windowReadTarget(window)).toEqual({
+      municipality: window.municipality,
+      programDomain: window.programDomain,
+      cycleLabel: 'Fall 2026 (east end)',
+      sourceUrl: window.sourceUrl,
+    });
+  });
+
+  it('leaves a town-wide cycle label as it is (control)', () => {
+    const window = registrationWindowFixture({ cycleLabel: 'Fall 2026', district: null });
+    expect(windowReadTarget(window).cycleLabel).toBe('Fall 2026');
+  });
+});
+
+describe('a live window carries the preview the page states, and no stored one', () => {
+  const window = registrationWindowFixture({
+    cycleLabel: 'Fall 2026',
+    previewAt: new Date('2026-01-01T00:00:00Z'),
+  });
+  const PREVIEW_PAGE = `Programs preview October 13, 2026 at 9 a.m. ${PAGE} ${ZONE_SENTENCE}`;
+
+  it('maps the verified preview to previewAt', async () => {
+    const reader = createRegistrationReader(
+      ports(html(PREVIEW_PAGE), async () =>
+        extraction({
+          yearEvidence: 'October 13, 2026',
+          preview: { quote: 'October 13, 2026 at 9 a.m.', date: '2026-10-13', time: '09:00' },
+        }),
+      ),
+    );
+    const [live] = await readRegistrationWindows([window], reader, NOW, null);
+    expect(live?.previewAt).toEqual(new Date('2026-10-13T13:00:00Z'));
+    expect(live?.openAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+  });
+
+  it('is null when the page states none, whatever the catalog stored (control)', async () => {
+    const reader = createRegistrationReader(ports(html(PREVIEW_PAGE)));
+    const [live] = await readRegistrationWindows([window], reader, NOW, null);
+    expect(live?.openAt).toEqual(new Date('2026-10-20T13:00:00Z'));
+    expect(live?.previewAt).toBeNull();
+  });
+});
+
 describe('a resident-only date applies only to a family resolved to that one town', () => {
   const window = registrationWindowFixture({ municipality: 'markham', cycleLabel: 'Fall 2026' });
   const reader = () =>

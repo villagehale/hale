@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SPOT_PORTAL_HOSTS } from '~/lib/channel/spots/url';
 import {
   type LiveRegistrationReading,
   type RegistrationReadSource,
   normalizeExtractedRegistration,
+  readCourseRegistration,
   registrationAnchor,
 } from './live-reading';
 import { registrationDate } from './read';
@@ -323,5 +327,169 @@ describe('the zone must be a named IANA region, not a fixed offset', () => {
     expect(
       anchors(normalizeExtractedRegistration(reading('America/New_York'), PAGE, SOURCE)),
     ).toEqual({ general_open: '2026-08-11T13:00:00.000Z' });
+  });
+});
+
+describe('a named zone with no quote behind it', () => {
+  const PAGE =
+    'Fall 2026. Public registration opens August 11, 2026 at 9 a.m. Pool hours are Eastern Time.';
+  const reading = (timeZoneEvidence: string | null) =>
+    extracted({
+      evidence: 'Public registration opens August 11, 2026 at 9 a.m.',
+      yearEvidence: 'August 11, 2026',
+      generalOpen: { quote: 'August 11, 2026 at 9 a.m.', date: '2026-08-11', time: '09:00' },
+      timeZone: 'America/New_York',
+      timeZoneEvidence,
+    });
+
+  it.each([null, '', '   '])('is an unknown zone when the evidence is %j', (evidence) => {
+    const result = normalizeExtractedRegistration(reading(evidence), PAGE, SOURCE);
+    expect(result).toMatchObject({ status: 'unverified', reason: 'unknown_time_zone' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it('verifies the same zone once its quote is on the page (control)', () => {
+    expect(anchors(normalizeExtractedRegistration(reading('Eastern Time'), PAGE, SOURCE))).toEqual({
+      general_open: '2026-08-11T13:00:00.000Z',
+    });
+  });
+});
+
+describe('the per-date gate runs on every slot, the unclassified one included', () => {
+  const PAGE =
+    'Fall 2026. Registration opens August 11, 2026 at 6:30 a.m. Pool hours are Eastern Time.';
+  const reading = (overrides: Partial<ExtractedWindow>) =>
+    extracted({
+      evidence: 'Registration opens August 11, 2026 at 6:30 a.m.',
+      yearEvidence: 'August 11, 2026',
+      ...overrides,
+    });
+
+  it.each([
+    [
+      'its quote is not on the page',
+      { quote: 'August 12, 2026 at 6:30 a.m.', date: '2026-08-12', time: '06:30' },
+    ],
+    [
+      'its date disagrees with its quote',
+      { quote: 'August 11, 2026 at 6:30 a.m.', date: '2026-08-12', time: '06:30' },
+    ],
+  ])('refuses an unclassified opening when %s', (_name, unclassifiedOpen) => {
+    const result = normalizeExtractedRegistration(reading({ unclassifiedOpen }), PAGE, SOURCE);
+    expect(result).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it('refuses a quote that is off the page even when its numbers agree with the date', () => {
+    // An abbreviated month: every number matches 2026-08-11 06:30, but the page never
+    // prints these words, so only the on-page check can refuse it.
+    const generalOpen = { quote: 'Aug. 11, 2026 at 6:30 a.m.', date: '2026-08-11', time: '06:30' };
+    expect(normalizeExtractedRegistration(reading({ generalOpen }), PAGE, SOURCE)).toMatchObject({
+      status: 'unverified',
+      reason: 'uncorroborated',
+    });
+  });
+
+  it('verifies the quote the page prints, in either slot (control)', () => {
+    const opening = { quote: 'August 11, 2026 at 6:30 a.m.', date: '2026-08-11', time: '06:30' };
+    for (const slot of ['generalOpen', 'unclassifiedOpen'] as const) {
+      expect(
+        normalizeExtractedRegistration(reading({ [slot]: opening }), PAGE, SOURCE),
+      ).toMatchObject({ status: 'verified' });
+    }
+  });
+});
+
+describe('the date a family can act on', () => {
+  const PAGE = [
+    'Fall 2026. Residents register August 11, 2026 at 6:30 a.m.',
+    'Everyone else registers August 12, 2026 at 6:30 a.m. Pool hours are Eastern Time.',
+  ].join(' ');
+  const result = normalizeExtractedRegistration(
+    extracted({
+      evidence: 'Residents register August 11, 2026 at 6:30 a.m.',
+      yearEvidence: 'August 11, 2026',
+      residentOpen: { quote: 'August 11, 2026 at 6:30 a.m.', date: '2026-08-11', time: '06:30' },
+      generalOpen: { quote: 'August 12, 2026 at 6:30 a.m.', date: '2026-08-12', time: '06:30' },
+    }),
+    PAGE,
+    SOURCE,
+  );
+
+  it('is the resident opening for a resident family, though a general one is printed', () => {
+    expect(registrationDate(result, true)).toMatchObject({
+      kind: 'resident_open',
+      date: '2026-08-11',
+    });
+  });
+
+  it('is the general opening for every other family (control)', () => {
+    expect(registrationDate(result, false)).toMatchObject({
+      kind: 'general_open',
+      date: '2026-08-12',
+    });
+  });
+});
+
+describe('the PerfectMind reader', () => {
+  const FIXTURES = join(__dirname, '../channel/spots/fixtures');
+  const OPEN = readFileSync(join(FIXTURES, 'open-window-open-markham.html'), 'utf8');
+  const COURSE_ID = '961140fe-0866-460f-9973-7c42cbe0a928';
+  const portalTimeZone = SPOT_PORTAL_HOSTS['cityofmarkham.perfectmind.com']?.timeZone;
+  if (!portalTimeZone) throw new Error('expected a portal registry entry');
+  const read = (raw: string, courseId = COURSE_ID) =>
+    readCourseRegistration(raw, { ...SOURCE, courseId, portalTimeZone });
+  const CLOCKS = [
+    ['ResidentsRegistrationDateValue', '2026-08-11T06:30:00'],
+    ['MembersRegistrationDateValue', '2026-08-12T06:30:00'],
+    ['PublicRegistrationStartDateValue', '2026-08-12T06:30:00'],
+  ] as const;
+  const swap = (raw: string, from: string, to: string) => {
+    expect(raw.split(from)).toHaveLength(2);
+    return raw.replace(from, to);
+  };
+
+  it("names the vendor's own not-found page gone", () => {
+    const raw = readFileSync(join(FIXTURES, 'markham-course-not-found.html'), 'utf8');
+    expect(read(raw)).toEqual({ ...SOURCE, reader: 'perfectmind', status: 'gone' });
+  });
+
+  it('names a page with no course model and no vendor signature unreadable (control)', () => {
+    expect(read('<html><body><p>Course listings</p></body></html>')).toMatchObject({
+      status: 'unreadable',
+      reason: 'no_model',
+    });
+  });
+
+  it('is not_published when the course model carries no clocks', () => {
+    const raw = CLOCKS.reduce(
+      (page, [key, value]) => swap(page, `"${key}":"${value}"`, `"${key}":null`),
+      OPEN,
+    );
+    expect(read(raw)).toMatchObject({ status: 'unverified', reason: 'not_published' });
+  });
+
+  it('refuses a clock whose own bytes are not on the blob as read', () => {
+    // The same value, JSON-escaped: it parses to the clock, but the pair Hale cites as
+    // evidence is not in the bytes, so the date has nothing to stand on.
+    const raw = swap(
+      OPEN,
+      '"ResidentsRegistrationDateValue":"2026-08-11T06:30:00"',
+      '"ResidentsRegistrationDateValue":"2026\\u002d08-11T06:30:00"',
+    );
+    expect(read(raw)).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+  });
+
+  it('verifies the unedited page, every date cited from the blob (control)', () => {
+    const result = read(OPEN);
+    expect(result).toMatchObject({
+      status: 'verified',
+      timeZone: portalTimeZone,
+      dates: [
+        { kind: 'resident_open', date: '2026-08-11', time: '06:30' },
+        { kind: 'member_open', date: '2026-08-12', time: '06:30' },
+        { kind: 'general_open', date: '2026-08-12', time: '06:30' },
+      ],
+    });
   });
 });
