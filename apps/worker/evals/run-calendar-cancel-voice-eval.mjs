@@ -105,11 +105,19 @@ function startNumbers(starts) {
   return numbers;
 }
 
+/** Mirrors `destinationNumbers`. */
+function destinationNumbers(starts) {
+  const numbers = startNumbers(starts);
+  numbers.add(String(starts.year - 1));
+  numbers.add(String(starts.year + 1));
+  return numbers;
+}
+
 /** Mirrors `calendarCancelRefusals` in calendar-cancel-voice.ts. */
 function refusals(body, request, starts, textDestination) {
   if (body === '') return ['empty'];
   const found = [];
-  if (textDestination(body, startNumbers(starts))) found.push('carries_destination');
+  if (textDestination(body, destinationNumbers(starts))) found.push('carries_destination');
   const handed = new Set(`${request.summary} ${request.when}`.match(/\d+/g) ?? []);
   if ((body.match(/\d+/g) ?? []).some((n) => !handed.has(n))) found.push('invented_number');
   return found;

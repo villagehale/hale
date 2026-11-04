@@ -70,6 +70,7 @@ const CONTROLS: readonly { row: string; words: string }[] = [
   { row: 'a decimal distance', words: '2.5 km' },
   { row: 'a date', words: '11/04' },
   { row: 'a time range', words: '9:30-10:30' },
+  { row: 'a school year around the start', words: 'Fall swim 2026-2027' },
   { row: 'a French name', words: 'Cours de natation' },
   { row: 'a Chinese name', words: '游泳课' },
 ];
@@ -206,6 +207,20 @@ describe('VIL-588 · positive controls: dotted or numbered words are not a desti
     expect(
       calendarCancelRefusals('Swim class am 23.07.2031 um 10:30 ist abgesagt.', CANCEL),
     ).toContain('carries_destination');
+  });
+});
+
+describe("VIL-588 · a year range is the start's own fact only around the start", () => {
+  it('holds a range that reaches past the year beside the start', async () => {
+    const w = writer(echoInvite);
+    const outcome = await createCalendarInviteVoice(() => w.client, agrees()).compose({
+      ...INVITE,
+      summary: 'Fall swim 2026-2031',
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+    expect(calendarCancelRefusals(`Fall swim 2026-2031 on ${WHEN} is off.`, CANCEL)).toContain(
+      'carries_destination',
+    );
   });
 });
 

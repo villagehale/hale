@@ -106,6 +106,18 @@ export function startNumbers(event: ZonedStart): Set<string> {
   return numbers;
 }
 
+/**
+ * The numbers a calendar text may join into a phone-shaped run without it being one:
+ * the start's own, plus the years either side, so a season title like "Fall swim
+ * 2026-2027" is a fact and not a number to dial. Not used for invented digits.
+ */
+export function destinationNumbers(event: ZonedStart): Set<string> {
+  const numbers = startNumbers(event);
+  numbers.add(String(event.year - 1));
+  numbers.add(String(event.year + 1));
+  return numbers;
+}
+
 function allowedDigits(summary: string, event: ZonedStart): Set<string> {
   const allowed = startNumbers(event);
   for (const n of summary.match(/\d+/g) ?? []) allowed.add(n);
@@ -114,7 +126,9 @@ function allowedDigits(summary: string, event: ZonedStart): Set<string> {
 
 /** The slot is read as a gap, so its neighbours never join into a domain. */
 function carriesDestination(text: string, event: ZonedStart): boolean {
-  return textDestination(text.split(INVITE_LINK_SLOT).join(' '), startNumbers(event)) !== null;
+  return (
+    textDestination(text.split(INVITE_LINK_SLOT).join(' '), destinationNumbers(event)) !== null
+  );
 }
 
 /**
@@ -309,7 +323,7 @@ export function createCalendarInviteVoice(
       }
       const held = titleDestination(
         request.summary,
-        startNumbers(zonedStart(request.startsAt, request.timeZone)),
+        destinationNumbers(zonedStart(request.startsAt, request.timeZone)),
       );
       if (held) return deferred('summary_carries_destination', held);
       let resolved: AgentClient;
