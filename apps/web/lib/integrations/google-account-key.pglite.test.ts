@@ -247,6 +247,26 @@ describe('a calendar sync keeps the Google account key', () => {
     expect(revoked).toEqual(['1//erased']);
   });
 
+  it('an ENDED row that still carries the same key (ended before the key was dropped) holds no grant: the erasure revokes', async () => {
+    const erased = await household('Erased');
+    const other = await household('Other');
+    await connect(erased.familyId, erased.userId, '1//erased', ACCOUNT);
+    await db.database.insert(schema.integrations).values({
+      familyId: other.familyId,
+      userId: other.userId,
+      provider: 'gcal',
+      status: 'revoked',
+      oauthTokensEncrypted: null,
+      googleAccountKey: ACCOUNT,
+    });
+
+    const { ports, revoked } = scriptedPorts(OK);
+    const settled = await endGoogleForFamilyErasure(db.database, erased.familyId, ports);
+
+    expect(settled.map((row) => row.google)).toEqual(['revoked']);
+    expect(revoked).toEqual(['1//erased']);
+  });
+
   it('reconnect after a sync: the same account connected again cancels the waiting revoke, so the retry never ends the fresh grant', async () => {
     const first = await household('First');
     const second = await household('Second');

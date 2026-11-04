@@ -10,7 +10,7 @@ import {
   endGoogleForFamilyErasure,
 } from '~/lib/integrations/google-disconnect';
 import { saveConnection } from '~/lib/integrations/store';
-import { encryptTokens } from '~/lib/integrations/token-vault';
+import { encryptRevokePending, encryptTokens } from '~/lib/integrations/token-vault';
 import { ERASURE_GOOGLE_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { erasureGoogleLogLine, runDeletionSweep } from './delete';
@@ -555,6 +555,49 @@ describe('a live Google row with no owner', () => {
       expect.objectContaining({ provider: 'gcal', google: 'ended_without_owner' }),
     ]);
     expect(posted).toEqual([]);
+  });
+});
+
+describe('an ended Google row with no owner whose revoke still waits', () => {
+  async function ownerlessPendingRow(familyId: string, token: string, googleAccountKey?: string) {
+    await db.database.insert(schema.integrations).values({
+      familyId,
+      userId: null,
+      provider: 'gcal',
+      status: 'revoked',
+      oauthTokensEncrypted: null,
+      googleRevokePendingEncrypted: encryptRevokePending({ kind: 'refresh', token }),
+      googleRevokePendingSince: PAST,
+      ...(googleAccountKey ? { googleAccountKey } : {}),
+    });
+  }
+
+  it('whose Google account is known and used nowhere else: the waiting token is revoked at Google', async () => {
+    const erased = await household('Erased');
+    await ownerlessPendingRow(erased.familyId, '1//unowned-pending', 'account-pending');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual(['1//unowned-pending']);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'revoked' }),
+    ]);
+  });
+
+  it('control: with no account key either, it ends locally as ended_without_owner and nothing is posted', async () => {
+    const erased = await household('Erased');
+    await ownerlessPendingRow(erased.familyId, '1//unowned-pending-unkeyed');
+    await scheduleAt(erased.familyId, PAST);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect(posted).toEqual([]);
+    expect(summary.google).toEqual([
+      expect.objectContaining({ provider: 'gcal', google: 'ended_without_owner' }),
+    ]);
   });
 });
 
