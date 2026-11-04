@@ -90,23 +90,32 @@ export async function erasedFamilyHolds(
 
 /**
  * After the family cascade (rights/delete.ts). Hold rows are keyed by the number and the
- * text alone, so an erasure takes its own here: every held text the family sent, and
- * every row on its numbers that nobody holds now. A number someone still holds keeps
- * that holder's rows, since one may be their own unread stop.
+ * text alone, so an erasure takes its own here: held texts the family sent, and every row
+ * on its numbers, but only where nobody holds that number now. A number someone still
+ * holds keeps every row on it, since any may be their own unread stop (a parent seated in
+ * a second family, or the number's next holder). Such a row carries no family content
+ * (a phone hash, a provider id, a time); once its text is gone it reads as unrecorded,
+ * so the hold stays fail closed and is paged.
  */
 export async function releaseErasedHolds(database: Database, erased: ErasedHolds): Promise<void> {
-  if (erased.providerMessageIds.length > 0) {
-    await database
-      .delete(schema.optOutHeldMessages)
-      .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
-  }
-  if (erased.phoneHashes.length === 0) return;
+  const texts =
+    erased.providerMessageIds.length === 0
+      ? []
+      : await database
+          .select({
+            id: schema.optOutHeldMessages.providerMessageId,
+            phoneHash: schema.optOutHeldMessages.phoneHash,
+          })
+          .from(schema.optOutHeldMessages)
+          .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
+  const numbers = [...new Set([...erased.phoneHashes, ...texts.map((row) => row.phoneHash)])];
+  if (numbers.length === 0) return;
   const channels = await database
     .select({ phoneHash: schema.parentChannels.phoneE164Hash })
     .from(schema.parentChannels)
     .where(
       and(
-        inArray(schema.parentChannels.phoneE164Hash, erased.phoneHashes),
+        inArray(schema.parentChannels.phoneE164Hash, numbers),
         isNull(schema.parentChannels.revokedAt),
       ),
     );
@@ -115,11 +124,17 @@ export async function releaseErasedHolds(database: Database, erased: ErasedHolds
     .from(schema.smsIntakeSessions)
     .where(
       and(
-        inArray(schema.smsIntakeSessions.phoneHash, erased.phoneHashes),
+        inArray(schema.smsIntakeSessions.phoneHash, numbers),
         isNull(schema.smsIntakeSessions.closedAt),
       ),
     );
   const stillHeld = new Set([...channels, ...sessions].map((row) => row.phoneHash));
+  const releasedTexts = texts.filter((row) => !stillHeld.has(row.phoneHash)).map((row) => row.id);
+  if (releasedTexts.length > 0) {
+    await database
+      .delete(schema.optOutHeldMessages)
+      .where(inArray(schema.optOutHeldMessages.providerMessageId, releasedTexts));
+  }
   const released = erased.phoneHashes.filter((hash) => !stillHeld.has(hash));
   if (released.length === 0) return;
   await database

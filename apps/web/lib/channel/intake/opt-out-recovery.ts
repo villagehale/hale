@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { noteLateOptOutCrisis } from '~/lib/monitoring/failure-page';
@@ -25,8 +25,9 @@ import type { ChannelTransport } from './transport';
  *   3. Each row is claimed and pushed back in one compare-and-set, so a row that never
  *      reads only delays itself, then read and settled by what the model read.
  * A stop is settled against {@link numberHolderTimeline}, latest row wins: it stops the
- * holder of its number at the time only while they still hold it and nothing has started
- * since. Then it runs the live stop path ({@link handleStop}) on that number alone.
+ * holder of its number at the time only while they still hold it and the number's owner
+ * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
+ * that number alone.
  */
 
 export const HELD_READ_OUTCOMES = [
@@ -34,8 +35,9 @@ export const HELD_READ_OUTCOMES = [
   'stopped_confirmation_unsent',
   /** Revoked, but the confirmation send threw: kept held and read again. */
   'stopped_confirmation_failed',
-  /** Something started on the number after the stop (the same person again, or someone
-   * new on a recycled number): the newer row wins, nobody is stopped, nothing is sent. */
+  /** Whoever holds the number did something from it after the stop: verified a channel on
+   * it (a START writes one) or texted it into a new intake. The newer row wins, nobody is
+   * stopped, nothing is sent. */
   'stop_superseded',
   /** The stop path threw before the number stopped being sendable: kept held, retried. */
   'stop_failed',
@@ -67,7 +69,6 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'read_failed',
   'not_yet_recorded',
   'unrecorded',
-  'no_channel',
   'claimed_elsewhere',
 ]);
 
@@ -348,8 +349,8 @@ async function lateStop(
 
 /** One holding of a number: a parent channel until it is revoked, an intake session
  * until it closes, a caregiver invite until it closes, or a guest's reminder opt-in. Only
- * a channel or a session names who holds the number; every kind is a consent a stop can
- * reach, so any of them starting after a stop supersedes it. */
+ * a channel or a session names who holds the number. An invite or an opt-in is a record
+ * someone else made about the number; it only scopes what a stop reaches. */
 export interface NumberHolding {
   kind: 'channel' | 'session' | 'invite' | 'guest_reminders';
   id: string;
@@ -359,7 +360,72 @@ export interface NumberHolding {
   start: Date;
   /** Null while it still holds the number. */
   end: Date | null;
+  /** Made by whoever holds the number, from it: a channel verified on it (a START writes
+   * one too) or an intake their own text opened. Only these can outrank their stop. An
+   * invite, another person's opt-in, or a number typed into a form and never verified
+   * says nothing about what the number's holder wants. */
+  ownerMade: boolean;
 }
+
+type ChannelRow = Pick<
+  typeof schema.parentChannels.$inferSelect,
+  'id' | 'userId' | 'verifiedAt' | 'createdAt' | 'revokedAt'
+>;
+
+function channelHolding(channel: ChannelRow): NumberHolding {
+  return {
+    kind: 'channel',
+    id: channel.id,
+    userId: channel.userId,
+    // Every SMS consent grant inserts a fresh row (revoke-then-insert, never an
+    // un-revoke), so a verified channel starts at its consent; a pending one when it
+    // was asked for.
+    start: channel.verifiedAt ?? channel.createdAt,
+    end: channel.revokedAt,
+    ownerMade: channel.verifiedAt !== null,
+  };
+}
+
+type SessionRow = Pick<
+  typeof schema.smsIntakeSessions.$inferSelect,
+  'id' | 'userId' | 'createdAt' | 'closedAt' | 'dataEncrypted'
+>;
+
+function sessionHolding(session: SessionRow): NumberHolding {
+  // The row is written while its first text is handled, a moment after that text
+  // arrived, so the session holds the number from its first text. A redacted one
+  // still held it, from when it was written.
+  const first = Math.min(
+    session.createdAt.getTime(),
+    ...(readTranscript(session.dataEncrypted)
+      ?.transcript.filter((entry) => entry.direction === 'in')
+      .map((entry) => Date.parse(entry.at)) ?? []),
+  );
+  return {
+    kind: 'session',
+    id: session.id,
+    userId: session.userId,
+    start: new Date(first),
+    end: session.closedAt,
+    ownerMade: true,
+  };
+}
+
+const CHANNEL_HOLDING_COLUMNS = {
+  id: schema.parentChannels.id,
+  userId: schema.parentChannels.userId,
+  verifiedAt: schema.parentChannels.verifiedAt,
+  createdAt: schema.parentChannels.createdAt,
+  revokedAt: schema.parentChannels.revokedAt,
+};
+
+const SESSION_HOLDING_COLUMNS = {
+  id: schema.smsIntakeSessions.id,
+  userId: schema.smsIntakeSessions.userId,
+  createdAt: schema.smsIntakeSessions.createdAt,
+  closedAt: schema.smsIntakeSessions.closedAt,
+  dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+};
 
 /** Every holding of the number, oldest first. */
 export async function numberHolderTimeline(
@@ -367,23 +433,11 @@ export async function numberHolderTimeline(
   phoneHash: string,
 ): Promise<NumberHolding[]> {
   const channels = await database
-    .select({
-      id: schema.parentChannels.id,
-      userId: schema.parentChannels.userId,
-      verifiedAt: schema.parentChannels.verifiedAt,
-      createdAt: schema.parentChannels.createdAt,
-      revokedAt: schema.parentChannels.revokedAt,
-    })
+    .select(CHANNEL_HOLDING_COLUMNS)
     .from(schema.parentChannels)
     .where(eq(schema.parentChannels.phoneE164Hash, phoneHash));
   const sessions = await database
-    .select({
-      id: schema.smsIntakeSessions.id,
-      userId: schema.smsIntakeSessions.userId,
-      createdAt: schema.smsIntakeSessions.createdAt,
-      closedAt: schema.smsIntakeSessions.closedAt,
-      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
-    })
+    .select(SESSION_HOLDING_COLUMNS)
     .from(schema.smsIntakeSessions)
     .where(eq(schema.smsIntakeSessions.phoneHash, phoneHash));
   const invites = await database
@@ -399,40 +453,15 @@ export async function numberHolderTimeline(
     .from(schema.partyRsvps)
     .where(eq(schema.partyRsvps.phoneE164Hash, phoneHash));
   const holdings: NumberHolding[] = [
-    ...channels.map((channel) => ({
-      kind: 'channel' as const,
-      id: channel.id,
-      userId: channel.userId,
-      // Every SMS consent grant inserts a fresh row (revoke-then-insert, never an
-      // un-revoke), so a verified channel starts at its consent; a pending one when it
-      // was asked for.
-      start: channel.verifiedAt ?? channel.createdAt,
-      end: channel.revokedAt,
-    })),
-    ...sessions.map((session) => {
-      // The row is written while its first text is handled, a moment after that text
-      // arrived, so the session holds the number from its first text. A redacted one
-      // still held it, from when it was written.
-      const first = Math.min(
-        session.createdAt.getTime(),
-        ...(readTranscript(session.dataEncrypted)
-          ?.transcript.filter((entry) => entry.direction === 'in')
-          .map((entry) => Date.parse(entry.at)) ?? []),
-      );
-      return {
-        kind: 'session' as const,
-        id: session.id,
-        userId: session.userId,
-        start: new Date(first),
-        end: session.closedAt,
-      };
-    }),
+    ...channels.map(channelHolding),
+    ...sessions.map(sessionHolding),
     ...invites.map((invite) => ({
       kind: 'invite' as const,
       id: invite.id,
       userId: null,
       start: invite.createdAt,
       end: invite.closedAt,
+      ownerMade: false,
     })),
     ...guestOptIns.flatMap((rsvp) =>
       rsvp.optedInAt
@@ -443,6 +472,7 @@ export async function numberHolderTimeline(
               userId: null,
               start: rsvp.optedInAt,
               end: null,
+              ownerMade: false,
             },
           ]
         : [],
@@ -481,10 +511,11 @@ export function currentHolder(timeline: NumberHolding[]): NumberHolding | null |
 
 /**
  * Latest row wins, as in the consent ledger. A late stop applies only to the number's
- * holder when it was sent, and only while that holder still holds it with nothing
- * started since. Any later holding, the same person's or someone new's, supersedes it.
- * A timeline that cannot name one holder, or that disagrees with the store about who
- * sent the text, stops nobody.
+ * holder when it was sent, and only while that holder still holds it. Only something the
+ * number's holder did from it later (see {@link NumberHolding.ownerMade}) supersedes it;
+ * a record anyone else made about the number never does, whatever its time, and the stop
+ * reaches it instead. A timeline that cannot name one holder, or that disagrees with the
+ * store about who sent the text, stops nobody.
  */
 export function lateStopVerdict(
   timeline: NumberHolding[],
@@ -492,7 +523,9 @@ export function lateStopVerdict(
   authorUserId: string | null,
 ): 'holder' | 'no_holder' | 'superseded' | 'unresolved' {
   if (timeline.length === 0) return 'unresolved';
-  if (timeline.some((holding) => holding.start.getTime() > receivedAt.getTime())) {
+  if (
+    timeline.some((holding) => holding.ownerMade && holding.start.getTime() > receivedAt.getTime())
+  ) {
     return 'superseded';
   }
   const then = holderAt(timeline, receivedAt);
@@ -500,7 +533,7 @@ export function lateStopVerdict(
   if (then === 'ambiguous' || now === 'ambiguous') return 'unresolved';
   if (then !== null && then.userId !== authorUserId) return 'unresolved';
   if (now === null) return 'no_holder';
-  // With nothing started since, a holding open now was open then.
+  // Nothing the holder made started since, so the same person open now was open then.
   return then?.userId === now.userId ? 'holder' : 'unresolved';
 }
 
@@ -559,7 +592,6 @@ async function resolveHeldText(database: Database, row: HeldRow): Promise<HeldTe
           ...(message.inGroup !== true && message.providerChatId
             ? { chatId: message.providerChatId }
             : {}),
-          ...(message.inGroup === null ? {} : { isGroup: message.inGroup }),
         },
       };
     }
@@ -665,7 +697,13 @@ async function repointLegacyHold(
   result: OptOutRecoveryResult,
   row: typeof schema.optOutReadHolds.$inferSelect,
 ): Promise<void> {
-  const ids = await inboundIdsSince(database, row.phoneHash, row.heldAt);
+  const { ids, unplaceable } = await inboundIdsSince(database, row.phoneHash, row.heldAt);
+  if (unplaceable > 0) {
+    // A text the ledger cannot place on one number is never guessed onto this one: the
+    // row stands (fail closed) and the failure-page sweep pages it as legacy.
+    result.legacyUnpointed += 1;
+    return;
+  }
   if (ids.length > 0) {
     await database
       .insert(schema.optOutHeldMessages)
@@ -698,12 +736,13 @@ async function deleteLegacyHold(database: Database, phoneHash: string): Promise<
 }
 
 /** Every text from this number since `since`: from the ledger and from every intake
- * transcript of the number, open or closed. */
+ * transcript of the number, open or closed. `unplaceable` counts ledger texts sent while
+ * their author also held another number, which could have come from either. */
 async function inboundIdsSince(
   database: Database,
   phoneHash: string,
   since: Date,
-): Promise<string[]> {
+): Promise<{ ids: string[]; unplaceable: number }> {
   // The ledger names a user, not the number a text came from. A user's text counts as
   // this number's when one of their holdings of it was open when it was sent, including
   // the intake that became them, whose texts were replayed with their own times.
@@ -749,11 +788,52 @@ async function inboundIdsSince(
         )
         .map((entry) => entry.providerId) ?? [],
   );
-  return [
-    ...new Set(
-      [...fromThisNumber.map((text) => text.id), ...transcript].filter((id): id is string =>
-        Boolean(id),
+  // This number's own transcript places a text on it, whatever else its author held.
+  const elsewhere = await otherNumberHoldings(database, people, phoneHash);
+  const unplaceable = fromThisNumber.filter(
+    (text) =>
+      !transcript.includes(text.id) &&
+      elsewhere.some(
+        (holding) =>
+          holding.userId === text.userId && text.sentAt !== null && covers(holding, text.sentAt),
       ),
-    ),
-  ];
+  ).length;
+  return {
+    ids: [
+      ...new Set(
+        [...fromThisNumber.map((text) => text.id), ...transcript].filter((id): id is string =>
+          Boolean(id),
+        ),
+      ),
+    ],
+    unplaceable,
+  };
+}
+
+/** These people's channels and intakes on every number but this one. */
+async function otherNumberHoldings(
+  database: Database,
+  people: string[],
+  phoneHash: string,
+): Promise<NumberHolding[]> {
+  if (people.length === 0) return [];
+  const channels = await database
+    .select(CHANNEL_HOLDING_COLUMNS)
+    .from(schema.parentChannels)
+    .where(
+      and(
+        inArray(schema.parentChannels.userId, people),
+        ne(schema.parentChannels.phoneE164Hash, phoneHash),
+      ),
+    );
+  const sessions = await database
+    .select(SESSION_HOLDING_COLUMNS)
+    .from(schema.smsIntakeSessions)
+    .where(
+      and(
+        inArray(schema.smsIntakeSessions.userId, people),
+        ne(schema.smsIntakeSessions.phoneHash, phoneHash),
+      ),
+    );
+  return [...channels.map(channelHolding), ...sessions.map(sessionHolding)];
 }
