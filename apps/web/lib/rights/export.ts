@@ -38,6 +38,12 @@ const NOT_IN_FAMILY_EXPORT = [
   'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];
 
+/** Of those, the rows the adult they are about gets in their own copy (right of access). */
+const OWN_ROWS_IN_EXPORT = [
+  'crisis_unanswered',
+  'opt_out_hold_read',
+] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
+
 export interface FamilyExportDocument {
   /** ISO instant the export was assembled — the "copy taken at" stamp. */
   exportedAt: string;
@@ -297,6 +303,7 @@ export async function assembleFamilyExport(
       loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
         includeInternal: true,
         exclude: NOT_IN_FAMILY_EXPORT,
+        keepOwn: { userId: deps.actorUserId, verbs: OWN_ROWS_IN_EXPORT },
       }));
   const now = deps.now ?? new Date();
 

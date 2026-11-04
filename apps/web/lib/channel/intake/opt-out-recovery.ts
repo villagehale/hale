@@ -1,7 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
-import { type ResolvedOutbound, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
+import { proactiveFloorOpensAt, proactiveQuietNow } from '~/lib/channel/outbound-gate';
+import {
+  type ResolvedOutbound,
+  readSendRefusal,
+  sendResolvingNewChat,
+} from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { threadIfParent } from '~/lib/channel/thread';
@@ -24,7 +29,7 @@ import {
 } from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
-import { crisisRegionForPlace } from './derive';
+import { crisisRegionForPlace, parseIntakePostal } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
 import { releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
@@ -36,6 +41,7 @@ import {
   loadOpenSession,
   saveSession,
 } from './session';
+import { sittingSessionZone } from './sitting-reminder';
 import type { ChannelTransport } from './transport';
 
 /**
@@ -54,7 +60,9 @@ import type { ChannelTransport } from './transport';
  * A stop is settled against {@link numberHolderTimeline}, latest row wins: it stops the
  * holder of its number at the time only while they still hold it and the number's owner
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
- * that number alone.
+ * that number alone. The stop applies at once; its confirmation leaves only outside the
+ * proactive floor in the family's own zone: at once, or at the family's first floor opening
+ * after the stop, or not at all.
  *
  * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
@@ -71,6 +79,12 @@ export const HELD_READ_OUTCOMES = [
   'stopped_confirmation_unsent',
   /** Revoked, but the confirmation send threw: kept held and read again. */
   'stopped_confirmation_failed',
+  /** Revoked at once; the confirmation waits for the family's first floor opening after the
+   * stop (the proactive floor, in their zone). Kept, and read again then for it alone. */
+  'stopped_confirmation_waiting',
+  /** Revoked at once; the confirmation never leaves: the family has no place to find its
+   * morning in, or its first floor opening after the stop has passed. Released. */
+  'stopped_confirmation_dropped',
   /** Whoever holds the number did something from it after the stop: verified a channel on
    * it (a START writes one) or texted it into a new intake. The newer row wins, nobody is
    * stopped, nothing is sent. */
@@ -112,6 +126,7 @@ export type HeldReadOutcome = (typeof HELD_READ_OUTCOMES)[number];
 /** Outcomes that leave the row standing. Every other outcome read the text and released it. */
 const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'stopped_confirmation_failed',
+  'stopped_confirmation_waiting',
   'stop_failed',
   'timeline_unresolved',
   'recovery_failed',
@@ -246,6 +261,9 @@ export interface HeldText {
   familyId: string | null;
   /** The crisis lines' country, from a place the store holds; null names both. Never guessed. */
   region: CrisisRegion | null;
+  /** The zone of that same place, which a late confirmation keeps the floor in; null when
+   * none is stored. Never guessed. */
+  timeZone: string | null;
 }
 
 async function recoverRow(
@@ -288,6 +306,12 @@ async function recoverRow(
     await releaseHeldMessage(database, row.providerMessageId);
     return 'no_channel';
   }
+  if (row.stopAppliedAt !== null) {
+    const owed = await owedConfirmation(database, deps, row, held, row.stopAppliedAt);
+    if (KEPT.has(owed)) return owed;
+    await recordReadAndRelease(database, row, held, owed);
+    return owed;
+  }
 
   // A crisis already recorded for this text (live, or on an earlier tick) stays one, and the
   // text is never handed to the model again: the reply is written from what was read then.
@@ -310,6 +334,16 @@ async function recoverRow(
     outcome = await settleReading(database, deps, row, held, reading);
   }
   if (KEPT.has(outcome)) return outcome;
+  await recordReadAndRelease(database, row, held, outcome);
+  return outcome;
+}
+
+async function recordReadAndRelease(
+  database: Database,
+  row: HeldRow,
+  held: HeldText,
+  outcome: HeldReadOutcome,
+): Promise<void> {
   if (held.familyId && held.authorUserId) {
     await database.insert(schema.auditLog).values({
       familyId: held.familyId,
@@ -326,7 +360,6 @@ async function recoverRow(
     console.info({ outcome }, 'opt-out recovery: held text read for a sender with no family');
   }
   await releaseHeldMessage(database, row.providerMessageId);
-  return outcome;
 }
 
 async function settleReading(
@@ -385,6 +418,8 @@ async function lateStop(
   // and nothing has started since; the stop still reaches the number's invites, quietly.
   const open = verdict === 'holder' ? await loadOpenSession(database, held.phoneE164) : null;
   const sendable = verdict === 'holder' && (await stillSendable(database, held.phoneE164));
+  // The stop takes effect now, whatever the hour. Only the courtesy text waits.
+  const slot = sendable ? await confirmationSlot(held, null, deps.now) : null;
   try {
     const stopped = await handleStop(
       database,
@@ -397,11 +432,19 @@ async function lateStop(
         now: deps.now,
         providerAnswered: false,
         // A number that already stopped is not told twice.
-        confirmation: sendable ? confirmation : '',
+        confirmation: slot?.at === 'now' ? confirmation : '',
       },
       { transport: deps.transport },
     );
     if (!sendable) return 'already_stopped';
+    if (slot?.at === 'never') return dropConfirmation(slot.reason);
+    if (slot?.at === 'opening') {
+      await database
+        .update(schema.optOutHeldMessages)
+        .set({ stopAppliedAt: deps.now, nextReadAt: slot.opensAt })
+        .where(eq(schema.optOutHeldMessages.providerMessageId, row.providerMessageId));
+      return waitForOpening();
+    }
     if (stopped.status === 'stopped' && stopped.ack === 'voice_unsent') {
       console.error(
         { outcome: 'stopped_confirmation_unsent' },
@@ -426,6 +469,143 @@ async function lateStop(
     );
     return 'stopped_confirmation_failed';
   }
+}
+
+type ConfirmationSlot =
+  | { at: 'now' }
+  | { at: 'opening'; opensAt: Date }
+  | { at: 'never'; reason: 'zone_unknown' | 'opening_passed' };
+
+/**
+ * When a late stop's courtesy text may leave: now, at the family's first floor opening after
+ * the stop, or never. `appliedAt` is null while the stop is being applied this tick. The
+ * floor is the proactive one, exactly as the gate applies it, in the family's own zone; no
+ * zone, no clock to send on. Past that first opening the text is not owed any more: a
+ * confirmation days late may reach a number that has since changed hands.
+ */
+async function confirmationSlot(
+  held: HeldText,
+  appliedAt: Date | null,
+  now: Date,
+): Promise<ConfirmationSlot> {
+  const { timeZone } = held;
+  if (timeZone === null) return { at: 'never', reason: 'zone_unknown' };
+  const quiet = await proactiveQuietNow({ now, timeZone, phone: async () => held.phoneE164 });
+  if (appliedAt === null) {
+    return quiet ? { at: 'opening', opensAt: proactiveFloorOpensAt(now, timeZone) } : { at: 'now' };
+  }
+  const opensAt = proactiveFloorOpensAt(appliedAt, timeZone);
+  if (now.getTime() < opensAt.getTime()) return { at: 'opening', opensAt };
+  const nextOpening = proactiveFloorOpensAt(new Date(opensAt.getTime() + 1), timeZone);
+  return quiet || now.getTime() >= nextOpening.getTime()
+    ? { at: 'never', reason: 'opening_passed' }
+    : { at: 'now' };
+}
+
+function waitForOpening(): 'stopped_confirmation_waiting' {
+  console.info(
+    { outcome: 'stopped_confirmation_waiting' },
+    'opt-out recovery: stop read late, revoked - confirmation waits',
+  );
+  return 'stopped_confirmation_waiting';
+}
+
+function dropConfirmation(
+  reason: 'zone_unknown' | 'opening_passed',
+): 'stopped_confirmation_dropped' {
+  console.info(
+    { outcome: 'stopped_confirmation_dropped', reason },
+    'opt-out recovery: stop read late, revoked - confirmation not owed any more, nothing sent',
+  );
+  return 'stopped_confirmation_dropped';
+}
+
+/**
+ * A stop applied on an earlier tick still owes its confirmation, only at the family's first
+ * floor opening after it. Nothing the owner made since may be told they are stopped; the
+ * slot is checked before the model is asked; then the text is read again so the model
+ * writes the confirmation it sends.
+ */
+async function owedConfirmation(
+  database: Database,
+  deps: OptOutRecoveryDeps,
+  row: HeldRow,
+  held: HeldText,
+  appliedAt: Date,
+): Promise<HeldReadOutcome> {
+  const { now } = deps;
+  const timeline = await numberHolderTimeline(database, row.phoneHash);
+  if (lateStopVerdict(timeline, held.inbound.receivedAt, held.authorUserId) === 'superseded') {
+    return 'stop_superseded';
+  }
+  const slot = await confirmationSlot(held, appliedAt, now);
+  if (slot.at === 'never') return dropConfirmation(slot.reason);
+  if (slot.at === 'opening') {
+    await database
+      .update(schema.optOutHeldMessages)
+      .set({ nextReadAt: slot.opensAt })
+      .where(eq(schema.optOutHeldMessages.providerMessageId, row.providerMessageId));
+    return waitForOpening();
+  }
+  const reading = await deps.reader.read({
+    text: held.inbound.body,
+    language: held.language,
+    late: { receivedAt: held.inbound.receivedAt, readAt: now },
+  });
+  if (reading === null) return 'read_failed';
+  const body = reading.intent === 'stop' ? reading.confirmation.trim() : '';
+  if (body.length === 0) {
+    console.error(
+      { outcome: 'stopped_confirmation_unsent', read: reading.intent },
+      'opt-out recovery: stop applied earlier - the morning read wrote no confirmation, nothing sent',
+    );
+    return 'stopped_confirmation_unsent';
+  }
+  let sent: ResolvedOutbound;
+  try {
+    sent = await sendResolvingNewChat(deps.transport, { to: held.phoneE164, body });
+  } catch (err) {
+    // As on the live stop path: a permanent refusal has no confirmation to retry.
+    if (readSendRefusal(err)?.permanent) {
+      console.error(
+        { outcome: 'stopped_confirmation_unsent', err: errName(err) },
+        'opt-out recovery: stop applied earlier - confirmation refused for good',
+      );
+      return 'stopped_confirmation_unsent';
+    }
+    console.error(
+      { outcome: 'stopped_confirmation_failed', err: errName(err) },
+      'opt-out recovery: stop applied earlier - confirmation send failed, kept held',
+    );
+    return 'stopped_confirmation_failed';
+  }
+  // Sent: the row goes first, so a trace that throws below never sends it again.
+  await releaseHeldMessage(database, row.providerMessageId);
+  if (held.familyId && held.authorUserId) {
+    const channel =
+      sent.transport === 'imessage' || held.inbound.transport === 'imessage' ? 'imessage' : 'sms';
+    try {
+      await writeChannelMessage(
+        database,
+        { familyId: held.familyId, parentUserId: held.authorUserId },
+        {
+          direction: 'out',
+          body,
+          providerId: sent.providerMessageId,
+          at: now.toISOString(),
+          channel,
+          chatId: channel === 'imessage' ? (sent.chatId ?? held.inbound.chatId ?? null) : null,
+        },
+        now,
+      );
+    } catch (err) {
+      console.error(
+        { outcome: 'stopped', err: errName(err) },
+        'opt-out recovery: late_stop_confirmation_ledger_failed',
+      );
+    }
+  }
+  return 'stopped';
 }
 
 const LATE_READ = 'late_read';
@@ -630,8 +810,9 @@ async function isParentOf(
 
 /** One holding of a number: a parent channel until it is revoked, an intake session
  * until it closes, a caregiver invite until it closes, or a guest's reminder opt-in. Only
- * a channel or a session names who holds the number. An invite or an opt-in is a record
- * someone else made about the number; it only scopes what a stop reaches. */
+ * a verified channel or a session names who holds the number. An invite or an opt-in is a
+ * record someone else made about the number; it only scopes what a stop reaches. An
+ * unverified channel is a number typed into a form, and names nobody. */
 export interface NumberHolding {
   kind: 'channel' | 'session' | 'invite' | 'guest_reminders';
   id: string;
@@ -777,7 +958,7 @@ function onePerson(holdings: NumberHolding[]): NumberHolding | null | 'ambiguous
 }
 
 function namesHolder(holding: NumberHolding): boolean {
-  return holding.kind === 'channel' || holding.kind === 'session';
+  return (holding.kind === 'channel' || holding.kind === 'session') && holding.ownerMade;
 }
 
 /** Who held the number when `at` came: 'ambiguous' when two people did. */
@@ -860,7 +1041,7 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
       const transport = message.channel === 'imessage' ? 'imessage' : 'sms';
       // Never families.country_code: it defaults to CA, which would be a guess.
       const [family] = await database
-        .select({ postalCode: schema.families.postalCode })
+        .select({ postalCode: schema.families.postalCode, areaCoarse: schema.families.areaCoarse })
         .from(schema.families)
         .where(eq(schema.families.id, message.familyId))
         .limit(1);
@@ -870,6 +1051,7 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
         authorUserId: message.parentUserId,
         familyId: message.familyId,
         region: crisisRegionForPlace([family?.postalCode]),
+        timeZone: placeZone(family),
         inbound: {
           from: phoneE164,
           body: message.body,
@@ -908,15 +1090,20 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
     );
     if (!entry) continue;
     const phoneE164 = decryptString(candidate.phoneEncrypted);
+    const familyId = candidate.userId ? candidate.familyId : null;
     return {
       phoneE164,
       language: data.ladderLanguage,
       authorUserId: candidate.userId,
-      familyId: candidate.userId ? candidate.familyId : null,
+      familyId,
       region: crisisRegionForPlace([
         data.firstTouch?.place?.postalCode,
         data.firstTouch?.place?.areaCoarse,
       ]),
+      // The family's own place once there is one, else the place the intake was given.
+      timeZone:
+        (familyId ? await familyZone(database, familyId) : null) ??
+        sittingSessionZone(data.firstTouch),
       // No chat: a late confirmation always goes one-to-one.
       inbound: {
         from: phoneE164,
@@ -928,6 +1115,27 @@ export async function resolveHeldText(database: Database, row: HeldRow): Promise
     };
   }
   return null;
+}
+
+/** The zone a family's stored place gives: its postal code, else its coarse area (a
+ * family provisioned from an FSA alone stores only that). Null when neither is a code. */
+function placeZone(
+  family: { postalCode: string | null; areaCoarse: string | null } | undefined,
+): string | null {
+  for (const token of [family?.postalCode, family?.areaCoarse]) {
+    const zone = parseIntakePostal(token ?? null)?.timezone;
+    if (zone) return zone;
+  }
+  return null;
+}
+
+async function familyZone(database: Database, familyId: string): Promise<string | null> {
+  const [family] = await database
+    .select({ postalCode: schema.families.postalCode, areaCoarse: schema.families.areaCoarse })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return placeZone(family);
 }
 
 /** Something can still text this number: a channel not revoked, or an open intake. */
