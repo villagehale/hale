@@ -421,6 +421,25 @@ describe('composeReminderTexts names why nothing was written (VIL-563)', () => {
     expect(runs[0]).toMatchObject({ agentName: 'reminder-voice', status: 'failed', costUsd: 0 });
   });
 
+  it.each([
+    [408, 'timeout_error'],
+    [409, 'conflict_error'],
+  ])(
+    'a %i is retryable, not Hale’s request: unavailable after both attempts',
+    async (status, type) => {
+      const retryable = () => apiError(status, type, 'try again');
+      const { outcome, runs, create } = await compose(retryable(), retryable());
+      expect(outcome).toEqual({
+        status: 'unavailable',
+        cause: 'transient',
+        httpStatus: status,
+        errorType: type,
+      });
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(runs).toHaveLength(2);
+    },
+  );
+
   it('positive control: an overload on both attempts stays unavailable, with a run per attempt', async () => {
     const { outcome, runs, create } = await compose(OVERLOADED(), OVERLOADED());
     expect(outcome).toEqual({

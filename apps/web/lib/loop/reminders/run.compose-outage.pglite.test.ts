@@ -153,6 +153,51 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
     expect((await runs()).filter((run) => run.status === 'completed')).toHaveLength(1);
   });
 
+  it('holds the reminder through a 408 request timeout: it can clear on its own', async () => {
+    const timeout = () =>
+      Anthropic.APIError.generate(
+        408,
+        { type: 'error', error: { type: 'timeout_error', message: 'Request timed out' } },
+        undefined,
+        { 'request-id': 'req_probe' },
+      );
+    const result = await runReminderCron(
+      db.database,
+      deps(client(timeout(), timeout())),
+      EVENING_TICK,
+    );
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
+    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: null });
+    expect(await audits()).toEqual([]);
+  });
+
+  it('drops the reminder after ONE call when the provider rejects Hale’s request (VIL-586)', async () => {
+    const badRequest = Anthropic.APIError.generate(
+      400,
+      { type: 'error', error: { type: 'invalid_request_error', message: 'invalid shape' } },
+      undefined,
+      { 'request-id': 'req_probe' },
+    );
+    const result = await runReminderCron(
+      db.database,
+      deps(client(badRequest, { texts: ['unreached'] })),
+      EVENING_TICK,
+    );
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldComposeUnavailable: 0 });
+    expect(await eveningBefore()).toEqual({
+      status: 'suppressed',
+      suppressReason: 'compose_rejected',
+    });
+    expect(await runs()).toEqual([{ agentName: 'reminder-voice', status: 'failed' }]);
+    const audit = await audits();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actionTaken: 'reminder_suppressed',
+      after: { reason: 'compose_rejected', offset: '-P1D' },
+    });
+    expect(enqueued).toEqual([]);
+  });
+
   it('positive control: two refused drafts drop it as unwritten, with an audit row', async () => {
     const linked = { texts: ['Puppet Club tomorrow, see https://example.com/x'] };
     const result = await runReminderCron(db.database, deps(client(linked, linked)), EVENING_TICK);

@@ -323,15 +323,26 @@ type Attempt =
   | ({ kind: 'unavailable'; cause: ProviderFailureClass } & ProviderErrorShape)
   | ({ kind: 'rejected'; cause: ReminderRejectedCause } & ProviderErrorShape);
 
+/** The 4xx statuses the SDK itself retries (request timeout, conflict): the provider's
+ * state, not Hale's request, so the same call can succeed later. */
+const RETRYABLE_CLIENT_STATUSES: ReadonlySet<number> = new Set([408, 409]);
+
 /** A thrown error's class. A 4xx the provider classifier only reads as `transient`
- * (its fail-open default) is Hale's own request, refused; auth, usage limit, quota and
- * billing keep their own classes. An APIError with no status (connection, timeout) is
- * transient. Anything that is not an APIError is our bug. */
+ * (its fail-open default) is Hale's own request, refused, unless it is one the SDK
+ * retries; auth, usage limit, quota and billing keep their own classes. An APIError with
+ * no status (connection, timeout) is transient. Anything that is not an APIError is our
+ * bug. */
 function throwCause(err: unknown): ProviderFailureClass | ReminderRejectedCause {
   if (!(err instanceof Anthropic.APIError)) return 'unexpected';
   const failure = classifyProviderFailure(err);
   const status = err.status;
-  if (failure === 'transient' && typeof status === 'number' && status >= 400 && status < 500) {
+  if (
+    failure === 'transient' &&
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    !RETRYABLE_CLIENT_STATUSES.has(status)
+  ) {
     return 'bad_request';
   }
   return failure;
