@@ -16,6 +16,7 @@ import {
   watchDepsFromEnv,
 } from './google-push-watch';
 import {
+  connectionHoldsKeys,
   getSweepableConnectorConnection,
   listActiveConnectorConnections,
   markConnectionError,
@@ -53,11 +54,23 @@ export interface PushRenewalSummary {
   renewed: number;
   notDue: number;
   topicNotConfigured: number;
+  /** Listed as live, then ended by a disconnect before its watch could be saved. */
+  integrationEnded: number;
+  /** Of those, the channel just opened that Google did not confirm stopping. */
+  orphanStopFailed: number;
   failed: number;
 }
 
 function emptyRenewal(): PushRenewalSummary {
-  return { opened: 0, renewed: 0, notDue: 0, topicNotConfigured: 0, failed: 0 };
+  return {
+    opened: 0,
+    renewed: 0,
+    notDue: 0,
+    topicNotConfigured: 0,
+    integrationEnded: 0,
+    orphanStopFailed: 0,
+    failed: 0,
+  };
 }
 
 async function freshAccessToken(
@@ -97,6 +110,9 @@ function countOutcome(summary: PushRenewalSummary, outcome: EnsureWatchOutcome):
     case 'topic_not_configured':
       summary.topicNotConfigured += 1;
       return;
+    case 'integration_ended':
+      summary.integrationEnded += 1;
+      return;
     case 'flag_off':
     case 'not_push_provider':
       return;
@@ -121,6 +137,21 @@ export async function renewDueGooglePushWatches(
   for (const connection of connections) {
     if (connection.provider !== 'gcal' && connection.provider !== 'gmail') continue;
     try {
+      // The listing above can be minutes old by now: a row a disconnect ended since is
+      // never sent to Google, not even its refresh token to the token endpoint. The save
+      // re-checks under the row lock (savePushWatch).
+      if (!(await connectionHoldsKeys(database, connection.id))) {
+        countOutcome(summary, 'integration_ended');
+        console.info(
+          {
+            integrationId: connection.id,
+            provider: connection.provider,
+            push: 'integration_ended',
+          },
+          'google push: renewal',
+        );
+        continue;
+      }
       const tokens = decryptTokens(connection.enc);
       const accessToken = await freshAccessToken(database, connection.id, tokens);
       const result = await ensureGooglePushWatch({
@@ -136,9 +167,15 @@ export async function renewDueGooglePushWatches(
         },
       });
       countOutcome(summary, result.outcome);
+      if (result.stop === 'stop_failed') summary.orphanStopFailed += 1;
       if (result.outcome !== 'not_due') {
         console.info(
-          { integrationId: connection.id, provider: connection.provider, push: result.outcome },
+          {
+            integrationId: connection.id,
+            provider: connection.provider,
+            push: result.outcome,
+            ...(result.stop ? { stop: result.stop } : {}),
+          },
           'google push: renewal',
         );
       }

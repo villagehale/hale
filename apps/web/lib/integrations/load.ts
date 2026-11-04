@@ -4,7 +4,12 @@ import { db as defaultDb } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { type GoogleAccessOutcome, disconnectGoogle } from './google-disconnect';
 import { isConnectorProvider } from './google-oauth';
-import { type ConnectionSummary, listConnections, listUserConnections } from './store';
+import {
+  type ConnectionSummary,
+  googleRevokeUnconfirmedProviders,
+  listConnections,
+  listUserConnections,
+} from './store';
 
 /**
  * The connectors data access behind BOTH the web Settings page and the mobile
@@ -32,6 +37,9 @@ export interface FamilyConnectorView {
    * it recovers, absent on a row that errored before we recorded reasons. */
   lastErrorCode?: string | null;
   ownedByViewer: boolean;
+  /** The viewer's own disconnected row whose Google revoke Hale stopped asking about
+   * without Google confirming it (VIL-156). Absent everywhere else. */
+  googleRevokeUnconfirmed?: true;
 }
 
 /**
@@ -49,11 +57,20 @@ export async function loadFamilyConnectors(): Promise<FamilyConnectorView[]> {
     resolveUserIdForUser(externalAuthId, database),
   ]);
   if (!familyId) return [];
-  const rows = await listConnections(database, familyId);
-  return rows.map(({ userId: ownerId, ...summary }) => ({
-    ...summary,
-    ownedByViewer: ownerId != null && ownerId === userId,
-  }));
+  const [rows, unconfirmed] = await Promise.all([
+    listConnections(database, familyId),
+    userId ? googleRevokeUnconfirmedProviders(database, { familyId, userId }) : ([] as string[]),
+  ]);
+  return rows.map(({ userId: ownerId, ...summary }) => {
+    const ownedByViewer = ownerId != null && ownerId === userId;
+    return {
+      ...summary,
+      ownedByViewer,
+      ...(ownedByViewer && summary.status === 'revoked' && unconfirmed.includes(summary.provider)
+        ? { googleRevokeUnconfirmed: true as const }
+        : {}),
+    };
+  });
 }
 
 export type ConnectorsStateResult =

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
@@ -113,6 +113,13 @@ export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
  * message id (one mark per text), never the id itself.
  */
 export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
+/**
+ * VIL-156 · families erased past their Google wait with Google unconfirmed (a revoke never
+ * answered, or a local end that kept throwing). The claim row IS the record, as for a
+ * first hello: the families it counts are gone. Identifier `<run uuid>:<unconfirmed>:<end
+ * failed>`, counts only; count 0 is owed, 1 is paged.
+ */
+export const ERASURE_GOOGLE_PAGE_ROUTE = 'ops:erasure-google-unconfirmed';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -163,6 +170,7 @@ export interface FailurePageResult {
   deferredPileups: FailurePageCounts;
   crisisUnanswered: FailurePageCounts;
   optOutHolds: FailurePageCounts;
+  erasureGoogle: FailurePageCounts;
 }
 
 export interface FailurePageDeps {
@@ -302,6 +310,27 @@ export function composeOptOutHoldAlert(input: {
     `oldest ${pageCount(input.oldestHours)}h.`,
     `crisis read late ${pageCount(input.lateCrisis)}.`,
   ].join(' ');
+}
+
+/** Counts only: no family, integration or user id. */
+export function composeErasureGoogleAlert(input: {
+  unconfirmed: number;
+  endFailed: number;
+}): string {
+  return [
+    'Hale: families erased with Google unconfirmed.',
+    `revoke unanswered ${pageCount(input.unconfirmed)}.`,
+    `end failed ${pageCount(input.endFailed)}.`,
+  ].join(' ');
+}
+
+function parseErasureGoogleIdentifier(
+  identifier: string,
+): { unconfirmed: number; endFailed: number } | null {
+  const [runId, unconfirmed, endFailed, ...rest] = identifier.split(':');
+  if (!runId || !UUID_RE.test(runId) || rest.length > 0) return null;
+  if (!/^\d+$/.test(unconfirmed ?? '') || !/^\d+$/.test(endFailed ?? '')) return null;
+  return { unconfirmed: Number(unconfirmed), endFailed: Number(endFailed) };
 }
 
 export function composeCrisisUnansweredAlert(input: {
@@ -474,6 +503,18 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         lt(schema.rateLimits.count, staleBefore),
       ),
     );
+  // And an erasure's unconfirmed Google.
+  await database
+    .update(schema.rateLimits)
+    .set({ count: UNALERTED_COUNT })
+    .where(
+      and(
+        eq(schema.rateLimits.route, ERASURE_GOOGLE_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        gt(schema.rateLimits.count, ALERTED_COUNT),
+        lt(schema.rateLimits.count, staleBefore),
+      ),
+    );
 }
 
 async function claimInsert(
@@ -558,11 +599,12 @@ async function finishClaim(
     await database.update(schema.rateLimits).set({ count: ALERTED_COUNT }).where(claim);
     return;
   }
-  // First hellos, dead letters and crises keep the row: count 0 means "still owed".
+  // First hellos, dead letters, crises and erasures keep the row: count 0 means "still owed".
   if (
     route === FIRST_HELLO_PAGE_ROUTE ||
     route === DEAD_LETTER_PAGE_ROUTE ||
-    route === CRISIS_UNANSWERED_PAGE_ROUTE
+    route === CRISIS_UNANSWERED_PAGE_ROUTE ||
+    route === ERASURE_GOOGLE_PAGE_ROUTE
   ) {
     await database.update(schema.rateLimits).set({ count: UNALERTED_COUNT }).where(claim);
     return;
@@ -1026,6 +1068,44 @@ async function pageDeferredPileup(
 }
 
 /**
+ * VIL-156 · every owed erasure claim, by count: a family erased past its Google wait with
+ * Google unconfirmed. The claim row is the record, so a page Slack refused stays owed.
+ */
+async function pageErasureGoogle(
+  database: Database,
+  post: (text: string) => Promise<OpsPageOutcome>,
+  now: Date,
+  counts: FailurePageCounts,
+): Promise<void> {
+  const rows = await database
+    .select({ identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, ERASURE_GOOGLE_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        eq(schema.rateLimits.count, UNALERTED_COUNT),
+      ),
+    )
+    .limit(MAX_PER_RUN);
+  const stamp = claimStamp(now);
+  for (const row of rows) {
+    if (!(await claimOwed(database, ERASURE_GOOGLE_PAGE_ROUTE, row.identifier, stamp))) {
+      counts.deduped += 1;
+      continue;
+    }
+    // Families were erased with Google unconfirmed: a human hears of it even when the
+    // counts are lost.
+    const recorded = parseErasureGoogleIdentifier(row.identifier) ?? {
+      unconfirmed: 0,
+      endFailed: 0,
+    };
+    const text = composeErasureGoogleAlert(recorded);
+    await deliver(database, ERASURE_GOOGLE_PAGE_ROUTE, row.identifier, text, stamp, post, counts);
+  }
+}
+
+/**
  * VIL-553 · what stands in the two hold tables, by count. A hold row carries no family,
  * so canary traffic cannot be told apart here and nothing is excluded.
  */
@@ -1140,6 +1220,7 @@ export async function pageFailureAlerts(
     deferredPileups: emptyCounts(),
     crisisUnanswered: emptyCounts(),
     optOutHolds: emptyCounts(),
+    erasureGoogle: emptyCounts(),
   };
   try {
     await releaseStaleClaims(database, now);
@@ -1197,7 +1278,44 @@ export async function pageFailureAlerts(
       err: err instanceof Error ? err.name : 'unknown',
     });
   }
+  try {
+    await pageErasureGoogle(database, post, now, result.erasureGoogle);
+  } catch (err) {
+    console.error('failure page: erasure google sweep threw', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
   return result;
+}
+
+/**
+ * VIL-156 · one family erased past its Google wait with Google unconfirmed. Recorded in
+ * the caller's transaction, beside the family's DELETE, so the page cannot be lost to a
+ * throw later in the sweep: the claim is owed until a page leaves.
+ */
+export async function recordErasureGoogleUnconfirmed(
+  database: Database,
+  input: { unconfirmed: number; endFailed: number },
+): Promise<void> {
+  await database.insert(schema.rateLimits).values({
+    identifier: `${randomUUID()}:${pageCount(input.unconfirmed)}:${pageCount(input.endFailed)}`,
+    route: ERASURE_GOOGLE_PAGE_ROUTE,
+    windowStart: CLAIM_EPOCH,
+    count: UNALERTED_COUNT,
+  });
+}
+
+/** Page every owed erasure claim now. One that does not leave stays owed, and the
+ * failure-page cron retries it. */
+export async function pageErasureGoogleUnconfirmed(
+  database: Database,
+  deps: FailurePageDeps = {},
+): Promise<FailurePageCounts> {
+  const now = deps.now ?? new Date();
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+  const counts = emptyCounts();
+  await pageErasureGoogle(database, post, now, counts);
+  return counts;
 }
 
 /**

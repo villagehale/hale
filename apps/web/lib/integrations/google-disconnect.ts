@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, type FetchLike } from './google-oauth';
 import type { PushEnv } from './google-push-flag';
 import { googleJsonClient, stopGooglePushForEndedConnection } from './google-push-runtime';
@@ -7,11 +7,16 @@ import type { GoogleJsonClient } from './google-push-watch';
 import {
   type ConnectorRevokeVia,
   type EndedConnection,
+  type PendingGoogleRevocation,
   clearGoogleRevokePending,
+  deleteStaleGoogleRevokePending,
   endGoogleConnections,
+  endGoogleConnectionsLocally,
+  googleGrantsHeldElsewhere,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
   noteGoogleRevokeAttempt,
+  sameGoogleAccount,
 } from './store';
 import {
   type RevokePendingToken,
@@ -37,7 +42,8 @@ import {
  * commit, every push watch is stopped (while the token still works), then each token is
  * revoked at Google. A transient answer leaves the token pending, and the 15-minute
  * connector-sync cron retries through the same function, for at most
- * {@link GOOGLE_REVOKE_PENDING_RETENTION_MS}.
+ * {@link GOOGLE_REVOKE_PENDING_RETENTION_MS}: {@link expireStaleGoogleRevocations} deletes
+ * the token at that age on time alone, whatever the retry did.
  */
 
 export const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -533,4 +539,272 @@ export async function retryPendingGoogleRevocations(
     }
   }
   return summary;
+}
+
+/** A superseded revoke that Google did not answer: the slot is the new grant's, so Hale
+ * cannot ask again, and the old grant is not confirmed ended. */
+export type SupersededRevokeOutcome = GoogleRowOutcome | 'superseded';
+
+/**
+ * The revoke a connect took out of the pending slot (saveConnection's `superseded`): another
+ * Google account's, so asking Google cannot end the grant just given. Asked once, right
+ * after the connect commits; only an unanswered ask is `superseded`. One audit row on the
+ * integration either way (rule #6). Never throws: the connect has already happened.
+ */
+export async function settleSupersededGoogleRevoke(
+  db: Database,
+  superseded: PendingGoogleRevocation,
+  ports?: GoogleDisconnectPorts,
+): Promise<SupersededRevokeOutcome> {
+  const wired = ports ?? defaultGoogleDisconnectPorts();
+  const row: EndedConnection = {
+    id: superseded.id,
+    familyId: superseded.familyId,
+    provider: superseded.provider,
+  };
+  try {
+    let pending: RevokePendingToken | null = null;
+    let early: GoogleRowOutcome | undefined;
+    try {
+      pending = decryptRevokePending(superseded.enc);
+      if (!pending) early = 'no_token';
+    } catch {
+      early = 'decrypt_failed';
+    }
+    const result = await revokeHeld(
+      {
+        row,
+        enc: null,
+        since: superseded.since,
+        pending,
+        ...(early ? { early } : {}),
+        push: 'not_attempted',
+      },
+      wired,
+    );
+    const outcome: SupersededRevokeOutcome =
+      result.outcome === 'pending_retry' || result.outcome === 'abandoned'
+        ? 'superseded'
+        : result.outcome;
+    const done = DONE.has(result.outcome);
+    await db.insert(schema.auditLog).values({
+      familyId: row.familyId,
+      actor: 'system',
+      actionTaken: done
+        ? 'integration_google_grant_revoked'
+        : 'integration_google_grant_revoke_failed',
+      targetTable: 'integrations',
+      targetId: row.id,
+      after: {
+        provider: row.provider,
+        outcome,
+        ...(typeof result.status === 'number' ? { status: result.status } : {}),
+      },
+    });
+    const logged = { integrationId: row.id, provider: row.provider, google: outcome };
+    if (done) console.info(logged, SETTLE_LOG);
+    else console.error(logged, `google disconnect: ${outcome}`);
+    return outcome;
+  } catch (err) {
+    console.error(
+      {
+        integrationId: row.id,
+        provider: row.provider,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'google disconnect: superseded',
+    );
+    return 'superseded';
+  }
+}
+
+/**
+ * The pending token's deletion window, enforced on TIME ALONE. The retry's own
+ * `abandoned` needs Google to answer `unavailable`; a row whose settle keeps throwing, or
+ * that the retry never reaches, would otherwise hold a live token forever. Asks Google
+ * nothing, so nothing Google does can starve it. Each deletion and its `abandoned` row
+ * land in one transaction (rule #6).
+ */
+export async function expireStaleGoogleRevocations(
+  db: Database,
+  now: Date,
+): Promise<{ abandoned: number }> {
+  const cutoff = new Date(now.getTime() - GOOGLE_REVOKE_PENDING_RETENTION_MS);
+  const expired = await db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const rows = await deleteStaleGoogleRevokePending(tx, cutoff);
+    if (rows.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        rows.map((row) => ({
+          familyId: row.familyId,
+          actor: 'system',
+          actionTaken: 'integration_google_grant_revoke_failed',
+          targetTable: 'integrations',
+          targetId: row.id,
+          after: { provider: row.provider, outcome: 'abandoned' satisfies GoogleRowOutcome },
+        })),
+      );
+    }
+    return rows;
+  });
+  for (const row of expired) {
+    console.error(
+      { integrationId: row.id, provider: row.provider, google: 'abandoned' },
+      'google disconnect: abandoned',
+    );
+  }
+  return { abandoned: expired.length };
+}
+
+/** A family-erasure row's outcome: a settle outcome, or one of the two local-only ends. */
+export type ErasureGoogleOutcome =
+  | GoogleRowOutcome
+  /** This row's Google account still holds a live grant in another household. Google
+   * revokes per account, so a revoke here would end that household's grant too: ended here
+   * locally, nothing sent to Google (rule #5). */
+  | 'grant_kept_other_household'
+  /** A live row with no owner: ended locally, never skipped (rule #11). */
+  | 'ended_without_owner';
+
+export interface ErasureSettlement {
+  integrationId: string;
+  provider: ConnectorProvider;
+  push: string;
+  google: ErasureGoogleOutcome;
+}
+
+/**
+ * Family erasure's half (rights/delete.ts), called BEFORE the family row is deleted: the
+ * cascade removes integrations rows, and a row it removes still holding keys, or still
+ * holding a pending token, leaves the erased family's grant live at Google.
+ *
+ * Ends every Google connector of every parent in the family locally (one transaction),
+ * then settles those rows and every row an earlier disconnect left pending. A row still
+ * `pending_retry` holds the only token that can end its grant, and the cascade would
+ * delete it: the caller keeps the family for a later sweep instead, for a bounded wait
+ * (the sweep's own bound, rights/delete.ts). Two kinds of row end locally only and are
+ * never revoked: one whose Google account still holds a live grant in another household,
+ * and one with no owner. Throws only when the local end fails, which leaves the family standing.
+ */
+export async function endGoogleForFamilyErasure(
+  db: Database,
+  familyId: string,
+  ports?: GoogleDisconnectPorts,
+): Promise<ErasureSettlement[]> {
+  const rows = await db
+    .select({
+      id: schema.integrations.id,
+      userId: schema.integrations.userId,
+      provider: schema.integrations.provider,
+      enc: schema.integrations.oauthTokensEncrypted,
+      pending: schema.integrations.googleRevokePendingEncrypted,
+      key: schema.integrations.googleAccountKey,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+      ),
+    );
+  const held = rows.filter((row) => row.enc !== null || row.pending !== null);
+  if (held.length === 0) return [];
+  const elsewhere = await googleGrantsHeldElsewhere(db, { familyId, rows: held });
+  const localOnly = new Map<string, ErasureGoogleOutcome>();
+  for (const row of held) {
+    if (row.userId === null) localOnly.set(row.id, 'ended_without_owner');
+    else if (elsewhere.some((other) => sameGoogleAccount(row, other))) {
+      localOnly.set(row.id, 'grant_kept_other_household');
+    }
+  }
+  const revocable = held.filter((row) => !localOnly.has(row.id));
+  const live = revocable.filter((row) => row.enc !== null);
+  const alreadyPending = revocable.filter((row) => row.enc === null);
+  const wired = ports ?? defaultGoogleDisconnectPorts();
+  const now = wired.now();
+  const { ended, endedLocally } = await db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    // Local-only rows FIRST: one parent can hold a kept account and a revoked one here,
+    // and endGoogleConnections ends every row of that parent still holding keys.
+    const local = await endGoogleConnectionsLocally(tx, {
+      familyId,
+      ids: [...localOnly.keys()],
+      now,
+    });
+    const out: EndedConnection[] = [];
+    for (const userId of new Set(live.map((row) => row.userId as string))) {
+      out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
+    }
+    // The family stands until Google answers, so its trail says what ended (rule #6).
+    const trail = [
+      ...out.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        pending: row.unrevocable ? null : revokePendingCustody(),
+      })),
+      // Neutral here: why a row ended locally can be a fact about one adult's other
+      // household, so the reason lives only in the log and the return value.
+      ...local.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        pending: null,
+        google: 'ended_locally',
+      })),
+    ];
+    if (trail.length > 0) {
+      await tx.insert(schema.auditLog).values(
+        trail.map(({ id, ...after }) => ({
+          familyId,
+          actor: 'system',
+          actionTaken: 'integration_ended_for_erasure',
+          targetTable: 'integrations',
+          targetId: id,
+          after: { ...after, custody: tokenCustody() },
+        })),
+      );
+    }
+    return { ended: out, endedLocally: local };
+  });
+  const settlements: ErasureSettlement[] = await settleGoogleRevocations(
+    db,
+    [
+      ...ended,
+      ...alreadyPending.map((row) => ({
+        id: row.id,
+        familyId,
+        provider: row.provider as ConnectorProvider,
+      })),
+    ],
+    wired,
+  );
+  for (const row of endedLocally) {
+    // No token is kept, so a push watch cannot be stopped at Google: its row is dropped
+    // here and the channel lapses at expiry ('no_token' when one existed).
+    const stop = await stopGooglePushForEndedConnection(
+      db,
+      { integrationId: row.id, provider: row.provider, pending: null },
+      wired.env,
+      wired.google,
+      wired.tokenFetch,
+    );
+    settlements.push({
+      integrationId: row.id,
+      provider: row.provider,
+      push: stop.outcome,
+      google: localOnly.get(row.id) as ErasureGoogleOutcome,
+    });
+  }
+  for (const settlement of settlements) {
+    console.info(
+      {
+        integrationId: settlement.integrationId,
+        provider: settlement.provider,
+        push: settlement.push,
+        google:
+          settlement.google === 'pending_retry' ? 'erasure_waits_for_google' : settlement.google,
+      },
+      'google disconnect: family erasure',
+    );
+  }
+  return settlements;
 }

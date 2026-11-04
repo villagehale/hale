@@ -23,6 +23,7 @@ import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
+import { settleSupersededGoogleRevoke } from '~/lib/integrations/google-disconnect';
 import {
   CONNECTOR_SCOPES,
   GOOGLE_PROFILE_SCOPE,
@@ -241,7 +242,7 @@ export async function GET(req: NextRequest) {
       }
       return back(grantStatus, surface, bound.provider);
     }
-    let providerMetadata: Record<string, unknown> | undefined;
+    let googleAccountKey: string | undefined;
     if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
       const sub = await readGoogleAccountSub(tokens.accessToken);
       if (!sub) {
@@ -282,17 +283,19 @@ export async function GET(req: NextRequest) {
           }
           return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
         }
-        providerMetadata = { googleAccountKey: accountKey };
+        googleAccountKey = accountKey;
       }
     }
-    ({ connectId } = await saveConnection(database, {
+    const saved = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
-      providerMetadata,
-    }));
+      googleAccountKey,
+    });
+    connectId = saved.connectId;
+    if (saved.superseded) await settleSupersededGoogleRevoke(database, saved.superseded);
     {
       const connected =
         bound.provider === 'gmail'
@@ -338,7 +341,7 @@ export async function GET(req: NextRequest) {
           familyId: bound.familyId,
           userId: bound.userId,
           accessToken: tokens.accessToken,
-          providerMetadata: providerMetadata ?? {},
+          providerMetadata: {},
         });
         console.info(
           { familyId: bound.familyId, kick: kick.outcome },

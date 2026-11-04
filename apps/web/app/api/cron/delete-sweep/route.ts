@@ -3,7 +3,7 @@ import { purgeExpiredCheckInNotes } from '~/lib/channel/checkin/notes';
 import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
-import { runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
+import { erasureGoogleLogLine, runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
 import { remoteProfileDeleterFromEnv } from '~/lib/signup/browser-use/runner';
 import { sweepExpiredProviderSessions } from '~/lib/signup/browser-use/vault';
 
@@ -58,6 +58,12 @@ export const GET = cronRoute('delete-sweep', async () => {
       { erased: summary.erased, purgedObjects: summary.purgedObjects },
       'cron/delete-sweep: erased families past grace',
     );
+  }
+  const google = erasureGoogleLogLine(summary);
+  if (google) {
+    // Counts and outcome codes only (rule #1): families kept for Google, erased past the
+    // wait, the page that went to #ops, and each Google row's outcome.
+    console.info(google, 'cron/delete-sweep: google grants of families due for erasure');
   }
   if (summary.orphans.swept > 0) {
     // Counts only, never an id of the person the row is about (rule #1). Logged on its
