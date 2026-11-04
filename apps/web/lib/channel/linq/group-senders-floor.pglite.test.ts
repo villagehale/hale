@@ -830,6 +830,47 @@ describe('only Linq’s own is_group can make a chat 1:1', () => {
     expect(await inboundInGroup(GROUP)).toEqual([{ inGroup: null }]);
   });
 
+  it("a poll 'none' vote in the family group records no group bit, so a later poll there is floored", async () => {
+    const seeded = await householdGroup();
+    await verifiedMom(seeded);
+    await db.database.insert(schema.linqPollOptions).values({
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      providerChatId: GROUP,
+      providerMessageId: 'poll-msg-none',
+      optionId: 'opt-none-floor',
+      optionText: 'None of these',
+      choiceKind: 'none',
+    });
+    const { deps } = door(async () => ({ status: 'locality', locality: 'Springfield' }));
+    // A vote carries no is_group: Linq does not say what kind of chat it is in.
+    const vote = {
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'poll.vote.added',
+      event_id: 'evt_floor',
+      created_at: DAY.toISOString(),
+      data: {
+        chat_id: GROUP,
+        message_id: 'poll-msg-none',
+        option_id: 'opt-none-floor',
+        sender_handle: { handle: MOM, is_me: false },
+      },
+    };
+
+    const voted = await handleLinqInboundRequest(signed(vote), deps);
+    await expect(voted.json()).resolves.toEqual({ outcome: 'poll_none' });
+
+    const wire = linqWire([MOM, DAD, EMAIL]);
+    await expect(poll(seeded, GROUP, wire.fetch)).resolves.toEqual({
+      status: 'held',
+      reason: 'participant_unresolved',
+    });
+    expect(wire.reads().map((c) => c.url)).toEqual([`${BASE}/chats/${GROUP}`]);
+    expect(wire.posts()).toEqual([]);
+    expect(await inboundInGroup(GROUP)).toEqual([{ inGroup: null }]);
+  });
+
   it('positive control: a real 1:1 text (Linq said is_group false) still sends the poll with no floor read', async () => {
     const seeded = await householdGroup();
     await verifiedMom(seeded);
