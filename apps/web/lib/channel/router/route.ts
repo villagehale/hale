@@ -106,7 +106,7 @@ import {
 } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
@@ -1213,10 +1213,11 @@ async function routeChannelMessageInner(
       beforeSend: stopTyping,
     });
 
-  // A receipt for its asker alone, on a group turn, goes 1:1 only to an enrolled SMS
-  // channel at a phone number: a Linq group handle can be an Apple ID address, and an
-  // asker who never enrolled has not agreed to texts (CASL). Otherwise nothing is sent,
-  // to them or to the group, and the outcome is named.
+  // A receipt for its asker alone, on a group turn, goes 1:1 only to the asker's own
+  // enrolled SMS number, and only when that is the handle this text came from: a Linq
+  // group handle can be an Apple ID address or someone else's number, and an asker who
+  // never enrolled has not agreed to texts (CASL). Otherwise nothing is sent, to them or
+  // to the group, and the outcome is named.
   const deliverVerdict = async (
     verdict: Extract<HandlerVerdict, { claimed: true }>,
   ): Promise<'delivered' | 'asker_unreachable'> => {
@@ -1226,9 +1227,12 @@ async function routeChannelMessageInner(
     }
     if (verdict.reply !== null) {
       const atPhone = normalizePhoneE164(route.to) === route.to;
-      if (!atPhone || !(await loadSmsChannelState(deps.database, turn.parentUserId)).enrolled) {
+      const enrolled = atPhone
+        ? await resolveSendablePhone(deps.database, turn.parentUserId)
+        : null;
+      if (enrolled === null || enrolled !== route.to) {
         deps.log.warn(
-          { outcome: 'asker_unreachable', atPhone },
+          { outcome: 'asker_unreachable', atPhone, enrolled: enrolled !== null },
           'channel router: receipt for the asker alone not sent',
         );
         return 'asker_unreachable';

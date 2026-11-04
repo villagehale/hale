@@ -6042,13 +6042,13 @@ describe('VIL-463 group scope', () => {
   }
 
   /** The asker's own SMS channel, verified, as enrolment leaves it. */
-  async function enrolAsker(h: Harness): Promise<void> {
+  async function enrolAsker(h: Harness, phone = PHONE): Promise<void> {
     vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     await h.fake.db.insert(schema.parentChannels).values({
       familyId: FAMILY,
       userId: PARENT,
       kind: 'sms',
-      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Encrypted: encryptString(phone),
       phoneE164Hash: 'hash-asker',
       verifiedAt: NOW,
       revokedAt: null,
@@ -6091,6 +6091,19 @@ describe('VIL-463 group scope', () => {
       context: { reply: { ...GROUP_ROUTE, to: 'parent@icloud.example' }, inGroup: true },
     });
     await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it("a group handle that is a phone, but not the asker's enrolled one: nothing sent", async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+    await enrolAsker(h, '+12025550143');
 
     const result = await routeChannelMessage(h.deps, job({ in_group: true }));
 
