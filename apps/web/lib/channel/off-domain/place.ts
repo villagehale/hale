@@ -143,6 +143,19 @@ const TABLES: Record<PostalCountry, () => Promise<PostalTable>> = {
   US: async () => (await import('./postal-cities/us.json')).default,
 };
 
+/**
+ * The province a Canadian postal token is in, by the table's own name (VIL-589: the
+ * health line differs by province). Null for a US or other token, which opens no table:
+ * nothing Hale says by state differs, and the US file is the large one. Null too for an
+ * FSA the table does not have. Never a guess.
+ */
+export async function provinceOfPostal(raw: string): Promise<string | null> {
+  const matched = matchPostalToken(raw);
+  if (matched?.country !== 'CA') return null;
+  const table = await TABLES.CA();
+  return table.regions[table.regionOf[table.codes.indexOf(matched.areaKey)] ?? -1] ?? null;
+}
+
 function stored(value: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
