@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityPick } from "~/lib/channel/activity/lane";
 import { isSuitableFind, mergeTopUp, topUpShortRadar } from "./radar-top-up";
 
@@ -28,6 +28,10 @@ const wiki = find({
 });
 
 describe("VIL-522 radar top-up", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("fires one live search when the radar has a single suitable find", async () => {
     const liveSearch = vi.fn(async () => [fair]);
     const result = await topUpShortRadar({ radar: [find()], liveSearch });
@@ -128,6 +132,7 @@ describe("VIL-522 radar top-up", () => {
       find({ name, sourceUrl: `https://venue.example/${name}` }),
     );
     const liveSearch = vi.fn(async () => extra);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const result = await topUpShortRadar({ radar: [find()], liveSearch });
 
     expect(liveSearch).toHaveBeenCalledTimes(1);
@@ -136,6 +141,10 @@ describe("VIL-522 radar top-up", () => {
       "One",
       "Two",
     ]);
+    expect(info).toHaveBeenCalledWith(
+      { suitableBefore: 1, liveSearchFired: true, resultCount: 3 },
+      "radar top-up",
+    );
   });
 
   it("prefers the venue page over a listing of the same find", () => {
@@ -278,6 +287,9 @@ describe("VIL-522 radar top-up", () => {
 
   it("logs counts only on success, with nothing that identifies the family or the query (VIL-539)", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const otherLogs = (["log", "warn", "debug", "error"] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => {}),
+    );
     const family = find({
       name: "Avery Chen",
       sourceName: "Riverside Community Centre",
@@ -295,7 +307,7 @@ describe("VIL-522 radar top-up", () => {
     });
 
     const searched = await topUpShortRadar({
-      radar: [family],
+      radar: [family, wiki],
       liveSearch: async () => [extra],
     });
 
@@ -353,6 +365,7 @@ describe("VIL-522 radar top-up", () => {
     ]) {
       expect(logged).not.toContain(secret);
     }
+    for (const spy of otherLogs) expect(spy).not.toHaveBeenCalled();
 
     info.mockRestore();
   });
@@ -362,6 +375,7 @@ describe("VIL-522 radar top-up", () => {
       throw new Error("socket hang up");
     });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const result = await topUpShortRadar({ radar: [find()], liveSearch });
 
     expect(liveSearch).toHaveBeenCalledTimes(1);
@@ -371,6 +385,7 @@ describe("VIL-522 radar top-up", () => {
       { err: "Error" },
       "coach find: live top-up failed",
     );
+    expect(info).not.toHaveBeenCalled();
     error.mockRestore();
   });
 });
