@@ -38,6 +38,9 @@ export const optOutHeldMessages = pgTable(
     crisisLanguage: text('crisis_language'),
     crisisSituation: text('crisis_situation'),
     crisisWho: text('crisis_who'),
+    /** VIL-553 · read late as a stop, which was applied then; only its confirmation is
+     * still owed, and waits for the family's own morning. */
+    stopAppliedAt: timestamp('stop_applied_at', { withTimezone: true }),
   },
   (t) => ({
     phoneIdx: index('opt_out_held_messages_phone_idx').on(t.phoneHash),
