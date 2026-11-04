@@ -4,6 +4,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import { noteLateOptOutCrisis } from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
+import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { type Inbound, handleStop } from './machine';
 import { releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
@@ -49,6 +50,8 @@ export const HELD_READ_OUTCOMES = [
   'unrecorded',
   /** The timeline cannot say whose stop it is: kept held (fail closed), paged, nobody stopped. */
   'timeline_unresolved',
+  /** Reading or settling the row threw: kept held and read again; the pass goes on. */
+  'recovery_failed',
   'no_channel',
   'claimed_elsewhere',
 ] as const;
@@ -60,6 +63,7 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'stopped_confirmation_failed',
   'stop_failed',
   'timeline_unresolved',
+  'recovery_failed',
   'read_failed',
   'not_yet_recorded',
   'unrecorded',
@@ -80,6 +84,8 @@ export interface OptOutRecoveryResult {
   repointed: number;
   legacyNoChannel: number;
   legacyUnpointed: number;
+  /** Legacy rows whose re-point threw: left standing for the next tick. */
+  legacyFailed: number;
   outcomes: Record<HeldReadOutcome, number>;
   /** Due rows left for the next tick because this one spent its budget. */
   deferred: number;
@@ -119,6 +125,7 @@ export async function recoverHeldOptOutReads(
     repointed: 0,
     legacyNoChannel: 0,
     legacyUnpointed: 0,
+    legacyFailed: 0,
     outcomes: emptyOutcomes(),
     deferred: 0,
     halted: null,
@@ -144,13 +151,30 @@ export async function recoverHeldOptOutReads(
       result.deferred = due.length - index;
       break;
     }
-    const outcome = await recoverRow(database, deps, row);
+    const outcome = await recoverRow(database, deps, row).catch((err: unknown) => {
+      // The row was claimed, so it is due again after its back-off. The name only: a
+      // message from inside the read may carry what it was reading.
+      console.error(
+        { urgent: true, outcome: 'recovery_failed', err: errName(err) },
+        'URGENT: opt-out recovery: a held text could not be settled - kept held',
+      );
+      return 'recovery_failed' as const;
+    });
     result.outcomes[outcome] += 1;
   }
   return result;
 }
 
 type HeldRow = typeof schema.optOutHeldMessages.$inferSelect;
+
+function errName(err: unknown): string {
+  return err instanceof Error ? err.name : 'unknown';
+}
+
+/** A session's transcript, or null once the retention sweep has redacted it. */
+function readTranscript(dataEncrypted: string): ReturnType<typeof decodeIntakeForRecovery> | null {
+  return dataEncrypted === INTAKE_CONTENT_REDACTED ? null : decodeIntakeForRecovery(dataEncrypted);
+}
 
 interface HeldText {
   inbound: Inbound;
@@ -196,7 +220,10 @@ async function recoverRow(
     return 'no_channel';
   }
 
-  const reading = await deps.reader.read({ text: held.inbound.body, language: held.language });
+  const reading = await deps.reader.read({
+    text: held.inbound.body,
+    language: held.language,
+  });
   if (reading === null) return 'read_failed';
 
   const outcome = await settleReading(database, deps, row, held, reading);
@@ -301,7 +328,7 @@ async function lateStop(
     }
     return 'stopped';
   } catch (err) {
-    const name = err instanceof Error ? err.name : 'unknown';
+    const name = errName(err);
     // Nothing was to be sent, or the number can still be texted: the stop itself failed.
     if (!sendable || (await stillSendable(database, held.phoneE164))) {
       console.error(
@@ -318,10 +345,12 @@ async function lateStop(
   }
 }
 
-/** One holding of a number: a parent channel until it is revoked, or an intake session
- * until it closes. */
+/** One holding of a number: a parent channel until it is revoked, an intake session
+ * until it closes, a caregiver invite until it closes, or a guest's reminder opt-in. Only
+ * a channel or a session names who holds the number; every kind is a consent a stop can
+ * reach, so any of them starting after a stop supersedes it. */
 export interface NumberHolding {
-  kind: 'channel' | 'session';
+  kind: 'channel' | 'session' | 'invite' | 'guest_reminders';
   id: string;
   /** The person behind it. Null for an intake that has not become anyone yet, which is
    * only "whoever texts this number". */
@@ -356,6 +385,18 @@ export async function numberHolderTimeline(
     })
     .from(schema.smsIntakeSessions)
     .where(eq(schema.smsIntakeSessions.phoneHash, phoneHash));
+  const invites = await database
+    .select({
+      id: schema.caregiverInvites.id,
+      createdAt: schema.caregiverInvites.createdAt,
+      closedAt: schema.caregiverInvites.closedAt,
+    })
+    .from(schema.caregiverInvites)
+    .where(eq(schema.caregiverInvites.phoneE164Hash, phoneHash));
+  const guestOptIns = await database
+    .select({ id: schema.partyRsvps.id, optedInAt: schema.partyRsvps.reminderOptInAt })
+    .from(schema.partyRsvps)
+    .where(eq(schema.partyRsvps.phoneE164Hash, phoneHash));
   const holdings: NumberHolding[] = [
     ...channels.map((channel) => ({
       kind: 'channel' as const,
@@ -369,12 +410,13 @@ export async function numberHolderTimeline(
     })),
     ...sessions.map((session) => {
       // The row is written while its first text is handled, a moment after that text
-      // arrived, so the session holds the number from its first text.
+      // arrived, so the session holds the number from its first text. A redacted one
+      // still held it, from when it was written.
       const first = Math.min(
         session.createdAt.getTime(),
-        ...decodeIntakeForRecovery(session.dataEncrypted)
-          .transcript.filter((entry) => entry.direction === 'in')
-          .map((entry) => Date.parse(entry.at)),
+        ...(readTranscript(session.dataEncrypted)
+          ?.transcript.filter((entry) => entry.direction === 'in')
+          .map((entry) => Date.parse(entry.at)) ?? []),
       );
       return {
         kind: 'session' as const,
@@ -384,6 +426,26 @@ export async function numberHolderTimeline(
         end: session.closedAt,
       };
     }),
+    ...invites.map((invite) => ({
+      kind: 'invite' as const,
+      id: invite.id,
+      userId: null,
+      start: invite.createdAt,
+      end: invite.closedAt,
+    })),
+    ...guestOptIns.flatMap((rsvp) =>
+      rsvp.optedInAt
+        ? [
+            {
+              kind: 'guest_reminders' as const,
+              id: rsvp.id,
+              userId: null,
+              start: rsvp.optedInAt,
+              end: null,
+            },
+          ]
+        : [],
+    ),
   ];
   return holdings.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
@@ -402,14 +464,18 @@ function onePerson(holdings: NumberHolding[]): NumberHolding | null | 'ambiguous
   return holdings.every((holding) => holding.userId === newest.userId) ? newest : 'ambiguous';
 }
 
+function namesHolder(holding: NumberHolding): boolean {
+  return holding.kind === 'channel' || holding.kind === 'session';
+}
+
 /** Who held the number when `at` came: 'ambiguous' when two people did. */
 export function holderAt(timeline: NumberHolding[], at: Date): NumberHolding | null | 'ambiguous' {
-  return onePerson(timeline.filter((holding) => covers(holding, at)));
+  return onePerson(timeline.filter((holding) => namesHolder(holding) && covers(holding, at)));
 }
 
 /** Who holds the number now: the newest holding still open. */
 export function currentHolder(timeline: NumberHolding[]): NumberHolding | null | 'ambiguous' {
-  return onePerson(timeline.filter((holding) => holding.end === null));
+  return onePerson(timeline.filter((holding) => namesHolder(holding) && holding.end === null));
 }
 
 /**
@@ -514,7 +580,8 @@ async function resolveHeldText(database: Database, row: HeldRow): Promise<HeldTe
       desc(schema.smsIntakeSessions.createdAt),
     );
   for (const candidate of sessions) {
-    const data = decodeIntakeForRecovery(candidate.dataEncrypted);
+    const data = readTranscript(candidate.dataEncrypted);
+    if (!data) continue;
     const entry = data.transcript.find(
       (line) => line.direction === 'in' && line.providerId === row.providerMessageId,
     );
@@ -581,31 +648,46 @@ async function repointLegacyHolds(
     .from(schema.optOutReadHolds)
     .orderBy(asc(schema.optOutReadHolds.heldAt));
   for (const row of legacy) {
-    const ids = await inboundIdsSince(database, row.phoneHash, row.heldAt);
-    if (ids.length > 0) {
-      await database
-        .insert(schema.optOutHeldMessages)
-        .values(
-          ids.map((providerMessageId) => ({
-            providerMessageId,
-            phoneHash: row.phoneHash,
-            heldAt: row.heldAt,
-            nextReadAt: now,
-          })),
-        )
-        .onConflictDoNothing();
-      await deleteLegacyHold(database, row.phoneHash);
-      result.repointed += ids.length;
-      continue;
-    }
-    const settled = row.heldAt.getTime() <= now.getTime() - HELD_MESSAGE_SETTLE_MS;
-    if (settled && !(await numberReachable(database, row.phoneHash))) {
-      await deleteLegacyHold(database, row.phoneHash);
-      result.legacyNoChannel += 1;
-      continue;
-    }
-    result.legacyUnpointed += 1;
+    await repointLegacyHold(database, now, result, row).catch((err: unknown) => {
+      console.error(
+        { urgent: true, outcome: 'legacy_failed', err: errName(err) },
+        'URGENT: opt-out recovery: a legacy hold could not be re-pointed - left standing',
+      );
+      result.legacyFailed += 1;
+    });
   }
+}
+
+async function repointLegacyHold(
+  database: Database,
+  now: Date,
+  result: OptOutRecoveryResult,
+  row: typeof schema.optOutReadHolds.$inferSelect,
+): Promise<void> {
+  const ids = await inboundIdsSince(database, row.phoneHash, row.heldAt);
+  if (ids.length > 0) {
+    await database
+      .insert(schema.optOutHeldMessages)
+      .values(
+        ids.map((providerMessageId) => ({
+          providerMessageId,
+          phoneHash: row.phoneHash,
+          heldAt: row.heldAt,
+          nextReadAt: now,
+        })),
+      )
+      .onConflictDoNothing();
+    await deleteLegacyHold(database, row.phoneHash);
+    result.repointed += ids.length;
+    return;
+  }
+  const settled = row.heldAt.getTime() <= now.getTime() - HELD_MESSAGE_SETTLE_MS;
+  if (settled && !(await numberReachable(database, row.phoneHash))) {
+    await deleteLegacyHold(database, row.phoneHash);
+    result.legacyNoChannel += 1;
+    return;
+  }
+  result.legacyUnpointed += 1;
 }
 
 async function deleteLegacyHold(database: Database, phoneHash: string): Promise<void> {
@@ -658,12 +740,13 @@ async function inboundIdsSince(
     .select({ dataEncrypted: schema.smsIntakeSessions.dataEncrypted })
     .from(schema.smsIntakeSessions)
     .where(eq(schema.smsIntakeSessions.phoneHash, phoneHash));
-  const transcript = sessions.flatMap((session) =>
-    decodeIntakeForRecovery(session.dataEncrypted)
-      .transcript.filter(
-        (entry) => entry.direction === 'in' && Date.parse(entry.at) >= since.getTime(),
-      )
-      .map((entry) => entry.providerId),
+  const transcript = sessions.flatMap(
+    (session) =>
+      readTranscript(session.dataEncrypted)
+        ?.transcript.filter(
+          (entry) => entry.direction === 'in' && Date.parse(entry.at) >= since.getTime(),
+        )
+        .map((entry) => entry.providerId) ?? [],
   );
   return [
     ...new Set(

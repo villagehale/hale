@@ -7,6 +7,7 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { pageFailureAlerts } from '~/lib/monitoring/failure-page';
 import { runDeletionSweep } from '~/lib/rights/delete';
 import { assembleFamilyExport } from '~/lib/rights/export';
+import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { isSenderHeld } from './opt-out-hold';
@@ -911,6 +912,7 @@ describe('recoverHeldOptOutReads', () => {
       repointed: 0,
       legacyNoChannel: 0,
       legacyUnpointed: 0,
+      legacyFailed: 0,
       outcomes: {
         stopped: 0,
         stopped_confirmation_unsent: 0,
@@ -927,6 +929,7 @@ describe('recoverHeldOptOutReads', () => {
         not_yet_recorded: 0,
         unrecorded: 0,
         timeline_unresolved: 0,
+        recovery_failed: 0,
         no_channel: 0,
         claimed_elsewhere: 0,
       },
@@ -1321,5 +1324,295 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     expect(await heldRow('pm-keep')).not.toBeNull();
     expect(await heldRow('pm-held-by-new-holder')).not.toBeNull();
     expect(await heldRow('pm-erased-on-old-number')).toBeNull();
+  }, 30_000);
+});
+
+describe('a late stop settles against every consent on the number, and one bad row never stops the pass', () => {
+  const DAY = 24 * 60;
+  const recover = (transport: FakeTransport, r: OptOutReader = reader().reader) =>
+    recoverHeldOptOutReads(db.database, deps(r, transport));
+
+  async function setSessionBlob(id: string, blob: string): Promise<void> {
+    await db.database
+      .update(schema.smsIntakeSessions)
+      .set({ dataEncrypted: blob, phoneEncrypted: blob })
+      .where(eq(schema.smsIntakeSessions.id, id));
+  }
+
+  async function caregiverInvite(
+    by: { familyId: string; parentUserId: string },
+    phone: string,
+    createdAt: Date,
+  ): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.caregiverInvites)
+      .values({
+        familyId: by.familyId,
+        invitedByUserId: by.parentUserId,
+        role: 'co_parent',
+        displayName: 'Sam',
+        phoneE164Encrypted: encryptString(phone),
+        phoneE164Hash: phoneBlindIndex(phone),
+        state: 'awaiting_caregiver_reply',
+        expiresAt: new Date(NOW.getTime() + 72 * 60 * MINUTE),
+        createdAt,
+      })
+      .returning({ id: schema.caregiverInvites.id });
+    return row?.id as string;
+  }
+
+  async function inviteState(id: string): Promise<string | undefined> {
+    const [row] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, id));
+    return row?.state;
+  }
+
+  async function guestReminderOptIn(phone: string, at: Date): Promise<string> {
+    const host = await seedFamily(db.database, 'Party Family');
+    const [event] = await db.database
+      .insert(schema.familyEvents)
+      .values({ familyId: host.familyId, title: 'Birthday party', startsAt: NOW, source: 'parent' })
+      .returning({ id: schema.familyEvents.id });
+    const [invite] = await db.database
+      .insert(schema.partyInvites)
+      .values({
+        familyId: host.familyId,
+        familyEventId: event?.id as string,
+        hostUserId: host.parentUserId,
+        publicToken: `party-token-${at.getTime()}`,
+      })
+      .returning({ id: schema.partyInvites.id });
+    const [rsvp] = await db.database
+      .insert(schema.partyRsvps)
+      .values({
+        partyInviteId: invite?.id as string,
+        displayName: 'Guest',
+        nameKey: 'guest',
+        response: 'yes',
+        reminderOptInAt: at,
+        phoneE164Encrypted: encryptString(phone),
+        phoneE164Hash: phoneBlindIndex(phone),
+      })
+      .returning({ id: schema.partyRsvps.id });
+    return rsvp?.id as string;
+  }
+
+  async function guestOptedIn(id: string): Promise<boolean> {
+    const [row] = await db.database
+      .select({ at: schema.partyRsvps.reminderOptInAt })
+      .from(schema.partyRsvps)
+      .where(eq(schema.partyRsvps.id, id));
+    return row?.at != null;
+  }
+
+  it('a caregiver invite to the number made after the stop supersedes it and stays open', async () => {
+    await intake(PHONE_A, [{ providerId: 'pm-inv', body: 'stop texting me', at: ago(40) }], {
+      closedAt: ago(39),
+    });
+    await hold(PHONE_A, 'pm-inv', ago(40));
+    const inviteId = await caregiverInvite(
+      await seedFamily(db.database, 'Inviting'),
+      PHONE_A,
+      ago(10),
+    );
+    const transport = new FakeTransport();
+
+    const result = await recover(transport);
+
+    expect(result.outcomes.stop_superseded).toBe(1);
+    expect(result.outcomes.already_stopped).toBe(0);
+    expect(await inviteState(inviteId)).toBe('awaiting_caregiver_reply');
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-inv')).toBeNull();
+  }, 30_000);
+
+  it('positive control: an invite made before the stop is declined by it', async () => {
+    const inviteId = await caregiverInvite(
+      await seedFamily(db.database, 'Inviting'),
+      PHONE_A,
+      ago(60),
+    );
+    await intake(PHONE_A, [{ providerId: 'pm-inv-old', body: 'stop texting me', at: ago(40) }], {
+      closedAt: ago(39),
+    });
+    await hold(PHONE_A, 'pm-inv-old', ago(40));
+
+    const result = await recover(new FakeTransport());
+
+    expect(result.outcomes.already_stopped).toBe(1);
+    expect(await inviteState(inviteId)).toBe('declined');
+  }, 30_000);
+
+  it('a guest-reminder opt-in on the number made after the stop supersedes it and is kept', async () => {
+    await intake(PHONE_A, [{ providerId: 'pm-rsvp', body: 'stop texting me', at: ago(40) }], {
+      closedAt: ago(39),
+    });
+    await hold(PHONE_A, 'pm-rsvp', ago(40));
+    const rsvpId = await guestReminderOptIn(PHONE_A, ago(10));
+
+    const result = await recover(new FakeTransport());
+
+    expect(result.outcomes.stop_superseded).toBe(1);
+    expect(await guestOptedIn(rsvpId)).toBe(true);
+  }, 30_000);
+
+  it('positive control: a guest-reminder opt-in given before the stop is withdrawn by it', async () => {
+    const rsvpId = await guestReminderOptIn(PHONE_A, ago(60));
+    await intake(PHONE_A, [{ providerId: 'pm-rsvp-old', body: 'stop texting me', at: ago(40) }], {
+      closedAt: ago(39),
+    });
+    await hold(PHONE_A, 'pm-rsvp-old', ago(40));
+
+    const result = await recover(new FakeTransport());
+
+    expect(result.outcomes.already_stopped).toBe(1);
+    expect(await guestOptedIn(rsvpId)).toBe(false);
+  }, 30_000);
+
+  it('(d) two people holding the number at the stop: kept, paged, nobody stopped, nothing sent', async () => {
+    const x = await parent(PHONE_A);
+    const id = await intake(PHONE_A, [
+      { providerId: 'pm-two-hi', body: 'hello', at: ago(35) },
+      { providerId: 'pm-two', body: 'stop texting me', at: ago(30) },
+    ]);
+    await hold(PHONE_A, 'pm-two', ago(30));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+
+    const result = await recover(transport);
+
+    expect(result.outcomes.timeline_unresolved).toBe(1);
+    expect((await heldRow('pm-two'))?.readAttempts).toBe(1);
+    expect(await channelRevoked(x.parentUserId)).toBe(false);
+    expect(await withdrawals()).toEqual([]);
+    expect(await sessionRow(id)).toEqual({ state: 'awaiting_details', closedAt: null });
+    expect(transport.sent).toEqual([]);
+    expect(JSON.stringify(errors.mock.calls)).toContain('timeline_unresolved');
+  }, 30_000);
+
+  it('(d) positive control: both holdings are the same person, so the stop applies', async () => {
+    const x = await parent(PHONE_A);
+    const id = await intake(
+      PHONE_A,
+      [
+        { providerId: 'pm-one-hi', body: 'hello', at: ago(35) },
+        { providerId: 'pm-one', body: 'stop texting me', at: ago(30) },
+      ],
+      { owner: x },
+    );
+    await hold(PHONE_A, 'pm-one', ago(30));
+    const transport = new FakeTransport();
+
+    const result = await recover(transport);
+
+    expect(result.outcomes.stopped).toBe(1);
+    expect(await channelRevoked(x.parentUserId)).toBe(true);
+    expect(await sessionRow(id)).toMatchObject({ state: 'stopped', closedAt: NOW });
+    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+  }, 30_000);
+
+  it('a year-old redacted session on the number still holds it and never blocks the read', async () => {
+    const u = await parent(PHONE_A, { verifiedAt: ago(400 * DAY) });
+    const old = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-old', body: 'hello', at: ago(401 * DAY) }],
+      { closedAt: ago(400 * DAY), owner: u },
+    );
+    await setSessionBlob(old, INTAKE_CONTENT_REDACTED);
+    await inboundRow(u, 'pm-red', 'stop texting me', ago(20));
+    await hold(PHONE_A, 'pm-red', ago(20));
+    const transport = new FakeTransport();
+
+    const result = await recover(transport);
+
+    expect(result.outcomes.stopped).toBe(1);
+    expect(await channelRevoked(u.parentUserId)).toBe(true);
+    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(await heldRow('pm-red')).toBeNull();
+  }, 30_000);
+
+  it('a redacted session holds the number from its creation: a stop before it is superseded', async () => {
+    await intake(PHONE_A, [{ providerId: 'pm-before', body: 'stop texting me', at: ago(40) }], {
+      closedAt: ago(39),
+    });
+    const later = await intake(PHONE_A, [{ providerId: 'pm-after', body: 'hello', at: ago(20) }], {
+      closedAt: ago(15),
+    });
+    await setSessionBlob(later, INTAKE_CONTENT_REDACTED);
+    await hold(PHONE_A, 'pm-before', ago(40));
+
+    const result = await recover(new FakeTransport());
+
+    expect(result.outcomes.stop_superseded).toBe(1);
+  }, 30_000);
+
+  it('l: a legacy stop whose intake transcript was redacted is re-pointed from the ledger copy', async () => {
+    const heldAt = ago(60);
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: phoneBlindIndex(PHONE_A), heldAt });
+    const sentAt = new Date(heldAt.getTime() + 1000);
+    const u = await seedFamily(db.database, 'Provisioned Family');
+    const s = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-red-legacy', body: 'stop texting me', at: sentAt }],
+      { closedAt: ago(55), owner: u },
+    );
+    await setSessionBlob(s, INTAKE_CONTENT_REDACTED);
+    await channel(u, PHONE_A, { verifiedAt: ago(55), revokedAt: null });
+    await inboundRow(u, 'pm-red-legacy', 'stop texting me', sentAt);
+    const r = reader();
+
+    const result = await recover(new FakeTransport(), r.reader);
+
+    expect(result.repointed).toBe(1);
+    expect(r.texts).toEqual(['stop texting me']);
+    expect(result.outcomes.stop_superseded).toBe(1);
+    expect(await db.database.select().from(schema.optOutReadHolds)).toEqual([]);
+  }, 30_000);
+
+  it('a row that throws is named and kept, and never stops the rest of the pass', async () => {
+    // A blob that decrypts but is not a session: a fault inside one number's rows.
+    const corrupt = encryptString('{');
+    const legacySession = await intake(
+      PHONE_B,
+      [{ providerId: 'pm-b', body: 'hello', at: ago(50) }],
+      { closedAt: ago(45) },
+    );
+    await setSessionBlob(legacySession, corrupt);
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: phoneBlindIndex(PHONE_B), heldAt: ago(60) });
+    const c = await parent(PHONE_C);
+    const cSession = await intake(PHONE_C, [{ providerId: 'pm-c0', body: 'hello', at: ago(50) }], {
+      closedAt: ago(45),
+      owner: c,
+    });
+    await setSessionBlob(cSession, corrupt);
+    await inboundRow(c, 'pm-c', 'stop texting me', ago(20));
+    await hold(PHONE_C, 'pm-c', ago(20));
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-a2', 'stop texting me', ago(20));
+    await hold(PHONE_A, 'pm-a2', ago(20));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await recover(new FakeTransport());
+
+    expect(result.legacyFailed).toBe(1);
+    expect(await db.database.select().from(schema.optOutReadHolds)).toHaveLength(1);
+    expect(result.outcomes.recovery_failed).toBe(1);
+    expect((await heldRow('pm-c'))?.readAttempts).toBe(1);
+    expect(await channelRevoked(c.parentUserId)).toBe(false);
+    // Positive control: the healthy number in the same pass is stopped.
+    expect(result.outcomes.stopped).toBe(1);
+    expect(await channelRevoked(a.parentUserId)).toBe(true);
+    const logged = JSON.stringify(errors.mock.calls);
+    expect(logged).toContain('recovery_failed');
+    expect(logged).toContain('SyntaxError');
+    for (const id of ['pm-c', c.parentUserId, phoneBlindIndex(PHONE_B), phoneBlindIndex(PHONE_C)]) {
+      expect(logged).not.toContain(id);
+    }
   }, 30_000);
 });
