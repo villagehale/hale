@@ -10,7 +10,7 @@ import {
   registrationAnchor,
 } from './live-reading';
 import { registrationDate } from './read';
-import type { ExtractedWindow } from './verify-window';
+import { type ExtractedWindow, normalizeQuote } from './verify-window';
 
 /**
  * The AI path's gate, driven with hand-built extraction answers: a parse-boundary input,
@@ -316,12 +316,15 @@ describe('the zone must be a named IANA region, not a fixed offset', () => {
       timeZoneEvidence: 'Eastern Time',
     });
 
-  it.each(['EST', '+05:00', '-04:00', 'Etc/GMT+5'])('refuses %s', (zone) => {
-    expect(normalizeExtractedRegistration(reading(zone), PAGE, SOURCE)).toMatchObject({
-      status: 'unverified',
-      reason: 'unknown_time_zone',
-    });
-  });
+  it.each(['EST', '+05:00', '-04:00', 'Etc/GMT+5', 'US/Eastern', 'Canada/Eastern'])(
+    'refuses %s',
+    (zone) => {
+      expect(normalizeExtractedRegistration(reading(zone), PAGE, SOURCE)).toMatchObject({
+        status: 'unverified',
+        reason: 'unknown_time_zone',
+      });
+    },
+  );
 
   it('accepts the region whose summer clock is an hour off EST (control)', () => {
     expect(
@@ -491,5 +494,37 @@ describe('the PerfectMind reader', () => {
         { kind: 'general_open', date: '2026-08-12', time: '06:30' },
       ],
     });
+  });
+});
+
+describe('the zone quote must name something', () => {
+  const PAGE =
+    'Fall 2026. Public registration opens August 11, 2026 at 9 a.m. ET. Pool hours are Eastern Time.';
+  const reading = (timeZoneEvidence: string) =>
+    extracted({
+      evidence: 'Public registration opens August 11, 2026 at 9 a.m.',
+      yearEvidence: 'August 11, 2026',
+      generalOpen: { quote: 'August 11, 2026 at 9 a.m.', date: '2026-08-11', time: '09:00' },
+      timeZone: 'America/New_York',
+      timeZoneEvidence,
+    });
+
+  it.each(['E', 'ET', '9', '2026', '. '])(
+    'refuses %j: on the page, but no run of three letters',
+    (evidence) => {
+      expect(normalizeQuote(PAGE)).toContain(normalizeQuote(evidence));
+      expect(normalizeExtractedRegistration(reading(evidence), PAGE, SOURCE)).toMatchObject({
+        status: 'unverified',
+        reason: 'unknown_time_zone',
+      });
+    },
+  );
+
+  it('accepts the sentence that names the zone (positive control)', () => {
+    expect(
+      anchors(
+        normalizeExtractedRegistration(reading('Pool hours are Eastern Time.'), PAGE, SOURCE),
+      ),
+    ).toEqual({ general_open: '2026-08-11T13:00:00.000Z' });
   });
 });

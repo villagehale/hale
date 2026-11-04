@@ -148,25 +148,23 @@ function everyClockExists(dates: readonly LiveRegistrationDate[], timeZone: stri
   );
 }
 
-/** An IANA region id (Area/Location). Offsets (`+05:00`), the fixed-offset legacy ids
- * (`EST`, `MST`) and `Etc/` zones are refused: none of them observes daylight time, so
- * a model that answers `EST` for "Eastern" would put every summer date an hour off. */
-const IANA_REGION = /^[A-Z][A-Za-z_]*(\/[A-Za-z0-9_+-]+)+$/;
+/** Canonical zone ids only. Offsets (`+05:00`), the fixed-offset legacy ids (`EST`,
+ * `MST`), `Etc/` zones and aliases (`US/Eastern`) are not in it: a model that answers
+ * `EST` for "Eastern" would put every summer date an hour off. */
+const CANONICAL_TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
+/** A zone quote must carry a word, so a lone letter or number that happens to be on the
+ * page cannot select a zone. */
+const LETTER_RUN = /\p{L}{3}/u;
 
-/** The zone the page itself states: a quote that is on the page, naming a real IANA
- * region. Anything else is no zone at all — never a guessed one. The quote is checked
- * only for being on the page; that it names this zone is the model's reading. */
+/** The zone the page itself states: a quote that is on the page and carries a word,
+ * naming a canonical zone. Anything else is no zone at all — never a guessed one. That
+ * the quote names this zone is the model's reading. */
 function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | null {
   const { timeZone, timeZoneEvidence } = extracted;
-  if (!timeZone || !timeZoneEvidence?.trim()) return null;
-  if (!IANA_REGION.test(timeZone) || timeZone.startsWith('Etc/')) return null;
-  if (!normalizeQuote(pageText).includes(normalizeQuote(timeZoneEvidence))) return null;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone });
-  } catch (error) {
-    if (error instanceof RangeError) return null;
-    throw error;
-  }
+  if (timeZone === null || timeZoneEvidence === null) return null;
+  if (!CANONICAL_TIME_ZONES.has(timeZone)) return null;
+  const quote = normalizeQuote(timeZoneEvidence);
+  if (!LETTER_RUN.test(quote) || !normalizeQuote(pageText).includes(quote)) return null;
   return timeZone;
 }
 
