@@ -452,6 +452,45 @@ function parseClockSpan(span: string): string | null {
   return null;
 }
 
+/** The positions an expression may start or end at: anywhere but inside a run of digits
+ * or a run of Latin letters. */
+function boundaries(text: string): number[] {
+  const run = (char: string | undefined): 'digit' | 'latin' | null => {
+    if (char === undefined) return null;
+    if (/\d/.test(char)) return 'digit';
+    return /\p{Script=Latin}/u.test(char) ? 'latin' : null;
+  };
+  const cuts: number[] = [];
+  for (let at = 0; at <= text.length; at++) {
+    const before = run(text[at - 1]);
+    if (before === null || before !== run(text[at])) cuts.push(at);
+  }
+  return cuts;
+}
+
+/** Every expression of one grammar that `text` prints, read whole; an expression inside a
+ * longer one (`05 p.m.` inside `1:05 p.m.`, `Aug. 11` inside `Tuesday, Aug. 11`) is part of
+ * it, not a second one. */
+function expressionsIn<T>(text: string, read: (span: string) => T | null): T[] {
+  const cuts = boundaries(text);
+  const found: Array<{ start: number; end: number; value: T }> = [];
+  for (const start of cuts) {
+    for (const end of cuts) {
+      if (end <= start || end - start > MAX_CHARS.span) continue;
+      const value = read(text.slice(start, end));
+      if (value !== null) found.push({ start, end, value });
+    }
+  }
+  return found
+    .filter((a) => !found.some((b) => b !== a && b.start <= a.start && a.end <= b.end))
+    .map(({ value }) => value);
+}
+
+function dateExpression(span: string): PrintedDate | 'date_ambiguous' | null {
+  const printed = parseDateSpan(span);
+  return printed === 'date_unparsed' ? null : printed;
+}
+
 /** Every index at which `needle` starts in `haystack`. */
 function occurrences(haystack: string, needle: string): number[] {
   const found: number[] = [];
@@ -470,8 +509,13 @@ function occurrences(haystack: string, needle: string): number[] {
  * in the quote, the two must sit in separate characters, the date span must parse WHOLE
  * under the date grammar to exactly this month and day (and year, when it prints one), and
  * the time span WHOLE under the clock grammar to exactly this HH:MM. A null time needs a
- * null time span and the other way round. Numbers outside the spans (an age, a room, a
- * second date) are never read, so they can never stand in for the date or the clock.
+ * null time span and the other way round.
+ *
+ * The spans are the model's labels; the quote is the page's words. So every date and every
+ * clock the quote prints, read whole by the same grammars, must state the extracted value
+ * too: a label cannot take the day from one expression and leave a conflicting year
+ * (`Aug. 11, 2025`), a second date or a second clock beside it. A bare number outside the
+ * spans (an age, a room) is in neither grammar, so it is never read as a date or a clock.
  */
 export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | null {
   if (published.time !== null && published.timeText === null) return 'span_missing';
@@ -493,18 +537,24 @@ export function dateSpanRefusal(published: PublishedDate): DateSpanRefusal | nul
   const printed = parseDateSpan(dateSpan);
   if (typeof printed === 'string') return printed;
   const [year, month, day] = published.date.split('-').map(Number);
-  if (
-    printed.month !== month ||
-    printed.day !== day ||
-    (printed.year !== null && printed.year !== year)
-  ) {
-    return 'date_mismatch';
+  const statesDate = (date: PrintedDate | 'date_ambiguous') =>
+    date !== 'date_ambiguous' &&
+    date.month === month &&
+    date.day === day &&
+    (date.year === null || date.year === year);
+  if (!statesDate(printed)) return 'date_mismatch';
+
+  if (timeSpan !== null) {
+    const clock = parseClockSpan(timeSpan);
+    if (clock === null) return 'time_unparsed';
+    if (clock !== published.time) return 'time_mismatch';
   }
 
-  if (timeSpan === null) return null;
-  const clock = parseClockSpan(timeSpan);
-  if (clock === null) return 'time_unparsed';
-  return clock === published.time ? null : 'time_mismatch';
+  if (!expressionsIn(quote, dateExpression).every(statesDate)) return 'date_mismatch';
+  if (!expressionsIn(quote, parseClockSpan).every((clock) => clock === published.time)) {
+    return 'time_mismatch';
+  }
+  return null;
 }
 
 /**

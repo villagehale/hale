@@ -817,6 +817,74 @@ describe('corroborationFailure — every date is read from its own labelled span
     });
   });
 
+  /**
+   * The spans are the model's labels; the quote is the page's words. Every date and every
+   * clock the quote prints must state the extracted value too, so a label cannot pick a
+   * day from one expression and leave a conflicting year, date or clock beside it.
+   */
+  describe('every date and clock the quote prints agrees with the reading', () => {
+    it('refuses a prior-year opening labelled without its year', () => {
+      expect(
+        verdict(label('Aug. 11, 2025 at 9 a.m.', 'Aug. 11', '9 a.m.', '2026-08-11', '09:00')),
+      ).toEqual(refused('date_mismatch'));
+    });
+
+    it('accepts the same labels when the printed year is this one (control)', () => {
+      expect(
+        verdict(label('Aug. 11, 2026 at 9 a.m.', 'Aug. 11', '9 a.m.', '2026-08-11', '09:00')),
+      ).toEqual(ACCEPTED);
+    });
+
+    it('accepts a weekday the label leaves out: the longer date still says Aug 11 (control)', () => {
+      expect(
+        verdict(label('Tuesday, Aug. 11 at 9 a.m.', 'Aug. 11', '9 a.m.', '2026-08-11', '09:00')),
+      ).toEqual(ACCEPTED);
+    });
+
+    it.each([
+      ['the preview day with the opening clock', 'Aug. 11', '2026-08-11'],
+      ['the opening day, beside a preview day', 'Aug. 12', '2026-08-12'],
+    ])('refuses a quote that prints two dates: %s', (_name, dateText, date) => {
+      const quote = 'Preview Aug. 11; registration opens Aug. 12 at 9 a.m.';
+      expect(verdict(label(quote, dateText, '9 a.m.', date, '09:00'))).toEqual(
+        refused('date_mismatch'),
+      );
+    });
+
+    it('refuses a table row whose labels are its last cell', () => {
+      expect(
+        verdict(
+          label('Aug. 20 7 a.m. | Aug. 22 9 a.m.', 'Aug. 22', '9 a.m.', '2026-08-22', '09:00'),
+        ),
+      ).toEqual(refused('date_mismatch'));
+    });
+
+    it("accepts the date's own cell (control)", () => {
+      expect(verdict(label('Aug. 22 9 a.m.', 'Aug. 22', '9 a.m.', '2026-08-22', '09:00'))).toEqual(
+        ACCEPTED,
+      );
+    });
+
+    it('refuses a quote that prints a second clock', () => {
+      expect(
+        verdict(label('Aug 11 8:00 to 9:15', 'Aug 11', '8:00', '2026-08-11', '08:00')),
+      ).toEqual(refused('time_mismatch'));
+    });
+
+    it('refuses no time when the quote prints one', () => {
+      expect(verdict(label('Aug. 11 at 6:30 AM', 'Aug. 11', null, '2026-08-11', null))).toEqual(
+        refused('time_mismatch'),
+      );
+    });
+
+    it('reads a clock whole, never the minute and meridiem inside it (control)', () => {
+      // `05 p.m.` sits inside `1:05 p.m.`; read alone it would be 17:00.
+      expect(
+        verdict(label('Aug. 11 at 1:05 p.m.', 'Aug. 11', '1:05 p.m.', '2026-08-11', '13:05')),
+      ).toEqual(ACCEPTED);
+    });
+  });
+
   describe('the grammars read what pages print (controls)', () => {
     it.each([
       ['H:MM AM', 'Aug. 11 at 6:30 AM', 'Aug. 11', '6:30 AM', '2026-08-11', '06:30'],

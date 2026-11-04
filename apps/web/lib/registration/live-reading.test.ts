@@ -573,6 +573,39 @@ describe('a number beside the date is never its month', () => {
   });
 });
 
+describe('a quote that prints two dates verifies neither', () => {
+  const PAGE =
+    'Fall 2026. Preview Aug. 11; registration opens Aug. 12 at 9 a.m. Pool hours are Eastern Time.';
+  const reading = (quote: string, dateText: string, date: string) =>
+    extracted({
+      evidence: 'Preview Aug. 11; registration opens Aug. 12 at 9 a.m.',
+      yearEvidence: 'Fall 2026',
+      generalOpen: { quote, dateText, timeText: '9 a.m.', date, time: '09:00' },
+    });
+
+  it("refuses the preview's day labelled with the opening's clock", () => {
+    const result = normalizeExtractedRegistration(
+      reading('Preview Aug. 11; registration opens Aug. 12 at 9 a.m.', 'Aug. 11', '2026-08-11'),
+      PAGE,
+      SOURCE,
+    );
+    expect(result).toMatchObject({ status: 'unverified', reason: 'uncorroborated' });
+    expect(result).not.toHaveProperty('dates');
+  });
+
+  it('verifies the opening from its own words (control)', () => {
+    expect(
+      anchors(
+        normalizeExtractedRegistration(
+          reading('Aug. 12 at 9 a.m.', 'Aug. 12', '2026-08-12'),
+          PAGE,
+          SOURCE,
+        ),
+      ),
+    ).toEqual({ general_open: '2026-08-12T13:00:00.000Z' });
+  });
+});
+
 describe("the model's free text never leaves the reader", () => {
   const PAGE = 'Fall 2026. Registration opens August 11, 2026. Pool hours are Eastern Time.';
   const withNote = extracted({

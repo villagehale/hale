@@ -309,6 +309,47 @@ describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {
     });
   });
 
+  describe("a year the quote prints beside the labelled date is the opening's year", () => {
+    const stored = storedWindow({ previewAt: null, openAt: new Date('2026-08-11T09:00:00-04:00') });
+    const sweep = (printedYear: string) =>
+      harness({
+        loadWindows: async () => [stored],
+        fetchPage: vi.fn(
+          async () => `Fall 2026. Last season registration: Aug. 11, ${printedYear} at 9 a.m.`,
+        ),
+        extract: vi.fn(async () =>
+          reading({
+            yearEvidence: 'Fall 2026',
+            evidence: `Last season registration: Aug. 11, ${printedYear} at 9 a.m.`,
+            preview: null,
+            generalOpen: {
+              quote: `Aug. 11, ${printedYear} at 9 a.m.`,
+              dateText: 'Aug. 11',
+              timeText: '9 a.m.',
+              date: '2026-08-11',
+              time: '09:00',
+            },
+          }),
+        ),
+      });
+
+    it("never confirms a stored 2026 date off last season's 2025 opening", async () => {
+      const h = sweep('2025');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'unverified', reason: 'uncorroborated' });
+      expect(h.markVerified).not.toHaveBeenCalled();
+    });
+
+    it('confirms it when the opening prints 2026 (control)', async () => {
+      const h = sweep('2026');
+      const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+      expect(summary.rows[0]?.outcome).toEqual({ kind: 'confirmed', fields: ['openAt'] });
+      expect(h.markVerified).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('a number beside the date never confirms a stored month', () => {
     // The page states November 11; an age printed after it ("8+") is not a month.
     const sweep = (storedOpen: string, date: string) =>
