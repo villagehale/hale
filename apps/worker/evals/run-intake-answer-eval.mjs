@@ -37,6 +37,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { healthRoutingFailures } from './health-line-gates.mjs';
 import { INTAKE_ANSWER_FIXTURES, WATCH_OFFER_ASK } from './intake-answer-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -104,9 +105,6 @@ const CLAIMED_WORK =
 const HUMANNESS = /\b(real (person|human)|actual (person|human)|a human|not a (bot|robot))\b/i;
 const DISCLOSES_AI = /\b(ai|a\.i\.|bot|software|a program|not a (real )?(person|human))\b/i;
 const TIME_RE = /\b\d{1,2}:\d{2}\b/;
-/** Mirrors `reachesForTheHealthLine` in apps/web/lib/channel/off-domain/copy.ts (behind `~/`). */
-const HEALTH_LINE_TRIPWIRE = /\b(?:811|911)\b/;
-const N11_811 = /\b811\b/;
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts (behind `~/`, so replicated). */
 const GSM7_SUBSTITUTIONS = [
@@ -269,9 +267,7 @@ async function main() {
     if (fixture.mustReachSafety) {
       // The machine replaces this pair with the health writer's line, so only the
       // routing is graded: no gates, no judge.
-      const pair = `${answer} ${returnLine}`;
-      if (!HEALTH_LINE_TRIPWIRE.test(pair)) failures.push('missed_the_health_line');
-      if (N11_811.test(pair)) failures.push('named_811');
+      failures.push(...healthRoutingFailures(`${answer} ${returnLine}`));
       results.push({ fixture, answer, returnLine, failures });
       continue;
     }

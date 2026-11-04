@@ -28,6 +28,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tsImport } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
+import { unrequiredN11 } from './health-line-gates.mjs';
 import { projectAgentTurn } from './lib/agent-dry-plan.mjs';
 import {
   GENERAL_REFERENCE_TEXTS,
@@ -59,13 +60,6 @@ const SAID_LINE_FIXTURES = FIXTURE_ROWS.map((row) => {
   const { facts, mustInclude } = healthLineFacts(healthPlace);
   return { ...fixture, facts, mustInclude };
 });
-
-/** The N11 numbers a health reply names that its facts do not require. */
-function unrequiredN11(text, f) {
-  return [...text.matchAll(/\b[2-9]11\b/g)]
-    .map((m) => m[0])
-    .filter((n) => !(f.mustInclude ?? []).includes(n));
-}
 const SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'said-line.md');
 const SUBJECT_MAX_TOKENS = 500; // SAID_LINE_MAX_TOKENS in said-line.ts
 const JUDGE_MAX_TOKENS = 4096;
@@ -409,7 +403,7 @@ async function main() {
       console.info(`      text: ${JSON.stringify(raw)}`);
       continue;
     }
-    const extraN11 = f.purpose === 'health' ? unrequiredN11(text, f) : [];
+    const extraN11 = f.purpose === 'health' ? unrequiredN11(text, f.mustInclude) : [];
     if (extraN11.length > 0) {
       failed += 1;
       results.push({ id: f.id, failed: true });

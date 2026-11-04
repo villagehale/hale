@@ -1425,7 +1425,10 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
   const FAMILY = '00000000-0000-4000-8000-00000000f001';
   const USER = '00000000-0000-4000-8000-00000000a001';
 
-  function ladder(reply: string | null): {
+  function ladder(
+    reply: string | null,
+    postalCode: string | null = null,
+  ): {
     fake: FakeDb;
     transport: FakeTransport;
     deps: IntakeDeps;
@@ -1438,6 +1441,7 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
       ladderNext: 'turtle',
       familyId: FAMILY,
       userId: USER,
+      ...(postalCode ? { collected: { children: [], postalCode } } : {}),
     });
     let reads = 0;
     deps.optOutReader = {
@@ -1472,6 +1476,18 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
     expect(calls[0]).not.toHaveProperty('parentWords');
     expect(transport.bodies()).toEqual([reply]);
     expect(reads()).toBe(1);
+  });
+
+  it("a US ZIP gets the US crisis line alone, from the session's place", async () => {
+    const reply = 'اتصل أو أرسل رسالة إلى 988 الآن.';
+    const { fake, transport, deps, calls } = ladder(reply, '98101');
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion('US', 'mental'),
+      replyLanguage: 'العربية',
+    });
+    expect(transport.bodies()).toEqual([reply]);
   });
 
   it('a reply that fails the crisis check twice sends nothing and pages #ops', async () => {
