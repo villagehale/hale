@@ -24,6 +24,7 @@ import { CLAIM_READ_FIXTURES } from './claim-read-fixtures.mjs';
 import {
   DEGENERATE_READERS,
   GOLD_READER,
+  failLines,
   failedBars,
   scoreClaimRead,
   scoreLines,
@@ -202,16 +203,7 @@ async function main() {
     const r = scored(subject, fixture, prepared, accepted.claims, out.latencyMs);
     results.push(r);
     if (!fixtureHeld(r)) {
-      console.log(
-        `FAIL  ${r.id.padEnd(30)} ${r.gold.refused.length > 0 ? 'false claim passed' : 'true reply refused'}`,
-      );
-      console.log(`      body:   ${JSON.stringify(fixture.body)}`);
-      console.log(`      gold:   ${JSON.stringify(r.gold.claims.map((c) => [c.kind, c.row]))}`);
-      console.log(
-        `      got:    ${JSON.stringify(r.got.claims.map((c) => [c.kind, c.row]))} refused=${JSON.stringify(r.got.refused.map((x) => x.reason))}`,
-      );
-      // The reason field is printed only here, for synthetic fixtures; production never reads it.
-      console.log(`      reason: ${JSON.stringify(out.value.reason)}`);
+      for (const line of failLines(fixture, r, out.value.reason)) console.log(line);
     }
   }
 

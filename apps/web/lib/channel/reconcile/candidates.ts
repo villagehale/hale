@@ -1,3 +1,5 @@
+import type { ClaimRowLabel } from './claim-label';
+
 /**
  * VIL-581 · the rows a claim may cite, and the names the model cites them by.
  *
@@ -8,9 +10,18 @@
  *
  * The projection is all the model sees of a row: an alias, a kind, a state, a label and
  * a family-local time or a host. Never a family, user, child or row id, a URL or path,
- * or a place. Labels arrive already projected: a 13+ child's or a sensitive calendar
- * row is "A private calendar item" before it reaches this builder (the loader's job).
+ * or a place. A label is a {@link ClaimRowLabel}, which only claim-label.ts can make: a
+ * 13+ child's or a sensitive calendar row is "A private calendar item" before it can
+ * be a row here at all.
+ *
+ * The projection is also where size is bounded: a label and a host are cut by code
+ * point, never mid-surrogate, so one pathological row cannot crowd the request.
  */
+
+/** A label is a short phrase; this is room for any real one. */
+export const CLAIM_ROW_MAX_WHAT_CHARS = 160;
+/** The DNS name limit. */
+export const CLAIM_ROW_MAX_HOST_CHARS = 253;
 
 export const CLAIM_ROW_SLOTS = { e: 50, s: 20, c: 5, g: 10, q: 5, w: 1 } as const;
 type Slot = keyof typeof CLAIM_ROW_SLOTS | 'p1' | 'p2';
@@ -40,33 +51,39 @@ export type ClaimCandidateRow =
       familyId: string;
       source: 'calendar';
       kind: 'scheduled_event';
-      what: string;
+      what: ClaimRowLabel;
       startsAt: Date;
     }
-  | { familyId: string; source: 'parent_stated'; kind: 'scheduled_event'; what: string }
+  | { familyId: string; source: 'parent_stated'; kind: 'scheduled_event'; what: ClaimRowLabel }
   | {
       familyId: string;
       source: 'open_commitment';
       kind: 'registration_watch' | 'activity_followup';
-      what: string;
+      what: ClaimRowLabel;
     }
-  | { familyId: string; source: 'watched_page'; kind: 'spot_watch'; what: string; host: string }
+  | {
+      familyId: string;
+      source: 'watched_page';
+      kind: 'spot_watch';
+      what: ClaimRowLabel;
+      host: string;
+    }
   | {
       familyId: string;
       source: 'live_sequence';
       kind: 'registration_watch';
-      what: string;
+      what: ClaimRowLabel;
       opensAt: Date | null;
     }
   | {
       familyId: string;
       source: 'mintable_window';
       kind: 'registration_watch';
-      what: string;
+      what: ClaimRowLabel;
       opensForFamilyAt: Date;
     }
-  | { familyId: string; source: 'pending'; kind: 'activity_followup'; what: string }
-  | { familyId: string; source: 'pending'; kind: 'spot_watch'; what: string };
+  | { familyId: string; source: 'pending'; kind: 'activity_followup'; what: ClaimRowLabel }
+  | { familyId: string; source: 'pending'; kind: 'spot_watch'; what: ClaimRowLabel };
 
 export interface ProjectedRow {
   a: ClaimRowAlias;
@@ -125,8 +142,13 @@ function aliasFor(slot: Slot, ordinal: number): ClaimRowAlias {
   return slot === 'p1' || slot === 'p2' ? slot : (`${slot}${ordinal}` as ClaimRowAlias);
 }
 
+function codePoints(text: string, max: number): string {
+  const points = [...text];
+  return points.length > max ? points.slice(0, max).join('') : text;
+}
+
 function project(row: ClaimCandidateRow, a: ClaimRowAlias, when: (at: Date) => string) {
-  const base = { a, kind: row.kind, what: row.what };
+  const base = { a, kind: row.kind, what: codePoints(row.what, CLAIM_ROW_MAX_WHAT_CHARS) };
   switch (row.source) {
     case 'calendar':
       return { ...base, state: 'open', when: when(row.startsAt) } satisfies ProjectedRow;
@@ -135,7 +157,11 @@ function project(row: ClaimCandidateRow, a: ClaimRowAlias, when: (at: Date) => s
     case 'open_commitment':
       return { ...base, state: 'open' } satisfies ProjectedRow;
     case 'watched_page':
-      return { ...base, state: 'open', host: row.host } satisfies ProjectedRow;
+      return {
+        ...base,
+        state: 'open',
+        host: codePoints(row.host, CLAIM_ROW_MAX_HOST_CHARS),
+      } satisfies ProjectedRow;
     case 'live_sequence':
       return row.opensAt
         ? ({ ...base, state: 'live', when: when(row.opensAt) } satisfies ProjectedRow)

@@ -92,6 +92,9 @@ function fx({
   const timeZone = zoneFor(id);
   return {
     id,
+    // Every fixture here is written by hand. A real shadow sample is 'shadow_sample', and
+    // its text is never printed (lib/claim-read-score.mjs failLines).
+    provenance: 'invented',
     language,
     lane,
     category,

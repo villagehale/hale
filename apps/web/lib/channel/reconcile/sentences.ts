@@ -41,7 +41,9 @@ const QUOTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['「', '」'],
   ['『', '』'],
 ];
-const URL = /https?:\/\/[^\s"“”«»「」『』]+/g;
+// A CJK terminator ends the URL: zh puts no space after 。, so without it the next
+// sentence would be masked into the URL and merged into this one.
+const URL = /https?:\/\/[^\s"“”«»「」『』。！？，；：）]+/g;
 const URL_TAIL = /[.,;:!?)]+$/;
 const TERMINATOR_TAIL = /[.!?。！？]+$/;
 const MASK = 'x';

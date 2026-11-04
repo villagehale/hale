@@ -4,9 +4,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { CLAIM_READ_FIXTURES, OFFSET_HOURS, at } from './claim-read-fixtures.mjs';
 import {
   READ_CLAIM_KINDS,
+  boundViolations,
   compatibleRefs,
   fixtureLeaks,
   privacyViolations,
+  provenanceViolations,
 } from './lib/claim-read-score.mjs';
 
 /**
@@ -23,7 +25,19 @@ let segmentSentences;
 let claimReadLocale;
 let buildClaimCandidates;
 let verifyClaimRead;
+let BOUNDS;
 beforeAll(async () => {
+  const candidates = await tsImport(new URL('candidates.ts', RECONCILE).href, import.meta.url);
+  const reader = await tsImport(new URL('claim-reader.ts', RECONCILE).href, {
+    parentURL: import.meta.url,
+    tsconfig: new URL('../../../tsconfig.json', RECONCILE).pathname,
+  });
+  BOUNDS = {
+    body: reader.CLAIM_READ_MAX_BODY_CHARS,
+    inbound: reader.CLAIM_READ_MAX_INBOUND_CHARS,
+    what: candidates.CLAIM_ROW_MAX_WHAT_CHARS,
+    host: candidates.CLAIM_ROW_MAX_HOST_CHARS,
+  };
   ({ segmentSentences, claimReadLocale } = await tsImport(
     new URL('sentences.ts', RECONCILE).href,
     import.meta.url,
@@ -220,5 +234,32 @@ describe('leakage and privacy', () => {
     ];
     expect(privacyViolations(planted)).toEqual(planted);
     expect(privacyViolations(['Swim at 10:00 on 2026-11-07'])).toEqual([]);
+  });
+});
+
+describe('claim-read fixtures: provenance and size (review items 6 and 2)', () => {
+  it('every fixture is invented', () => {
+    expect(CLAIM_READ_FIXTURES.length).toBeGreaterThan(100);
+    expect(CLAIM_READ_FIXTURES.every((f) => f.provenance === 'invented')).toBe(true);
+    expect(provenanceViolations(CLAIM_READ_FIXTURES)).toEqual([]);
+  });
+
+  it('the provenance check flags a planted fixture with none (positive control)', () => {
+    const { provenance: _drop, ...bare } = CLAIM_READ_FIXTURES[0];
+    expect(provenanceViolations([bare])).toEqual([bare.id]);
+  });
+
+  it('every fixture is inside every bound the production request applies', () => {
+    expect(BOUNDS).toEqual({ body: 8_000, inbound: 2_000, what: 160, host: 253 });
+    expect(boundViolations(CLAIM_READ_FIXTURES, BOUNDS)).toEqual([]);
+  });
+
+  it('the bound check flags a planted 161-code-point label (positive control)', () => {
+    const f = CLAIM_READ_FIXTURES[0];
+    const planted = {
+      ...f,
+      candidates: [{ ref: 'x', source: 'pending', kind: 'spot_watch', what: 'é'.repeat(161) }],
+    };
+    expect(boundViolations([planted], BOUNDS)).toEqual([`${f.id}: what`]);
   });
 });
