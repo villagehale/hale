@@ -49,6 +49,7 @@ beforeEach(async () => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -233,7 +234,8 @@ describe('booked-detection backfill', () => {
       }),
     ]);
 
-    expect(outcomes.map((outcome) => outcome.booking)).toEqual(['waitlist', 'reminder_only']);
+    // Oldest first: the 13:00 reminder, then the 14:00 waitlist mail.
+    expect(outcomes.map((outcome) => outcome.booking)).toEqual(['reminder_only', 'waitlist']);
     expect(outcomes.map((outcome) => outcome.alert)).toEqual([
       'backfill_suppressed',
       'backfill_suppressed',
