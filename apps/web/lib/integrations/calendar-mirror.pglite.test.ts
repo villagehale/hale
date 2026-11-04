@@ -926,4 +926,234 @@ describe('reconcileCalendarMirrors - the kid gate (VIL-548)', () => {
     expect((await reminders()).map((r) => r.status)).toEqual(['scheduled', 'scheduled']);
     expect(result.notScheduledNoKidVerdict).toBe(2);
   });
+
+  // Devin #1007 n1. Google lists each instance of a recurring series as its own item
+  // (singleEvents=true), and one instance can be retitled on its own.
+  const SERIES = 'lesson-series';
+  const FIRST_START = new Date('2026-10-05T16:00:00.000Z');
+  const SECOND_START = new Date('2026-10-07T16:00:00.000Z');
+
+  async function seedSeriesSnapshots(eventIds: readonly string[]) {
+    await db.database.insert(schema.calendarEventSnapshots).values(
+      eventIds.map((eventId) => ({
+        integrationId,
+        eventId,
+        recurringEventId: SERIES,
+        updatedStamp: 'u1',
+        status: 'confirmed',
+      })),
+    );
+  }
+
+  function instance(id: string, summary: string, startsAt: Date): Record<string, unknown> {
+    return {
+      id,
+      recurringEventId: SERIES,
+      status: 'confirmed',
+      summary,
+      start: { dateTime: startsAt.toISOString() },
+      end: { dateTime: new Date(startsAt.getTime() + 60 * 60_000).toISOString() },
+    };
+  }
+
+  /** Each live mirror's google id, and the verdict its link reads now. */
+  async function liveLinks() {
+    const live = (await rows()).filter((row) => row.deletedAt === null);
+    const byId = new Map((await verdicts()).map((row) => [row.id, row.verdict]));
+    return Object.fromEntries(
+      live.map((row) => [
+        row.googleEventId,
+        row.kidVerdictId ? (byId.get(row.kidVerdictId) ?? null) : null,
+      ]),
+    );
+  }
+
+  async function reminderOffsetsByEvent() {
+    const byId = new Map((await rows()).map((row) => [row.id, row.googleEventId]));
+    return (await reminders())
+      .map((row) => `${byId.get(row.eventRef)}/${row.offset}/${row.status}`)
+      .sort();
+  }
+
+  it('T8: an adult exception in a kid series is judged on its own title and gets no reminder', async () => {
+    await seedSeriesSnapshots(['lesson_1005', 'lesson_1007']);
+    const { client, calls } = scriptedKidClient(JUDGE_RULES);
+
+    const counts = await gate(
+      [
+        instance('lesson_1005', 'Juniper swim lesson', FIRST_START),
+        instance('lesson_1007', 'Quarterly budget review', SECOND_START),
+      ],
+      model(client),
+    );
+
+    expect(counts).toMatchObject({ mirrored: 1, notKid: 1 });
+    expect(await liveLinks()).toEqual({ lesson_1005: 'kid' });
+    // The exception's own words reached the judge.
+    expect(calls.flatMap((call) => call.items.map((item) => item.text)).sort()).toEqual([
+      'Juniper swim lesson',
+      'Quarterly budget review',
+    ]);
+
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    expect(await reminderOffsetsByEvent()).toEqual([
+      'lesson_1005/-P1D/scheduled',
+      'lesson_1005/-PT1H/scheduled',
+    ]);
+  });
+
+  it('T9: a kid exception in an adult series is judged on its own title and is reminded about', async () => {
+    await seedSeriesSnapshots(['lesson_1005', 'lesson_1007']);
+    const { client } = scriptedKidClient(JUDGE_RULES);
+
+    const counts = await gate(
+      [
+        instance('lesson_1005', 'Quarterly budget review', FIRST_START),
+        instance('lesson_1007', 'Juniper swim lesson', SECOND_START),
+      ],
+      model(client),
+    );
+
+    expect(counts).toMatchObject({ mirrored: 1, notKid: 1 });
+    expect(await liveLinks()).toEqual({ lesson_1007: 'kid' });
+
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    expect(await reminderOffsetsByEvent()).toEqual([
+      'lesson_1007/-P1D/scheduled',
+      'lesson_1007/-PT1H/scheduled',
+    ]);
+  });
+
+  it("T10: one instance re-judged adult on a push sync leaves every other instance's kid verdict and reminders alone", async () => {
+    await seedSeriesSnapshots(['lesson_1005', 'lesson_1007']);
+    const { client } = scriptedKidClient(JUDGE_RULES);
+    await gate(
+      [
+        instance('lesson_1005', 'Juniper swim lesson', FIRST_START),
+        instance('lesson_1007', 'Juniper swim lesson', SECOND_START),
+      ],
+      model(client),
+    );
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    expect(await reminderOffsetsByEvent()).toHaveLength(4);
+
+    // A push sync carries only the edited instance, so the window is not complete.
+    const counts = await gate(
+      [instance('lesson_1007', 'Quarterly budget review', SECOND_START)],
+      model(client),
+      false,
+    );
+    expect(counts).toMatchObject({ notKid: 1, removed: 1 });
+
+    expect(await liveLinks()).toEqual({ lesson_1005: 'kid' });
+    const result = await runReminderCron(db.database, reminderDeps(), NOW);
+    expect(result.notScheduledNoKidVerdict).toBe(0);
+    expect(await reminderOffsetsByEvent()).toEqual([
+      'lesson_1005/-P1D/scheduled',
+      'lesson_1005/-PT1H/scheduled',
+      'lesson_1007/-P1D/cancelled',
+      'lesson_1007/-PT1H/cancelled',
+    ]);
+  });
+
+  it("T11: the parent's word for a series still covers every instance, with no judge call", async () => {
+    await seedSeriesSnapshots(['lesson_1005', 'lesson_1007']);
+    await seedVerdict({ itemKey: SERIES, verdict: 'adult', decidedBy: 'parent' });
+    const judged = scriptedKidClient(JUDGE_RULES);
+
+    const counts = await gate(
+      [
+        instance('lesson_1005', 'Juniper swim lesson', FIRST_START),
+        instance('lesson_1007', 'Juniper swim lesson', SECOND_START),
+      ],
+      model(judged.client),
+    );
+
+    expect(counts).toMatchObject({ mirrored: 0, notKid: 2 });
+    expect(judged.calls).toHaveLength(0);
+    expect(await rows()).toEqual([]);
+    // Control: an event outside that series is still judged.
+    await gate([lesson()], model(judged.client));
+    expect(judged.calls).toHaveLength(1);
+    expect(await liveLinks()).toEqual({ 'ev-lesson': 'kid' });
+  });
+
+  it('T12: a mirror restored after an adult drop gets back exactly the reminders the drop cancelled', async () => {
+    const { client } = scriptedKidClient(JUDGE_RULES);
+    await gate([lesson()], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    const [mirror] = await rows();
+    const lessonId = mirror?.id ?? '';
+    // Control: a reminder cancelled for another reason before the drop stays cancelled.
+    await db.database
+      .update(schema.eventReminders)
+      .set({ status: 'cancelled', suppressReason: 'kid_relevance_backfill' })
+      .where(eq(schema.eventReminders.offset, '-P1D'));
+
+    await gate([lesson({ summary: 'Quarterly budget review' })], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    const dropped = await reminders();
+    expect(
+      dropped.map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort(),
+    ).toEqual(['-P1D/cancelled/kid_relevance_backfill', '-PT1H/cancelled/calendar_mirror_dropped']);
+
+    const counts = await gate([lesson()], model(client));
+    expect(counts).toMatchObject({ updated: 1, notKid: 0 });
+    await runReminderCron(db.database, reminderDeps(), NOW);
+
+    const after = await reminders();
+    expect(after.map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort()).toEqual([
+      '-P1D/cancelled/kid_relevance_backfill',
+      '-PT1H/scheduled/null',
+    ]);
+    expect(after.every((row) => row.eventRef === lessonId)).toBe(true);
+    const mirrorAudits = (await audits())
+      .filter((row) => row.targetId === lessonId)
+      .map((row) => [row.actionTaken, row.after]);
+    expect(mirrorAudits).toEqual([
+      ['calendar_mirror_added', { source: 'parent' }],
+      ['calendar_mirror_removed', { source: 'parent', reason: 'not_kid', remindersCancelled: 1 }],
+      ['calendar_mirror_added', { source: 'parent', remindersRestored: 1 }],
+    ]);
+  });
+
+  it('T13: a restore that fails before its reminders are revived leaves the copy dropped, so the next sweep revives them', async () => {
+    const { client } = scriptedKidClient(JUDGE_RULES);
+    await gate([lesson()], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    await gate([lesson({ summary: 'Quarterly budget review' })], model(client));
+    const [dropped] = await rows();
+    const lessonId = dropped?.id ?? '';
+    expect(dropped?.deletedAt).not.toBeNull();
+
+    // The restore dies on the revive (a statement error, or the function killed there).
+    await db.exec(`
+      CREATE FUNCTION refuse_revive() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'revive refused'; END $$;
+      CREATE TRIGGER refuse_revive BEFORE UPDATE ON event_reminders
+        FOR EACH ROW WHEN (OLD.suppress_reason = 'calendar_mirror_dropped')
+        EXECUTE FUNCTION refuse_revive();
+    `);
+    await expect(gate([lesson()], model(client))).rejects.toThrow();
+    await db.exec('DROP TRIGGER refuse_revive ON event_reminders; DROP FUNCTION refuse_revive();');
+
+    const [afterFailure] = await rows();
+    expect(afterFailure?.deletedAt).not.toBeNull();
+    expect((await audits()).filter((row) => row.targetId === lessonId)).toHaveLength(2);
+
+    const counts = await gate([lesson()], model(client));
+    expect(counts).toMatchObject({ updated: 1 });
+    const [restored] = await rows();
+    expect(restored?.deletedAt).toBeNull();
+    expect(
+      (await reminders()).map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort(),
+    ).toEqual(['-P1D/scheduled/null', '-PT1H/scheduled/null']);
+    const restoreAudits = (await audits())
+      .filter((row) => row.targetId === lessonId && row.actionTaken === 'calendar_mirror_added')
+      .map((row) => row.after);
+    expect(restoreAudits).toEqual([
+      { source: 'parent' },
+      { source: 'parent', remindersRestored: 2 },
+    ]);
+  });
 });

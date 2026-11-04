@@ -135,10 +135,25 @@ async function splitStored(
       }),
     );
 
+  const seriesOf = (item: KidRelevanceItem) => ({
+    ...item,
+    itemKey: item.seriesKey ?? item.itemKey,
+  });
   const stored = new Map<string, Extract<KidJudgement, { verdictId: string }>>();
-  const known = await loadVerdictRows(database, input.familyId, [...representatives.values()]);
+  const known = await loadVerdictRows(
+    database,
+    input.familyId,
+    [...representatives.values()].flatMap((item) => [item, seriesOf(item)]),
+  );
   const pending: Pending[] = [];
   for (const [identity, item] of representatives) {
+    // A parent's word for the series covers this instance; a model verdict is this text's
+    // own (Devin #1007).
+    const seriesRow = known.get(identityOf(seriesOf(item)));
+    if (seriesRow?.decidedBy === 'parent') {
+      stored.set(identity, judgementFrom(item.ref, seriesRow));
+      continue;
+    }
     const inputHash = hashOf(item);
     const row = known.get(identity);
     if (row && (row.decidedBy === 'parent' || row.inputHash === inputHash)) {
