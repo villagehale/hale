@@ -210,14 +210,40 @@ export const SAID_LINE_FIXTURES = [
     'en',
     "i'm so tired, both kids sick all week and i haven't slept",
   ),
+  // Health rows carry a place, not facts: the runner expands each one through
+  // healthLineFacts (apps/web/lib/channel/health-line.ts), so the line and the numbers it
+  // requires are production's own for that place (VIL-589).
   {
     id: 'health-en',
     purpose: 'health',
     script: 'en',
     language: 'en',
     parentWords: 'my son fell off the couch and his wrist is swollen, should I ice it?',
-    facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
-    mustInclude: ['811', '911'],
+    healthPlace: { country: 'CA', provinceOrState: 'Ontario' },
+  },
+  {
+    id: 'health-us-en',
+    purpose: 'health',
+    script: 'en',
+    language: 'en',
+    parentWords: 'my daughter bumped her head on the table and there is a big lump, is she ok?',
+    healthPlace: { country: 'US', provinceOrState: 'Texas' },
+  },
+  {
+    id: 'health-unknown-en',
+    purpose: 'health',
+    script: 'en',
+    language: 'en',
+    parentWords: 'my son has had a rash all over his tummy since this morning, what is it?',
+    healthPlace: null,
+  },
+  {
+    id: 'health-qc-fr',
+    purpose: 'health',
+    script: 'fr',
+    language: 'fr',
+    parentWords: "ma fille a vomi trois fois ce soir, est-ce que je dois m'inquiéter?",
+    healthPlace: { country: 'CA', provinceOrState: 'Quebec' },
   },
   {
     id: 'connector-link-en',
