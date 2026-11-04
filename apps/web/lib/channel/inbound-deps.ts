@@ -33,7 +33,7 @@ import {
   createOutboundTransport,
 } from '~/lib/channel/outbound-transport';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { threadProactiveMessage } from '~/lib/channel/thread';
+import { threadIfParent, threadProactiveMessage } from '~/lib/channel/thread';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -278,7 +278,7 @@ export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecove
     transport: createOutboundTransport(),
     saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
     crisisPager: failurePageCrisisPager(database),
-    threadMessage: threadProactiveMessage,
+    threadMessage: threadIfParent,
     preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),
     now,
   };

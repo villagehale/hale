@@ -445,6 +445,9 @@ export interface CrisisUnanswered {
   /** The parent who texted, when known. The audit row names them, so a flag about one
    * adult is never read as the household's. */
   parentUserId: string | null;
+  /** The language the crisis was read in, kept with the claim so a later reply needs no
+   * second read of the text. Never on the page. */
+  language?: ReplyLanguage | null;
 }
 
 /** Pages #ops at once (monitoring/failure-page.ts). Required: a crisis with no reply
@@ -493,6 +496,7 @@ export async function deliverCrisisReply(input: {
       inboundId,
       familyId,
       parentUserId,
+      language,
     });
     return { status: 'unanswered', reason, page };
   }
@@ -516,6 +520,7 @@ export async function deliverCrisisReply(input: {
     inboundId,
     familyId,
     parentUserId,
+    language,
   });
   return { status: 'unanswered', reason: second.reason, page };
 }

@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import type {
   CrisisKind,
   CrisisPageOutcome,
@@ -82,7 +83,13 @@ import {
  * row (channel_messages.provider_message_id), a held text's row in opt_out_held_messages
  * (which gives phone_hash, and from there the channel or session), and, for a family, the
  * `crisis_unanswered` audit row. A crisis read late from a held text pages the same way,
- * `where late_read`.
+ * `where late_read`. A claim may end in a sixth field, the language the crisis was read
+ * in, so a later tick replies in it without the text being read again. A paged claim
+ * whose text is still held is kept past the lookback: the held row still needs it.
+ *
+ * A crisis reply that is about to leave, live or late, is marked on `ops:crisis-answered`
+ * (identifier: the inbound key alone), so the opt-out recovery pass never sends a held
+ * copy of the text a second reply. The late path takes the mark before its send.
  *
  * VIL-602 · every other path that pages #ops goes through {@link pageOps}: a body-free
  * URGENT log, then one claim per site per hour on `ops:page`, then the post. This module
@@ -114,6 +121,9 @@ export const DEFERRED_PILEUP_PAGE_ROUTE = 'ops:deferred-pileup';
 
 /** One Slack page per inbound crisis that got no reply, sent at once. */
 export const CRISIS_UNANSWERED_PAGE_ROUTE = 'ops:crisis-unanswered';
+
+/** The reply to an inbound's crisis is leaving or left: one row per inbound key. */
+export const CRISIS_ANSWERED_ROUTE = 'ops:crisis-answered';
 
 /** The audit row for a crisis that got no reply, once the parent has a family. */
 export const CRISIS_UNANSWERED_AUDIT_ACTION = 'crisis_unanswered';
@@ -405,23 +415,33 @@ function crisisInboundKey(inboundId: string): string {
   return createHash('sha256').update(id).digest('hex').slice(0, 32);
 }
 
+/** A language tag fit to store beside a claim: never a word of the text. */
+const CLAIM_LANGUAGE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$/;
+
 function crisisIdentifier(key: string, alert: CrisisUnanswered): string {
+  const language = alert.language && CLAIM_LANGUAGE_RE.test(alert.language) ? [alert.language] : [];
   return [
     key,
     failureCategory(alert.kind),
     failureCategory(alert.where),
     failureCategory(alert.reason),
     String(alert.writes),
+    ...language,
   ].join(':');
 }
 
-function parseCrisisIdentifier(
-  identifier: string,
-): { kind: string; where: string; reason: string; writes: number } | null {
-  const [key, kind, where, reason, writes, ...rest] = identifier.split(':');
+function parseCrisisIdentifier(identifier: string): {
+  kind: string;
+  where: string;
+  reason: string;
+  writes: number;
+  language: ReplyLanguage | null;
+} | null {
+  const [key, kind, where, reason, writes, language, ...rest] = identifier.split(':');
   if (rest.length > 0 || !key || !CRISIS_INBOUND_KEY_RE.test(key)) return null;
   if (!kind || !where || !reason || !writes || !/^\d$/.test(writes)) return null;
-  return { kind, where, reason, writes: Number(writes) };
+  if (language !== undefined && !CLAIM_LANGUAGE_RE.test(language)) return null;
+  return { kind, where, reason, writes: Number(writes), language: language ?? null };
 }
 
 function providerIncidentWindow(now: Date): Date {
@@ -554,7 +574,9 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
     );
   const lookback = new Date(now.getTime() - FAILURE_PAGE_LOOKBACK_MS);
   // A paged crisis claim is kept for the lookback, then goes, so no mark of one parent's
-  // crisis outlives it. An owed one (count 0) is never deleted: it keeps paging.
+  // crisis outlives it. An owed one (count 0) is never deleted: it keeps paging. Neither a
+  // claim nor a reply mark goes while its text is still held: the recovery pass reads them
+  // so it never re-reads, re-pages or re-answers that text.
   await database
     .delete(schema.rateLimits)
     .where(
@@ -562,6 +584,16 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
         eq(schema.rateLimits.count, ALERTED_COUNT),
         lt(schema.rateLimits.windowStart, lookback),
+        notStillHeld(sql`split_part(${schema.rateLimits.identifier}, ':', 1)`),
+      ),
+    );
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        lt(schema.rateLimits.windowStart, lookback),
+        notStillHeld(sql`${schema.rateLimits.identifier}`),
       ),
     );
   // An ops page claim is only the "already paged" mark, like a pile-up's.
@@ -579,6 +611,11 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
     .where(
       and(eq(schema.rateLimits.route, OPS_PAGE_ROUTE), lt(schema.rateLimits.windowStart, lookback)),
     );
+}
+
+/** No held text has this inbound key ({@link crisisInboundKey}, computed in SQL). */
+function notStillHeld(key: SQL): SQL {
+  return sql`not exists (select 1 from ${schema.optOutHeldMessages} where left(encode(sha256(convert_to(btrim(${schema.optOutHeldMessages.providerMessageId}), 'UTF8')), 'hex'), 32) = ${key})`;
 }
 
 async function claimInsert(
@@ -1076,7 +1113,13 @@ async function pageCrisesUnanswered(
         { outcome: 'unreadable', claimId: row.id },
         'failure page: crisis claim unreadable - paging it as is',
       );
-      recorded = { kind: 'unreadable', where: 'unreadable', reason: 'unreadable', writes: 0 };
+      recorded = {
+        kind: 'unreadable',
+        where: 'unreadable',
+        reason: 'unreadable',
+        writes: 0,
+        language: null,
+      };
     }
     const text = composeCrisisUnansweredAlert({ ...recorded, ref: row.id });
     await deliver(
@@ -1490,7 +1533,7 @@ async function claimCrisisPage(
 export async function crisisClaimFor(
   database: Database,
   inboundId: string,
-): Promise<{ id: string; kind: CrisisKind } | null> {
+): Promise<{ id: string; kind: CrisisKind; language: ReplyLanguage | null } | null> {
   if (inboundId.trim() === '') return null;
   const [row] = await database
     .select({ id: schema.rateLimits.id, identifier: schema.rateLimits.identifier })
@@ -1502,9 +1545,102 @@ export async function crisisClaimFor(
       ),
     )
     .limit(1);
-  const kind = row ? parseCrisisIdentifier(row.identifier)?.kind : undefined;
-  if (!row || (kind !== 'emergency' && kind !== 'mental')) return null;
-  return { id: row.id, kind };
+  const parsed = row ? parseCrisisIdentifier(row.identifier) : null;
+  const kind = parsed?.kind;
+  if (!row || !parsed || (kind !== 'emergency' && kind !== 'mental')) return null;
+  return { id: row.id, kind, language: parsed.language };
+}
+
+/**
+ * Takes the mark that this inbound's crisis reply is leaving, before the send, under the
+ * crisis claim's per-inbound lock. True when this call took it; false when a reply was
+ * already marked. Throws when it cannot be recorded, so nothing is sent unmarked.
+ */
+export async function claimCrisisReply(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<boolean> {
+  const key = crisisInboundKey(inboundId);
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${CRISIS_CLAIM_LOCK_NS}::int, hashtext(${key}))`,
+    );
+    const [prior] = await tx
+      .select({ id: schema.rateLimits.id })
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+          eq(schema.rateLimits.identifier, key),
+        ),
+      )
+      .limit(1);
+    if (prior) return false;
+    await tx.insert(schema.rateLimits).values({
+      identifier: key,
+      route: CRISIS_ANSWERED_ROUTE,
+      windowStart: now,
+      count: ALERTED_COUNT,
+    });
+    return true;
+  });
+}
+
+/** A reply to this inbound's crisis was marked as leaving, live or late. */
+export async function crisisReplyClaimed(database: Database, inboundId: string): Promise<boolean> {
+  if (inboundId.trim() === '') return false;
+  const [row] = await database
+    .select({ id: schema.rateLimits.id })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        eq(schema.rateLimits.identifier, crisisInboundKey(inboundId)),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/** The mark comes off when the send it was taken for threw: no reply left. */
+export async function releaseCrisisReply(database: Database, inboundId: string): Promise<void> {
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+        eq(schema.rateLimits.identifier, crisisInboundKey(inboundId)),
+      ),
+    );
+}
+
+export type CrisisAnsweredMark = 'marked' | 'already_marked' | 'not_marked';
+
+/**
+ * A live crisis reply is about to leave: mark it, so the recovery pass never answers a held
+ * copy of the text again. Never throws and never holds the reply back; a mark that did not
+ * land is logged and named.
+ */
+export async function noteCrisisAnswered(
+  database: Database,
+  inboundId: string,
+  now: Date,
+): Promise<CrisisAnsweredMark> {
+  if (inboundId.trim() === '') {
+    console.error({ mark: 'not_marked', reason: 'inbound_id_missing' }, 'crisis reply mark');
+    return 'not_marked';
+  }
+  try {
+    return (await claimCrisisReply(database, inboundId, now)) ? 'marked' : 'already_marked';
+  } catch (err) {
+    console.error(
+      { mark: 'not_marked', err: err instanceof Error ? err.name : 'unknown' },
+      'crisis reply mark',
+    );
+    return 'not_marked';
+  }
 }
 
 /**
@@ -1655,7 +1791,7 @@ export async function pageOps(
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
   const site = failureCategory(page.site);
   console.error(
-    { page: site, ...Object.fromEntries(opsPageFacts(page.facts)) },
+    { ...Object.fromEntries(opsPageFacts(page.facts)), page: site },
     `URGENT: ${site} - paging #ops`,
   );
   const text = composeOpsPageAlert(page);

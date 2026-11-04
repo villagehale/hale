@@ -6,6 +6,7 @@ import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { type CrisisAnsweredMark, noteCrisisAnswered } from '~/lib/monitoring/failure-page';
 import {
   type FamilyFacts,
   type FamilyPlace,
@@ -798,7 +799,7 @@ export function productionOffDomainLane(
   database: Database,
   client: () => AgentClient,
 ): OffDomainLane {
-  return offDomainLane({
+  return crisisMarkingLane(database, {
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
     today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
@@ -809,4 +810,55 @@ export function productionOffDomainLane(
     recordUnmetIntent: recordUnmetIntent(database),
     language: (familyId) => familySpeechLanguage(database, familyId),
   });
+}
+
+/** The moments that answer a crisis. */
+const CRISIS_MOMENTS: ReadonlySet<Moment> = new Set(['mental_crisis', 'emergency']);
+
+/**
+ * The lane, with every crisis reply it writes marked answered before it is returned to be
+ * sent (VIL-602). A text whose opt-out read failed is held and read again later; a held
+ * crisis the router already answered is then released, never answered twice. A mark that
+ * did not land is logged by name and never holds the reply back.
+ */
+export function crisisMarkingLane(database: Database, ports: OffDomainPorts): OffDomainLane {
+  return {
+    consider(input) {
+      const moment: MomentWriter = {
+        async write(text, which, place) {
+          const written = await ports.moment.write(text, which, place);
+          if (written.status === 'written' && CRISIS_MOMENTS.has(which)) {
+            const mark = await markLedgerInbound(database, input.channelMessageId, input.now);
+            if (mark !== 'marked') {
+              console.info({ mark, moment: which }, 'off-domain lane: crisis reply mark');
+            }
+          }
+          return written;
+        },
+      };
+      return offDomainLane({ ...ports, moment }).consider(input);
+    },
+  };
+}
+
+/** The mark is keyed by the provider's inbound id, read off the text's ledger row. */
+async function markLedgerInbound(
+  database: Database,
+  channelMessageId: string,
+  now: Date,
+): Promise<CrisisAnsweredMark> {
+  try {
+    const [row] = await database
+      .select({ providerMessageId: schema.channelMessages.providerMessageId })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, channelMessageId))
+      .limit(1);
+    return noteCrisisAnswered(database, row?.providerMessageId ?? '', now);
+  } catch (err) {
+    console.error(
+      { mark: 'not_marked', err: err instanceof Error ? err.name : 'unknown' },
+      'off-domain lane: crisis reply mark',
+    );
+    return 'not_marked';
+  }
 }

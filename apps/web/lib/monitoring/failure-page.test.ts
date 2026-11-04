@@ -739,7 +739,11 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(texts[0]).not.toContain('988');
     expect(texts[0]).not.toContain(family.familyId);
     expect(texts[0]).not.toContain(INBOUND);
-    assertNoParentPayload(texts[0] ?? '');
+    // The claim's random uuid can hold a run of seven digits; it is the one reference.
+    assertNoParentPayload(
+      texts[0] ?? '',
+      ...(texts[0]?.match(/ref ([0-9a-f-]{36})\./)?.slice(1) ?? []),
+    );
     const audited = (await auditActions()).filter(
       (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
     );

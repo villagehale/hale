@@ -827,6 +827,8 @@ describe('friend voice onboarding', () => {
         inboundId: fire.providerId,
         familyId: null,
         parentUserId: null,
+        // The language the reader read, kept with the claim for a later reply.
+        language: 'en',
       },
     ]);
   });
@@ -1581,6 +1583,7 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
         inboundId: text.providerId,
         familyId: FAMILY,
         parentUserId: USER,
+        language: 'ar',
       },
     ]);
 

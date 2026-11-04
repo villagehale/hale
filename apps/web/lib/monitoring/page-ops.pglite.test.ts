@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
@@ -28,6 +29,7 @@ import { recordedModel } from '~/lib/testing/recorded-model';
 import {
   ALERTED_COUNT,
   CLAIM_EPOCH,
+  CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
   OPS_PAGE_ROUTE,
   failurePageCrisisPager,
@@ -43,6 +45,19 @@ import {
  * Slack post is faked, at the pager's port (or at the webhook fetch, for the writers that
  * use the production pager).
  */
+
+/** A skill that cannot be loaded, switched on per test: the real loader otherwise. */
+const skillLoad = vi.hoisted(() => ({ fail: false }));
+vi.mock('~/lib/cron/skill', async (importOriginal) => {
+  const real = await importOriginal<typeof import('~/lib/cron/skill')>();
+  return {
+    ...real,
+    loadCronSkill: async (name: string) => {
+      if (skillLoad.fail) throw new Error('skill missing');
+      return real.loadCronSkill(name);
+    },
+  };
+});
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const HOUR = 3_600_000;
@@ -99,6 +114,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   posted = [];
+  skillLoad.fail = false;
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -109,7 +125,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await db.exec(
-    'truncate table rate_limits, audit_log, channel_messages, sms_intake_sessions, family_members, families, users cascade',
+    'truncate table rate_limits, opt_out_held_messages, audit_log, channel_messages, sms_intake_sessions, family_members, families, users cascade',
   );
 });
 
@@ -190,6 +206,18 @@ describe('pageOps: the one primitive', () => {
     ).toBe('page_not_configured');
   });
 
+  it('a fact named page cannot overwrite the site in the log', async () => {
+    await pageOps(
+      db.database,
+      { site: 'opt_out_unread', facts: { page: 'spoken_line_unwritten', stage: 'x' } },
+      { post, now: new Date(BASE.getTime() + 70 * HOUR) },
+    );
+    const urgent = vi
+      .mocked(console.error)
+      .mock.calls.find((call) => call[1] === 'URGENT: opt_out_unread - paging #ops');
+    expect(urgent?.[0]).toMatchObject({ page: 'opt_out_unread', stage: 'x' });
+  });
+
   it('a phone-shaped fact never reaches the page', async () => {
     await pageOps(
       db.database,
@@ -247,6 +275,21 @@ describe('each site family pages through the primitive', () => {
     expect(posted).toHaveLength(1);
   }, 30_000);
 
+  it('a spoken line whose skill will not load pages spoken_line_unwritten at skill_load', async () => {
+    skillLoad.fail = true;
+    // vitest.setup.ts imports spoken-line before this file's mock exists: load it afresh.
+    vi.resetModules();
+    const fresh = await import('~/lib/channel/spoken-line');
+    const writer = fresh.createSpokenLineWriter(
+      recorded().client,
+      failurePageOpsPager(() => db.database, { post, now: BASE }),
+    );
+    expect(await writer.write({ purpose: 'group_welcome', language: 'en' })).toBeNull();
+    expect(posted).toEqual([
+      'Hale: ops page. site spoken_line_unwritten. purpose group_welcome. stage skill_load.',
+    ]);
+  }, 30_000);
+
   it('positive control: a spoken line the model wrote pages nobody', async () => {
     const model = recorded();
     const writer = createSpokenLineWriter(
@@ -268,6 +311,16 @@ describe('each site family pages through the primitive', () => {
     expect(await writer.write(CLASH)).toBeNull();
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain('site group_conflict_unwritten.');
+  }, 30_000);
+
+  it('a clash alert whose skill will not load pages group_conflict_unwritten at skill_load', async () => {
+    skillLoad.fail = true;
+    const writer = createGroupConflictWriter(
+      recorded().client,
+      failurePageOpsPager(() => db.database, { post, now: BASE }),
+    );
+    expect(await writer.write(CLASH)).toBeNull();
+    expect(posted).toEqual(['Hale: ops page. site group_conflict_unwritten. stage skill_load.']);
   }, 30_000);
 
   it('positive control: a clash alert the model wrote pages nobody', async () => {
@@ -558,6 +611,51 @@ describe('crisis claims', () => {
     // The owed one was paged, not deleted.
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain(`ref ${crisis.find((row) => row.identifier.startsWith('c'))?.id}.`);
+  });
+
+  it('retention keeps a crisis claim and reply mark whose text is still held', async () => {
+    const now = new Date('2026-11-20T12:00:00.000Z');
+    const old = new Date(now.getTime() - 8 * 24 * HOUR);
+    // The key the header documents: the first 32 hex of sha256(provider message id).
+    const keyOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 32);
+    const claim = (id: string) => `${keyOf(id)}:mental:late_read:write_failed:2`;
+    await db.database.insert(schema.optOutHeldMessages).values({
+      providerMessageId: 'pm-still-held',
+      phoneHash: 'hash-held',
+      heldAt: old,
+      nextReadAt: new Date(now.getTime() + HOUR),
+    });
+    await db.database.insert(schema.rateLimits).values([
+      {
+        route: CRISIS_UNANSWERED_PAGE_ROUTE,
+        identifier: claim('pm-still-held'),
+        windowStart: old,
+        count: 1,
+      },
+      {
+        route: CRISIS_UNANSWERED_PAGE_ROUTE,
+        identifier: claim('pm-gone'),
+        windowStart: old,
+        count: 1,
+      },
+      {
+        route: CRISIS_ANSWERED_ROUTE,
+        identifier: keyOf('pm-still-held'),
+        windowStart: old,
+        count: 1,
+      },
+      { route: CRISIS_ANSWERED_ROUTE, identifier: keyOf('pm-gone'), windowStart: old, count: 1 },
+    ]);
+
+    await pageFailureAlerts(db.database, { post, now });
+
+    expect((await claims(CRISIS_UNANSWERED_PAGE_ROUTE)).map((row) => row.identifier)).toEqual([
+      claim('pm-still-held'),
+    ]);
+    // Positive control: the same age with no held text goes.
+    expect((await claims(CRISIS_ANSWERED_ROUTE)).map((row) => row.identifier)).toEqual([
+      keyOf('pm-still-held'),
+    ]);
   });
 
   it('retention deletes an ops page claim past the lookback and keeps a fresh one', async () => {

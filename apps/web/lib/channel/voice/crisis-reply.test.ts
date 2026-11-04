@@ -373,6 +373,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
       },
     ]);
     const handed = JSON.stringify(alerts);
@@ -470,6 +471,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
       },
     ]);
     expect(error).not.toHaveBeenCalled();
@@ -517,6 +519,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         inboundId: INBOUND,
         familyId: FAMILY,
         parentUserId: PARENT,
+        language: null,
       },
     ]);
   });

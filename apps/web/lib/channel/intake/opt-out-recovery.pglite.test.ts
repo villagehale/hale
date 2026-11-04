@@ -2,7 +2,10 @@ import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { threadProactiveMessage } from '~/lib/channel/thread';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
+import { type OffDomainPorts, crisisMarkingLane } from '~/lib/channel/off-domain/lane';
+import type { Moment } from '~/lib/channel/off-domain/moment-reply';
+import { threadIfParent } from '~/lib/channel/thread';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -294,7 +297,7 @@ function deps(
     preflight: async () => ({ proceed: true, health: null }),
     now,
     saidLine: unusedWriter,
-    threadMessage: threadProactiveMessage,
+    threadMessage: threadIfParent,
     crisisPager: failurePageCrisisPager(db.database, {
       now,
       post: async (text) => {
@@ -352,6 +355,74 @@ async function auditVerbs(familyId: string): Promise<string[]> {
     .from(schema.auditLog)
     .where(eq(schema.auditLog.familyId, familyId));
   return rows.map((row) => row.action).sort();
+}
+
+/** Hale's outbound ledger rows to this parent. */
+async function outboundFor(parentUserId: string) {
+  return db.database
+    .select({ providerMessageId: schema.channelMessages.providerMessageId })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'out'),
+      ),
+    );
+}
+
+/** The roles of every coach-thread message held in this family. */
+async function threadRoles(familyId: string): Promise<string[]> {
+  const rows = await db.database
+    .select({ role: schema.messages.role })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(eq(schema.conversations.familyId, familyId));
+  return rows.map((row) => row.role);
+}
+
+/**
+ * The off-domain lane as production builds it, its model-backed ports faked as
+ * lane.test.ts fakes them: the screen read the text as a mental-health crisis and the
+ * moment writer either wrote a reply or could not. Only the mark is under test here.
+ */
+function liveLane(moment: 'written' | 'unwritten'): {
+  lane: ReturnType<typeof crisisMarkingLane>;
+  moments: Moment[];
+} {
+  const moments: Moment[] = [];
+  const read: LaneReading = {
+    lane: 'safety_critical',
+    category: 'mental-health',
+    fallback: null,
+    language: 'fr',
+  };
+  const ports: OffDomainPorts = {
+    screen: { read: async () => read },
+    answer: {
+      compose: async () => {
+        throw new Error('a crisis is never composed as a general answer');
+      },
+      continueAsk: async () => ({ status: 'unrelated' }),
+    },
+    moment: {
+      write: async (_text, which) => {
+        moments.push(which);
+        return moment === 'written'
+          ? { status: 'written', reply: 'live crisis reply' }
+          : { status: 'unwritten', reason: 'model_failed' };
+      },
+    },
+    today: async () => '2026-10-20',
+    place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+    pendingAsk: async () => ({ status: 'none' }),
+    medical: {
+      answer: async () => {
+        throw new Error('not a medical text');
+      },
+    },
+    recordUnmetIntent: async () => 'recorded',
+  };
+  return { lane: crisisMarkingLane(db.database, ports), moments };
 }
 
 async function channelRevoked(parentUserId: string): Promise<boolean> {
@@ -565,7 +636,7 @@ describe('recoverHeldOptOutReads', () => {
         saidLine: writer,
         threadMessage: async (_database, input) => {
           threaded.push(input);
-          return 'conv-1';
+          return { threaded: true, conversationId: 'conv-1' };
         },
       }),
     );
@@ -634,6 +705,202 @@ describe('recoverHeldOptOutReads', () => {
       expect.objectContaining({ err: 'Error' }),
       'opt-out recovery: late_crisis_ledger_failed',
     );
+  }, 30_000);
+
+  it('a late crisis reply to a parent who left the family lands in neither its ledger nor its thread', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-left', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-left', ago(20));
+    await db.database
+      .delete(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, a.parentUserId));
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: writer,
+        threadMessage: threadIfParent,
+      }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    // The reply still reaches them, one-to-one.
+    expect(transport.sent.map((sent) => sent.to)).toEqual([PHONE_A]);
+    expect(await outboundFor(a.parentUserId)).toEqual([]);
+    expect(await threadRoles(a.familyId)).toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { trace: 'late_crisis_not_recorded_left_family' },
+      'opt-out recovery: late crisis reply sent, not recorded - the author is no longer a parent of that family',
+    );
+  }, 30_000);
+
+  it('positive control: a current parent gets the late reply in the ledger and the thread', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-stay', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-stay', ago(20));
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: writer,
+        threadMessage: threadIfParent,
+      }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    expect(await outboundFor(a.parentUserId)).toEqual([{ providerMessageId: 'fake-out-1' }]);
+    expect(await threadRoles(a.familyId)).toEqual(['assistant']);
+  }, 30_000);
+
+  it('a crisis the router already answered live is released with no second reply', async () => {
+    const a = await parent(PHONE_A);
+    const channelMessageId = await inboundRow(a, 'pm-live', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-live', ago(20));
+    const live = liveLane('written');
+    const verdict = await live.lane.consider({
+      familyId: a.familyId,
+      parentUserId: a.parentUserId,
+      channelMessageId,
+      text: FR_CRISIS,
+      now: ago(19),
+      thread: { channel: 'sms', providerChatId: null, inGroup: false },
+    });
+    expect(verdict.status).toBe('deflected');
+    expect(live.moments).toEqual(['mental_crisis']);
+    const transport = new FakeTransport();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, transport, { saidLine: recordedCrisisWriter().writer }),
+    );
+
+    expect(result.outcomes.crisis_already_answered).toBe(1);
+    expect(transport.sent).toEqual([]);
+    expect(r.texts).toEqual([]);
+    expect(await heldRow('pm-live')).toBeNull();
+    expect(posted).toEqual([]);
+  }, 30_000);
+
+  it('positive control: a crisis the router could not answer still gets its late reply', async () => {
+    const a = await parent(PHONE_A);
+    const channelMessageId = await inboundRow(a, 'pm-unlive', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-unlive', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const verdict = await liveLane('unwritten').lane.consider({
+      familyId: a.familyId,
+      parentUserId: a.parentUserId,
+      channelMessageId,
+      text: FR_CRISIS,
+      now: ago(19),
+      thread: { channel: 'sms', providerChatId: null, inGroup: false },
+    });
+    expect(verdict.status).toBe('unwritten');
+    const transport = new FakeTransport();
+    const { writer, misses } = recordedCrisisWriter();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, { saidLine: writer }),
+    );
+
+    expect(misses).toEqual([]);
+    expect(result.outcomes.crisis_replied).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+  }, 30_000);
+
+  it('a late reply that left is never sent again when releasing its row throws', async () => {
+    const a = await parent(PHONE_A);
+    await inboundRow(a, 'pm-rel', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-rel', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let releases = 0;
+    const flaky = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop === 'delete') {
+          return (table: unknown) => {
+            if (table === schema.optOutHeldMessages) {
+              releases += 1;
+              if (releases === 1) throw new Error('release lost');
+            }
+            return target.delete(table as typeof schema.optOutHeldMessages);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Database;
+    const transport = new FakeTransport();
+    const { writer } = recordedCrisisWriter();
+    const r = reader({ [FR_CRISIS]: FR_MENTAL });
+
+    const first = await recoverHeldOptOutReads(
+      flaky,
+      deps(r.reader, transport, { saidLine: writer }),
+    );
+    const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
+    const second = await recoverHeldOptOutReads(
+      flaky,
+      deps(r.reader, transport, { saidLine: writer, now: later }),
+    );
+
+    // Positive control: the fault fired, so the first pass did not finish the row.
+    expect(first.outcomes.recovery_failed).toBe(1);
+    expect(second.outcomes.crisis_already_answered).toBe(1);
+    expect(transport.sent).toHaveLength(1);
+    expect(await heldRow('pm-rel')).toBeNull();
+  }, 30_000);
+
+  it('a late crisis whose author is not who held the number then is paged holder_changed', async () => {
+    const author = await seedFamily(db.database, 'Former Holder Family');
+    // The author's channel on the number ended before the text; another person held it then.
+    await channel(author, PHONE_A, { verifiedAt: ago(60 * 24 * 7), revokedAt: ago(30) });
+    const holder = await seedFamily(db.database, 'Current Holder Family');
+    await channel(holder, PHONE_A, { verifiedAt: ago(25), revokedAt: null });
+    await inboundRow(author, 'pm-author', FR_CRISIS, ago(20));
+    await hold(PHONE_A, 'pm-author', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader({ [FR_CRISIS]: FR_MENTAL }).reader, transport, {
+        saidLine: recordedCrisisWriter().writer,
+      }),
+    );
+
+    expect(result.outcomes.crisis_unreachable).toBe(1);
+    expect(transport.sent).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('reason holder_changed.');
+  }, 30_000);
+
+  it("a ledger text's crisis region is read from its family's postal code", async () => {
+    const us = await parent(PHONE_A);
+    await db.database
+      .update(schema.families)
+      .set({ postalCode: '97201' })
+      .where(eq(schema.families.id, us.familyId));
+    await inboundRow(us, 'pm-us', FR_CRISIS, ago(20));
+    const none = await parent(PHONE_B);
+    await inboundRow(none, 'pm-noplace', FR_CRISIS, ago(20));
+    const row = (id: string, phone: string) => ({
+      providerMessageId: id,
+      phoneHash: phoneBlindIndex(phone),
+      heldAt: ago(20),
+      nextReadAt: ago(20),
+      readAttempts: 0,
+    });
+
+    expect((await resolveHeldText(db.database, row('pm-us', PHONE_A)))?.region).toBe('US');
+    // Positive control: no place stored, no country guessed.
+    expect((await resolveHeldText(db.database, row('pm-noplace', PHONE_B)))?.region).toBeNull();
   }, 30_000);
 
   it('i: a stop from a number already stopped still runs the stop path, quietly', async () => {
@@ -1204,7 +1471,7 @@ describe('recoverHeldOptOutReads', () => {
     expect(r.texts).toEqual([FR_CRISIS]);
   }, 30_000);
 
-  it('a recorded crisis stays one: a later read for the language alone cannot release it', async () => {
+  it('a recorded crisis is read once: later ticks reply in the language read then', async () => {
     await frenchIntake(PHONE_C, 'pm-again', FR_CRISIS);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const transport = new FakeTransport();
@@ -1212,20 +1479,31 @@ describe('recoverHeldOptOutReads', () => {
     const flipping: OptOutReader = {
       read: async () => {
         calls += 1;
-        return calls === 1 ? FR_MENTAL : { intent: 'none', confirmation: '', language: 'fr' };
+        return calls === 1 ? FR_MENTAL : { intent: 'none', confirmation: '', language: 'en' };
       },
     };
-    await recoverHeldOptOutReads(db.database, deps(flipping, transport, { saidLine: downWriter }));
-    const later = new Date(NOW.getTime() + heldReadBackoff(1) + MINUTE);
-    const second = await recoverHeldOptOutReads(
-      db.database,
-      deps(flipping, transport, { saidLine: downWriter, now: later }),
-    );
+    // The real writer, provider down, watched for the language it is asked to write in.
+    const languages: Array<string | null> = [];
+    const watched: SaidLineWriter = {
+      write: async (input) => {
+        languages.push(input.language);
+        return downWriter.write(input);
+      },
+    };
+    const outcomes = [];
+    for (let tick = 0; tick < 3; tick += 1) {
+      const now = new Date(NOW.getTime() + tick * (heldReadBackoff(tick) + MINUTE));
+      const result = await recoverHeldOptOutReads(
+        db.database,
+        deps(flipping, transport, { saidLine: watched, now }),
+      );
+      outcomes.push(result.outcomes.crisis_unanswered);
+    }
 
-    // No language in the store, so the reader is asked again, for the language only.
-    expect(calls).toBe(2);
-    expect(second.outcomes.crisis_unanswered).toBe(1);
-    expect(second.outcomes.read_not_stop).toBe(0);
+    // No language in the store, and still the text is never read again.
+    expect(calls).toBe(1);
+    expect(outcomes).toEqual([1, 1, 1]);
+    expect(languages).toEqual(['fr', 'fr', 'fr', 'fr', 'fr', 'fr']);
     expect(await heldRow('pm-again')).not.toBeNull();
     expect(posted).toHaveLength(1);
   }, 30_000);
@@ -1400,6 +1678,7 @@ describe('recoverHeldOptOutReads', () => {
         crisis_replied: 0,
         crisis_unanswered: 0,
         crisis_unreachable: 0,
+        crisis_already_answered: 0,
         read_leave_group: 0,
         read_failed: 0,
         not_yet_recorded: 0,
