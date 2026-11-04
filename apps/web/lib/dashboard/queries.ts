@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { cache } from 'react';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId, currentUserId } from '~/lib/family';
+import { type FamilySeat, currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
 import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
@@ -320,4 +320,16 @@ export function loadWhatHaleDid(): Promise<WhatHaleDidItem[]> {
       readWhatHaleDid(database, familyId, await currentUserId(database)),
     [],
   );
+}
+
+/**
+ * Every seat the signed-in viewer holds, for a control gated on them (the export, by
+ * exportSeat). The same expected boundary: no DB (preview) or no viewer → no seats, so
+ * nothing seat-gated is offered.
+ */
+export async function loadViewerSeats(): Promise<FamilySeat[]> {
+  if (!process.env.DATABASE_URL) return [];
+  const database = defaultDb();
+  const userId = await currentUserId(database);
+  return userId ? listSeatsForUser(userId, database) : [];
 }
