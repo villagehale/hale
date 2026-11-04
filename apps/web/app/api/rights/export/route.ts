@@ -42,6 +42,7 @@ export async function GET(_req: Request): Promise<Response> {
   const actorUserId = await resolveUserIdForUser(externalAuthId, database);
   const seats = actorUserId ? await listSeatsForUser(actorUserId, database) : [];
   if (!actorUserId || seats.length === 0) {
+    console.info({ outcome: 'no_family_for_user', roles: [] }, 'rights/export: refused');
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
 

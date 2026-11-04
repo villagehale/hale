@@ -167,6 +167,25 @@ describe('GET /api/rights/export', () => {
     info.mockRestore();
   });
 
+  it('logs the no-family refusal by name too, for a user with no seats or no user row', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1'));
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    listSeatsMock.mockResolvedValue([]);
+    const noSeats = await callExport();
+    resolveUserIdMock.mockResolvedValue(null);
+    const noUser = await callExport();
+
+    expect(await noSeats.json()).toEqual({ error: 'no_family_for_user' });
+    expect(await noUser.json()).toEqual({ error: 'no_family_for_user' });
+    expect(info.mock.calls).toEqual([
+      [{ outcome: 'no_family_for_user', roles: [] }, 'rights/export: refused'],
+      [{ outcome: 'no_family_for_user', roles: [] }, 'rights/export: refused'],
+    ]);
+    info.mockRestore();
+  });
+
   it('calls the audited assembler with the resolved family + actor and returns the JSON download', async () => {
     configureAuth(true);
     authMock.mockResolvedValue(session('google_1'));
