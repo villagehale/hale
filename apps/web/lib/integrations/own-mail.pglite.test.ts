@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -217,10 +218,16 @@ function sweepPort(h: Harness): SyncDeps['alertGmailEnvelopes'] {
     alertParentForGmailSweep(db.database, gmailAlertSweepInput(batch, NOW), h.ports);
 }
 
-async function sync(h: Harness, messages: readonly FakeMessage[]) {
+async function sync(
+  h: Harness,
+  messages: readonly FakeMessage[],
+  enqueued: IngestedEventPayload[] = [],
+) {
   const deps: SyncDeps = {
     googleFetch: gmail(messages),
-    enqueue: async () => {},
+    enqueue: async (event) => {
+      enqueued.push(event);
+    },
     childNames: ['Wren'],
     saveCursor: async () => {},
     markError: async () => {
@@ -286,12 +293,34 @@ describe('the parent’s own mail never reaches the classifier', () => {
       { id: 'k1', threadId: 't-k1', labelIds: ['INBOX', 'CATEGORY_UPDATES'], internalDate: at(3) },
     ]);
 
-    // Newest first: each refusal sits where its envelope does.
-    expect(alerts(result.emailAlerts)).toEqual(['sent', 'draft', 'own_mail']);
+    // The parent's own mail stops at the sync, named in its log line; only k1 is an envelope.
+    expect(alerts(result.emailAlerts)).toEqual(['sent']);
+    expect(console.info).toHaveBeenCalledWith(
+      { integrationId, skippedOwnMail: { own_mail: 1, draft: 1 } },
+      'connector sync: the parent’s own gmail skipped before ingest',
+    );
     expect(h.classified).toEqual(['k1']);
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent).toHaveLength(1);
     await expect(alertRows()).resolves.toHaveLength(1);
+  });
+
+  it('T13: the parent’s SENT and DRAFT mail is never enqueued for ingestion; inbound mail is', async () => {
+    const h = harness();
+    const enqueued: IngestedEventPayload[] = [];
+    await sync(
+      h,
+      [
+        { id: 's1', threadId: 't-s1', labelIds: ['SENT'], internalDate: at(1) },
+        { id: 'd1', threadId: 't-d1', labelIds: ['DRAFT'], internalDate: at(2) },
+        { id: 'k1', threadId: 't-k1', labelIds: ['INBOX'], internalDate: at(3) },
+      ],
+      enqueued,
+    );
+
+    // The positive control is k1: the one payload enqueued, and the one text.
+    expect(enqueued.map((event) => event.payload.id)).toEqual(['k1']);
+    expect(h.transport.sent).toHaveLength(1);
   });
 
   it('T2: an envelope built with no label read is refused; a 200 with no labelIds is read as no labels', async () => {
@@ -318,7 +347,11 @@ describe('the parent’s own mail never reaches the classifier', () => {
       { id: 'k1', threadId: 't-k1', labelIds: ['INBOX'], internalDate: at(4) },
     ]);
 
-    expect(alerts(result.emailAlerts)).toEqual(['sent', 'draft', 'draft', 'draft']);
+    expect(alerts(result.emailAlerts)).toEqual(['sent']);
+    expect(console.info).toHaveBeenCalledWith(
+      { integrationId, skippedOwnMail: { own_mail: 0, draft: 3 } },
+      'connector sync: the parent’s own gmail skipped before ingest',
+    );
     // The positive control is k1: the only classifier call, the only writer call, the only row.
     expect(h.classified).toEqual(['k1']);
     expect(h.writer.seen).toHaveLength(1);

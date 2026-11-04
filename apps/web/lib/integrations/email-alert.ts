@@ -58,6 +58,7 @@ import {
   recordEmailAlertOffer,
   withdrawEmailAlertOffer,
 } from './email-alert-offer';
+import { parentsOwnMail } from './gmail-labels';
 import {
   type GoingCount,
   type GoingOutcome,
@@ -1201,10 +1202,6 @@ function logSweepOutcomes(
   }
 }
 
-/** Gmail's own system labels for the parent's side of the mailbox. */
-const GMAIL_DRAFT_LABEL = 'DRAFT';
-const GMAIL_SENT_LABEL = 'SENT';
-
 /**
  * THE PARENT'S OWN MAIL IS NOT NEWS TO THE PARENT. A pure function of Gmail's labels, never
  * of the From header: SENT is Gmail's record that this account sent it, send-as aliases
@@ -1215,9 +1212,7 @@ function mailboxSide(
   labelIds: readonly string[] | undefined,
 ): 'labels_unread' | 'draft' | 'own_mail' | null {
   if (labelIds === undefined) return 'labels_unread';
-  if (labelIds.includes(GMAIL_DRAFT_LABEL)) return 'draft';
-  if (labelIds.includes(GMAIL_SENT_LABEL)) return 'own_mail';
-  return null;
+  return parentsOwnMail(labelIds);
 }
 
 function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {

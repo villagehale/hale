@@ -12,6 +12,7 @@ import {
 import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
 import type { CalendarMirrorCounts } from './calendar-mirror';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
+import { parentsOwnMail } from './gmail-labels';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import { type ConnectorErrorCode, ConnectorSyncError, classifyConnectorError } from './sync-error';
@@ -910,6 +911,7 @@ async function readGmailMessageBatch(
   const events: IngestedEventPayload[] = [];
   const envelopes: GmailAlertEnvelope[] = [];
   let skippedNotFound = 0;
+  const skippedOwn = { own_mail: 0, draft: 0 };
   for (const id of messageIds) {
     const { status, data } = await getJson<GmailMessageResponse>(
       googleFetch,
@@ -921,6 +923,13 @@ async function readGmailMessageBatch(
       // Gone between history.list and this fetch (deleted or trashed). The rest
       // of the batch is still real mail — one missing id must not park the mailbox.
       skippedNotFound += 1;
+      continue;
+    }
+    // MAIL THE PARENT WROTE never leaves the sync: no ingest payload, no envelope for the
+    // alert or travel passes. The alert lane refuses it again on its own.
+    const own = parentsOwnMail(data.labelIds ?? []);
+    if (own !== null) {
+      skippedOwn[own] += 1;
       continue;
     }
     const headers = data.payload?.headers ?? [];
@@ -948,6 +957,13 @@ async function readGmailMessageBatch(
     console.warn(
       { integrationId: connection.id, skippedNotFound },
       'connector sync: gmail messages gone before fetch, skipped',
+    );
+  }
+  if (skippedOwn.own_mail + skippedOwn.draft > 0) {
+    // Counts only, as above (rule #1).
+    console.info(
+      { integrationId: connection.id, skippedOwnMail: skippedOwn },
+      'connector sync: the parent’s own gmail skipped before ingest',
     );
   }
   return { events, envelopes };
