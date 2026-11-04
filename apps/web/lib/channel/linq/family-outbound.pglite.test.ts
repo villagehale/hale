@@ -567,6 +567,57 @@ describe('a 1:1 decision syncs the group', () => {
     );
   });
 
+  it('a participant read Linq refuses for good (404) closes the sync unsent, named participants_unreadable', async () => {
+    const seeded = await seedHousehold(GROUP);
+    await queueGroupActivityDecision(db.database, {
+      familyId: seeded.familyId,
+      parentUserId: seeded.parentUserId,
+      originChatId: PERSONAL,
+      decision: {
+        decision: 'picked',
+        activity: 'pottery',
+        kid: 'Juniper',
+        day: 'Wednesday',
+        time: '5:00',
+      },
+      now: NOW,
+    });
+    const linqUrls: string[] = [];
+    const gone = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'GET') return Response.json({}, { status: 404 });
+      linqUrls.push(String(url));
+      return new Response(JSON.stringify({ message: { id: 'msg-1' } }), { status: 201 });
+    });
+    vi.stubGlobal('fetch', gone);
+    const info = vi.spyOn(console, 'info');
+    const sweptAt = new Date(NOW.getTime() + 10 * 60 * 1000);
+
+    const closed = await flushGroupDecisionSyncs(db.database, {
+      now: sweptAt,
+      fetch: gone as unknown as typeof fetch,
+    });
+    expect(closed).toEqual({ sent: 0, held: 0 });
+    expect(linqUrls).toEqual([]);
+    const [done] = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync);
+    expect(done?.flushedAt).toEqual(sweptAt);
+    expect(info).toHaveBeenCalledWith(
+      { familyId: seeded.familyId, queued: 1, reason: 'participants_unreadable' },
+      'family outbound: sync closed unsent',
+    );
+    info.mockRestore();
+
+    const later = wire();
+    expect(
+      await flushGroupDecisionSyncs(db.database, {
+        now: new Date(NOW.getTime() + 20 * 60 * 1000),
+        fetch: later.fetch,
+      }),
+    ).toEqual({ sent: 0, held: 0 });
+    expect(later.linqUrls()).toEqual([]);
+  });
+
   it('positive control: someone Hale cannot identify at the sweep still closes the sync unsent', async () => {
     const seeded = await seedHousehold(GROUP);
     await queueGroupActivityDecision(db.database, {

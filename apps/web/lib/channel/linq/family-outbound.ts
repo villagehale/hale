@@ -548,6 +548,10 @@ export async function flushGroupDecisionSyncs(
             isNull(schema.groupDecisionSync.flushedAt),
           ),
         );
+      console.info(
+        { familyId, queued: queued.length, reason: target.reason },
+        'family outbound: sync closed unsent',
+      );
       continue;
     }
     const teens = await familyTeenNames(database, familyId, input.now);
