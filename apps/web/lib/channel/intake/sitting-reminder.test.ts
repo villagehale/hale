@@ -242,6 +242,32 @@ describe('runSittingReminderCron', () => {
     expect(transport.sent[0]?.to).toBe(PHONE);
   });
 
+  it('VIL-553: skips a number held for an unread opt-out read, before any claim', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const id = seedSession(fake);
+    fake.db.insert(schema.optOutHeldMessages).values({
+      providerMessageId: 'pm-held',
+      phoneHash: phoneBlindIndex(PHONE),
+      heldAt: FIRST_HELLO_PREVIOUS_EVENING,
+      nextReadAt: FIRST_HELLO_PREVIOUS_EVENING,
+    });
+
+    const held = await runSittingReminderCron(fake.db, deps(transport), TORONTO_8AM);
+    expect(held).toEqual({ evaluated: 0, sent: 0, skipped: 0, failed: 0, optOutHeld: 1 });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      sittingReminderSentAt: null,
+    });
+
+    // Positive control: the same row with no hold standing is sent its reminder.
+    const unheld = makeFakeDb();
+    seedSession(unheld);
+    const owed = await runSittingReminderCron(unheld.db, deps(transport), TORONTO_8AM);
+    expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0 });
+    expect(transport.sent[0]?.to).toBe(PHONE);
+  });
+
   it("does not send Still here to tonight's founder-pair session ids", async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();

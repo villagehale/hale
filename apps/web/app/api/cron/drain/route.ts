@@ -1,5 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-recovery';
+import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
 import type { GroupReminderTickSummary } from '~/lib/loop/reminders/group/fire';
@@ -79,6 +80,10 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // write shared family tables (Preview shares prod's database), so they are named
   // skips there.
   const preview = isPreviewDeploy();
+  // VIL-553: a text whose opt-out read failed holds its number until it is read. The
+  // re-read goes first: it is a stop nobody has seen yet, and until it is read the number
+  // gets nothing proactive. Bounded by its own budget (OPT_OUT_RECOVERY_BUDGET_MS).
+  const optOutRecovery = preview ? { skipped: 'preview' as const } : await runOptOutRecoveryLeg();
   const firstReply = preview ? { skipped: 'preview' as const } : await runFirstReplyLeg();
   // A reminder someone in a family group asked for is due to the minute, so it is sent
   // from the scheduled drain too, before the queues: a 1:1 reminder it hands to the
@@ -106,7 +111,7 @@ export const GET = cronRoute('drain', async (req: Request) => {
       }
     }
     return NextResponse.json(
-      { ok: true, ...summary, socialSignup, firstReply, groupReminders },
+      { ok: true, ...summary, socialSignup, firstReply, groupReminders, optOutRecovery },
       { status: 200 },
     );
   } catch (err) {
@@ -128,6 +133,19 @@ export const GET = cronRoute('drain', async (req: Request) => {
     await flushTelemetry();
   }
 });
+
+async function runOptOutRecoveryLeg(): Promise<OptOutRecoveryResult | { skipped: 'tick_failed' }> {
+  try {
+    const { recoverHeldOptOutReads } = await import('~/lib/channel/intake/opt-out-recovery');
+    const { optOutRecoveryPorts } = await import('~/lib/channel/inbound-deps');
+    const { db } = await import('~/lib/db');
+    const database = db();
+    return await recoverHeldOptOutReads(database, optOutRecoveryPorts(database, new Date()));
+  } catch (err) {
+    console.error({ err, skipped: 'tick_failed' }, 'cron/drain opt-out recovery leg failed');
+    return { skipped: 'tick_failed' };
+  }
+}
 
 async function runFirstReplyLeg(): Promise<FirstReplyRecoveryResult | { skipped: 'tick_failed' }> {
   try {

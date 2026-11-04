@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
+import { OPT_OUT_HOLD_READ_AUDIT_ACTION } from '~/lib/channel/intake/opt-out-hold';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
@@ -83,6 +84,14 @@ export const DEAD_LETTER_PAGE_ROUTE = 'ops:turn-dead';
 export const DEFERRED_PILEUP_PAGE_ROUTE = 'ops:deferred-pileup';
 
 /**
+ * VIL-553 · numbers held for an unread opt-out read. Hourly while a hold is under an
+ * hour old or a held text read late as a crisis; once a UTC day while older holds stand.
+ */
+export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
  * The model these turns call. The classifier this page reuses is Anthropic's
  * error shape (credit balance, 401, 403).
  */
@@ -125,6 +134,7 @@ export interface FailurePageResult {
   providerIncidents: FailurePageCounts;
   deadLetters: FailurePageCounts;
   deferredPileups: FailurePageCounts;
+  optOutHolds: FailurePageCounts;
 }
 
 export interface FailurePageDeps {
@@ -242,6 +252,30 @@ export function composeDeferredPileupAlert(input: {
   return `Hale: deferred turns piled up. count ${count}. window ${windowMinutes}m.`;
 }
 
+function pageCount(value: number): string {
+  return Number.isSafeInteger(value) && value >= 0 ? String(value) : '0';
+}
+
+/** Counts only: no phone hash, no provider id, no family id. */
+export function composeOptOutHoldAlert(input: {
+  messages: number;
+  numbers: number;
+  notInLedger: number;
+  legacy: number;
+  oldestHours: number;
+  lateCrisis: number;
+}): string {
+  return [
+    'Hale: opt-out reads held.',
+    `messages ${pageCount(input.messages)}.`,
+    `numbers ${pageCount(input.numbers)}.`,
+    `not in ledger ${pageCount(input.notInLedger)}.`,
+    `legacy ${pageCount(input.legacy)}.`,
+    `oldest ${pageCount(input.oldestHours)}h.`,
+    `crisis read late ${pageCount(input.lateCrisis)}.`,
+  ].join(' ');
+}
+
 function providerIncidentWindow(now: Date): Date {
   const windowMs = PROVIDER_INCIDENT_WINDOW_HOURS * 3_600_000;
   return new Date(Math.floor(now.getTime() / windowMs) * windowMs);
@@ -324,6 +358,15 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
     .where(
       and(
         eq(schema.rateLimits.route, DEFERRED_PILEUP_PAGE_ROUTE),
+        gt(schema.rateLimits.count, ALERTED_COUNT),
+        lt(schema.rateLimits.count, staleBefore),
+      ),
+    );
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, OPT_OUT_HOLD_PAGE_ROUTE),
         gt(schema.rateLimits.count, ALERTED_COUNT),
         lt(schema.rateLimits.count, staleBefore),
       ),
@@ -813,6 +856,81 @@ async function pageDeferredPileup(
 }
 
 /**
+ * VIL-553 · what stands in the two hold tables, by count. A hold row carries no family,
+ * so canary traffic cannot be told apart here and nothing is excluded.
+ */
+async function pageOptOutHolds(
+  database: Database,
+  post: (text: string) => Promise<OpsPageOutcome>,
+  now: Date,
+  counts: FailurePageCounts,
+): Promise<void> {
+  const messages = await database
+    .select({
+      phoneHash: schema.optOutHeldMessages.phoneHash,
+      heldAt: schema.optOutHeldMessages.heldAt,
+      ledgerId: schema.channelMessages.id,
+    })
+    .from(schema.optOutHeldMessages)
+    .leftJoin(
+      schema.channelMessages,
+      and(
+        eq(schema.channelMessages.providerMessageId, schema.optOutHeldMessages.providerMessageId),
+        eq(schema.channelMessages.direction, 'in'),
+      ),
+    );
+  const legacy = await database
+    .select({
+      phoneHash: schema.optOutReadHolds.phoneHash,
+      heldAt: schema.optOutReadHolds.heldAt,
+    })
+    .from(schema.optOutReadHolds);
+  const crises = await database
+    .select({ id: schema.auditLog.id })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, OPT_OUT_HOLD_READ_AUDIT_ACTION),
+        sql`${schema.auditLog.after} ->> 'outcome' = 'read_crisis'`,
+        gte(schema.auditLog.occurredAt, new Date(now.getTime() - HOUR_MS)),
+      ),
+    );
+  const holds = [...messages, ...legacy];
+  if (holds.length === 0 && crises.length === 0) return;
+
+  const oldest = Math.min(...holds.map((row) => row.heldAt.getTime()));
+  const fresh =
+    crises.length > 0 || holds.some((row) => now.getTime() - row.heldAt.getTime() < HOUR_MS);
+  const windowMs = fresh ? HOUR_MS : DAY_MS;
+  const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
+  // Two subjects, so a standing day's claim at 00:00 cannot swallow a new hold's hour.
+  const identifier = fresh ? 'new' : 'standing';
+  const stamp = claimStamp(now);
+  if (!(await claimInsert(database, OPT_OUT_HOLD_PAGE_ROUTE, identifier, stamp, windowStart))) {
+    counts.deduped += 1;
+    return;
+  }
+  const text = composeOptOutHoldAlert({
+    messages: messages.length,
+    numbers: new Set(holds.map((row) => row.phoneHash)).size,
+    notInLedger: messages.filter((row) => row.ledgerId === null).length,
+    legacy: legacy.length,
+    oldestHours: holds.length === 0 ? 0 : Math.floor((now.getTime() - oldest) / HOUR_MS),
+    lateCrisis: crises.length,
+  });
+  await deliver(
+    database,
+    OPT_OUT_HOLD_PAGE_ROUTE,
+    identifier,
+    text,
+    stamp,
+    post,
+    counts,
+    windowStart,
+  );
+}
+
+/**
  * Post every unalerted failure once. Never throws: a sweep that escapes would
  * turn the cron red and, on the inline path, a turn that already answered.
  */
@@ -828,6 +946,7 @@ export async function pageFailureAlerts(
     providerIncidents: emptyCounts(),
     deadLetters: emptyCounts(),
     deferredPileups: emptyCounts(),
+    optOutHolds: emptyCounts(),
   };
   try {
     await releaseStaleClaims(database, now);
@@ -868,6 +987,13 @@ export async function pageFailureAlerts(
     await pageDeferredPileup(database, post, now, result.deferredPileups);
   } catch (err) {
     console.error('failure page: deferred pile-up sweep threw', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+  try {
+    await pageOptOutHolds(database, post, now, result.optOutHolds);
+  } catch (err) {
+    console.error('failure page: opt-out hold sweep threw', {
       err: err instanceof Error ? err.name : 'unknown',
     });
   }
