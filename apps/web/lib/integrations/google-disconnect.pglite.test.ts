@@ -477,6 +477,32 @@ describe('reconnecting clears a pending revoke', () => {
   });
 });
 
+describe('a connect in another household cancels the pending revoke of the same parent', () => {
+  it('the retry never ends the grant the parent just gave the other household', async () => {
+    await connect(parentUserId, 'gcal', CAL);
+    await disconnect(parentUserId, 'gcal', scriptedPorts(DOWN));
+    const other = await seedFamily(db.database, 'Other');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: other.familyId, userId: parentUserId, role: 'co_parent' });
+
+    await saveConnection(db.database, {
+      familyId: other.familyId,
+      userId: parentUserId,
+      provider: 'gcal',
+      scopes: CAL_SCOPES,
+      tokens: { accessToken: 'ya29.there', refreshToken: '1//there' },
+    });
+
+    expect(await rowFor(parentUserId, 'gcal')).toMatchObject({ pending: null, since: null });
+    const ports = scriptedPorts(OK);
+    expect(await retryPendingGoogleRevocations(db.database, ports)).toMatchObject({
+      attempted: 0,
+    });
+    expect(ports.revoked).toEqual([]);
+  });
+});
+
 describe('the cron retry reaches every pending row during a long outage', () => {
   it('stops at its time budget and starts the next run with the rows it did not reach', async () => {
     const third = { accessToken: 'ya29.third', refreshToken: '1//third-r' };

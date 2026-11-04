@@ -95,14 +95,14 @@ export async function saveConnection(
   const oauthTokensEncrypted = encryptTokens(input.tokens);
   return database.transaction(async (tx) => {
     // A fresh consent cancels any revoke still waiting from an earlier disconnect, on
-    // EVERY row of this parent: Google revokes per project, so a retry that ran after
-    // this connect would end the grant the parent just gave (VIL-156).
+    // EVERY row of this parent, in every household: Google revokes per project and
+    // account, so a retry that ran after this connect would end the grant the parent
+    // just gave, wherever they gave it (VIL-156).
     await tx
       .update(schema.integrations)
       .set({ googleRevokePendingEncrypted: null, googleRevokePendingSince: null })
       .where(
         and(
-          eq(schema.integrations.familyId, input.familyId),
           eq(schema.integrations.userId, input.userId),
           isNotNull(schema.integrations.googleRevokePendingEncrypted),
         ),
