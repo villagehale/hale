@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly says Hale won't add the person itself, names Alex, and says Alex should text Hale directly by SMS, with no promise that Hale will write to Alex. However it uses vous-style wording? No: it uses 'm'écrire' correctly and tu-consistent 'Je n'ajoute'; accents present. Minor issue: 'pour commencer' is a trailing clause about what happens next, which the rubric penalizes, and it is somewhat padded. Otherwise solid.",
+    "score": 4
+  }
+}

@@ -75,6 +75,8 @@ const JUDGE_SYSTEM = [
   'facts; explaining what a role can see; telling the parent to reply YES or a keyword;',
   'exclamation marks, emoji, hype, "we" for Hale; a corporate or bot register; padding;',
   'Hale naming itself in the third person anywhere; a dangling or ungrammatical clause;',
+  'after saying the person can text Hale, any trailing clause about why, what for, or what happens next;',
+  'speaking to the named person (greeting them, "you" meaning them) instead of to the parent who asked;',
   'anything watchFor says must not happen.',
   'Reply with ONLY the score tool.',
 ].join(' ');
