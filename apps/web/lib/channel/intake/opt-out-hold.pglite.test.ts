@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type OutboundGatePorts, assertProactiveSendAllowed } from '~/lib/channel/outbound-gate';
 import { createTestDb } from '~/lib/testing/pglite';
@@ -99,6 +100,18 @@ describe('#868 failed-read hold', () => {
     expect(posted[0]).toContain('held_id_collision');
     expect(posted[0]).not.toContain('hash-two');
     expect(posted[0]).not.toContain('pm-shared');
+    // A third number on the same id is not the second number's replay: it is held by its own row.
+    expect(await isSenderHeld(db, 'hash-three')).toBe(false);
+    expect(
+      await holdSender(db, { phoneHash: 'hash-three', providerMessageId: 'pm-shared', now }),
+    ).toBe('held_id_collision');
+    expect(await isSenderHeld(db, 'hash-three')).toBe(true);
+    const third = await db
+      .select({ id: schema.optOutHeldMessages.providerMessageId })
+      .from(schema.optOutHeldMessages)
+      .where(eq(schema.optOutHeldMessages.phoneHash, 'hash-three'));
+    expect(third).toHaveLength(1);
+    expect(third[0]?.id).not.toBe(collisionKey);
     // The first number's read still releases only its own row.
     expect(await releaseHeldMessage(db, 'pm-shared')).toBe('released');
     expect(await isSenderHeld(db, 'hash-one')).toBe(false);

@@ -3107,6 +3107,38 @@ describe("a late stop applies at once; its confirmation waits for the family's o
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
   }, 30_000);
 
+  it('a waiting row claimed before its opening still sends nothing until 08:00', async () => {
+    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    await inboundRow(a, 'pm-early', STOP, LOCAL('02:40'));
+    await hold(PHONE_A, 'pm-early', LOCAL('02:40'));
+    const transport = new FakeTransport();
+    const r = reader();
+    await tick(r.reader, transport, LOCAL('03:00'));
+    // A row due before its opening (a backoff, a hand fix) is claimed at 06:00.
+    await db.database
+      .update(schema.optOutHeldMessages)
+      .set({ nextReadAt: LOCAL('05:00') })
+      .where(eq(schema.optOutHeldMessages.providerMessageId, 'pm-early'));
+
+    const early = await tick(r.reader, transport, LOCAL('06:00'));
+
+    expect(early.outcomes.stopped_confirmation_waiting).toBe(1);
+    expect(early.outcomes.stopped).toBe(0);
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-early')).toMatchObject({
+      nextReadAt: LOCAL('08:00'),
+      stopAppliedAt: LOCAL('03:00'),
+    });
+
+    // Positive control: the same row at its opening is confirmed once.
+    const morning = await tick(r.reader, transport, LOCAL('08:00'));
+    expect(morning.outcomes.stopped).toBe(1);
+    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
+      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
+    ]);
+    expect(await heldRow('pm-early')).toBeNull();
+  }, 30_000);
+
   it('positive control: read at 14:00 local, revoked and confirmed in the same tick', async () => {
     const a = await parent(PHONE_A, { place: EASTERN_FSA });
     await inboundRow(a, 'pm-day', STOP, LOCAL('02:40'));
