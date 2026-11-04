@@ -10,9 +10,11 @@ import {
   clearGoogleRevokePending,
   deleteStaleGoogleRevokePending,
   endGoogleConnections,
+  endGoogleConnectionsLocally,
   listPendingGoogleRevocations,
   loadGoogleRevokePending,
   noteGoogleRevokeAttempt,
+  usersHoldingGoogleElsewhere,
 } from './store';
 import {
   type RevokePendingToken,
@@ -575,6 +577,23 @@ export async function expireStaleGoogleRevocations(
   return { abandoned: expired.length };
 }
 
+/** A family-erasure row's outcome: a settle outcome, or one of the two local-only ends. */
+export type ErasureGoogleOutcome =
+  | GoogleRowOutcome
+  /** The owner still holds a live grant in another household. Google revokes per account,
+   * so a revoke here would end that household's grant too: ended here locally, nothing
+   * sent to Google (rule #5). */
+  | 'grant_kept_other_household'
+  /** A live row with no owner: ended locally, never skipped (rule #11). */
+  | 'ended_without_owner';
+
+export interface ErasureSettlement {
+  integrationId: string;
+  provider: ConnectorProvider;
+  push: string;
+  google: ErasureGoogleOutcome;
+}
+
 /**
  * Family erasure's half (rights/delete.ts), called BEFORE the family row is deleted: the
  * cascade removes integrations rows, and a row it removes still holding keys, or still
@@ -583,15 +602,16 @@ export async function expireStaleGoogleRevocations(
  * Ends every Google connector of every parent in the family locally (one transaction),
  * then settles those rows and every row an earlier disconnect left pending. A row still
  * `pending_retry` holds the only token that can end its grant, and the cascade would
- * delete it: the caller keeps the family for a later sweep instead. The wait is bounded,
- * because {@link expireStaleGoogleRevocations} deletes that token at seven days. Throws
- * only when the local end fails, which leaves the family standing for the next sweep.
+ * delete it: the caller keeps the family for a later sweep instead, for a bounded wait
+ * (the sweep's own bound, rights/delete.ts). Two kinds of row end locally only and are
+ * never revoked: one whose owner still holds a live grant in another household, and one
+ * with no owner. Throws only when the local end fails, which leaves the family standing.
  */
 export async function endGoogleForFamilyErasure(
   db: Database,
   familyId: string,
   ports?: GoogleDisconnectPorts,
-): Promise<GoogleSettlement[]> {
+): Promise<ErasureSettlement[]> {
   const rows = await db
     .select({
       id: schema.integrations.id,
@@ -607,40 +627,62 @@ export async function endGoogleForFamilyErasure(
         inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
       ),
     );
-  const live = rows.filter((row) => row.enc !== null);
-  const alreadyPending = rows.filter((row) => row.enc === null && row.pending !== null);
-  if (live.length === 0 && alreadyPending.length === 0) return [];
+  const held = rows.filter((row) => row.enc !== null || row.pending !== null);
+  if (held.length === 0) return [];
+  const elsewhere = await usersHoldingGoogleElsewhere(db, {
+    familyId,
+    userIds: [...new Set(held.flatMap((row) => (row.userId === null ? [] : [row.userId])))],
+  });
+  const localOnly = new Map<string, ErasureGoogleOutcome>();
+  for (const row of held) {
+    if (row.userId === null) localOnly.set(row.id, 'ended_without_owner');
+    else if (elsewhere.has(row.userId)) localOnly.set(row.id, 'grant_kept_other_household');
+  }
+  const revocable = held.filter((row) => !localOnly.has(row.id));
+  const live = revocable.filter((row) => row.enc !== null);
+  const alreadyPending = revocable.filter((row) => row.enc === null);
   const wired = ports ?? defaultGoogleDisconnectPorts();
   const now = wired.now();
-  const ownerIds = [...new Set(live.map((row) => row.userId))];
-  const ended = await db.transaction(async (rawTx) => {
+  const { ended, endedLocally } = await db.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     const out: EndedConnection[] = [];
-    for (const userId of ownerIds) {
-      // A family-wide row (no owner) is not a Google connector: every connect is per parent.
-      if (userId === null) continue;
+    for (const userId of new Set(live.map((row) => row.userId as string))) {
       out.push(...(await endGoogleConnections(tx, { familyId, userId, now })));
     }
+    const local = await endGoogleConnectionsLocally(tx, {
+      familyId,
+      ids: [...localOnly.keys()],
+      now,
+    });
     // The family stands until Google answers, so its trail says what ended (rule #6).
-    if (out.length > 0) {
+    const trail = [
+      ...out.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        pending: row.unrevocable ? null : revokePendingCustody(),
+      })),
+      ...local.map((row) => ({
+        id: row.id,
+        provider: row.provider,
+        pending: null,
+        google: localOnly.get(row.id),
+      })),
+    ];
+    if (trail.length > 0) {
       await tx.insert(schema.auditLog).values(
-        out.map((row) => ({
+        trail.map(({ id, ...after }) => ({
           familyId,
           actor: 'system',
           actionTaken: 'integration_ended_for_erasure',
           targetTable: 'integrations',
-          targetId: row.id,
-          after: {
-            provider: row.provider,
-            custody: tokenCustody(),
-            pending: row.unrevocable ? null : revokePendingCustody(),
-          },
+          targetId: id,
+          after: { ...after, custody: tokenCustody() },
         })),
       );
     }
-    return out;
+    return { ended: out, endedLocally: local };
   });
-  const settlements = await settleGoogleRevocations(
+  const settlements: ErasureSettlement[] = await settleGoogleRevocations(
     db,
     [
       ...ended,
@@ -652,6 +694,23 @@ export async function endGoogleForFamilyErasure(
     ],
     wired,
   );
+  for (const row of endedLocally) {
+    // No token is kept, so a push watch cannot be stopped at Google: its row is dropped
+    // here and the channel lapses at expiry ('no_token' when one existed).
+    const stop = await stopGooglePushForEndedConnection(
+      db,
+      { integrationId: row.id, provider: row.provider, pending: null },
+      wired.env,
+      wired.google,
+      wired.tokenFetch,
+    );
+    settlements.push({
+      integrationId: row.id,
+      provider: row.provider,
+      push: stop.outcome,
+      google: localOnly.get(row.id) as ErasureGoogleOutcome,
+    });
+  }
   for (const settlement of settlements) {
     console.info(
       {

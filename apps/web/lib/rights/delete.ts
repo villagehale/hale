@@ -1,12 +1,19 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, or } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import { erasedFamilyHolds, releaseErasedHolds } from '../channel/intake/opt-out-hold.js';
 import { removeDocument } from '../docs/storage.js';
 import {
-  type GoogleSettlement,
+  type ErasureGoogleOutcome,
+  type ErasureSettlement,
+  GOOGLE_REVOKE_PENDING_RETENTION_MS,
   endGoogleForFamilyErasure,
 } from '../integrations/google-disconnect.js';
+import { CONNECTOR_PROVIDERS, type ConnectorProvider } from '../integrations/google-oauth.js';
+import {
+  type FailurePageCounts,
+  noteErasureGoogleUnconfirmed,
+} from '../monitoring/failure-page.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
 export {
@@ -200,6 +207,65 @@ export interface DeletionSweepSummary {
   /** Families kept because ending their Google grants locally threw. Named, and they never
    * hold the other families' erasure. */
   googleEndFailed: number;
+  /** Families erased although Google never confirmed, because their wait ran out: the
+   * erasure promise wins. #ops is paged with these counts (`page`). */
+  pastGoogleWait: {
+    unconfirmed: number;
+    endFailed: number;
+    page: FailurePageCounts | 'nothing_to_page';
+  };
+  /** Every Google row of every due family, by outcome, kept or erased. */
+  google: ErasureGoogleRow[];
+}
+
+/** A Google row of a due family. Past the wait, `google_unconfirmed` is a revoke Google
+ * never answered and `google_end_failed` a row whose local end kept throwing; the cascade
+ * deletes either row, its keys and its pending token with it. */
+export interface ErasureGoogleRow {
+  integrationId: string;
+  provider: ConnectorProvider;
+  google: ErasureGoogleOutcome | 'google_unconfirmed' | 'google_end_failed';
+}
+
+/** Pages #ops when families are erased past their Google wait (failure-page.ts). */
+type PageErasureGoogle = (counts: {
+  unconfirmed: number;
+  endFailed: number;
+}) => Promise<FailurePageCounts>;
+
+/**
+ * How long a due family is kept waiting for Google: its scheduled deletion plus the same
+ * seven days a pending revoke token lives. Past that the family is erased whatever Google
+ * says, so the deletion window has an end.
+ */
+async function pastGoogleWaitFor(database: Database, familyId: string, now: Date) {
+  const [row] = await database
+    .select({ at: schema.families.scheduledDeletionAt })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  if (!row?.at) return false;
+  return now.getTime() - row.at.getTime() >= GOOGLE_REVOKE_PENDING_RETENTION_MS;
+}
+
+/** The family's Google rows when its local end threw: named per row before the cascade. */
+async function googleRowsOf(database: Database, familyId: string) {
+  const rows = await database
+    .select({ id: schema.integrations.id, provider: schema.integrations.provider })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+        or(
+          isNotNull(schema.integrations.oauthTokensEncrypted),
+          isNotNull(schema.integrations.googleRevokePendingEncrypted),
+        ),
+      ),
+    );
+  return rows.map((row) => ({
+    integrationId: row.id,
+    provider: row.provider as ConnectorProvider,
+  }));
 }
 
 /** The storage-object remover, injected so tests record deletes without a live bucket. */
@@ -271,31 +337,56 @@ export async function runDeletionSweep(
   database: Database,
   now: Date = new Date(),
   removeObject: RemoveObject = removeDocument,
+  pageErasureGoogle: PageErasureGoogle = (counts) =>
+    noteErasureGoogleUnconfirmed(database, counts, { now }),
 ): Promise<DeletionSweepSummary> {
   const due = await selectFamiliesDueForDeletion(database, now);
   // FIRST, because the cascade deletes keys and pending tokens and deleting a key revokes
   // nothing: each family's Google grants are ended and revoked at Google (VIL-156). A
-  // revoke Google has not answered keeps the family for a later sweep, at most until its
-  // token's seven-day window ends, and so does a local end that throws. Everything below
-  // runs on `familyIds`, the families this run deletes, and never on one it keeps.
+  // revoke Google has not answered keeps the family for a later sweep, and so does a local
+  // end that throws, but only until the family's wait runs out (pastGoogleWaitFor). Past
+  // it the family is erased in this sweep, each such row is named, and #ops is paged.
+  // Everything below runs on `familyIds`, the families this run deletes, and never on one
+  // it keeps.
   const familyIds: string[] = [];
+  const google: ErasureGoogleRow[] = [];
   let googleRevokePending = 0;
   let googleEndFailed = 0;
+  const pastWait = { unconfirmed: 0, endFailed: 0 };
   for (const familyId of due) {
-    let google: GoogleSettlement[];
+    let settled: ErasureSettlement[] | null = null;
     try {
-      google = await endGoogleForFamilyErasure(database, familyId);
+      settled = await endGoogleForFamilyErasure(database, familyId);
     } catch (err) {
-      googleEndFailed += 1;
       console.error(
         { familyId, error: err instanceof Error ? err.name : 'unknown' },
-        'deletion sweep: google end failed, family kept for the next sweep',
+        'deletion sweep: google end failed',
       );
+    }
+    const waiting = settled === null || settled.some((row) => row.google === 'pending_retry');
+    if (!waiting) {
+      google.push(...(settled ?? []).map(({ push: _push, ...row }) => row));
+      familyIds.push(familyId);
       continue;
     }
-    if (google.some((row) => row.google === 'pending_retry')) {
-      googleRevokePending += 1;
+    if (!(await pastGoogleWaitFor(database, familyId, now))) {
+      if (settled === null) googleEndFailed += 1;
+      else googleRevokePending += 1;
+      google.push(...(settled ?? []).map(({ push: _push, ...row }) => row));
       continue;
+    }
+    if (settled === null) {
+      pastWait.endFailed += 1;
+      for (const row of await googleRowsOf(database, familyId)) {
+        google.push({ ...row, google: 'google_end_failed' });
+      }
+    } else {
+      pastWait.unconfirmed += 1;
+      for (const { push: _push, ...row } of settled) {
+        google.push(
+          row.google === 'pending_retry' ? { ...row, google: 'google_unconfirmed' } : row,
+        );
+      }
     }
     familyIds.push(familyId);
   }
@@ -338,11 +429,18 @@ export async function runDeletionSweep(
   // still there. The cost is that these people's audit rows have nowhere to live — see
   // `sweptWithoutTrail`, which is counted and logged rather than quietly skipped.
   const orphans = await runOrphanUserSweep(database, now, stranded);
+  // After the deletes, so the page counts families that are really gone.
+  const page =
+    pastWait.unconfirmed + pastWait.endFailed > 0
+      ? await pageErasureGoogle(pastWait)
+      : ('nothing_to_page' as const);
   return {
     erased: familyIds.length,
     purgedObjects,
     googleRevokePending,
     googleEndFailed,
+    pastGoogleWait: { ...pastWait, page },
+    google,
     orphans,
   };
 }

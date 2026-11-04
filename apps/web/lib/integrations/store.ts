@@ -1,5 +1,18 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import {
+  type SQL,
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { CONNECTOR_PROVIDERS, type ConnectorProvider, connectorClientSource } from './google-oauth';
 import type { ConnectorErrorCode } from './sync-error';
 import {
@@ -430,7 +443,9 @@ function revokeToken(tokens: OAuthTokens): RevokePendingToken | null {
 
 /**
  * End EVERY Google connector this parent holds keys for, inside the caller's
- * transaction (VIL-156). The only writer that nulls `oauth_tokens_encrypted`.
+ * transaction (VIL-156). It and {@link endGoogleConnectionsLocally} (family erasure only)
+ * end keys through one statement, `endKeys`, the only writer that nulls
+ * `oauth_tokens_encrypted`.
  *
  * Google revokes per project, so one revoke ends Gmail and Calendar together; the rows
  * end together too, rather than leave one holding keys Google has already killed. Each
@@ -484,17 +499,7 @@ export async function endGoogleConnections(
       // still ends. Named per row, never folded into a success.
       unrevocable = 'decrypt_failed';
     }
-    const updated = await tx
-      .update(schema.integrations)
-      .set({
-        oauthTokensEncrypted: null,
-        status: 'revoked',
-        googleRevokePendingEncrypted: pending,
-        googleRevokePendingSince: pending ? input.now : null,
-        updatedAt: input.now,
-      })
-      .where(holdingKeys(row.id))
-      .returning({ id: schema.integrations.id });
+    const updated = await endKeys(tx, holdingKeys(row.id), pending, input.now);
     if (updated.length === 0) continue;
     ended.push({
       id: row.id,
@@ -504,26 +509,101 @@ export async function endGoogleConnections(
     });
   }
   if (ended.length === 0) return [];
-  // The integrations row outlives a disconnect, so its ON DELETE CASCADE never reaches
-  // the mirrors. They end here; the reminder cron cancels what they had scheduled.
-  const mirrors = await tx
+  const mirrors = await endCalendarMirrors(
+    tx,
+    ended.map((row) => row.id),
+    input.now,
+  );
+  return ended.map((row) => ({
+    ...row,
+    calendarMirrorsRemoved: mirrors.filter((mirror) => mirror.integrationId === row.id).length,
+  }));
+}
+
+/** The one statement that takes a row's keys: status 'revoked' with them, and `pending`
+ * the only token kept for Google (null keeps none). */
+function endKeys(tx: Database, where: SQL | undefined, pending: string | null, now: Date) {
+  return tx
+    .update(schema.integrations)
+    .set({
+      oauthTokensEncrypted: null,
+      status: 'revoked',
+      googleRevokePendingEncrypted: pending,
+      googleRevokePendingSince: pending ? now : null,
+      updatedAt: now,
+    })
+    .where(where)
+    .returning({ id: schema.integrations.id, provider: schema.integrations.provider });
+}
+
+/** The integrations row outlives a disconnect, so its ON DELETE CASCADE never reaches the
+ * mirrors. They end here; the reminder cron cancels what they had scheduled. */
+async function endCalendarMirrors(tx: Database, integrationIds: string[], now: Date) {
+  return tx
     .update(schema.familyEvents)
-    .set({ deletedAt: input.now })
+    .set({ deletedAt: now })
     .where(
       and(
-        inArray(
-          schema.familyEvents.integrationId,
-          ended.map((row) => row.id),
-        ),
+        inArray(schema.familyEvents.integrationId, integrationIds),
         isNotNull(schema.familyEvents.googleEventId),
         isNull(schema.familyEvents.deletedAt),
       ),
     )
     .returning({ integrationId: schema.familyEvents.integrationId });
-  return ended.map((row) => ({
-    ...row,
-    calendarMirrorsRemoved: mirrors.filter((mirror) => mirror.integrationId === row.id).length,
-  }));
+}
+
+/**
+ * Family erasure's LOCAL-ONLY end (VIL-156): the rows' keys and any pending token leave,
+ * and nothing is kept for Google. For a row whose owner still holds a live grant in
+ * another household (Google revokes per account, so a revoke here would end that grant
+ * too, rule #5), and for a row with no owner. Same invariant as
+ * {@link endGoogleConnections}: keys gone means status 'revoked'.
+ */
+export async function endGoogleConnectionsLocally(
+  tx: Database,
+  input: { familyId: string; ids: string[]; now: Date },
+): Promise<Array<{ id: string; provider: ConnectorProvider }>> {
+  if (input.ids.length === 0) return [];
+  const ended = await endKeys(
+    tx,
+    and(
+      eq(schema.integrations.familyId, input.familyId),
+      inArray(schema.integrations.id, input.ids),
+      or(
+        isNotNull(schema.integrations.oauthTokensEncrypted),
+        isNotNull(schema.integrations.googleRevokePendingEncrypted),
+      ),
+    ),
+    null,
+    input.now,
+  );
+  if (ended.length === 0) return [];
+  await endCalendarMirrors(
+    tx,
+    ended.map((row) => row.id),
+    input.now,
+  );
+  return ended.map((row) => ({ id: row.id, provider: row.provider as ConnectorProvider }));
+}
+
+/** Which of these users still hold a live Google grant in a household other than this one. */
+export async function usersHoldingGoogleElsewhere(
+  database: Database,
+  input: { familyId: string; userIds: string[] },
+): Promise<Set<string>> {
+  if (input.userIds.length === 0) return new Set();
+  const rows = await database
+    .select({ userId: schema.integrations.userId })
+    .from(schema.integrations)
+    .where(
+      and(
+        inArray(schema.integrations.userId, input.userIds),
+        ne(schema.integrations.familyId, input.familyId),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+        isNotNull(schema.integrations.oauthTokensEncrypted),
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.userId === null ? [] : [row.userId])));
 }
 
 /** Ids of every ended row still waiting on Google, least recently asked first: the
