@@ -359,6 +359,47 @@ describe('outcome logging', () => {
     }
   });
 
+  it('logs a redirect by outcome and host only, never the Location or any URL', async () => {
+    const pending = createRegistrationPageBytesFetch()('https://example.org/old?program=kids');
+    latest().respond(response(301, { location: '/moved-canary?season=fall#frag' }));
+    await expect(pending).resolves.toMatchObject({ outcome: 'redirected' });
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(
+      { outcome: 'redirected', host: 'example.org' },
+      'registration page: not fetched',
+    );
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).toContain('example.org');
+    for (const part of ['moved-canary', 'season', 'frag', '/old', 'program', 'https:']) {
+      expect(logged).not.toContain(part);
+    }
+  });
+
+  it('logs a refused redirect by outcome, reason, target and host, never the Location', async () => {
+    const pending = createRegistrationPageBytesFetch()('https://example.org/old?program=kids');
+    latest().respond(response(302, { location: 'https://example.org/sso-canary?token=tok#frag' }));
+    await expect(pending).resolves.toEqual({
+      outcome: 'refused',
+      reason: 'redirect_refused',
+      target: 'credential_link',
+    });
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(
+      {
+        outcome: 'refused',
+        reason: 'redirect_refused',
+        target: 'credential_link',
+        host: 'example.org',
+      },
+      'registration page: not fetched',
+    );
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).toContain('redirect_refused');
+    for (const part of ['sso-canary', 'tok', 'frag', '/old', 'program', 'https:']) {
+      expect(logged).not.toContain(part);
+    }
+  });
+
   it('logs nothing for a fetched page', async () => {
     const fetchPage = createRegistrationPageBytesFetch();
     const fetched = fetchPage('https://example.org/course');
