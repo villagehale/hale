@@ -436,7 +436,9 @@ async function handleLinqLocation(
     providerId,
     receivedAt: deps.now?.() ?? new Date(),
     chatId: location.chatId,
-    isGroup: false,
+    // A location share carries no is_group, and only Linq's own is_group may record a
+    // chat as a 1:1 (`channel_messages.in_group`): unknown is recorded as unknown.
+    isGroup: undefined,
   });
   deps.log.info({ outcome }, 'linq inbound: location share continued the ladder');
   await deps.countOutcome(outcome);
@@ -1213,6 +1215,7 @@ async function recordHandledInbound(
       providerChatId: message.chatId,
       status: 'delivered',
       body: message.text,
+      inGroup: message.isGroup ?? null,
       sentAt: message.receivedAt,
       handedOffAt: now,
     })

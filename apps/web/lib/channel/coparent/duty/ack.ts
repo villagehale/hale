@@ -172,7 +172,7 @@ export async function acknowledgeDutyWrite(input: {
 
   if (pass && line) {
     try {
-      await sendFlooredChatMessage(pass, {
+      await sendFlooredChatMessage(pass, 'pickup_duty', {
         chatId: input.inboundChatId,
         text: line,
         fetch: input.fetch,
