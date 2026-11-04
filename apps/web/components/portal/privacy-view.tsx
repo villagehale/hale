@@ -57,7 +57,7 @@ export function PrivacyView({
               <p className={styles.meta}>A copy of everything Hale holds.</p>
             </span>
             <span className={styles.end}>
-              <ExportDataButton idleLabel="Export" />
+              <ExportDataButton idleLabel="Export" className={styles.secondary} />
             </span>
           </div>
           <details className={styles.disclosure}>
@@ -124,7 +124,7 @@ export function Danger({ role }: { role: DeleteAccountRole }) {
           — belongs to the household and stays with it. To ask what Hale still holds for you, email{' '}
           <a href="mailto:privacy@villagehale.com">privacy@villagehale.com</a>.
         </p>
-        <DeleteAccountButton role={role} />
+        <DeleteAccountButton role={role} buttonClassName={styles.secondary} />
       </section>
     );
   }
@@ -143,7 +143,11 @@ export function Danger({ role }: { role: DeleteAccountRole }) {
         it, reply to any Hale text or email{' '}
         <a href="mailto:privacy@villagehale.com">privacy@villagehale.com</a>.
       </p>
-      <DeleteAccountButton role={role} idleLabel="Delete everything" />
+      <DeleteAccountButton
+        role={role}
+        idleLabel="Delete everything"
+        buttonClassName={styles.secondary}
+      />
     </section>
   );
 }

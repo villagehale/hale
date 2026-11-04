@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import styles from '~/components/portal/portal.module.css';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import type { WhatHaleDidItem } from '~/lib/dashboard/what-hale-did';
 import type { ConnectionSummary } from '~/lib/integrations/store';
@@ -12,12 +13,14 @@ import type { ConnectionSummary } from '~/lib/integrations/store';
  */
 
 const loadWhatHaleDidMock = vi.fn<() => Promise<WhatHaleDidItem[]>>();
-const listUserConnectionsMock = vi.fn<() => Promise<ConnectionSummary[]>>();
+const listUserConnectionsMock =
+  vi.fn<(database: unknown, familyId: string, userId: string) => Promise<ConnectionSummary[]>>();
 const listSeatsMock = vi.fn<() => Promise<Array<{ familyId: string; role: string }>>>();
 
 vi.mock('~/lib/dashboard/queries', () => ({ loadWhatHaleDid: () => loadWhatHaleDidMock() }));
 vi.mock('~/lib/integrations/store', () => ({
-  listUserConnections: () => listUserConnectionsMock(),
+  listUserConnections: (database: unknown, familyId: string, userId: string) =>
+    listUserConnectionsMock(database, familyId, userId),
 }));
 vi.mock('~/lib/family', () => ({
   currentFamilyId: async () => 'family-a',
@@ -52,6 +55,7 @@ async function renderPage(): Promise<string> {
 describe('/privacy', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     loadWhatHaleDidMock.mockResolvedValue([PLACEMENT, EMAIL]);
     listUserConnectionsMock.mockResolvedValue([
       { provider: 'gcal', status: 'active', scopes: [], lastSyncAt: null },
@@ -76,6 +80,12 @@ describe('/privacy', () => {
     expect(html).toContain('Delete everything');
     expect(html).toContain('href="https://www.villagehale.com/privacy"');
     expect(html.indexOf('Swim lesson')).toBeLessThan(html.indexOf('Practice moved'));
+  });
+
+  it('reads the viewer’s own connections, keyed on their family and user', async () => {
+    await renderPage();
+    expect(listUserConnectionsMock).toHaveBeenCalledTimes(1);
+    expect(listUserConnectionsMock).toHaveBeenCalledWith(expect.anything(), 'family-a', 'user-a');
   });
 
   it('reads the Gmail row as not connected and the calendar row as connected', async () => {
@@ -117,5 +127,55 @@ describe('/privacy', () => {
     expect(html).toContain('Export your data');
     expect(html.split('>Your data<').length - 1).toBe(1);
     expect(html).not.toContain('Delete everything');
+  });
+
+  // Security P1: the activity list is family-wide (recipients, subjects, calendar
+  // titles), and a scoped seat may not read another adult's mail or calendar.
+  for (const role of ['nanny', 'grandparent', 'babysitter', 'extended', 'service']) {
+    it(`shows a ${role} neither what Hale did nor the connection list`, async () => {
+      listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role }]);
+      const html = await renderPage();
+
+      for (const absent of [
+        '>What Hale did<',
+        'Practice moved',
+        'Swim lesson',
+        'Your connections',
+        'Gmail',
+      ]) {
+        expect(html).not.toContain(absent);
+      }
+      expect(loadWhatHaleDidMock).not.toHaveBeenCalled();
+      expect(listUserConnectionsMock).not.toHaveBeenCalled();
+      expect(html).toContain('Export your data');
+    });
+  }
+
+  it('shows a co-parent what Hale did and their connections', async () => {
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'co_parent' }]);
+    const html = await renderPage();
+    expect(html).toContain('>What Hale did<');
+    expect(html).toContain('Practice moved');
+    expect(html).toContain('Your connections');
+  });
+
+  it('shows nothing family-wide to a viewer with no seat in this family', async () => {
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-b', role: 'primary_parent' }]);
+    const html = await renderPage();
+    expect(html).not.toContain('>What Hale did<');
+    expect(loadWhatHaleDidMock).not.toHaveBeenCalled();
+  });
+
+  // The portal's own button classes: `.shell button` resets background and border, so the
+  // global btn-secondary leaves both controls reading as plain text.
+  it('renders Export and Delete everything as portal buttons', async () => {
+    const html = await renderPage();
+    expect(html).toMatch(
+      new RegExp(`<button[^>]*class="${styles.secondary}"[^>]*>Export</button>`),
+    );
+    expect(html).toMatch(
+      new RegExp(`<button[^>]*class="${styles.secondary}"[^>]*>Delete everything</button>`),
+    );
+    expect(html).not.toContain('btn-secondary');
   });
 });

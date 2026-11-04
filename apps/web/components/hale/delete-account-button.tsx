@@ -34,10 +34,14 @@ export type DeleteAccountRole = 'primary_parent' | 'co_parent' | 'scoped' | 'amb
 export function DeleteAccountButton({
   role,
   idleLabel,
+  buttonClassName,
 }: {
   role: DeleteAccountRole;
   /** Idle label for a family erasure. Co-parent departure keeps its own words. */
   idleLabel?: string;
+  /** The ask and the confirm, on a surface that does not style the global btn classes
+   * (the portal resets `button`, so `btn-secondary` and `link` read as plain text). */
+  buttonClassName?: string;
 }) {
   const [state, setState] = useState<State>('idle');
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
@@ -151,7 +155,7 @@ export function DeleteAccountButton({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <button
             type="button"
-            className="btn-secondary"
+            className={buttonClassName ?? 'btn-secondary'}
             onClick={confirmDelete}
             disabled={state === 'pending'}
           >
@@ -182,7 +186,11 @@ export function DeleteAccountButton({
   }
 
   return (
-    <button type="button" className="link text-berry" onClick={() => setState('confirming')}>
+    <button
+      type="button"
+      className={buttonClassName ?? 'link text-berry'}
+      onClick={() => setState('confirming')}
+    >
       {leaving ? 'leave this family' : (idleLabel ?? 'delete my account')}
     </button>
   );

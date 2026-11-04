@@ -14,6 +14,11 @@ const CALENDAR_LABEL: Record<CalendarTarget, string> = {
   google_calendar: 'Google Calendar',
 };
 
+export interface PrivacyHousehold {
+  activity: readonly WhatHaleDidItem[];
+  connections: { gmail: ConnectionState; gcal: ConnectionState; gdrive: ConnectionState };
+}
+
 /**
  * A parent's data rights on one read-only page: what Hale did for them, what it can
  * still reach, a copy of their data, and deletion. A receipt, so nothing here decides
@@ -21,12 +26,11 @@ const CALENDAR_LABEL: Record<CalendarTarget, string> = {
  * under `data-hale-pii` for session replay (rule #1).
  */
 export function PrivacyPageView({
-  activity,
-  connections,
+  household,
   role,
 }: {
-  activity: readonly WhatHaleDidItem[];
-  connections: { gmail: ConnectionState; gcal: ConnectionState; gdrive: ConnectionState };
+  /** A parent's view of the household; null for every other seat, which sees neither. */
+  household: PrivacyHousehold | null;
   role: DeleteAccountRole;
 }) {
   return (
@@ -36,35 +40,7 @@ export function PrivacyPageView({
         lede="What Hale did for you, what it can reach, and how to take it back."
       />
       <div className={styles.one}>
-        <section className={`${styles.card} ${styles.span}`}>
-          <span className={styles.tag}>What Hale did</span>
-          {activity.length === 0 ? (
-            <p className={styles.text}>Nothing yet.</p>
-          ) : (
-            activity.map((item) => <ActivityRow key={item.id} item={item} />)
-          )}
-        </section>
-        <section className={`${styles.card} ${styles.span}`}>
-          <span className={styles.tag}>Your connections</span>
-          <ConnectionRow
-            icon={<Mail aria-hidden="true" />}
-            title="Gmail"
-            state={connections.gmail}
-          />
-          <ConnectionRow
-            icon={<Calendar aria-hidden="true" />}
-            title="Google Calendar"
-            state={connections.gcal}
-          />
-          {connections.gdrive === 'connected' ? (
-            <ConnectionRow
-              icon={<FolderOpen aria-hidden="true" />}
-              title="Google Drive"
-              state={connections.gdrive}
-            />
-          ) : null}
-          <p className={styles.text}>To change anything here, text Hale.</p>
-        </section>
+        {household ? <Household household={household} /> : null}
         <section className={`${styles.card} ${styles.span}`}>
           <div className={styles.row}>
             <span className={styles.tile}>
@@ -75,7 +51,7 @@ export function PrivacyPageView({
               <p className={styles.meta}>A copy of everything Hale holds.</p>
             </span>
             <span className={styles.end}>
-              <ExportDataButton idleLabel="Export" />
+              <ExportDataButton idleLabel="Export" className={styles.secondary} />
             </span>
           </div>
         </section>
@@ -84,6 +60,42 @@ export function PrivacyPageView({
           <a href={PRIVACY_URL}>Read the privacy policy</a>
         </p>
       </div>
+    </>
+  );
+}
+
+function Household({ household }: { household: PrivacyHousehold }) {
+  return (
+    <>
+      <section className={`${styles.card} ${styles.span}`}>
+        <span className={styles.tag}>What Hale did</span>
+        {household.activity.length === 0 ? (
+          <p className={styles.text}>Nothing yet.</p>
+        ) : (
+          household.activity.map((item) => <ActivityRow key={item.id} item={item} />)
+        )}
+      </section>
+      <section className={`${styles.card} ${styles.span}`}>
+        <span className={styles.tag}>Your connections</span>
+        <ConnectionRow
+          icon={<Mail aria-hidden="true" />}
+          title="Gmail"
+          state={household.connections.gmail}
+        />
+        <ConnectionRow
+          icon={<Calendar aria-hidden="true" />}
+          title="Google Calendar"
+          state={household.connections.gcal}
+        />
+        {household.connections.gdrive === 'connected' ? (
+          <ConnectionRow
+            icon={<FolderOpen aria-hidden="true" />}
+            title="Google Drive"
+            state={household.connections.gdrive}
+          />
+        ) : null}
+        <p className={styles.text}>To change anything here, text Hale.</p>
+      </section>
     </>
   );
 }

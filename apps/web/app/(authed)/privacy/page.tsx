@@ -1,5 +1,7 @@
+import type { Database } from '@hale/db';
 import type { Metadata } from 'next';
 import { PrivacyPageView } from '~/components/portal/privacy-page-view';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { loadWhatHaleDid } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
@@ -15,23 +17,32 @@ export default async function PrivacyPage() {
     currentFamilyId(database),
     currentUserId(database),
   ]);
+  const seats = userId ? await listSeatsForUser(userId, database) : [];
+  // "What Hale did" is family-wide (recipients, subjects, calendar titles), so only a
+  // parent seat in THIS family reads it. A caregiver's scope never covers another
+  // adult's mail or calendar, and a viewer with no seat here fails closed.
+  const seat = seats.find((candidate) => candidate.familyId === familyId);
+  const household =
+    familyId && userId && seat && isParentRole(seat.role)
+      ? await loadHousehold(database, familyId, userId)
+      : null;
+
+  return <PrivacyPageView household={household} role={deleteAccountRole(seats, familyId)} />;
+}
+
+async function loadHousehold(database: Database, familyId: string, userId: string) {
   // The viewer's own connections: the revoke key, so a co-parent's Gmail never reads
   // as the viewer's.
-  const [activity, connections, seats] = await Promise.all([
+  const [activity, connections] = await Promise.all([
     loadWhatHaleDid(),
-    familyId && userId ? listUserConnections(database, familyId, userId) : Promise.resolve([]),
-    userId ? listSeatsForUser(userId, database) : Promise.resolve([]),
+    listUserConnections(database, familyId, userId),
   ]);
-
-  return (
-    <PrivacyPageView
-      activity={activity}
-      connections={{
-        gmail: connectionState(connections, 'gmail'),
-        gcal: connectionState(connections, 'gcal'),
-        gdrive: connectionState(connections, 'gdrive'),
-      }}
-      role={deleteAccountRole(seats, familyId)}
-    />
-  );
+  return {
+    activity,
+    connections: {
+      gmail: connectionState(connections, 'gmail'),
+      gcal: connectionState(connections, 'gcal'),
+      gdrive: connectionState(connections, 'gdrive'),
+    },
+  };
 }

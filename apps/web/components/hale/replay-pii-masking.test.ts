@@ -231,17 +231,19 @@ describe('the privacy page masks each "What Hale did" row', () => {
   const render = () =>
     renderToStaticMarkup(
       h(PrivacyPageView, {
-        activity: [
-          {
-            id: 'act-a',
-            kind: 'email',
-            what: 'Email coach@example.test — Practice moved',
-            when: 'Jun 19, 08:30',
-            calendars: [],
-            teenRedacted: false,
-          },
-        ],
-        connections: { gmail: 'not_connected', gcal: 'connected', gdrive: 'not_connected' },
+        household: {
+          activity: [
+            {
+              id: 'act-a',
+              kind: 'email',
+              what: 'Email coach@example.test — Practice moved',
+              when: 'Jun 19, 08:30',
+              calendars: [],
+              teenRedacted: false,
+            },
+          ],
+          connections: { gmail: 'not_connected', gcal: 'connected', gdrive: 'not_connected' },
+        },
         role: 'primary_parent',
       }),
     );
