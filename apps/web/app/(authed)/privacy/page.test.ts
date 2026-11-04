@@ -120,11 +120,14 @@ describe('/privacy', () => {
     expect(await renderPage()).toContain(TEEN_REDACTED_PLACEHOLDER);
   });
 
-  it('gives a named caregiver the export and no deletion, under one "Your data" heading', async () => {
+  // The export is the family's whole record (audit trail, members, children), so it is
+  // a parent's to take, not a caregiver's.
+  it('gives a named caregiver neither the family export nor deletion, under one "Your data" heading', async () => {
     listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'nanny' }]);
     const html = await renderPage();
 
-    expect(html).toContain('Export your data');
+    expect(html).not.toContain('Export your data');
+    expect(html).not.toContain('>Export<');
     expect(html.split('>Your data<').length - 1).toBe(1);
     expect(html).not.toContain('Delete everything');
   });
@@ -142,12 +145,14 @@ describe('/privacy', () => {
         'Swim lesson',
         'Your connections',
         'Gmail',
+        'Export your data',
+        '>Export<',
       ]) {
         expect(html).not.toContain(absent);
       }
       expect(loadWhatHaleDidMock).not.toHaveBeenCalled();
       expect(listUserConnectionsMock).not.toHaveBeenCalled();
-      expect(html).toContain('Export your data');
+      expect(html).toContain('>Your data<');
     });
   }
 
@@ -157,12 +162,18 @@ describe('/privacy', () => {
     expect(html).toContain('>What Hale did<');
     expect(html).toContain('Practice moved');
     expect(html).toContain('Your connections');
+    expect(html).toContain('Export your data');
+    expect(html).toMatch(
+      new RegExp(`<button[^>]*class="${styles.secondary}"[^>]*>leave this family</button>`),
+    );
   });
 
   it('shows nothing family-wide to a viewer with no seat in this family', async () => {
     listSeatsMock.mockResolvedValue([{ familyId: 'family-b', role: 'primary_parent' }]);
     const html = await renderPage();
     expect(html).not.toContain('>What Hale did<');
+    expect(html).not.toContain('Export your data');
+    expect(html).toContain('Privacy &amp; data');
     expect(loadWhatHaleDidMock).not.toHaveBeenCalled();
   });
 

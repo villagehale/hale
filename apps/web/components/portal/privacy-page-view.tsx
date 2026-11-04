@@ -29,7 +29,8 @@ export function PrivacyPageView({
   household,
   role,
 }: {
-  /** A parent's view of the household; null for every other seat, which sees neither. */
+  /** A parent's view of the household; null for every other seat, which sees none of it
+   * and no export either: the export is the family's whole record, not the viewer's. */
   household: PrivacyHousehold | null;
   role: DeleteAccountRole;
 }) {
@@ -41,20 +42,6 @@ export function PrivacyPageView({
       />
       <div className={styles.one}>
         {household ? <Household household={household} /> : null}
-        <section className={`${styles.card} ${styles.span}`}>
-          <div className={styles.row}>
-            <span className={styles.tile}>
-              <Download aria-hidden="true" />
-            </span>
-            <span>
-              <h3>Export your data</h3>
-              <p className={styles.meta}>A copy of everything Hale holds.</p>
-            </span>
-            <span className={styles.end}>
-              <ExportDataButton idleLabel="Export" className={styles.secondary} />
-            </span>
-          </div>
-        </section>
         <Danger role={role} />
         <p className={styles.text}>
           <a href={PRIVACY_URL}>Read the privacy policy</a>
@@ -95,6 +82,20 @@ function Household({ household }: { household: PrivacyHousehold }) {
           />
         ) : null}
         <p className={styles.text}>To change anything here, text Hale.</p>
+      </section>
+      <section className={`${styles.card} ${styles.span}`}>
+        <div className={styles.row}>
+          <span className={styles.tile}>
+            <Download aria-hidden="true" />
+          </span>
+          <span>
+            <h3>Export your data</h3>
+            <p className={styles.meta}>A copy of everything Hale holds.</p>
+          </span>
+          <span className={styles.end}>
+            <ExportDataButton idleLabel="Export" className={styles.secondary} />
+          </span>
+        </div>
       </section>
     </>
   );

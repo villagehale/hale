@@ -97,13 +97,21 @@ describe('/privacy by seat', () => {
     expect(html).toContain('Gmail');
     expect(html).toContain('>Connected<');
     expect(html).toContain('Delete everything');
+    expect(html).toContain('Export your data');
   });
 
-  it('shows a caregiver none of the family’s mail, calendar or connections', async () => {
+  it('shows a caregiver none of the family’s mail, calendar, connections or export', async () => {
     const html = await renderAs(caregiverUserId);
-    for (const absent of [...FAMILY_WIDE, 'Gmail', 'Google Calendar', 'Delete everything']) {
+    // The export is the family's whole record (audit trail, members, children).
+    for (const absent of [
+      ...FAMILY_WIDE,
+      'Gmail',
+      'Google Calendar',
+      'Delete everything',
+      'Export your data',
+    ]) {
       expect(html).not.toContain(absent);
     }
-    expect(html).toContain('Export your data');
+    expect(html).toContain('>Your data<');
   });
 });
