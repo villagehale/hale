@@ -830,9 +830,9 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
   const { noteDeadLetteredTurn } = await import('~/lib/monitoring/failure-page');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
-  const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
+  const { recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
-  const { releaseHeldReminder } = await import('~/lib/loop/reminders/held-at-send');
+  const { dispatchAndReleaseHold } = await import('~/lib/loop/reminders/held-at-send');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
   const { productionCalendarInviteVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
@@ -909,12 +909,11 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
             }),
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>
-            dispatchLoopMessage(
+            dispatchAndReleaseHold(
+              db(),
               message,
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
-            )
-              .then((result) => releaseHeldReminder(db(), message, result))
-              .then(() => undefined),
+            ).then(() => undefined),
           channelSendDead: (message) =>
             recordAbandonedDispatch(
               message,

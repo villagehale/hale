@@ -2,11 +2,13 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type DispatchResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
-import { fakeChannel } from '~/lib/channel/fakes';
+import { fakeChannel, fakeRenderer } from '~/lib/channel/fakes';
 import type { LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { releaseHeldReminder } from './held-at-send';
+import { dispatchAndReleaseHold, releaseHeldReminder } from './held-at-send';
 import {
   type ChannelSendJob,
   type ReminderRunDeps,
@@ -22,6 +24,8 @@ import {
  * queue hop and the SMS adapter are stood in. Denver in November is MST (UTC-7). Every
  * title is invented.
  */
+
+const KEY = Buffer.alloc(32, 7).toString('base64');
 
 let db: TestDb;
 let familyId: string;
@@ -43,6 +47,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LOOP_SEND_ENABLED', 'true');
   vi.stubEnv('PROACTIVE_CADENCE', 'off');
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -236,6 +241,28 @@ describe('releaseHeldReminder (VIL-562)', () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it('R3b: the single text of the set already left under its leg key - nothing is re-offered', async () => {
+    const job = await eveningBeforeJob();
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      category: 'reminder',
+      templateKey: job.templateKey,
+      dedupeKey: `${job.dedupeKey}:sms`,
+      status: 'sent',
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { result } = await dispatchAt(job, '2026-11-06T04:05:00Z');
+    expect(result.legs[0]?.reason).toBe('proactive_floor');
+    expect(await releaseHeldReminder(db.database, job, result)).toEqual({
+      outcome: 'started_set',
+    });
+    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+    expect(await audits('reminder_held_at_send')).toEqual([]);
+  });
+
   it('R4: a leg that was sent or failed is not a hold', async () => {
     const job = await eveningBeforeJob();
     for (const outcome of ['sent', 'failed'] as const) {
@@ -244,6 +271,26 @@ describe('releaseHeldReminder (VIL-562)', () => {
     }
     expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
     expect(await audits('reminder_held_at_send')).toEqual([]);
+  });
+
+  it('R4b: a held message that is not a reminder is not_held, and logs no error', async () => {
+    const job = await eveningBeforeJob();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result: DispatchResult = {
+      legs: [{ channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'parent_window' }],
+    };
+    const approval: LoopMessage = { ...job, category: 'approval', payload: {} };
+    expect(await releaseHeldReminder(db.database, approval, result)).toEqual({
+      outcome: 'not_held',
+    });
+    expect(error).not.toHaveBeenCalled();
+    expect(await reminder('-P1D')).toEqual({ status: 'sent', suppressReason: null });
+
+    // Positive control: the same hold on the reminder itself is released.
+    expect(await releaseHeldReminder(db.database, job, result)).toEqual({
+      outcome: 'released',
+      reminders: 1,
+    });
   });
 
   it('R5: a payload with no events is named payload_unreadable, rows untouched', async () => {
@@ -306,5 +353,69 @@ describe('releaseHeldReminder (VIL-562)', () => {
       reminders: 0,
     });
     expect(await audits('reminder_held_at_send')).toHaveLength(1);
+  });
+});
+
+describe('the shipped send path (VIL-562)', () => {
+  function shippedPorts(at: string, renderer: TemplateRenderer = throwingRenderer) {
+    const sms = fakeChannel('sms');
+    return {
+      sms,
+      ports: buildDispatchPorts(db.database, {
+        channels: { sms },
+        renderer,
+        now: () => new Date(at),
+      }),
+    };
+  }
+
+  it('the drain handler releases a reminder the floor held at 21:05', async () => {
+    const job = await eveningBeforeJob();
+    const { sms, ports } = shippedPorts('2026-11-06T04:05:00Z'); // 21:05 MST
+
+    expect(await dispatchAndReleaseHold(db.database, job, ports)).toEqual({
+      outcome: 'released',
+      reminders: 1,
+    });
+    expect(sms.calls).toHaveLength(0);
+    expect(await reminder('-P1D')).toEqual({ status: 'scheduled', suppressReason: null });
+  });
+
+  async function verifiedNumber(phone: string): Promise<void> {
+    await db.database.insert(schema.parentChannels).values({
+      userId: parentUserId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: new Date('2026-10-01T12:00:00Z'),
+    });
+  }
+
+  async function easternAt2030(phone: string) {
+    const job = await eveningBeforeJob();
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/New_York' })
+      .where(eq(schema.users.id, parentUserId));
+    await verifiedNumber(phone);
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    // A send that passes the floor renders; a held one must not.
+    const { sms, ports } = shippedPorts('2026-11-06T01:30:00Z', fakeRenderer); // 20:30 EST, 5 Nov
+    return { sms, result: await dispatchLoopMessage(job, ports) };
+  }
+
+  it("a Florida parent's own verified number starts the floor at 20:00 through the shipped ports", async () => {
+    const { sms, result } = await easternAt2030('+13055550100');
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'proactive_floor' },
+    ]);
+    expect(sms.calls).toHaveLength(0);
+  });
+
+  it('control: a New York parent at the same instant is not held by the floor', async () => {
+    const { sms, result } = await easternAt2030('+12125550100');
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toHaveLength(1);
   });
 });

@@ -2,9 +2,11 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  type DispatchPorts,
   type DispatchResult,
   PARENT_WINDOW_HOLD,
   PROACTIVE_FLOOR_HOLD,
+  dispatchLoopMessage,
 } from '~/lib/channel/dispatch';
 import { dedupeActive } from '~/lib/channel/ledger';
 import { textDedupeKey } from '~/lib/channel/outbound-transport';
@@ -109,4 +111,13 @@ export async function releaseHeldReminder(
     'reminder: held at send, back to the run',
   );
   return { outcome: 'released', reminders: released };
+}
+
+/** The drain's channel-send handler: the dispatch, then a held reminder goes back to the run. */
+export async function dispatchAndReleaseHold(
+  database: Database,
+  message: LoopMessage,
+  ports: DispatchPorts,
+): Promise<ReminderSendHold> {
+  return releaseHeldReminder(database, message, await dispatchLoopMessage(message, ports));
 }
