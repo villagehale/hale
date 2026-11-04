@@ -1,19 +1,23 @@
 // Aggregator for the CI check named "Lint, typecheck, test, build".
 //
 // That name stays the required status check. It passes when workspace
-// lint/typecheck/test/build passed AND worker evals either passed or were
-// skipped because the path filter said the diff was site-only. A skip is not
-// success when the filter asked for evals — that is a failed closed gate.
+// lint/typecheck/build passed, every workspace test shard passed, AND worker
+// evals either passed or were skipped because the path filter said the diff
+// was site-only. A skip is not success when the filter asked for evals — that
+// is a failed closed gate.
 
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export function requiredCheckPasses({ changes, verify, evals, workerEvals }) {
+export function requiredCheckPasses({ changes, verify, tests, evals, workerEvals }) {
   if (changes !== 'success') {
     return { ok: false, reason: `path filter ${changes || 'missing'}` };
   }
   if (verify !== 'success') {
     return { ok: false, reason: `workspace lint, typecheck, test, build ${verify || 'missing'}` };
+  }
+  if (tests !== 'success') {
+    return { ok: false, reason: `workspace tests ${tests || 'missing'}` };
   }
   if (workerEvals === 'false') {
     if (evals === 'skipped' || evals === 'success') {
@@ -35,6 +39,7 @@ export function main() {
   const result = requiredCheckPasses({
     changes: readEnv('CHANGES_RESULT'),
     verify: readEnv('VERIFY_RESULT'),
+    tests: readEnv('TEST_RESULT'),
     evals: readEnv('EVALS_RESULT'),
     workerEvals: readEnv('WORKER_EVALS'),
   });
