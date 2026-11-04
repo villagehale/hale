@@ -282,7 +282,10 @@ const SCRIPTLESS_LETTER = /[\p{Script=Common}\p{Script=Inherited}]/u;
  * One native word in an English reply is not enough, and a reply with no letters but the
  * name is in no language. It tells writing systems apart; it cannot tell one language of
  * a script from another (fr, es and en are all Latin), so for those the language rests
- * on the writer's replyLanguage fact and the crisis-reply eval.
+ * on the writer's replyLanguage fact and the crisis-reply eval. Only \p{L} is counted, so
+ * the vowel signs of Devanagari, Tamil or Thai (\p{M}) are not, and a dense script such
+ * as Han has one letter where Latin has a word: both lean toward refusing a reply that
+ * mixes in English, never toward passing one.
  */
 function replyMostlyInScript(text: string, scriptLetter: RegExp): boolean {
   const folded = text

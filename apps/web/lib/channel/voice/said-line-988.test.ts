@@ -396,6 +396,14 @@ describe('the reply is mostly in the script of its language', () => {
     expect(crisisReplyViolation('mental', '请拨打988 Suicide Crisis Helpline', 'zh')).toBeNull();
   });
 
+  it('a Common-script letter counts for neither side', () => {
+    // ー (U+30FC) is a letter of Script=Common: 4 katakana against 3 Latin, the two ー
+    // left out. Counted as another script, they would make it 4 against 5.
+    expect(crisisReplyViolation('mental', 'SMS 988: コール・メール', 'ja')).toBeNull();
+    // Positive control: one more Latin letter and the Latin side is no longer smaller.
+    expect(crisisReplyViolation('mental', 'SMSs 988: コール・メール', 'ja')).toBe('wrong_script');
+  });
+
   it('a reply of only the line name and its number is not in any language', () => {
     expect(crisisReplyViolation('mental', '9-8-8 Suicide Crisis Helpline 988', 'en')).toBe(
       'wrong_script',
