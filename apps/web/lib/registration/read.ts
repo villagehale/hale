@@ -5,6 +5,7 @@ import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { StructuredOutputError } from '~/lib/pipeline/structured';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
+  type BusyReadingReason,
   type LiveRegistrationDate,
   type LiveRegistrationReading,
   type RegistrationReadSource,
@@ -15,8 +16,8 @@ import {
   registrationAnchor,
 } from './live-reading';
 import { resolveFamilyOpen } from './match-registration-windows';
-import { RegistrationPageRedirect, registrationPageUrl } from './page';
-import { RegistrationPdfError, RegistrationPdfReaderError, registrationPdfText } from './pdf';
+import { type RegistrationPageFetch, registrationPageUrl } from './page';
+import { type RegistrationPdfRead, registrationPdfText } from './pdf';
 import type { CycleIdentity, ExtractedWindow } from './verify-window';
 
 /**
@@ -28,9 +29,11 @@ import type { CycleIdentity, ExtractedWindow } from './verify-window';
 export type RegistrationTarget = CycleIdentity & { sourceUrl: string };
 
 /** Both ports are required: whoever wires the reader chooses the fetch and the model
- * client budget, so there is no unnamed default to fall back on. */
+ * client budget, so there is no unnamed default to fall back on. `fetchBody` is typed as
+ * the hardened fetcher (`createRegistrationPageBytesFetch`: DNS pinned, redirects never
+ * followed, every outcome named), so a plain `fetch` cannot be wired in. */
 export interface RegistrationReaderPorts {
-  fetchBody(url: string): Promise<Uint8Array>;
+  fetchBody(url: string): Promise<RegistrationPageFetch>;
   extract(cycle: CycleIdentity, pageText: string): Promise<ExtractedWindow>;
 }
 
@@ -82,8 +85,8 @@ function logReading(target: RegistrationTarget, reading: LiveRegistrationReading
 /** A reader whose cache (bytes and PDF text by URL, readings by target) lives only as
  * long as this reader: one operation. A later send builds a new one. */
 export function createRegistrationReader(ports: RegistrationReaderPorts): RegistrationReader {
-  const bodies = new Map<string, Promise<Uint8Array>>();
-  const pdfTexts = new Map<string, Promise<string>>();
+  const bodies = new Map<string, Promise<RegistrationPageFetch>>();
+  const pdfTexts = new Map<string, Promise<RegistrationPdfRead>>();
   const readings = new Map<string, Promise<LiveRegistrationReading>>();
 
   const cached = <T>(cache: Map<string, Promise<T>>, key: string, load: () => Promise<T>) => {
@@ -105,30 +108,30 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
       status: 'unreadable',
       reason,
     });
+    const busy = (reason: BusyReadingReason): LiveRegistrationReading => ({
+      ...source,
+      reader: portal ? 'perfectmind' : 'ai',
+      status: 'busy',
+      reason,
+    });
 
-    let url: string;
-    try {
-      url = registrationPageUrl(target.sourceUrl);
-    } catch {
-      return unreadable('unsafe_url');
-    }
+    const check = registrationPageUrl(target.sourceUrl);
+    if (check.outcome === 'refused') return unreadable(check.reason);
+    const url = check.url;
 
-    let body: Uint8Array;
-    try {
-      body = await cached(bodies, url, () => ports.fetchBody(url));
-    } catch (error) {
-      return unreadable(error instanceof RegistrationPageRedirect ? 'redirected' : 'fetch_failed');
-    }
+    const fetched = await cached(bodies, url, () => ports.fetchBody(url));
+    if (fetched.outcome === 'busy') return busy(fetched.reason);
+    if (fetched.outcome === 'redirected') return unreadable('redirected');
+    if (fetched.outcome !== 'fetched') return unreadable(fetched.reason);
+    const body = fetched.body;
 
     let pageText: string;
     if (isPdf(body)) {
-      try {
-        pageText = await cached(pdfTexts, url, () => registrationPdfText(body));
-      } catch (error) {
-        if (error instanceof RegistrationPdfError) return unreadable(error.reason);
-        if (error instanceof RegistrationPdfReaderError) return unreadable('pdf_reader_fault');
-        throw error;
-      }
+      const pdf = await cached(pdfTexts, url, () => registrationPdfText(body));
+      if (pdf.outcome === 'busy') return busy(pdf.reason);
+      if (pdf.outcome === 'refused') return unreadable(pdf.reason);
+      if (pdf.outcome === 'reader_fault') return unreadable('pdf_reader_fault');
+      pageText = pdf.pageDerivedText;
     } else {
       const raw = Buffer.from(body).toString('utf8');
       if (course.ok && portal) {

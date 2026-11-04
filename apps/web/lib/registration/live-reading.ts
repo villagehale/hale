@@ -1,5 +1,6 @@
 import { fragment, readCourseModel } from '~/lib/channel/spots/availability';
-import type { RegistrationPdfRefusal } from './pdf';
+import type { RegistrationPageFetch } from './page';
+import type { RegistrationPdfRead, RegistrationPdfRefusal } from './pdf';
 import { isBookMe4ErrorPage, readCourseFacts } from './sequence/prepare';
 import {
   type AiDateKind,
@@ -50,16 +51,22 @@ export type UnverifiedReadingReason =
   | 'unknown_time_zone'
   | 'incomplete_date';
 
+/** The fetcher's own refusal or failure name: `non_public_host`, `http_status`, `timeout`… */
+type PageFetchFailure = Extract<RegistrationPageFetch, { outcome: 'refused' | 'failed' }>['reason'];
+
 export type UnreadableReadingReason =
-  | 'unsafe_url'
+  | PageFetchFailure
   | 'redirected'
-  | 'fetch_failed'
   | 'extract_failed'
   | RegistrationPdfRefusal
   | 'pdf_reader_fault'
   | 'no_model'
   | 'bad_model'
   | 'wrong_course';
+
+export type BusyReadingReason =
+  | Extract<RegistrationPageFetch, { outcome: 'busy' }>['reason']
+  | Extract<RegistrationPdfRead, { outcome: 'busy' }>['reason'];
 
 type Reader = 'ai' | 'perfectmind';
 
@@ -81,6 +88,9 @@ export type LiveRegistrationReading =
             partialDates: readonly PartialRegistrationDate[];
           }
         | { status: 'unreadable'; reason: UnreadableReadingReason }
+        /** Hale is out of fetch or PDF capacity right now: retry later. Says nothing
+         * about the page, so it is never an unreadable page and never a stored date. */
+        | { status: 'busy'; reason: BusyReadingReason }
         | { status: 'gone' }
       ));
 

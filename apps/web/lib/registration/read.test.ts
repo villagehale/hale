@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveRepoFile } from '~/lib/coach/resolve-repo-file';
 import { SPOT_PORTAL_HOSTS } from '~/lib/channel/spots/url';
 import { StructuredOutputError } from '~/lib/pipeline/structured';
 import { registrationWindowFixture } from '~/lib/testing/registration-source';
-import { RegistrationPageRedirect } from './page';
+import { type RegistrationPageFetch, createRegistrationPageBytesFetch } from './page';
+import { MAX_CONCURRENT_PDF_READS, registrationPdfText } from './pdf';
 import { registrationPdfFixture } from './pdf-fixture.test-helper';
 import {
   type RegistrationReaderPorts,
@@ -18,9 +18,16 @@ import { type ExtractedWindow, extractionInput, parseExtraction } from './verify
 
 // The deploy bundle, faked at the file system: pass-through unless a test says the
 // PDF worker file is missing from it.
-vi.mock('~/lib/coach/resolve-repo-file', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('~/lib/coach/resolve-repo-file')>();
-  return { resolveRepoFile: vi.fn(actual.resolveRepoFile) };
+const bundle = vi.hoisted(() => ({ hideWorkerFile: false }));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: (path: Parameters<typeof actual.existsSync>[0]) =>
+      bundle.hideWorkerFile && String(path).endsWith('pdf-worker.mjs')
+        ? false
+        : actual.existsSync(path),
+  };
 });
 
 /**
@@ -53,11 +60,17 @@ function extraction(overrides: Partial<ExtractedWindow> = {}): ExtractedWindow {
   };
 }
 
+const fetched = (body: Uint8Array): RegistrationPageFetch => ({
+  outcome: 'fetched',
+  body: Buffer.from(body),
+});
+
 function ports(
-  body: Uint8Array | (() => Promise<Uint8Array>),
+  body: Uint8Array | RegistrationPageFetch,
   extract: RegistrationReaderPorts['extract'] = async () => extraction(),
 ) {
-  const fetchBody = vi.fn(typeof body === 'function' ? body : async () => body);
+  const result = body instanceof Uint8Array ? fetched(body) : body;
+  const fetchBody = vi.fn(async (_url: string) => result);
   const extractSpy = vi.fn(extract);
   return { fetchBody, extract: extractSpy };
 }
@@ -158,22 +171,13 @@ describe('a PDF source, and failed reads that never fall back', () => {
   });
 
   it.each([
-    ['an unreadable PDF', async () => Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
-    ['a PDF with no text', async () => registrationPdfFixture(['']), 'pdf_no_text'],
-    [
-      'a redirect',
-      async () => {
-        throw new RegistrationPageRedirect('https://example.net/queue');
-      },
-      'redirected',
-    ],
-    [
-      'a failed fetch',
-      async () => {
-        throw new Error('registration page: status or size refusal');
-      },
-      'fetch_failed',
-    ],
+    ['an unreadable PDF', Buffer.from('%PDF-1.4 broken'), 'pdf_unreadable'],
+    ['a PDF with no text', registrationPdfFixture(['']), 'pdf_no_text'],
+    ['a redirect', { outcome: 'redirected', location: 'https://example.net/queue' }, 'redirected'],
+    ['a refused status', { outcome: 'refused', reason: 'http_status', status: 503 }, 'http_status'],
+    ['an oversized page', { outcome: 'refused', reason: 'too_large' }, 'too_large'],
+    ['a timeout', { outcome: 'failed', reason: 'timeout' }, 'timeout'],
+    ['a network error', { outcome: 'failed', reason: 'network_error' }, 'network_error'],
   ] as const)('names %s and keeps no stored date', async (_name, body, reason) => {
     const p = ports(body, async () => {
       throw new Error('a failed read must not reach the model');
@@ -189,21 +193,79 @@ describe('a PDF source, and failed reads that never fall back', () => {
   });
 });
 
+describe('busy: Hale is out of capacity right now, which says nothing about the page', () => {
+  const window = registrationWindowFixture({ cycleLabel: 'Fall 2026' });
+  const pdf = registrationPdfFixture([
+    'Public registration opens October 20, 2026 at 9 a.m.',
+    ZONE_SENTENCE,
+  ]);
+
+  it('names a busy host busy, never unreadable, with no date and no model call', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const p = ports({ outcome: 'busy', reason: 'host_busy' });
+    const reader = createRegistrationReader(p);
+
+    const reading = await reader(windowReadTarget(window), NOW);
+
+    expect(reading).toEqual({
+      sourceUrl: window.sourceUrl,
+      checkedAt: NOW,
+      reader: 'ai',
+      status: 'busy',
+      reason: 'host_busy',
+    });
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'busy', reason: 'host_busy' }),
+      'registration read',
+    );
+    expect(await readRegistrationWindows([window], reader, NOW, null)).toEqual([]);
+    expect(p.extract).not.toHaveBeenCalled();
+  });
+
+  it('names busy PDF readers busy, and reads the same PDF once a reader is free', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    // Every reader slot is taken synchronously, before the reader's own read begins (a
+    // slot an earlier test's worker still holds counts too).
+    const held = Array.from({ length: MAX_CONCURRENT_PDF_READS }, () => registrationPdfText(pdf));
+    const p = ports(pdf);
+
+    const reading = await createRegistrationReader(p)(windowReadTarget(window), NOW);
+
+    expect(reading).toMatchObject({ status: 'busy', reason: 'pdf_readers_busy' });
+    expect(reading).not.toHaveProperty('dates');
+    expect(p.extract).not.toHaveBeenCalled();
+    await Promise.all(held);
+
+    // Positive control: once the held workers exit, a new reader verifies the same bytes.
+    await vi.waitFor(async () => {
+      const [live] = await readRegistrationWindows(
+        [window],
+        createRegistrationReader(p),
+        NOW,
+        null,
+      );
+      expect(live?.reading.status).toBe('verified');
+    });
+  });
+});
+
 describe('a PDF reader that is missing from the deploy', () => {
   const pdf = registrationPdfFixture(['Public registration opens October 20, 2026 at 9 a.m.']);
   const target = windowReadTarget(registrationWindowFixture());
 
-  it('is named pdf_reader_fault, not a fault in the city\'s PDF', async () => {
+  it("is named pdf_reader_fault, not a fault in the city's PDF", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(resolveRepoFile).mockImplementationOnce(() => {
-      throw new Error('resolveRepoFile: could not locate the PDF worker');
-    });
-    const p = ports(pdf);
-    expect(await createRegistrationReader(p)(target, NOW)).toMatchObject({
-      status: 'unreadable',
-      reason: 'pdf_reader_fault',
-    });
-    expect(p.extract).not.toHaveBeenCalled();
+    bundle.hideWorkerFile = true;
+    try {
+      const p = ports(pdf);
+      expect(await createRegistrationReader(p)(target, NOW)).toMatchObject({
+        status: 'unreadable',
+        reason: 'pdf_reader_fault',
+      });
+      expect(p.extract).not.toHaveBeenCalled();
+    } finally {
+      bundle.hideWorkerFile = false;
+    }
   });
 
   it('reads the same PDF once the worker is there (control)', async () => {
@@ -213,16 +275,21 @@ describe('a PDF reader that is missing from the deploy', () => {
   });
 });
 
-describe('an unsafe URL', () => {
+describe('a URL the fetcher refuses', () => {
   const base = windowReadTarget(registrationWindowFixture());
 
-  it('is refused before any fetch', async () => {
+  it.each([
+    ['a private address', 'https://127.0.0.1/x', 'non_public_host'],
+    ['plain http', 'http://example.org/x', 'not_https'],
+    [
+      'an ordinary-looking key the fetcher still refuses',
+      'https://example.org/x?code=1',
+      'ambiguous_query_key',
+    ],
+  ])('is refused before any fetch, under its own name: %s', async (_name, sourceUrl, reason) => {
     const p = ports(html(PAGE));
-    const reading = await createRegistrationReader(p)(
-      { ...base, sourceUrl: 'https://127.0.0.1/x' },
-      NOW,
-    );
-    expect(reading).toMatchObject({ status: 'unreadable', reason: 'unsafe_url' });
+    const reading = await createRegistrationReader(p)({ ...base, sourceUrl }, NOW);
+    expect(reading).toMatchObject({ status: 'unreadable', reason });
     expect(p.fetchBody).toHaveBeenCalledTimes(0);
   });
 
@@ -377,6 +444,21 @@ describe('logging', () => {
 
     await reader(target, NOW);
     expect(info).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the fetch port', () => {
+  it("is the hardened fetcher's named outcomes, so a plain fetch cannot be wired in", () => {
+    createRegistrationReader({
+      // @ts-expect-error a plain fetch resolves a Response (and follows redirects)
+      fetchBody: (url: string) => fetch(url),
+      extract: async () => extraction(),
+    });
+    // Positive control: the hardened fetcher itself wires in (no request is made here).
+    createRegistrationReader({
+      fetchBody: createRegistrationPageBytesFetch(),
+      extract: async () => extraction(),
+    });
   });
 });
 
