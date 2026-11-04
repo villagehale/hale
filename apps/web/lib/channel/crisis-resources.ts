@@ -17,9 +17,14 @@
 
 export type CrisisRegion = 'CA' | 'US';
 
-const CANADA_LINE =
-  '9-8-8 Suicide Crisis Helpline: call or text 988, any time, in English or French';
-const US_LINE = '988 Suicide & Crisis Lifeline: call or text 988, any time';
+const CANADA_LINE_NAME = '9-8-8 Suicide Crisis Helpline';
+const US_LINE_NAME = '988 Suicide & Crisis Lifeline';
+
+/** The lines' own names, which a reply in any language may carry as written. */
+export const CRISIS_LINE_NAMES: readonly string[] = [CANADA_LINE_NAME, US_LINE_NAME];
+
+const CANADA_LINE = `${CANADA_LINE_NAME}: call or text 988, any time, in English or French`;
+const US_LINE = `${US_LINE_NAME}: call or text 988, any time`;
 
 /** A physical emergency. 911 only — no 988 line. */
 export interface EmergencyFacts {
