@@ -208,6 +208,27 @@ describe('readWhatHaleDid', () => {
     expect(b.when).toBe('Sun, Jun 21, 10:00 AM · done Jun 20, 9:00 AM');
   });
 
+  // users.locale holds a model-detected tag checked only by shape, and Intl throws on a
+  // malformed one. The receipts still render, in the family's zone, under the runtime's
+  // own rules; the tag is dropped and named once in the log.
+  it('still renders when the stored locale is not a tag Intl accepts', async () => {
+    const setLocale = (locale: string) =>
+      db.database.update(schema.users).set({ locale }).where(eq(schema.users.id, fam.parentUserId));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await setLocale('en_US');
+    try {
+      const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
+      const when = byId(items, 'a').when;
+      expect(when).toMatch(/^Sent /);
+      expect(when).toContain('8:30');
+      expect(when).not.toContain('11:30');
+      expect(warn).toHaveBeenCalledWith({ event: 'family_locale_rejected' }, expect.any(String));
+    } finally {
+      await setLocale(PRIMARY_LOCALE);
+      warn.mockRestore();
+    }
+  });
+
   it('redacts a 13+ child’s row and an unattributed family-wide row, and only those', async () => {
     const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
     const c = byId(items, 'c');

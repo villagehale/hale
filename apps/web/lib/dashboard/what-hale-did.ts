@@ -70,10 +70,11 @@ const CALENDAR_RECEIPT: Record<string, { verb: string; joiner: string }> = {
   calendar_cancel: { verb: 'Removed', joiner: 'from' },
 };
 
-/** The zone and locale a family reads its own clock in. */
+/** The zone and locale a family reads its own clock in. An undefined locale is the
+ * runtime's own rules (a stored tag Intl rejected); the zone is never defaulted. */
 export interface FamilyClock {
   timeZone: string;
-  locale: string;
+  locale: string | undefined;
 }
 
 export interface WhatHaleDidItem {
@@ -202,6 +203,22 @@ export class FamilyWithoutMembersError extends Error {
 }
 
 /**
+ * The stored tag as Intl takes it, or undefined. `users.locale` is a model-detected tag
+ * checked only by shape, and a malformed one makes Intl.DateTimeFormat throw. That is a
+ * degraded input, not a failed page: the receipts read under the runtime's own rules
+ * and one log line names it, without the tag.
+ */
+function intlLocale(tag: string): string | undefined {
+  try {
+    return Intl.getCanonicalLocales(tag)[0];
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    console.warn({ event: 'family_locale_rejected' }, 'what-hale-did: stored locale tag dropped');
+    return undefined;
+  }
+}
+
+/**
  * The family's own clock: the primary parent's `users.timezone` and `users.locale`, or
  * else those of the earliest-joined member. No constant fallback; a family with no
  * member has no zone.
@@ -221,7 +238,7 @@ export async function readFamilyOwnClock(
     )
     .limit(1);
   if (!row) throw new FamilyWithoutMembersError();
-  return row;
+  return { timeZone: row.timeZone, locale: intlLocale(row.locale) };
 }
 
 /** Executed email and calendar actions, newest first, teen-redacted for this viewer. */
