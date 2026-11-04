@@ -1116,4 +1116,44 @@ describe('reconcileCalendarMirrors - the kid gate (VIL-548)', () => {
       ['calendar_mirror_added', { source: 'parent', remindersRestored: 1 }],
     ]);
   });
+
+  it('T13: a restore that fails before its reminders are revived leaves the copy dropped, so the next sweep revives them', async () => {
+    const { client } = scriptedKidClient(JUDGE_RULES);
+    await gate([lesson()], model(client));
+    await runReminderCron(db.database, reminderDeps(), NOW);
+    await gate([lesson({ summary: 'Quarterly budget review' })], model(client));
+    const [dropped] = await rows();
+    const lessonId = dropped?.id ?? '';
+    expect(dropped?.deletedAt).not.toBeNull();
+
+    // The restore dies on the revive (a statement error, or the function killed there).
+    await db.exec(`
+      CREATE FUNCTION refuse_revive() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'revive refused'; END $$;
+      CREATE TRIGGER refuse_revive BEFORE UPDATE ON event_reminders
+        FOR EACH ROW WHEN (OLD.suppress_reason = 'calendar_mirror_dropped')
+        EXECUTE FUNCTION refuse_revive();
+    `);
+    await expect(gate([lesson()], model(client))).rejects.toThrow();
+    await db.exec('DROP TRIGGER refuse_revive ON event_reminders; DROP FUNCTION refuse_revive();');
+
+    const [afterFailure] = await rows();
+    expect(afterFailure?.deletedAt).not.toBeNull();
+    expect((await audits()).filter((row) => row.targetId === lessonId)).toHaveLength(2);
+
+    const counts = await gate([lesson()], model(client));
+    expect(counts).toMatchObject({ updated: 1 });
+    const [restored] = await rows();
+    expect(restored?.deletedAt).toBeNull();
+    expect(
+      (await reminders()).map((row) => `${row.offset}/${row.status}/${row.suppressReason}`).sort(),
+    ).toEqual(['-P1D/scheduled/null', '-PT1H/scheduled/null']);
+    const restoreAudits = (await audits())
+      .filter((row) => row.targetId === lessonId && row.actionTaken === 'calendar_mirror_added')
+      .map((row) => row.after);
+    expect(restoreAudits).toEqual([
+      { source: 'parent' },
+      { source: 'parent', remindersRestored: 2 },
+    ]);
+  });
 });

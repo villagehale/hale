@@ -495,67 +495,71 @@ export async function reconcileCalendarMirrors(
       existing.kidVerdictId !== judgement.verdictId ||
       (existing.childId === null && judgement.childId !== null);
     if (!changed) continue;
-    // VIL-474 · NOT a provider change. A mirror is the parent's own private calendar, so
-    // an edit here records nothing (reminders/provider-change.ts is the only writer).
-    await database
-      .update(schema.familyEvents)
-      .set({
-        title: candidate.title,
-        startsAt: candidate.startsAt,
-        endsAt: candidate.endsAt,
-        location: candidate.location,
-        transparency: candidate.transparency ?? null,
-        notes,
-        deletedAt: null,
-        createdBy: input.userId,
-        kidVerdictId: judgement.verdictId,
-        childId: existing.childId ?? judgement.childId,
-      })
-      .where(eq(schema.familyEvents.id, existing.id));
-    counts.updated += 1;
-    // Devin #1007: the reminders this copy's drop cancelled come back with it; any other
-    // cancelled, suppressed or sent row stays as it is.
-    const remindersRestored =
-      existing.deletedAt === null
-        ? 0
-        : (
-            await database
-              .update(schema.eventReminders)
-              .set({ status: 'scheduled', suppressReason: null, updatedAt: input.now })
-              .where(
-                and(
-                  eq(schema.eventReminders.eventRef, existing.id),
-                  eq(schema.eventReminders.status, 'cancelled'),
-                  eq(schema.eventReminders.suppressReason, MIRROR_DROPPED),
-                ),
-              )
-              .returning({ id: schema.eventReminders.id })
-          ).length;
-    // Devin #930: a logistics-only change (parking / what-to-bring facts) is audited too.
-    // A failed-read counter bump alone is bookkeeping, not a change the parent would see,
-    // and so is a new kid link.
-    const factsChanged =
-      (existing.notes?.parking ?? null) !== (notes?.parking ?? null) ||
-      (existing.notes?.bring ?? null) !== (notes?.bring ?? null);
-    if (moved || existing.deletedAt !== null || factsChanged) {
-      const actionTaken =
-        existing.deletedAt !== null
-          ? 'calendar_mirror_added'
-          : moved
-            ? 'calendar_mirror_moved'
-            : 'calendar_mirror_notes_updated';
-      await database.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken,
-        targetTable: 'family_events',
-        targetId: existing.id,
-        after:
+    // One transaction, so the copy never comes back live with the reminders its drop
+    // cancelled still cancelled: a later sweep sees it live and has nothing to restore.
+    await database.transaction(async (tx) => {
+      // VIL-474 · NOT a provider change. A mirror is the parent's own private calendar, so
+      // an edit here records nothing (reminders/provider-change.ts is the only writer).
+      await tx
+        .update(schema.familyEvents)
+        .set({
+          title: candidate.title,
+          startsAt: candidate.startsAt,
+          endsAt: candidate.endsAt,
+          location: candidate.location,
+          transparency: candidate.transparency ?? null,
+          notes,
+          deletedAt: null,
+          createdBy: input.userId,
+          kidVerdictId: judgement.verdictId,
+          childId: existing.childId ?? judgement.childId,
+        })
+        .where(eq(schema.familyEvents.id, existing.id));
+      // Devin #1007: the reminders this copy's drop cancelled come back with it; any other
+      // cancelled, suppressed or sent row stays as it is.
+      const remindersRestored =
+        existing.deletedAt === null
+          ? 0
+          : (
+              await tx
+                .update(schema.eventReminders)
+                .set({ status: 'scheduled', suppressReason: null, updatedAt: input.now })
+                .where(
+                  and(
+                    eq(schema.eventReminders.eventRef, existing.id),
+                    eq(schema.eventReminders.status, 'cancelled'),
+                    eq(schema.eventReminders.suppressReason, MIRROR_DROPPED),
+                  ),
+                )
+                .returning({ id: schema.eventReminders.id })
+            ).length;
+      // Devin #930: a logistics-only change (parking / what-to-bring facts) is audited too.
+      // A failed-read counter bump alone is bookkeeping, not a change the parent would see,
+      // and so is a new kid link.
+      const factsChanged =
+        (existing.notes?.parking ?? null) !== (notes?.parking ?? null) ||
+        (existing.notes?.bring ?? null) !== (notes?.bring ?? null);
+      if (moved || existing.deletedAt !== null || factsChanged) {
+        const actionTaken =
           existing.deletedAt !== null
-            ? { source: 'parent', remindersRestored }
-            : { source: 'parent' },
-      });
-    }
+            ? 'calendar_mirror_added'
+            : moved
+              ? 'calendar_mirror_moved'
+              : 'calendar_mirror_notes_updated';
+        await tx.insert(schema.auditLog).values({
+          familyId: input.familyId,
+          actor: 'system',
+          actionTaken,
+          targetTable: 'family_events',
+          targetId: existing.id,
+          after:
+            existing.deletedAt !== null
+              ? { source: 'parent', remindersRestored }
+              : { source: 'parent' },
+        });
+      }
+    });
+    counts.updated += 1;
   }
 
   if (allowRemoval) {
