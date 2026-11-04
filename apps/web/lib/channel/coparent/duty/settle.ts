@@ -81,6 +81,7 @@ export async function settleDutyMemory(
       timeZone,
       inboundChatId: input.inboundChatId,
       inboundMessageId: input.inboundMessageId,
+      surface: input.surface,
       language,
       name: null,
       kid: null,
@@ -138,6 +139,7 @@ export async function settleDutyMemory(
       timeZone,
       inboundChatId: input.inboundChatId,
       inboundMessageId: input.inboundMessageId,
+      surface: input.surface,
       language,
       name: home.speakerName,
       kid: sync.kid,
@@ -198,6 +200,7 @@ export async function settleDutyMemory(
     timeZone,
     inboundChatId: input.inboundChatId,
     inboundMessageId: input.inboundMessageId,
+    surface: input.surface,
     language,
     name: home.speakerName,
     kid: null,
@@ -208,7 +211,8 @@ export async function settleDutyMemory(
   });
   return {
     status: ack.status === 'held' ? 'held' : 'recorded',
-    reason: ack.status === 'held' ? 'quiet_hours' : null,
+    reason:
+      ack.status === 'held' ? 'quiet_hours' : ack.status === 'audience_held' ? ack.reason : null,
     sent: ack.sent,
     spoken: ack.status === 'restated' ? ack.text : null,
   };

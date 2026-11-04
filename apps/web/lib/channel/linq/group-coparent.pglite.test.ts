@@ -905,6 +905,22 @@ describe('group co-parent seating', () => {
       providerChatId: GROUP,
       step: 'done',
     });
+    // The poll passes the family-chat floor: a confirmed roster, and the live list is it.
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({
+        chatId: GROUP,
+        familyId: seeded.familyId,
+        source: 'added_to_existing',
+        status: 'confirmed',
+      })
+      .returning({ id: schema.linqGroupRosters.id });
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(PARENT_PHONE),
+      status: 'known_parent',
+    });
 
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -951,6 +967,11 @@ function pollAwareFetch(): {
   const urls: string[] = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     urls.push(String(url));
+    if ((init?.method ?? 'GET') === 'GET') {
+      return Response.json({
+        chat: { id: GROUP, is_group: true, handles: [{ handle: PARENT_PHONE }] },
+      });
+    }
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;
     for (const part of message?.parts ?? []) {

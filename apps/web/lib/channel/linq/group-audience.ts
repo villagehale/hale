@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, eq, ne, notInArray } from 'drizzle-orm';
 import { type ContentClass, ROLE_SCOPE } from '~/lib/channel/role-scope';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -122,6 +122,37 @@ export async function readRosterAudience(
     return { rosterId: roster.id, familyId: roster.familyId, status: roster.status, members };
   } catch (err) {
     if (isUndefinedTable(err)) return 'not_migrated';
+    throw err;
+  }
+}
+
+/**
+ * Whether a chat is a family group the floor guards: a family holds it, or Hale seated a
+ * roster for it that did not read it as a 1:1 (`not_group`). A sender that may address
+ * either a 1:1 or a group asks this first; a missing roster table counts as a group, so
+ * the floor then refuses it as `not_migrated`.
+ */
+export async function isHouseholdGroupChat(database: Database, chatId: string): Promise<boolean> {
+  const [holder] = await database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, chatId))
+    .limit(1);
+  if (holder) return true;
+  try {
+    const [roster] = await database
+      .select({ id: schema.linqGroupRosters.id })
+      .from(schema.linqGroupRosters)
+      .where(
+        and(
+          eq(schema.linqGroupRosters.chatId, chatId),
+          ne(schema.linqGroupRosters.status, 'not_group'),
+        ),
+      )
+      .limit(1);
+    return Boolean(roster);
+  } catch (err) {
+    if (isUndefinedTable(err)) return true;
     throw err;
   }
 }

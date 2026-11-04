@@ -98,6 +98,7 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
       timeZone: 'America/Toronto',
       inboundChatId: 'chat-1',
       inboundMessageId: 'm-1',
+      surface: 'reply',
       language: 'fr',
       name: 'Sam',
       kid: 'Maya',
