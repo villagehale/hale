@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { httpsMediaUrl } from '~/lib/channel/inbound-media';
 import { handleLinqGroupMessage } from '~/lib/channel/linq/inbound';
 import { parseLinqWebhook } from '~/lib/channel/linq/payload';
 import { LINQ_WEBHOOK_VERSION } from '~/lib/channel/linq/signature';
@@ -20,10 +21,14 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 /**
  * VIL-466 groups · Preview-only fake group inbound door.
  *
- * POST { chatId?, from, participants: [+1437555…, …], text } is one parent's
- * message in a fake household group. It is shaped as Linq's `message.received`
- * webhook, parsed by the same `parseLinqWebhook`, and run through the same group
- * handler the signed Linq door runs (roster, STOP, turn reader, coach). Every
+ * POST { chatId?, from, participants: [+1437555…, …], text, media? } is one parent's
+ * message in a fake household group. `text` may be empty when `media` is present.
+ * `media` is `[{ url, mime, filename? }]`, the same fields the 1:1 Preview door
+ * takes, or Linq's own names (`media_url`, `mime_type`, `filename`). Each item is
+ * placed on the synthetic `message.received` as a `type: 'media'` part — the shape
+ * the signed group webhook delivers — and classified by the same `parseLinqWebhook`.
+ * The signed webhook route is not involved. The message then runs through the same
+ * group handler the signed Linq door runs (roster, STOP, turn reader, coach). Every
  * group message, tapback, poll and chat update Hale makes in reply is captured by
  * preview-linq-capture.ts and read back with GET ?chatId=.
  *
@@ -39,8 +44,66 @@ type GroupDoorDeps = Parameters<typeof handleLinqGroupMessage>[0] & {
 
 const MIN_PARTICIPANTS = 2;
 const MAX_PARTICIPANTS = 12;
+/** Same cap as the inbound media reader. A longer list is refused, not truncated. */
+const MAX_MEDIA = 8;
 /** A fake parent's text, not a payload: anything longer is refused before it is stored. */
 export const MAX_FAKE_GROUP_TEXT = 2000;
+
+interface FakeGroupAttachment {
+  url: string;
+  mime: string | null;
+  filename: string | null;
+}
+
+function trimmed(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Proof shape `{ url, mime, filename? }` or a Linq media part
+ * `{ url | media_url, mime_type | mime | content_type, filename | name }`.
+ * Only https URLs pass. Field order matches `mediaPartFromLinq`, so the part
+ * this door builds classifies the same way the signed webhook's part would.
+ */
+function readGroupAttachments(raw: unknown): FakeGroupAttachment[] | null | 'invalid' {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MEDIA) return 'invalid';
+  const parts: FakeGroupAttachment[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) return 'invalid';
+    const row = item as Record<string, unknown>;
+    for (const key of ['mime', 'mime_type', 'content_type', 'filename', 'name']) {
+      const value = row[key];
+      if (value !== undefined && value !== null && typeof value !== 'string') return 'invalid';
+    }
+    const url = httpsMediaUrl(trimmed(row.url) ?? trimmed(row.media_url));
+    if (!url) return 'invalid';
+    parts.push({
+      url,
+      mime: trimmed(row.mime_type) ?? trimmed(row.mime) ?? trimmed(row.content_type),
+      filename: trimmed(row.filename) ?? trimmed(row.name),
+    });
+  }
+  return parts;
+}
+
+/** Text plus Linq `type: 'media'` parts. An empty caption is omitted, not sent as blank text. */
+function webhookParts(
+  text: string,
+  attachments: readonly FakeGroupAttachment[] | null,
+): Record<string, unknown>[] {
+  const parts: Record<string, unknown>[] = [];
+  if (text.trim()) parts.push({ type: 'text', value: text });
+  for (const attachment of attachments ?? []) {
+    parts.push({
+      type: 'media',
+      url: attachment.url,
+      ...(attachment.mime ? { mime_type: attachment.mime } : {}),
+      ...(attachment.filename ? { filename: attachment.filename } : {}),
+    });
+  }
+  return parts;
+}
 
 /**
  * Every household this request could reach is a fake one: the family that owns the chat
@@ -111,7 +174,13 @@ export async function handlePreviewFakeGroupInbound(
   const shut = gate(req, env);
   if (shut) return shut;
 
-  let payload: { chatId?: unknown; from?: unknown; participants?: unknown; text?: unknown };
+  let payload: {
+    chatId?: unknown;
+    from?: unknown;
+    participants?: unknown;
+    text?: unknown;
+    media?: unknown;
+  };
   try {
     payload = (await req.json()) as typeof payload;
   } catch {
@@ -122,7 +191,9 @@ export async function handlePreviewFakeGroupInbound(
   const from = fakeSender(payload.from);
   if (!from || !participants.includes(from)) return json({ error: 'sender_not_participant' }, 400);
   const text = typeof payload.text === 'string' ? payload.text : '';
-  if (!text.trim()) return json({ error: 'empty' }, 400);
+  const attachments = readGroupAttachments(payload.media);
+  if (attachments === 'invalid') return json({ error: 'media_invalid' }, 400);
+  if (!text.trim() && !attachments) return json({ error: 'empty' }, 400);
   if (text.length > MAX_FAKE_GROUP_TEXT) return json({ error: 'too_long' }, 413);
   if (payload.chatId !== undefined && !isFakeChatId(payload.chatId)) {
     return json({ error: 'chat_not_fake' }, 400);
@@ -144,7 +215,12 @@ export async function handlePreviewFakeGroupInbound(
     kind: 'roster',
     method: 'POST',
     path: '/preview/group-inbound',
-    body: { messageId, from, text },
+    body: {
+      messageId,
+      from,
+      text,
+      ...(attachments ? { media: attachments } : {}),
+    },
     handles: participants,
     providerMessageId: null,
   });
@@ -162,7 +238,7 @@ export async function handlePreviewFakeGroupInbound(
         is_group: true,
         handles: participants.map((handle) => ({ handle, is_me: false })),
       },
-      parts: [{ type: 'text', value: text }],
+      parts: webhookParts(text, attachments),
     },
   };
   const parsed = parseLinqWebhook(webhook, now);
