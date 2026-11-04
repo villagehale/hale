@@ -43,7 +43,7 @@ const item = (
   over: Partial<HistoryView>,
   executorResult: Record<string, unknown> | null = null,
   clock: FamilyClock = VANCOUVER_CA,
-) => toWhatHaleDidItem(view(over), EXECUTED, executorResult, clock, NOW);
+) => toWhatHaleDidItem(view(over), EXECUTED, executorResult, true, clock, NOW);
 
 describe('toWhatHaleDidItem', () => {
   it('reads a placement Google skipped as a receipt on Hale’s calendar only', () => {
@@ -114,6 +114,37 @@ describe('toWhatHaleDidItem', () => {
     expect(item({ actionType: 'send_email', payload: {} }).what).toBe('Sent an email');
   });
 
+  // An email leaves from one adult's own Gmail. Anyone else sees that Hale sent one,
+  // and when, never to whom or about what. The sender's own reads above are the control.
+  it('reads another adult’s email as the bare receipt with its sent time', () => {
+    const fromOther = (actionType: string) =>
+      toWhatHaleDidItem(
+        view({
+          actionType,
+          preview: 'Email office@example.test — Thursday pickup',
+          payload: { to: 'office@example.test', subject: 'Thursday pickup' },
+        }),
+        EXECUTED,
+        { kind: 'email_sent' },
+        false,
+        VANCOUVER_CA,
+        NOW,
+      );
+    expect(fromOther('send_email')).toMatchObject({
+      what: 'Sent an email',
+      when: 'Sent Jun 20, 9:00 a.m.',
+    });
+    expect(fromOther('reply_to_email').what).toBe('Replied to an email');
+    expect(JSON.stringify(fromOther('send_email'))).not.toMatch(/office@|Thursday pickup/);
+  });
+
+  // Calendar changes land on the family calendar, which every parent shares.
+  it('keeps a calendar receipt whole whoever views it', () => {
+    expect(toWhatHaleDidItem(view({}), EXECUTED, null, false, VANCOUVER_CA, NOW).what).toBe(
+      'Added Swim lesson to Family calendar',
+    );
+  });
+
   it('puts the Google-only event seam on Google Calendar alone', () => {
     expect(item({ actionType: 'create_calendar_event' })).toMatchObject({
       kind: 'calendar',
@@ -149,6 +180,7 @@ describe('toWhatHaleDidItem', () => {
         view({}),
         new Date('2026-06-20T22:15:00Z'),
         null,
+        true,
         { timeZone: 'America/Vancouver', locale: 'en-GB' },
         NOW,
       ).when,
@@ -161,6 +193,7 @@ describe('toWhatHaleDidItem', () => {
         view({ actionType: 'send_email', payload: { to: 'office@example.test' } }),
         new Date('2025-12-01T17:00:00Z'),
         null,
+        true,
         VANCOUVER_CA,
         NOW,
       ).when,

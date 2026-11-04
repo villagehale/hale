@@ -165,6 +165,15 @@ beforeAll(async () => {
     userVisibleState: 'autonomous',
     executedAt: at('2026-06-22T12:05:00Z'),
   });
+  // The parent approved 'a', so it left from their Gmail and reads in full to them.
+  await db.database.insert(schema.auditLog).values({
+    familyId: fam.familyId,
+    actor: fam.parentUserId,
+    actionTaken: 'action.approved_by_human',
+    targetTable: 'actions',
+    targetId: ids.a,
+    occurredAt: at('2026-06-19T15:20:00Z'),
+  });
   await db.database.insert(schema.auditLog).values({
     familyId: fam.familyId,
     actor: 'system',

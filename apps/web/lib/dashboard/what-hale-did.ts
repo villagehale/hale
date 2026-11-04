@@ -1,10 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import type { GoogleCalendarSkipReason } from '@hale/worker/google-calendar-placement';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { loadTeenAccessUnlocks } from '~/lib/teen-access';
 import { type HistoryView, toHistoryView } from './history';
 import { readResolvedActionRows } from './resolved-actions';
+import { HUMAN_APPROVAL_VERB } from './reviewer-notes';
 import { familyHasTeenager } from './trail-query';
 
 /**
@@ -122,11 +123,18 @@ function text(payload: Record<string, unknown> | null, key: string): string | nu
 }
 
 /** The receipt line. A redacted row's payload is already null, so it keeps the
- * placeholder preview and nothing of the payload can reach the line. */
-function receiptLine(view: HistoryView, calendars: readonly CalendarTarget[]): string {
+ * placeholder preview and nothing of the payload can reach the line. An email names its
+ * recipient and subject only to the adult whose Gmail sent it; anyone else reads the
+ * bare receipt. A calendar change is on the shared family calendar, so it reads whole. */
+function receiptLine(
+  view: HistoryView,
+  calendars: readonly CalendarTarget[],
+  sentByViewer: boolean,
+): string {
   if (view.teenRedacted || view.payload === null) return view.preview;
   const email = EMAIL_RECEIPT[view.actionType];
   if (email) {
+    if (!sentByViewer) return email.bare;
     const to = text(view.payload, 'to');
     const subject = text(view.payload, 'subject');
     if (!to) return email.bare;
@@ -176,6 +184,8 @@ export function toWhatHaleDidItem(
   view: HistoryView,
   doneAt: Date,
   executorResult: Record<string, unknown> | null,
+  /** Whether the viewer is the adult whose connection sent this email. */
+  sentByViewer: boolean,
   clock: FamilyClock,
   now: Date = new Date(),
 ): WhatHaleDidItem {
@@ -187,7 +197,7 @@ export function toWhatHaleDidItem(
   return {
     id: view.id,
     kind,
-    what: receiptLine(view, calendars),
+    what: receiptLine(view, calendars, sentByViewer),
     when: timeLine(view, kind, doneAt, clock, now),
     calendars,
     teenRedacted: view.teenRedacted,
@@ -241,6 +251,34 @@ export async function readFamilyOwnClock(
   return { timeZone: row.timeZone, locale: intlLocale(row.locale) };
 }
 
+/**
+ * The adult each email left from, by action id. The executor sends from the approving
+ * parent's own Gmail, and the resume path reads this same approval row
+ * (loadHumanApprover) to choose whose Gmail sends, so it is the stored actor. An email
+ * with no approval row has no sender anyone can be shown as, so it stays bare.
+ */
+async function readEmailSenders(
+  database: Database,
+  familyId: string,
+  actionIds: string[],
+): Promise<Map<string, string>> {
+  if (actionIds.length === 0) return new Map();
+  const rows = await database
+    .select({ actionId: schema.auditLog.targetId, actor: schema.auditLog.actor })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, HUMAN_APPROVAL_VERB),
+        eq(schema.auditLog.targetTable, 'actions'),
+        inArray(schema.auditLog.targetId, actionIds),
+      ),
+    );
+  const senders = new Map<string, string>();
+  for (const row of rows) if (row.actionId) senders.set(row.actionId, row.actor);
+  return senders;
+}
+
 /** Executed email and calendar actions, newest first, teen-redacted for this viewer. */
 export async function readWhatHaleDid(
   database: Database,
@@ -261,7 +299,20 @@ export async function readWhatHaleDid(
     unlocks,
     familyHasTeen,
   });
+  const senders = await readEmailSenders(
+    database,
+    familyId,
+    rows
+      .filter(({ row }) => WHAT_HALE_DID_KIND[row.actionType as ActionType] === 'email')
+      .map(({ row }) => row.id),
+  );
   return rows.map(({ row, executorResult }) =>
-    toWhatHaleDidItem(toHistoryView(row, clock.timeZone), row.resolvedAt, executorResult, clock),
+    toWhatHaleDidItem(
+      toHistoryView(row, clock.timeZone),
+      row.resolvedAt,
+      executorResult,
+      viewerUserId !== null && senders.get(row.id) === viewerUserId,
+      clock,
+    ),
   );
 }
