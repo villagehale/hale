@@ -726,6 +726,71 @@ describe('VIL-588 · six digits are short of a phone number', () => {
   });
 });
 
+describe('VIL-588 · a slash joins digit groups, as every other separator a dialer skips', () => {
+  for (const words of [
+    '555/010/4477',
+    '(202)/555/0142',
+    '11/24/2026',
+    '2026/11/24',
+    '555 / 010 / 4477',
+    '555\uFF0F010\uFF0F4477',
+    '555\u2215010\u22154477',
+    '555\u2044010\u20444477',
+    '555\u29F8010\u29F84477',
+  ]) {
+    it(`held for a Nov 23 2026 event: ${words}`, async () => {
+      expect(await verdicts(words, NOV_23)).toEqual(HELD);
+    });
+  }
+
+  for (const words of ['11/23/2026', '23/11/2026', '2026/11/23', '2026/2027', '1/2 cup']) {
+    it(`sent for a Nov 23 2026 event: ${words}`, async () => {
+      const v = await verdicts(words, NOV_23);
+      expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);
+      expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    });
+  }
+});
+
+describe('VIL-588 · a title carrying an SMS short code is held', () => {
+  const SHORT_CODES: readonly string[] = [
+    'Text 55501 to confirm',
+    'Swim 898211',
+    'Text STOP to 55501.',
+    'Reply to #55501',
+    'Text \uFF15\uFF15\uFF15\uFF10\uFF11',
+    'Text \u0665\u0665\u0665\u0660\u0661',
+    'Text 55\u2726501',
+    'Text 55\u200B501',
+  ];
+  for (const words of SHORT_CODES) {
+    it(`both voices hold the title before any call: ${words}`, async () => {
+      const v = await verdicts(words, NOV_23);
+      expect([v.inviteTitle, v.cancelTitle]).toEqual([HELD.inviteTitle, HELD.cancelTitle]);
+    });
+  }
+
+  it('a writer that adds a short code is refused for the number it invented, as before', () => {
+    expect(
+      textDestination('Swim class, text 55501', { year: 2026, month: 11, day: 23 }),
+    ).toBeNull();
+    expect(
+      calendarInviteRefusals(`Swim class, ${WHEN}, text 55501 ${INVITE_LINK_SLOT}`, INVITE),
+    ).toContain('invented_number');
+    expect(calendarCancelRefusals(`Swim class, ${WHEN}, is off, text 55501`, CANCEL)).toContain(
+      'invented_number',
+    );
+  });
+
+  for (const words of ['Swim class 2026', 'Room 1204', '2026-11-23', '202 555', 'Level 3 2026']) {
+    it(`positive control, sent for a Nov 23 2026 event: ${words}`, async () => {
+      const v = await verdicts(words, NOV_23);
+      expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);
+      expect([v.inviteText, v.cancelText]).toEqual([false, false]);
+    });
+  }
+});
+
 describe('VIL-588 · the gate reads a title of any length in linear time', () => {
   const july = { year: 2026, month: 7, day: 23 };
   const n = 100_000;
@@ -736,6 +801,8 @@ describe('VIL-588 · the gate reads a title of any length in linear time', () =>
     { row: 'plus signs', words: '+'.repeat(n), shape: null },
     { row: 'a date run on by dots', words: `2026.07.23${'.'.repeat(n)}1`, shape: 'phone' },
     { row: 'a date run on by brackets', words: `2026.07.23${'('.repeat(n)}1`, shape: 'phone' },
+    { row: 'a date run on by slashes', words: `2026/07/23${'/'.repeat(n)}1`, shape: 'phone' },
+    { row: 'digits and slashes repeated', words: '1/'.repeat(n / 2), shape: 'phone' },
     { row: 'spaces between digits', words: `1${' '.repeat(n)}234567`, shape: 'phone' },
     {
       row: 'no-break spaces between digits',
@@ -870,7 +937,7 @@ describe('VIL-588 · a scheme name is exempt only when a closing mark and then n
 });
 
 /*
- * Round 7 · a symbol or a lone combining mark between a label and its TLD, or between the
+ * Round 7 · a symbol or a combining mark between a label and its TLD, or between the
  * groups of a number, hides nothing: a reader skips it, and a GSM-7 fold (the cancel
  * renderer's until this round) deletes it, so "pool.\u2726org" reads as "pool.org".
  */
@@ -878,6 +945,7 @@ const WIRE_EVASIONS: readonly { row: string; destination: string }[] = [
   { row: 'a symbol GSM-7 cannot carry inside a domain', destination: 'pool.\u2726org' },
   { row: 'symbols GSM-7 cannot carry inside a phone', destination: '555\u2726010\u27264477' },
   { row: 'a lone combining mark inside a domain', destination: 'pool.\u0301org' },
+  { row: 'combining marks on the digits of a phone', destination: '555\u0301010\u03014477' },
 ];
 
 describe('VIL-588 · round 7: a character the GSM-7 fold deletes never hides a destination', () => {
@@ -975,7 +1043,7 @@ describe('VIL-588 · round 7: the text the gate read is the text that is sent, i
       const cancelBody = `${summary}, ${WHEN}, is off.`;
       expect(cancelled).toEqual({ status: 'composed', body: cancelBody });
       expect(j.seen.map((input) => input.text)).toEqual([cancelBody]);
-      expect(calendarCancelSmsText({ summary, when: WHEN, line: cancelBody })).toBe(cancelBody);
+      expect(calendarCancelSmsText({ when: WHEN, line: cancelBody })).toBe(cancelBody);
     });
   }
 
@@ -987,7 +1055,7 @@ describe('VIL-588 · round 7: the text the gate read is the text that is sent, i
       summary: '\u6E38\u6CF3\u8BFE',
     });
     expect(outcome).toEqual({ status: 'composed', body: zh });
-    expect(calendarCancelSmsText({ summary: '\u6E38\u6CF3\u8BFE', when: WHEN, line: zh })).toBe(zh);
+    expect(calendarCancelSmsText({ when: WHEN, line: zh })).toBe(zh);
   });
 
   it('a CJK date in the title reaches the writer in both voices, and in the text is sent', async () => {
