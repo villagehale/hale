@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { pageOps } from '~/lib/monitoring/failure-page';
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -14,7 +15,7 @@ import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 export async function holdSender(
   database: Database,
   input: { phoneHash: string; providerMessageId: string; now: Date },
-): Promise<'held' | 'already_held'> {
+): Promise<'held' | 'already_held' | 'held_id_collision'> {
   const inserted = await database
     .insert(schema.optOutHeldMessages)
     .values({
@@ -29,7 +30,24 @@ export async function holdSender(
     { hold: 'opt_out_unread' },
     'opt-out read failed twice - sender held from proactive sends until the text is re-read; the opt-out hold sweep pages it',
   );
-  return inserted.length > 0 ? 'held' : 'already_held';
+  if (inserted.length > 0) return 'held';
+  const [existing] = await database
+    .select({ phoneHash: schema.optOutHeldMessages.phoneHash })
+    .from(schema.optOutHeldMessages)
+    .where(eq(schema.optOutHeldMessages.providerMessageId, input.providerMessageId))
+    .limit(1);
+  if (existing?.phoneHash === input.phoneHash) return 'already_held';
+  // The id is the key across every transport, so another number's text already holds it.
+  // Fail closed: this number is held by number until a human resolves the collision.
+  await database
+    .insert(schema.optOutReadHolds)
+    .values({ phoneHash: input.phoneHash, heldAt: input.now })
+    .onConflictDoNothing();
+  await pageOps(database, {
+    site: 'opt_out_hold_unwritten',
+    facts: { outcome: 'held_id_collision', numbers: 2 },
+  });
+  return 'held_id_collision';
 }
 
 /** This exact text has been read. Releases its own row and no other. */

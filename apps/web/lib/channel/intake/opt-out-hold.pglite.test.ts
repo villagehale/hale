@@ -1,8 +1,27 @@
 import { schema } from '@hale/db';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type OutboundGatePorts, assertProactiveSendAllowed } from '~/lib/channel/outbound-gate';
 import { createTestDb } from '~/lib/testing/pglite';
 import { holdSender, isSenderHeld, releaseHeldMessage } from './opt-out-hold';
+
+const WEBHOOK = 'https://hooks.slack.test/ops';
+
+/** Slack, faked at the webhook fetch: what #ops would have read. */
+function stubWebhook(): string[] {
+  const posted: string[] = [];
+  vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+  vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+    if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+    return new Response('ok', { status: 200 });
+  });
+  return posted;
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('#868 failed-read hold', () => {
   // PGlite's first boot under the full CI suite has crossed the 5s test timeout.
@@ -36,6 +55,39 @@ describe('#868 failed-read hold', () => {
     await releaseHeldMessage(db, 'pm-3');
     expect(await isSenderHeld(db, 'hash-c')).toBe(true);
     expect(await isSenderHeld(db, 'hash-d')).toBe(false);
+  }, 30_000);
+
+  it('one provider id on two numbers holds both, pages #ops, and names the collision', async () => {
+    const db = (await createTestDb()).database;
+    const now = new Date('2026-10-14T20:00:00Z');
+    const posted = stubWebhook();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await holdSender(db, { phoneHash: 'hash-one', providerMessageId: 'pm-shared', now });
+
+    // Positive control: the same number replaying its own id is a replay, and pages nobody.
+    expect(
+      await holdSender(db, { phoneHash: 'hash-one', providerMessageId: 'pm-shared', now }),
+    ).toBe('already_held');
+    expect(await db.select().from(schema.optOutReadHolds)).toEqual([]);
+    expect(posted).toEqual([]);
+
+    expect(
+      await holdSender(db, { phoneHash: 'hash-two', providerMessageId: 'pm-shared', now }),
+    ).toBe('held_id_collision');
+    expect(await isSenderHeld(db, 'hash-one')).toBe(true);
+    expect(await isSenderHeld(db, 'hash-two')).toBe(true);
+    // The second number is held per number, beside the first number's row.
+    expect(await db.select().from(schema.optOutReadHolds)).toEqual([
+      { phoneHash: 'hash-two', heldAt: now, repointedAt: null },
+    ]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('held_id_collision');
+    expect(posted[0]).not.toContain('hash-two');
+    expect(posted[0]).not.toContain('pm-shared');
+    // The first number's read still releases only its own row.
+    expect(await releaseHeldMessage(db, 'pm-shared')).toBe('released');
+    expect(await isSenderHeld(db, 'hash-one')).toBe(false);
+    expect(await isSenderHeld(db, 'hash-two')).toBe(true);
   }, 30_000);
 
   it('the outbound gate holds every proactive kind, urgent or not, while held', async () => {
