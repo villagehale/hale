@@ -225,6 +225,10 @@ async function main() {
       situation: reading.situation,
       who: reading.who,
       where: `crisis-reply eval ${f.id}`,
+      inboundId: `crisis-reply-eval-${f.id}`,
+      familyId: null,
+      // No #ops in an eval: a miss is named as unpaged, never as paged.
+      pager: { page: async () => 'page_not_configured' },
       writer,
     });
     if (outcome.status !== 'sent') {

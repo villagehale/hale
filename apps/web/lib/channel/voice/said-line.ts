@@ -405,16 +405,45 @@ export function crisisReplyLanguage(
   return known ?? reading?.language ?? null;
 }
 
+/** What became of the #ops page for a crisis that got no reply. A page that did not
+ * leave is its own outcome, never folded into `paged` (rule #11). */
+export type CrisisPageOutcome = 'paged' | 'already_paged' | 'page_failed' | 'page_not_configured';
+
+type CrisisUnansweredReason = 'no_writer' | 'write_failed' | CrisisViolation;
+
+/**
+ * A crisis flagged with no reply sent. The page itself carries kind, where, reason and
+ * writes only; the inbound and family ids are for the claim and the audit row. Never a
+ * draft, the parent's words, a phone or a name (rule #1).
+ */
+export interface CrisisUnanswered {
+  kind: CrisisKind;
+  where: string;
+  reason: CrisisUnansweredReason;
+  /** Writes attempted before giving up: none with no writer, else the draft and its re-ask. */
+  writes: 0 | 2;
+  /** The provider's id for the inbound: one page per inbound, however often it is redelivered. */
+  inboundId: string;
+  /** The household, once provisioned; null before there is one. */
+  familyId: string | null;
+}
+
+/** Pages #ops at once (monitoring/failure-page.ts). Required: a crisis with no reply
+ * always reaches a human. */
+export interface CrisisPager {
+  page(alert: CrisisUnanswered): Promise<CrisisPageOutcome>;
+}
+
 export type CrisisReplyOutcome =
   | { status: 'sent'; body: string; attempts: 1 | 2 }
-  | { status: 'unanswered'; reason: 'no_writer' | 'write_failed' | CrisisViolation };
+  | { status: 'unanswered'; reason: CrisisUnansweredReason; page: CrisisPageOutcome };
 
 /**
  * Every crisis reply: the said-line writer, from facts only, through
  * {@link crisisReplyViolation}. A failed check, or a write that returned nothing (the
  * said-line structural check refused it, or the call failed), is re-asked once with the
- * reason named as a fact. A second failure, or no writer, pages #ops and sends nothing
- * (#868: there is no fixed crisis line).
+ * reason named as a fact. A second failure, or no writer, pages #ops through `pager` and
+ * sends nothing (#868: there is no fixed crisis line).
  */
 export async function deliverCrisisReply(input: {
   kind: CrisisKind;
@@ -425,12 +454,24 @@ export async function deliverCrisisReply(input: {
   /** Who the reader read is in danger; null when no crisis reading named one. */
   who: CrisisWho | null;
   where: string;
+  inboundId: string;
+  familyId: string | null;
+  pager: CrisisPager;
   writer: SaidLineWriter | null | undefined;
 }): Promise<CrisisReplyOutcome> {
-  const { kind, region, language, situation, who, where, writer } = input;
+  const { kind, region, language, situation, who, where, inboundId, familyId, pager, writer } =
+    input;
   if (!writer) {
-    logCrisisUnanswered(kind, where, 'no_writer');
-    return { status: 'unanswered', reason: 'no_writer' };
+    const reason = 'no_writer';
+    const page = await logCrisisUnanswered(pager, {
+      kind,
+      where,
+      reason,
+      writes: 0,
+      inboundId,
+      familyId,
+    });
+    return { status: 'unanswered', reason, page };
   }
   const first = checkCrisisDraft(
     kind,
@@ -444,8 +485,15 @@ export async function deliverCrisisReply(input: {
     language,
   );
   if ('body' in second) return { status: 'sent', body: second.body, attempts: 2 };
-  logCrisisUnanswered(kind, where, second.reason);
-  return { status: 'unanswered', reason: second.reason };
+  const page = await logCrisisUnanswered(pager, {
+    kind,
+    where,
+    reason: second.reason,
+    writes: 2,
+    inboundId,
+    familyId,
+  });
+  return { status: 'unanswered', reason: second.reason, page };
 }
 
 function checkCrisisDraft(
@@ -460,13 +508,32 @@ function checkCrisisDraft(
 
 /**
  * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
- * fall back on, anywhere). Never silent: an urgent, body-free log for #ops (rule #1).
+ * fall back on, anywhere). Never silent: an urgent, body-free log, then the page to
+ * #ops. A page that did not leave is logged urgent again and named in the outcome.
  */
-export function logCrisisUnanswered(kind: CrisisKind, where: string, reason: string): void {
+export async function logCrisisUnanswered(
+  pager: CrisisPager,
+  alert: CrisisUnanswered,
+): Promise<CrisisPageOutcome> {
+  const { kind, where, reason } = alert;
   console.error(
     { urgent: true, kind, where, reason },
     'URGENT: crisis flagged, no reply sent - page #ops now',
   );
+  let page: CrisisPageOutcome;
+  try {
+    page = await pager.page(alert);
+  } catch (err) {
+    console.error('crisis page: pager threw', { err: err instanceof Error ? err.name : 'unknown' });
+    page = 'page_failed';
+  }
+  if (page === 'page_failed' || page === 'page_not_configured') {
+    console.error(
+      { urgent: true, kind, where, reason, page },
+      'URGENT: crisis page did not go out - nobody in #ops was told',
+    );
+  }
+  return page;
 }
 
 function conveyFacts(input: SaidLineInput): ConveyFact[] | null {

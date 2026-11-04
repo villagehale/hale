@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { TURN_DEFERRED_ACTION, TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
+import { type SaidLineWriter, deliverCrisisReply } from '~/lib/channel/voice/said-line';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  CLAIM_EPOCH,
+  CRISIS_UNANSWERED_AUDIT_ACTION,
+  CRISIS_UNANSWERED_PAGE_ROUTE,
   DEAD_LETTER_PAGE_ROUTE,
   DEFERRED_PILEUP_PAGE_ROUTE,
   DEFERRED_PILEUP_THRESHOLD,
@@ -16,12 +20,14 @@ import {
   TURN_DEFERRED_AUDIT_ACTION,
   TURN_FAILED_AUDIT_ACTION,
   TURN_FAILURE_PAGE_ROUTE,
+  composeCrisisUnansweredAlert,
   composeDeadLetterAlert,
   composeDeferredPileupAlert,
   composeFirstHelloFailureAlert,
   composeProviderIncidentAlert,
   composeTurnFailureAlert,
   failureCategory,
+  failurePageCrisisPager,
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
   noteFirstHelloFailure,
@@ -643,5 +649,213 @@ describe('provider incidents, dead letters, and deferral pile-ups', () => {
       route: PROVIDER_INCIDENT_PAGE_ROUTE,
     });
     expect(claims.some((row) => row.route === DEFERRED_PILEUP_PAGE_ROUTE)).toBe(false);
+  });
+});
+
+describe('a crisis with no reply pages #ops at once (real DDL)', () => {
+  let db: TestDb;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await db.close();
+  });
+
+  const DRAFT = 'Call or text 988 or see example.org';
+  const INBOUND = 'provider-inbound-crisis-a';
+
+  /** Two drafts that both fail the crisis check (a link), so nothing is sendable. */
+  function failingWriter(): SaidLineWriter {
+    return { write: async () => DRAFT };
+  }
+
+  async function auditActions() {
+    const rows = await db.database
+      .select({ action: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog);
+    return rows;
+  }
+
+  function crisisTurn(
+    pager: ReturnType<typeof failurePageCrisisPager>,
+    over: { inboundId?: string; familyId?: string | null; writer?: SaidLineWriter | null } = {},
+  ) {
+    return deliverCrisisReply({
+      kind: 'mental',
+      language: null,
+      region: null,
+      situation: null,
+      who: null,
+      where: 'intake crisis',
+      inboundId: over.inboundId ?? INBOUND,
+      familyId: over.familyId === undefined ? null : over.familyId,
+      pager,
+      writer: over.writer === undefined ? failingWriter() : over.writer,
+    });
+  }
+
+  it('a writer that fails twice pages once, with kind, where and reason, and audits it body-free', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await seedFamily(db.database, 'Crisis Family');
+    const { texts, post } = recorder();
+
+    const outcome = await crisisTurn(failurePageCrisisPager(db.database, { post, now: NOW }), {
+      familyId: family.familyId,
+    });
+
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'link', page: 'paged' });
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('crisis flagged, no reply sent');
+    expect(texts[0]).toContain('kind mental');
+    expect(texts[0]).toContain('where intake_crisis');
+    expect(texts[0]).toContain('reason link');
+    expect(texts[0]).toContain('writes 2');
+    expect(texts[0]).not.toContain('example');
+    expect(texts[0]).not.toContain('988');
+    expect(texts[0]).not.toContain(family.familyId);
+    expect(texts[0]).not.toContain(INBOUND);
+    assertNoParentPayload(texts[0] ?? '');
+    const audited = (await auditActions()).filter(
+      (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
+    );
+    expect(audited).toEqual([
+      {
+        action: 'crisis_unanswered',
+        after: { kind: 'mental', where: 'intake crisis', reason: 'link', writes: 2 },
+      },
+    ]);
+    expect(JSON.stringify(audited)).not.toContain('example');
+    // Positive control: the draft check above does see the draft.
+    expect(DRAFT).toContain('example');
+  });
+
+  it('no writer, and no family yet, still pages: the claim row is the record', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { texts, post } = recorder();
+
+    const outcome = await crisisTurn(failurePageCrisisPager(db.database, { post, now: NOW }), {
+      writer: null,
+    });
+
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'paged' });
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('reason no_writer');
+    expect(texts[0]).toContain('writes 0');
+    expect(await auditActions()).toEqual([]);
+    const claims = await db.database
+      .select({ route: schema.rateLimits.route, count: schema.rateLimits.count })
+      .from(schema.rateLimits);
+    expect(claims).toEqual([{ route: CRISIS_UNANSWERED_PAGE_ROUTE, count: 1 }]);
+  });
+
+  it('a pager that throws is page_failed, the audit row still lands, and the sweep re-pages it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await seedFamily(db.database, 'Crisis Retry');
+    const throwing = async (): Promise<'sent'> => {
+      throw new Error('webhook down');
+    };
+
+    const outcome = await crisisTurn(
+      failurePageCrisisPager(db.database, { post: throwing, now: NOW }),
+      { familyId: family.familyId },
+    );
+
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'link', page: 'page_failed' });
+    const audited = (await auditActions()).filter(
+      (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
+    );
+    expect(audited).toHaveLength(1);
+
+    const { texts, post } = recorder();
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+    const again = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(sweep.crisisUnanswered).toEqual({ posted: 1, deduped: 0, failed: 0 });
+    expect(again.crisisUnanswered).toEqual({ posted: 0, deduped: 0, failed: 0 });
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('kind mental');
+    expect(texts[0]).toContain('where intake_crisis');
+    expect(texts[0]).toContain('reason link');
+    expect(texts[0]).not.toContain('example');
+  });
+
+  it('an unconfigured webhook is named, and the page stays owed for the sweep', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unconfigured = async () => 'skipped_not_configured' as const;
+
+    const outcome = await crisisTurn(
+      failurePageCrisisPager(db.database, { post: unconfigured, now: NOW }),
+      { writer: null },
+    );
+
+    expect(outcome).toEqual({
+      status: 'unanswered',
+      reason: 'no_writer',
+      page: 'page_not_configured',
+    });
+    const { texts, post } = recorder();
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(sweep.crisisUnanswered.posted).toBe(1);
+    expect(texts).toHaveLength(1);
+  });
+
+  it('the same inbound delivered twice pages once; another inbound pages again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await seedFamily(db.database, 'Crisis Twice');
+    const { texts, post } = recorder();
+    const pager = failurePageCrisisPager(db.database, { post, now: NOW });
+
+    const first = await crisisTurn(pager, { familyId: family.familyId });
+    const redelivered = await crisisTurn(pager, { familyId: family.familyId });
+
+    expect(first).toMatchObject({ page: 'paged' });
+    expect(redelivered).toMatchObject({ page: 'already_paged' });
+    expect(texts).toHaveLength(1);
+    const audited = (await auditActions()).filter(
+      (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
+    );
+    expect(audited).toHaveLength(1);
+
+    // Positive control: a different inbound is a different crisis and pages.
+    const other = await crisisTurn(pager, {
+      familyId: family.familyId,
+      inboundId: 'provider-inbound-crisis-b',
+    });
+    expect(other).toMatchObject({ page: 'paged' });
+    expect(texts).toHaveLength(2);
+  });
+
+  it('a crisis claim left in progress by a crashed poster is released and paged by the sweep', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const crashedAt = Math.floor((NOW.getTime() - 3 * 60 * 1000) / 1000);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: `${'a'.repeat(32)}:emergency:intake_crisis:no_writer:0`,
+      route: CRISIS_UNANSWERED_PAGE_ROUTE,
+      windowStart: CLAIM_EPOCH,
+      count: crashedAt,
+    });
+    const { texts, post } = recorder();
+
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(sweep.crisisUnanswered.posted).toBe(1);
+    expect(texts[0]).toContain('kind emergency');
+    expect(texts[0]).toContain('reason no_writer');
+  });
+
+  it('the alert drops a phone-shaped or worded field rather than carry it', () => {
+    const text = composeCrisisUnansweredAlert({
+      kind: 'mental',
+      where: PHONE_SHAPED,
+      reason: PARENT_WORDS,
+      writes: 2,
+    });
+    expect(text).toContain('where redacted');
+    expect(text).not.toContain(PHONE_SHAPED);
+    expect(text).not.toContain(PARENT_WORDS);
+    assertNoParentPayload(text);
   });
 });

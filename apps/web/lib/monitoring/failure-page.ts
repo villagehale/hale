@@ -1,7 +1,13 @@
+import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { type SQL, and, asc, eq, gt, gte, lt, sql } from 'drizzle-orm';
+import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
+import type {
+  CrisisPageOutcome,
+  CrisisPager,
+  CrisisUnanswered,
+} from '~/lib/channel/voice/said-line';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
   INCIDENT_FAILURES,
@@ -58,6 +64,14 @@ import {
  *   - deferred pile-up: eight or more `sms_turn_deferred` rows in the current
  *     hour, one page per hour. Canary turns are left out of all three.
  *
+ * A crisis flagged with no reply sent (VIL-559) pages at once, in the request that
+ * gave up on the reply, not on the next sweep. The text carries kind, where, reason
+ * and how many writes were tried. The claim row is the record, as with first hellos:
+ * most intake crises come before a family exists, and audit_log needs one. Identifier
+ * is `<inbound key>:<kind>:<where>:<reason>:<writes>`, the inbound key a hash of the
+ * provider's inbound id, so a redelivered inbound pages once. Once a family exists a
+ * body-free `crisis_unanswered` audit row is written beside it (rule #6).
+ *
  * PostHog error tracking is not fed from here. The server has no PostHog
  * client: browser `posthog-js` can `captureException`, and server capture is a
  * raw POST of named product events with no `posthog-node` client
@@ -81,6 +95,12 @@ export const DEAD_LETTER_PAGE_ROUTE = 'ops:turn-dead';
 
 /** One Slack page per hour while deferrals are piled up. */
 export const DEFERRED_PILEUP_PAGE_ROUTE = 'ops:deferred-pileup';
+
+/** One Slack page per inbound crisis that got no reply, sent at once. */
+export const CRISIS_UNANSWERED_PAGE_ROUTE = 'ops:crisis-unanswered';
+
+/** The audit row for a crisis that got no reply, once the parent has a family. */
+export const CRISIS_UNANSWERED_AUDIT_ACTION = 'crisis_unanswered';
 
 /**
  * The model these turns call. The classifier this page reuses is Anthropic's
@@ -113,6 +133,8 @@ export const CLAIM_EPOCH = new Date(0);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const CRISIS_INBOUND_KEY_RE = /^[0-9a-f]{32}$/;
+
 export interface FailurePageCounts {
   posted: number;
   deduped: number;
@@ -125,6 +147,7 @@ export interface FailurePageResult {
   providerIncidents: FailurePageCounts;
   deadLetters: FailurePageCounts;
   deferredPileups: FailurePageCounts;
+  crisisUnanswered: FailurePageCounts;
 }
 
 export interface FailurePageDeps {
@@ -242,6 +265,47 @@ export function composeDeferredPileupAlert(input: {
   return `Hale: deferred turns piled up. count ${count}. window ${windowMinutes}m.`;
 }
 
+export function composeCrisisUnansweredAlert(input: {
+  kind: string;
+  where: string;
+  reason: string;
+  writes: number;
+}): string {
+  const writes =
+    Number.isSafeInteger(input.writes) && input.writes >= 0 ? String(input.writes) : '0';
+  return [
+    'Hale: URGENT crisis flagged, no reply sent.',
+    `kind ${failureCategory(input.kind)}.`,
+    `where ${failureCategory(input.where)}.`,
+    `reason ${failureCategory(input.reason)}.`,
+    `writes ${writes}.`,
+  ].join(' ');
+}
+
+/** Fixed-shape, so the identifier parses; the provider's id is never stored as is. */
+function crisisInboundKey(inboundId: string): string {
+  return createHash('sha256').update(inboundId).digest('hex').slice(0, 32);
+}
+
+function crisisIdentifier(key: string, alert: CrisisUnanswered): string {
+  return [
+    key,
+    failureCategory(alert.kind),
+    failureCategory(alert.where),
+    failureCategory(alert.reason),
+    String(alert.writes),
+  ].join(':');
+}
+
+function parseCrisisIdentifier(
+  identifier: string,
+): { kind: string; where: string; reason: string; writes: number } | null {
+  const [key, kind, where, reason, writes, ...rest] = identifier.split(':');
+  if (rest.length > 0 || !key || !CRISIS_INBOUND_KEY_RE.test(key)) return null;
+  if (!kind || !where || !reason || !writes || !/^\d$/.test(writes)) return null;
+  return { kind, where, reason, writes: Number(writes) };
+}
+
 function providerIncidentWindow(now: Date): Date {
   const windowMs = PROVIDER_INCIDENT_WINDOW_HOURS * 3_600_000;
   return new Date(Math.floor(now.getTime() / windowMs) * windowMs);
@@ -340,6 +404,18 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
         lt(schema.rateLimits.count, staleBefore),
       ),
     );
+  // So is an unanswered crisis's.
+  await database
+    .update(schema.rateLimits)
+    .set({ count: UNALERTED_COUNT })
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        gt(schema.rateLimits.count, ALERTED_COUNT),
+        lt(schema.rateLimits.count, staleBefore),
+      ),
+    );
 }
 
 async function claimInsert(
@@ -384,6 +460,28 @@ async function claimHello(database: Database, identifier: string, stamp: number)
   return claimed.length > 0;
 }
 
+/** Take an owed (count 0) claim on `route`. False when it is paged or being paged. */
+async function claimOwed(
+  database: Database,
+  route: string,
+  identifier: string,
+  stamp: number,
+): Promise<boolean> {
+  const claimed = await database
+    .update(schema.rateLimits)
+    .set({ count: stamp })
+    .where(
+      and(
+        eq(schema.rateLimits.route, route),
+        eq(schema.rateLimits.identifier, identifier),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        eq(schema.rateLimits.count, UNALERTED_COUNT),
+      ),
+    )
+    .returning({ id: schema.rateLimits.id });
+  return claimed.length > 0;
+}
+
 async function finishClaim(
   database: Database,
   route: string,
@@ -402,8 +500,12 @@ async function finishClaim(
     await database.update(schema.rateLimits).set({ count: ALERTED_COUNT }).where(claim);
     return;
   }
-  // First hellos and dead letters keep the row: count 0 means "still owed".
-  if (route === FIRST_HELLO_PAGE_ROUTE || route === DEAD_LETTER_PAGE_ROUTE) {
+  // First hellos, dead letters and crises keep the row: count 0 means "still owed".
+  if (
+    route === FIRST_HELLO_PAGE_ROUTE ||
+    route === DEAD_LETTER_PAGE_ROUTE ||
+    route === CRISIS_UNANSWERED_PAGE_ROUTE
+  ) {
     await database.update(schema.rateLimits).set({ count: UNALERTED_COUNT }).where(claim);
     return;
   }
@@ -519,6 +621,22 @@ async function loadHelloCandidates(database: Database): Promise<HelloCandidate[]
   return candidates;
 }
 
+async function postAlert(
+  post: (text: string) => Promise<OpsPageOutcome>,
+  route: string,
+  text: string,
+): Promise<OpsPageOutcome> {
+  try {
+    return await post(text);
+  } catch (err) {
+    console.error('failure page: post threw', {
+      route,
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return 'failed';
+  }
+}
+
 async function deliver(
   database: Database,
   route: string,
@@ -528,17 +646,8 @@ async function deliver(
   post: (text: string) => Promise<OpsPageOutcome>,
   counts: FailurePageCounts,
   windowStart: Date = CLAIM_EPOCH,
-): Promise<void> {
-  let outcome: OpsPageOutcome;
-  try {
-    outcome = await post(text);
-  } catch (err) {
-    console.error('failure page: post threw', {
-      route,
-      err: err instanceof Error ? err.name : 'unknown',
-    });
-    outcome = 'failed';
-  }
+): Promise<OpsPageOutcome> {
+  const outcome = await postAlert(post, route, text);
   const posted = outcome === 'sent';
   try {
     await finishClaim(database, route, identifier, stamp, posted, windowStart);
@@ -551,6 +660,7 @@ async function deliver(
   }
   if (posted) counts.posted += 1;
   else counts.failed += 1;
+  return outcome;
 }
 
 async function pageTurns(
@@ -761,6 +871,44 @@ async function pageDeadLetters(
   }
 }
 
+async function pageCrisesUnanswered(
+  database: Database,
+  post: (text: string) => Promise<OpsPageOutcome>,
+  now: Date,
+  counts: FailurePageCounts,
+): Promise<void> {
+  const rows = await database
+    .select({ identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        eq(schema.rateLimits.count, UNALERTED_COUNT),
+      ),
+    )
+    .limit(MAX_PER_RUN);
+  const stamp = claimStamp(now);
+  for (const row of rows) {
+    const recorded = parseCrisisIdentifier(row.identifier);
+    if (!recorded) continue;
+    if (!(await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, row.identifier, stamp))) {
+      counts.deduped += 1;
+      continue;
+    }
+    const text = composeCrisisUnansweredAlert(recorded);
+    await deliver(
+      database,
+      CRISIS_UNANSWERED_PAGE_ROUTE,
+      row.identifier,
+      text,
+      stamp,
+      post,
+      counts,
+    );
+  }
+}
+
 async function countDeferredRows(database: Database, since: Date): Promise<number> {
   const rows = await database
     .select({ id: schema.auditLog.id })
@@ -828,11 +976,19 @@ export async function pageFailureAlerts(
     providerIncidents: emptyCounts(),
     deadLetters: emptyCounts(),
     deferredPileups: emptyCounts(),
+    crisisUnanswered: emptyCounts(),
   };
   try {
     await releaseStaleClaims(database, now);
   } catch (err) {
     console.error('failure page: stale claim release threw', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+  try {
+    await pageCrisesUnanswered(database, post, now, result.crisisUnanswered);
+  } catch (err) {
+    console.error('failure page: crisis sweep threw', {
       err: err instanceof Error ? err.name : 'unknown',
     });
   }
@@ -984,6 +1140,126 @@ export async function noteDeadLetteredTurn(
     });
   }
   return pageFailureAlerts(database, deps);
+}
+
+function crisisPageOutcome(outcome: OpsPageOutcome): CrisisPageOutcome {
+  if (outcome === 'sent') return 'paged';
+  if (outcome === 'skipped_not_configured') return 'page_not_configured';
+  return 'page_failed';
+}
+
+/**
+ * The claim for this inbound's crisis, recorded once, then taken. Null when this
+ * inbound is already paged, or another request is paging it now. The first record
+ * also writes the audit row when there is a family to write it against.
+ */
+async function claimCrisisPage(
+  database: Database,
+  alert: CrisisUnanswered,
+  stamp: number,
+): Promise<string | null> {
+  const key = crisisInboundKey(alert.inboundId);
+  const prior = await database
+    .select({ identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE),
+        eq(schema.rateLimits.windowStart, CLAIM_EPOCH),
+        like(schema.rateLimits.identifier, `${key}:%`),
+      ),
+    )
+    .limit(1);
+  let identifier = prior[0]?.identifier;
+  if (!identifier) {
+    identifier = crisisIdentifier(key, alert);
+    const inserted = await database
+      .insert(schema.rateLimits)
+      .values({
+        identifier,
+        route: CRISIS_UNANSWERED_PAGE_ROUTE,
+        windowStart: CLAIM_EPOCH,
+        count: UNALERTED_COUNT,
+      })
+      .onConflictDoNothing({
+        target: [
+          schema.rateLimits.identifier,
+          schema.rateLimits.route,
+          schema.rateLimits.windowStart,
+        ],
+      })
+      .returning({ id: schema.rateLimits.id });
+    if (inserted.length > 0 && alert.familyId !== null) {
+      await auditCrisis(database, alert.familyId, alert);
+    }
+  }
+  const claimed = await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, identifier, stamp);
+  return claimed ? identifier : null;
+}
+
+/** Body-free (rule #1). A failed write is logged and does not hold the page back. */
+async function auditCrisis(
+  database: Database,
+  familyId: string,
+  alert: CrisisUnanswered,
+): Promise<void> {
+  try {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: CRISIS_UNANSWERED_AUDIT_ACTION,
+      after: { kind: alert.kind, where: alert.where, reason: alert.reason, writes: alert.writes },
+    });
+  } catch (err) {
+    console.error('failure page: crisis audit row threw', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+  }
+}
+
+/**
+ * A crisis was flagged and no reply went out: page #ops now, once per inbound. If the
+ * claim cannot be recorded the page still goes, without one — a crisis never waits on
+ * the ledger. A page that did not leave stays owed, and the sweep retries it.
+ */
+export async function noteCrisisUnanswered(
+  database: Database,
+  alert: CrisisUnanswered,
+  deps: FailurePageDeps = {},
+): Promise<CrisisPageOutcome> {
+  const now = deps.now ?? new Date();
+  const post = deps.post ?? ((text: string) => postOpsSlack(text));
+  const text = composeCrisisUnansweredAlert(alert);
+  const stamp = claimStamp(now);
+  let identifier: string | null;
+  try {
+    identifier = await claimCrisisPage(database, alert, stamp);
+  } catch (err) {
+    console.error('failure page: crisis claim threw - paging without one', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return crisisPageOutcome(await postAlert(post, CRISIS_UNANSWERED_PAGE_ROUTE, text));
+  }
+  if (identifier === null) return 'already_paged';
+  return crisisPageOutcome(
+    await deliver(
+      database,
+      CRISIS_UNANSWERED_PAGE_ROUTE,
+      identifier,
+      text,
+      stamp,
+      post,
+      emptyCounts(),
+    ),
+  );
+}
+
+/** The production crisis pager (said-line.ts's port). */
+export function failurePageCrisisPager(
+  database: Database,
+  deps: FailurePageDeps = {},
+): CrisisPager {
+  return { page: (alert) => noteCrisisUnanswered(database, alert, deps) };
 }
 
 /** Inline hook. The cron is the backstop when this never runs or the post fails. */

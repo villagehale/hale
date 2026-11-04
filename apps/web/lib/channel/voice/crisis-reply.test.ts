@@ -4,7 +4,13 @@ import {
   CRISIS_WHO,
   crisisFactsForRegion,
 } from '~/lib/channel/crisis-resources';
-import type { SaidLineInput, SaidLineWriter } from './said-line';
+import type {
+  CrisisPageOutcome,
+  CrisisPager,
+  CrisisUnanswered,
+  SaidLineInput,
+  SaidLineWriter,
+} from './said-line';
 import {
   CRISIS_VIOLATION_FACT,
   EMERGENCY_FIRST_STEP_FACTS,
@@ -15,6 +21,31 @@ import {
 } from './said-line';
 
 const PAGE = 'URGENT: crisis flagged, no reply sent - page #ops now';
+const INBOUND = 'provider-inbound-crisis-1';
+const FAMILY = '00000000-0000-4000-8000-00000000c559';
+
+/** The pager port, recorded: every alert it was handed, answering `outcome` or throwing it. */
+function recordingPager(outcome: CrisisPageOutcome | Error = 'paged'): {
+  pager: CrisisPager;
+  alerts: CrisisUnanswered[];
+} {
+  const alerts: CrisisUnanswered[] = [];
+  return {
+    alerts,
+    pager: {
+      async page(alert) {
+        alerts.push(alert);
+        if (outcome instanceof Error) throw outcome;
+        return outcome;
+      },
+    },
+  };
+}
+
+/** The inbound this crisis arrived on, and the pager that hears about a miss. */
+function onTurn(pager: CrisisPager = recordingPager().pager) {
+  return { inboundId: INBOUND, familyId: FAMILY, pager };
+}
 
 /** The writer port, scripted: one reply per call, in order. Records every request. */
 function scriptedWriter(...replies: Array<string | null>): {
@@ -48,6 +79,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({
@@ -92,6 +124,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call 911 now.', attempts: 1 });
@@ -112,6 +145,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: 'poisoning_or_overdose',
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome.status).toBe('sent');
@@ -143,6 +177,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: 'unresponsive',
       who: 'child',
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(calls[0]?.facts.situation).toBe(emergencySituationFact('unresponsive', 'child'));
@@ -191,6 +226,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: 'choking',
       who: 'child',
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(calls[1]?.facts).toEqual({
@@ -225,6 +261,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: reply, attempts: 1 });
@@ -247,6 +284,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call or text 988, any time.', attempts: 2 });
@@ -270,6 +308,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call 911 now.', attempts: 2 });
@@ -285,6 +324,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'اتصل بـ 911 الآن.', attempts: 2 });
@@ -298,6 +338,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       'Call or text 988 or see example[.]org',
     );
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager();
     const outcome = await deliverCrisisReply({
       kind: 'mental',
       language: null,
@@ -305,10 +346,27 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(pager),
       writer,
     });
-    expect(outcome).toEqual({ status: 'unanswered', reason: 'link' });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'link', page: 'paged' });
     expect(calls).toHaveLength(2);
+    // The real pager is told once, with what happened and where — never what was drafted.
+    expect(alerts).toEqual([
+      {
+        kind: 'mental',
+        where: 'intake crisis',
+        reason: 'link',
+        writes: 2,
+        inboundId: INBOUND,
+        familyId: FAMILY,
+      },
+    ]);
+    const handed = JSON.stringify(alerts);
+    expect(handed).not.toContain('example');
+    expect(handed).not.toContain('988');
+    // Positive control: the same check sees a draft that was there.
+    expect(JSON.stringify(['Call or text 988 or see example.org'])).toContain('example');
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -331,6 +389,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call or text 988, any time.', attempts: 2 });
@@ -355,6 +414,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(),
       writer,
     });
     expect(outcome).toEqual({ status: 'sent', body: 'Call or text 988.', attempts: 2 });
@@ -364,6 +424,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
   it('a writer that returns nothing twice sends nothing and pages once', async () => {
     const { writer, calls } = scriptedWriter(null, null);
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager();
     const outcome = await deliverCrisisReply({
       kind: 'mental',
       language: null,
@@ -371,10 +432,13 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(pager),
       writer,
     });
-    expect(outcome).toEqual({ status: 'unanswered', reason: 'write_failed' });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'write_failed', page: 'paged' });
     expect(calls).toHaveLength(2);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ reason: 'write_failed', writes: 2 });
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ urgent: true, kind: 'mental', reason: 'write_failed' }),
@@ -384,6 +448,7 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
 
   it('no writer wired is named and paged, never silent', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager();
     const outcome = await deliverCrisisReply({
       kind: 'emergency',
       language: null,
@@ -391,12 +456,78 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
       situation: null,
       who: null,
       where: 'intake crisis',
+      ...onTurn(pager),
       writer: null,
     });
-    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer' });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'paged' });
+    expect(alerts).toEqual([
+      {
+        kind: 'emergency',
+        where: 'intake crisis',
+        reason: 'no_writer',
+        writes: 0,
+        inboundId: INBOUND,
+        familyId: FAMILY,
+      },
+    ]);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
       PAGE,
     );
+  });
+
+  it('a pager that throws is named page_failed, and that failure is logged urgent too', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager(new Error('slack down'));
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: null,
+      region: null,
+      situation: null,
+      who: null,
+      where: 'intake crisis',
+      ...onTurn(pager),
+      writer: null,
+    });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'page_failed' });
+    expect(alerts).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'mental', page: 'page_failed' }),
+      'URGENT: crisis page did not go out - nobody in #ops was told',
+    );
+  });
+
+  it('a page that could not leave is carried as is, never as paged', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const answered of ['page_failed', 'page_not_configured', 'already_paged'] as const) {
+      const outcome = await deliverCrisisReply({
+        kind: 'emergency',
+        language: null,
+        region: null,
+        situation: null,
+        who: null,
+        where: 'intake crisis',
+        ...onTurn(recordingPager(answered).pager),
+        writer: null,
+      });
+      expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: answered });
+    }
+  });
+
+  it('a reply that went out pages nobody (positive control for every page above)', async () => {
+    const { writer } = scriptedWriter(null, 'Call or text 988, any time.');
+    const { pager, alerts } = recordingPager();
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: 'en',
+      region: 'US',
+      situation: null,
+      who: null,
+      where: 'intake crisis',
+      ...onTurn(pager),
+      writer,
+    });
+    expect(outcome.status).toBe('sent');
+    expect(alerts).toEqual([]);
   });
 });
