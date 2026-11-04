@@ -379,6 +379,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     const handed = JSON.stringify(alerts);
     expect(handed).not.toContain('example');
     expect(handed).not.toContain('988');
+    // The re-ask told the writer the first draft carried a link.
+    expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.link);
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({

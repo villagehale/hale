@@ -85,4 +85,34 @@ describe('a crisis flag in the family data export', () => {
       expect(ids).toContain(agedOut?.id);
     }
   }, 30_000);
+
+  it('leaves the crisis rows out in the query, so they never crowd out a row the copy keeps', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Alder Family');
+    const [older] = await db.database
+      .insert(schema.auditLog)
+      .values({
+        familyId,
+        actor: 'system',
+        actionTaken: 'autonomy_acted_notice_aged_out',
+        occurredAt: new Date(NOW.getTime() - 3_600_000),
+      })
+      .returning({ id: schema.auditLog.id });
+    // More crisis rows than the trail reads in one go, all newer than the row the copy keeps.
+    await db.database.insert(schema.auditLog).values(
+      Array.from({ length: 60 }, (_, i) => ({
+        familyId,
+        actor: 'system' as const,
+        actionTaken: CRISIS_UNANSWERED_AUDIT_ACTION,
+        targetTable: 'users',
+        targetId: parentUserId,
+        occurredAt: new Date(NOW.getTime() - i * 1_000),
+      })),
+    );
+
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(copy.trail.map((row) => row.id)).toEqual([older?.id]);
+  }, 30_000);
 });

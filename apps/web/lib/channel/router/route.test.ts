@@ -32,6 +32,10 @@ import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import {
+  CRISIS_UNANSWERED_AUDIT_ACTION,
+  CRISIS_UNANSWERED_PAGE_ROUTE,
+} from '~/lib/monitoring/failure-page';
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -5688,6 +5692,83 @@ describe('the reply row, written to a real database', () => {
       expect(elsewhere.said).toEqual(['coach says hi']);
       expect(await keptAsks(parent.familyId)).toEqual([
         { ...ASKED, chat: 'chat-own', direction: 'out' },
+      ]);
+    });
+  });
+
+  /** The production wiring: no `crisisPager` in the deps, so the router's default (the
+   * real failure-page pager on this turn's database) runs. Only the Slack post is faked. */
+  describe('a crisis moment nobody could write, through the default pager', () => {
+    const WEBHOOK = 'https://hooks.example.test/ops';
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("pages #ops once and leaves the claim and the texting parent's audit row", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+        if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+        return new Response('ok', { status: 200 });
+      });
+      const { h, familyId, parentUserId, turn } = await onRealDatabase(db, {
+        offDomain: {
+          async consider() {
+            return {
+              status: 'unwritten' as const,
+              moment: 'mental_crisis' as const,
+              reason: 'model_failed',
+              lane: 'safety_critical' as const,
+              category: 'other' as const,
+            };
+          },
+        },
+      });
+      h.deps.crisisPager = undefined;
+
+      await expect(routeChannelMessage(h.deps, turn())).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+
+      expect(h.transport.bodies()).toEqual([]);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain('kind mental.');
+      expect(posted[0]).toContain('where router_moment.');
+      expect(posted[0]).toContain('reason model_failed.');
+      expect(posted[0]).toContain('writes 2.');
+      const claims = await db.database
+        .select({ count: schema.rateLimits.count })
+        .from(schema.rateLimits)
+        .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+      expect(claims).toEqual([{ count: 1 }]);
+      const audit = await db.database
+        .select({
+          familyId: schema.auditLog.familyId,
+          targetId: schema.auditLog.targetId,
+          after: schema.auditLog.after,
+        })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, CRISIS_UNANSWERED_AUDIT_ACTION));
+      expect(audit).toEqual([
+        {
+          familyId,
+          targetId: parentUserId,
+          after: { kind: 'mental', where: 'router moment', reason: 'model_failed', writes: 2 },
+        },
       ]);
     });
   });
