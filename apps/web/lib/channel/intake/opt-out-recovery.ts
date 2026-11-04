@@ -61,7 +61,8 @@ import type { ChannelTransport } from './transport';
  * holder of its number at the time only while they still hold it and the number's owner
  * has done nothing from it since. Then it runs the live stop path ({@link handleStop}) on
  * that number alone. The stop applies at once; its confirmation leaves only outside the
- * proactive floor in the family's own zone, and otherwise waits on the row for their morning.
+ * proactive floor in the family's own zone: at once, or at the family's first floor opening
+ * after the stop, or not at all.
  *
  * VIL-602 · a text read late as a crisis gets the live crisis reply ({@link
  * deliverCrisisReply}: the same writer, check, re-ask and pager), one-to-one, while the
@@ -78,12 +79,12 @@ export const HELD_READ_OUTCOMES = [
   'stopped_confirmation_unsent',
   /** Revoked, but the confirmation send threw: kept held and read again. */
   'stopped_confirmation_failed',
-  /** Revoked at once; the confirmation waits for the family's own morning (the proactive
-   * floor, in their zone). Kept, and read again then for the confirmation alone. */
+  /** Revoked at once; the confirmation waits for the family's first floor opening after the
+   * stop (the proactive floor, in their zone). Kept, and read again then for it alone. */
   'stopped_confirmation_waiting',
-  /** Revoked at once; the family has no place to find its morning in, so the confirmation
-   * is held, never sent on someone else's clock. Kept. */
-  'stopped_confirmation_zone_unknown',
+  /** Revoked at once; the confirmation never leaves: the family has no place to find its
+   * morning in, or its first floor opening after the stop has passed. Released. */
+  'stopped_confirmation_dropped',
   /** Whoever holds the number did something from it after the stop: verified a channel on
    * it (a START writes one) or texted it into a new intake. The newer row wins, nobody is
    * stopped, nothing is sent. */
@@ -126,7 +127,6 @@ export type HeldReadOutcome = (typeof HELD_READ_OUTCOMES)[number];
 const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'stopped_confirmation_failed',
   'stopped_confirmation_waiting',
-  'stopped_confirmation_zone_unknown',
   'stop_failed',
   'timeline_unresolved',
   'recovery_failed',
@@ -307,7 +307,7 @@ async function recoverRow(
     return 'no_channel';
   }
   if (row.stopAppliedAt !== null) {
-    const owed = await owedConfirmation(database, deps, row, held);
+    const owed = await owedConfirmation(database, deps, row, held, row.stopAppliedAt);
     if (KEPT.has(owed)) return owed;
     await recordReadAndRelease(database, row, held, owed);
     return owed;
@@ -419,7 +419,7 @@ async function lateStop(
   const open = verdict === 'holder' ? await loadOpenSession(database, held.phoneE164) : null;
   const sendable = verdict === 'holder' && (await stillSendable(database, held.phoneE164));
   // The stop takes effect now, whatever the hour. Only the courtesy text waits.
-  const wait = sendable ? await confirmationWait(held, deps.now) : null;
+  const slot = sendable ? await confirmationSlot(held, null, deps.now) : null;
   try {
     const stopped = await handleStop(
       database,
@@ -432,17 +432,18 @@ async function lateStop(
         now: deps.now,
         providerAnswered: false,
         // A number that already stopped is not told twice.
-        confirmation: sendable && wait === null ? confirmation : '',
+        confirmation: slot?.at === 'now' ? confirmation : '',
       },
       { transport: deps.transport },
     );
     if (!sendable) return 'already_stopped';
-    if (wait !== null) {
+    if (slot?.at === 'never') return dropConfirmation(slot.reason);
+    if (slot?.at === 'opening') {
       await database
         .update(schema.optOutHeldMessages)
-        .set({ stopAppliedAt: deps.now })
+        .set({ stopAppliedAt: deps.now, nextReadAt: slot.opensAt })
         .where(eq(schema.optOutHeldMessages.providerMessageId, row.providerMessageId));
-      return holdConfirmation(database, row, held, wait, deps.now);
+      return waitForOpening();
     }
     if (stopped.status === 'stopped' && stopped.ack === 'voice_unsent') {
       console.error(
@@ -470,56 +471,82 @@ async function lateStop(
   }
 }
 
-type ConfirmationWait = 'stopped_confirmation_waiting' | 'stopped_confirmation_zone_unknown';
+type ConfirmationSlot =
+  | { at: 'now' }
+  | { at: 'opening'; opensAt: Date }
+  | { at: 'never'; reason: 'zone_unknown' | 'opening_passed' };
 
-/** Why a late stop's confirmation cannot leave now: the family's own night, or no zone to
- * find their morning in. The floor is the proactive one, exactly as the gate applies it. */
-async function confirmationWait(held: HeldText, now: Date): Promise<ConfirmationWait | null> {
-  if (held.timeZone === null) return 'stopped_confirmation_zone_unknown';
-  const quiet = await proactiveQuietNow({
-    now,
-    timeZone: held.timeZone,
-    phone: async () => held.phoneE164,
-  });
-  return quiet ? 'stopped_confirmation_waiting' : null;
+/**
+ * When a late stop's courtesy text may leave: now, at the family's first floor opening after
+ * the stop, or never. `appliedAt` is null while the stop is being applied this tick. The
+ * floor is the proactive one, exactly as the gate applies it, in the family's own zone; no
+ * zone, no clock to send on. Past that first opening the text is not owed any more: a
+ * confirmation days late may reach a number that has since changed hands.
+ */
+async function confirmationSlot(
+  held: HeldText,
+  appliedAt: Date | null,
+  now: Date,
+): Promise<ConfirmationSlot> {
+  const { timeZone } = held;
+  if (timeZone === null) return { at: 'never', reason: 'zone_unknown' };
+  const quiet = await proactiveQuietNow({ now, timeZone, phone: async () => held.phoneE164 });
+  if (appliedAt === null) {
+    return quiet ? { at: 'opening', opensAt: proactiveFloorOpensAt(now, timeZone) } : { at: 'now' };
+  }
+  const opensAt = proactiveFloorOpensAt(appliedAt, timeZone);
+  if (now.getTime() < opensAt.getTime()) return { at: 'opening', opensAt };
+  const nextOpening = proactiveFloorOpensAt(new Date(opensAt.getTime() + 1), timeZone);
+  return quiet || now.getTime() >= nextOpening.getTime()
+    ? { at: 'never', reason: 'opening_passed' }
+    : { at: 'now' };
 }
 
-/** The row waits for the floor to open in the family's zone; with no zone, on its back-off. */
-async function holdConfirmation(
-  database: Database,
-  row: HeldRow,
-  held: HeldText,
-  wait: ConfirmationWait,
-  now: Date,
-): Promise<ConfirmationWait> {
-  if (held.timeZone !== null) {
-    await database
-      .update(schema.optOutHeldMessages)
-      .set({ nextReadAt: proactiveFloorOpensAt(now, held.timeZone) })
-      .where(eq(schema.optOutHeldMessages.providerMessageId, row.providerMessageId));
-  }
-  console.info({ outcome: wait }, 'opt-out recovery: stop read late, revoked - confirmation waits');
-  return wait;
+function waitForOpening(): 'stopped_confirmation_waiting' {
+  console.info(
+    { outcome: 'stopped_confirmation_waiting' },
+    'opt-out recovery: stop read late, revoked - confirmation waits',
+  );
+  return 'stopped_confirmation_waiting';
+}
+
+function dropConfirmation(
+  reason: 'zone_unknown' | 'opening_passed',
+): 'stopped_confirmation_dropped' {
+  console.info(
+    { outcome: 'stopped_confirmation_dropped', reason },
+    'opt-out recovery: stop read late, revoked - confirmation not owed any more, nothing sent',
+  );
+  return 'stopped_confirmation_dropped';
 }
 
 /**
- * A stop applied on an earlier tick still owes its confirmation. Nothing the owner made
- * since may be told they are stopped; the floor is checked before the model is asked;
- * then the text is read again so the model writes the confirmation it sends.
+ * A stop applied on an earlier tick still owes its confirmation, only at the family's first
+ * floor opening after it. Nothing the owner made since may be told they are stopped; the
+ * slot is checked before the model is asked; then the text is read again so the model
+ * writes the confirmation it sends.
  */
 async function owedConfirmation(
   database: Database,
   deps: OptOutRecoveryDeps,
   row: HeldRow,
   held: HeldText,
+  appliedAt: Date,
 ): Promise<HeldReadOutcome> {
   const { now } = deps;
   const timeline = await numberHolderTimeline(database, row.phoneHash);
   if (lateStopVerdict(timeline, held.inbound.receivedAt, held.authorUserId) === 'superseded') {
     return 'stop_superseded';
   }
-  const wait = await confirmationWait(held, now);
-  if (wait !== null) return holdConfirmation(database, row, held, wait, now);
+  const slot = await confirmationSlot(held, appliedAt, now);
+  if (slot.at === 'never') return dropConfirmation(slot.reason);
+  if (slot.at === 'opening') {
+    await database
+      .update(schema.optOutHeldMessages)
+      .set({ nextReadAt: slot.opensAt })
+      .where(eq(schema.optOutHeldMessages.providerMessageId, row.providerMessageId));
+    return waitForOpening();
+  }
   const reading = await deps.reader.read({
     text: held.inbound.body,
     language: held.language,
