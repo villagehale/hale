@@ -1,10 +1,11 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
-import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { resolveVerifiedChannelByPhone, revokeSmsChannel } from '~/lib/channels/sms-consent-core';
 import { decryptString } from '~/lib/crypto/string-cipher';
+import { noteLateOptOutCrisis } from '~/lib/monitoring/failure-page';
 import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/provider-health';
 import { type Inbound, handleStop } from './machine';
-import { OPT_OUT_HOLD_READ_AUDIT_ACTION, releaseHeldMessage } from './opt-out-hold';
+import { releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import { type IntakeSession, decodeIntakeForRecovery, loadOpenSession } from './session';
 import type { ChannelTransport } from './transport';
@@ -26,10 +27,15 @@ import type { ChannelTransport } from './transport';
  * close, and the model's own confirmation. An empty confirmation sends nothing.
  */
 
+/** The audit verb written per held text this pass read and released. */
+export const OPT_OUT_HOLD_READ_AUDIT_ACTION = 'opt_out_hold_read';
+
 export const HELD_READ_OUTCOMES = [
   'stopped',
   'stopped_confirmation_unsent',
   'stopped_confirmation_failed',
+  /** The number has a new holder: only the author's own channel is revoked, nothing sent. */
+  'stopped_previous_holder',
   /** The stop path threw before the number stopped being sendable: kept held, retried. */
   'stop_failed',
   'already_stopped',
@@ -234,6 +240,7 @@ async function settleReading(
         { urgent: true, outcome: 'read_crisis' },
         'URGENT: opt-out recovery: a held text read late as a crisis - no late reply sent',
       );
+      await noteLateOptOutCrisis(database, row.providerMessageId, deps.now);
       return 'read_crisis';
     case 'stop':
       return lateStop(database, deps, row, held, reading.confirmation);
@@ -247,6 +254,22 @@ async function lateStop(
   held: HeldText,
   confirmation: string,
 ): Promise<HeldReadOutcome> {
+  // The stop path acts on the phone number. A number that now belongs to someone else
+  // (a recycled number, a new intake) must not be stopped for its previous holder.
+  const author = held.owner;
+  const current = await resolveVerifiedChannelByPhone(database, held.phoneE164);
+  const otherHolder =
+    author !== null &&
+    ((current !== null && current.userId !== author.parentUserId) ||
+      (held.session !== null && held.session.userId !== author.parentUserId));
+  if (author && otherHolder) {
+    await revokeSmsChannel(
+      database,
+      { userId: author.parentUserId, familyId: author.familyId },
+      { now: deps.now },
+    );
+    return 'stopped_previous_holder';
+  }
   const sendable = await stillSendable(database, held.phoneE164, row.phoneHash);
   try {
     const stopped = await handleStop(
@@ -357,30 +380,46 @@ async function resolveHeldText(database: Database, row: HeldRow): Promise<HeldTe
     }
   }
 
-  const open = await openSessionRow(database, row.phoneHash);
-  if (!open) return null;
-  const phoneE164 = decryptString(open.phoneEncrypted);
-  const session = await loadOpenSession(database, phoneE164);
-  const entry = session?.transcript.find(
-    (candidate) => candidate.direction === 'in' && candidate.providerId === row.providerMessageId,
-  );
-  if (!session || !entry) return null;
-  return {
-    phoneE164,
-    session,
-    owner:
-      session.familyId && session.userId
-        ? { familyId: session.familyId, parentUserId: session.userId, channelMessageId: null }
-        : null,
-    inbound: {
-      from: phoneE164,
-      body: entry.body,
-      providerId: row.providerMessageId,
-      receivedAt: new Date(entry.at),
-      transport: entry.channel ?? 'sms',
-      ...(entry.chatId ? { chatId: entry.chatId } : {}),
-    },
-  };
+  // Then the intake transcripts for this number: the open session first, then any closed
+  // one (a session that closed before its held text was read still holds the words).
+  const sessions = await database
+    .select({
+      phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
+      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+      familyId: schema.smsIntakeSessions.familyId,
+      userId: schema.smsIntakeSessions.userId,
+      closedAt: schema.smsIntakeSessions.closedAt,
+    })
+    .from(schema.smsIntakeSessions)
+    .where(eq(schema.smsIntakeSessions.phoneHash, row.phoneHash))
+    .orderBy(
+      sql`${schema.smsIntakeSessions.closedAt} is not null`,
+      desc(schema.smsIntakeSessions.createdAt),
+    );
+  for (const candidate of sessions) {
+    const entry = decodeIntakeForRecovery(candidate.dataEncrypted).transcript.find(
+      (line) => line.direction === 'in' && line.providerId === row.providerMessageId,
+    );
+    if (!entry) continue;
+    const phoneE164 = decryptString(candidate.phoneEncrypted);
+    return {
+      phoneE164,
+      session: candidate.closedAt === null ? await loadOpenSession(database, phoneE164) : null,
+      owner:
+        candidate.familyId && candidate.userId
+          ? { familyId: candidate.familyId, parentUserId: candidate.userId, channelMessageId: null }
+          : null,
+      inbound: {
+        from: phoneE164,
+        body: entry.body,
+        providerId: row.providerMessageId,
+        receivedAt: new Date(entry.at),
+        transport: entry.channel ?? 'sms',
+        ...(entry.chatId ? { chatId: entry.chatId } : {}),
+      },
+    };
+  }
+  return null;
 }
 
 async function openSessionRow(
@@ -429,11 +468,12 @@ async function repointLegacyHolds(
   now: Date,
   result: OptOutRecoveryResult,
 ): Promise<void> {
+  // Every row, never a slice: nothing writes this table any more, so the set only
+  // shrinks, and a slice of rows that stay unpointed would starve the rest forever.
   const legacy = await database
     .select()
     .from(schema.optOutReadHolds)
-    .orderBy(asc(schema.optOutReadHolds.heldAt))
-    .limit(HELD_READ_BATCH);
+    .orderBy(asc(schema.optOutReadHolds.heldAt));
   for (const row of legacy) {
     const ids = await inboundIdsSince(database, row.phoneHash, row.heldAt);
     if (ids.length > 0) {

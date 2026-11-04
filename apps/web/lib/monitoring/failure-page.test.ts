@@ -27,6 +27,7 @@ import {
   failureCategory,
   firstHelloFailureCategory,
   noteDeadLetteredTurn,
+  noteLateOptOutCrisis,
   noteFirstHelloFailure,
   pageFailureAlerts,
 } from './failure-page';
@@ -750,15 +751,9 @@ describe('VIL-553 · held opt-out reads page #ops by count', () => {
   });
 
   it('a crisis read late pages within the hour, with nothing held', async () => {
-    const family = await seedFamily(db.database, 'Crisis');
-    await db.database.insert(schema.auditLog).values({
-      familyId: family.familyId,
-      actor: family.parentUserId,
-      actionTaken: 'opt_out_hold_read',
-      targetTable: 'channel_messages',
-      after: { outcome: 'read_crisis' },
-      occurredAt: ago(10 * 60_000),
-    });
+    await noteLateOptOutCrisis(db.database, 'pm-crisis', ago(10 * 60_000));
+    // Read more than an hour ago: no longer counted.
+    await noteLateOptOutCrisis(db.database, 'pm-crisis-old', ago(2 * HOUR));
     const { texts, post } = recorder();
 
     await pageFailureAlerts(db.database, { post, now: NOW });

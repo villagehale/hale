@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { pageFailureAlerts } from '~/lib/monitoring/failure-page';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { isSenderHeld } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
@@ -581,6 +582,30 @@ describe('recoverHeldOptOutReads', () => {
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_B))).toBe(true);
   }, 30_000);
 
+  it('l: legacy holds that stay unpointed cannot starve a newer one from its re-point', async () => {
+    for (let i = 0; i < HELD_READ_BATCH; i += 1) {
+      const phone = `+1555555${String(1000 + i)}`;
+      await parent(phone);
+      await db.database
+        .insert(schema.optOutReadHolds)
+        .values({ phoneHash: phoneBlindIndex(phone), heldAt: ago(600 - i) });
+    }
+    const a = await parent(PHONE_A);
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: phoneBlindIndex(PHONE_A), heldAt: ago(60) });
+    await inboundRow(a, 'pm-late-legacy', 'stop texting me', ago(30));
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader().reader, new FakeTransport()),
+    );
+
+    expect(result.legacyUnpointed).toBe(HELD_READ_BATCH);
+    expect(result.repointed).toBe(1);
+    expect(result.outcomes.stopped).toBe(1);
+  }, 30_000);
+
   it('l: a legacy hold with nothing behind it and no channel left is released', async () => {
     await db.database
       .insert(schema.optOutReadHolds)
@@ -612,6 +637,106 @@ describe('recoverHeldOptOutReads', () => {
     expect(JSON.stringify(transport.sent[0])).not.toContain('chat-group-1');
   }, 30_000);
 
+  it("a late stop from a number's previous holder never touches its new holder", async () => {
+    const before = await parent(PHONE_A, { revoked: true });
+    const now = await parent(PHONE_A);
+    await inboundRow(before, 'pm-old-holder', 'stop texting me', ago(20));
+    await hold(PHONE_A, 'pm-old-holder', ago(20));
+    const transport = new FakeTransport();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+
+    expect(result.outcomes.stopped_previous_holder).toBe(1);
+    expect(await channelRevoked(now.parentUserId)).toBe(false);
+    expect(transport.sent).toEqual([]);
+    expect(await heldRow('pm-old-holder')).toBeNull();
+    // Positive control: the new holder's own late stop does revoke them.
+    await inboundRow(now, 'pm-new-holder', 'stop texting me', ago(10));
+    await hold(PHONE_A, 'pm-new-holder', ago(10));
+    const own = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+    expect(own.outcomes.stopped).toBe(1);
+    expect(await channelRevoked(now.parentUserId)).toBe(true);
+  }, 30_000);
+
+  it('a held text only a closed intake session recorded is still read', async () => {
+    const session = await createSession(db.database, {
+      phoneE164: PHONE_B,
+      state: 'awaiting_details',
+      sourceCode: null,
+    });
+    await saveSession(
+      db.database,
+      session,
+      {
+        transcript: [
+          {
+            direction: 'in',
+            body: 'stop texting me',
+            providerId: 'pm-closed',
+            at: ago(40).toISOString(),
+          },
+        ],
+        state: 'superseded',
+        closedAt: ago(30),
+      },
+      ago(30),
+    );
+    await hold(PHONE_B, 'pm-closed', ago(40));
+    const r = reader();
+
+    const result = await recoverHeldOptOutReads(db.database, deps(r.reader, new FakeTransport()));
+
+    expect(r.texts).toEqual(['stop texting me']);
+    expect(result.outcomes.already_stopped).toBe(1);
+    expect(result.outcomes.no_channel).toBe(0);
+  }, 30_000);
+
+  it('a crisis read late for a sender with no family still reaches the #ops count', async () => {
+    const session = await createSession(db.database, {
+      phoneE164: PHONE_C,
+      state: 'awaiting_details',
+      sourceCode: null,
+    });
+    await saveSession(
+      db.database,
+      session,
+      {
+        transcript: [
+          {
+            direction: 'in',
+            body: 'help it is bad',
+            providerId: 'pm-crisis',
+            at: ago(20).toISOString(),
+          },
+        ],
+      },
+      ago(20),
+    );
+    await hold(PHONE_C, 'pm-crisis', ago(20));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(
+        reader({ 'help it is bad': { intent: 'crisis_emergency', confirmation: '' } }).reader,
+        new FakeTransport(),
+      ),
+    );
+    const texts: string[] = [];
+    await pageFailureAlerts(db.database, {
+      now: NOW,
+      post: async (text) => {
+        texts.push(text);
+        return 'sent';
+      },
+    });
+
+    expect(result.outcomes.read_crisis).toBe(1);
+    expect(texts.find((text) => text.startsWith('Hale: opt-out reads held.'))).toContain(
+      'crisis read late 1.',
+    );
+  }, 30_000);
+
   it('names every outcome, zero by default, when nothing is held', async () => {
     const result = await recoverHeldOptOutReads(
       db.database,
@@ -625,6 +750,7 @@ describe('recoverHeldOptOutReads', () => {
         stopped: 0,
         stopped_confirmation_unsent: 0,
         stopped_confirmation_failed: 0,
+        stopped_previous_holder: 0,
         stop_failed: 0,
         already_stopped: 0,
         read_not_stop: 0,

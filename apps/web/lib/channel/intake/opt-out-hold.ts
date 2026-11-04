@@ -3,9 +3,6 @@ import { eq } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 
-/** The audit verb the recovery pass writes per held text it read; the page counts crises by it. */
-export const OPT_OUT_HOLD_READ_AUDIT_ACTION = 'opt_out_hold_read';
-
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
  * reader, so a text it could not read may be a stop. VIL-553: the hold names that text by

@@ -1,7 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { type SQL, and, asc, eq, gt, gte, lt, sql } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
-import { OPT_OUT_HOLD_READ_AUDIT_ACTION } from '~/lib/channel/intake/opt-out-hold';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
@@ -88,6 +87,11 @@ export const DEFERRED_PILEUP_PAGE_ROUTE = 'ops:deferred-pileup';
  * hour old or a held text read late as a crisis; once a UTC day while older holds stand.
  */
 export const OPT_OUT_HOLD_PAGE_ROUTE = 'ops:opt-out-held';
+/**
+ * A held text read late as a crisis. The row IS the record, as for a first hello: a
+ * sender with no family has no audit row to count. Identifier is the provider message id.
+ */
+export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -886,13 +890,12 @@ async function pageOptOutHolds(
     })
     .from(schema.optOutReadHolds);
   const crises = await database
-    .select({ id: schema.auditLog.id })
-    .from(schema.auditLog)
+    .select({ id: schema.rateLimits.id })
+    .from(schema.rateLimits)
     .where(
       and(
-        eq(schema.auditLog.actionTaken, OPT_OUT_HOLD_READ_AUDIT_ACTION),
-        sql`${schema.auditLog.after} ->> 'outcome' = 'read_crisis'`,
-        gte(schema.auditLog.occurredAt, new Date(now.getTime() - HOUR_MS)),
+        eq(schema.rateLimits.route, OPT_OUT_LATE_CRISIS_ROUTE),
+        gte(schema.rateLimits.windowStart, new Date(now.getTime() - HOUR_MS)),
       ),
     );
   const holds = [...messages, ...legacy];
@@ -928,6 +931,29 @@ async function pageOptOutHolds(
     counts,
     windowStart,
   );
+}
+
+/** VIL-553 · remember a held text read late as a crisis, family or not, for the page's count. */
+export async function noteLateOptOutCrisis(
+  database: Database,
+  providerMessageId: string,
+  now: Date,
+): Promise<void> {
+  await database
+    .insert(schema.rateLimits)
+    .values({
+      identifier: providerMessageId,
+      route: OPT_OUT_LATE_CRISIS_ROUTE,
+      windowStart: now,
+      count: ALERTED_COUNT,
+    })
+    .onConflictDoNothing({
+      target: [
+        schema.rateLimits.identifier,
+        schema.rateLimits.route,
+        schema.rateLimits.windowStart,
+      ],
+    });
 }
 
 /**
