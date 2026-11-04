@@ -18,7 +18,10 @@ describe('registration page fetch', () => {
   it('accepts a 2048-character URL and refuses a 2049-character one', () => {
     const atLimit = `https://example.com/${'a'.repeat(2028)}`;
     expect(atLimit).toHaveLength(2048);
-    expect(registrationPageUrl(atLimit)).toBe(atLimit);
-    expect(() => registrationPageUrl(`${atLimit}a`)).toThrow('registration page: unsafe URL');
+    expect(registrationPageUrl(atLimit)).toEqual({ outcome: 'allowed', url: atLimit });
+    expect(registrationPageUrl(`${atLimit}a`)).toEqual({
+      outcome: 'refused',
+      reason: 'url_too_long',
+    });
   });
 });
