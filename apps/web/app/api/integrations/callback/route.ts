@@ -23,6 +23,7 @@ import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
+import { settleSupersededGoogleRevoke } from '~/lib/integrations/google-disconnect';
 import {
   CONNECTOR_SCOPES,
   GOOGLE_PROFILE_SCOPE,
@@ -285,14 +286,16 @@ export async function GET(req: NextRequest) {
         googleAccountKey = accountKey;
       }
     }
-    ({ connectId } = await saveConnection(database, {
+    const saved = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
       googleAccountKey,
-    }));
+    });
+    connectId = saved.connectId;
+    if (saved.superseded) await settleSupersededGoogleRevoke(database, saved.superseded);
     {
       const connected =
         bound.provider === 'gmail'

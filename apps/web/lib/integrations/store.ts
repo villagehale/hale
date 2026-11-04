@@ -80,7 +80,11 @@ function sqlExcluded(column: string) {
  *
  * Returns `connectId`: THIS connect, identified by that audit row. The integration row
  * is upserted, so its own id says "this parent's Gmail" and cannot tell a first connect
- * from a reconnect; the audit row is written once per connect and can. */
+ * from a reconnect; the audit row is written once per connect and can.
+ *
+ * And `superseded`: another Google account's revoke that was still waiting in the one
+ * pending slot of the row this connect lands on. The slot is now this grant's, so the
+ * caller asks Google right after the commit (settleSupersededGoogleRevoke), never drops it. */
 export async function saveConnection(
   database: Database,
   input: {
@@ -93,7 +97,7 @@ export async function saveConnection(
     /** The Google account's blind index, when the callback read it. */
     googleAccountKey?: string;
   },
-): Promise<{ connectId: string }> {
+): Promise<{ connectId: string; superseded: PendingGoogleRevocation | null }> {
   const oauthTokensEncrypted = encryptTokens(input.tokens);
   const connecting: GoogleAccountSide = {
     key: input.googleAccountKey ?? null,
@@ -162,10 +166,14 @@ export async function saveConnection(
     }
     // The row this connect lands on has ONE pending slot, and a row holding live keys holds
     // none: a revoke still waiting there now is another account's (the same account was
-    // cancelled above). The upsert clears it, and it is named, never silently overwritten by
-    // this grant's own disconnect later (VIL-156).
-    const superseded = await tx
-      .select({ id: schema.integrations.id })
+    // cancelled above). The upsert clears the slot and the token goes back to the caller,
+    // so this grant's own disconnect can never overwrite it later (VIL-156).
+    const [superseded] = await tx
+      .select({
+        id: schema.integrations.id,
+        enc: schema.integrations.googleRevokePendingEncrypted,
+        since: schema.integrations.googleRevokePendingSince,
+      })
       .from(schema.integrations)
       .where(
         and(
@@ -207,20 +215,6 @@ export async function saveConnection(
       .returning({ id: schema.integrations.id });
     const id = upserted[0]?.id;
     if (!id) throw new Error('saveConnection: integrations upsert returned no row');
-    if (superseded.length > 0) {
-      await tx.insert(schema.auditLog).values({
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'integration_google_grant_revoke_failed',
-        targetTable: 'integrations',
-        targetId: id,
-        after: { provider: input.provider, outcome: 'superseded' },
-      });
-      console.error(
-        { integrationId: id, provider: input.provider },
-        'google disconnect: superseded',
-      );
-    }
     const [connect] = await tx
       .insert(schema.auditLog)
       .values({
@@ -241,7 +235,19 @@ export async function saveConnection(
       })
       .returning({ id: schema.auditLog.id });
     if (!connect) throw new Error('saveConnection: audit_log insert returned no row');
-    return { connectId: connect.id };
+    return {
+      connectId: connect.id,
+      superseded: superseded
+        ? {
+            id: superseded.id,
+            familyId: input.familyId,
+            provider: input.provider,
+            enc: superseded.enc as string,
+            // Written together with the ciphertext, and cleared together with it, everywhere.
+            since: superseded.since as Date,
+          }
+        : null,
+    };
   });
 }
 

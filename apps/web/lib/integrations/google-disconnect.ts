@@ -7,6 +7,7 @@ import type { GoogleJsonClient } from './google-push-watch';
 import {
   type ConnectorRevokeVia,
   type EndedConnection,
+  type PendingGoogleRevocation,
   clearGoogleRevokePending,
   deleteStaleGoogleRevokePending,
   endGoogleConnections,
@@ -538,6 +539,83 @@ export async function retryPendingGoogleRevocations(
     }
   }
   return summary;
+}
+
+/** A superseded revoke that Google did not answer: the slot is the new grant's, so Hale
+ * cannot ask again, and the old grant is not confirmed ended. */
+export type SupersededRevokeOutcome = GoogleRowOutcome | 'superseded';
+
+/**
+ * The revoke a connect took out of the pending slot (saveConnection's `superseded`): another
+ * Google account's, so asking Google cannot end the grant just given. Asked once, right
+ * after the connect commits; only an unanswered ask is `superseded`. One audit row on the
+ * integration either way (rule #6). Never throws: the connect has already happened.
+ */
+export async function settleSupersededGoogleRevoke(
+  db: Database,
+  superseded: PendingGoogleRevocation,
+  ports?: GoogleDisconnectPorts,
+): Promise<SupersededRevokeOutcome> {
+  const wired = ports ?? defaultGoogleDisconnectPorts();
+  const row: EndedConnection = {
+    id: superseded.id,
+    familyId: superseded.familyId,
+    provider: superseded.provider,
+  };
+  try {
+    let pending: RevokePendingToken | null = null;
+    let early: GoogleRowOutcome | undefined;
+    try {
+      pending = decryptRevokePending(superseded.enc);
+      if (!pending) early = 'no_token';
+    } catch {
+      early = 'decrypt_failed';
+    }
+    const result = await revokeHeld(
+      {
+        row,
+        enc: null,
+        since: superseded.since,
+        pending,
+        ...(early ? { early } : {}),
+        push: 'not_attempted',
+      },
+      wired,
+    );
+    const outcome: SupersededRevokeOutcome =
+      result.outcome === 'pending_retry' || result.outcome === 'abandoned'
+        ? 'superseded'
+        : result.outcome;
+    const done = DONE.has(result.outcome);
+    await db.insert(schema.auditLog).values({
+      familyId: row.familyId,
+      actor: 'system',
+      actionTaken: done
+        ? 'integration_google_grant_revoked'
+        : 'integration_google_grant_revoke_failed',
+      targetTable: 'integrations',
+      targetId: row.id,
+      after: {
+        provider: row.provider,
+        outcome,
+        ...(typeof result.status === 'number' ? { status: result.status } : {}),
+      },
+    });
+    const logged = { integrationId: row.id, provider: row.provider, google: outcome };
+    if (done) console.info(logged, SETTLE_LOG);
+    else console.error(logged, `google disconnect: ${outcome}`);
+    return outcome;
+  } catch (err) {
+    console.error(
+      {
+        integrationId: row.id,
+        provider: row.provider,
+        err: err instanceof Error ? err.name : 'unknown',
+      },
+      'google disconnect: superseded',
+    );
+    return 'superseded';
+  }
 }
 
 /**

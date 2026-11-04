@@ -213,7 +213,7 @@ describe('integrations store', () => {
       scopes: ['s'],
       tokens: TOKENS,
     });
-    expect(returned).toEqual({ connectId: 'a1' });
+    expect(returned).toEqual({ connectId: 'a1', superseded: null });
   });
 
   it('upserts atomically on (family,user,provider) — no select-then-insert race', async () => {

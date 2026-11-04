@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,10 +10,12 @@ import {
   disconnectGoogle,
   endGoogleForFamilyErasure,
   retryPendingGoogleRevocations,
+  settleSupersededGoogleRevoke,
 } from './google-disconnect';
 import {
   listActiveConnectorConnections,
   markConnectionError,
+  otherParentHoldsGoogleAccount,
   saveConnection,
   saveConnectionCursor,
   saveConnectionTokensById,
@@ -89,7 +92,7 @@ async function household(name: string) {
 
 /** As the callback saves a connect whose Google identity it read. */
 async function connect(familyId: string, userId: string, refreshToken: string, key?: string) {
-  await saveConnection(db.database, {
+  return saveConnection(db.database, {
     familyId,
     userId,
     provider: 'gcal',
@@ -211,6 +214,25 @@ describe('a calendar sync keeps the Google account key', () => {
     expect(revoked).toEqual(['1//erased']);
   });
 
+  it('an ENDED row of the same account in another household holds no grant: the erasure revokes', async () => {
+    const erased = await household('Erased');
+    const other = await household('Other');
+    await connect(erased.familyId, erased.userId, '1//erased', ACCOUNT);
+    await connect(other.familyId, other.userId, '1//other', ACCOUNT);
+    await disconnectGoogle(
+      db.database,
+      { familyId: other.familyId, userId: other.userId, via: 'settings', named: 'gcal' },
+      scriptedPorts(OK).ports,
+    );
+    expect(await rowOf(other.familyId)).toMatchObject({ enc: null, pending: null, key: ACCOUNT });
+
+    const { ports, revoked } = scriptedPorts(OK);
+    const settled = await endGoogleForFamilyErasure(db.database, erased.familyId, ports);
+
+    expect(settled.map((row) => row.google)).toEqual(['revoked']);
+    expect(revoked).toEqual(['1//erased']);
+  });
+
   it('reconnect after a sync: the same account connected again cancels the waiting revoke, so the retry never ends the fresh grant', async () => {
     const first = await household('First');
     const second = await household('Second');
@@ -264,33 +286,67 @@ describe('a row that holds live keys holds no other grant’s waiting revoke', (
       .where(and(eq(schema.auditLog.familyId, familyId), eq(schema.auditLog.actionTaken, verb)));
   }
 
-  it('another account connected on the same row: the earlier revoke is named as superseded, never silently overwritten', async () => {
+  async function disconnectHome(
+    home: { familyId: string; userId: string },
+    answer: () => GoogleRevokeResult,
+  ) {
+    return disconnectGoogle(
+      db.database,
+      { familyId: home.familyId, userId: home.userId, via: 'settings', named: 'gcal' },
+      scriptedPorts(answer).ports,
+    );
+  }
+
+  it('another account connected on the same row: the earlier revoke is asked of Google right after the connect, never dropped', async () => {
     const home = await household('Home');
     await connect(home.familyId, home.userId, '1//account-a', 'account-a');
-    const disconnect = (answer: () => GoogleRevokeResult) =>
-      disconnectGoogle(
-        db.database,
-        { familyId: home.familyId, userId: home.userId, via: 'settings', named: 'gcal' },
-        scriptedPorts(answer).ports,
-      );
-    await disconnect(DOWN);
+    await disconnectHome(home, DOWN);
 
-    await connect(home.familyId, home.userId, '1//account-b', 'account-b');
+    const { superseded } = await connect(home.familyId, home.userId, '1//account-b', 'account-b');
 
-    expect(await rowOf(home.familyId)).toMatchObject({ status: 'active', pending: null });
-    expect(await trail(home.familyId, 'integration_google_grant_revoke_failed')).toEqual([
-      { after: { provider: 'gcal', outcome: 'superseded' } },
+    // The row is account B's now, under B's key.
+    expect(await rowOf(home.familyId)).toMatchObject({
+      status: 'active',
+      pending: null,
+      key: 'account-b',
+    });
+    expect(superseded).toMatchObject({ familyId: home.familyId, provider: 'gcal' });
+    if (!superseded) throw new Error('the connect took no revoke from the row');
+    const { ports, revoked } = scriptedPorts(OK);
+    expect(await settleSupersededGoogleRevoke(db.database, superseded, ports)).toBe('revoked');
+    expect(revoked).toEqual(['1//account-a']);
+    expect(await trail(home.familyId, 'integration_google_grant_revoked')).toEqual([
+      { after: { provider: 'gcal', outcome: 'revoked' } },
     ]);
+    expect(await trail(home.familyId, 'integration_google_grant_revoke_failed')).toEqual([]);
     // Not a cancel: account A was not connected again.
     expect(await trail(home.familyId, 'integration_google_revoke_cancelled')).toEqual([]);
 
-    await disconnect(DOWN);
-    const { ports, revoked } = scriptedPorts(OK);
-    expect(await retryPendingGoogleRevocations(db.database, ports)).toMatchObject({
+    // B's own disconnect later revokes B, and only B.
+    await disconnectHome(home, DOWN);
+    const retry = scriptedPorts(OK);
+    expect(await retryPendingGoogleRevocations(db.database, retry.ports)).toMatchObject({
       attempted: 1,
       revoked: 1,
     });
-    expect(revoked).toEqual(['1//account-b']);
+    expect(retry.revoked).toEqual(['1//account-b']);
+  });
+
+  it('Google gives no answer at that moment: the earlier revoke is named superseded, since no slot is left to ask again from', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const home = await household('Home');
+    await connect(home.familyId, home.userId, '1//account-a', 'account-a');
+    await disconnectHome(home, DOWN);
+    const { superseded } = await connect(home.familyId, home.userId, '1//account-b', 'account-b');
+
+    if (!superseded) throw new Error('the connect took no revoke from the row');
+    const { ports, revoked } = scriptedPorts(DOWN);
+    expect(await settleSupersededGoogleRevoke(db.database, superseded, ports)).toBe('superseded');
+    expect(revoked).toEqual(['1//account-a']);
+    expect(await trail(home.familyId, 'integration_google_grant_revoke_failed')).toEqual([
+      { after: { provider: 'gcal', outcome: 'superseded', status: 503 } },
+    ]);
+    expect(await trail(home.familyId, 'integration_google_grant_revoked')).toEqual([]);
   });
 
   it('positive control: the same account connected again is a cancel, and nothing is superseded', async () => {
@@ -302,8 +358,9 @@ describe('a row that holds live keys holds no other grant’s waiting revoke', (
       scriptedPorts(DOWN).ports,
     );
 
-    await connect(home.familyId, home.userId, '1//account-a-again', 'account-a');
+    const again = await connect(home.familyId, home.userId, '1//account-a-again', 'account-a');
 
+    expect(again.superseded).toBeNull();
     expect(await rowOf(home.familyId)).toMatchObject({ status: 'active', pending: null });
     expect(await trail(home.familyId, 'integration_google_revoke_cancelled')).toHaveLength(1);
     expect(await trail(home.familyId, 'integration_google_grant_revoke_failed')).toEqual([]);
@@ -386,5 +443,48 @@ describe('a row whose key is unknown falls back to the Hale user, for both decis
     const { ports, revoked } = scriptedPorts(OK);
     await retryPendingGoogleRevocations(db.database, ports);
     expect(revoked).toEqual(['1//stranger']);
+  });
+});
+
+describe('the own-link check reads the stored account key', () => {
+  async function coParentIn(familyId: string) {
+    const [co] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${randomUUID()}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!co) throw new Error('co-parent insert returned no row');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: co.id, role: 'co_parent' });
+    return co.id;
+  }
+
+  it("the co-parent's row in the same family under the same key: held", async () => {
+    const home = await household('Home');
+    const coParent = await coParentIn(home.familyId);
+    await connect(home.familyId, coParent, '1//co', ACCOUNT);
+
+    expect(
+      await otherParentHoldsGoogleAccount(db.database, {
+        familyId: home.familyId,
+        userId: home.userId,
+        accountKey: ACCOUNT,
+      }),
+    ).toBe(true);
+  });
+
+  it("controls: another family's row, and the parent's own row, are not held", async () => {
+    const home = await household('Home');
+    const elsewhere = await household('Elsewhere');
+    await connect(elsewhere.familyId, elsewhere.userId, '1//elsewhere', ACCOUNT);
+    await connect(home.familyId, home.userId, '1//own', ACCOUNT);
+
+    expect(
+      await otherParentHoldsGoogleAccount(db.database, {
+        familyId: home.familyId,
+        userId: home.userId,
+        accountKey: ACCOUNT,
+      }),
+    ).toBe(false);
   });
 });
