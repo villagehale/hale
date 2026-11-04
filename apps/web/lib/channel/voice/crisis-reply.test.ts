@@ -365,8 +365,8 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
     const handed = JSON.stringify(alerts);
     expect(handed).not.toContain('example');
     expect(handed).not.toContain('988');
-    // Positive control: the same check sees a draft that was there.
-    expect(JSON.stringify(['Call or text 988 or see example.org'])).toContain('example');
+    // Positive control: the writer did hand back a draft with the link, and the check caught it.
+    expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.link);
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({

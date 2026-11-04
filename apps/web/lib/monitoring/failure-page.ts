@@ -890,11 +890,15 @@ async function pageCrisesUnanswered(
     .limit(MAX_PER_RUN);
   const stamp = claimStamp(now);
   for (const row of rows) {
-    const recorded = parseCrisisIdentifier(row.identifier);
-    if (!recorded) continue;
+    let recorded = parseCrisisIdentifier(row.identifier);
     if (!(await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, row.identifier, stamp))) {
       counts.deduped += 1;
       continue;
+    }
+    // Still a crisis nobody answered: a human hears of it even when its details are lost.
+    if (!recorded) {
+      console.error('failure page: crisis claim unreadable - paging it as is');
+      recorded = { kind: 'unreadable', where: 'unreadable', reason: 'unreadable', writes: 0 };
     }
     const text = composeCrisisUnansweredAlert(recorded);
     await deliver(

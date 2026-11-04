@@ -728,8 +728,7 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
       },
     ]);
     expect(JSON.stringify(audited)).not.toContain('example');
-    // Positive control: the draft check above does see the draft.
-    expect(DRAFT).toContain('example');
+    // The positive control is `reason: 'link'` above: the check read a draft that had one.
   });
 
   it('no writer, and no family yet, still pages: the claim row is the record', async () => {
@@ -809,10 +808,11 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     const pager = failurePageCrisisPager(db.database, { post, now: NOW });
 
     const first = await crisisTurn(pager, { familyId: family.familyId });
-    const redelivered = await crisisTurn(pager, { familyId: family.familyId });
+    // A live writer is not deterministic: the redelivery fails for another reason.
+    const redelivered = await crisisTurn(pager, { familyId: family.familyId, writer: null });
 
-    expect(first).toMatchObject({ page: 'paged' });
-    expect(redelivered).toMatchObject({ page: 'already_paged' });
+    expect(first).toMatchObject({ reason: 'link', page: 'paged' });
+    expect(redelivered).toMatchObject({ reason: 'no_writer', page: 'already_paged' });
     expect(texts).toHaveLength(1);
     const audited = (await auditActions()).filter(
       (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
@@ -844,6 +844,28 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(sweep.crisisUnanswered.posted).toBe(1);
     expect(texts[0]).toContain('kind emergency');
     expect(texts[0]).toContain('reason no_writer');
+  });
+
+  it('an owed crisis claim the sweep cannot read still pages, named unreadable and logged', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'not-a-crisis-key',
+      route: CRISIS_UNANSWERED_PAGE_ROUTE,
+      windowStart: CLAIM_EPOCH,
+      count: 0,
+    });
+    const { texts, post } = recorder();
+
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+
+    expect(sweep.crisisUnanswered.posted).toBe(1);
+    expect(texts).toEqual([
+      'Hale: URGENT crisis flagged, no reply sent. kind unreadable. where unreadable. reason unreadable. writes 0.',
+    ]);
+    expect(error).toHaveBeenCalledWith('failure page: crisis claim unreadable - paging it as is');
+    const again = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(again.crisisUnanswered.posted).toBe(0);
+    expect(texts).toHaveLength(1);
   });
 
   it('the alert drops a phone-shaped or worded field rather than carry it', () => {
