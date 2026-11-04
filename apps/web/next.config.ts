@@ -50,12 +50,14 @@ const config: NextConfig = {
       // Next appends the request query when the destination has none (same
       // as /signin). The email doors are NOT here: a token must not ride
       // along, and this seam cannot drop one.
-      { source: '/coach', destination: '/home', permanent: true },
-      { source: '/coach/:path*', destination: '/home', permanent: true },
-      { source: '/companion', destination: '/home', permanent: true },
-      { source: '/companion/:path*', destination: '/home', permanent: true },
-      { source: '/saved', destination: '/home', permanent: true },
-      { source: '/saved/:path*', destination: '/home', permanent: true },
+      { source: '/coach', destination: '/family', permanent: true },
+      { source: '/coach/:path*', destination: '/family', permanent: true },
+      { source: '/companion', destination: '/family', permanent: true },
+      { source: '/companion/:path*', destination: '/family', permanent: true },
+      { source: '/saved', destination: '/family', permanent: true },
+      { source: '/saved/:path*', destination: '/family', permanent: true },
+      { source: '/plan', destination: '/family', permanent: true },
+      { source: '/plan/:path*', destination: '/family', permanent: true },
       { source: '/family/members', destination: '/family', permanent: true },
       { source: '/family/members/:path*', destination: '/family', permanent: true },
     ];
