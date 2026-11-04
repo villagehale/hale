@@ -127,7 +127,7 @@ export const SHORTLIST_LEAD_DAYS = 10;
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their slot forever. */
-const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
+export const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
 
 /**
  * Whether `now` sits in this family's daily shortlist slot. The same mid-morning hour
@@ -159,8 +159,8 @@ export interface LiveSequence {
    * anchored on, so it is resolved at send time rather than frozen at proposal. */
   areaCoarse: string | null;
   /** The LIVE M1 row. Every leg time is derived from it at send time, so a corrected
-   * date moves the whole ladder. */
-  window: RegistrationWindow;
+   * date moves the whole ladder. Null for a watch a parent's link created (VIL-423). */
+  window: RegistrationWindow | null;
   /** Read live off the approval spine — see registration-sequences.ts. */
   optIn: SequenceOptIn;
   outcome: RegistrationOutcome | null;
@@ -179,6 +179,9 @@ export interface LiveSequence {
    * verified; null is "unasked or unanswered", which the copy says in those words. */
   readinessReady: boolean | null;
 }
+
+/** A ladder with a catalog row: the only kind a leg is composed and sent for. */
+type CatalogSequence = LiveSequence & { window: RegistrationWindow };
 
 export interface SequenceLedgerWrite {
   familyId: string;
@@ -422,6 +425,11 @@ export interface SequenceRunResult {
    * unspent, so the next tick tries again. Its own count (rule #11).
    */
   unwritten: number;
+  /** Link watches with no open date yet: no dated leg exists and none is guessed. */
+  undated: number;
+  /** Link-watch legs that were due and held because no send-time read of the parent's
+   * page exists yet. Nothing was sent and the dedupe key is unspent (slice 7b). */
+  linkUnread: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -444,6 +452,8 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     readSkipped: 0,
     noFit: 0,
     unwritten: 0,
+    undated: 0,
+    linkUnread: 0,
   };
 }
 
@@ -698,7 +708,7 @@ function courseIdOf(url: string): string | null {
 
 async function runLegForSequence(
   database: Database,
-  sequence: LiveSequence,
+  sequence: CatalogSequence,
   deps: SequenceRunDeps,
   reader: CourseReader,
   now: Date,
@@ -1254,7 +1264,7 @@ function driftOf(verdict: PrepVerdict): number | null {
 async function recordLegPromise(
   database: Database,
   args: {
-    sequence: LiveSequence;
+    sequence: CatalogSequence;
     shortlist: Shortlist;
     leg: SequenceLeg;
     messageId: string;
@@ -1313,7 +1323,7 @@ async function recordLegPromise(
  * ages rather than stored: a child ages, a municipality corrects a band or a date, and
  * a leg must say what is true this morning. */
 function matchForSequence(
-  sequence: LiveSequence,
+  sequence: CatalogSequence,
   open: { isResidentWindow: boolean; opensForFamilyAt: Date },
 ): RegistrationMatch {
   return {
@@ -1330,6 +1340,35 @@ function matchForSequence(
     opensForFamilyAt: open.opensForFamilyAt,
     generalOpenAt: sequence.window.openAt,
   };
+}
+
+type LinkWatchFate = { kind: 'undated' } | { kind: 'quiet' } | { kind: 'unread'; leg: SequenceLeg };
+
+/**
+ * A watch a parent's link created (VIL-423), evaluated without any I/O. No leg is sent
+ * for one yet: the only send-time reads are a catalog portal's, so its stored
+ * `course_opens_at` cannot be re-read before a text would speak it, and Hale holds no
+ * name for it that the heads-up composer would accept. Slice 7b lifts this.
+ *
+ * A paste is not consent, so only an approved watch can have a leg due at all. No
+ * waitlist clock and no portal are invented for it.
+ */
+function linkWatchFate(sequence: LiveSequence, now: Date): LinkWatchFate {
+  if (sequence.courseOpensAt === null) return { kind: 'undated' };
+  if (sequence.optIn !== 'opted_in') return { kind: 'quiet' };
+  const leg = dueLeg(
+    {
+      openAt: sequence.courseOpensAt,
+      timeZone: sequence.timeZone,
+      optIn: sequence.optIn,
+      outcome: sequence.outcome,
+      waitlistStartedAt: sequence.waitlistStartedAt,
+      waitlistResponseHours: null,
+      portal: null,
+    },
+    now,
+  );
+  return leg === null ? { kind: 'quiet' } : { kind: 'unread', leg };
 }
 
 export async function runRegistrationSequenceCron(
@@ -1362,9 +1401,42 @@ export async function runRegistrationSequenceCron(
   }
 
   // ── Phase B: run the legs ───────────────────────────────────────────────────
-  const sequences = (await deps.loadLiveSequences(database, now))
-    .filter(armed)
+  const live = (await deps.loadLiveSequences(database, now)).filter(armed);
+  // Split BEFORE the cap: a link watch costs no I/O, so it must not take a slot a dated
+  // catalog ladder needs.
+  const sequences = live
+    .filter((sequence): sequence is CatalogSequence => sequence.window !== null)
     .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
+  const linkWatches = live.filter((sequence) => sequence.window === null);
+
+  const undatedIds: string[] = [];
+  const unread: Array<{ sequenceId: string; leg: SequenceLeg }> = [];
+  for (const sequence of linkWatches) {
+    result.evaluated += 1;
+    try {
+      const fate = linkWatchFate(sequence, now);
+      if (fate.kind === 'undated') undatedIds.push(sequence.sequenceId);
+      else if (fate.kind === 'quiet') result.quiet += 1;
+      else unread.push({ sequenceId: sequence.sequenceId, leg: fate.leg });
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
+    }
+  }
+  result.undated = undatedIds.length;
+  result.linkUnread = unread.length;
+  if (undatedIds.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_undated', sequenceIds: undatedIds },
+      'registration sequence: link watches with no open date, no leg',
+    );
+  }
+  if (unread.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_unread', watches: unread },
+      'registration sequence: link-watch legs due and held, nothing sent',
+    );
+  }
 
   // ONE reader for the whole phase, because the budget and the page cache are both
   // properties of the RUN: two households on one course cost one GET, and the wall clock
@@ -1451,7 +1523,9 @@ async function loadLiveSequences(database: Database): Promise<LiveSequence[]> {
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
+    // LEFT: a watch a parent's link created has no catalog row (VIL-423). The FK
+    // cascades, so a null window here means exactly `window_id IS NULL`.
+    .leftJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
     )

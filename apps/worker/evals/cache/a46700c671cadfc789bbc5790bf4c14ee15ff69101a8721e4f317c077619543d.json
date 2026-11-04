@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names 'Swim class' and says jeudi (Thursday) at 10 h, which means 10 o'clock, so hour 10 with no minute stated implies minute zero. The actual start is Thursday July 23, 2026 at 10:30, minute 30. The text's time names no minute, so it only matches a start at minute zero, and this start is minute 30. The time is different, so it does not match.",
+    "match": false
+  },
+  "latencyMs": 2321
+}

@@ -80,6 +80,11 @@ const TABLE_FOR_COUNTRY: ReadonlyMap<string, PostalCountry> = new Map([
   ['us', 'US'],
 ]);
 
+/** The postal table a stored country selects, or undefined for one Hale has no table for. */
+export function postalCountryOf(country: string): PostalCountry | undefined {
+  return TABLE_FOR_COUNTRY.get(country.trim().toLowerCase());
+}
+
 /** The country as the search is told it. */
 const COUNTRY_NAME: Record<PostalCountry, string> = { CA: 'Canada', US: 'United States' };
 
@@ -142,6 +147,19 @@ const TABLES: Record<PostalCountry, () => Promise<PostalTable>> = {
   CA: async () => (await import('./postal-cities/ca.json')).default,
   US: async () => (await import('./postal-cities/us.json')).default,
 };
+
+/**
+ * The province a Canadian postal token is in, by the table's own name (VIL-589: the
+ * health line differs by province). Null for a US or other token, which opens no table:
+ * nothing Hale says by state differs, and the US file is the large one. Null too for an
+ * FSA the table does not have. Never a guess.
+ */
+export async function provinceOfPostal(raw: string): Promise<string | null> {
+  const matched = matchPostalToken(raw);
+  if (matched?.country !== 'CA') return null;
+  const table = await TABLES.CA();
+  return table.regions[table.regionOf[table.codes.indexOf(matched.areaKey)] ?? -1] ?? null;
+}
 
 function stored(value: string | null): string | null {
   const trimmed = value?.trim();

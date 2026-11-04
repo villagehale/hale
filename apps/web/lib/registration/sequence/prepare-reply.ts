@@ -152,6 +152,8 @@ export async function loadPreparingSequence(
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: this binds a pasted link to a catalog window and rewrites
+    // `course_url`, which on a link-owned watch (VIL-423) is the watch's own identity.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -726,12 +728,13 @@ export async function approvedShortlistAskedOf(
   const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       window: schema.registrationWindows,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never sent a heads-up yet
+    // (VIL-423, run.ts `linkWatchFate`), so no YES can be answering one.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -751,7 +754,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.window.id, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }

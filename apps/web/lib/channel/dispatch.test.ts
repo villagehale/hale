@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
@@ -8,10 +8,13 @@ import {
   ChannelRetryableError,
   type DispatchPorts,
   type LedgerWrite,
+  PROACTIVE_FLOOR_HOLD,
   dispatchLoopMessage,
   recordAbandonedDispatch,
 } from './dispatch';
 import { fakeChannel, fakeRenderer } from './fakes';
+import type { DispatchShadowInput } from './reconcile/claim-shadow';
+import { claimsNoLedgerCanBack } from './reconcile/claims';
 import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
 
 /**
@@ -42,6 +45,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     now: () => NOON,
     loadPrefs: async () => prefs,
     loadParent: async () => ({ timezone: TORONTO }),
+    parentPhone: async () => null,
     smsConsentLive: async () => true,
     activeDedupe: async () => false,
     record: async (w) => {
@@ -60,6 +64,7 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     },
     channels: { sms: fakeChannel('sms') },
     renderer: fakeRenderer,
+    claimShadow: { dispatch: () => 'off' },
     ...overrides,
   };
   return { ports, ledger, audits, captures, threaded };
@@ -102,14 +107,25 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
   it('suppressed_quiet_hours for a normal message inside the window', async () => {
     const { ports, ledger } = makePorts({ now: () => NIGHT });
     const result = await dispatchLoopMessage(message({ urgency: 'normal' }), ports);
-    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_quiet_hours' }]);
-    expect(ledger[0]?.status).toBe('suppressed_quiet_hours');
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'parent_window' },
+    ]);
+    expect(ledger).toEqual([
+      expect.objectContaining({
+        status: 'suppressed_quiet_hours',
+        dedupeKey: null,
+        errorCode: 'parent_window',
+      }),
+    ]);
   });
 
-  it('time_sensitive bypasses quiet hours and sends', async () => {
+  it('time_sensitive bypasses quiet hours and sends (a non-reminder)', async () => {
     const emailChannel = fakeChannel('sms');
     const { ports, ledger } = makePorts({ now: () => NIGHT, channels: { sms: emailChannel } });
-    const result = await dispatchLoopMessage(message({ urgency: 'time_sensitive' }), ports);
+    const result = await dispatchLoopMessage(
+      message({ category: 'alert', urgency: 'time_sensitive' }),
+      ports,
+    );
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(emailChannel.calls).toHaveLength(1);
     expect(ledger[0]?.status).toBe('queued');
@@ -120,6 +136,131 @@ describe('suppression matrix — every refusal writes a per-leg ledger row and s
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
     expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
     expect(ledger[0]?.status).toBe('queued');
+  });
+});
+
+/**
+ * The proactive floor at SEND time. The run checks it before it enqueues; a retry or a
+ * drain backlog can carry the send past 21:00, and the parent's own window (21:30 by
+ * default, with the T-1h urgent bypass) would let it through. Denver in November is MST
+ * (UTC-7); New York is EST (UTC-5).
+ */
+describe('the proactive floor holds a reminder at send', () => {
+  const DENVER = 'America/Denver';
+  const MST_2112 = new Date('2026-11-06T04:12:00Z'); // 21:12 MST, 5 Nov — before the 21:30 window
+  const MST_2012 = new Date('2026-11-06T03:12:00Z'); // 20:12 MST, 5 Nov — the floor is open
+  const MST_2200 = new Date('2026-11-06T05:00:00Z'); // 22:00 MST — inside floor AND window
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(['time_sensitive', 'normal'] as const)(
+    'holds a %s reminder at 21:12 local, named proactive_floor, with no send',
+    async (urgency) => {
+      const sms = fakeChannel('sms');
+      const { ports, ledger } = makePorts({
+        now: () => MST_2112,
+        loadParent: async () => ({ timezone: DENVER }),
+        channels: { sms },
+      });
+      const result = await dispatchLoopMessage(
+        message({ urgency, dedupeKey: 'reminder:k' }),
+        ports,
+      );
+      expect(result.legs).toEqual([
+        { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: PROACTIVE_FLOOR_HOLD },
+      ]);
+      expect(ledger).toEqual([
+        expect.objectContaining({
+          status: 'suppressed_quiet_hours',
+          dedupeKey: null,
+          errorCode: 'proactive_floor',
+        }),
+      ]);
+      expect(sms.calls).toHaveLength(0);
+    },
+  );
+
+  it('positive control: the same reminder at 20:12 local is sent', async () => {
+    const sms = fakeChannel('sms');
+    const { ports } = makePorts({
+      now: () => MST_2012,
+      loadParent: async () => ({ timezone: DENVER }),
+      channels: { sms },
+    });
+    const result = await dispatchLoopMessage(message({ urgency: 'time_sensitive' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toHaveLength(1);
+  });
+
+  it('a T-1h at 22:00 with the urgent bypass on still meets the floor', async () => {
+    const sms = fakeChannel('sms');
+    const { ports } = makePorts({
+      now: () => MST_2200,
+      loadParent: async () => ({ timezone: DENVER }),
+      channels: { sms },
+    });
+    const result = await dispatchLoopMessage(message({ urgency: 'time_sensitive' }), ports);
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'proactive_floor' },
+    ]);
+    expect(sms.calls).toHaveLength(0);
+  });
+
+  it('the floor is the reminder class only: an approval at 21:12 local is sent', async () => {
+    const sms = fakeChannel('sms');
+    const { ports } = makePorts({
+      now: () => MST_2112,
+      loadParent: async () => ({ timezone: DENVER }),
+      channels: { sms },
+    });
+    const result = await dispatchLoopMessage(message({ category: 'approval' }), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+    expect(sms.calls).toHaveLength(1);
+  });
+
+  describe('a Florida number while cadence is armed starts the floor at 20:00', () => {
+    const EST_2030 = new Date('2026-11-06T01:30:00Z'); // 20:30 EST, 5 Nov
+
+    function floridaPorts(phone: () => Promise<string | null>) {
+      const sms = fakeChannel('sms');
+      const made = makePorts({
+        now: () => EST_2030,
+        loadParent: async () => ({ timezone: 'America/New_York' }),
+        parentPhone: phone,
+        channels: { sms },
+      });
+      return { ...made, sms };
+    }
+
+    it('holds a Florida number at 20:30', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      const { ports, sms } = floridaPorts(async () => '+13055550100');
+      const result = await dispatchLoopMessage(message(), ports);
+      expect(result.legs).toEqual([
+        { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'proactive_floor' },
+      ]);
+      expect(sms.calls).toHaveLength(0);
+    });
+
+    it('control: a New York number at the same instant is sent', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+      const { ports, sms } = floridaPorts(async () => '+12125550100');
+      const result = await dispatchLoopMessage(message(), ports);
+      expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(sms.calls).toHaveLength(1);
+    });
+
+    it('control: with cadence off the phone is never read', async () => {
+      vi.stubEnv('PROACTIVE_CADENCE', 'off');
+      const { ports, sms } = floridaPorts(async () => {
+        throw new Error('the phone must not be read while cadence is off');
+      });
+      const result = await dispatchLoopMessage(message(), ports);
+      expect(result.legs).toEqual([{ channel: 'sms', outcome: 'sent' }]);
+      expect(sms.calls).toHaveLength(1);
+    });
   });
 });
 
@@ -456,6 +597,7 @@ describe('the composed voice slot is reported off the render, never inferred fro
     render: (m: LoopMessage): RenderedContent => ({
       kind: 'sms' as const,
       text: m.templateKey,
+      modelWritten: false,
       voice,
     }),
   });
@@ -533,6 +675,7 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       kind: 'sms',
       text: TEXTS.join('\n\n'),
       texts: [...TEXTS],
+      modelWritten: true,
       recordBody: true,
     }),
   };
@@ -586,7 +729,9 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       channels: { sms: sms.channel },
     });
     const result = await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
-    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'suppressed_quiet_hours' }]);
+    expect(result.legs).toEqual([
+      { channel: 'sms', outcome: 'suppressed_quiet_hours', reason: 'parent_window' },
+    ]);
     expect(sms.calls).toHaveLength(0);
     expect(ledger).toHaveLength(1);
   });
@@ -651,6 +796,7 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
         kind: 'sms',
         text: [SAME, 'see you there', SAME].join('\n\n'),
         texts: [SAME, 'see you there', SAME],
+        modelWritten: true,
         recordBody: true,
         bold: '4:30',
       }),
@@ -674,3 +820,134 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
     ]);
   });
 });
+
+describe('VIL-581 · the claim shadow reads model-written bodies only, and the leg is unchanged', () => {
+  const MODEL_BODY = 'Swim is at 10 on Saturday.';
+  function shadowPorts(modelWritten: boolean, text = MODEL_BODY) {
+    const shadowed: DispatchShadowInput[] = [];
+    const run = makePorts({
+      renderer: { render: () => ({ kind: 'sms', text, modelWritten }) },
+      claimShadow: {
+        dispatch: (input) => {
+          shadowed.push(input);
+          return 'started';
+        },
+      },
+    });
+    return { ...run, shadowed };
+  }
+
+  it('a model-written body is handed over once, with its own claims and no zone', async () => {
+    const { ports, shadowed } = shadowPorts(true);
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(shadowed).toHaveLength(1);
+    expect(shadowed[0]).toEqual({
+      familyId: 'fam-1',
+      parentUserId: 'user-1',
+      body: MODEL_BODY,
+      now: NOON,
+      claims: claimsNoLedgerCanBack(MODEL_BODY),
+    });
+    expect('timeZone' in (shadowed[0] as object)).toBe(false);
+    const baseline = await dispatchLoopMessage(
+      message(),
+      makePorts({
+        renderer: { render: () => ({ kind: 'sms', text: MODEL_BODY, modelWritten: true }) },
+      }).ports,
+    );
+    expect(result).toEqual(baseline);
+  });
+
+  it('a template body is never handed over (control)', async () => {
+    const { ports, shadowed } = shadowPorts(false);
+    expect((await dispatchLoopMessage(message(), ports)).legs[0]?.outcome).toBe('sent');
+    expect(shadowed).toEqual([]);
+  });
+
+  it('an unbacked model-written body is refused exactly as before, and the shadow saw the claim', async () => {
+    const { ports, shadowed, ledger } = shadowPorts(
+      true,
+      "I'll stop sending the one-sec messages.",
+    );
+    const result = await dispatchLoopMessage(message(), ports);
+    expect(result.legs).toEqual([{ channel: 'sms', outcome: 'failed', reason: 'unbacked_claim' }]);
+    expect(ledger.map((w) => [w.status, w.errorCode])).toEqual([['failed', 'unbacked_claim']]);
+    expect(shadowed[0]?.claims.map((c) => c.kind)).toEqual(['self_referential']);
+  });
+});
+
+describe("VIL-581 · each renderer says whether its words are the model's", () => {
+  it('reminder, calendar invite and calendar cancel are model-written', async () => {
+    const { renderReminderSms } = await import('~/lib/loop/templates/reminder/sms');
+    const { calendarInviteSmsRenderer } = await import('~/lib/loop/templates/calendar-invite/sms');
+    const { calendarCancelSmsRenderer } = await import('~/lib/loop/templates/calendar-cancel/sms');
+    const reminder = renderReminderSms({ texts: ['Swim at 10.'] } as unknown as Parameters<
+      typeof renderReminderSms
+    >[0]);
+    const url = 'https://app.example.org/i/abc';
+    const invite = calendarInviteSmsRenderer.render(
+      message({ payload: { summary: 'Swim', when: 'Sat 10:00', url, line: `Add swim: ${url}` } }),
+      'sms',
+      'generic',
+    );
+    const cancel = calendarCancelSmsRenderer.render(
+      message({ payload: { summary: 'Swim', when: 'Sat 10:00', line: 'Swim is off.' } }),
+      'sms',
+      'generic',
+    );
+    expect([reminder.modelWritten, invite.modelWritten, cancel.modelWritten]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('the caregiver reminder and the default renderer are not (control)', async () => {
+    const { renderCaregiverReminderSms } = await import(
+      '~/lib/loop/templates/caregiver/reminder-sms'
+    );
+    const { defaultLoopRenderer } = await import('./renderer');
+    const caregiver = renderCaregiverReminderSms({
+      offset: '-PT1H',
+      timeZone: 'America/Denver',
+      events: [{ eventRef: 'e1', title: 'Swim', startsAt: '2026-11-07T17:00:00Z', location: null }],
+    } as unknown as Parameters<typeof renderCaregiverReminderSms>[0]);
+    const plain = defaultLoopRenderer.render(
+      message({ payload: { text: 'Hello.' } }),
+      'sms',
+      'generic',
+    );
+    expect([caregiver.modelWritten, plain.modelWritten]).toEqual([false, false]);
+  });
+});
+
+describe('VIL-581 · the production dispatch port is bound and does nothing while off', () => {
+  it('buildDispatchPorts wires a claim shadow that answers off with no env and no query', async () => {
+    const { buildDispatchPorts } = await import('./wiring');
+    vi.stubEnv('CLAIM_READER_MODE', '');
+    try {
+      const noQueries = new Proxy(
+        {},
+        {
+          get: () => () => {
+            throw new Error('the shadow queried the database while off');
+          },
+        },
+      ) as unknown as Parameters<typeof buildDispatchPorts>[0];
+      const ports = buildDispatchPorts(noQueries, { channels: {}, renderer: fakeRenderer });
+      expect(
+        ports.claimShadow.dispatch({
+          familyId: 'fam-1',
+          parentUserId: 'user-1',
+          body: MODEL_BODY_FOR_WIRING,
+          now: NOON,
+          claims: [],
+        }),
+      ).toBe('off');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+const MODEL_BODY_FOR_WIRING = 'Swim is at 10 on Saturday.';

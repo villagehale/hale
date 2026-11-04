@@ -17,7 +17,6 @@ import {
   friendVoiceContext,
 } from './friend-voice';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
-import { FOUNDER_PAIR_SESSION_IDS } from './sitting-reminder';
 import { FakeTransport } from './transport';
 
 /**
@@ -157,6 +156,39 @@ describe('runFirstReplyRecoveryCron', () => {
     vi.unstubAllEnvs();
   });
 
+  it('VIL-553: skips a number held for an unread opt-out read, before any claim', async () => {
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const id = seedSession(fake);
+    fake.db.insert(schema.optOutHeldMessages).values({
+      providerMessageId: INBOUND_SID,
+      phoneHash: phoneBlindIndex(PHONE),
+      heldAt: FIRST_TEXT_AT,
+      nextReadAt: FIRST_TEXT_AT,
+    });
+
+    const held = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
+    expect(held).toEqual({
+      evaluated: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      deferred: 0,
+      optOutHeld: 1,
+    });
+    expect(transport.bodies()).toEqual([]);
+    expect(fake.rows(schema.smsIntakeSessions).find((row) => row.id === id)).toMatchObject({
+      firstReplyRecoveredAt: null,
+    });
+
+    // Positive control: the same row with no hold standing is owed and sent its reply.
+    const unheld = makeFakeDb();
+    seedSession(unheld);
+    const owed = await runFirstReplyRecoveryCron(unheld.db, deps(transport), SAME_DAY_NOON_ET);
+    expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
+    expect(transport.sent[0]?.to).toBe(PHONE);
+  });
+
   it('sends the locked first-hello once for a session with SID and no outbound', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
@@ -191,23 +223,6 @@ describe('runFirstReplyRecoveryCron', () => {
     const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(result.sent).toBe(0);
     expect(transport.bodies()).toEqual([]);
-  });
-
-  it('does not send the first-hello to the founder-pair session ids', async () => {
-    const fake = makeFakeDb();
-    const transport = new FakeTransport();
-    const [firstId, secondId] = [...FOUNDER_PAIR_SESSION_IDS];
-    expect(FOUNDER_PAIR_SESSION_IDS.size).toBe(2);
-    seedSession(fake, { id: firstId });
-    seedSession(fake, { id: secondId, phoneE164: OTHER });
-
-    const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
-    expect(result.sent).toBe(0);
-    expect(transport.bodies()).toEqual([]);
-    expect(fake.rows(schema.smsIntakeSessions).map((row) => row.firstReplyRecoveredAt)).toEqual([
-      SAME_DAY_NOON_ET,
-      SAME_DAY_NOON_ET,
-    ]);
   });
 
   it('caps at one send — a second tick is quiet', async () => {

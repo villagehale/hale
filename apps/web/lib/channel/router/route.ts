@@ -15,7 +15,7 @@ import {
 import { foldHeldVenuePages } from '~/lib/channel/activity/venue-pages';
 import {
   approvalForCalendarYes,
-  pairedDraftForCalendarNo,
+  pairedDraftsForCalendarNo,
   questionsForCalendarReader,
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
@@ -83,7 +83,9 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
+import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import type { ClaimShadow, CoachShadowAttempt } from '~/lib/channel/reconcile/claim-shadow';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
 import {
   type ReconcileVerdict,
@@ -96,8 +98,15 @@ import {
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type { CrisisKind } from '~/lib/channel/voice/crisis-check';
+import {
+  type CrisisPager,
+  type SaidLineWriter,
+  logCrisisUnanswered,
+} from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
@@ -106,8 +115,15 @@ import {
   parentTimeZoneForOffer,
   recordCoachCalendarOffer,
 } from '~/lib/integrations/email-alert-offer';
-import { reportTurnFailures } from '~/lib/monitoring/failure-page';
-import { classifyChainedProviderFailure } from '~/lib/monitoring/provider-health';
+import {
+  failurePageCrisisPager,
+  noteCrisisReplySent,
+  reportTurnFailures,
+} from '~/lib/monitoring/failure-page';
+import {
+  type IncidentFailure,
+  classifyChainedProviderFailure,
+} from '~/lib/monitoring/provider-health';
 import { interestPassportEnabled } from '~/lib/passport/flag';
 import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -344,6 +360,12 @@ export type HandlerVerdict =
        * owns its own ledger writes.
        */
       afterSend?: (channelMessageId: string) => Promise<unknown>;
+      /**
+       * The receipt is for the parent who asked, never the group: on a group turn it goes
+       * to their phone, outside the group and its thread, as the over-limit line does.
+       * 1:1, it is the ordinary answer.
+       */
+      onlyToAsker?: true;
     };
 
 /**
@@ -413,6 +435,9 @@ export interface ChannelRouterDeps {
   calendarOffers: CalendarOfferPorts;
   /** #868: writes the lines that used to be fixed (identity disclosure). Absent → nothing sent. */
   saidLine?: SaidLineWriter;
+  /** Pages #ops when a crisis moment gets no reply. Absent: the real pager
+   * (failure-page.ts) on this turn's database, never a way to withhold the page. */
+  crisisPager?: CrisisPager;
   /** #868: the turn reader; decides an identity challenge in any language. */
   turnReader?: OptOutReader;
   /**
@@ -593,6 +618,13 @@ export interface ChannelRouterDeps {
    */
   reconcileView(database: Database, input: { familyId: string; now: Date }): Promise<ReconcileView>;
   /**
+   * VIL-581 · the claim reader in SHADOW, started after the reply is sent. It is handed
+   * each attempt's reply and the verdict the gate already decided on, starts detached
+   * and never throws, so nothing the parent receives waits on it or depends on it.
+   * Required (rule #11): `off` is the flag's job, never an absent dep.
+   */
+  claimShadow: ClaimShadow;
+  /**
    * Write down the registration watch the coach just promised, against the message that
    * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
    * point of MINTING rather than refusing is that the promise gets kept, and a mint that
@@ -684,6 +716,13 @@ export class TurnDeferred extends Error {
   }
 }
 
+/** The crisis a moment is, or null for a moment that is not one. */
+function momentCrisisKind(moment: Moment): CrisisKind | null {
+  if (moment === 'mental_crisis') return 'mental';
+  if (moment === 'emergency') return 'emergency';
+  return null;
+}
+
 export type RouterStatus =
   /** The ledger row named by the job is gone — nothing to route. */
   | 'unknown_message'
@@ -719,7 +758,11 @@ export type RouterStatus =
    * turn still answered the question the parent actually asked. */
   | 'smoke_alarm_fired'
   /** VIL-477: Hale left this group chat while the turn was in flight. Nothing sent. */
-  | 'group_left';
+  | 'group_left'
+  /** A handler's receipt was for its asker alone (onlyToAsker) on a group turn, and the
+   * asker has no enrolled SMS channel at a phone number to take it 1:1. The handler did
+   * its work; nothing was sent, to them or to the group. */
+  | 'asker_unreachable';
 
 export interface RouterResult {
   status: RouterStatus;
@@ -1136,6 +1179,7 @@ async function routeChannelMessageInner(
     templateKey: string | null = null,
     groupSync?: GroupActivityDecision,
     pendingAsk: PendingAsk | null = null,
+    onSent?: () => Promise<unknown>,
   ) =>
     sendReply(deps, {
       route,
@@ -1149,6 +1193,7 @@ async function routeChannelMessageInner(
       groupSync,
       templateKey,
       beforeSend: stopTyping,
+      onSent,
       inboundBody: context.body,
       stickerRead: {
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
@@ -1156,6 +1201,52 @@ async function routeChannelMessageInner(
         parentAttachments: (context.media ?? []).map((part) => part.kind),
       },
     });
+
+  const answerAsker = async (
+    body: string,
+    _medicalSource?: MedicalReplySource | null,
+    _replySource?: ReplySource | null,
+    templateKey: string | null = null,
+  ) =>
+    sendReply(deps, {
+      route: { channel: 'sms', to: route.to },
+      body,
+      job,
+      conversationId: null,
+      templateKey,
+      claim: claimAnswer,
+      openAsks: { leaves: null },
+      beforeSend: stopTyping,
+    });
+
+  // A receipt for its asker alone, on a group turn, goes 1:1 only to the asker's own
+  // enrolled SMS number, and only when that is the handle this text came from: a Linq
+  // group handle can be an Apple ID address or someone else's number, and an asker who
+  // never enrolled has not agreed to texts (CASL). Otherwise nothing is sent, to them or
+  // to the group, and the outcome is named.
+  const deliverVerdict = async (
+    verdict: Extract<HandlerVerdict, { claimed: true }>,
+  ): Promise<'delivered' | 'asker_unreachable'> => {
+    if (!(verdict.onlyToAsker && inGroup)) {
+      await deliver(verdict, answer);
+      return 'delivered';
+    }
+    if (verdict.reply !== null) {
+      const atPhone = normalizePhoneE164(route.to) === route.to;
+      const enrolled = atPhone
+        ? await resolveSendablePhone(deps.database, turn.parentUserId)
+        : null;
+      if (enrolled === null || enrolled !== route.to) {
+        deps.log.warn(
+          { outcome: 'asker_unreachable', atPhone, enrolled: enrolled !== null },
+          'channel router: receipt for the asker alone not sent',
+        );
+        return 'asker_unreachable';
+      }
+    }
+    await deliver(verdict, answerAsker);
+    return 'delivered';
+  };
 
   // GATE 2a — DID HALE JUST ASK THIS PARENT TO PICK? (VIL-304, disambiguation.ts.)
   //
@@ -1212,7 +1303,7 @@ async function routeChannelMessageInner(
   // never reach this router. A resolved answer is delivered by the handler that owns
   // the question. An unresolved turn falls through to the handlers that are not a
   // yes or a no.
-  const natural = await resolveNaturalReply(deps, turn, answer);
+  const natural = await resolveNaturalReply(deps, turn, deliverVerdict);
   if (natural.status === 'handled') {
     return done(deps, job, { ...natural.result, conversationId, lane: null });
   }
@@ -1230,9 +1321,9 @@ async function routeChannelMessageInner(
     for (const handler of deps.handlers) {
       const verdict = await handler.handle(deps.database, turn);
       if (!verdict.claimed) continue;
-      await deliver(verdict, answer);
+      const delivered = await deliverVerdict(verdict);
       return done(deps, job, {
-        status: 'handled',
+        status: delivered === 'asker_unreachable' ? delivered : 'handled',
         handler: handler.name,
         conversationId,
         lane: null,
@@ -1540,6 +1631,18 @@ async function routeChannelMessageInner(
         { familyId: job.family_id, moment: verdict.moment, reason: verdict.reason },
         'channel router: moment reply unwritten',
       );
+      const crisis = momentCrisisKind(verdict.moment);
+      if (crisis !== null) {
+        // A crisis nobody could answer reaches a human now, not on the re-drive.
+        await logCrisisUnanswered(deps.crisisPager ?? failurePageCrisisPager(deps.database), {
+          kind: crisis,
+          where: 'router moment',
+          ...momentUnwritten(verdict.reason),
+          inboundId: job.provider_message_id,
+          familyId: job.family_id,
+          parentUserId: job.parent_user_id,
+        });
+      }
       try {
         await deps.turns.recordDeferred({
           familyId: job.family_id,
@@ -1563,6 +1666,11 @@ async function routeChannelMessageInner(
         null,
         undefined,
         verdict.pendingAsk,
+        // A crisis counts as answered once the transport accepted its reply, never before,
+        // so a held copy whose reply never left is still answered late (VIL-602).
+        verdict.crisisReply
+          ? () => noteCrisisReplySent(deps.database, job.provider_message_id, deps.now())
+          : undefined,
       );
       return done(deps, job, {
         status: 'deflected',
@@ -1804,7 +1912,9 @@ async function recordWeekdayCareAnswer(
 async function resolveNaturalReply(
   deps: ChannelRouterDeps,
   turn: HandlerContext,
-  answer: (body: string) => Promise<string>,
+  deliverVerdict: (
+    verdict: Extract<HandlerVerdict, { claimed: true }>,
+  ) => Promise<'delivered' | 'asker_unreachable'>,
 ): Promise<NaturalReplyOutcome> {
   const questions = await turn.openQuestions();
   // NO OPEN QUESTION, NO MODEL CALL. The precondition that makes this stage affordable on
@@ -1884,39 +1994,47 @@ async function resolveNaturalReply(
   // and closes the offer from afterSend, once the receipt has actually gone out.
   // Expiring the offer here would drop it before that send, and a retry would
   // have nothing left to answer. The approval handler's reply is null.
-  const pairedDraft = pairedDraftForCalendarNo(questions, reading);
-  if (pairedDraft && verdict.outcome === 'declined') {
+  const pairedDrafts = pairedDraftsForCalendarNo(questions, reading);
+  if (pairedDrafts.length > 0 && verdict.outcome === 'declined') {
     const approval = deps.handlers.find((handler) => handler.resolves?.has('approval'));
     if (!approval) {
       deps.log.error({}, 'channel router: calendar ask declined, approval handler absent');
     } else {
-      try {
-        const declined = await approval.handle(deps.database, {
-          ...turn,
-          resolved: {
-            kind: 'approval',
-            questionId: pairedDraft,
-            polarity: 'no',
-            confidence: reading.confidence,
-          },
-        });
-        deps.log.info(
-          {
-            claimed: declined.claimed,
-            outcome: declined.claimed ? declined.outcome : 'unclaimed',
-          },
-          'channel router: calendar ask declined, draft declined',
-        );
-      } catch (err) {
-        deps.log.error(
-          { detail: err instanceof Error ? err.constructor.name : 'unknown' },
-          'channel router: calendar ask declined, draft not declined',
-        );
+      for (const pairedDraft of pairedDrafts) {
+        try {
+          const declined = await approval.handle(deps.database, {
+            ...turn,
+            resolved: {
+              kind: 'approval',
+              questionId: pairedDraft,
+              polarity: 'no',
+              confidence: reading.confidence,
+            },
+          });
+          deps.log.info(
+            {
+              claimed: declined.claimed,
+              outcome: declined.claimed ? declined.outcome : 'unclaimed',
+            },
+            'channel router: calendar ask declined, draft declined',
+          );
+        } catch (err) {
+          deps.log.error(
+            { detail: err instanceof Error ? err.constructor.name : 'unknown' },
+            'channel router: calendar ask declined, draft not declined',
+          );
+        }
       }
     }
   }
-  await deliver(verdict, answer);
-  return { status: 'handled', result: { status: 'resolved', handler: owner.name } };
+  const delivered = await deliverVerdict(verdict);
+  return {
+    status: 'handled',
+    result: {
+      status: delivered === 'asker_unreachable' ? delivered : 'resolved',
+      handler: owner.name,
+    },
+  };
 }
 
 /**
@@ -2066,8 +2184,16 @@ async function runAgentTurn(
       familyId: args.turn.familyId,
       now: args.turn.now,
     });
-    const { reply, planOffer, activityPromise, spotWatch, mints, experienceCard, groupLeave } =
-      await composeReconciledReply(deps, args, view);
+    const {
+      reply,
+      planOffer,
+      activityPromise,
+      spotWatch,
+      mints,
+      experienceCard,
+      groupLeave,
+      attempts,
+    } = await composeReconciledReply(deps, args, view);
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
     if (!experienceCard && reply.trim() === '') {
@@ -2087,6 +2213,15 @@ async function runAgentTurn(
     }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
+    // AFTER the send: the shadow read adds no latency and cannot change what was sent.
+    deps.claimShadow.coachTurn(deps.database, {
+      familyId: args.turn.familyId,
+      parentUserId: args.turn.parentUserId,
+      now: args.turn.now,
+      inbound: args.turn.body,
+      view: await view,
+      attempts,
+    });
     if (card) {
       // AFTER the text, like every other send-time writer here, and never throws: the
       // parent already has the message. Any reason the card cannot go out (flag dark,
@@ -2429,11 +2564,18 @@ async function composeReconciledReply(
     groupChatId?: string | null;
   },
   view: Promise<ReconcileView>,
-): Promise<ChannelTurnResult & { mints: readonly RegistrationWatchMint[] }> {
+): Promise<
+  ChannelTurnResult & {
+    mints: readonly RegistrationWatchMint[];
+    attempts: readonly CoachShadowAttempt[];
+  }
+> {
   const standingQuestions = args.questions.map((question) => question.subject);
   let rejected: readonly string[] = [];
   let result: ChannelTurnResult | null = null;
   let verdict: ReconcileVerdict | null = null;
+  // What each attempt wrote and what the gate decided about it, for the claim shadow.
+  const attempts: CoachShadowAttempt[] = [];
 
   for (let attempt = 1; attempt <= MAX_RECONCILE_ATTEMPTS; attempt += 1) {
     result = await deps.coach.respond(
@@ -2460,8 +2602,16 @@ async function composeReconciledReply(
         ].filter((kind) => kind !== null),
       ),
     });
+    attempts.push({
+      reply: result.reply,
+      experienceCard: result.experienceCard ?? null,
+      groupLeave: result.groupLeave ?? null,
+      activityPromise: result.activityPromise,
+      spotWatch: result.spotWatch,
+      verdict,
+    });
     if (verdict.refused.length === 0) {
-      return { ...result, mints: verdict.mints };
+      return { ...result, mints: verdict.mints, attempts };
     }
     rejected = reconcileViolations(verdict);
     for (const refusal of verdict.refused) {
@@ -2503,13 +2653,13 @@ async function composeReconciledReply(
             { reason: 'model_unreachable' },
             'channel router: co-parent ask unreachable - nothing sent',
           );
-          return { ...composed, reply: '', spotWatch: null, mints: [] };
+          return { ...composed, reply: '', spotWatch: null, mints: [], attempts };
         }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
-        return { ...composed, reply: instruction, spotWatch: null, mints: [] };
+        return { ...composed, reply: instruction, spotWatch: null, mints: [], attempts };
       }
     }
     throw new Error(
@@ -2544,6 +2694,7 @@ async function composeReconciledReply(
     reply,
     spotWatch: ackSurvived ? armingAck : null,
     mints: refusedVerdict.mints,
+    attempts,
   };
 }
 
@@ -2593,8 +2744,8 @@ type FailedTurnDisposition =
   | {
       outcome: 'deferred';
       reason: TurnDeferralReason;
-      /** Billing or auth on the provider call that deferred the turn. */
-      providerFailure?: 'billing' | 'auth';
+      /** The incident class (INCIDENT_FAILURES) of the provider call that deferred the turn. */
+      providerFailure?: IncidentFailure;
       log: object;
     };
 
@@ -2639,7 +2790,8 @@ async function disposeOfFailedTurn(
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
     // a provider outage the off-domain screen fails open and no model can write a
-    // crisis reply; since #868 there is no fixed one, so the alarm pages #ops urgently.
+    // crisis reply; since #868 there is no fixed one. The alarm never fires today (it
+    // returns not_an_outage or unjudged), so it pages nobody.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -2777,6 +2929,9 @@ async function sendReply(
     /** Runs before the transport call. The iMessage think-section uses it to
      * stop the typing bubble before the reply goes out. */
     beforeSend?: () => Promise<void> | void;
+    /** Runs once the transport accepted the text, before any receipt is written, so what
+     * it records holds even when a receipt write then throws. */
+    onSent?: () => Promise<unknown>;
     /** The parent's words, when this reply is the turn's answer. A tapback or
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
@@ -2880,6 +3035,7 @@ async function sendReply(
       );
     }
   }
+  if (args.onSent) await args.onSent();
   await mirrorActivityDecision(deps, args);
 
   // The channel the send reported. The ledger records that door, which is what a

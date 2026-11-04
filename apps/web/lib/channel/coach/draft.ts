@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, CalendarPlacementPayload } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
-import { calendarInstantsEqual, calendarTitlesEqual } from '~/lib/channel/calendar-ask';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { calendarInstantsClose, calendarTitlesEqual } from '~/lib/channel/calendar-ask';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
+import { standingCalendarOfferId } from '~/lib/integrations/email-alert-offer';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 
@@ -31,7 +33,7 @@ import { reviewAction } from '~/lib/pipeline/review';
 
 const CHANNEL_SOURCE = 'channel_sms';
 const CHANNEL_EVENT_TYPE = 'channel_sms.calendar_intent';
-const CHANNEL_AUDIT_ACTION = 'channel_sms.calendar_drafted';
+export const CHANNEL_AUDIT_ACTION = 'channel_sms.calendar_drafted';
 
 /** The three schedule verbs C2 can draft. A strict subset of ActionType so a caller
  * cannot route an arbitrary action type through the texting surface. */
@@ -59,6 +61,52 @@ export interface ChannelDraftResult {
 }
 
 /**
+ * The turn a calendar_add is asked on (VIL-525). `private` is a 1:1 thread. `group` is the
+ * group chat the turn ran in, which may be a chat that is not the household's own group;
+ * `chatId` is null when the turn did not say which chat it was. In memory only: the
+ * provider's chat id is never written to a row.
+ */
+export type DraftOrigin = { surface: 'private' } | { surface: 'group'; chatId: string | null };
+
+/**
+ * What a calendar_add's mint row records: the chat as a keyed index rather than the
+ * provider's id, and whether it was the family's household group when the draft was
+ * minted, so a later change of household chat does not move the draft.
+ */
+type RecordedOrigin =
+  | { surface: 'private' }
+  | { surface: 'group'; chatKey: string; household: boolean };
+
+/**
+ * The one place a draft is answered (VIL-525). A draft asked in the household group is
+ * that group's question. Every other draft, including one asked in a shared or unclaimed
+ * chat, waits on the family's private threads: a shared chat is read by other households.
+ * `originChatKey` is the chat a private-surface draft was asked in, so a repeat ask there
+ * finds it.
+ */
+export type ApprovalSurface =
+  | { surface: 'household_group'; chatKey: string }
+  | { surface: 'private'; originChatKey: string | null };
+
+export function draftOriginForTurn(turn: {
+  audience: 'direct' | 'group';
+  groupChatId?: string | null;
+}): DraftOrigin {
+  return turn.audience === 'group'
+    ? { surface: 'group', chatId: turn.groupChatId ?? null }
+    : { surface: 'private' };
+}
+
+/**
+ * What an ask already has waiting. `already_pending` names the draft, `already_asked` the
+ * standing offer. `group_chat_unknown` is a group ask whose chat is not known: no thread
+ * could approve a draft of it, so none is minted.
+ */
+export type PendingCalendarAdd =
+  | { outcome: 'already_pending' | 'already_asked'; id: string }
+  | { outcome: 'none' | 'group_chat_unknown' };
+
+/**
  * The seam the tools draft through. Injected so the tool tests drive the DRAFTING RULES
  * (the per-turn cap, the event resolution, the refusals) against a fake, while the
  * production binding runs the real reviewer against real Claude — which is where rule
@@ -67,33 +115,176 @@ export interface ChannelDraftResult {
 export interface ChannelDraftPort {
   draft(input: ChannelDraftInput): Promise<ChannelDraftResult>;
   /**
-   * A `calendar_add` already waiting on this occasion, or null. Absent on a port
-   * that does not look — the tool then drafts, which is what every test double did
-   * before VIL-513.
+   * A `calendar_add` already waiting on this occasion, or the offer that already
+   * asked it. Absent on a port that does not look — the tool then drafts, which is
+   * what every test double did before VIL-513.
    */
   pendingIdentical?(input: {
     familyId: string;
     title: string;
     startsAt: string;
-  }): Promise<string | null>;
+    childId: string | null;
+  }): Promise<PendingCalendarAdd>;
 }
 
+/**
+ * Bound to one turn: every draft it mints records that turn's origin, and every ask it
+ * checks is scoped to it.
+ */
 export function productionChannelDraftPort(
   database: Database,
   client: AgentClient,
-  now: Date = new Date(),
+  turn: { now: Date; parentUserId: string; origin: DraftOrigin },
 ): ChannelDraftPort {
   return {
-    draft: (input) => mintChannelCalendarDraft(input, database, client, now),
-    pendingIdentical: (input) => findPendingIdenticalCalendarAdd(database, input),
+    draft: (input) =>
+      mintChannelCalendarDraft({ ...input, origin: turn.origin }, database, client, turn.now),
+    pendingIdentical: (input) =>
+      findPendingIdenticalCalendarAdd(database, {
+        ...input,
+        parentUserId: turn.parentUserId,
+        now: turn.now,
+        origin: turn.origin,
+      }),
   };
 }
 
-/** The drafted add for this title and start, if one is already waiting. */
+async function recordOrigin(
+  database: Database,
+  familyId: string,
+  origin: DraftOrigin,
+): Promise<RecordedOrigin | 'group_chat_unknown'> {
+  if (origin.surface === 'private') return origin;
+  if (origin.chatId === null) return 'group_chat_unknown';
+  const [family] = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return {
+    surface: 'group',
+    chatKey: linqChatBlindIndex(origin.chatId),
+    household: family?.chatId === origin.chatId,
+  };
+}
+
+function approvalSurfaceOf(origin: RecordedOrigin): ApprovalSurface {
+  if (origin.surface === 'private') return { surface: 'private', originChatKey: null };
+  return origin.household
+    ? { surface: 'household_group', chatKey: origin.chatKey }
+    : { surface: 'private', originChatKey: origin.chatKey };
+}
+
+function parseRecordedOrigin(after: unknown): RecordedOrigin | null {
+  const origin = (
+    after as { origin?: { surface?: unknown; chatKey?: unknown; household?: unknown } } | null
+  )?.origin;
+  if (origin?.surface === 'private') return { surface: 'private' };
+  if (
+    origin?.surface === 'group' &&
+    typeof origin.chatKey === 'string' &&
+    typeof origin.household === 'boolean'
+  ) {
+    return { surface: 'group', chatKey: origin.chatKey, household: origin.household };
+  }
+  return null;
+}
+
+/**
+ * Each action's approval surface, which listing and dedupe both read. The mint row's
+ * recorded origin when it has one. A draft minted before origins were recorded is read
+ * from the group-plan stamp, which only the household group ever got: stamped is that
+ * group, and unstamped is private.
+ */
+export async function calendarDraftApprovalSurfaces(
+  database: Database,
+  familyId: string,
+  actionIds: readonly string[],
+): Promise<ReadonlyMap<string, ApprovalSurface>> {
+  if (actionIds.length === 0) return new Map();
+  const rows = await database
+    .select({
+      targetId: schema.auditLog.targetId,
+      actionTaken: schema.auditLog.actionTaken,
+      after: schema.auditLog.after,
+    })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.targetTable, 'actions'),
+        inArray(schema.auditLog.actionTaken, [CHANNEL_AUDIT_ACTION, 'group_plan.drafted']),
+        inArray(schema.auditLog.targetId, [...actionIds]),
+      ),
+    );
+  const recorded = new Map<string, RecordedOrigin>();
+  const stamped = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.targetId) continue;
+    if (row.actionTaken === CHANNEL_AUDIT_ACTION) {
+      const origin = parseRecordedOrigin(row.after);
+      if (origin) recorded.set(row.targetId, origin);
+      continue;
+    }
+    const chatId = (row.after as { chatId?: unknown } | null)?.chatId;
+    if (typeof chatId === 'string') stamped.set(row.targetId, chatId);
+  }
+  return new Map(
+    actionIds.map((id): [string, ApprovalSurface] => {
+      const origin = recorded.get(id);
+      if (origin) return [id, approvalSurfaceOf(origin)];
+      const chatId = stamped.get(id);
+      return [
+        id,
+        chatId === undefined
+          ? { surface: 'private', originChatKey: null }
+          : { surface: 'household_group', chatKey: linqChatBlindIndex(chatId) },
+      ];
+    }),
+  );
+}
+
+/**
+ * A household-group ask reuses only that group's drafts. A private ask reuses any
+ * private-surface draft, a shared chat's included. An ask in a shared chat reuses only a
+ * private-surface draft asked in that same chat.
+ */
+function sameApprovalSurface(draft: ApprovalSurface | undefined, ask: ApprovalSurface): boolean {
+  if (ask.surface === 'household_group') {
+    return draft?.surface === 'household_group' && draft.chatKey === ask.chatKey;
+  }
+  if (draft?.surface !== 'private') return false;
+  return ask.originChatKey === null || draft.originChatKey === ask.originChatKey;
+}
+
+/**
+ * The drafted add for this occasion, or the offer that already asked it.
+ *
+ * Only drafts on the ask's approval surface and for the same child are candidates. Among those, a
+ * minute-off clock is the draft already waiting (VIL-525) and hours apart is not; the
+ * newest wins. A standing offer is the private ask that already went out, so a private
+ * ask for the same occasion does not mint a second draft. A group ask never answers a
+ * private offer.
+ */
 export async function findPendingIdenticalCalendarAdd(
   database: Database,
-  input: { familyId: string; title: string; startsAt: string },
-): Promise<string | null> {
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: string;
+    childId: string | null;
+    now: Date;
+    origin: DraftOrigin;
+  },
+): Promise<PendingCalendarAdd> {
+  const origin = await recordOrigin(database, input.familyId, input.origin);
+  if (origin === 'group_chat_unknown') {
+    console.info(
+      { familyId: input.familyId, outcome: 'group_chat_unknown' },
+      'texted calendar add: group chat unknown, nothing drafted',
+    );
+    return { outcome: 'group_chat_unknown' };
+  }
   const rows = await database
     .select({ id: schema.actions.id, payload: schema.actions.payload })
     .from(schema.actions)
@@ -104,21 +295,41 @@ export async function findPendingIdenticalCalendarAdd(
         eq(schema.actions.actionType, 'calendar_add'),
       ),
     )
-    .limit(20);
+    // No row limit: audience and child are read after the query, so a page of newer
+    // drafts for another chat or child would hide the one this ask is about.
+    .orderBy(desc(schema.actions.draftedAt));
+  const surfaces = await calendarDraftApprovalSurfaces(
+    database,
+    input.familyId,
+    rows.map((row) => row.id),
+  );
+  const askSurface = approvalSurfaceOf(origin);
   const hit = rows.find((row) => {
-    const payload = row.payload as { title?: unknown; startsAt?: unknown };
+    const payload = row.payload as { title?: unknown; startsAt?: unknown; childId?: unknown };
+    const childId = typeof payload.childId === 'string' ? payload.childId : null;
     return (
+      sameApprovalSurface(surfaces.get(row.id), askSurface) &&
+      childId === input.childId &&
       typeof payload.title === 'string' &&
       typeof payload.startsAt === 'string' &&
       calendarTitlesEqual(payload.title, input.title) &&
-      calendarInstantsEqual(payload.startsAt, input.startsAt)
+      calendarInstantsClose(payload.startsAt, input.startsAt)
     );
   });
-  return hit?.id ?? null;
+  if (hit) return { outcome: 'already_pending', id: hit.id };
+  if (input.origin.surface === 'group') return { outcome: 'none' };
+  const offerId = await standingCalendarOfferId(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title: input.title,
+    startsAt: input.startsAt,
+    now: input.now,
+  });
+  return offerId ? { outcome: 'already_asked', id: offerId } : { outcome: 'none' };
 }
 
 export async function mintChannelCalendarDraft(
-  input: ChannelDraftInput,
+  input: ChannelDraftInput & { origin: DraftOrigin },
   database: Database,
   client: AgentClient,
   now: Date = new Date(),
@@ -129,6 +340,16 @@ export async function mintChannelCalendarDraft(
   // column and DraftedAction's payload both require.
   const payload = { ...input.payload, action_hash: dedupHash } satisfies CalendarPlacementPayload;
   const childId = input.payload.childId ?? null;
+  // Only an add is a group's plan (the stamp's own rule). A move or cancel is answered
+  // on the 1:1 list, wherever it was asked.
+  const origin =
+    input.actionType === 'calendar_add'
+      ? await recordOrigin(database, input.familyId, input.origin)
+      : null;
+  if (origin === 'group_chat_unknown') {
+    // No thread could approve it (VIL-525). The tool checks first; this is the backstop.
+    throw new Error('group_chat_unknown: a group add with no chat is not drafted');
+  }
 
   const insertedEvent = await database
     .insert(schema.events)
@@ -178,7 +399,7 @@ export async function mintChannelCalendarDraft(
     actionTaken: CHANNEL_AUDIT_ACTION,
     targetTable: 'actions',
     targetId: actionId,
-    after: { actionType: input.actionType, dedupHash, childId },
+    after: { actionType: input.actionType, dedupHash, childId, ...(origin ? { origin } : {}) },
   });
 
   // Rule #3: /api/actions/:id/approve rejects any draft whose reviewer verdict is not

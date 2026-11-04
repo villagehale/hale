@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Event 1 (Montessori tour) has its day, start (10), duration (about an hour = 10-11), venue name and address, and Theo. Event 2 (Storytime) gives Léa, 1:30 to 2:15 and the day, but the venue is only 'the library': the facts gave 'Georgetown Branch, 9 Church St', so the venue name and street address are both missing. That is a dropped given fact. Also 'the library' is an inference not in the facts, and AM/PM is not stated on either event. Bold is none, which is fine.",
+    "score": 2
+  }
+}

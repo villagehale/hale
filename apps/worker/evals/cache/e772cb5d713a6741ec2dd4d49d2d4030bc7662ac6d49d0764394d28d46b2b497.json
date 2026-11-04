@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "how do I stop the camp from emailing me?",
+    "language": "en",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": ""
+  },
+  "latencyMs": 1005
+}

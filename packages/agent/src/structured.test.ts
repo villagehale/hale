@@ -500,3 +500,52 @@ describe('prompt caching', () => {
     });
   });
 });
+
+describe('forceToolJson — an optional abort signal rides as a request option (VIL-581)', () => {
+  const args = (client: AgentClient, extra: { signal?: AbortSignal; transport?: 'stream' } = {}) =>
+    forceToolJson({
+      client,
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_SCHEMA,
+      schema: SCHEMA,
+      maxTokens: 20,
+      ...extra,
+    });
+
+  it('passes the signal to create as the second argument', async () => {
+    const { client, create } = fakeClient(ANSWER);
+    const signal = new AbortController().signal;
+    await args(client, { signal });
+    expect(create.mock.calls[0]).toHaveLength(2);
+    expect((create.mock.calls[0] as unknown[])[1]).toEqual({ signal });
+    expect(((create.mock.calls[0] as unknown[])[1] as { signal: AbortSignal }).signal).toBe(signal);
+  });
+
+  it('without a signal, create gets the body only, as every existing caller does (control)', async () => {
+    const { client, create } = fakeClient(ANSWER);
+    await args(client);
+    expect(create.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('passes the same signal to stream', async () => {
+    const stream = vi.fn((_params: Anthropic.MessageCreateParams, _opts?: unknown) => ({
+      finalMessage: async () => ANSWER,
+    }));
+    const signal = new AbortController().signal;
+    await args({ messages: { stream } } as unknown as AgentClient, { signal, transport: 'stream' });
+    expect(stream.mock.calls[0]?.[1]).toEqual({ signal });
+  });
+
+  it('never puts the signal in the body, so no recorded request moves', async () => {
+    const { client, create } = fakeClient(ANSWER);
+    await args(client, { signal: new AbortController().signal });
+    const body = create.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    expect(Object.keys(body)).not.toContain('signal');
+    expect(body.model).toBe(HAIKU_MODEL);
+    expect(body.max_tokens).toBe(20);
+  });
+});

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "你是谁？你怎么有我的电话号码？",
+    "language": "zh",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": ""
+  },
+  "latencyMs": 1796
+}

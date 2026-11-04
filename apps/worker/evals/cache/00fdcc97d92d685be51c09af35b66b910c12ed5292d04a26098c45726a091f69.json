@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 'Your activity' on Mon, Sep 14 at 4:00 PM has been cancelled. The summary is 'Your activity', which the text names as 'Your activity'. The start is Monday September 14, 2026 at 16:00 (4:00 PM) in America/Denver, minute 0. The text states the same day, weekday, and hour 4:00 PM with no minute mismatch, and a cancellation naming this event at this start matches.",
+    "match": true
+  },
+  "latencyMs": 1948
+}

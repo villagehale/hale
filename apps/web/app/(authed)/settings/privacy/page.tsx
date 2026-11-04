@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import type { DeleteAccountRole } from '~/components/hale/delete-account-button';
 import { PrivacyView } from '~/components/portal/privacy-view';
 import { listConsentRecordsForViewer } from '~/lib/consent-records';
 import { db } from '~/lib/db';
 import { currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
+import { deleteAccountRole } from '~/lib/rights/delete-role';
+import { exportSeat } from '~/lib/rights/export-seat';
 
 export const metadata: Metadata = { title: 'Privacy & data' };
 
@@ -17,15 +18,11 @@ export default async function PrivacyPage() {
     userId ? listConsentRecordsForViewer(database, userId) : Promise.resolve([]),
     userId ? listSeatsForUser(userId, database) : Promise.resolve([]),
   ]);
-  const viewerRole = seats.find((seat) => seat.familyId === familyId)?.role ?? null;
-  const role: DeleteAccountRole =
-    seats.length > 1
-      ? 'ambiguous'
-      : seats.length === 1 && viewerRole === 'co_parent'
-        ? 'co_parent'
-        : viewerRole === null || viewerRole === 'primary_parent'
-          ? 'primary_parent'
-          : 'scoped';
-
-  return <PrivacyView records={records} role={role} />;
+  return (
+    <PrivacyView
+      records={records}
+      role={deleteAccountRole(seats, familyId)}
+      canExport={exportSeat(seats).outcome === 'export'}
+    />
+  );
 }

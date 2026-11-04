@@ -883,6 +883,8 @@ async function sendSpotOpen(
     familyId: spot.familyId,
     body: wireBody,
     now,
+    lane: 'spot_open',
+    parentUserId: spot.parentUserId,
   });
   if (unbacked.length > 0) {
     console.error(

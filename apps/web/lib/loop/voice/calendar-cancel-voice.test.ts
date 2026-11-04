@@ -8,6 +8,9 @@ import {
 const REQUEST: CalendarCancelRequest = {
   summary: 'Swim class',
   when: 'Thu, Jul 23 at 10:30 AM',
+  /** 10:30 AM in Los Angeles (PDT, UTC-7). */
+  startsAt: new Date('2026-07-23T17:30:00.000Z'),
+  timeZone: 'America/Los_Angeles',
 };
 
 describe('calendarCancelRefusals', () => {
@@ -20,10 +23,10 @@ describe('calendarCancelRefusals', () => {
     ).toEqual([]);
   });
 
-  it('refuses a text that never names the event', () => {
-    expect(calendarCancelRefusals('Heads up, plans changed for Thursday.', REQUEST)).toEqual([
-      'summary_missing',
-    ]);
+  it('VIL-588: leaves naming the event to the time judge, so a translated name is not refused', () => {
+    expect(
+      calendarCancelRefusals('Le cours de natation de jeudi 10 h 30 est annulé.', REQUEST),
+    ).toEqual([]);
   });
 
   it('VIL-450: no wording rules - any language, any voice, any length passes the fact gate', () => {
@@ -41,16 +44,19 @@ describe('calendarCancelRefusals', () => {
   it('refuses a time it was not handed and a link', () => {
     expect(
       calendarCancelRefusals(
-        'We cancelled Swim class at 4:15 - details at https://x.example',
+        'We cancelled Swim class at 4:15 - details at https://x.example.org',
         REQUEST,
       ),
-    ).toEqual(expect.arrayContaining(['invented_number', 'carries_link']));
+    ).toEqual(expect.arrayContaining(['invented_number', 'carries_destination']));
   });
 });
 
 describe('calendarCancelUserMessage', () => {
   it('carries the summary and time, and the refusals only on a retry', () => {
-    expect(JSON.parse(calendarCancelUserMessage(REQUEST))).toEqual(REQUEST);
+    expect(JSON.parse(calendarCancelUserMessage(REQUEST))).toEqual({
+      summary: REQUEST.summary,
+      when: REQUEST.when,
+    });
     expect(
       JSON.parse(calendarCancelUserMessage(REQUEST, [{ text: 'x', problems: ['empty'] }])).rejected,
     ).toEqual([{ text: 'x', problems: ['empty'] }]);

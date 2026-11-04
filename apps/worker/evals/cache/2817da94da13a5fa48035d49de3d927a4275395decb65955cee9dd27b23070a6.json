@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The title \"Jour de congé\" names an event the family attends at the library; the text instead says \"il y a un jour de congé\" (there is a day off), turning the title into a plain statement about what the day is rather than the event's name. That changes the meaning, which is a fact failure. The other facts are right: tomorrow, 15 h to 16 h, Georgetown library, 9 Church St, no bold and no invented logistics.",
+    "score": 2
+  }
+}

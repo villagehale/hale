@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event as Swim class, which matches the summary. It states Friday, July 23 at 10:30 AM. The start is Thursday, July 23, 2026 at 10:30, so the weekday is wrong: the text says Friday but the event starts on Thursday. Stated day does not match, so no match.",
+    "match": false
+  },
+  "latencyMs": 1588
+}

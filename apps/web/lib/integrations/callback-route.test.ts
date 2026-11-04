@@ -16,6 +16,7 @@ const accountHeldMock = vi.fn();
 const holdNameMock = vi.fn();
 const kickMock = vi.fn();
 const freshMock = vi.fn();
+const settleSupersededMock = vi.fn();
 
 vi.mock('~/lib/channel/connect/fresh-link', () => ({
   textFreshConnectorLink: (...a: unknown[]) => freshMock(...a),
@@ -43,6 +44,9 @@ vi.mock('~/lib/integrations/google-oauth', async () => {
 vi.mock('~/lib/integrations/store', () => ({
   saveConnection: (...a: unknown[]) => saveConnectionMock(...a),
   otherParentHoldsGoogleAccount: (...a: unknown[]) => accountHeldMock(...a),
+}));
+vi.mock('~/lib/integrations/google-disconnect', () => ({
+  settleSupersededGoogleRevoke: (...a: unknown[]) => settleSupersededMock(...a),
 }));
 vi.mock('~/lib/integrations/google-profile', () => ({
   readGoogleGivenName: (...a: unknown[]) => readProfileMock(...a),
@@ -76,6 +80,8 @@ function location(res: Response): string {
   return res.headers.get('location') ?? '';
 }
 
+const REFUSED_GRANT_LOG = 'connector grant: refused - nothing stored';
+
 describe('GET /api/integrations/callback — consent-fixation binding (rule #1)', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -90,10 +96,12 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       holdNameMock,
       kickMock,
       freshMock,
+      settleSupersededMock,
     ]) {
       m.mockReset();
     }
     freshMock.mockResolvedValue('not_enrolled');
+    settleSupersededMock.mockResolvedValue('revoked');
     vi.stubEnv('AUTH_SECRET', 'test-signing-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
     kickMock.mockResolvedValue({ outcome: 'off' });
@@ -103,9 +111,9 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
     holdNameMock.mockResolvedValue('held');
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
     });
-    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID });
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID, superseded: null });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -160,6 +168,35 @@ describe('GET /api/integrations/callback — consent-fixation binding (rule #1)'
       provider: 'gcal',
     });
     expect(location(res)).toContain('connect=gcal');
+  });
+
+  it("WEB: another account's revoke the connect took from the row is asked of Google after the store", async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
+    resolveUserIdMock.mockResolvedValue(MINTER);
+    const superseded = {
+      id: '55555555-5555-4555-8555-555555555555',
+      familyId: FAMILY,
+      provider: 'gcal',
+      enc: 'pending-ciphertext',
+      since: new Date('2026-11-01T00:00:00.000Z'),
+    };
+    saveConnectionMock.mockResolvedValue({ connectId: CONNECT_ID, superseded });
+
+    const res = await callCallback(await webState(MINTER));
+
+    expect(settleSupersededMock).toHaveBeenCalledTimes(1);
+    expect(settleSupersededMock.mock.calls[0]?.[1]).toBe(superseded);
+    expect(location(res)).toContain('connect=gcal');
+  });
+
+  it('WEB: a connect that took no other revoke asks Google nothing', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-minter' } });
+    resolveUserIdMock.mockResolvedValue(MINTER);
+
+    await callCallback(await webState(MINTER));
+
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(settleSupersededMock).not.toHaveBeenCalled();
   });
 
   /** An unreadable state cannot name a surface, so it keeps the answer the web dead end
@@ -223,7 +260,7 @@ describe('GET /api/integrations/callback — the text surface', () => {
     kickMock.mockResolvedValue({ outcome: 'completed' });
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
     });
     saveConnectionMock.mockResolvedValue({ connectId: CONNECT });
     noticeMock.mockResolvedValue({ status: 'sent', channelMessageId: 'cm-1' });
@@ -354,13 +391,39 @@ describe('GET /api/integrations/callback — the text surface', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
     });
 
     const res = await callCallback(await textState('gcal'));
 
     expect(location(res)).toBe('https://app.example.com/connected?provider=gcal&status=denied');
     expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it('logs a refused text grant once, by name, with the scopes outside the ask', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+
+    await callCallback(await textState('gcal'));
+
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'denied',
+          unexpected: ['https://www.googleapis.com/auth/gmail.send'],
+          missing: [],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    info.mockRestore();
   });
 
   it('binds the completer to the minter exactly as the web leg does', async () => {
@@ -464,10 +527,78 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  async function minterState() {
+  async function minterState(provider: 'gcal' | 'gmail' | 'gdrive' = 'gcal') {
     const { signConnectState } = await import('./connect-state');
-    return signConnectState({ familyId: FAMILY, userId: MINTER, provider: 'gcal' });
+    return signConnectState({ familyId: FAMILY, userId: MINTER, provider });
   }
+
+  it('refuses a Drive state before any token exchange, by name, and still connects Calendar', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/drive.readonly',
+    });
+
+    const refused = await callCallback(await minterState('gdrive'));
+
+    expect(location(refused)).toBe('https://app.example.com/settings?connect=denied');
+    expect(exchangeMock).not.toHaveBeenCalled();
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    expect(
+      info.mock.calls.filter(
+        (call) =>
+          (call[0] as { outcome?: string } | undefined)?.outcome === 'connector_not_offered',
+      ),
+    ).toEqual([
+      [
+        { familyId: FAMILY, provider: 'gdrive', outcome: 'connector_not_offered' },
+        expect.any(String),
+      ],
+    ]);
+
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+    const connected = await callCallback(await minterState('gcal'));
+
+    expect(location(connected)).toContain('connect=gcal');
+    expect(exchangeMock).toHaveBeenCalledTimes(1);
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(saveConnectionMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ provider: 'gcal' }),
+    );
+    info.mockRestore();
+  });
+
+  it('logs at most ten of the scopes outside the ask', async () => {
+    const info = vi.spyOn(console, 'info');
+    const extra = Array.from({ length: 15 }, (_, i) => `https://example.test/extra-scope-${i + 1}`);
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: ['https://www.googleapis.com/auth/calendar.events.owned.readonly', ...extra].join(' '),
+    });
+
+    const res = await callCallback(await minterState('gcal'));
+
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toHaveLength(1);
+    expect((refused[0]?.[0] as { unexpected: string[] }).unexpected).toEqual([
+      'https://example.test/extra-scope-1',
+      'https://example.test/extra-scope-2',
+      'https://example.test/extra-scope-3',
+      'https://example.test/extra-scope-4',
+      'https://example.test/extra-scope-5',
+      'https://example.test/extra-scope-6',
+      'https://example.test/extra-scope-7',
+      'https://example.test/extra-scope-8',
+      'https://example.test/extra-scope-9',
+      'https://example.test/extra-scope-10',
+    ]);
+    info.mockRestore();
+  });
 
   it('rejects a grant MISSING the connector scope (granular-consent deselect) — partial, nothing stored', async () => {
     exchangeMock.mockResolvedValue({ accessToken: 'ya29.x', scope: '' });
@@ -476,11 +607,131 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(saveConnectionMock).not.toHaveBeenCalled();
   });
 
+  it('WEB: logs a grant broader than asked, by name, with the extra scope and no secret', async () => {
+    const info = vi.spyOn(console, 'info');
+    const error = vi.spyOn(console, 'error');
+    const warn = vi.spyOn(console, 'warn');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.web-secret',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.readonly',
+    });
+
+    const res = await callCallback(await minterState('gcal'), 'code-secret');
+
+    expect(location(res)).toContain('connect=denied');
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'denied',
+          unexpected: ['https://www.googleapis.com/auth/gmail.readonly'],
+          missing: [],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    const logged = JSON.stringify([info.mock.calls, error.mock.calls, warn.mock.calls]);
+    expect(logged).toContain('gmail.readonly');
+    expect(logged).not.toContain('ya29.web-secret');
+    expect(logged).not.toContain('code-secret');
+    info.mockRestore();
+    error.mockRestore();
+    warn.mockRestore();
+  });
+
+  it('WEB: logs a partial grant, by name, with the required scope it lacked', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/userinfo.profile',
+    });
+
+    const res = await callCallback(await minterState('gcal'));
+
+    expect(location(res)).toContain('connect=partial');
+    const refused = info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG);
+    expect(refused).toEqual([
+      [
+        {
+          familyId: FAMILY,
+          provider: 'gcal',
+          grantStatus: 'partial',
+          unexpected: [],
+          missing: ['https://www.googleapis.com/auth/calendar.events.owned.readonly'],
+        },
+        REFUSED_GRANT_LOG,
+      ],
+    ]);
+    info.mockRestore();
+  });
+
+  it('WEB: an exact grant logs no refusal', async () => {
+    const info = vi.spyOn(console, 'info');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+
+    await callCallback(await minterState('gcal'));
+
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls.filter((call) => call[1] === REFUSED_GRANT_LOG)).toEqual([]);
+    info.mockRestore();
+  });
+
   it('rejects a grant BROADER than the readonly universe — denied, nothing stored', async () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['gcal', 'https://www.googleapis.com/auth/gmail.readonly'],
+    ['gcal', 'https://www.googleapis.com/auth/drive.readonly'],
+    ['gmail', 'https://www.googleapis.com/auth/calendar.events.owned.readonly'],
+  ] as const)(
+    'rejects a %s grant that also carries another connector scope (%s) — denied, nothing stored',
+    async (provider, foreign) => {
+      exchangeMock.mockResolvedValue({
+        accessToken: 'ya29.x',
+        scope: `${provider === 'gcal' ? 'https://www.googleapis.com/auth/calendar.events.owned.readonly' : 'https://www.googleapis.com/auth/gmail.readonly'} ${foreign}`,
+      });
+      const res = await callCallback(await minterState(provider));
+      expect(location(res)).toContain('connect=denied');
+      expect(saveConnectionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('stores an exact Calendar grant', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    expect(saveConnectionMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        provider: 'gcal',
+        scopes: ['https://www.googleapis.com/auth/calendar.events.owned.readonly'],
+      }),
+    );
+  });
+
+  it("rejects an armed Calendar grant that carries Gmail's write scope", async () => {
+    vi.stubEnv('GOOGLE_WRITE_SCOPES_ENABLED', 'true');
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.compose',
     });
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=denied');
@@ -492,7 +743,26 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/calendar.events',
+    });
+    const res = await callCallback(await minterState());
+    expect(location(res)).toContain('connect=denied');
+    expect(saveConnectionMock).not.toHaveBeenCalled();
+
+    saveConnectionMock.mockClear();
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+    const accepted = await callCallback(await minterState());
+    expect(location(accepted)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses the legacy calendar.readonly grant for a new Calendar connect', async () => {
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly',
     });
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=denied');
@@ -505,7 +775,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/calendar.events',
     });
     const accepted = await callCallback(await minterState());
     expect(location(accepted)).toContain('connect=gcal');
@@ -515,7 +785,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
     });
     const denied = await callCallback(await minterState());
     expect(location(denied)).toContain('connect=denied');
@@ -528,11 +798,20 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/calendar.events',
     });
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=denied');
     expect(saveConnectionMock).not.toHaveBeenCalled();
+
+    saveConnectionMock.mockClear();
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    });
+    const accepted = await callCallback(await minterState());
+    expect(location(accepted)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
   });
 
   it('accepts calendar.events when the write-scope flag is on, and still rejects gmail.send', async () => {
@@ -540,7 +819,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/calendar.events',
     });
     const accepted = await callCallback(await minterState());
     expect(location(accepted)).toContain('connect=gcal');
@@ -550,7 +829,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/gmail.send',
     });
     const denied = await callCallback(await minterState());
     expect(location(denied)).toContain('connect=denied');
@@ -561,7 +840,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
     });
     readProfileMock.mockResolvedValue('Bea');
     const res = await callCallback(await minterState());
@@ -578,7 +857,7 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
       scope:
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
     });
     readSubMock.mockResolvedValue('google-sub-shared');
     accountHeldMock.mockResolvedValue(true);
@@ -596,10 +875,29 @@ describe('GET /api/integrations/callback — granted-scope validation', () => {
     expect(holdNameMock).not.toHaveBeenCalled();
   });
 
+  it("stores the Google account's key in its own field, never in the metadata a sync replaces", async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    exchangeMock.mockResolvedValue({
+      accessToken: 'ya29.x',
+      scope:
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
+    });
+    readSubMock.mockResolvedValue('google-sub-own');
+    const { googleAccountBlindIndex } = await import('~/lib/crypto/blind-index');
+
+    const res = await callCallback(await minterState());
+
+    expect(location(res)).toContain('connect=gcal');
+    expect(saveConnectionMock).toHaveBeenCalledTimes(1);
+    const saved = saveConnectionMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(saved.googleAccountKey).toBe(googleAccountBlindIndex('google-sub-own'));
+    expect(JSON.stringify(saved.providerMetadata ?? {})).not.toContain('googleAccountKey');
+  });
+
   it('still connects when profile was not granted, and does not read userinfo', async () => {
     exchangeMock.mockResolvedValue({
       accessToken: 'ya29.x',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+      scope: 'https://www.googleapis.com/auth/calendar.events.owned.readonly',
     });
     const res = await callCallback(await minterState());
     expect(location(res)).toContain('connect=gcal');

@@ -37,6 +37,8 @@ import {
   acceptOnboardingCapture,
   checklistAfter,
   countRejectedScheduleAdds,
+  dropTakeBackName,
+  foldMessage,
   mergeCaptures,
   onboardingMissing,
 } from './onboarding-turn';
@@ -66,6 +68,11 @@ import {
  */
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
+
+export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
+export const ONBOARDING_REPLY_TOOL = 'reply';
+export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
+  'Return the onboarding reply and any facts the parent just gave.';
 
 /** What a worried parent wants to hear and Hale cannot say: Google shares all of it. */
 const ACCESS_UNTRUE = [
@@ -189,6 +196,11 @@ export interface FriendVoiceInput {
   activity: string | null;
   day: string | null;
   parentName: string | null;
+  /**
+   * The model already read this message as taking the name back. The reply
+   * must not address them by it. Absent means the message may be their name.
+   */
+  nameTakenBack?: boolean;
   /** The soft read of this parent's role, when one is stored. */
   parentRole?: ParentRoleGuess | null;
   /** Which connector just landed. Set only on the connected step. */
@@ -398,6 +410,7 @@ const replySchema = z.object({
   coparentGroup: z.boolean().nullable().optional().default(null).catch(null),
   coparentGroupMode: z.enum(['existing', 'new']).nullable().optional().default(null).catch(null),
   nameDeclined: z.boolean().optional().default(false).catch(false),
+  nameTakenBack: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
@@ -459,6 +472,7 @@ const replyJsonSchema = {
     coparentGroup: { type: ['boolean', 'null'] },
     coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
     nameDeclined: { type: 'boolean' },
+    nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
@@ -470,7 +484,7 @@ const replyJsonSchema = {
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
-function replyToolSchema(): {
+export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
   required: readonly ['reply'];
@@ -712,16 +726,54 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
 }
 
 /**
+ * The open name ask, as the name-capture reader hands it to the model. The ask
+ * is the structured `answering` fact; no Hale turn is written here.
+ */
+export function nameAskVoiceInput(
+  parentWords: string,
+  language: ReplyLanguage | null,
+): FriendVoiceInput {
+  return {
+    step: 'names',
+    language,
+    address: 'tu',
+    introduce: false,
+    parentWords,
+    recentTurns: [],
+    placeLabel: null,
+    agesLabel: null,
+    ageMonths: [],
+    children: [],
+    findLines: [],
+    listKind: 'none',
+    activity: null,
+    day: null,
+    parentName: null,
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  };
+}
+
+/**
  * What code can read from the parent's words without the model: a lone name
  * after the name ask, or a plain yes to a connector or the group chat. The
- * model is told, and the capture is held to it.
+ * model is told, and the capture is held to it. A model `nameDeclined` is not
+ * replaced by that lone name.
  */
 export function parentReading(
   input: FriendVoiceInput,
 ): { kind: 'name'; name: string } | { kind: 'yes'; item: OnboardingItem } | null {
   const words = input.parentWords.trim();
   const item = answeringItem(input);
-  if (!item || words.length === 0) return null;
+  if (!item) return null;
   // A plain "ok" answers a question only when Hale's last text asked one.
   const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
   if (!lastHale?.body.includes('?')) return null;
@@ -795,6 +847,8 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   const reading = parentReading(input);
   if (!reading) return capture;
   if (reading.kind === 'name') {
+    // A take-back or a lasting no is the model's. A lone capital word does not replace it.
+    if (capture.nameDeclined || capture.nameTakenBack) return capture;
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
     return { ...capture, parentName: reading.name };
@@ -1263,6 +1317,40 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * A fact check on Hale's draft, not a reading of the parent: the model has
+ * already marked this message as a take-back or a turned-down name
+ * (`nameTakenBack`), and the draft still uses that whole message as a name
+ * (quoted, capitalised, or ending a sentence). The parent's words are only the
+ * literal compared against; nothing here decides what they meant.
+ */
+function replyAddressesByOtherName(reply: string, input: FriendVoiceInput): boolean {
+  if (!input.nameTakenBack) return false;
+  const message = input.parentWords.trim().replace(/[.!]+$/u, '');
+  const folded = foldMessage(message);
+  if (folded.length === 0) return false;
+  for (const match of reply.matchAll(/["“«']\s*([^"”»']+?)\s*["”»']/gu)) {
+    if (foldMessage(match[1] ?? '') === folded) return true;
+  }
+  const title = message.replace(/(^|\s)(\p{L})/gu, (_gap, space: string, letter: string) => {
+    return `${space}${letter.toUpperCase()}`;
+  });
+  if (new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(title)}(?![\\p{L}\\p{M}])`, 'u').test(reply)) {
+    return true;
+  }
+  const sentences = reply.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const token =
+      sentence
+        .replace(/[.!?]+$/u, '')
+        .trim()
+        .split(/\s+/u)
+        .at(-1) ?? '';
+    if (foldMessage(token) === folded) return true;
+  }
+  return false;
+}
+
 /** "I'm Barton" from Hale, when Barton is the parent. */
 function speaksAsParent(text: string, parentName: string | null | undefined): boolean {
   const name = parentName?.trim() ?? '';
@@ -1324,6 +1412,9 @@ export function judgeFriendReply(
   }
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
+  if (replyAddressesByOtherName(trimmed, input)) {
+    return { ok: false, reason: 'identity', detail: 'unknown_name' };
+  }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
@@ -1697,8 +1788,18 @@ export async function speakFriend(
       : null;
   const base = pre?.input ?? given;
   const input = base;
-  const withPre = (capture: OnboardingCapture): OnboardingCapture =>
-    pre ? mergeCaptures(pre.settled, capture) : capture;
+  const withPre = (capture: OnboardingCapture): OnboardingCapture => {
+    if (!pre) return capture;
+    const merged = mergeCaptures(pre.settled, capture);
+    if (!capture.nameDeclined && !capture.nameTakenBack) return merged;
+    return {
+      ...merged,
+      parentName: capture.parentName,
+      // A later take-back must not wipe a refusal an earlier pass already settled.
+      nameDeclined: merged.nameDeclined || capture.nameDeclined,
+      nameTakenBack: capture.nameTakenBack,
+    };
+  };
   const finish = (
     prose: string,
     bubbles: string[],
@@ -1758,9 +1859,9 @@ export async function speakFriend(
         retry?: FriendVoiceInput['retry'];
       }
   > => {
-    // The full attempt still has the short retry. An error log here is what
-    // pages #ops, so a refusal that can still recover is a warning. The short
-    // attempt is the last one: its refusal is the error, and failed() pages.
+    // The full attempt still has the short retry, so a refusal that can still
+    // recover is a warning. The short attempt is the last one: its refusal is the
+    // error, and failed() pages #ops through page() (a log alone pages nobody).
     const terminal = prompt === 'short';
     const noteRefusal = (fields: Record<string, unknown>, kind: 'unusable' | 'compose'): void => {
       if (terminal) {
@@ -1782,16 +1883,19 @@ export async function speakFriend(
       // there are no parent words to read a yes or a fact from.
       const capture =
         input.parentWords.trim().length > 0
-          ? settleSchedule(
-              withGroupMode(
-                withReading(
-                  noYesInAQuestion(
-                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+          ? dropTakeBackName(
+              input.parentWords,
+              settleSchedule(
+                withGroupMode(
+                  withReading(
+                    noYesInAQuestion(
+                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                      input,
+                    ),
                     input,
                   ),
                   input,
                 ),
-                input,
               ),
             )
           : empty;
@@ -1817,7 +1921,13 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('schedule') },
         };
       }
-      const judgeInput = judgeInputFor(input, capture);
+      const judgeInput = {
+        ...judgeInputFor(input, capture),
+        nameTakenBack:
+          capture.nameTakenBack ||
+          capture.nameDeclined ||
+          (capture.nameConfirmed === false && capture.parentName === null),
+      };
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
@@ -2053,7 +2163,9 @@ function retryProblem(
     case 'identity':
       return detail === 'price'
         ? 'They asked about price: say in a clause that villagehale.com has the details, including price. Never say it is free or quote a price.'
-        : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
+        : detail === 'unknown_name'
+          ? 'unknown_name'
+          : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
     default:
       return `It broke a rule (${reason}). Write it again, plainly, keeping every rule.`;
   }
@@ -2263,7 +2375,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: replyToolSchema(),
+        inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: llmTransport(),
@@ -2286,6 +2398,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           coparentGroup: value.coparentGroup,
           coparentGroupMode: value.coparentGroupMode,
           nameDeclined: value.nameDeclined,
+          nameTakenBack: value.nameTakenBack,
           kidsNamesDeclined: value.kidsNamesDeclined,
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,

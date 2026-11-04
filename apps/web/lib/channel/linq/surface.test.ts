@@ -56,6 +56,20 @@ function enrol(
   } as never);
 }
 
+/** The parent's own inbound in CHAT, as the door writes it: Linq said `is_group: false`. */
+function recordOneToOne(fake: ReturnType<typeof makeFakeDb>): void {
+  fake.db.insert(schema.channelMessages).values({
+    familyId: FAMILY,
+    parentUserId: USER,
+    channel: 'imessage',
+    direction: 'in',
+    category: 'reply',
+    providerChatId: CHAT,
+    status: 'delivered',
+    inGroup: false,
+  } as never);
+}
+
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
   vi.unstubAllEnvs();
@@ -1097,6 +1111,7 @@ describe('Linq polls', () => {
 
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    recordOneToOne(fake);
     const sending = pollFetch();
     const sent = await offerYearFindPoll(fake.db, {
       channel: 'imessage',
@@ -1162,6 +1177,7 @@ describe('Linq polls', () => {
       { text: 'Aucun de ceux-la', choiceKind: 'none' },
     ]);
     const fake = makeFakeDb();
+    recordOneToOne(fake);
     const sending = pollFetch();
     const sent = await offerSandboxYearFindPoll(fake.db, {
       channel: 'imessage',

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text 3 drops the storytime's venue name and address: it says only 'at the library' when the facts gave Georgetown Branch, 9 Church St, so the parent still has to look it up. It also leaves out AM/PM on all times (10, 1:30 to 2:15). The Montessori tour is fine: 10 AM start, about an hour for the 10-11 AM span, and Little Oaks Montessori at 41 Mill St. Missing given venue name and address is a fact failure.",
+    "score": 2
+  }
+}

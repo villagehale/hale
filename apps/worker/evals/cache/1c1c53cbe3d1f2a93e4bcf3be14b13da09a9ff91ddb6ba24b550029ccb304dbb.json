@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fails on several counts. The text is in English, not the requested French. It omits Léa's Natation entirely (10:00-11:00 AM, Piscine Main, 120 Main St), so the start, end, venue and address are all missing. It invents a clock time 'at 3:00' for the all-day Jour de congé, which has no start. It calls the day 'a bit of breathing room' although a timed event exists, which the criteria name as a low-score fault.",
+    "score": 1
+  }
+}

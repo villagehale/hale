@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The parent asks whether disconnecting Calendar would also cut off Gmail, which is a question about the consequence rather than an instruction to disconnect.",
+    "reading": "question"
+  },
+  "latencyMs": 1315
+}

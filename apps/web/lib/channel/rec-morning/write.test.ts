@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   EFUN_GONE,
   TORONTO_REC_PORTAL,
+  resolveRecMorningWhere,
   writeRecMorningIntakeReply,
   writeRecMorningReply,
 } from './index';
+
+/** A family whose stored postal is a Toronto FSA: rec-morning answers only a GTA family. */
+const TORONTO_FSA = 'M5V';
+const AT_TORONTO_FSA = resolveRecMorningWhere({
+  city: null,
+  postal: TORONTO_FSA,
+  timeZone: 'America/Toronto',
+});
 
 describe('VIL-508 · rec-morning text is the model, or nothing', () => {
   it('hands the reviewed facts to the model and keeps the portal verbatim', async () => {
@@ -12,7 +21,7 @@ describe('VIL-508 · rec-morning text is the model, or nothing', () => {
     const text = await writeRecMorningReply(
       'is efun still a thing?',
       new Date(),
-      null,
+      AT_TORONTO_FSA,
       'fr',
       write,
     );
@@ -35,7 +44,7 @@ describe('VIL-508 · rec-morning text is the model, or nothing', () => {
     const text = await writeRecMorningReply(
       'is efun still a thing?',
       new Date(),
-      null,
+      AT_TORONTO_FSA,
       null,
       async () => null,
     );
@@ -46,13 +55,18 @@ describe('VIL-508 · rec-morning text is the model, or nothing', () => {
   it('intake forwards a stored language and passes null when there is none', async () => {
     const write = vi.fn(async () => 'model words');
     await writeRecMorningIntakeReply(
-      { parentWords: 'is efun still a thing?', pendingAsk: '', language: 'zh' },
+      {
+        parentWords: 'is efun still a thing?',
+        pendingAsk: '',
+        postal: TORONTO_FSA,
+        language: 'zh',
+      },
       write,
     );
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ language: 'zh' }));
     write.mockClear();
     await writeRecMorningIntakeReply(
-      { parentWords: 'is efun still a thing?', pendingAsk: '' },
+      { parentWords: 'is efun still a thing?', pendingAsk: '', postal: TORONTO_FSA },
       write,
     );
     expect(write).toHaveBeenCalledWith(
@@ -66,7 +80,7 @@ describe('VIL-508 · rec-morning text is the model, or nothing', () => {
   it('never calls the model for a text that is not a rec-morning question', async () => {
     const write = vi.fn(async () => 'x');
     expect(
-      await writeRecMorningReply('what time is dinner', new Date(), null, null, write),
+      await writeRecMorningReply('what time is dinner', new Date(), AT_TORONTO_FSA, null, write),
     ).toBeNull();
     expect(write).not.toHaveBeenCalled();
   });

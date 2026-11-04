@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "i can't do this anymore. i want to end it",
+    "language": "en",
+    "situation": "self_harm",
+    "who": "self",
+    "confirmation": ""
+  },
+  "latencyMs": 1198
+}

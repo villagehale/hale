@@ -67,6 +67,11 @@ export interface OnboardingCapture {
   coparentGroupMode: CoparentGroupMode | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
+  /**
+   * This message retracts the name. Not a lasting no: the name stays open,
+   * and a later turn does not inherit it.
+   */
+  nameTakenBack: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
   kidsNamesDeclined: boolean;
   /** Not now for the calendar. Do not ask it again in this onboarding. */
@@ -92,6 +97,7 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   coparentGroup: null,
   coparentGroupMode: null,
   nameDeclined: false,
+  nameTakenBack: false,
   kidsNamesDeclined: false,
   calendarLater: false,
   gmailLater: false,
@@ -197,6 +203,32 @@ function acceptName(value: unknown): string | null {
   if (trimmed.split(/\s+/u).length > 3) return null;
   if (!/\p{L}/u.test(trimmed)) return null;
   return trimmed;
+}
+
+/** One message or name, folded for an equality check: quotes, end marks, accents, case, spaces. */
+export function foldMessage(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+\s*|\s*["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * The model says this message takes the name back or refuses one. If it also
+ * copied that whole message into `parentName`, the copy is not a display name.
+ * A held name turned down (`nameConfirmed` false) is not such a read: "Robin"
+ * in reply to "can I call you Bea?" is the name they gave instead.
+ * This does not set `nameDeclined`: a take-back is not a lasting no.
+ */
+export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
+  const tookBack = capture.nameTakenBack || capture.nameDeclined;
+  if (!tookBack || !capture.parentName) return capture;
+  if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
+  return { ...capture, parentName: null };
 }
 
 function acceptBool(value: unknown): boolean | null {
@@ -437,6 +469,7 @@ export function acceptOnboardingCapture(
     coparentGroup: acceptBool(row.coparentGroup),
     coparentGroupMode: acceptGroupMode(row.coparentGroupMode),
     nameDeclined: row.nameDeclined === true,
+    nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
@@ -490,6 +523,7 @@ export function mergeCaptures(
     coparentGroup: next.coparentGroup ?? prior.coparentGroup,
     coparentGroupMode: next.coparentGroupMode ?? prior.coparentGroupMode,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
+    nameTakenBack: next.nameTakenBack === true,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,

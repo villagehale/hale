@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text omits Léa's swimming (Natation) entirely: no start 10:00 AM, no end 11:00 AM, no venue Piscine Main, no address 120 Main St, and no mention that it is for Léa. It also invents a start time of 3:00 for the all-day Jour de congé, which has no clock time. It calls the day 'breathing room' while a timed event exists, and it is in English rather than French. Bold is none, which is fine, but the many fact failures make this a minimum score.",
+    "score": 1
+  }
+}

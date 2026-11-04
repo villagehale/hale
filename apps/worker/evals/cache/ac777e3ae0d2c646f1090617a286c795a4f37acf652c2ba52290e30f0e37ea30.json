@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is 'an appointment' tomorrow, Monday Oct 26, 4:45-5:45 PM. The text names a different event ('Jour de congé'), gives the wrong time (3:00 with no AM/PM instead of 4:45 PM), and omits the end time and that it is an appointment. It also invents a day off and implies breathing room, which falsely suggests nothing to attend when a timed event exists. Wrong event, wrong time, missing end, and invented inference are all fact failures. Bold is none, which is fine.",
+    "score": 1
+  }
+}
