@@ -7,14 +7,13 @@
 //
 //   node evals/run-holding-line-judge-eval.mjs --dry           # $0, no API
 //   node evals/run-holding-line-judge-eval.mjs --cached-only   # replay; misses fail
-//   node evals/run-holding-line-judge-eval.mjs --broken        # every line is poisoned
+//   node evals/run-holding-line-judge-eval.mjs --broken        # calibration: must FAIL
 //   node --env-file=../../.env evals/run-holding-line-judge-eval.mjs --live   # PAID
 //
 // Meaning is this cached judge, not a scripted verdict. CI runs --cached-only as a
-// soft path until the paid batch records EN, FR and ZH together: there is no
-// recording yet, a miss fails this process, and the workflow marks that step
-// continue-on-error. Do not delete the judge to keep the step green. --dry stays
-// a hard $0 check of the request. This file does not spend.
+// hard gate over the recorded EN, FR and ZH verdicts, and --dry as a hard $0 check
+// of the request. --broken replays the same recordings against the opposite
+// expectation of every line, so a grader that cannot fail shows up as a FAIL.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,13 +35,6 @@ const JUDGE_SRC = join(WEB_ROOT, 'lib', 'channel', 'router', 'holding-line-judge
 
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
-
-/**
- * Eval input only. Production never sends this, and never uses it as a fallback
- * when the judge misses. It promises a time and points at a website, so a judge
- * that is awake refuses it on both counts.
- */
-const POISON = 'I will have it shortly, and the rest is on the website.';
 
 const WORD_LIST = ['shortly', 'momentarily', 'jiffy', 'dashboard', 'villagehale'];
 
@@ -93,7 +85,7 @@ function assertCorpus() {
     if (!languages.has(language)) throw new Error(`corpus is missing ${language}`);
   }
   const expects = new Set(HOLDING_LINE_JUDGE_FIXTURES.map((fixture) => fixture.expect));
-  for (const expect of ['clear', 'promised_a_time', 'points_at_an_app']) {
+  for (const expect of ['clear', 'promised_a_time', 'points_at_an_app', 'both']) {
     if (!expects.has(expect)) throw new Error(`corpus is missing a ${expect} line`);
   }
 }
@@ -127,6 +119,11 @@ async function dryRun() {
   );
 }
 
+/** The opposite of what a line should get: a clear line refused twice, a refused line cleared. */
+function inverted(expect) {
+  return expect === 'clear' ? 'both' : 'clear';
+}
+
 async function runJudged(mode) {
   assertCorpus();
   const broken = mode === 'broken';
@@ -137,11 +134,10 @@ async function runJudged(mode) {
   const cost = makeCost();
   const failures = [];
   for (const fixture of HOLDING_LINE_JUDGE_FIXTURES) {
-    const line = broken ? POISON : fixture.line;
-    const expected = broken ? 'both' : fixture.expect;
-    const request = await loadRequest(line);
+    const expected = broken ? inverted(fixture.expect) : fixture.expect;
+    const request = await loadRequest(fixture.line);
     const judged = await cachedToolCall({
-      tag: `holding-line-judge:${broken ? 'broken:' : ''}${fixture.id}`,
+      tag: `holding-line-judge:${fixture.id}`,
       lane: request.lane,
       system: request.system,
       userMessage: request.userMessage,
@@ -160,6 +156,13 @@ async function runJudged(mode) {
     `holding-line-judge | ${mode} | fixtures=${HOLDING_LINE_JUDGE_FIXTURES.length} | failures=${failures.length} | $${totalUsd(cost).toFixed(4)} | live calls: ${cost.liveCalls}`,
   );
   for (const line of failures) console.error(line);
+  if (broken) {
+    const calibrated = failures.length === HOLDING_LINE_JUDGE_FIXTURES.length;
+    console.log(
+      `broken-mode calibration (every line must fail): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    );
+    process.exit(calibrated ? 0 : 1);
+  }
   if (failures.length > 0) process.exit(1);
 }
 

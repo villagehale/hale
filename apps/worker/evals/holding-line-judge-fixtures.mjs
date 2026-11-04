@@ -70,6 +70,12 @@ export const HOLDING_LINE_JUDGE_FIXTURES = [
     expect: 'points_at_an_app',
   },
   {
+    id: 'en-both',
+    language: 'en',
+    line: 'I will have it shortly, and the rest is on the website.',
+    expect: 'both',
+  },
+  {
     id: 'zh-website',
     language: 'zh',
     line: '详情在网站上。',

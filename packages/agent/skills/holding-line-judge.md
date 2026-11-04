@@ -17,8 +17,10 @@ reading it would still take that meaning. Do not match words, phrases, or a
 particular language.
 
 `promises_a_time` is `yes` when the line says when the answer will arrive, or
-that it will arrive after a wait. It is `no` when the line only says that the
-answer is coming and does not say when.
+that it will arrive after a wait. Nobody knows yet when the answer will land,
+so any claim about how soon is a promise of a time too: that it will be quick,
+or that it will follow the moment Hale has it. It is `no` when the line only
+says that the answer is coming and does not say when or how soon.
 
 `points_at_an_app` is `yes` when the line sends the parent to an app, a
 website, or another screen they would leave this conversation to open. It is
