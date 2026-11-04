@@ -244,6 +244,7 @@ describe('the privacy page masks each "What Hale did" row', () => {
           ],
           connections: { gmail: 'not_connected', gcal: 'connected', gdrive: 'not_connected' },
         },
+        seated: true,
         role: 'primary_parent',
         canExport: true,
         holdDays: 7,

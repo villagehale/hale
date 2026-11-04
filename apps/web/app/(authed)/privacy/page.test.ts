@@ -49,6 +49,7 @@ const PLACEMENT: WhatHaleDidItem = {
 
 const PARENT_LEDE = 'What Hale did for you, what it can reach, and how to take it back.';
 const SCOPED_LEDE = 'You help out with this family. Its parents manage the family’s data.';
+const UNSEATED_LEDE = 'Hale’s privacy policy, and how to reach us about your data.';
 const DELETE_BUTTON = new RegExp(
   `<button[^>]*class="${styles.secondary} ${styles.destructive}"[^>]*>Delete account…</button>`,
 );
@@ -231,11 +232,20 @@ describe('/privacy', () => {
     expect(html).toContain('Your connections');
     expect(html).toContain('Export your data');
     expect(html).toContain('<h3>Leave this family</h3>');
+  });
+
+  // The co-parent's control is labelled like the parent's, in the same slot of the row:
+  // a portal button that names its own act.
+  it('labels the co-parent’s control “Leave this family…” where the parent’s says “Delete account…”', async () => {
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'co_parent' }]);
+    const html = await renderPage();
     expect(html).toMatch(
       new RegExp(
-        `<button[^>]*class="${styles.secondary} ${styles.destructive}"[^>]*>leave this family</button>`,
+        `<button[^>]*class="${styles.secondary} ${styles.destructive}"[^>]*>Leave this family…</button>`,
       ),
     );
+    expect(html).not.toContain('Delete account…');
+    expect(html).not.toContain('>leave this family<');
   });
 
   it('shows nothing family-wide to a viewer with no seat in this family', async () => {
@@ -246,6 +256,21 @@ describe('/privacy', () => {
     expect(html).toContain('Privacy &amp; data');
     expect(loadWhatHaleDidMock).not.toHaveBeenCalled();
   });
+
+  // "You help out with this family" is false for someone with no seat in it, so their
+  // lede claims no role at all. The caregiver test above is the positive control.
+  for (const [label, seats] of [
+    ['no seat at all', []],
+    ['a seat only in another family', [{ familyId: 'family-b', role: 'nanny' }]],
+  ] as const) {
+    it(`gives a viewer with ${label} a lede that claims no role`, async () => {
+      listSeatsMock.mockResolvedValue([...seats]);
+      const html = await renderPage();
+      expect(html).toContain(UNSEATED_LEDE);
+      expect(html).not.toContain(SCOPED_LEDE);
+      expect(html).not.toContain(PARENT_LEDE);
+    });
+  }
 
   // The portal's own button classes: `.shell button` resets background and border, so the
   // global btn-secondary leaves both controls reading as plain text.

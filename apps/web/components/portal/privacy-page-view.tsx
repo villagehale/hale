@@ -13,6 +13,7 @@ import styles from './portal.module.css';
 
 const PARENT_LEDE = 'What Hale did for you, what it can reach, and how to take it back.';
 const SCOPED_LEDE = 'You help out with this family. Its parents manage the family’s data.';
+const UNSEATED_LEDE = 'Hale’s privacy policy, and how to reach us about your data.';
 
 export interface PrivacyHousehold {
   activity: readonly WhatHaleDidItem[];
@@ -27,6 +28,7 @@ export interface PrivacyHousehold {
  */
 export function PrivacyPageView({
   household,
+  seated,
   role,
   canExport,
   holdDays,
@@ -34,6 +36,8 @@ export function PrivacyPageView({
   /** A parent's view of the household; null for every other seat, which sees none of it
    * and no export either: the export is the family's whole record, not the viewer's. */
   household: PrivacyHousehold | null;
+  /** Whether the viewer holds a seat in this family. Without one, the lede claims no role. */
+  seated: boolean;
   role: DeleteAccountRole;
   /** Whether the export route serves this viewer's seats (exportSeat). */
   canExport: boolean;
@@ -42,7 +46,10 @@ export function PrivacyPageView({
 }) {
   return (
     <div className={styles.column}>
-      <PortalHeading title="Privacy & data" lede={household ? PARENT_LEDE : SCOPED_LEDE} />
+      <PortalHeading
+        title="Privacy & data"
+        lede={household ? PARENT_LEDE : seated ? SCOPED_LEDE : UNSEATED_LEDE}
+      />
       <div className={styles.one}>
         {household ? <Household household={household} canExport={canExport} /> : null}
         <Deletion role={role} holdDays={holdDays} />
@@ -139,6 +146,7 @@ function Deletion({ role, holdDays }: { role: DeleteAccountRole; holdDays: numbe
         <DeleteAccountButton
           role={role}
           idleLabel="Delete account…"
+          leaveLabel="Leave this family…"
           buttonClassName={`${styles.secondary} ${styles.destructive}`}
           cancelClassName={styles.secondary}
         />

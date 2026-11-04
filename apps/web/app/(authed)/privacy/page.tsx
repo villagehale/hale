@@ -32,6 +32,7 @@ export default async function PrivacyPage() {
   return (
     <PrivacyPageView
       household={household}
+      seated={seat !== undefined}
       role={deleteAccountRole(seats, familyId)}
       canExport={exportSeat(seats).outcome === 'export'}
       holdDays={DELETION_GRACE_DAYS}

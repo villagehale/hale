@@ -34,12 +34,15 @@ export type DeleteAccountRole = 'primary_parent' | 'co_parent' | 'scoped' | 'amb
 export function DeleteAccountButton({
   role,
   idleLabel,
+  leaveLabel,
   buttonClassName,
   cancelClassName,
 }: {
   role: DeleteAccountRole;
   /** Idle label for a family erasure. Co-parent departure keeps its own words. */
   idleLabel?: string;
+  /** Idle label for a co-parent's departure, on a surface that labels its controls. */
+  leaveLabel?: string;
   /** The ask and the confirm, on a surface that does not style the global btn classes
    * (the portal resets `button`, so `btn-secondary` and `link` read as plain text). */
   buttonClassName?: string;
@@ -155,7 +158,7 @@ export function DeleteAccountButton({
       className={buttonClassName ?? 'link text-berry'}
       onClick={() => setState('confirming')}
     >
-      {leaving ? 'leave this family' : (idleLabel ?? 'delete my account')}
+      {leaving ? (leaveLabel ?? 'leave this family') : (idleLabel ?? 'delete my account')}
     </button>
   );
 }
