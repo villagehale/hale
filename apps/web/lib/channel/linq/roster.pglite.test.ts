@@ -915,6 +915,31 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     expect(roles.map((row) => row.role).sort()).toEqual(['grandparent', 'primary_parent']);
   });
 
+  it("records the seated member's reply with Linq's own is_group, so it can never read as a 1:1", async () => {
+    const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: UNKNOWN_A,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const { deps } = door(handlesOk([PARENT, UNKNOWN_A]).list);
+    await handleLinqInboundRequest(signed(addedMe()), deps);
+
+    const reply = await handleLinqInboundRequest(
+      signed(groupMessage(UNKNOWN_A, 'grandma here!', 'in-gran')),
+      deps,
+    );
+
+    expect(await reply.json()).toMatchObject({ outcome: 'role_confirmed' });
+    const rows = await db.database
+      .select({ inGroup: schema.channelMessages.inGroup })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.providerMessageId, 'in-gran'));
+    expect(rows).toEqual([{ inGroup: true }]);
+  });
+
   it('asks, and does not seat, someone added to a claimed group, whatever the co-parent flag says', async () => {
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const { familyId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: CHAT });
