@@ -878,7 +878,7 @@ async function pageCrisesUnanswered(
   counts: FailurePageCounts,
 ): Promise<void> {
   const rows = await database
-    .select({ identifier: schema.rateLimits.identifier })
+    .select({ id: schema.rateLimits.id, identifier: schema.rateLimits.identifier })
     .from(schema.rateLimits)
     .where(
       and(
@@ -897,7 +897,10 @@ async function pageCrisesUnanswered(
     }
     // Still a crisis nobody answered: a human hears of it even when its details are lost.
     if (!recorded) {
-      console.error('failure page: crisis claim unreadable - paging it as is');
+      console.error(
+        { outcome: 'unreadable', claimId: row.id },
+        'failure page: crisis claim unreadable - paging it as is',
+      );
       recorded = { kind: 'unreadable', where: 'unreadable', reason: 'unreadable', writes: 0 };
     }
     const text = composeCrisisUnansweredAlert(recorded);
@@ -1153,15 +1156,11 @@ function crisisPageOutcome(outcome: OpsPageOutcome): CrisisPageOutcome {
 }
 
 /**
- * The claim for this inbound's crisis, recorded once, then taken. Null when this
- * inbound is already paged, or another request is paging it now. The first record
- * also writes the audit row when there is a family to write it against.
+ * The claim for this inbound's crisis, recorded once: an owed row the sweep pages from.
+ * Its identifier, whichever delivery of the inbound recorded it. The first record also
+ * writes the audit row when there is a family to write it against.
  */
-async function claimCrisisPage(
-  database: Database,
-  alert: CrisisUnanswered,
-  stamp: number,
-): Promise<string | null> {
+async function recordCrisisClaim(database: Database, alert: CrisisUnanswered): Promise<string> {
   const key = crisisInboundKey(alert.inboundId);
   const prior = await database
     .select({ identifier: schema.rateLimits.identifier })
@@ -1197,11 +1196,26 @@ async function claimCrisisPage(
       await auditCrisis(database, alert.familyId, alert);
     }
   }
+  return identifier;
+}
+
+/** The claim for this inbound's crisis, recorded, then taken. Null when this inbound is
+ * already paged, or another request is paging it now. */
+async function claimCrisisPage(
+  database: Database,
+  alert: CrisisUnanswered,
+  stamp: number,
+): Promise<string | null> {
+  const identifier = await recordCrisisClaim(database, alert);
   const claimed = await claimOwed(database, CRISIS_UNANSWERED_PAGE_ROUTE, identifier, stamp);
   return claimed ? identifier : null;
 }
 
-/** Body-free (rule #1). A failed write is logged and does not hold the page back. */
+/**
+ * Body-free (rule #1). It names the parent who texted, when known, and no family-wide
+ * surface reads it (rights/export.ts, trail/verbs.ts INTERNAL_TRAIL_VERBS). A failed
+ * write is logged and does not hold the page back.
+ */
 async function auditCrisis(
   database: Database,
   familyId: string,
@@ -1212,6 +1226,9 @@ async function auditCrisis(
       familyId,
       actor: 'system',
       actionTaken: CRISIS_UNANSWERED_AUDIT_ACTION,
+      ...(alert.parentUserId === null
+        ? {}
+        : { targetTable: 'users', targetId: alert.parentUserId }),
       after: { kind: alert.kind, where: alert.where, reason: alert.reason, writes: alert.writes },
     });
   } catch (err) {
@@ -1233,7 +1250,6 @@ export async function noteCrisisUnanswered(
 ): Promise<CrisisPageOutcome> {
   const now = deps.now ?? new Date();
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
-  const text = composeCrisisUnansweredAlert(alert);
   const stamp = claimStamp(now);
   let identifier: string | null;
   try {
@@ -1242,9 +1258,13 @@ export async function noteCrisisUnanswered(
     console.error('failure page: crisis claim threw - paging without one', {
       err: err instanceof Error ? err.name : 'unknown',
     });
-    return crisisPageOutcome(await postAlert(post, CRISIS_UNANSWERED_PAGE_ROUTE, text));
+    const unrecorded = composeCrisisUnansweredAlert(alert);
+    return crisisPageOutcome(await postAlert(post, CRISIS_UNANSWERED_PAGE_ROUTE, unrecorded));
   }
   if (identifier === null) return 'already_paged';
+  // The claim an earlier delivery recorded is the one paged, so the page says what the
+  // sweep would have said.
+  const text = composeCrisisUnansweredAlert(parseCrisisIdentifier(identifier) ?? alert);
   return crisisPageOutcome(
     await deliver(
       database,
@@ -1263,7 +1283,12 @@ export function failurePageCrisisPager(
   database: Database,
   deps: FailurePageDeps = {},
 ): CrisisPager {
-  return { page: (alert) => noteCrisisUnanswered(database, alert, deps) };
+  return {
+    record: async (alert) => {
+      await recordCrisisClaim(database, alert);
+    },
+    page: (alert) => noteCrisisUnanswered(database, alert, deps),
+  };
 }
 
 /** Inline hook. The cron is the backstop when this never runs or the post fails. */

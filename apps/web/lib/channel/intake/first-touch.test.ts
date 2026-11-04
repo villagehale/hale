@@ -808,6 +808,7 @@ describe('friend voice onboarding', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const alerts: CrisisUnanswered[] = [];
     deps3.crisisPager = {
+      record: async () => {},
       page: async (alert) => {
         alerts.push(alert);
         return 'paged';
@@ -825,6 +826,7 @@ describe('friend voice onboarding', () => {
         writes: 0,
         inboundId: fire.providerId,
         familyId: null,
+        parentUserId: null,
       },
     ]);
   });
@@ -1519,6 +1521,7 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
     const missed = ladder('Call 911.');
     const alerts: CrisisUnanswered[] = [];
     const pager: CrisisPager = {
+      record: async () => {},
       page: async (alert) => {
         alerts.push(alert);
         return 'paged';
@@ -1536,6 +1539,7 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
         writes: 2,
         inboundId: text.providerId,
         familyId: FAMILY,
+        parentUserId: USER,
       },
     ]);
 

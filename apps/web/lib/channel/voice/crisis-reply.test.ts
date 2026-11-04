@@ -23,17 +23,30 @@ import {
 const PAGE = 'URGENT: crisis flagged, no reply sent - page #ops now';
 const INBOUND = 'provider-inbound-crisis-1';
 const FAMILY = '00000000-0000-4000-8000-00000000c559';
+const PARENT = '00000000-0000-4000-8000-00000000a559';
 
-/** The pager port, recorded: every alert it was handed, answering `outcome` or throwing it. */
+/** The pager port, recorded: every alert it was handed, answering `outcome` or throwing
+ * it, and the order the record and the page were asked for. */
 function recordingPager(outcome: CrisisPageOutcome | Error = 'paged'): {
   pager: CrisisPager;
   alerts: CrisisUnanswered[];
+  recorded: CrisisUnanswered[];
+  steps: Array<'record' | 'page'>;
 } {
   const alerts: CrisisUnanswered[] = [];
+  const recorded: CrisisUnanswered[] = [];
+  const steps: Array<'record' | 'page'> = [];
   return {
     alerts,
+    recorded,
+    steps,
     pager: {
+      async record(alert) {
+        steps.push('record');
+        recorded.push(alert);
+      },
       async page(alert) {
+        steps.push('page');
         alerts.push(alert);
         if (outcome instanceof Error) throw outcome;
         return outcome;
@@ -42,9 +55,9 @@ function recordingPager(outcome: CrisisPageOutcome | Error = 'paged'): {
   };
 }
 
-/** The inbound this crisis arrived on, and the pager that hears about a miss. */
+/** The inbound this crisis arrived on, whose it was, and the pager that hears about a miss. */
 function onTurn(pager: CrisisPager = recordingPager().pager) {
-  return { inboundId: INBOUND, familyId: FAMILY, pager };
+  return { inboundId: INBOUND, familyId: FAMILY, parentUserId: PARENT, pager };
 }
 
 /** The writer port, scripted: one reply per call, in order. Records every request. */
@@ -360,13 +373,12 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         writes: 2,
         inboundId: INBOUND,
         familyId: FAMILY,
+        parentUserId: PARENT,
       },
     ]);
     const handed = JSON.stringify(alerts);
     expect(handed).not.toContain('example');
     expect(handed).not.toContain('988');
-    // Positive control: the writer did hand back a draft with the link, and the check caught it.
-    expect(calls[1]?.facts.previousTextNotSent).toBe(CRISIS_VIOLATION_FACT.link);
     expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -468,11 +480,82 @@ describe('deliverCrisisReply · facts-only writer, one check, one re-ask', () =>
         writes: 0,
         inboundId: INBOUND,
         familyId: FAMILY,
+        parentUserId: PARENT,
       },
     ]);
     expect(error).toHaveBeenCalledWith(
       expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
       PAGE,
+    );
+  });
+
+  it('the alert check sees a word the alert does carry (positive control for the absences above)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager();
+    await deliverCrisisReply({
+      kind: 'mental',
+      language: null,
+      region: null,
+      situation: null,
+      who: null,
+      where: 'intake crisis example 988',
+      ...onTurn(pager),
+      writer: null,
+    });
+    const handed = JSON.stringify(alerts);
+    expect(handed).toContain('example');
+    expect(handed).toContain('988');
+  });
+
+  it('the record is written before the page, so a pager that throws still leaves it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, recorded, steps } = recordingPager(new Error('slack down'));
+    const outcome = await deliverCrisisReply({
+      kind: 'mental',
+      language: null,
+      region: null,
+      situation: null,
+      who: null,
+      where: 'intake crisis',
+      ...onTurn(pager),
+      writer: null,
+    });
+    expect(outcome).toMatchObject({ status: 'unanswered', page: 'page_failed' });
+    expect(steps).toEqual(['record', 'page']);
+    expect(recorded).toEqual([
+      {
+        kind: 'mental',
+        where: 'intake crisis',
+        reason: 'no_writer',
+        writes: 0,
+        inboundId: INBOUND,
+        familyId: FAMILY,
+        parentUserId: PARENT,
+      },
+    ]);
+  });
+
+  it('a record that throws is logged urgent and the page still goes', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { pager, alerts } = recordingPager();
+    pager.record = async () => {
+      throw new Error('ledger down');
+    };
+    const outcome = await deliverCrisisReply({
+      kind: 'emergency',
+      language: null,
+      region: null,
+      situation: null,
+      who: null,
+      where: 'intake crisis',
+      ...onTurn(pager),
+      writer: null,
+    });
+    expect(outcome).toEqual({ status: 'unanswered', reason: 'no_writer', page: 'paged' });
+    expect(alerts).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ urgent: true, kind: 'emergency', reason: 'no_writer' }),
+      'URGENT: crisis record did not land - the page is its only trace',
     );
   });
 

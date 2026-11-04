@@ -1036,7 +1036,7 @@ async function offScriptReply(
   },
   deps: IntakeDeps,
   turn: Inbound,
-  page: { database: Database; familyId: string | null },
+  page: { database: Database; familyId: string | null; parentUserId: string | null },
 ): Promise<{
   body: string;
   source: 'composed' | 'safety' | 'identity';
@@ -1078,7 +1078,7 @@ async function offScriptReply(
       situation: null,
       who: null,
       where: 'intake answer crisis',
-      ...crisisPage(page.database, deps, turn, page.familyId),
+      ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
     return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
@@ -1439,23 +1439,25 @@ async function crisisReply(
     situation: reading.situation ?? null,
     who: reading.who ?? null,
     where: 'intake crisis',
-    ...crisisPage(database, deps, inbound, session?.familyId ?? null),
+    ...crisisPage(database, deps, inbound, session?.familyId ?? null, session?.userId ?? null),
     writer: deps.saidLine,
   });
   return { body: crisis.status === 'sent' ? crisis.body : null };
 }
 
-/** Who hears about a crisis that got no reply, and which inbound and household it was. */
+/** Who hears about a crisis that got no reply, and which inbound, household and parent it was. */
 function crisisPage(
   database: Database,
   deps: IntakeDeps,
   inbound: Inbound,
   familyId: string | null,
-): { pager: CrisisPager; inboundId: string; familyId: string | null } {
+  parentUserId: string | null,
+): { pager: CrisisPager; inboundId: string; familyId: string | null; parentUserId: string | null } {
   return {
     pager: deps.crisisPager ?? failurePageCrisisPager(database),
     inboundId: inbound.providerId,
     familyId,
+    parentUserId,
   };
 }
 
@@ -3306,7 +3308,7 @@ async function handleLadder(
       },
       deps,
       inbound,
-      { database, familyId },
+      { database, familyId, parentUserId: userId },
     );
     if (offScript) {
       if (offScript.body) {

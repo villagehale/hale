@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CANARY_PHONE_E164 } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { TURN_DEFERRED_ACTION, TURN_FAILED_ACTION } from '~/lib/channel/router/wiring';
-import { type SaidLineWriter, deliverCrisisReply } from '~/lib/channel/voice/said-line';
+import {
+  type CrisisPager,
+  type SaidLineWriter,
+  deliverCrisisReply,
+} from '~/lib/channel/voice/said-line';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   CLAIM_EPOCH,
@@ -679,9 +684,21 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     return rows;
   }
 
+  async function crisisClaims() {
+    return db.database
+      .select({ identifier: schema.rateLimits.identifier, count: schema.rateLimits.count })
+      .from(schema.rateLimits)
+      .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+  }
+
   function crisisTurn(
-    pager: ReturnType<typeof failurePageCrisisPager>,
-    over: { inboundId?: string; familyId?: string | null; writer?: SaidLineWriter | null } = {},
+    pager: CrisisPager,
+    over: {
+      inboundId?: string;
+      familyId?: string | null;
+      writer?: SaidLineWriter | null;
+      where?: string;
+    } = {},
   ) {
     return deliverCrisisReply({
       kind: 'mental',
@@ -689,9 +706,10 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
       region: null,
       situation: null,
       who: null,
-      where: 'intake crisis',
+      where: over.where ?? 'intake crisis',
       inboundId: over.inboundId ?? INBOUND,
       familyId: over.familyId === undefined ? null : over.familyId,
+      parentUserId: null,
       pager,
       writer: over.writer === undefined ? failingWriter() : over.writer,
     });
@@ -728,7 +746,50 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
       },
     ]);
     expect(JSON.stringify(audited)).not.toContain('example');
-    // The positive control is `reason: 'link'` above: the check read a draft that had one.
+  });
+
+  it('the page and the audit row do carry a word that is theirs (positive control for the absences above)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await seedFamily(db.database, 'Crisis Control');
+    const { texts, post } = recorder();
+
+    await crisisTurn(failurePageCrisisPager(db.database, { post, now: NOW }), {
+      familyId: family.familyId,
+      where: 'intake example',
+    });
+
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('example');
+    const audited = (await auditActions()).filter(
+      (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
+    );
+    expect(JSON.stringify(audited)).toContain('example');
+  });
+
+  it('a pager whose page throws still leaves the owed claim and the audit row, and the sweep pages it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const family = await seedFamily(db.database, 'Crisis Throw');
+    const real = failurePageCrisisPager(db.database, { post: recorder().post, now: NOW });
+    const throwing: CrisisPager = {
+      record: real.record,
+      page: async () => {
+        throw new Error('pager crashed');
+      },
+    };
+
+    const outcome = await crisisTurn(throwing, { familyId: family.familyId });
+
+    expect(outcome).toMatchObject({ status: 'unanswered', page: 'page_failed' });
+    expect(await crisisClaims()).toEqual([{ identifier: expect.any(String), count: 0 }]);
+    const audited = (await auditActions()).filter(
+      (row) => row.action === CRISIS_UNANSWERED_AUDIT_ACTION,
+    );
+    expect(audited).toHaveLength(1);
+
+    const { texts, post } = recorder();
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(sweep.crisisUnanswered.posted).toBe(1);
+    expect(texts[0]).toContain('reason link');
   });
 
   it('no writer, and no family yet, still pages: the claim row is the record', async () => {
@@ -828,6 +889,33 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(texts).toHaveLength(2);
   });
 
+  it('a redelivery that fails for another reason finds the first claim by its inbound key', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unconfigured = async () => 'skipped_not_configured' as const;
+
+    // The first delivery's page does not leave: its claim stays owed.
+    const first = await crisisTurn(
+      failurePageCrisisPager(db.database, { post: unconfigured, now: NOW }),
+    );
+    expect(first).toMatchObject({ reason: 'link', page: 'page_not_configured' });
+
+    const { texts, post } = recorder();
+    const redelivered = await crisisTurn(failurePageCrisisPager(db.database, { post, now: NOW }), {
+      writer: null,
+    });
+
+    // The redelivery pages the FIRST claim, under the first reason: one row, one page.
+    expect(redelivered).toMatchObject({ reason: 'no_writer', page: 'paged' });
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('reason link');
+    const claims = await crisisClaims();
+    expect(claims).toHaveLength(1);
+    expect(claims[0]?.identifier).toMatch(/^[0-9a-f]{32}:mental:intake_crisis:link:2$/);
+    expect(claims[0]?.count).toBe(1);
+    const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
+    expect(sweep.crisisUnanswered.posted).toBe(0);
+  });
+
   it('a crisis claim left in progress by a crashed poster is released and paged by the sweep', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const crashedAt = Math.floor((NOW.getTime() - 3 * 60 * 1000) / 1000);
@@ -848,12 +936,15 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
 
   it('an owed crisis claim the sweep cannot read still pages, named unreadable and logged', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await db.database.insert(schema.rateLimits).values({
-      identifier: 'not-a-crisis-key',
-      route: CRISIS_UNANSWERED_PAGE_ROUTE,
-      windowStart: CLAIM_EPOCH,
-      count: 0,
-    });
+    const [claim] = await db.database
+      .insert(schema.rateLimits)
+      .values({
+        identifier: 'not-a-crisis-key',
+        route: CRISIS_UNANSWERED_PAGE_ROUTE,
+        windowStart: CLAIM_EPOCH,
+        count: 0,
+      })
+      .returning({ id: schema.rateLimits.id });
     const { texts, post } = recorder();
 
     const sweep = await pageFailureAlerts(db.database, { post, now: NOW });
@@ -862,7 +953,12 @@ describe('a crisis with no reply pages #ops at once (real DDL)', () => {
     expect(texts).toEqual([
       'Hale: URGENT crisis flagged, no reply sent. kind unreadable. where unreadable. reason unreadable. writes 0.',
     ]);
-    expect(error).toHaveBeenCalledWith('failure page: crisis claim unreadable - paging it as is');
+    // Named by the claim row's own id, so ops can find it; never by what it holds.
+    expect(error).toHaveBeenCalledWith(
+      { outcome: 'unreadable', claimId: claim?.id },
+      'failure page: crisis claim unreadable - paging it as is',
+    );
+    expect(JSON.stringify(error.mock.calls)).not.toContain('not-a-crisis-key');
     const again = await pageFailureAlerts(db.database, { post, now: NOW });
     expect(again.crisisUnanswered.posted).toBe(0);
     expect(texts).toHaveLength(1);

@@ -11,6 +11,7 @@ import {
   crisisFactsForRegion,
 } from '~/lib/channel/crisis-resources';
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
+import type { MomentUnwrittenReason } from '~/lib/channel/off-domain/moment-reply';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -419,18 +420,24 @@ type CrisisUnansweredReason = 'no_writer' | 'write_failed' | CrisisViolation;
 export interface CrisisUnanswered {
   kind: CrisisKind;
   where: string;
-  reason: CrisisUnansweredReason;
+  /** A crisis reply's reason, or the off-domain moment reply's (router/route.ts). */
+  reason: CrisisUnansweredReason | MomentUnwrittenReason;
   /** Writes attempted before giving up: none with no writer, else the draft and its re-ask. */
   writes: 0 | 2;
   /** The provider's id for the inbound: one page per inbound, however often it is redelivered. */
   inboundId: string;
   /** The household, once provisioned; null before there is one. */
   familyId: string | null;
+  /** The parent who texted, when known. The audit row names them, so a flag about one
+   * adult is never read as the household's. */
+  parentUserId: string | null;
 }
 
 /** Pages #ops at once (monitoring/failure-page.ts). Required: a crisis with no reply
  * always reaches a human. */
 export interface CrisisPager {
+  /** The body-free record the sweep re-pages from, written before the page is tried. */
+  record(alert: CrisisUnanswered): Promise<void>;
   page(alert: CrisisUnanswered): Promise<CrisisPageOutcome>;
 }
 
@@ -456,11 +463,12 @@ export async function deliverCrisisReply(input: {
   where: string;
   inboundId: string;
   familyId: string | null;
+  parentUserId: string | null;
   pager: CrisisPager;
   writer: SaidLineWriter | null | undefined;
 }): Promise<CrisisReplyOutcome> {
-  const { kind, region, language, situation, who, where, inboundId, familyId, pager, writer } =
-    input;
+  const { kind, region, language, situation, who, where, pager, writer } = input;
+  const { inboundId, familyId, parentUserId } = input;
   if (!writer) {
     const reason = 'no_writer';
     const page = await logCrisisUnanswered(pager, {
@@ -470,6 +478,7 @@ export async function deliverCrisisReply(input: {
       writes: 0,
       inboundId,
       familyId,
+      parentUserId,
     });
     return { status: 'unanswered', reason, page };
   }
@@ -492,6 +501,7 @@ export async function deliverCrisisReply(input: {
     writes: 2,
     inboundId,
     familyId,
+    parentUserId,
   });
   return { status: 'unanswered', reason: second.reason, page };
 }
@@ -508,8 +518,10 @@ function checkCrisisDraft(
 
 /**
  * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
- * fall back on, anywhere). Never silent: an urgent, body-free log, then the page to
- * #ops. A page that did not leave is logged urgent again and named in the outcome.
+ * fall back on, anywhere). Never silent: an urgent, body-free log, the record, then the
+ * page to #ops. The record comes first, so a page that fails or throws still leaves the
+ * row the sweep pages from. A page that did not leave is logged urgent again and named
+ * in the outcome.
  */
 export async function logCrisisUnanswered(
   pager: CrisisPager,
@@ -520,6 +532,14 @@ export async function logCrisisUnanswered(
     { urgent: true, kind, where, reason },
     'URGENT: crisis flagged, no reply sent - page #ops now',
   );
+  try {
+    await pager.record(alert);
+  } catch (err) {
+    console.error(
+      { urgent: true, kind, where, reason, err: err instanceof Error ? err.name : 'unknown' },
+      'URGENT: crisis record did not land - the page is its only trace',
+    );
+  }
   let page: CrisisPageOutcome;
   try {
     page = await pager.page(alert);

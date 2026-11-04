@@ -10,6 +10,7 @@ import {
   CRISIS_UNANSWERED_PAGE_ROUTE,
 } from '~/lib/monitoring/failure-page';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { assembleFamilyExport } from '~/lib/rights/export';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { trailVerb } from '~/lib/trail/verbs';
@@ -147,11 +148,17 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
     expect(claims).toHaveLength(1);
     expect(claims[0]?.count).toBe(1);
     const audit = await db.database
-      .select({ after: schema.auditLog.after })
+      .select({
+        targetTable: schema.auditLog.targetTable,
+        targetId: schema.auditLog.targetId,
+        after: schema.auditLog.after,
+      })
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, CRISIS_UNANSWERED_AUDIT_ACTION));
     expect(audit).toEqual([
       {
+        targetTable: 'users',
+        targetId: parentUserId,
         after: {
           kind: 'mental',
           where: 'intake answer crisis',
@@ -161,15 +168,21 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
       },
     ]);
 
-    // History leaves it out: the household's shared receipts never show one parent's
-    // crisis. The right-to-access export keeps it (positive control).
+    // Neither History nor the family-wide export shows it: no other adult in the
+    // household reads one parent's crisis. The loader with internal rows on does see it
+    // (positive control: the row is there to be left out).
     const sentence = trailVerb(CRISIS_UNANSWERED_AUDIT_ACTION).sentence;
     expect(sentence).not.toBe('recorded an update');
     const history = await loadTrailForFamily(db.database, familyId);
     expect(history.some((row) => row.summary.includes(sentence))).toBe(false);
-    const exported = await loadTrailForFamily(db.database, familyId, NO_TEEN_UNLOCKS, {
+    const copy = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      now: NOW,
+    });
+    expect(copy.trail.some((row) => row.summary.includes(sentence))).toBe(false);
+    const internal = await loadTrailForFamily(db.database, familyId, NO_TEEN_UNLOCKS, {
       includeInternal: true,
     });
-    expect(exported.filter((row) => row.summary.includes(sentence))).toHaveLength(1);
+    expect(internal.filter((row) => row.summary.includes(sentence))).toHaveLength(1);
   }, 30_000);
 });
