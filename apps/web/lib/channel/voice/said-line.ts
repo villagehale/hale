@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
@@ -37,8 +38,9 @@ export {
  * Barton's rule: no fixed copy, no required or banned phrases. The facts a parent
  * must act on (a link, a phone number, an address) are DATA, handed in as
  * `mustInclude` and checked back verbatim; every word around them is the model's.
- * A failed or unusable write returns null and the caller pages #ops — nothing
- * canned goes out in its place.
+ * A failed or unusable write returns null and the caller sends nothing — nothing
+ * canned goes out in its place. A crisis with no reply pages #ops through
+ * {@link CrisisPager}.
  */
 
 export type SaidLinePurpose =
@@ -412,7 +414,16 @@ export function crisisReplyLanguage(
  * leave is its own outcome, never folded into `paged` (rule #11). */
 export type CrisisPageOutcome = 'paged' | 'already_paged' | 'page_failed' | 'page_not_configured';
 
-type CrisisUnansweredReason = 'no_writer' | 'write_failed' | CrisisViolation;
+type CrisisUnansweredReason =
+  | 'no_writer'
+  | 'write_failed'
+  | CrisisViolation
+  /** A crisis read late (opt-out-recovery.ts): nobody can be texted on the number now. */
+  | 'not_sendable'
+  /** A crisis read late: the number changed hands since the text, so nobody is told. */
+  | 'holder_changed'
+  /** A crisis read late: the reply was written, and the send threw. */
+  | 'send_failed';
 
 /**
  * A crisis flagged with no reply sent. The page itself carries kind, where, reason and
@@ -424,8 +435,9 @@ export interface CrisisUnanswered {
   where: string;
   /** A crisis reply's reason, or the off-domain moment reply's (router/route.ts). */
   reason: CrisisUnansweredReason | MomentUnwrittenReason;
-  /** Writes attempted before giving up: none with no writer, else the draft and its re-ask. */
-  writes: 0 | 2;
+  /** Writes attempted before giving up: none with no writer or nobody to reply to, else
+   * the draft and its re-ask (one when the first draft was sent and the send threw). */
+  writes: 0 | 1 | 2;
   /** The provider's id for the inbound: one page per inbound, however often it is redelivered. */
   inboundId: string;
   /** The household, once provisioned; null before there is one. */
@@ -520,26 +532,28 @@ function checkCrisisDraft(
 
 /**
  * A crisis was flagged and no reply goes out (#868: there is no fixed crisis line to
- * fall back on, anywhere). Never silent: an urgent, body-free log, the record, then the
- * page to #ops. The record comes first, so a page that fails or throws still leaves the
- * row the sweep pages from. A page that did not leave is logged urgent again and named
- * in the outcome.
+ * fall back on, anywhere). Never silent: the record, then the page to #ops; the pager
+ * (failure-page.ts) writes the urgent, body-free log. The record comes first, so a page
+ * that fails or throws still leaves the row the sweep pages from. A page that did not
+ * leave is logged and named in the outcome.
+ *
+ * An inbound with no provider id gets one fresh opaque id here, once, so the record and
+ * the page share one claim and it is never deduped against another such crisis.
  */
 export async function logCrisisUnanswered(
   pager: CrisisPager,
-  alert: CrisisUnanswered,
+  input: CrisisUnanswered,
 ): Promise<CrisisPageOutcome> {
-  const { kind, where, reason } = alert;
-  console.error(
-    { urgent: true, kind, where, reason },
-    'URGENT: crisis flagged, no reply sent - page #ops now',
-  );
+  const { kind, where, reason } = input;
+  const missing = input.inboundId.trim() === '';
+  if (missing) console.error({ kind, where, reason }, 'crisis page: inbound_id_missing');
+  const alert = missing ? { ...input, inboundId: `missing-${randomUUID()}` } : input;
   try {
     await pager.record(alert);
   } catch (err) {
     console.error(
-      { urgent: true, kind, where, reason, err: err instanceof Error ? err.name : 'unknown' },
-      'URGENT: crisis record did not land - the page is its only trace',
+      { kind, where, reason, err: err instanceof Error ? err.name : 'unknown' },
+      'crisis record did not land - the page is its only trace',
     );
   }
   let page: CrisisPageOutcome;
@@ -550,10 +564,7 @@ export async function logCrisisUnanswered(
     page = 'page_failed';
   }
   if (page === 'page_failed' || page === 'page_not_configured') {
-    console.error(
-      { urgent: true, kind, where, reason, page },
-      'URGENT: crisis page did not go out - nobody in #ops was told',
-    );
+    console.error({ kind, where, reason, page }, 'crisis page did not go out');
   }
   return page;
 }

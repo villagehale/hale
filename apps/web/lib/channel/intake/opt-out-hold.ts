@@ -25,9 +25,9 @@ export async function holdSender(
     })
     .onConflictDoNothing()
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
-  console.error(
-    { urgent: true, hold: 'opt_out_unread' },
-    'URGENT: opt-out read failed twice - sender held from proactive sends until the text is re-read; the failure-page cron pages #ops',
+  console.warn(
+    { hold: 'opt_out_unread' },
+    'opt-out read failed twice - sender held from proactive sends until the text is re-read; the opt-out hold sweep pages it',
   );
   return inserted.length > 0 ? 'held' : 'already_held';
 }

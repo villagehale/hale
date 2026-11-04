@@ -1603,8 +1603,8 @@ describe('ladder: the answer model flags a mental-health crisis the reader did n
     expect(calls).toHaveLength(2);
     expect(transport.bodies()).toEqual([]);
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ urgent: true, kind: 'mental', reason: 'missing_line' }),
-      'URGENT: crisis flagged, no reply sent - page #ops now',
+      expect.objectContaining({ kind: 'mental', reason: 'missing_line' }),
+      'URGENT: crisis flagged, no reply sent - paging #ops',
     );
   });
 });
@@ -1716,8 +1716,12 @@ describe("ladder: a safety outcome names the health line for the family's region
       held: 'write_failed',
     });
     expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ basis: 'united_states', reason: 'write_failed' }),
-      expect.stringContaining('intake health: no line written'),
+      expect.objectContaining({
+        page: 'intake_health_unwritten',
+        basis: 'united_states',
+        reason: 'write_failed',
+      }),
+      'URGENT: intake_health_unwritten - paging #ops',
     );
   });
 

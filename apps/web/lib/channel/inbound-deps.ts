@@ -38,6 +38,7 @@ import type { MessageTransport } from '~/lib/channel/transport-address';
 import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
+import { failurePageCrisisPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { providerPreflight } from '~/lib/monitoring/provider-health';
 import {
   HOT_SMS_CLIENT_OPTIONS,
@@ -263,13 +264,20 @@ export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJ
 /**
  * VIL-553 · the opt-out recovery pass's ports. Its own reader client (12s, no SDK retry)
  * so one held text that keeps failing cannot eat the drain's headroom, and a pre-flight
- * against that same client on its own window.
+ * against that same client on its own window. VIL-602: a crisis read late is answered by
+ * the live crisis writer on the live paths' client (30s, one retry), not the reader's: a
+ * timeout that short would turn a working writer into a failed one.
  */
 export function optOutRecoveryPorts(database: Database, now: Date): OptOutRecoveryDeps {
   const client = budgetedAnthropic(OPT_OUT_RECOVERY_CLIENT_OPTIONS);
   return {
-    reader: createOptOutReader(client),
+    reader: createOptOutReader(
+      client,
+      failurePageOpsPager(() => database),
+    ),
     transport: createOutboundTransport(),
+    saidLine: createSaidLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS)),
+    crisisPager: failurePageCrisisPager(database),
     preflight: () => providerPreflight(database, 'opt_out_recovery', client, now),
     now,
   };

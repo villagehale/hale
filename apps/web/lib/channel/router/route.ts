@@ -2713,7 +2713,8 @@ async function disposeOfFailedTurn(
   if (classifyTurnFailure(err) === 'model_unreachable') {
     // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
     // a provider outage the off-domain screen fails open and no model can write a
-    // crisis reply; since #868 there is no fixed one, so the alarm pages #ops urgently.
+    // crisis reply; since #868 there is no fixed one. The alarm never fires today (it
+    // returns not_an_outage or unjudged), so it pages nobody.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,

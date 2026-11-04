@@ -18,6 +18,8 @@ import {
 import { linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { readerConfirmationViolation } from '~/lib/channel/voice/crisis-check';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { db } from '~/lib/db';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -26,8 +28,8 @@ import { forceToolJson } from '~/lib/pipeline/structured';
  *
  * No word list and no fixed reply: the `opt-out-read` skill decides stop / start /
  * none and writes the confirmation in the sender's language, for every word a person
- * uses, STOP included: keywords.ts is gone. A failed read returns null after an
- * urgent log, because nothing else will catch that stop.
+ * uses, STOP included: keywords.ts is gone. A failed read pages #ops (the injected
+ * {@link OpsPager}) and returns null, because nothing else will catch that stop.
  * The verbatim echo is a structural guard: a model that paraphrased the text did
  * not read it, so its verdict is dropped.
  *
@@ -254,6 +256,7 @@ export function acceptOptOutReading(
 
 export function createOptOutReader(
   clientOrResolver: AgentClient | (() => AgentClient),
+  pager: OpsPager,
 ): OptOutReader {
   const once = async (input: OptOutReadInput): Promise<OptOutReading | null> => {
     const client = typeof clientOrResolver === 'function' ? clientOrResolver() : clientOrResolver;
@@ -274,7 +277,7 @@ export function createOptOutReader(
   return {
     async read(input) {
       // #868: one retry. Two failures return null; the intake machine then holds the
-      // sender (opt-out-hold.ts) and the urgent log below pages #ops.
+      // sender (opt-out-hold.ts), and the pager below pages #ops for every caller.
       for (let attempt = 1; attempt <= 2; attempt += 1) {
         try {
           const reading = await once(input);
@@ -286,12 +289,9 @@ export function createOptOutReader(
           );
         }
       }
-      // With no keyword list behind it, a failed read is a stop nobody saw. Urgent,
-      // so a person reads the turn; the text itself is never logged.
-      console.error(
-        { urgent: true },
-        'URGENT: opt-out reader failed twice - a stop may be unread, page #ops now',
-      );
+      // With no keyword list behind it, a failed read is a stop nobody saw, so a person
+      // hears of it. The text itself is never logged or paged.
+      await pager.page({ site: 'opt_out_unread', facts: {} });
       return null;
     },
   };
@@ -431,7 +431,10 @@ export function isCrisisReading(
 let shared: OptOutReader | null = null;
 
 export function sharedOptOutReader(): OptOutReader {
-  shared ??= createOptOutReader(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createOptOutReader(
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    failurePageOpsPager(db),
+  );
   return shared;
 }
 

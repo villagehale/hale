@@ -3,7 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -112,10 +112,15 @@ export function sharedLineUsable(
   return true;
 }
 
-async function pageUnsent(kind: SharedGroupVoiceKind, fallback: SharedGroupLineFallback) {
-  const outcome = await postOpsSlack(
-    `Hale shared group: a ${kind} line was not sent (${fallback}). Nothing went to the parent.`,
-  );
+async function pageUnsent(
+  database: Database,
+  kind: SharedGroupVoiceKind,
+  fallback: SharedGroupLineFallback,
+) {
+  const outcome = await pageOps(database, {
+    site: 'shared_group_unwritten',
+    facts: { kind, fallback },
+  });
   console.warn({ kind, fallback, page: outcome }, 'linq shared group: line not sent');
 }
 
@@ -201,7 +206,7 @@ export async function composeSharedGroupLine(
   });
   const composer = input.voice ?? productionComposer({ familyId: input.familyId, database });
   if (!composer) {
-    await pageUnsent(input.request.kind, 'voice_unavailable');
+    await pageUnsent(database, input.request.kind, 'voice_unavailable');
     await auditUnsent(database, input.familyId, input.request.kind, 'voice_unavailable');
     return { send: false, fallback: 'voice_unavailable' };
   }
@@ -224,7 +229,7 @@ export async function composeSharedGroupLine(
       last = 'model_failed';
     }
   }
-  await pageUnsent(input.request.kind, last);
+  await pageUnsent(database, input.request.kind, last);
   await auditUnsent(database, input.familyId, input.request.kind, last);
   return { send: false, fallback: last };
 }
