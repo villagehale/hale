@@ -9,7 +9,12 @@ import {
   seedFamily,
 } from '~/lib/testing/pglite';
 import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
-import { type WhatHaleDidItem, readWhatHaleDid } from './what-hale-did';
+import {
+  FamilyWithoutMembersError,
+  type WhatHaleDidItem,
+  readFamilyOwnTimezone,
+  readWhatHaleDid,
+} from './what-hale-did';
 
 /**
  * "What Hale did" over the real DDL: only executed email and calendar actions, newest
@@ -267,5 +272,47 @@ describe('the family zone', () => {
     expect(when).toContain('09:30');
     expect(when).not.toContain('11:30');
     expect(when).not.toContain('08:30');
+  });
+
+  // Inserted AFTER the Edmonton co-parent but joined earlier, so a reader that took
+  // insertion order, or the latest join, would still answer Edmonton.
+  it('breaks the tie between non-primary members by the earliest join', async () => {
+    const [grandparent] = await db.database
+      .insert(schema.users)
+      .values({
+        email: 'grandparent@example.test',
+        name: 'Grand Parent',
+        timezone: 'America/Halifax',
+      })
+      .returning({ id: schema.users.id });
+    if (!grandparent) throw new Error('fixture: no grandparent');
+    await db.database.insert(schema.familyMembers).values({
+      familyId: fam.familyId,
+      userId: grandparent.id,
+      role: 'grandparent',
+      joinedAt: at('2019-01-01T00:00:00Z'),
+    });
+
+    const items = await readWhatHaleDid(db.database, fam.familyId, fam.parentUserId);
+    const when = byId(items, 'a').when;
+    // June is ADT (UTC−3): 15:30Z is 12:30 in Halifax.
+    expect(when).toContain('12:30');
+    expect(when).not.toContain('09:30');
+  });
+
+  it('has no zone for a family with no members, and names that without the id', async () => {
+    await db.database
+      .delete(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, fam.familyId));
+
+    const failure = await readFamilyOwnTimezone(db.database, fam.familyId).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(FamilyWithoutMembersError);
+    expect(String((failure as Error).message)).not.toContain(fam.familyId);
+    await expect(readWhatHaleDid(db.database, fam.familyId, null)).rejects.toBeInstanceOf(
+      FamilyWithoutMembersError,
+    );
   });
 });

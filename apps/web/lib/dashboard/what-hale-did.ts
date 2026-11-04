@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
+import type { GoogleCalendarSkipReason } from '@hale/worker/google-calendar-placement';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { loadTeenAccessUnlocks } from '~/lib/teen-access';
 import { type HistoryView, toHistoryView } from './history';
@@ -59,11 +60,19 @@ export interface WhatHaleDidItem {
   teenRedacted: boolean;
 }
 
-function googleWritten(executorResult: Record<string, unknown> | null): boolean {
+/**
+ * Whether the event is on Google because Hale put it there. `already_present` is a retry
+ * that found the Google event id Hale stored on its own earlier write, so it counts.
+ */
+function onGoogle(executorResult: Record<string, unknown> | null): boolean {
   const google = executorResult?.google;
-  return typeof google === 'object' && google !== null && 'status' in google
-    ? google.status === 'written'
-    : false;
+  if (typeof google !== 'object' || google === null || !('status' in google)) return false;
+  if (google.status === 'written') return true;
+  return (
+    google.status === 'skipped' &&
+    'reason' in google &&
+    google.reason === ('already_present' satisfies GoogleCalendarSkipReason)
+  );
 }
 
 function calendarsFor(
@@ -73,7 +82,7 @@ function calendarsFor(
 ): CalendarTarget[] {
   if (kind === 'email') return [];
   if (GOOGLE_ONLY_TYPES.has(view.actionType)) return ['google_calendar'];
-  return googleWritten(executorResult) ? ['hale_calendar', 'google_calendar'] : ['hale_calendar'];
+  return onGoogle(executorResult) ? ['hale_calendar', 'google_calendar'] : ['hale_calendar'];
 }
 
 export function toWhatHaleDidItem(
@@ -94,6 +103,14 @@ export function toWhatHaleDidItem(
   };
 }
 
+/** A family with no member has no zone. The message carries no family id (it is logged). */
+export class FamilyWithoutMembersError extends Error {
+  constructor() {
+    super('readFamilyOwnTimezone: the family has no members, so it has no zone');
+    this.name = 'FamilyWithoutMembersError';
+  }
+}
+
 /**
  * The family's own zone: the primary parent's `users.timezone`, or else the zone of the
  * earliest-joined member. No constant fallback; a family with no member has no zone.
@@ -109,7 +126,7 @@ export async function readFamilyOwnTimezone(database: Database, familyId: string
       asc(schema.familyMembers.joinedAt),
     )
     .limit(1);
-  if (!row) throw new Error(`readFamilyOwnTimezone: family ${familyId} has no members`);
+  if (!row) throw new FamilyWithoutMembersError();
   return row.timezone;
 }
 

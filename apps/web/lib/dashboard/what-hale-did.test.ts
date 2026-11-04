@@ -52,6 +52,16 @@ describe('toWhatHaleDidItem', () => {
     expect(item.calendars).toEqual(['hale_calendar', 'google_calendar']);
   });
 
+  // A retried placement finds the Google event id Hale stored on its first write and
+  // skips as already_present: the event is on Google, so the receipt still says so.
+  it('keeps Google Calendar when a retry found Hale’s earlier Google write', () => {
+    const item = toWhatHaleDidItem(view({}), {
+      kind: 'calendar_placed',
+      google: { status: 'skipped', reason: 'already_present' },
+    });
+    expect(item.calendars).toEqual(['hale_calendar', 'google_calendar']);
+  });
+
   it('reads a placement with no executor detail as on Hale’s calendar only', () => {
     expect(toWhatHaleDidItem(view({ actionType: 'calendar_move' }), null).calendars).toEqual([
       'hale_calendar',
