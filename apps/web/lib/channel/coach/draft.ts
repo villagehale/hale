@@ -60,7 +60,7 @@ export interface ChannelDraftResult {
 }
 
 /**
- * Who a calendar draft is for, written on its mint row (VIL-525). `private` is a 1:1
+ * Who a calendar_add draft is for, written on its mint row (VIL-525). `private` is a 1:1
  * thread. `group` is the group chat the turn ran in, which may be a chat that is not the
  * household's own group; `chatId` is null when the turn did not say which chat it was.
  */
@@ -228,8 +228,9 @@ export async function findPendingIdenticalCalendarAdd(
         eq(schema.actions.actionType, 'calendar_add'),
       ),
     )
-    .orderBy(desc(schema.actions.draftedAt))
-    .limit(20);
+    // No row limit: audience and child are read after the query, so a page of newer
+    // drafts for another chat or child would hide the one this ask is about.
+    .orderBy(desc(schema.actions.draftedAt));
   const origins = await calendarDraftOrigins(
     database,
     input.familyId,
@@ -320,7 +321,14 @@ export async function mintChannelCalendarDraft(
     actionTaken: CHANNEL_AUDIT_ACTION,
     targetTable: 'actions',
     targetId: actionId,
-    after: { actionType: input.actionType, dedupHash, childId, origin: input.origin },
+    // Only an add is a group's plan (the stamp's own rule). A move or cancel is answered
+    // on the 1:1 list, wherever it was asked.
+    after: {
+      actionType: input.actionType,
+      dedupHash,
+      childId,
+      ...(input.actionType === 'calendar_add' ? { origin: input.origin } : {}),
+    },
   });
 
   // Rule #3: /api/actions/:id/approve rejects any draft whose reviewer verdict is not

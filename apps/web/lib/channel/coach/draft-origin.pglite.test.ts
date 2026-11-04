@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import Anthropic from '@anthropic-ai/sdk';
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
+import {
+  type ChannelDraftInput,
+  findPendingIdenticalCalendarAdd,
+  productionChannelDraftPort,
+} from '~/lib/channel/coach/draft';
 import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
 import { createTurnOfferLedger } from '~/lib/channel/coach/tools';
 import {
@@ -369,5 +374,87 @@ describe('VIL-525 a calendar draft records its audience at mint', () => {
 
     expect(again.minted).toEqual([]);
     expect(again.result).toMatchObject({ alreadyPending: true, actionId: newer });
+  });
+
+  it('an older matching draft is found behind a page of newer drafts for other children', async () => {
+    const other = await seedChild('Ada');
+    const older = await seedLegacyPrivateDraft({
+      title: TITLE,
+      startsAt: STARTS_AT,
+      draftedAt: new Date('2026-09-01T12:00:00.000Z'),
+    });
+    for (let index = 0; index < 20; index += 1) {
+      const id = await seedLegacyPrivateDraft({
+        title: TITLE,
+        startsAt: STARTS_AT,
+        draftedAt: new Date(Date.UTC(2026, 8, 2 + index)),
+      });
+      await db.database
+        .update(schema.actions)
+        .set({ payload: { title: TITLE, startsAt: STARTS_AT, childId: other } })
+        .where(eq(schema.actions.id, id));
+    }
+
+    const again = await ask({ audience: 'direct' });
+
+    expect(again.minted).toEqual([]);
+    expect(again.result).toMatchObject({ alreadyPending: true, actionId: older });
+  });
+
+  it("a group turn's move or cancel stays on the private list, as only a group add is the group's", async () => {
+    const port = productionChannelDraftPort(
+      db.database,
+      new Anthropic({
+        apiKey: 'not-used-by-this-test',
+        baseURL: 'http://127.0.0.1:9',
+        maxRetries: 0,
+      }),
+      {
+        now: NOW,
+        parentUserId: family.parentUserId,
+        origin: { surface: 'group', chatId: SHARED_CHAT },
+      },
+    );
+    const draft = async (actionType: ChannelDraftInput['actionType']): Promise<string> => {
+      const before = await db.database
+        .select({ id: schema.actions.id })
+        .from(schema.actions)
+        .where(eq(schema.actions.familyId, family.familyId));
+      await port
+        .draft({
+          familyId: family.familyId,
+          actor: family.parentUserId,
+          actionType,
+          payload: {
+            title: TITLE,
+            startsAt: STARTS_AT,
+            endsAt: null,
+            location: null,
+            childId: null,
+            privacySensitive: false,
+            ...(actionType === 'calendar_add' ? {} : { reversalHandle: randomUUID() }),
+          },
+          rationale: 'the group asked',
+          teenContent: false,
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof Error && err.message === 'Connection error.')) throw err;
+        });
+      const after = await db.database
+        .select({ id: schema.actions.id })
+        .from(schema.actions)
+        .where(eq(schema.actions.familyId, family.familyId));
+      const [id] = after.map((row) => row.id).filter((row) => !before.some((b) => b.id === row));
+      if (!id) throw new Error(`no ${actionType} drafted`);
+      return id;
+    };
+
+    const cancelId = await draft('calendar_cancel');
+    const addId = await draft('calendar_add');
+
+    expect(await privateApprovalIds()).toEqual([cancelId]);
+    expect(
+      await groupPlanActionIds(db.database, { familyId: family.familyId, chatId: SHARED_CHAT }),
+    ).toEqual(new Set([addId]));
   });
 });
