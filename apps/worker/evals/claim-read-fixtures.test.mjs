@@ -50,7 +50,9 @@ beforeAll(async () => {
     new URL('claim-verdict.ts', RECONCILE).href,
     import.meta.url,
   ));
-});
+  // claim-reader.ts pulls in the agent and pipeline graph: a cold CI import of it
+  // outlasts the default 10 s hook timeout.
+}, 60_000);
 
 const BASE = ['reproducer', 'no_worries', 'reported', 'negation', 'compound', 'arming', 'all_set'];
 const MORE = [
