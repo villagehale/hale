@@ -26,12 +26,13 @@ const TEEN_TITLE = 'Dr. Patel — eating-disorder therapy';
 describe('check_calendar_conflict — the overlap, not the item', () => {
   let db: TestDb;
   let familyId: string;
+  let parentUserId: string;
 
   // Booted in a hook, not the test body: pglite boot + migrations exceed the 5s test
   // timeout, and hooks carry their own budget.
   beforeEach(async () => {
     db = await createTestDb();
-    ({ familyId } = await seedFamily(db.database));
+    ({ familyId, parentUserId } = await seedFamily(db.database));
   }, 120_000);
 
   afterEach(async () => {
@@ -47,7 +48,11 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
     return row.id;
   }
 
-  async function conflicts(): Promise<{ raw: unknown; parsed: CalendarConflictOutput }> {
+  async function conflicts(): Promise<{
+    raw: unknown;
+    ok: boolean;
+    parsed: CalendarConflictOutput;
+  }> {
     const result = await invokeReviewerTool(
       'check_calendar_conflict',
       { familyId, startsAt: START.toISOString(), durationMinutes: 60 },
@@ -56,19 +61,25 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
     // The RAW result is what reviewer.ts:267 stringifies into the model's turn, so the
     // assertions below run on it. Parsing here as well would strip a re-grown column and
     // hide the very regression this test exists for.
-    return { raw: result.result, parsed: calendarConflictOutput.parse(result.result) };
+    return {
+      raw: result.result,
+      ok: result.ok,
+      parsed: calendarConflictOutput.parse(result.result),
+    };
   }
 
   it('reports the overlap by id and window, and hands the model no title', async () => {
     const eventId = await seedEvent(TEEN_TITLE, new Date(START.getTime() + 15 * 60 * 1000), null);
 
-    const { raw, parsed } = await conflicts();
+    const { raw, ok, parsed } = await conflicts();
 
     const rawEvents = (raw as { conflictingEvents: Record<string, unknown>[] }).conflictingEvents;
     expect(Object.keys(rawEvents[0] ?? {}).sort()).toEqual(['endsAt', 'id', 'startsAt']);
     expect(JSON.stringify(raw)).not.toContain(TEEN_TITLE);
     expect(parsed.hasConflict).toBe(true);
     expect(parsed.conflictingEvents.map((e) => e.id)).toEqual([eventId]);
+    // VIL-79: a clash is reported, never a failed check.
+    expect(ok).toBe(true);
   });
 
   it('still says no conflict when nothing overlaps — the check did not go blind', async () => {
@@ -78,5 +89,59 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
 
     expect(parsed.hasConflict).toBe(false);
     expect(parsed.conflictingEvents).toEqual([]);
+  });
+
+  async function seedBlock(eventId: string, start: Date, end: Date | null, kidRelated: boolean) {
+    const [integration] = await db.database
+      .insert(schema.integrations)
+      .values({ familyId, userId: parentUserId, provider: 'gcal', status: 'active' })
+      .returning({ id: schema.integrations.id });
+    if (!integration) throw new Error('integrations insert returned no row');
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: integration.id,
+      eventId,
+      familyId,
+      userId: parentUserId,
+      startAt: start,
+      endAt: end,
+      kidRelated,
+      title: kidRelated ? 'Saturday art class' : null,
+      status: 'confirmed',
+      updatedStamp: `stamp-${eventId}`,
+    });
+  }
+
+  // VIL-79 · the live Google side, kid-only.
+  it('reports an overlapping KID Google block as a clash, ok:true', async () => {
+    await seedBlock(
+      'g-kid',
+      new Date(START.getTime() + 30 * 60 * 1000),
+      new Date(START.getTime() + 90 * 60 * 1000),
+      true,
+    );
+    const { ok, parsed, raw } = await conflicts();
+    expect(ok).toBe(true);
+    expect(parsed.hasConflict).toBe(true);
+    expect(parsed.conflictingEvents.map((e) => e.id)).toEqual(['g-kid']);
+    expect(JSON.stringify(raw)).not.toContain('Saturday art class');
+  });
+
+  it('never surfaces an adult Google block, even when it overlaps', async () => {
+    await seedBlock('g-adult', START, new Date(START.getTime() + 2 * HOUR), false);
+    const { ok, parsed } = await conflicts();
+    expect(ok).toBe(true);
+    expect(parsed.hasConflict).toBe(false);
+  });
+
+  it('back-to-back is not a clash', async () => {
+    await seedBlock(
+      'g-next',
+      new Date(START.getTime() + HOUR),
+      new Date(START.getTime() + 2 * HOUR),
+      true,
+    );
+    await seedEvent('Before', new Date(START.getTime() - HOUR), START);
+    const { parsed } = await conflicts();
+    expect(parsed.hasConflict).toBe(false);
   });
 });
