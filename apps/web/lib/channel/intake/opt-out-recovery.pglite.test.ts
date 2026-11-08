@@ -92,24 +92,15 @@ afterEach(async () => {
 
 const ago = (minutes: number): Date => new Date(NOW.getTime() - minutes * MINUTE);
 
-/** An Eastern forward sortation area alone, which gives a family its own clock (Eastern time). */
-const EASTERN_FSA = 'K2P';
-
 async function parent(
   phone: string,
-  over: { revoked?: boolean; verifiedAt?: Date; place?: string } = {},
+  over: { revoked?: boolean; verifiedAt?: Date } = {},
 ): Promise<{ familyId: string; parentUserId: string }> {
   const seeded = await seedFamily(db.database, 'Held Family');
   await channel(seeded, phone, {
     verifiedAt: over.verifiedAt ?? ago(60 * 24 * 7),
     revokedAt: over.revoked ? ago(60) : null,
   });
-  if (over.place) {
-    await db.database
-      .update(schema.families)
-      .set({ postalCode: over.place })
-      .where(eq(schema.families.id, seeded.familyId));
-  }
   return seeded;
 }
 
@@ -144,8 +135,6 @@ async function intake(
     createdAt?: Date;
     closedAt?: Date;
     owner?: { familyId: string; parentUserId: string };
-    /** A postal area the first touch gave, which gives the session its own clock. */
-    place?: string;
   } = {},
 ): Promise<string> {
   const session = await createSession(db.database, {
@@ -168,21 +157,6 @@ async function intake(
         ...(entry.chatId ? { chatId: entry.chatId } : {}),
       })),
       lastProviderId: entries[entries.length - 1]?.providerId ?? first.providerId,
-      ...(over.place
-        ? {
-            firstTouch: {
-              language: 'en' as const,
-              place: {
-                kind: 'postal' as const,
-                areaCoarse: over.place,
-                postalCode: null,
-                municipality: null,
-                city: null,
-              },
-              locationRequest: null,
-            },
-          }
-        : {}),
       ...(over.closedAt ? { state: 'superseded' as const, closedAt: over.closedAt } : {}),
       ...(over.owner ? { familyId: over.owner.familyId, userId: over.owner.parentUserId } : {}),
     },
@@ -477,16 +451,17 @@ async function channelRevoked(parentUserId: string): Promise<boolean> {
 }
 
 describe('recoverHeldOptOutReads', () => {
-  it('a: a stop read late revokes, writes the ledger and audit rows, and confirms once', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    const b = await parent(PHONE_B, { place: EASTERN_FSA });
+  it('a: a stop read late revokes, writes the ledger and audit rows, and sends nothing', async () => {
+    const a = await parent(PHONE_A);
+    const b = await parent(PHONE_B);
     await inboundRow(a, 'pm-a', 'please stop texting me', ago(20));
     await hold(PHONE_A, 'pm-a', ago(20));
     const transport = new FakeTransport();
+    const r = reader();
 
-    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
+    const result = await recoverHeldOptOutReads(db.database, deps(r.reader, transport));
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(a.parentUserId)).toBe(true);
     expect(await channelRevoked(b.parentUserId)).toBe(false);
     const consent = await db.database
@@ -494,27 +469,17 @@ describe('recoverHeldOptOutReads', () => {
       .from(schema.consentRecords)
       .where(eq(schema.consentRecords.userId, a.parentUserId));
     expect(consent).toEqual([{ granted: false }]);
-    // The stop path's own rows: the revoke, the confirmation's outbound ledger audit, and
-    // this pass's record of what the held text read as.
-    expect(await auditVerbs(a.familyId)).toEqual([
-      'channel_sms_revoked',
-      'opt_out_hold_read',
-      'sms_intake_outbound',
-    ]);
+    // The stop path's own revoke, and this pass's record of what the held text read as.
+    expect(await auditVerbs(a.familyId)).toEqual(['channel_sms_revoked', 'opt_out_hold_read']);
     expect(await auditReads(a.familyId)).toEqual([readRow(a.parentUserId)]);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    const outbound = await db.database
-      .select({ providerMessageId: schema.channelMessages.providerMessageId })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.parentUserId, a.parentUserId),
-          eq(schema.channelMessages.direction, 'out'),
-        ),
-      );
-    expect(outbound).toEqual([{ providerMessageId: 'fake-out-1' }]);
+    // The reader wrote a confirmation and the transport works; the late path sends neither.
+    expect(r.texts).toEqual(['please stop texting me']);
+    expect(scriptedOptOutRead('please stop texting me')).toEqual({
+      intent: 'stop',
+      confirmation: SCRIPTED_STOP_CONFIRMATION,
+    });
+    expect(transport.sent).toEqual([]);
+    expect(await outboundFor(a.parentUserId)).toEqual([]);
     expect(await heldRow('pm-a')).toBeNull();
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
   }, 30_000);
@@ -550,7 +515,7 @@ describe('recoverHeldOptOutReads', () => {
   }, 30_000);
 
   it('c: a text the model never reads backs off alone; the stop behind it is read', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-old', 'garbled text', ago(30));
     await inboundRow(a, 'pm-new', 'stop texting me now', ago(10));
     await hold(PHONE_A, 'pm-old', ago(30));
@@ -562,7 +527,7 @@ describe('recoverHeldOptOutReads', () => {
       deps(reader({ 'garbled text': null }).reader, transport),
     );
 
-    expect(result.outcomes).toMatchObject({ read_failed: 1, stopped: 1 });
+    expect(result.outcomes).toMatchObject({ read_failed: 1, stopped_late_unconfirmed: 1 });
     const poison = await heldRow('pm-old');
     expect(poison?.readAttempts).toBe(1);
     expect(poison?.nextReadAt.getTime()).toBe(NOW.getTime() + 15 * MINUTE);
@@ -570,7 +535,7 @@ describe('recoverHeldOptOutReads', () => {
   }, 30_000);
 
   it('d: a full batch of unrecorded rows cannot keep a newer stop from being read', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     for (let i = 0; i < HELD_READ_BATCH; i += 1) {
       await hold(PHONE_A, `pm-lost-${i}`, ago(60 + i));
     }
@@ -581,13 +546,13 @@ describe('recoverHeldOptOutReads', () => {
 
     const first = await recoverHeldOptOutReads(db.database, deps(r.reader, transport));
     expect(first.outcomes.unrecorded).toBe(HELD_READ_BATCH);
-    expect(first.outcomes.stopped).toBe(0);
+    expect(first.outcomes.stopped_late_unconfirmed).toBe(0);
 
     const second = await recoverHeldOptOutReads(
       db.database,
       deps(r.reader, transport, { now: new Date(NOW.getTime() + MINUTE) }),
     );
-    expect(second.outcomes.stopped).toBe(1);
+    expect(second.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(second.outcomes.unrecorded).toBe(0);
     expect(r.texts).toEqual(['stop texting me']);
   }, 30_000);
@@ -638,31 +603,33 @@ describe('recoverHeldOptOutReads', () => {
     expect(result.outcomes.read_not_stop).toBe(1);
   }, 30_000);
 
-  it('g: a stop with no confirmation revokes, sends nothing, and logs without the text', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+  it('g: a late stop is logged by its outcome alone, never the text or the number', async () => {
+    const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-g', 'quiet please forever', ago(20));
     await hold(PHONE_A, 'pm-g', ago(20));
     const transport = new FakeTransport();
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const infos = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const stop = { intent: 'stop', confirmation: SCRIPTED_STOP_CONFIRMATION } as const;
 
     const result = await recoverHeldOptOutReads(
       db.database,
-      deps(
-        reader({ 'quiet please forever': { intent: 'stop', confirmation: '' } }).reader,
-        transport,
-      ),
+      deps(reader({ 'quiet please forever': stop }).reader, transport),
     );
 
-    expect(result.outcomes.stopped_confirmation_unsent).toBe(1);
-    expect(result.outcomes.stopped).toBe(0);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(a.parentUserId)).toBe(true);
     expect(transport.sent).toEqual([]);
-    const unsent = errors.mock.calls.filter((call) =>
-      call.some((arg) => typeof arg === 'string' && arg.includes('confirmation not sent')),
+    const logged = infos.mock.calls.filter((call) =>
+      call.some(
+        (arg) =>
+          typeof arg === 'object' &&
+          arg !== null &&
+          (arg as { outcome?: string }).outcome === 'stopped_late_unconfirmed',
+      ),
     );
-    expect(unsent).toHaveLength(1);
-    expect(JSON.stringify(errors.mock.calls)).not.toContain('quiet please forever');
-    expect(JSON.stringify(errors.mock.calls)).not.toContain(PHONE_A);
+    expect(logged).toHaveLength(1);
+    expect(JSON.stringify(infos.mock.calls)).not.toContain('quiet please forever');
+    expect(JSON.stringify(infos.mock.calls)).not.toContain(PHONE_A);
   }, 30_000);
 
   it('h: a crisis read late gets the crisis reply one-to-one, ledgered, and is released', async () => {
@@ -1083,7 +1050,6 @@ describe('recoverHeldOptOutReads', () => {
       crisisLanguage: null,
       crisisSituation: null,
       crisisWho: null,
-      stopAppliedAt: null,
     });
 
     expect((await resolveHeldText(db.database, row('pm-us', PHONE_A)))?.region).toBe('US');
@@ -1131,17 +1097,6 @@ describe('recoverHeldOptOutReads', () => {
       db.database,
       session,
       {
-        firstTouch: {
-          language: 'en',
-          place: {
-            kind: 'postal',
-            areaCoarse: EASTERN_FSA,
-            postalCode: null,
-            municipality: null,
-            city: null,
-          },
-          locationRequest: null,
-        },
         transcript: [
           {
             direction: 'in',
@@ -1159,15 +1114,13 @@ describe('recoverHeldOptOutReads', () => {
 
     const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     const [row] = await db.database
       .select({ state: schema.smsIntakeSessions.state })
       .from(schema.smsIntakeSessions)
       .where(eq(schema.smsIntakeSessions.id, session.id));
     expect(row?.state).toBe('stopped');
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-j')).toBeNull();
   }, 30_000);
 
@@ -1272,8 +1225,8 @@ describe('recoverHeldOptOutReads', () => {
 
   it('k: a provider id two numbers share keeps the second held through later texts and passes', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    const b = await parent(PHONE_B, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
+    const b = await parent(PHONE_B);
     await inboundRow(a, 'pm-shared', 'see you soon', ago(60));
     expect(
       await holdSender(db.database, {
@@ -1309,7 +1262,7 @@ describe('recoverHeldOptOutReads', () => {
   }, 30_000);
 
   it('l: a legacy hold is re-pointed at every inbound since it was written', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     const heldAt = ago(60);
     await db.database
       .insert(schema.optOutReadHolds)
@@ -1317,7 +1270,7 @@ describe('recoverHeldOptOutReads', () => {
     await inboundRow(a, 'pm-before', 'an earlier text', new Date(heldAt.getTime() - MINUTE));
     await inboundRow(a, 'pm-l1', 'stop texting me', new Date(heldAt.getTime() + 1000));
     await inboundRow(a, 'pm-l2', 'see you soon', new Date(heldAt.getTime() + 2 * MINUTE));
-    await parent(PHONE_B, { place: EASTERN_FSA });
+    await parent(PHONE_B);
     await db.database
       .insert(schema.optOutReadHolds)
       .values({ phoneHash: phoneBlindIndex(PHONE_B), heldAt });
@@ -1327,7 +1280,7 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(result.repointed).toBe(2);
     expect(result.legacyUnpointed).toBe(1);
-    expect(result.outcomes).toMatchObject({ stopped: 1, read_not_stop: 1 });
+    expect(result.outcomes).toMatchObject({ stopped_late_unconfirmed: 1, read_not_stop: 1 });
     expect([...r.texts].sort()).toEqual(['see you soon', 'stop texting me']);
     const legacy = await db.database.select().from(schema.optOutReadHolds);
     expect(legacy.map((row) => row.phoneHash)).toEqual([phoneBlindIndex(PHONE_B)]);
@@ -1338,12 +1291,12 @@ describe('recoverHeldOptOutReads', () => {
   it('l: legacy holds that stay unpointed cannot starve a newer one from its re-point', async () => {
     for (let i = 0; i < HELD_READ_BATCH; i += 1) {
       const phone = `+1555555${String(1000 + i)}`;
-      await parent(phone, { place: EASTERN_FSA });
+      await parent(phone);
       await db.database
         .insert(schema.optOutReadHolds)
         .values({ phoneHash: phoneBlindIndex(phone), heldAt: ago(600 - i) });
     }
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     await db.database
       .insert(schema.optOutReadHolds)
       .values({ phoneHash: phoneBlindIndex(PHONE_A), heldAt: ago(60) });
@@ -1356,7 +1309,7 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(result.legacyUnpointed).toBe(HELD_READ_BATCH);
     expect(result.repointed).toBe(1);
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
   }, 30_000);
 
   it('l: a legacy hold with nothing behind it and no channel left is released', async () => {
@@ -1371,38 +1324,6 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(result.legacyNoChannel).toBe(1);
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_C))).toBe(false);
-  }, 30_000);
-
-  it('n: a stop read late from a group message is confirmed one-to-one', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-n', 'stop texting me', ago(20), {
-      inGroup: true,
-      chatId: 'chat-group-1',
-    });
-    await hold(PHONE_A, 'pm-n', ago(20));
-    const transport = new FakeTransport();
-
-    const result = await recoverHeldOptOutReads(db.database, deps(reader().reader, transport));
-
-    expect(result.outcomes.stopped).toBe(1);
-    expect(transport.sent).toHaveLength(1);
-    expect(transport.sent[0]?.to).toBe(PHONE_A);
-    expect(JSON.stringify(transport.sent[0])).not.toContain('chat-group-1');
-    // The ledger row of the confirmation names no chat, never the family group's, and is
-    // never recorded as said to the group.
-    const outbound = await db.database
-      .select({
-        chatId: schema.channelMessages.providerChatId,
-        inGroup: schema.channelMessages.inGroup,
-      })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.parentUserId, a.parentUserId),
-          eq(schema.channelMessages.direction, 'out'),
-        ),
-      );
-    expect(outbound).toEqual([{ chatId: null, inGroup: null }]);
   }, 30_000);
 
   it('n: a held group message is rebuilt as a one-to-one text: no chat, never a group turn', async () => {
@@ -1424,32 +1345,6 @@ describe('recoverHeldOptOutReads', () => {
       receivedAt: ago(20),
       transport: 'imessage',
     });
-  }, 30_000);
-
-  it('n: a stop read late from a one-to-one iMessage keeps its own chat on the ledger', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-n2', 'stop texting me', ago(20), {
-      inGroup: false,
-      chatId: 'chat-direct-1',
-    });
-    await hold(PHONE_A, 'pm-n2', ago(20));
-
-    const result = await recoverHeldOptOutReads(
-      db.database,
-      deps(reader().reader, new FakeTransport()),
-    );
-
-    expect(result.outcomes.stopped).toBe(1);
-    const outbound = await db.database
-      .select({ chatId: schema.channelMessages.providerChatId })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.parentUserId, a.parentUserId),
-          eq(schema.channelMessages.direction, 'out'),
-        ),
-      );
-    expect(outbound).toEqual([{ chatId: 'chat-direct-1' }]);
   }, 30_000);
 
   it('a row another tick claimed first is named claimed_elsewhere and never read', async () => {
@@ -1523,7 +1418,7 @@ describe('recoverHeldOptOutReads', () => {
   }, 30_000);
 
   it('l: a stop this number placed is read beside a text that cannot be placed, and only once', async () => {
-    const u = await parent(PHONE_A, { place: EASTERN_FSA });
+    const u = await parent(PHONE_A);
     await intake(PHONE_C, [{ providerId: 'pm-other-number', body: 'hello', at: ago(200) }], {
       owner: u,
     });
@@ -1549,10 +1444,10 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(first.repointed).toBe(1);
     expect(first.legacyUnpointed).toBe(1);
-    expect(first.outcomes.stopped).toBe(1);
+    expect(first.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(r.texts).toEqual(['stop texting me']);
     expect(await activeChannelOn(u.parentUserId, PHONE_A)).toBe(false);
-    expect(transport.sent.map((send) => send.to)).toEqual([PHONE_A]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-either-number')).toBeNull();
     expect(await db.database.select().from(schema.optOutReadHolds)).toHaveLength(1);
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(true);
@@ -1568,7 +1463,7 @@ describe('recoverHeldOptOutReads', () => {
     expect(second.legacyUnpointed).toBe(1);
     expect(Object.values(second.outcomes).reduce((sum, n) => sum + n, 0)).toBe(0);
     expect(r.texts).toEqual(['stop texting me']);
-    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent).toEqual([]);
   }, 30_000);
 
   it("l: a text on this number's own transcript is placed here, so nothing keeps the row", async () => {
@@ -2103,11 +1998,7 @@ describe('recoverHeldOptOutReads', () => {
       legacyUnpointed: 0,
       legacyFailed: 0,
       outcomes: {
-        stopped: 0,
-        stopped_confirmation_unsent: 0,
-        stopped_confirmation_failed: 0,
-        stopped_confirmation_waiting: 0,
-        stopped_confirmation_dropped: 0,
+        stopped_late_unconfirmed: 0,
         stop_superseded: 0,
         stop_failed: 0,
         already_stopped: 0,
@@ -2159,7 +2050,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     const result = await recover(transport);
 
     expect(result.outcomes.stop_superseded).toBe(1);
-    expect(result.outcomes.stopped + result.outcomes.already_stopped).toBe(0);
+    expect(result.outcomes.stopped_late_unconfirmed + result.outcomes.already_stopped).toBe(0);
     expect(await channelRevoked(bob.parentUserId)).toBe(false);
     expect(await withdrawals()).toEqual([]);
     expect(transport.sent).toEqual([]);
@@ -2167,21 +2058,17 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
   }, 30_000);
 
   it('(2) the same stop, with that session still the current holder, applies and closes it', async () => {
-    const id = await intake(
-      PHONE_A,
-      [{ providerId: 'pm-t2', body: 'stop texting me', at: ago(40) }],
-      { place: EASTERN_FSA },
-    );
+    const id = await intake(PHONE_A, [
+      { providerId: 'pm-t2', body: 'stop texting me', at: ago(40) },
+    ]);
     await hold(PHONE_A, 'pm-t2', ago(40));
     const transport = new FakeTransport();
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await sessionRow(id)).toMatchObject({ state: 'stopped', closedAt: NOW });
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-t2')).toBeNull();
   }, 30_000);
 
@@ -2225,11 +2112,9 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
   }, 30_000);
 
   it("(4) a channel someone else typed in after the stop never keeps it from the number's holder", async () => {
-    const id = await intake(
-      PHONE_A,
-      [{ providerId: 'pm-t4b', body: 'stop texting me', at: ago(40) }],
-      { place: EASTERN_FSA },
-    );
+    const id = await intake(PHONE_A, [
+      { providerId: 'pm-t4b', body: 'stop texting me', at: ago(40) },
+    ]);
     await hold(PHONE_A, 'pm-t4b', ago(40));
     const typist = await seedFamily(db.database, 'Typed Family');
     await channel(typist, PHONE_A, { verifiedAt: null, revokedAt: null, createdAt: ago(20) });
@@ -2238,18 +2123,16 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     const result = await recover(transport);
 
     expect(result.outcomes.timeline_unresolved).toBe(0);
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await sessionRow(id)).toMatchObject({ state: 'stopped', closedAt: NOW });
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-t4b')).toBeNull();
     // The typed-in channel is nobody's holding yet: the stop never reaches it.
     expect(await activeChannelOn(typist.parentUserId, PHONE_A)).toBe(true);
   }, 30_000);
 
   it('(4) positive control: the holder verifying the number again after the stop supersedes it', async () => {
-    const holder = await parent(PHONE_A, { place: EASTERN_FSA });
+    const holder = await parent(PHONE_A);
     await inboundRow(holder, 'pm-t4c', 'please stop texting me', ago(40));
     await hold(PHONE_A, 'pm-t4c', ago(40));
     // A fresh consent grant revokes the old row and inserts a new one, never an un-revoke.
@@ -2263,7 +2146,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     const result = await recover(transport);
 
     expect(result.outcomes.stop_superseded).toBe(1);
-    expect(result.outcomes.stopped).toBe(0);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(0);
     expect(await withdrawals()).toEqual([]);
     expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-t4c')).toBeNull();
@@ -2292,7 +2175,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
   }, 30_000);
 
   it('(5) a stop from a session left open on the old number revokes nothing on the new one', async () => {
-    const alice = await parent(PHONE_A, { revoked: true, place: EASTERN_FSA });
+    const alice = await parent(PHONE_A, { revoked: true });
     await db.database
       .update(schema.parentChannels)
       .set({ revokedAt: ago(50) })
@@ -2308,11 +2191,11 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await activeChannelOn(alice.parentUserId, PHONE_C)).toBe(true);
     expect(await withdrawals()).toEqual([]);
     expect(await sessionRow(id)).toMatchObject({ state: 'stopped' });
-    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(transport.sent).toEqual([]);
   }, 30_000);
 
   it('a late read is told when the stop arrived and when it is read', async () => {
@@ -2332,22 +2215,20 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
     expect(inputs.map((input) => input.late)).toEqual([{ receivedAt: ago(330), readAt: NOW }]);
   }, 30_000);
 
-  it('(6) the holder at the time, still current, is stopped, confirmed and released', async () => {
+  it('(6) the holder at the time, still current, is stopped silently and released', async () => {
     const before = await seedFamily(db.database, 'Earlier Family');
     await channel(before, PHONE_A, { verifiedAt: ago(7 * DAY), revokedAt: ago(3 * DAY) });
-    const u = await parent(PHONE_A, { verifiedAt: ago(2 * DAY), place: EASTERN_FSA });
+    const u = await parent(PHONE_A, { verifiedAt: ago(2 * DAY) });
     await inboundRow(u, 'pm-t6', 'please stop texting me', ago(20));
     await hold(PHONE_A, 'pm-t6', ago(20));
     const transport = new FakeTransport();
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(u.parentUserId)).toBe(true);
     expect(await withdrawals()).toEqual([u.parentUserId]);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-t6')).toBeNull();
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
   }, 30_000);
@@ -2437,7 +2318,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
   }, 30_000);
 
   it('a stop path that fails before the number stops being sendable keeps the hold', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-sf', 'stop texting me', ago(20));
     await hold(PHONE_A, 'pm-sf', ago(20));
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -2467,12 +2348,12 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
       db.database,
       deps(reader().reader, transport, { now: new Date(NOW.getTime() + 16 * MINUTE) }),
     );
-    expect(later.outcomes.stopped).toBe(1);
+    expect(later.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await heldRow('pm-sf')).toBeNull();
   }, 30_000);
 
-  it('a stop whose confirmation send fails after the revoke keeps the hold', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+  it('a late stop never calls the transport: one that would throw changes nothing', async () => {
+    const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-cf', 'stop texting me', ago(20));
     await hold(PHONE_A, 'pm-cf', ago(20));
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -2484,45 +2365,14 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
 
     const result = await recover(new FailingTransport());
 
-    expect(result.outcomes.stopped_confirmation_failed).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
+    expect(result.outcomes.stop_failed).toBe(0);
     expect(await channelRevoked(a.parentUserId)).toBe(true);
-    expect(await heldRow('pm-cf')).not.toBeNull();
-  }, 30_000);
-
-  it('a late confirmation from an intake transcript never carries its chat', async () => {
-    const u = await parent(PHONE_A, { place: EASTERN_FSA });
-    await intake(
-      PHONE_A,
-      [
-        {
-          providerId: 'pm-im',
-          body: 'stop texting me',
-          at: ago(20),
-          channel: 'imessage',
-          chatId: 'chat-intake-1',
-        },
-      ],
-      { createdAt: ago(8 * DAY), owner: u },
-    );
-    await hold(PHONE_A, 'pm-im', ago(20));
-
-    const result = await recover(new FakeTransport());
-
-    expect(result.outcomes.stopped).toBe(1);
-    const outbound = await db.database
-      .select({ chatId: schema.channelMessages.providerChatId })
-      .from(schema.channelMessages)
-      .where(
-        and(
-          eq(schema.channelMessages.parentUserId, u.parentUserId),
-          eq(schema.channelMessages.direction, 'out'),
-        ),
-      );
-    expect(outbound).toEqual([{ chatId: null }]);
+    expect(await heldRow('pm-cf')).toBeNull();
   }, 30_000);
 
   it("the read row is about one adult: in that parent's own copy only, never the household trail", async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     const [co] = await db.database
       .insert(schema.users)
       .values({ externalAuthId: 'sms:co-parent-held', name: 'Robin' })
@@ -2538,7 +2388,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
       db.database,
       deps(reader().reader, new FakeTransport()),
     );
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
 
     // Positive control: the row is written, about the parent who texted, with no outcome.
     const [row] = await db.database
@@ -2592,7 +2442,7 @@ describe('a late stop belongs to the holder of its number at the time (latest ro
 
   it("a group-thread crisis from co-parent B is about B: never in parent A's copy", async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     const [co] = await db.database
       .insert(schema.users)
       .values({ externalAuthId: 'sms:co-parent-group', name: 'Robin' })
@@ -2794,7 +2644,7 @@ describe('a late stop reaches every record on the number, only its owner superse
   }
 
   it("another parent's invite to the number after the stop never supersedes it: the stop applies and declines it", async () => {
-    const u = await parent(PHONE_A, { place: EASTERN_FSA });
+    const u = await parent(PHONE_A);
     await inboundRow(u, 'pm-3p-inv', 'stop texting me', ago(40));
     await hold(PHONE_A, 'pm-3p-inv', ago(40));
     const inviteId = await caregiverInvite(
@@ -2806,15 +2656,13 @@ describe('a late stop reaches every record on the number, only its owner superse
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(result.outcomes.stop_superseded).toBe(0);
     expect(await channelRevoked(u.parentUserId)).toBe(true);
     expect(await resolveSendablePhone(db.database, u.parentUserId)).toBeNull();
     expect(await inviteState(inviteId)).toBe('declined');
-    // The stop's own confirmation, and nothing else, ever goes to the number.
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
+    // Nothing goes to the number: a stop read late is applied silently.
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-3p-inv')).toBeNull();
   }, 30_000);
 
@@ -2886,7 +2734,7 @@ describe('a late stop reaches every record on the number, only its owner superse
   }, 30_000);
 
   it('a guest-reminder opt-in typed in for the number after the stop never supersedes it: withdrawn, stop applies', async () => {
-    const u = await parent(PHONE_A, { place: EASTERN_FSA });
+    const u = await parent(PHONE_A);
     await inboundRow(u, 'pm-3p-rsvp', 'stop texting me', ago(40));
     await hold(PHONE_A, 'pm-3p-rsvp', ago(40));
     const rsvpId = await guestReminderOptIn(PHONE_A, ago(10));
@@ -2894,11 +2742,11 @@ describe('a late stop reaches every record on the number, only its owner superse
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(result.outcomes.stop_superseded).toBe(0);
     expect(await channelRevoked(u.parentUserId)).toBe(true);
     expect(await guestOptedIn(rsvpId)).toBe(false);
-    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-3p-rsvp')).toBeNull();
   }, 30_000);
 
@@ -2937,7 +2785,7 @@ describe('a late stop reaches every record on the number, only its owner superse
   }, 30_000);
 
   it('(d) positive control: both holdings are the same person, so the stop applies', async () => {
-    const x = await parent(PHONE_A, { place: EASTERN_FSA });
+    const x = await parent(PHONE_A);
     const id = await intake(
       PHONE_A,
       [
@@ -2951,14 +2799,14 @@ describe('a late stop reaches every record on the number, only its owner superse
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(x.parentUserId)).toBe(true);
     expect(await sessionRow(id)).toMatchObject({ state: 'stopped', closedAt: NOW });
-    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(transport.sent).toEqual([]);
   }, 30_000);
 
   it('a year-old redacted session on the number still holds it and never blocks the read', async () => {
-    const u = await parent(PHONE_A, { verifiedAt: ago(400 * DAY), place: EASTERN_FSA });
+    const u = await parent(PHONE_A, { verifiedAt: ago(400 * DAY) });
     const old = await intake(
       PHONE_A,
       [{ providerId: 'pm-old', body: 'hello', at: ago(401 * DAY) }],
@@ -2971,9 +2819,9 @@ describe('a late stop reaches every record on the number, only its owner superse
 
     const result = await recover(transport);
 
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(u.parentUserId)).toBe(true);
-    expect(transport.sent.map((s) => s.to)).toEqual([PHONE_A]);
+    expect(transport.sent).toEqual([]);
     expect(await heldRow('pm-red')).toBeNull();
   }, 30_000);
 
@@ -3029,7 +2877,7 @@ describe('a late stop reaches every record on the number, only its owner superse
     await db.database
       .insert(schema.optOutReadHolds)
       .values({ phoneHash: phoneBlindIndex(PHONE_B), heldAt: ago(60) });
-    const c = await parent(PHONE_C, { place: EASTERN_FSA });
+    const c = await parent(PHONE_C);
     const cSession = await intake(PHONE_C, [{ providerId: 'pm-c0', body: 'hello', at: ago(50) }], {
       closedAt: ago(45),
       owner: c,
@@ -3037,7 +2885,7 @@ describe('a late stop reaches every record on the number, only its owner superse
     await setSessionBlob(cSession, corrupt);
     await inboundRow(c, 'pm-c', 'stop texting me', ago(20));
     await hold(PHONE_C, 'pm-c', ago(20));
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
+    const a = await parent(PHONE_A);
     await inboundRow(a, 'pm-a2', 'stop texting me', ago(20));
     await hold(PHONE_A, 'pm-a2', ago(20));
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -3050,7 +2898,7 @@ describe('a late stop reaches every record on the number, only its owner superse
     expect((await heldRow('pm-c'))?.readAttempts).toBe(1);
     expect(await channelRevoked(c.parentUserId)).toBe(false);
     // Positive control: the healthy number in the same pass is stopped.
-    expect(result.outcomes.stopped).toBe(1);
+    expect(result.outcomes.stopped_late_unconfirmed).toBe(1);
     expect(await channelRevoked(a.parentUserId)).toBe(true);
     const logged = JSON.stringify(errors.mock.calls);
     expect(logged).toContain('recovery_failed');
@@ -3058,284 +2906,5 @@ describe('a late stop reaches every record on the number, only its owner superse
     for (const id of ['pm-c', c.parentUserId, phoneBlindIndex(PHONE_B), phoneBlindIndex(PHONE_C)]) {
       expect(logged).not.toContain(id);
     }
-  }, 30_000);
-});
-
-describe("a late stop applies at once; its confirmation waits for the family's own morning", () => {
-  /** Tuesday 20 Oct 2026 in the family's Eastern zone (EDT, UTC-4). */
-  const LOCAL = (hhmm: string) => new Date(`2026-10-20T${hhmm}:00.000-04:00`);
-  const STOP = 'please stop texting me';
-  const tick = (r: OptOutReader, transport: FakeTransport, now: Date) =>
-    recoverHeldOptOutReads(db.database, deps(r, transport, { now }));
-
-  it('read at 03:00 local: revoked at once, confirmed at the 08:00 slot and not before', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-night', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-night', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-
-    const night = await tick(r.reader, transport, LOCAL('03:00'));
-
-    expect(night.outcomes.stopped_confirmation_waiting).toBe(1);
-    expect(night.outcomes.stopped).toBe(0);
-    // The stop itself takes effect now: the channel is revoked and the withdrawal written.
-    expect(await channelRevoked(a.parentUserId)).toBe(true);
-    expect(await withdrawals()).toEqual([a.parentUserId]);
-    expect(transport.sent).toEqual([]);
-    expect(await heldRow('pm-night')).toMatchObject({
-      nextReadAt: LOCAL('08:00'),
-      stopAppliedAt: LOCAL('03:00'),
-    });
-
-    const early = await tick(r.reader, transport, LOCAL('07:59'));
-    expect(Object.values(early.outcomes).reduce((sum, n) => sum + n, 0)).toBe(0);
-    expect(transport.sent).toEqual([]);
-
-    const morning = await tick(r.reader, transport, LOCAL('08:00'));
-
-    expect(morning.outcomes.stopped).toBe(1);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    // The model writes the confirmation it sends, so the text is read again for it.
-    expect(r.texts).toEqual([STOP, STOP]);
-    expect(await outboundFor(a.parentUserId)).toEqual([{ providerMessageId: 'fake-out-1' }]);
-    expect(await withdrawals()).toEqual([a.parentUserId]);
-    expect(await auditReads(a.familyId)).toEqual([readRow(a.parentUserId)]);
-    expect(await heldRow('pm-night')).toBeNull();
-    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
-  }, 30_000);
-
-  it('a waiting row claimed before its opening still sends nothing until 08:00', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-early', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-early', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-    await tick(r.reader, transport, LOCAL('03:00'));
-    // A row due before its opening (a backoff, a hand fix) is claimed at 06:00.
-    await db.database
-      .update(schema.optOutHeldMessages)
-      .set({ nextReadAt: LOCAL('05:00') })
-      .where(eq(schema.optOutHeldMessages.providerMessageId, 'pm-early'));
-
-    const early = await tick(r.reader, transport, LOCAL('06:00'));
-
-    expect(early.outcomes.stopped_confirmation_waiting).toBe(1);
-    expect(early.outcomes.stopped).toBe(0);
-    expect(transport.sent).toEqual([]);
-    expect(await heldRow('pm-early')).toMatchObject({
-      nextReadAt: LOCAL('08:00'),
-      stopAppliedAt: LOCAL('03:00'),
-    });
-
-    // Positive control: the same row at its opening is confirmed once.
-    const morning = await tick(r.reader, transport, LOCAL('08:00'));
-    expect(morning.outcomes.stopped).toBe(1);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    expect(await heldRow('pm-early')).toBeNull();
-  }, 30_000);
-
-  it('positive control: read at 14:00 local, revoked and confirmed in the same tick', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-day', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-day', LOCAL('02:40'), LOCAL('14:00'));
-    const transport = new FakeTransport();
-
-    const result = await tick(reader().reader, transport, LOCAL('14:00'));
-
-    expect(result.outcomes.stopped).toBe(1);
-    expect(result.outcomes.stopped_confirmation_waiting).toBe(0);
-    expect(await channelRevoked(a.parentUserId)).toBe(true);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    expect(await heldRow('pm-day')).toBeNull();
-  }, 30_000);
-
-  it('a family that stored only its coarse area keeps its clock: confirmed at 14:00 local', async () => {
-    const a = await parent(PHONE_A);
-    await db.database
-      .update(schema.families)
-      .set({ areaCoarse: EASTERN_FSA })
-      .where(eq(schema.families.id, a.familyId));
-    await inboundRow(a, 'pm-fsa', STOP, LOCAL('13:40'));
-    await hold(PHONE_A, 'pm-fsa', LOCAL('13:40'));
-    const transport = new FakeTransport();
-
-    const result = await tick(reader().reader, transport, LOCAL('14:00'));
-
-    expect(result.outcomes.stopped_confirmation_dropped).toBe(0);
-    expect(result.outcomes.stopped).toBe(1);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-  }, 30_000);
-
-  it('a morning confirmation that left is never sent again when its ledger write throws', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-once', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-once', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-    await tick(r.reader, transport, LOCAL('03:00'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    // A real database fault on the outbound ledger row, after the confirmation has left.
-    await db.exec(`
-      create function refuse_outbound_ledger() returns trigger language plpgsql
-        as $$ begin
-          if new.direction = 'out' then raise exception 'refused for the test'; end if;
-          return new;
-        end $$;
-      create trigger refuse_outbound_ledger before insert on channel_messages
-        for each row execute function refuse_outbound_ledger();
-    `);
-    try {
-      await tick(r.reader, transport, LOCAL('08:00'));
-      await tick(r.reader, transport, new Date(LOCAL('08:00').getTime() + heldReadBackoff(3)));
-    } finally {
-      await db.exec(
-        'drop trigger refuse_outbound_ledger on channel_messages; drop function refuse_outbound_ledger();',
-      );
-    }
-
-    // Positive control: the fault fired, so no outbound ledger row was written.
-    expect(await outboundFor(a.parentUserId)).toEqual([]);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    expect(await heldRow('pm-once')).toBeNull();
-  }, 30_000);
-
-  it('a family with no place has no clock: revoked at once, the confirmation dropped and the row released', async () => {
-    const a = await parent(PHONE_A);
-    await inboundRow(a, 'pm-nozone', STOP, LOCAL('13:40'));
-    await hold(PHONE_A, 'pm-nozone', LOCAL('13:40'));
-    const transport = new FakeTransport();
-
-    const result = await tick(reader().reader, transport, LOCAL('14:00'));
-
-    expect(result.outcomes.stopped_confirmation_dropped).toBe(1);
-    expect(result.outcomes.stopped).toBe(0);
-    // Positive control: the stop itself still applied, at once.
-    expect(await channelRevoked(a.parentUserId)).toBe(true);
-    expect(await withdrawals()).toEqual([a.parentUserId]);
-    expect(transport.sent).toEqual([]);
-    expect(await heldRow('pm-nozone')).toBeNull();
-    expect(await auditReads(a.familyId)).toEqual([readRow(a.parentUserId)]);
-  }, 30_000);
-
-  it('a waiting row whose family no longer has a place is dropped at its morning, nothing sent', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-lost', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-lost', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-    await tick(r.reader, transport, LOCAL('03:00'));
-    expect((await heldRow('pm-lost'))?.stopAppliedAt).toEqual(LOCAL('03:00'));
-    await db.database
-      .update(schema.families)
-      .set({ postalCode: null, areaCoarse: null })
-      .where(eq(schema.families.id, a.familyId));
-
-    const morning = await tick(r.reader, transport, LOCAL('08:00'));
-
-    expect(morning.outcomes.stopped_confirmation_dropped).toBe(1);
-    expect(transport.sent).toEqual([]);
-    // Nothing to write, so the model is not asked a second time.
-    expect(r.texts).toEqual([STOP]);
-    expect(await heldRow('pm-lost')).toBeNull();
-    expect(await channelRevoked(a.parentUserId)).toBe(true);
-  }, 30_000);
-
-  it.each([
-    ['the floor closed again that night', LOCAL('21:30')],
-    ['the next morning', new Date(LOCAL('09:00').getTime() + 24 * 60 * MINUTE)],
-  ])(
-    'a confirmation whose first opening the drain missed is dropped (%s), nothing sent',
-    async (_when, late) => {
-      const a = await parent(PHONE_A, { place: EASTERN_FSA });
-      await inboundRow(a, 'pm-missed', STOP, LOCAL('02:40'));
-      await hold(PHONE_A, 'pm-missed', LOCAL('02:40'));
-      const transport = new FakeTransport();
-      const r = reader();
-      await tick(r.reader, transport, LOCAL('03:00'));
-
-      const result = await tick(r.reader, transport, late);
-
-      expect(result.outcomes.stopped_confirmation_dropped).toBe(1);
-      expect(result.outcomes.stopped).toBe(0);
-      expect(transport.sent).toEqual([]);
-      expect(r.texts).toEqual([STOP]);
-      expect(await heldRow('pm-missed')).toBeNull();
-      expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
-      expect(await auditReads(a.familyId)).toEqual([readRow(a.parentUserId)]);
-    },
-    30_000,
-  );
-
-  it('positive control: a tick still inside the first opening, past its first minute, confirms once', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-late-am', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-late-am', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-    await tick(r.reader, transport, LOCAL('03:00'));
-
-    const afternoon = await tick(r.reader, transport, LOCAL('15:00'));
-    const again = await tick(r.reader, transport, LOCAL('16:00'));
-
-    expect(afternoon.outcomes.stopped).toBe(1);
-    expect(again.outcomes.stopped).toBe(0);
-    expect(transport.sent.map((s) => [s.to, s.body])).toEqual([
-      [PHONE_A, SCRIPTED_STOP_CONFIRMATION],
-    ]);
-    expect(await heldRow('pm-late-am')).toBeNull();
-  }, 30_000);
-
-  it('the owner re-enrolling before the morning supersedes the waiting confirmation', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-back', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-back', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    const r = reader();
-    await tick(r.reader, transport, LOCAL('03:00'));
-    // A START at 05:00 writes a fresh verified channel on the number.
-    await channel(a, PHONE_A, {
-      verifiedAt: LOCAL('05:00'),
-      revokedAt: null,
-      createdAt: LOCAL('05:00'),
-    });
-
-    const morning = await tick(r.reader, transport, LOCAL('08:00'));
-
-    expect(morning.outcomes.stop_superseded).toBe(1);
-    expect(transport.sent).toEqual([]);
-    expect(await activeChannelOn(a.parentUserId, PHONE_A)).toBe(true);
-    expect(await heldRow('pm-back')).toBeNull();
-  }, 30_000);
-
-  it('a morning re-read that no longer reads a stop sends nothing and names it', async () => {
-    const a = await parent(PHONE_A, { place: EASTERN_FSA });
-    await inboundRow(a, 'pm-reread', STOP, LOCAL('02:40'));
-    await hold(PHONE_A, 'pm-reread', LOCAL('02:40'));
-    const transport = new FakeTransport();
-    await tick(reader().reader, transport, LOCAL('03:00'));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const morning = await tick(
-      reader({ [STOP]: { intent: 'none', confirmation: '', language: 'en' } }).reader,
-      transport,
-      LOCAL('08:00'),
-    );
-
-    expect(morning.outcomes.stopped_confirmation_unsent).toBe(1);
-    expect(transport.sent).toEqual([]);
-    // Positive control: the stop it applied at night still stands.
-    expect(await channelRevoked(a.parentUserId)).toBe(true);
-    expect(await heldRow('pm-reread')).toBeNull();
   }, 30_000);
 });

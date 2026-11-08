@@ -1352,13 +1352,6 @@
       "when": 1793233976427,
       "tag": "0204_opt_out_held_crisis_read",
       "breakpoints": true
-    },
-    {
-      "idx": 197,
-      "version": "7",
-      "when": 1793233976428,
-      "tag": "0205_opt_out_held_stop_applied",
-      "breakpoints": true
     }
   ]
 }

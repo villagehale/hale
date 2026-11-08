@@ -58,7 +58,7 @@ const OPT_OUT_RECOVERY_RESULT = {
   repointed: 1,
   legacyNoChannel: 0,
   legacyUnpointed: 0,
-  outcomes: { stopped: 1 },
+  outcomes: { stopped_late_unconfirmed: 1 },
   deferred: 0,
   halted: null,
 };
