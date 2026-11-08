@@ -118,8 +118,6 @@ function flatten(text) {
 
 // Mirrors the MECHANICAL half of `refusals` in holding-line.ts. Time and app/website
 // left this list (VIL-540): they are the holding-line judge, not an English pattern.
-// The quality-judge prompt below still says times are verified mechanically. That
-// sentence is part of the cached request and is not edited here.
 const LINK_SHAPE = /https?:\/\/|www\./i;
 
 function refusals(body) {
@@ -138,7 +136,8 @@ const JUDGE_SYSTEM = [
   'while their answer is still being written. Hale composed it BLIND: it was shown nothing',
   'about the parent or what they asked - only that the answer is still coming, and which',
   'language to write in. The real answer arrives right after this line.',
-  'IMPORTANT: links, digits and times are ALREADY verified mechanically, and sentence count,',
+  'IMPORTANT: links and digits are ALREADY verified mechanically, a promise of when the answer',
+  'arrives or a pointer to an app or website is checked by its own judge, and sentence count,',
   "length and punctuation are the writer's own. Do not score any of them. Judge only what the",
   'message MEANS and whether it sounds like Hale.',
   'You are given the message, the language and watchFor. Score 1-5.',
