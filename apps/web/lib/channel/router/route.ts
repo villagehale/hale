@@ -81,9 +81,9 @@ import {
   type ReplySource,
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
-import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
+import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
 import { CLAIM_READ_MAX_BUDGET_MS } from '~/lib/channel/reconcile/claim-reader';
@@ -1628,21 +1628,26 @@ async function routeChannelMessageInner(
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
     }
-    // The screen already read the parent's words. Store the tag it returned, on
-    // this parent, when it differs. Both doors: an in-domain ask is the one a
-    // later follow-up has to answer in that language, and a deflection was still
-    // written in it. A timeout verdict has no tag, and a blank one writes nothing.
-    if (verdict.status !== 'unwritten' && typeof verdict.language === 'string') {
-      const wrote = await rememberParentLanguage(
-        deps.database,
-        turn.parentUserId,
-        verdict.language,
-      );
+    // The screen already read the parent's words. This turn is answered in the language
+    // it came in; the tags only feed the one language Hale writes to this parent in
+    // unprompted, which moves on an explicit ask or a run of texts, never on one
+    // (parent-language.ts). Both doors count. A timeout verdict has no tag.
+    if (
+      verdict.status !== 'unwritten' &&
+      (typeof verdict.language === 'string' || typeof verdict.languageRequest === 'string')
+    ) {
+      const observed = await observeParentLanguage(deps.database, {
+        familyId: turn.familyId,
+        parentUserId: turn.parentUserId,
+        seen: verdict.language ?? null,
+        requested: verdict.languageRequest ?? null,
+      });
       deps.log.info(
         {
           familyId: job.family_id,
-          outcome: wrote.status,
-          ...(wrote.status === 'not_written' ? { reason: wrote.reason } : {}),
+          outcome: observed.status,
+          ...(observed.status === 'not_written' ? { reason: observed.reason } : {}),
+          ...(observed.status === 'switched' ? { why: observed.why } : {}),
         },
         'channel router: parent language',
       );

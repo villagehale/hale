@@ -2,8 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -1137,10 +1137,9 @@ async function replyFor(
               }
             : null,
           question: facts.question ?? null,
-          language: await readNoticeLanguage(database, {
+          language: await readParentLanguage(database, {
             familyId: input.familyId,
             parentUserId: input.parentUserId,
-            now: input.now,
           }),
         });
   await writeAudit(database, input, facts.offerId, {

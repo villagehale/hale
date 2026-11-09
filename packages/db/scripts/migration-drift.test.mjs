@@ -44,7 +44,8 @@ describe('catalog history cutover', () => {
       '0209_agent_commitments_heard_facts',
       '0210_watched_spots_any_page',
       '0212_message_source',
-      '0213_linq_group_plan_calendar_consent',
+      '0213_parent_proactive_language',
+      '0214_linq_group_plan_calendar_consent',
     ]);
   });
 });

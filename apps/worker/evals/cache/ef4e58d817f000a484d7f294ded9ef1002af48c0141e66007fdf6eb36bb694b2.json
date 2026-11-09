@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks Hale to find a place nearby for the family, which is the family-activities search it does",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 3023
+}
