@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event as a generic appointment, tomorrow (Monday), start 4:45 and end 5:45 in the afternoon, which matches 4:45-5:45 PM with the AM/PM correct. No location was given and none is invented; no venue, purpose, or travel detail is guessed. No overlaps, no changed fact, no link, and bold is none. Language is English.",
+    "score": 5
+  }
+}
