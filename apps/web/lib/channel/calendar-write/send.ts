@@ -65,11 +65,14 @@ export interface CalendarWriteNoticePorts {
   /** The proactive-send gate (opt-out, consent, quiet hours) for this parent, now. */
   gate(familyId: string, parentUserId: string, now: Date): Promise<ProactiveSendVerdict>;
   now?(): Date;
-  /** The event as this parent may see it, or null when it can't be read. */
-  loadEvent(request: GoogleCalendarPlacementRequest & { actorUserId: string }): Promise<{
-    event: CalendarWriteEvent;
-    language: ReplyLanguage;
-  } | null>;
+  /** The event as this parent may see it, or why it can't be stated to them. */
+  loadEvent(request: GoogleCalendarPlacementRequest & { actorUserId: string }): Promise<
+    | {
+        event: CalendarWriteEvent;
+        language: ReplyLanguage;
+      }
+    | LoadEventRefusal
+  >;
   /** A one-tap calendar connect link for this parent, or null when none could be minted. */
   connectLink(familyId: string, parentUserId: string): Promise<string | null>;
   compose(input: CalendarWriteNoticeInput): Promise<string | null>;
@@ -81,12 +84,15 @@ export interface CalendarWriteNoticePorts {
   ): Promise<NoticeSendOutcome>;
 }
 
+/** `zone_unreadable`: no zone on record for this parent, or one Intl cannot read. */
+export type LoadEventRefusal = 'event_unreadable' | 'zone_unreadable';
+
 export type CalendarWriteNoticeResult =
   | 'disabled'
   | 'no_actor'
   | 'no_news'
   | `held:${ProactiveHoldReason}`
-  | 'event_unreadable'
+  | LoadEventRefusal
   | 'no_link'
   | 'unwritten'
   | NoticeSendOutcome;
@@ -106,7 +112,7 @@ export async function noticeAfterSync(
     const verdict = await ports.gate(request.familyId, actorUserId, ports.now?.() ?? new Date());
     if (!verdict.allowed) return `held:${verdict.reason}`;
     const loaded = await ports.loadEvent({ ...request, actorUserId });
-    if (!loaded) return 'event_unreadable';
+    if (typeof loaded === 'string') return loaded;
     const needsLink =
       outcome === 'no_calendar' || outcome === 'needs_permission' || outcome === 'needs_reconnect';
     const link = needsLink ? await ports.connectLink(request.familyId, actorUserId) : null;
@@ -163,12 +169,22 @@ async function familyGroupChatId(database: Database, familyId: string): Promise<
   return row?.linqGroupChatId ?? null;
 }
 
-async function parentTimezone(database: Database, userId: string): Promise<string> {
+async function parentTimezone(database: Database, userId: string): Promise<string | null> {
   const [row] = await database
     .select({ timezone: schema.users.timezone })
     .from(schema.users)
     .where(eq(schema.users.id, userId));
-  return row?.timezone ?? 'America/Toronto';
+  return row?.timezone ?? null;
+}
+
+/** Null when Intl cannot read the zone (empty, or no IANA name). */
+function whenLabelInZone(startsAt: Date, timeZone: string): string | null {
+  try {
+    return inviteWhenLabel(startsAt, timeZone);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
 }
 
 /** Production ports. The send is a 1:1 text on the parent's own door, never the group. */
@@ -195,15 +211,13 @@ export function productionCalendarWriteNoticePorts(
         },
         { database },
       );
-      if (composed.status !== 'composed') return null;
+      if (composed.status !== 'composed') return 'event_unreadable';
       const timezone = await parentTimezone(database, request.actorUserId);
+      const when = timezone === null ? null : whenLabelInZone(composed.startsAt, timezone);
+      if (when === null) return 'zone_unreadable';
       return {
         // Rendered at this parent's own privacy level; the place is left out on purpose.
-        event: {
-          title: composed.summary,
-          when: inviteWhenLabel(composed.startsAt, timezone),
-          where: null,
-        },
+        event: { title: composed.summary, when, where: null },
         language: await familyLanguage(database, request.familyId),
       };
     },
