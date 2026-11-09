@@ -351,11 +351,18 @@ describe("the requester's own section in a right-to-access copy", () => {
           removedAt: '2026-11-02T09:00:00.000Z',
         },
       ],
+      consents: [],
+      connections: [],
+      calendarMirrors: [],
     });
     const anaText = JSON.stringify(anas);
     expect(anaText).not.toContain('sam private');
-    expect(anaText).not.toContain('group carpool');
     expect(anaText).not.toContain('"pt"');
+    // The group thread is the household's, so it is in the shared threads, not here.
+    expect(JSON.stringify(anas.requesterOnly)).not.toContain('group carpool');
+    expect(anas.sharedThreads.map((t) => [t.kind, t.turns.map((turn) => turn.content)])).toEqual([
+      ['group', ['group carpool chatter']],
+    ]);
 
     // The real trail loader, so the whole of Sam's copy is checked, not one block.
     const sams = await assembleFamilyExport(db.database, familyId, {
