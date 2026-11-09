@@ -2046,8 +2046,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   // ── stale denials (VIL-303) ─────────────────────────────────────────────
-  // The whole family reads these, and the no was said to one parent: the sentence names
-  // neither the parent nor what was asked. Both are written only once the text was sent.
+  // The no was said to one parent, so History hides both (INTERNAL_TRAIL_VERBS). The
+  // sentences stay for the access export, which still lists every family audit row.
   capability_denial_recorded: {
     sentence: 'told a parent it could not do something yet, and noted it to follow up',
     family: 'note',
@@ -2137,6 +2137,9 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',
+  // VIL-303. A no Hale said to one parent, and its correction to that same parent.
+  'capability_denial_recorded',
+  'capability_denial_corrected',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
