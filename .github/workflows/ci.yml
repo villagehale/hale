@@ -322,6 +322,8 @@ jobs:
 
       - name: Coach capability correction eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-capability-correction
+      - name: Coach voice-memo choice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-voice-memo
 
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
