@@ -274,6 +274,11 @@
     "version": null,
     "sha256": "a580b7dc2b0b4a92f695e0104924027cc6786b4fdb719241a86a5780519b5f17"
   },
+  "judges/read-email": {
+    "name": "judges/read-email",
+    "version": null,
+    "sha256": "6f7f12cc100d100859304557c5c48bda85221247a4c5b9a527378e5b29da1691"
+  },
   "judges/reference-texts": {
     "name": "judges/reference-texts",
     "version": null,
