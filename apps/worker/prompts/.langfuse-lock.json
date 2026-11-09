@@ -69,6 +69,11 @@
     "version": null,
     "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
   },
+  "judges/coach-capability-correction": {
+    "name": "judges/coach-capability-correction",
+    "version": null,
+    "sha256": "9c1d6c00d4faada2598333cdaf2764287e2283be2dd34853f422b69ceb08d396"
+  },
   "judges/coach-channel": {
     "name": "judges/coach-channel",
     "version": null,
