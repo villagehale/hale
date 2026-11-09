@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasLinkBeyond, hasLinkShape, linksOutside } from './link-shape';
+import { hasLinkBeyond, hasLinkShape, linksOutside, withoutLinks } from './link-shape';
 
 describe('hasLinkShape: the evasion table', () => {
   it.each([
@@ -109,9 +109,32 @@ describe('linksOutside: an allowed word counts only whole', () => {
     ['a mailbox built around an allowed one', 'xaloha@villagehale.com', ['aloha@villagehale.com']],
     ['a host built on an allowed word', 'See kidsclub.evil.app', ['kidsclub']],
     ['a host cut out of an allowed one', 'See club.ca', ['kidsclub.ca']],
-    ['a look-alike joined by a zero-width space', 'See evil\u200Bvillagehale.com', ['villagehale.com']],
+    [
+      'a look-alike joined by a zero-width space',
+      'See evil\u200Bvillagehale.com',
+      ['villagehale.com'],
+    ],
     ['a spaced-dot host', 'See bit . ly/x', []],
   ])('refuses %s', (_label, text, allowed) => {
     expect(linksOutside(text, allowed)).not.toEqual([]);
+  });
+});
+
+describe('withoutLinks', () => {
+  it('drops a link however it is written, read the way the shared check reads it', () => {
+    for (const label of [
+      'Swim https：//evil.app/x Tuesdays',
+      'Swim https:／／evil.app Tuesdays',
+      'Swim evil . app/x Tuesdays',
+      'Swim evil [.] app Tuesdays',
+    ]) {
+      expect(withoutLinks(label), label).toBe('Swim Tuesdays');
+    }
+  });
+
+  it('keeps a label with no link whole', () => {
+    expect(withoutLinks('Swim Level 2, St. Mary pool, 10.30am')).toBe(
+      'Swim Level 2, St. Mary pool, 10.30am',
+    );
   });
 });

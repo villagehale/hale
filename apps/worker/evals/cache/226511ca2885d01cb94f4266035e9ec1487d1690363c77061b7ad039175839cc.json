@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are accurate: bread and bananas were added, and milk was already on the list from Jordan, so it correctly avoids claiming a duplicate add. No secrets leak, it's in English, and it's a short, natural friend-style text with no readout or asks. Mentioning Jordan is a helpful, relevant detail since milk was part of Dana's request. Nothing human in the message goes unacknowledged.",
+    "score": 5
+  }
+}

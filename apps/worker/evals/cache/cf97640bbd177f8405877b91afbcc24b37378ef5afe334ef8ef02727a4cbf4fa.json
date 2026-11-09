@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. The autonomy switch for send_email and reply_to_email was turned off this turn, so the reply's claim is true. It confirms the change in one plain sentence, in the parent's language, with no padding, no extra question and no machinery.",
+    "score": 5
+  }
+}
