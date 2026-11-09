@@ -33,6 +33,7 @@ import {
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 import { NAME_TAKEBACK_FIXTURES, nameTakebackMatches } from './name-takeback-fixtures.mjs';
 
 const HARD_CAP_USD = 5;
@@ -78,7 +79,7 @@ function priced(model, input, output) {
 function fixtureMessage({ voice, callName }, fixture) {
   const input = fixture.held
     ? callName.nameReplyVoiceInput(fixture.parentWords, fixture.held.name, fixture.held.language)
-    : voice.nameAskVoiceInput(fixture.parentWords, null);
+    : voice.nameAskVoiceInput(fixture.parentWords, null, NAME_ASK_STORED);
   return JSON.stringify(voice.friendVoiceContext(input));
 }
 

@@ -15,11 +15,7 @@ import {
   type HouseholdGroupFact,
   loadHouseholdGroupFact,
 } from '~/lib/channel/intake/household-group';
-import {
-  type OnboardingChecklist,
-  agesAreComplete,
-  kidsAreNamed,
-} from '~/lib/channel/intake/onboarding-turn';
+import { linesOfFind, storedChecklist } from '~/lib/channel/intake/onboarding-turn';
 import {
   type IntakeSession,
   loadOpenSessionByFamily,
@@ -672,47 +668,10 @@ async function askAfterCalendarReceipt(
   }
 }
 
-function linesOfFind(message: string): string[] {
-  return message
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => /^\d+\.\s+/.test(line))
-    .map((line) => line.replace(/^\d+\.\s+/, ''));
-}
-
 /** The onboarding session still open for this family, when the cold start is on it. */
 async function openOnboarding(database: Database, familyId: string): Promise<IntakeSession | null> {
   const session = await loadOpenSessionByFamily(database, familyId);
   return session?.firstTouch?.coldStart ? session : null;
-}
-
-/**
- * What is already stored, as the in-turn asks see it (machine.ts), so a reply
- * written off a receipt knows the walk's state. The connector that just landed
- * counts as answered before `rememberConnected` writes it down.
- */
-function receiptChecklist(
-  session: IntakeSession | null,
-  connected: TextConnectProvider | null,
-  nameStored: boolean,
-): OnboardingChecklist | undefined {
-  if (!session) return undefined;
-  const given = session.firstTouch?.given ?? null;
-  const children = session.collected.children;
-  const lines = session.firstTouch?.coldStart
-    ? linesOfFind(session.firstTouch.coldStart.findBody)
-    : [];
-  return {
-    postal: session.firstTouch?.place != null,
-    kids: given?.kidsNamesDeclined === true || kidsAreNamed(children),
-    ages: agesAreComplete(children),
-    name: nameStored || Boolean(given?.parentName) || given?.nameDeclined === true,
-    gmail: connected === 'gmail' || given?.connectGmail != null || given?.gmailLater === true,
-    calendar:
-      connected === 'gcal' || given?.connectCalendar != null || given?.calendarLater === true,
-    schedule: lines.length === 0 || given?.scheduleDone === true,
-    coparent: given?.coparentGroup != null,
-  };
 }
 
 /** The parent's name is on their row: the receipt asks are not the name ask. */
@@ -729,7 +688,7 @@ function receiptVoiceBase(
 ) {
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
-  const checklist = receiptChecklist(session, connected, nameStored);
+  const checklist = session ? storedChecklist(session, connected, nameStored) : undefined;
   return {
     ...(checklist ? { checklist } : {}),
     language,

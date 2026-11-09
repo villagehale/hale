@@ -36,6 +36,7 @@ import {
   liveStructuredCall,
   priceRates,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -203,14 +204,7 @@ function makeBrokenDrafter() {
 
 // --- LLM-as-judge (cached, real haiku) --------------------------------------
 
-export const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring a single drafted message a parent-assistant',
-  "product would send on a parent's behalf to a clinic, daycare, family member, or",
-  'an internal daily digest. Score TONE & APPROPRIATENESS on a 1–5 integer scale:',
-  '5 = warm, natural, first-person from the parent, appropriate to the recipient;',
-  '1 = robotic, corporate, performs emotion, refers to itself as an AI, or is wrong',
-  'for the context. Reply with ONLY a JSON object via the score tool.',
-].join(' ');
+export const JUDGE_SYSTEM = judgePrompt('drafter');
 
 const JUDGE_TOOL = 'score';
 export const JUDGE_JSON_SCHEMA = {

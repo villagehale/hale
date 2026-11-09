@@ -301,7 +301,8 @@ export type IntakeOutcome =
   | { status: 'follow_up_asked' }
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
-  | { status: 'provisioned'; familyId: string }
+  /** `mapOwed` names an activity map that did not reach the parent and is retried next turn. */
+  | { status: 'provisioned'; familyId: string; mapOwed?: 'unsent' | 'send_failed' }
   /**
    * One ladder beat. `step` is the job this reply settled. `closed` is the
    * co-parent ask, after which the next text belongs to the coach. `held` is set
@@ -839,6 +840,45 @@ async function quietStopTyping(deps: IntakeDeps): Promise<void> {
   }
 }
 
+/**
+ * The map's bubbles in order, stopping at the first that does not land. A
+ * transport that throws is a bubble that did not land: the map stays owed and
+ * the turn goes on, instead of the error leaving the parent's turn unsaved.
+ */
+async function sendMapBubbles(
+  database: Database,
+  ctx: SendContext,
+  bubbles: readonly string[],
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+): Promise<'delivered' | 'send_failed'> {
+  const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  for (const [index, bubble] of toSend.entries()) {
+    let landed = false;
+    let err: string | null = null;
+    try {
+      landed =
+        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+    } catch (caught) {
+      err = caught instanceof Error ? caught.name : 'unknown';
+    }
+    if (!landed) {
+      console.error(
+        {
+          reason: 'map_send_failed',
+          ...(err ? { err } : {}),
+          landed: index,
+          bubbles: toSend.length,
+        },
+        'intake: activity map not delivered, still owed',
+      );
+      return 'send_failed';
+    }
+    deps.keepTyping?.();
+  }
+  return toSend.length > 0 ? 'delivered' : 'send_failed';
+}
+
 async function sendAndRecord(
   database: Database,
   ctx: SendContext,
@@ -921,6 +961,7 @@ async function recordInbound(
     at: inbound.receivedAt.toISOString(),
     channel: ctx.pipe.channel,
     chatId: ctx.pipe.chatId,
+    ...(inbound.isGroup === undefined ? {} : { inGroup: inbound.isGroup }),
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -957,6 +998,7 @@ export async function writeChannelMessage(
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
       providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
+      inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
       status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
@@ -2277,16 +2319,8 @@ async function friendColdTurn(
     // Deliver the map before any reply-dependent write. A send that does not
     // land leaves the debt and creates no reminders.
     const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
-    let delivered = false;
-    for (const bubble of bubbles) {
-      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
-      if (!sentMap.channelMessageId) {
-        delivered = false;
-        break;
-      }
-      delivered = true;
-    }
-    if (!delivered) {
+    const delivered = await sendMapBubbles(database, ctx, bubbles, deps, recordedMap.transcript);
+    if (delivered !== 'delivered') {
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
@@ -2945,6 +2979,7 @@ async function provision(
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
+  let mapOwed: 'unsent' | 'send_failed' | null = null;
   {
     const given = session.firstTouch?.given ?? null;
     if (given?.parentName) {
@@ -3020,24 +3055,17 @@ async function provision(
         },
       ),
     ]);
-    const mapUnsent = map?.source === 'unsent';
-    if (map && !mapUnsent) {
-      let delivered = false;
-      for (const bubble of map.bubbles) {
-        if (bubble.trim().length === 0) continue;
-        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
-        if (!sentMap.channelMessageId) {
-          delivered = false;
-          break;
-        }
-        delivered = true;
-        deps.keepTyping?.();
-      }
+    // A map that did not all land is owed, exactly as one the model could not write.
+    if (map?.source === 'unsent') mapOwed = 'unsent';
+    else if (map) {
+      const delivered = await sendMapBubbles(database, ctx, map.bubbles, deps, []);
       const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
         withSourceUrl,
       );
-      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
+      if (delivered !== 'delivered') mapOwed = 'send_failed';
+      else if (offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
+    const mapUnsent = mapOwed != null;
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     outboundAsked = !mapUnsent && spoken.asks;
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
@@ -3227,7 +3255,7 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
-  return { status: 'provisioned', familyId };
+  return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 
 /**

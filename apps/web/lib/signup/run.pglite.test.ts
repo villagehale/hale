@@ -2287,26 +2287,32 @@ describe('authorized signup runner', () => {
         }
       });
 
-      it("writes in the parent's language: their texted locale, else the family's", async () => {
-        const languageFor = async (locale: string | null, texted: boolean) => {
+      it("writes in the parent's one proactive language, else the family's", async () => {
+        const languageFor = async (stored: string | null, family: string) => {
           const seeded = await familyWithOffer({ ageMonths: 36, url: REC });
-          if (locale !== null) {
-            await db.database
-              .update(schema.users)
-              .set({ locale })
-              .where(eq(schema.users.id, seeded.parentUserId));
-          }
-          const messageId = texted ? await inboundYes(seeded, false) : 'msg-untexted';
+          await db.database
+            .update(schema.users)
+            // A last-text locale is not the language: VIL-572.
+            .set({ locale: 'zh', proactiveLanguage: stored })
+            .where(eq(schema.users.id, seeded.parentUserId));
+          await db.database
+            .update(schema.families)
+            .set({ primaryLanguage: family })
+            .where(eq(schema.families.id, seeded.familyId));
           const outcomeWriter = echoOutcomeWriter();
-          await runAuthorizedSignup(db.database, yes(seeded, messageId), {
-            browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
-            outcomeWriter,
-          });
+          await runAuthorizedSignup(
+            db.database,
+            yes(seeded, await inboundYes(seeded, false)),
+            {
+              browserUseSignup: { run: vi.fn(async () => CHECKOUT) },
+              outcomeWriter,
+            },
+          );
           return outcomeWriter.facts[0]?.language;
         };
-        expect(await languageFor('fr', true)).toBe('fr');
-        expect(await languageFor('en-CA', true)).toBe('en-ca');
-        expect(await languageFor('fr', false)).toBe('en');
+        expect(await languageFor('fr', 'en')).toBe('fr');
+        expect(await languageFor('en-CA', 'fr')).toBe('en-ca');
+        expect(await languageFor(null, 'fr')).toBe('fr');
       });
     });
   });

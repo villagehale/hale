@@ -1,0 +1,10 @@
+{
+  "value": {
+    "texts": [
+      "Heads up for tomorrow: Léa's swim lesson and Theo's music class overlap. Swim is 9:30 to 10:30 in the morning at Cedar Park Pool, 40 Lake Rd, and music is 10:00 to 10:45 in the morning at Brightside Music, 7 Oak Ave.",
+      "Who's taking which one?"
+    ],
+    "bold": "overlap"
+  },
+  "latencyMs": 2079
+}
