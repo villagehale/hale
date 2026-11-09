@@ -85,6 +85,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   await db.exec(
     'truncate table opt_out_held_messages, opt_out_read_holds, channel_messages, parent_channels, consent_records, audit_log, sms_intake_sessions, caregiver_invites, rate_limits, family_members, families, users cascade',
   );
@@ -1858,6 +1859,130 @@ describe('recoverHeldOptOutReads', () => {
     expect((await eraseFamily(erased.familyId)).erased).toBe(1);
 
     expect(await heldRow('pm-unheld')).toBeNull();
+  }, 30_000);
+
+  const WEBHOOK = 'https://hooks.example.test/ops';
+
+  /** The webhook the production pager posts to, faked at fetch. */
+  function stubWebhook(): void {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+    vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+      if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+      return new Response('ok', { status: 200 });
+    });
+  }
+
+  async function corrupt(sessionId: string): Promise<void> {
+    await db.database
+      .update(schema.smsIntakeSessions)
+      .set({ dataEncrypted: 'not-a-sealed-blob' })
+      .where(eq(schema.smsIntakeSessions.id, sessionId));
+  }
+
+  async function scheduleErasure(familyId: string): Promise<void> {
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, familyId));
+  }
+
+  it('an intake session that will not decode never stops the erasure of any family in the batch', async () => {
+    stubWebhook();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first = await seedFamily(db.database, 'First Family');
+    await channel(first, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    const unreadable = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-unreadable', body: OVERDOSE_TEXT, at: ago(60 * 24 * 31) }],
+      { owner: first, closedAt: ago(60 * 24 * 30) },
+    );
+    await corrupt(unreadable);
+    await hold(PHONE_A, 'pm-unreadable', ago(60 * 24 * 31));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-unreadable', null));
+    const second = await seedFamily(db.database, 'Second Family');
+    await channel(second, PHONE_B, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    await inboundRow(second, 'pm-second', OVERDOSE_TEXT, ago(20));
+    await hold(PHONE_B, 'pm-second', ago(20));
+    await scheduleErasure(first.familyId);
+    await scheduleErasure(second.familyId);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(2);
+    expect(await db.database.select({ id: schema.families.id }).from(schema.families)).toEqual([]);
+    // Nobody holds either number now, so every row on them goes, the unreadable one's too.
+    expect(await heldRow('pm-unreadable')).toBeNull();
+    expect(await heldRow('pm-second')).toBeNull();
+    expect(summary.undecodableIntake).toEqual({ sessions: 1, page: 'paged' });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('erasure_intake_undecodable');
+    expect(posted[0]).toContain('number released');
+    // The log names the session by id and the reason by code: never what it held.
+    expect(errors).toHaveBeenCalledWith(
+      { session: unreadable, reason: 'intake_session_undecodable' },
+      expect.any(String),
+    );
+  }, 30_000);
+
+  it('an unreadable intake session on a number someone holds now leaves their rows and pages', async () => {
+    stubWebhook();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    const unreadable = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-unreadable', body: OVERDOSE_TEXT, at: ago(60 * 24 * 31) }],
+      { owner: erased, closedAt: ago(60 * 24 * 30) },
+    );
+    await corrupt(unreadable);
+    const holder = await seedFamily(db.database, 'Second Family');
+    await channel(holder, PHONE_A, { verifiedAt: ago(60), revokedAt: null });
+    await hold(PHONE_A, 'pm-holder-own', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-holder-own', null));
+    await scheduleErasure(erased.familyId);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect((await heldRow('pm-holder-own'))?.crisisReadEncrypted).not.toBeNull();
+    expect(summary.undecodableIntake).toEqual({ sessions: 1, page: 'paged' });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('number still_held');
+  }, 30_000);
+
+  it("an erasure takes the crisis read of its pre-signup intake text, never the number's next holder's", async () => {
+    stubWebhook();
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    // Before the family existed: an intake session on its number with no family yet.
+    await intake(
+      PHONE_A,
+      [{ providerId: 'pm-presignup', body: OVERDOSE_TEXT, at: ago(60 * 24 * 32) }],
+      { closedAt: ago(60 * 24 * 31) },
+    );
+    await hold(PHONE_A, 'pm-presignup', ago(60 * 24 * 32));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-presignup', null));
+    // The number's next holder, mid-intake after the family let it go: their own text.
+    await intake(PHONE_A, [{ providerId: 'pm-next-holder', body: OVERDOSE_TEXT, at: ago(30) }]);
+    await hold(PHONE_A, 'pm-next-holder', ago(30));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-next-holder', null));
+    for (const id of ['pm-presignup', 'pm-next-holder']) {
+      expect((await heldRow(id))?.crisisReadEncrypted).not.toBeNull();
+    }
+
+    const summary = await eraseFamily(erased.familyId);
+
+    expect(summary.erased).toBe(1);
+    expect(await heldRow('pm-presignup')).toMatchObject({ crisisReadEncrypted: null });
+    expect((await heldRow('pm-next-holder'))?.crisisReadEncrypted).not.toBeNull();
+    expect(await crisisClaimFor(db.database, 'pm-next-holder')).toMatchObject({
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+    // Positive control for the pages above: every session decoded, so nothing pages.
+    expect(summary.undecodableIntake).toEqual({ sessions: 0, page: 'nothing_to_page' });
+    expect(posted).toEqual([]);
   }, 30_000);
 
   it('a held crisis row released takes what it was read as with it', async () => {

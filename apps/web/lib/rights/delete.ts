@@ -1,7 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte, or } from 'drizzle-orm';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
-import { erasedFamilyHolds, releaseErasedHolds } from '../channel/intake/opt-out-hold.js';
+import {
+  type UndecodableIntakeOutcome,
+  erasedFamilyHolds,
+  releaseErasedHolds,
+} from '../channel/intake/opt-out-hold.js';
 import { removeDocument } from '../docs/storage.js';
 import {
   type ErasureGoogleOutcome,
@@ -220,6 +224,9 @@ export interface DeletionSweepSummary {
   };
   /** Every Google row of every due family, by outcome, kept or erased. */
   google: ErasureGoogleRow[];
+  /** Intake sessions of the erased families that would not decode, and the page about them.
+   * Such a session never stops the erasure: zero sessions is `nothing_to_page`. */
+  undecodableIntake: UndecodableIntakeOutcome;
 }
 
 /** A Google row of a due family. Past the wait, `google_unconfirmed` is a revoke Google
@@ -451,7 +458,7 @@ export async function runDeletionSweep(
       await tx.delete(schema.families).where(eq(schema.families.id, familyId));
     });
   }
-  await releaseErasedHolds(database, erasedHolds);
+  const undecodableIntake = await releaseErasedHolds(database, erasedHolds);
   // AFTER the families, and on the same tick rather than a cron of its own: an erasure
   // that just removed a household is the commonest way a person is orphaned, so running
   // second means this run cleans up after itself instead of leaving it for the next hour.
@@ -485,5 +492,6 @@ export async function runDeletionSweep(
     pastGoogleWait: { ...pastWait, page },
     google,
     orphans,
+    undecodableIntake,
   };
 }
