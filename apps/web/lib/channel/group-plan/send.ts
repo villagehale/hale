@@ -22,6 +22,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type ContentClass, classifyFamilyEvent } from '~/lib/channel/role-scope';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import {
   icsSequence,
   loadInviteEventRow,
@@ -42,7 +43,7 @@ import {
   planEndLabel,
   planWhenLabel,
 } from './report';
-import { groupPlanChatId } from './stamp';
+import { groupPlanChatKey } from './stamp';
 
 /**
  * VIL-443 (T17) 2/2 — a group's plan, reported back to the group.
@@ -379,7 +380,7 @@ export async function loadGroupPlan(
   const placedByActionId = placement?.placedByActionId;
   if (!placement || !placedByActionId) return null;
 
-  const draftedIn = await groupPlanChatId(database, row.familyId, placedByActionId);
+  const draftedIn = await groupPlanChatKey(database, row.familyId, placedByActionId);
   if (!draftedIn) return null;
 
   const [family] = await database
@@ -389,7 +390,7 @@ export async function loadGroupPlan(
     })
     .from(schema.families)
     .where(eq(schema.families.id, row.familyId));
-  if (!family?.chatId || family.chatId !== draftedIn) return null;
+  if (!family?.chatId || linqChatBlindIndex(family.chatId) !== draftedIn) return null;
   const chatId = family.chatId;
 
   const parents = await database

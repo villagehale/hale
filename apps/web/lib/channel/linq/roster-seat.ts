@@ -29,6 +29,8 @@ import type { RosterParentRole } from './roster-reading';
  * reply never changes a role the family gave. So is a number whose channel was revoked
  * and not re-opened, before or during the seat (VIL-596): a STOP is the person's no, it
  * outranks any grant, and nothing is written for them until they opt back in themselves.
+ * A STOP made in another household reaches this family's audit row only as
+ * `number_unavailable`.
  */
 
 export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter' | 'extended';
@@ -44,7 +46,14 @@ export type SeatRefusal =
   | 'other_chat'
   | 'co_parent_seat_taken'
   | 'role_conflict'
-  | 'opted_out';
+  | 'opted_out'
+  /** The STOP was made in another household: this family's audit row must not say so. */
+  | 'opted_out_elsewhere';
+
+/** What this family's own audit row may say about a refusal. */
+function auditReason(reason: SeatRefusal): string {
+  return reason === 'opted_out_elsewhere' ? 'number_unavailable' : reason;
+}
 
 export type SeatOutcome =
   | { outcome: 'seated'; userId: string; role: SeatRole; groupRole: GroupSeatRole }
@@ -183,7 +192,7 @@ async function refuse(
     actionTaken: 'linq_group_member_refused',
     targetTable: 'linq_group_roster_members',
     targetId: member.id,
-    after: { reason, via: 'own_reply' },
+    after: { reason: auditReason(reason), via: 'own_reply' },
   });
   await settleRosterStatus(database, member.rosterId, now);
   console.info({ outcome: 'seat_refused', reason }, 'linq roster: seat refused');
@@ -232,8 +241,10 @@ export async function seatConfirmedMember(
   if (existing && existing.familyId !== member.familyId) {
     return refuse(database, member, 'other_family', input.now);
   }
-  if (!existing && (await findRevokedChannelOwner(database, member.phone))) {
-    return refuse(database, member, 'opted_out', input.now);
+  const revoked = existing ? null : await findRevokedChannelOwner(database, member.phone);
+  if (revoked) {
+    const reason = revoked.familyId === member.familyId ? 'opted_out' : 'opted_out_elsewhere';
+    return refuse(database, member, reason, input.now);
   }
   if (existing) {
     const [held] = await database

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both links are exact and unmangled, the 15-minute validity is kept, and the reason (so Hale can spot daycare and school notices) is given. The Google unverified-app screen is framed as a normal step for this connection and safe to get past, with the Advanced then continue path. It reads like a friend texting in plain English. The only addition is \"Connecting is optional\", which is not in the facts, but it is true to the connector purpose and is not a promise, so it is a minor stretch.",
+    "score": 5
+  }
+}

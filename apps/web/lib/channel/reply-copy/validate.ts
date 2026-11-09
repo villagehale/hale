@@ -6,6 +6,8 @@
  * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
+import { placeTokensIn } from '~/lib/channel/place-token';
+
 export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
 
@@ -116,7 +118,6 @@ const BANNED: RegExp[] = [
   /[{}]/,
 ];
 
-const POSTAL = /\b[A-Z]\d[A-Z](?:\s?\d[A-Z]\d)?\b/g;
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
 
 function stem(raw: string): string {
@@ -143,9 +144,8 @@ function sentenceStart(text: string, index: number): boolean {
 }
 
 function inventedPlace(text: string, facts: readonly string[]): boolean {
-  for (const match of text.matchAll(POSTAL)) {
-    const code = match[0] ?? '';
-    if (code && !grounded(code, facts)) return true;
+  for (const code of placeTokensIn(text)) {
+    if (!grounded(code, facts)) return true;
   }
   for (const match of text.matchAll(WORD)) {
     const raw = match[0] ?? '';

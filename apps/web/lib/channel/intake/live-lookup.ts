@@ -1,9 +1,12 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
+import { regionOfPostal } from '~/lib/channel/off-domain/place';
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
+import { type GroundPlace, groundUserMessage } from './ground-message';
 import { officialPageReturnLine } from './official-page';
 
 /**
@@ -89,8 +92,8 @@ export function afterProvisionReplyFromNotes(notes: string): string | null {
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the
- * question with household names and postal codes stripped. A child name the
- * scrub cannot remove is a refusal, and the caller does not search.
+ * question with household names, postal codes and ZIPs stripped. A child name
+ * the scrub cannot remove is a refusal, and the caller does not search.
  */
 export function deidentifyLiveQuery(
   parentWords: string,
@@ -99,11 +102,10 @@ export function deidentifyLiveQuery(
   const names = children.flatMap((child) => (child.name ? [child.name] : []));
   const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
   if (!scrub.ok) return scrub;
-  const query = scrub.text
-    .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
-    .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
+  const withoutContacts = scrub.text
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
+    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
+  const query = scrubPlaceTokens(withoutContacts, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return { ok: true, text: query === '' ? 'current official reputable source' : query };
@@ -117,16 +119,24 @@ function message(err: unknown): string {
   return err instanceof Error ? err.constructor.name : 'unknown';
 }
 
+/** Where the intake searches look: the country and province or state of the session's
+ * first Canadian or US code, or null when it holds none. */
+export async function groundPlaceOf(regionToken: string | null): Promise<GroundPlace | null> {
+  return regionToken === null ? null : regionOfPostal(regionToken);
+}
+
 /**
  * GROUND a raising-kids, leftover-fact, or therapist-find ask against a
  * current official / reputable page. Zero searches, empty notes, or notes
  * that do not restate a source are the same parent-facing sentence — no
  * current source yet — and each reason is named in the log (rule #11).
  */
+
 export async function groundCurrentSource(
   client: AgentClient,
   parentWords: string,
-  children: readonly ExtractedChild[] = [],
+  children: readonly ExtractedChild[],
+  regionToken: string | null,
 ): Promise<LiveGround> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -138,12 +148,13 @@ export async function groundCurrentSource(
   const query = deidentifyLiveQuery(parentWords, children);
   if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
+    const place = await groundPlaceOf(regionToken);
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-      messages: [{ role: 'user', content: query.text }],
+      messages: [{ role: 'user', content: groundUserMessage(query.text, place) }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
