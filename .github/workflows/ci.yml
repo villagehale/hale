@@ -317,6 +317,9 @@ jobs:
       - name: Coach local day eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-local-day
 
+      - name: Coach voice-memo choice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-voice-memo
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 

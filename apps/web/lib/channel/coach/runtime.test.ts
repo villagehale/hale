@@ -846,6 +846,101 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
   });
 });
 
+/**
+ * VIL-495 — the model chooses voice. Dark: no verb, untouched skill, never a memo. Lit
+ * (1:1 only): the verb and the addendum ride, and calling it marks the reply as voice.
+ */
+describe('channelCoachRuntime · voice memos (VIL-495)', () => {
+  function seeing(seen: { tools: string[]; skillTools: string[]; instructions: string }[]) {
+    return (call?: boolean): ChannelCoachPorts['runAgent'] =>
+      async (args) => {
+        seen.push({
+          tools: args.tools.map((t) => t.name),
+          skillTools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        if (call) {
+          const verb = args.tools.find((t) => t.name === 'reply_as_voice_memo');
+          if (!verb) throw new Error('no voice verb');
+          await verb.handler({} as never, {} as never);
+        }
+        return answering('So glad swim went well. Same time next week?')(args);
+      };
+  }
+
+  it('dark: no voice verb, the skill untouched, and never a memo', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(ports({ runAgent: seeing(seen)() })).respond(
+      turn(),
+      [],
+    );
+    expect(seen[0]?.tools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).not.toContain('reply_as_voice_memo');
+    expect(result.voiceMemo ?? false).toBe(false);
+  });
+
+  it('lit on a group turn: still no voice verb', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    await channelCoachRuntime(
+      ports({
+        voiceMemosEnabled: () => true,
+        loadSkill: async () => SKILL,
+        runAgent: seeing(seen)(),
+      }),
+    )
+      .respond({ ...turn(), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(seen[0]?.tools ?? []).not.toContain('reply_as_voice_memo');
+  });
+
+  it('lit 1:1: the verb and the addendum ride; not calling it stays text', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(false) }),
+    ).respond(turn(), []);
+    expect(seen[0]?.tools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).toContain('A voice memo they sent');
+    expect(result.voiceMemo).toBe(false);
+  });
+
+  it('lit 1:1: calling the verb marks the same written reply as voice', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(true) }),
+    ).respond(turn(), []);
+    expect(result.voiceMemo).toBe(true);
+    expect(result.reply).toContain('So glad swim went well');
+  });
+
+  it('hands a heard voice memo to the model as the words the parent said', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(null)) as unknown as typeof fetch,
+          async () => 'is swim still on this saturday',
+        ),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('It is.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [{ kind: 'audio', url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' }],
+      },
+      [],
+    );
+    expect(seen[0]?.arrivedMedia).toEqual([
+      { kind: 'audio', heard: 'is swim still on this saturday' },
+    ]);
+  });
+});
+
 describe('channelCoachRuntime · group leave (VIL-477)', () => {
   it('dark group turn: no leave verb, skill untouched', async () => {
     const seen: string[][] = [];

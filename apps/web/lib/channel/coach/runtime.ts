@@ -28,8 +28,13 @@ import {
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
 import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
-import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import {
+  linqExperiencesEnabled,
+  linqGroupLeaveEnabled,
+  linqVoiceMemosEnabled,
+} from '~/lib/channel/linq/config';
 import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
+import { hearVoiceMemo } from '~/lib/channel/linq/voice-speech';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -126,6 +131,7 @@ import {
   channelScheduleReader,
   createTurnOfferLedger,
 } from './tools';
+import { augmentCoachSkillForVoiceMemos, replyAsVoiceMemoTool } from './voice-memo-tool';
 
 /**
  * VIL-221 · C2 — the coach, over SMS.
@@ -274,6 +280,12 @@ export interface ChannelCoachPorts {
    */
   experienceCardsEnabled?(): boolean;
   /**
+   * VIL-495 — whether Linq voice memos are lit (`LINQ_VOICE_MEMOS_ENABLED`). Absent or
+   * false: the voice verb is not registered and the skill is untouched, so a dark turn's
+   * prompt bytes and cache prefix are exactly main's. Never offered on a group turn.
+   */
+  voiceMemosEnabled?(): boolean;
+  /**
    * VIL-477 — whether Hale may leave a group on a member's explicit ask
    * (`LINQ_GROUP_LEAVE_ENABLED`). Absent or false: the verb is not registered and the
    * skill is untouched. Only ever offered on a group turn.
@@ -354,6 +366,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let experienceCard: ExperienceCardIntent | null = null;
       // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
       let groupLeave: GroupLeaveIntent | null = null;
+      // VIL-495: the model chose to say this reply as a voice memo.
+      let voiceChosen = false;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -375,6 +389,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const voiceLit = turn.audience !== 'group' && (ports.voiceMemosEnabled?.() ?? false);
       const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
       const emailLit =
         emailReader !== undefined &&
@@ -399,9 +414,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const composedSkill = augmentCoachSkillForReadEmail(
         augmentCoachSkillForFindPrivate(
           augmentCoachSkillForGroupLeave(
-            augmentCoachSkillForExperienceCards(
-              baseSkill,
-              cardsLit ? await loadCronSkill('experience-card-coach') : null,
+            augmentCoachSkillForVoiceMemos(
+              augmentCoachSkillForExperienceCards(
+                baseSkill,
+                cardsLit ? await loadCronSkill('experience-card-coach') : null,
+              ),
+              voiceLit ? await loadCronSkill('coach-voice-memo') : null,
             ),
             leaveLit,
           ),
@@ -540,6 +558,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                     links: turnLinks,
                     onCard: (card) => {
                       experienceCard = card;
+                    },
+                  }),
+                ]
+              : []),
+            ...(voiceLit
+              ? [
+                  replyAsVoiceMemoTool({
+                    onChoose: () => {
+                      voiceChosen = true;
                     },
                   }),
                 ]
@@ -736,6 +763,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             groupLeave: groupLeave
               ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
               : null,
+            // A Gmail draft notice is a receipt to read, so it stays text.
+            voiceMemo: voiceChosen && !noticeReady,
             draftedActionIds,
           };
         },
@@ -786,6 +815,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     client: anthropicClient,
     judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
+    voiceMemosEnabled: linqVoiceMemosEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     emailReader: productionCoachEmailReader(database),
@@ -958,7 +988,9 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       });
     },
     now: () => new Date(),
-    readInboundMedia,
+    // VIL-495: a voice memo is heard only while the flag is lit.
+    readInboundMedia: (parts) =>
+      readInboundMedia(parts, fetch, linqVoiceMemosEnabled() ? hearVoiceMemo : undefined),
   };
 }
 
