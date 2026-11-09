@@ -224,14 +224,20 @@ function fakeDb(args: {
     if (which >= 16 && which <= 19) {
       return { from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }) };
     }
+    // How often each workstream was written, from the audit trail; none here.
+    if (which === 20) {
+      return { from: () => ({ where: () => ({ groupBy: vi.fn().mockResolvedValue([]) }) }) };
+    }
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
   const insert = vi.fn().mockReturnValue({ values });
+  // The memory export's "another adult on record" read; no other adult here.
+  const execute = vi.fn().mockResolvedValue([]);
 
   return {
-    db: { select, insert } as never,
+    db: { select, insert, execute } as never,
     spies: { insert, values, whereFamilyIds },
   };
 }
