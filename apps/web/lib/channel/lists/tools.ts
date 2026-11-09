@@ -458,7 +458,7 @@ export function groupListTools(ports: GroupListToolPorts): RegisteredTool[] {
   const add = defineTool({
     name: ADD_TO_GROUP_LIST_TOOL,
     description:
-      "Add things to one of this group's shared lists, making the list if it doesn't exist yet. Use it whenever someone in the group, in any words or language, says something should go on a list or that they're out of or need something (\"we're out of milk\" is an add). Put each thing in `items` in the words the person used; never add something nobody in this chat said. `listName` is the list's name as list_group_lists returned it, or a short plain name for a new list in the group's language. Only things said in this group chat go on a list: never anything from a 1:1 text, an inbox, a calendar, or about a teenager. Report what came back, including anything already on the list.",
+      "Add things to one of this group's shared lists, making the list if it doesn't exist yet. Use it whenever someone in the group, in any words or language, says something should go on a list or that they're out of or need something (\"we're out of milk\" is an add). Put each thing in `items` in the words the person used; never add something nobody in this chat said. `listName` is the list's name as list_group_lists returned it, or a short plain name for a new list in the group's language. Only things said in this group chat go on a list: never anything from a 1:1 text, an inbox, a calendar, or about a teenager. Say what came back: what was `added`, and anything they asked to add that was already on it (`alreadyOn`).",
     inputSchema: z.object({
       listName: z.string().min(1).max(200),
       items: z.array(z.string().min(1).max(500)).min(1),

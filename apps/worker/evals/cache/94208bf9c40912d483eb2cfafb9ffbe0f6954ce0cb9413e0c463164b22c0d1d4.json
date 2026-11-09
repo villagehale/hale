@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are accurate: the only open item is the pizza dough on Groceries, and it is not invented or misattributed. No secret leaks, and the language is English, in a natural texting voice that directly answers the question. The watchFor flag is the main problem: the item carries 'Friday Oct 30' and the reply drops it, saying only 'for movie night'. That loses the day and date the item carries, which the rubric requires the reply to keep when it names the item. Everything else is clean, so one real flaw keeps it from a 4 or 5.",
+    "score": 3
+  }
+}
