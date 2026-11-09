@@ -1796,27 +1796,62 @@ describe('recoverHeldOptOutReads', () => {
     ]);
   }, 30_000);
 
-  it('an erasure clears the crisis read on a held text of its number the ledger never had', async () => {
-    // An intake-only text: no ledger row in the family names it, only its number does. The
-    // number is someone else's now, so the row stays.
+  async function eraseFamily(familyId: string) {
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, familyId));
+    return runDeletionSweep(db.database, NOW, async () => {});
+  }
+
+  it("an erasure keeps the crisis read on the number's next holder's own held text", async () => {
     const erased = await seedFamily(db.database, 'First Family');
     await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
     const holder = await seedFamily(db.database, 'Second Family');
     await channel(holder, PHONE_A, { verifiedAt: ago(60), revokedAt: null });
-    await hold(PHONE_A, 'pm-intake-only', ago(20));
-    await failurePageCrisisPager(db.database).record(keptCrisis('pm-intake-only', null));
-    // Positive control: the read was kept on the row.
-    expect((await heldRow('pm-intake-only'))?.crisisReadEncrypted).not.toBeNull();
+    // The holder's own text: it came after the erased family's channel was revoked, and
+    // neither the erased family's ledger nor its intake names it.
+    await hold(PHONE_A, 'pm-holder-own', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-holder-own', null));
+    // The erased family's own texts on the same number, while it held it: one its ledger
+    // names, one only its intake transcript names.
+    await inboundRow(erased, 'pm-erased-ledger', OVERDOSE_TEXT, ago(60 * 24 * 3));
+    await hold(PHONE_A, 'pm-erased-ledger', ago(60 * 24 * 3));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-erased-ledger', erased));
+    await intake(
+      PHONE_A,
+      [{ providerId: 'pm-erased-intake', body: OVERDOSE_TEXT, at: ago(60 * 24 * 29) }],
+      { owner: erased, closedAt: ago(60 * 24 * 28) },
+    );
+    await hold(PHONE_A, 'pm-erased-intake', ago(60 * 24 * 29));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-erased-intake', null));
+    for (const id of ['pm-holder-own', 'pm-erased-ledger', 'pm-erased-intake']) {
+      expect((await heldRow(id))?.crisisReadEncrypted).not.toBeNull();
+    }
 
-    await db.database
-      .update(schema.families)
-      .set({ scheduledDeletionAt: ago(1) })
-      .where(eq(schema.families.id, erased.familyId));
-    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+    expect((await eraseFamily(erased.familyId)).erased).toBe(1);
 
-    expect(summary.erased).toBe(1);
-    // The number is still held, so the row stays, without what its text was read as.
-    expect(await heldRow('pm-intake-only')).toMatchObject({ crisisReadEncrypted: null });
+    // The number is still held, so every row on it stays.
+    expect(await heldRow('pm-erased-ledger')).toMatchObject({ crisisReadEncrypted: null });
+    expect(await heldRow('pm-erased-intake')).toMatchObject({ crisisReadEncrypted: null });
+    expect((await heldRow('pm-holder-own'))?.crisisReadEncrypted).not.toBeNull();
+    expect(await crisisClaimFor(db.database, 'pm-holder-own')).toMatchObject({
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+  }, 30_000);
+
+  it('an erasure takes the held crisis rows on a number nobody holds now', async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    await hold(PHONE_A, 'pm-unheld', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-unheld', null));
+    expect((await heldRow('pm-unheld'))?.crisisReadEncrypted).not.toBeNull();
+
+    expect((await eraseFamily(erased.familyId)).erased).toBe(1);
+
+    expect(await heldRow('pm-unheld')).toBeNull();
   }, 30_000);
 
   it('a held crisis row released takes what it was read as with it', async () => {

@@ -1,7 +1,9 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
+import { decodeIntakeForRecovery } from './session';
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -48,7 +50,8 @@ export async function releaseHeldMessage(
 export interface ErasedHolds {
   /** The erased families' numbers. */
   phoneHashes: string[];
-  /** Held texts the erased families sent, whichever number holds them now. */
+  /** Held texts the erased families sent, whichever number holds them now: named by their
+   * ledger, or by their intake transcripts (a text no ledger row names). */
   providerMessageIds: string[];
 }
 
@@ -82,9 +85,28 @@ export async function erasedFamilyHolds(
               ),
             ),
           );
+  const heldIds = new Set(held.map((row) => row.id));
+  const sessions =
+    held.length === 0
+      ? []
+      : await database
+          .select({ dataEncrypted: schema.smsIntakeSessions.dataEncrypted })
+          .from(schema.smsIntakeSessions)
+          .where(inArray(schema.smsIntakeSessions.familyId, [...familyIds]));
+  const intakeTexts = sessions.flatMap((session) =>
+    session.dataEncrypted === INTAKE_CONTENT_REDACTED
+      ? []
+      : decodeIntakeForRecovery(session.dataEncrypted).transcript.flatMap((line) =>
+          line.direction === 'in' && line.providerId && heldIds.has(line.providerId)
+            ? [line.providerId]
+            : [],
+        ),
+  );
   return {
     phoneHashes: [...new Set(channels.map((row) => row.phoneHash))],
-    providerMessageIds: [...new Set(texts.flatMap((row) => (row.id === null ? [] : [row.id])))],
+    providerMessageIds: [
+      ...new Set([...texts.flatMap((row) => (row.id === null ? [] : [row.id])), ...intakeTexts]),
+    ],
   };
 }
 
@@ -94,21 +116,13 @@ export async function erasedFamilyHolds(
  * on its numbers, but only where nobody holds that number now. A number someone still
  * holds keeps every row on it, since any may be their own unread stop (a parent seated in
  * a second family, or the number's next holder). Such a row keeps no family content (a
- * phone hash, a provider id, a time): what a text the family sent, or any text on its
- * numbers (an intake text no ledger row names), was read as when it was read as a crisis
- * is cleared from it. Once its text is gone it reads as unrecorded, so
- * the hold stays fail closed and is paged.
+ * phone hash, a provider id, a time): what a text the family sent was read as when it was
+ * read as a crisis is cleared from it. Never by the number alone: a still-held number's
+ * other rows are its holder's, and their late crisis reply needs what they were read as.
+ * Once its text is gone it reads as unrecorded, so the hold stays fail closed and is paged.
  */
 export async function releaseErasedHolds(database: Database, erased: ErasedHolds): Promise<void> {
-  const crisisReads = [
-    ...(erased.providerMessageIds.length > 0
-      ? [inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds)]
-      : []),
-    ...(erased.phoneHashes.length > 0
-      ? [inArray(schema.optOutHeldMessages.phoneHash, erased.phoneHashes)]
-      : []),
-  ];
-  if (crisisReads.length > 0) {
+  if (erased.providerMessageIds.length > 0) {
     await database
       .update(schema.optOutHeldMessages)
       .set({
@@ -117,7 +131,7 @@ export async function releaseErasedHolds(database: Database, erased: ErasedHolds
         crisisSituation: null,
         crisisWho: null,
       })
-      .where(or(...crisisReads));
+      .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
   }
   const texts =
     erased.providerMessageIds.length === 0
