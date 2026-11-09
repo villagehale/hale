@@ -27,6 +27,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -51,17 +52,7 @@ function userMessage(request) {
   });
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends one parent to say an event for their',
-  'kid on their own calendar was cancelled or moved. Hale was handed the facts and nothing else.',
-  'You are given the request, the message, and watchFor notes. Score 1-5.',
-  'A 5 says what changed and when, names the event (and the kid when given), in the requested',
-  'language, briefly and warmly.',
-  'A LOW score is any of: a wrong day or time; a reason, a reschedule or a make-up session the',
-  'facts do not give; an offer to do something; a person or place not in the facts; the wrong',
-  'language; hype, emoji or apology theatre.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('calendar-kid-notice');
 
 const BROKEN = 'Sorry!! cancelled bc of the weather 😢 want me to find a make-up class at 3pm?';
 
