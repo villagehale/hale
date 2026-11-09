@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both items and the time, but it asks the group who takes it, which hands a plan to someone even though both items are Maya's and the watchFor notes say to ask which one she attends, not assign a driver. It also includes a reply-with-a-number instruction and a link, both of which the rubric penalizes, and no poll goes so mentioning one is not the issue. Several low-score triggers are present.",
+    "score": 1
+  }
+}
