@@ -11,7 +11,8 @@ import { officialPageReturnLine } from './official-page';
  * Rec-morning reviewed pins still win when they match. Official-page rec/camp
  * clocks stay on `intake-official-ground`. This module is everything else that
  * is a real question: raising-kids, leftover current-source facts, and a
- * caregiver looking for care. Search first. The SMS may only restate what
+ * caregiver looking for care — the `current_source` read of the intake-answer
+ * model (VIL-555), never a word list. Search first. The SMS may only restate what
  * search returned. Framework-only / model memory is not a path.
  */
 
@@ -20,64 +21,6 @@ const MAX_SEARCHES = 2;
 const GROUND_MAX_TOKENS = 2048;
 
 const NO_CURRENT_SOURCE_MARK = /no current source/i;
-
-function fold(body: string): string {
-  return body.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-/** Nap / solids / potty / tantrum and the rest of raising-kids. */
-export function isRaisingKidsAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  return /\b(naps?|napping|sleep(?:ing|s)?|bedtime|solids?|potty|toilet|tantrums?|teething|formula|breastfeed(?:ing)?|weaning|colic|reflux|tummy time|picky eater|night wak(?:e|ing)|co-?sleep)\b/.test(
-    text,
-  );
-}
-
-/**
- * Current-source leftover facts. Office holders and results that change —
- * not "who is the GOAT" and not the capital of Peru.
- */
-export function isLeftoverFactAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  const office =
-    /\b(presidents?|prime ministers?|premiers?|mayors?)\b/.test(text) &&
-    /\b(who(?:'s| is| was)|current|today)\b/.test(text);
-  const result =
-    /\bwho won\b/.test(text) && /\b(world cup|election|championship|finals?)\b/.test(text);
-  return office || result || /\bworld cup\b/.test(text);
-}
-
-/** They asked Hale to find care — live lookup for Canadian resources. */
-export function isTherapistFindAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  const care = /\b(therapists?|therapy|counsell?ors?|counsell?ing|psychologists?)\b/.test(text);
-  if (!care) return false;
-  return /\b(find|finding|need|need a|looking for|get|want|where)\b/.test(text);
-}
-
-/**
- * Cheer-up / burnout / a hard day. Not a fact, not a care-find, not a crisis.
- * Reviewed warmth, then (if not crisis) one return ask.
- */
-export function isCheerUpAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  if (isTherapistFindAsk(text) || isRaisingKidsAsk(text)) return false;
-  return (
-    /\bcheer(?: me)? up\b/.test(text) ||
-    /\b(burnt? out|burnout)\b/.test(text) ||
-    /\bi(?:'m| am) (?:so )?(?:exhausted|tired|overwhelmed)\b/.test(text) ||
-    /\bhaving a hard (?:day|time)\b/.test(text) ||
-    /\bpep talk\b/.test(text)
-  );
-}
-
-export function isLiveLookupAsk(body: string): boolean {
-  return isRaisingKidsAsk(body) || isLeftoverFactAsk(body) || isTherapistFindAsk(body);
-}
 
 export function liveLookupReturnLine(pendingAsk: string): string {
   return officialPageReturnLine(pendingAsk);
