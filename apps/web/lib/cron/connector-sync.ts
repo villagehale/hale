@@ -521,7 +521,7 @@ function proactiveSendPorts(database: Database): CalendarAlertPorts {
 /** The real ports. The family's children and known occasions are read ONCE per
  * connection rather than once per message: ten messages would otherwise be twenty
  * queries answering the same two questions. */
-function emailAlertPorts(
+export function emailAlertPorts(
   database: Database,
   familyId: string,
   accessToken: string,
