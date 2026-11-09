@@ -65,7 +65,10 @@ export type TurnFailureReason =
    * went out with no model in the loop (smoke-alarm.ts). */
   | 'smoke_alarm'
   /** A Gmail draft notice could not be composed. Nothing was texted. #ops is paged. */
-  | 'notice_unsent';
+  | 'notice_unsent'
+  /** VIL-581 · the claim reader could not read the composed reply, and neither a drafts
+   * receipt nor an apology could be written. Nothing was texted; the turn is claimed. */
+  | 'claim_read_failed';
 
 /**
  * What became of an ANSWERED claim. 'already_answered' means another attempt's claim

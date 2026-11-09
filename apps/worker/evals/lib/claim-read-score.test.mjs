@@ -279,11 +279,8 @@ describe('failLines: fixture text is printed only for an invented fixture (revie
     expect(lines).toContain('reason: "ZQXJ-REASON"');
   });
 
-  it('a shadow sample prints neither (the invented case above is the positive control)', () => {
-    const lines = failLines(fixture('shadow_sample'), scored, REASON).join('\n');
-    expect(lines).toContain('FAIL  en-toy');
-    expect(lines).not.toContain('ZQXJ-BODY');
-    expect(lines).not.toContain('ZQXJ-REASON');
+  it('a shadow sample is refused outright, never printed (the invented case above is the positive control)', () => {
+    expect(() => failLines(fixture('shadow_sample'), scored, REASON)).toThrow(/provenance/);
   });
 
   it('a fixture with no provenance throws (fail closed)', () => {

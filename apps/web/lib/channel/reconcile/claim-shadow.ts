@@ -71,7 +71,7 @@ export interface RegexJudgement {
   sentence: string;
   kind: StateClaim['kind'];
   /** `unrecorded_promise`: a mint on a lane that cannot write it. */
-  decision: 'sendable' | SendRefusalReason;
+  decision: 'sendable' | Exclude<SendRefusalReason, 'claim_read_failed'>;
 }
 
 /** One judgement per regex claim, in order, keeping the sentence the reconcile's own

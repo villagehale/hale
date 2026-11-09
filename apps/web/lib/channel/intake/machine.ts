@@ -1485,6 +1485,7 @@ function threadForNext(
   inboundAt: string,
   outboundBody: string,
   now: Date,
+  asked = false,
 ): TranscriptEntry[] {
   const last = transcript.at(-1);
   const base =
@@ -1496,7 +1497,13 @@ function threadForNext(
         ];
   return [
     ...base,
-    { direction: 'out' as const, body: outboundBody, providerId: null, at: now.toISOString() },
+    {
+      direction: 'out' as const,
+      body: outboundBody,
+      providerId: null,
+      at: now.toISOString(),
+      ...(asked ? { asked: true } : {}),
+    },
   ];
 }
 
@@ -2541,6 +2548,7 @@ async function friendColdTurn(
         inbound.receivedAt.toISOString(),
         voiced,
         now,
+        spoken.asks,
       ),
       firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
       ...(complete ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
@@ -2922,6 +2930,7 @@ async function provision(
     gathered.location.areaCoarse;
   const findLines = linesOfFind(radar.message);
   let outboundBody = radar.message;
+  let outboundAsked = false;
   let outboundKey: string | undefined = radar.weekendPickOffered
     ? INTAKE_RADAR_WEEKEND_PICK_TEMPLATE_KEY
     : undefined;
@@ -3020,6 +3029,7 @@ async function provision(
       if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
+    outboundAsked = !mapUnsent && spoken.asks;
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
       outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     }
@@ -3167,6 +3177,7 @@ async function provision(
           body: outboundBody,
           providerId: null,
           at: now.toISOString(),
+          ...(outboundAsked ? { asked: true } : {}),
         },
       ],
       state: discoveryOn ? 'awaiting_cold_start' : 'awaiting_ladder',

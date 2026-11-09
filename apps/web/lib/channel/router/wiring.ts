@@ -43,6 +43,7 @@ import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { defaultClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
 import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
@@ -824,6 +825,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     reconcileView: loadReconcileView,
     // VIL-581 · the claim reader in shadow; a no-op while CLAIM_READER_MODE is unset.
     claimShadow: defaultClaimShadow(),
+    claimEnforcer: defaultClaimEnforcer(),
     recordRegistrationWatch,
     armWatchedSpot,
     limiter: new PostgresRateLimiter(database),
