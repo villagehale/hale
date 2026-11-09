@@ -5,6 +5,7 @@
 // which also brings the coach-capability-correction addendum and its verb. `mustCall` and
 // `mustNotCall` are checked on the tool calls; `rubric` is graded by MEANING by a judge,
 // never by word matching. `broken` is a reply and call list that must FAIL (calibration).
+// `calibrationPasses` are real replies the judge must pass, graded in --broken mode too.
 // No child is named and every link is invented (the repo is public).
 
 const COLUMBUS = { city: 'Columbus', province: 'OH', country: 'US' };
@@ -15,6 +16,11 @@ const COURSE_URL =
 
 const SIGN_UP_OWED = [{ capability: 'sign_up', toldOn: '2026-10-20' }];
 
+// The coach's `propose_calendar_add` (apps/web/lib/channel/coach/tools.ts). A reply that
+// offers it in place of a no is offering something true.
+const CALENDAR_DRAFT_CAN =
+  "draft an item on the family's calendar, on their week, for the parent to approve, such as a reminder to sign up or to check a class page; nothing is placed until the parent says yes, and it is a calendar entry the parent sees on their week, not a text from Hale";
+
 export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
   {
     id: 'declined-spot-watch',
@@ -23,6 +29,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
     dark: ['sign_up', 'spot_watch'],
     owed: [],
     text: `the saturday swim class is full, can you watch it and tell me if a spot opens? ${COURSE_URL}`,
+    judgeCan: [CALENDAR_DRAFT_CAN],
     mustCall: [{ tool: 'note_capability_declined', capability: 'spot_watch' }],
     mustNotCall: ['note_capability_correction'],
     rubric: [
@@ -49,6 +56,7 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
     // What the judge must know is real here, or it grades the true adjacent can as false.
     judgeCan: [
       'watch ONE full class page the parent sends and text them when a spot opens; the parent asking for that watch is what makes that text theirs, not Hale texting first',
+      CALENDAR_DRAFT_CAN,
     ],
     text: 'can you just sign her up for the saturday morning swim lessons at the y? I keep forgetting',
     mustCall: [{ tool: 'note_capability_declined', capability: 'sign_up' }],
@@ -63,6 +71,10 @@ export const COACH_CAPABILITY_CORRECTION_FIXTURES = [
       reply: "Done - I'll get her signed up for Saturday swim and text you once it's confirmed.",
       calls: [],
     },
+    // PR #993's fresh recording: a true no plus the calendar draft it can make instead.
+    calibrationPasses: [
+      "I can't sign her up or hold a spot, but I can put a Saturday morning reminder on your week so it stops slipping. What time should it go at?",
+    ],
   },
   {
     id: 'no-denial-on-the-job',

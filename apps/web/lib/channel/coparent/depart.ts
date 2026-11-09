@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withdrawFreeBusyConsent } from '~/lib/channel/linq/free-busy-consent';
+import { renameDepartedMember } from '~/lib/channel/linq/group-plan-rsvp/departed-member';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -290,6 +291,14 @@ export async function departCoParent(
         ),
       );
     const hashes = retainedChannels.map((row) => row.phoneE164Hash);
+
+    // Their name and words off the household's group plans and polls; their answers stay
+    // counted. The member key of a seated number is its blind index, the same hash.
+    const groupNamesCleared = await renameDepartedMember(tx, {
+      familyId,
+      userId: actorUserId,
+      memberKeys: hashes,
+    });
     const retainedInvites =
       hashes.length === 0
         ? []
@@ -367,6 +376,7 @@ export async function departCoParent(
           threadRetained: retainedThreads.length,
           openQuestionsDeleted,
           freeBusyWithdrawn,
+          groupNamesCleared,
         },
       },
     ]);

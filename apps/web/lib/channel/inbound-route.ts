@@ -197,7 +197,7 @@ export async function routeInboundText(
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },
-        'inbound: a first text got no reply; the first-reply sweep owes it one',
+        'inbound: an onboarding text got no reply',
       );
       return 'intake_unsent';
     }

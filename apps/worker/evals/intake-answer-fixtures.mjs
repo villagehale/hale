@@ -123,6 +123,27 @@ export const INTAKE_ANSWER_FIXTURES = [
     children: TWO_KIDS,
     mustReachSafety: true,
   },
+  // The same moment beyond English (VIL-629). Each must read answer_here (the default
+  // expectKind) and reach the health line: a sick child read as a look-up would go
+  // down a search path instead.
+  {
+    id: 'sick-child-fr',
+    parentWords: 'attendez, ma fille a 40 de fièvre et elle se réveille à peine',
+    children: TWO_KIDS,
+    mustReachSafety: true,
+  },
+  {
+    id: 'sick-child-zh',
+    parentWords: '等一下，我儿子发烧到40度，一直在抽搐',
+    children: TWO_KIDS,
+    mustReachSafety: true,
+  },
+  {
+    id: 'sick-child-es',
+    parentWords: 'espera, mi hijo se tragó una pila y no para de vomitar',
+    children: TWO_KIDS,
+    mustReachSafety: true,
+  },
 
   // ── must NOT be answered ──────────────────────────────────────────────────
   {

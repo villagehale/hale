@@ -283,6 +283,8 @@ export const AUDIT_VERBS = [
   'weekday_care_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-619 · the one-time scrub of the email previews older alerts kept.
+  'email_alert_snippets_scrubbed',
   'email_alert_event_added',
   'activity_booking_recorded',
   'activity_booking_cancelled',
@@ -1119,6 +1121,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hale having looked at their email at all.
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
+  // A count only, across the family's threads: no row says which adult had alerts.
+  email_alert_snippets_scrubbed: {
+    sentence: 'Hale deleted the email previews it had kept from earlier alerts',
     family: 'done',
   },
   // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the

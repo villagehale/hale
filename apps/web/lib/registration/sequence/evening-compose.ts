@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { EveningFacts } from './copy';
 
@@ -22,16 +23,12 @@ export function eveningUserMessage(facts: EveningComposeInput): string {
   return JSON.stringify(facts);
 }
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-
 /** Structural refusals only: empty, or a link that was not handed. */
 export function eveningRefusals(body: string, facts: EveningComposeInput): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  const urls = text.match(URL_SHAPE) ?? [];
-  const link = facts.link;
   const found: string[] = [];
-  if (urls.some((url) => link === null || !url.startsWith(link))) found.push('other_link');
+  if (hasLinkBeyond(text, facts.link === null ? [] : [facts.link])) found.push('other_link');
   return found;
 }
 
