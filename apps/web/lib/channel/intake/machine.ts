@@ -70,6 +70,8 @@ import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import {
   failurePageCrisisPager,
+  noteCrisisReplyLeaving,
+  noteCrisisReplySent,
   pageOps,
   reportFirstHelloFailure,
 } from '~/lib/monitoring/failure-page';
@@ -1096,6 +1098,8 @@ async function offScriptReply(
   body: string;
   source: 'composed' | 'safety' | 'identity';
   held?: HealthHeld;
+  /** A crisis reply: its send takes the reply mark, so a held copy is not answered again. */
+  crisis?: true;
 } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
@@ -1139,7 +1143,9 @@ async function offScriptReply(
       ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
-    return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
+    return crisis.status === 'sent'
+      ? { body: crisis.body, source: 'safety', crisis: true }
+      : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
     // #868, VIL-589: the model words the line for where this family is; the code checks
@@ -3378,7 +3384,11 @@ async function handleLadder(
     );
     if (offScript) {
       if (offScript.body) {
+        // A crisis reply is answered once the transport accepted it, never before (VIL-602):
+        // the recovery pass then releases a held copy of this text with no second reply.
+        if (offScript.crisis) await noteCrisisReplyLeaving(database, inbound.providerId, now);
         await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+        if (offScript.crisis) await noteCrisisReplySent(database, inbound.providerId, now);
       }
       held = offScript.held;
       heldForQuestion = true;
@@ -3708,7 +3718,8 @@ async function settleOptOutHold(
     // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
     const name = err instanceof Error ? err.name : 'unknown';
     if (reading === null) {
-      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: { err: name } });
+      console.error({ err: name }, 'opt-out hold: write failed');
+      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: {} });
     } else {
       console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
     }

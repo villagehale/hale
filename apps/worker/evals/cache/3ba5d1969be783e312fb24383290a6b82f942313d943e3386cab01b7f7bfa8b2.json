@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrnvnC5wUXyVPfUWYDEZ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "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"
+      },
+      {
+        "type": "text",
+        "text": "I can't sign her up or hold a spot. If that class is full, send me the link from its page and I'll watch for an opening."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 460,
+      "cache_read_input_tokens": 20080,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 460,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 363,
+      "output_tokens_details": {
+        "thinking_tokens": 323
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
