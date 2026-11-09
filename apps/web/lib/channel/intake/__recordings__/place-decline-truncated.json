@@ -1,0 +1,58 @@
+{
+  "about": "Live Haiku 5.5 reply (speak lane, thinking off) on 2026-11-09 to a parent declining the postal code, on the short retry prompt at its old 600-token budget. Recorded by the VIL-617 repro; replayed through forceToolJson so the compose catch sees the real truncation.",
+  "maxTokens": 600,
+  "response": {
+    "id": "msg_011CgsC1to3426Uor9b4oQXE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01H3Bs2wXk1AZYyt38cyw1bD",
+        "name": "reply",
+        "input": {
+          "reply": "No problem at all, you don't have to share it. Could you tell me how many kids you have, and roughly how old they are?",
+          "asks": true,
+          "parentQuestion": true,
+          "connectorsOffered": [],
+          "joinPointer": null,
+          "claimsSaved": false,
+          "nameConfirmed": null,
+          "nameDeclined": false,
+          "nameTakenBack": false,
+          "stopAsking": false,
+          "coparentGroup": null,
+          "connectGmail": null,
+          "connectCalendar": null,
+          "scheduleDone": false,
+          "calendarLater": false,
+          "gmailLater": false,
+          "kidsNamesDeclined": false,
+          "parentRole": null,
+          "parentRoleBasis": null,
+          "postalCode": null,
+          "city": null
+        }
+      }
+    ],
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 606,
+      "cache_creation_input_tokens": 2631,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 2631,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 600,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
