@@ -5,6 +5,7 @@ import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -40,10 +41,6 @@ export const MAX_ASK_CHARS = 160;
 export const MAX_COMPOSE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 128;
-
-/** No links, held structurally: this stage has no tool that could have given it one, so
- * a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 export type FollowupVoiceRequest =
   | { kind: 'activity'; activity: string }
@@ -81,7 +78,7 @@ export function refusals(body: string, request: FollowupVoiceRequest): AskRefusa
   const found: AskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
   // The subject is stripped before the digit check rather than after: "Gym 2 Grow" is

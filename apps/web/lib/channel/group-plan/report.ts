@@ -2,6 +2,7 @@ import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/
 import { z } from 'zod';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { dayKeyIn } from '~/lib/plan/spine';
 
@@ -161,9 +162,6 @@ export function groupPlanReportUserMessage(
   return JSON.stringify(lastDraftRefused.length > 0 ? { ...input, lastDraftRefused } : input);
 }
 
-const URL_SHAPE = /https?:\/\/\S+/gi;
-const TRAILING_PUNCTUATION = /[.,;:!)\]}"'\u00BB\u201D\u2019\u3002\uFF0C]+$/u;
-
 /** The messages as they would go out, in order: trimmed, with any blank one dropped. */
 export function groupPlanReportMessages(drafted: readonly string[]): string[] {
   return drafted.map((message) => message.trim()).filter((message) => message !== '');
@@ -184,17 +182,16 @@ export function groupPlanReportRefusals(
   if (messages.length === 0) return ['empty'];
   const text = messages.join('\n');
   const found: string[] = [];
-  const urls = text.match(URL_SHAPE) ?? [];
   const link = input.link;
   if (link === null) {
-    if (urls.length > 0) found.push('carries_link');
+    if (hasLinkShape(text)) found.push('carries_link');
     return found;
   }
   const copies = text.split(link).length - 1;
   if (copies === 0) found.push('link_missing');
   if (copies > 1) found.push('link_repeated');
   if (copies === 1 && !messages[messages.length - 1]?.includes(link)) found.push('link_not_last');
-  if (urls.some((url) => url.replace(TRAILING_PUNCTUATION, '') !== link)) found.push('other_link');
+  if (hasLinkBeyond(text, [link])) found.push('other_link');
   return found;
 }
 

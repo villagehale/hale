@@ -8,6 +8,7 @@
  */
 
 import { localeFor } from '~/lib/channel/language';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { zonedMidnight } from '~/lib/memory/period';
 
 export const AHA_ITEM_LIMIT = 8;
@@ -141,7 +142,7 @@ function cleanTitle(value: string): string | null {
 
 function cleanLocation(value: string): string | null {
   const text = value.replace(/\s+/g, ' ').trim();
-  if (text.length === 0 || text.includes('@') || /https?:\/\//i.test(text)) return null;
+  if (text.length === 0 || text.includes('@') || hasLinkShape(text)) return null;
   return text.length <= 80 ? text : text.slice(0, 80).trimEnd();
 }
 
