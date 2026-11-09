@@ -4,6 +4,7 @@ import {
   CHANNEL_AUDIT_ACTION,
   type ChannelDraftPort,
   calendarDraftApprovalSurfaces,
+  stampChatKey,
 } from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
@@ -45,6 +46,7 @@ export function groupPlanDraftPort(
   if (turn.audience !== 'group') return inner;
   return {
     pendingIdentical: inner.pendingIdentical?.bind(inner),
+    approvalWaitsIn: inner.approvalWaitsIn?.bind(inner),
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;
@@ -101,14 +103,18 @@ export function productionRecordGroupPlanOrigin(database: Database): RecordGroup
       actionTaken: 'group_plan.drafted',
       targetTable: 'actions',
       targetId: actionId,
-      after: { chatId },
+      // The row is immutable and exported, so the chat is named by its keyed index.
+      after: { chatKey: linqChatBlindIndex(chatId) },
     });
     return 'recorded';
   };
 }
 
-/** The family group chat a group turn drafted this action in, or null when none did. */
-export async function groupPlanChatId(
+/**
+ * The chat key of the household group a group turn drafted this action in, or null when
+ * none did. A stamp written before the key carries the raw chat id, which is keyed here.
+ */
+export async function groupPlanChatKey(
   database: Database,
   familyId: string,
   actionId: string,
@@ -125,8 +131,7 @@ export async function groupPlanChatId(
       ),
     )
     .limit(1);
-  const chatId = (row?.after as { chatId?: unknown } | null | undefined)?.chatId;
-  return typeof chatId === 'string' ? chatId : null;
+  return stampChatKey(row?.after);
 }
 
 /**
@@ -138,6 +143,13 @@ export async function groupPlanActionIds(
   database: Database,
   input: { familyId: string; chatId: string },
 ): Promise<ReadonlySet<string>> {
+  // A chat that is no longer the household group answers none of them, even though
+  // they were the household group's question when they were asked (VIL-595).
+  const [family] = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId));
+  if (family?.chatId !== input.chatId) return new Set();
   const chatKey = linqChatBlindIndex(input.chatId);
   const rows = await database
     .select({ targetId: schema.auditLog.targetId })
@@ -153,7 +165,10 @@ export async function groupPlanActionIds(
           ),
           and(
             eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
-            sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+            or(
+              sql`${schema.auditLog.after}->>'chatKey' = ${chatKey}`,
+              sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+            ),
           ),
         ),
       ),

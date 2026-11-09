@@ -20,6 +20,7 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { coParentDepartedNotice } from './copy';
@@ -59,6 +60,10 @@ export function departureNoticeDedupeKey(familyId: string, departedUserId: strin
  */
 export type DepartureNoticeOutcome =
   | 'sent'
+  /** Live cadence: handed to the hourly decider, which sends it (VIL-612). */
+  | 'queued'
+  /** Live cadence: an earlier call handed it over; the decider owns it. */
+  | 'already_queued'
   | 'dark'
   | 'already_sent'
   | 'no_staying_parent'
@@ -154,6 +159,7 @@ export async function tellStayingParent(
   // The cheap guard, before the gate reads four tables. The claim below is the correct
   // one — this only keeps a retry from costing anything.
   if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  if (await isQueuedForDecider(database, familyId, dedupeKey)) return 'already_queued';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'co_parent_departed', now });
   if (!verdict.allowed) {
@@ -194,6 +200,39 @@ export async function tellStayingParent(
       'co-parent departure notice: spoken line unreachable',
     );
     return 'model_unreachable';
+  }
+
+  // VIL-612 · live cadence: the hourly decider decides when, re-gates, and sends. It
+  // writes the same ledger row under this key, so the re-drive finds the notice claimed.
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'co_parent_departed',
+        category: 'co_parent_departed',
+        templateKey: DEPARTURE_NOTICE_TEMPLATE_KEY,
+        what: message,
+        why: 'co_parent_departed',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey,
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'co_parent_departed' },
+    });
+    return 'queued';
   }
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests

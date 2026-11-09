@@ -15,9 +15,9 @@ import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import { loadOpenSession } from '~/lib/channel/intake/session';
 import { markLinqChatRead, outboundLineFrom } from '~/lib/channel/outbound-transport';
 import {
-  lineStatusKnown,
-  lineStatusPauses,
-  lineStatusToken,
+  lineHealthKnown,
+  lineHealthLabel,
+  lineHealthPauses,
   sendingLineE164,
 } from '~/lib/channel/proactive/line-health';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
@@ -116,6 +116,7 @@ import {
 } from './multi-family';
 import {
   type LinqInboundText,
+  type LinqLineHealthEvent,
   type LinqLocationSignal,
   type LinqSignal,
   parseLinqWebhook,
@@ -1758,7 +1759,7 @@ async function familyIdForClaimedChat(
  */
 async function handleLinqLineHealth(
   deps: LinqDoorDeps,
-  line: { phoneNumber: string; status: string },
+  line: LinqLineHealthEvent,
 ): Promise<Response> {
   const sendingLine = sendingLineE164();
   if (sendingLine === null) {
@@ -1771,29 +1772,30 @@ async function handleLinqLineHealth(
     await deps.countOutcome('ignored');
     return json({ outcome: 'other_line' });
   }
-  const paused = lineStatusPauses(line.status);
-  if (!lineStatusKnown(line.status)) {
-    // Fail closed: a status word Hale cannot read pauses sends until a known one arrives.
+  const paused = lineHealthPauses(line);
+  const status = lineHealthLabel(line);
+  if (!lineHealthKnown(line)) {
+    // Fail closed: a word Hale cannot read pauses sends until a known pair arrives.
     console.warn(
-      { status: lineStatusToken(line.status) ?? 'invalid', outcome: 'line_status_unknown' },
+      { status, outcome: 'line_status_unknown' },
       'linq line health: unknown status word, unrequested sends held',
     );
   }
   const updatedAt = deps.now?.() ?? new Date();
   await deps.database
     .insert(schema.linqLineHealth)
-    .values({ phoneNumber: line.phoneNumber, status: line.status, paused, updatedAt })
+    .values({ phoneNumber: line.phoneNumber, status, paused, updatedAt })
     .onConflictDoUpdate({
       target: schema.linqLineHealth.phoneNumber,
-      set: { status: line.status, paused, updatedAt },
+      set: { status, paused, updatedAt },
     });
   if (paused) {
     const page = await postOpsSlack(
-      `Linq reports a Hale sending line as ${line.status}. Unrequested proactive sends are held until it clears.`,
+      `Linq reports a Hale sending line as ${status}. Unrequested proactive sends are held until it clears.`,
     );
-    deps.log.error({ status: line.status, page }, 'linq line health: unrequested sends paused');
+    deps.log.error({ status, page }, 'linq line health: unrequested sends paused');
   } else {
-    deps.log.info({ status: line.status }, 'linq line health: line is clear');
+    deps.log.info({ status }, 'linq line health: line is clear');
   }
   await deps.countOutcome('line_health');
   return json({ outcome: 'line_health', paused });

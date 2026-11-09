@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Names both items, day, time and the child correctly, and asks one question of the group. It is phrased as a friendly text in English and does not invent details. It says Barton has both but does not name a suggested person or mention a poll, which matches the input. Minor issue: it names Barton as the one to answer, which is acceptable since he is the one with both items, though the ask is directed at him rather than the whole group.",
+    "score": 4
+  }
+}

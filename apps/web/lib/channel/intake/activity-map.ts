@@ -2,7 +2,7 @@ import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { activityRecommendationKey } from '~/lib/village/live';
-import { fitsHouseholdAges } from './pick-fit';
+import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
@@ -208,7 +208,8 @@ function flatten(groups: ActivityMapGroup[], finder: ActivityMapFinder): Activit
 
 /**
  * One live search per fitting category, in parallel. A pick outside every
- * child's age is left out before the group is cut to size (pick-fit.ts), and a
+ * child's age, or whose only dates are behind `today`, is left out before the
+ * group is cut to size (pick-fit.ts), and a
  * category whose search returned nothing for these kids is left off the map
  * rather than filled. Civic weekend finds join the free-and-public group when
  * that group is shown, since they are the free sessions a community centre or
@@ -221,6 +222,8 @@ export async function collectActivityMap(input: {
   town: string | null;
   civic: readonly WeekendPick[];
   familyId: string;
+  /** YYYY-MM-DD in the family's zone. */
+  today: string;
 }): Promise<ActivityMap> {
   const ages = input.children
     .map((child) => child.ageMonths)
@@ -250,6 +253,7 @@ export async function collectActivityMap(input: {
   let anyUsed = false;
   let anyFailed = false;
   let droppedAge = 0;
+  let droppedPast = 0;
   const groups = await Promise.all(
     categories.map(async (category): Promise<ActivityMapGroup> => {
       const query = categoryQuery(category, input);
@@ -259,8 +263,10 @@ export async function collectActivityMap(input: {
         const found = await input.finder?.find(query);
         if (!found || !found.found) return empty;
         anyUsed = true;
-        const fitting = found.picks.filter((pick) => fitsHouseholdAges(pick, input.children));
-        droppedAge += found.picks.length - fitting.length;
+        const current = found.picks.filter((pick) => !onlyDatedBefore(pick, input.today));
+        const fitting = current.filter((pick) => fitsHouseholdAges(pick, input.children));
+        droppedPast += found.picks.length - current.length;
+        droppedAge += current.length - fitting.length;
         const picks = fitting.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {
           category: category.id,
@@ -315,6 +321,7 @@ export async function collectActivityMap(input: {
       groups: groups.filter((group) => group.lines.length > 0).length,
       lines: groups.reduce((sum, group) => sum + group.lines.length, 0),
       droppedAge,
+      droppedPast,
     },
     'intake activity map',
   );

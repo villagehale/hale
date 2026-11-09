@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the cancellation of Robin's Saturday 9 AM parent and tot swim and correctly says no new time was given, with no invented details. It asks nothing, which matches offer being null, and uses a casual tone in English. Minor issue: 'emailed Tuesday' is supported by arrivedOn, so it is accurate.",
+    "score": 5
+  }
+}

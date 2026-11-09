@@ -80,6 +80,34 @@ describe('find_activities', () => {
     });
   });
 
+  it('adds the family-local day from the record when it is known (VIL-435)', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({ today: async () => '2026-10-12 (Monday)' }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+
+    await call(tool, { subject: 'drop-in playgroup', window: 'today' });
+    await call(
+      findActivitiesTool({
+        reader: reader({ today: async () => null }),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+      }),
+      { subject: 'drop-in playgroup', window: 'today' },
+    );
+
+    expect(seen[0]).toEqual({
+      subject: 'drop-in playgroup',
+      window: 'today',
+      town: 'Halton Hills',
+      stage: 'toddler',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(seen[1]).not.toHaveProperty('today');
+  });
+
   it('refuses a subject naming a child with a sentence the model can act on, and searches nothing', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({

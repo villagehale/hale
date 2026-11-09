@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Says registration is coming up, states no date, and includes the handed link. It asks nothing, which is right since offer is false. It is in English and names no child. One weakness: why is page_unreadable, but 'could not confirm' only implies Hale couldn't read the page rather than saying so plainly. That is still acceptable. The tone is a bit formal ('Hi, this is Hale', 'just now, so I can't give you a date') rather than friend-texting.",
+    "score": 4
+  }
+}

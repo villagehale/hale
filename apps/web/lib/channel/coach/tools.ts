@@ -26,7 +26,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
-import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import type { ChannelDraftInput, ChannelDraftPort, GroupApprovalPlace } from './draft';
 import {
   type GmailDraftNoticeBox,
   type GmailDraftToolPorts,
@@ -448,6 +448,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
+  /** Where a group turn's yes is given (VIL-595); nothing on a 1:1 turn's result. */
+  async function approvalPlace(
+    actionType: ChannelDraftInput['actionType'],
+  ): Promise<{ approvalWaitsIn?: GroupApprovalPlace }> {
+    const place = await draftPort.approvalWaitsIn?.({ familyId, actionType });
+    return place ? { approvalWaitsIn: place } : {};
+  }
+
   /** The one place a draft is minted, so the turn's ledger cannot miss one. */
   async function mint(input: ChannelDraftInput): Promise<string> {
     const { actionId } = await draftPort.draft(input);
@@ -590,6 +598,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_move')),
       };
     },
   });
@@ -624,7 +633,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId };
+      return { drafted: true as const, actionId, ...(await approvalPlace('calendar_cancel')) };
     },
   });
 
@@ -684,6 +693,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
           actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
+          ...(await approvalPlace('calendar_add')),
         };
       }
       claimDraftBudget();
@@ -715,7 +725,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_add')),
+      };
     },
   });
 

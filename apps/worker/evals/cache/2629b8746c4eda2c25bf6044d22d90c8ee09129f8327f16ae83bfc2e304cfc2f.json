@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The Saturday market find has no free window that fits, since Saturday is an all-day family visit and there are no free windows, so it is dropped despite Thursday evening being a natural send moment.",
+    "action": "drop",
+    "item_ids": [
+      "market"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "end_turn"
+}

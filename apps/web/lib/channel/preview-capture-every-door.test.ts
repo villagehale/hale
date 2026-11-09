@@ -115,7 +115,7 @@ describe('every outbound door is captured or refused on a Preview capture run', 
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchSpy = vi.fn(async () => Response.json({}));
     vi.stubGlobal('fetch', fetchSpy);
-    const PURE = /^(read|linqMessageKey|contactCardIsLive)/;
+    const PURE = /^(read|contactCardIsLive)/;
     const calls = Object.entries(linq).filter(
       ([name, value]) =>
         typeof value === 'function' &&

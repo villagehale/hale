@@ -194,7 +194,12 @@ function reply(body: string, over?: Parameters<typeof turn>[1]): Promise<Handler
 
 /** A drafted change waiting for this family's approval — the other open question. */
 async function seedDraftedAction(
-  over: { title?: string; startsAt?: string; reviewerVerdict?: 'approved' | 'pending' } = {},
+  over: {
+    title?: string;
+    startsAt?: string;
+    reviewerVerdict?: 'approved' | 'pending';
+    draftedAt?: Date;
+  } = {},
 ): Promise<string> {
   const [event] = await db.database
     .insert(schema.events)
@@ -218,6 +223,7 @@ async function seedDraftedAction(
       },
       userVisibleState: 'drafted_for_approval',
       reviewerVerdict: over.reviewerVerdict ?? 'approved',
+      ...(over.draftedAt ? { draftedAt: over.draftedAt } : {}),
     })
     .returning({ id: schema.actions.id });
   if (!action) throw new Error('no action row');
@@ -593,6 +599,33 @@ describe('a bare YES is never stolen from another open question', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.targetId, actionId));
     expect(audits.map((row) => row.actionTaken)).toContain('action.superseded_by_calendar_offer');
+  });
+
+  it('a YES retires the newest unapproved draft of the same add behind a page of older drafts', async () => {
+    const offerId = await seedOffer();
+    for (let i = 0; i < 20; i += 1) {
+      await seedDraftedAction({
+        title: `Other class ${i}`,
+        startsAt: STARTS_AT.toISOString(),
+        reviewerVerdict: 'pending',
+        draftedAt: new Date(NOW.getTime() - (60 - i) * 60_000),
+      });
+    }
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+      draftedAt: new Date(NOW.getTime() - 60_000),
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const [action] = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, actionId));
+    expect(action).toEqual({ state: 'reverted' });
   });
 
   it('acts on a RESOLVED answer even with another question open', async () => {

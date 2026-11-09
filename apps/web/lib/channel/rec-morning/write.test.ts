@@ -13,6 +13,8 @@ const TORONTO_FSA = 'M5V';
 const AT_TORONTO_FSA = resolveRecMorningWhere({
   city: null,
   postal: TORONTO_FSA,
+  country: null,
+  province: null,
   timeZone: 'America/Toronto',
 });
 

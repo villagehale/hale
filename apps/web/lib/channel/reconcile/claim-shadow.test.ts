@@ -396,6 +396,30 @@ describe('the comparison', () => {
       'same',
     ]);
   });
+
+  it('a repeated claim maps to its own sentence, not the first copy (Devin)', async () => {
+    const h = harness({
+      read: readOf([
+        { segment: 0, kind: 'scheduled_event', row: 'e1' },
+        { segment: 1, kind: 'scheduled_event', row: 'e1' },
+      ]),
+    });
+    h.shadow.sweep(
+      DB,
+      sweepInput({
+        body: `${SWIM} ${SWIM}`,
+        verdict: verdictOf(matched(SWIM, 'scheduled_event'), matched(SWIM, 'scheduled_event')),
+      }),
+    );
+    await h.settle();
+    const p = h.props();
+    expect(p.segments_n).toBe(2);
+    onlyThese(p, {
+      regex_n_scheduled_event: 2,
+      reader_n_scheduled_event: 2,
+      agree_n_scheduled_event: 2,
+    });
+  });
 });
 
 describe('lane semantics: a mint is sendable on the coach only', () => {
