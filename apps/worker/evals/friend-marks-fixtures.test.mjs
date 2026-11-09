@@ -5,7 +5,15 @@ const join = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-ye
 const zh = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-zh');
 const fr = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-fr');
 
+const map = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'find-show-two-groups');
+
 describe('friendMarksMisses', () => {
+  it('passes a map with a kept bubble per group, and fails one with a group dropped', () => {
+    expect(friendMarksMisses(map, {}, { keptGroupBubbles: 2 })).toEqual([]);
+    expect(friendMarksMisses(map, {}, { keptGroupBubbles: 1 })).toEqual(['groupBubbles:1']);
+    expect(friendMarksMisses(map, {})).toEqual(['groupBubbles:0']);
+  });
+
   it('passes a co-parent yes that points below', () => {
     expect(
       friendMarksMisses(join, { asks: false, parentQuestion: false, joinPointer: 'below' }),
@@ -38,17 +46,50 @@ describe('friendMarksMisses', () => {
     ]);
   });
 
-  it('fails a question turned into a yes the code would keep', () => {
+  it('fails a question turned into a yes the code would keep, or not read as a question', () => {
     const marks = { asks: true, connectorsOffered: ['gmail'] };
-    expect(friendMarksMisses(fr, { ...marks, parentQuestion: false, connectGmail: null })).toEqual(
+    expect(friendMarksMisses(fr, { ...marks, parentQuestion: true, connectGmail: null })).toEqual(
       [],
     );
     expect(friendMarksMisses(fr, { ...marks, parentQuestion: true, connectGmail: true })).toEqual(
       [],
     );
+    expect(friendMarksMisses(fr, { ...marks, parentQuestion: false, connectGmail: null })).toEqual([
+      'parentQuestion:false',
+    ]);
     expect(friendMarksMisses(fr, { ...marks, parentQuestion: false, connectGmail: true })).toEqual([
       'connectGmail:yes_kept',
+      'parentQuestion:false',
     ]);
+    // The English question with no question mark is held to the same.
+    const bare = FRIEND_MARKS_FIXTURES.find(
+      (fixture) => fixture.id === 'email-question-en-no-mark',
+    );
+    expect(
+      friendMarksMisses(bare, { ...marks, parentQuestion: false, connectGmail: true }),
+    ).toEqual(['connectGmail:yes_kept', 'parentQuestion:false']);
+  });
+
+  it('fails a Gmail pitch on a turn that answers their own other question', () => {
+    const own = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'ages-own-question');
+    const marks = { asks: true, parentQuestion: true };
+    expect(friendMarksMisses(own, { ...marks, connectorsOffered: [] })).toEqual([]);
+    expect(friendMarksMisses(own, { ...marks, connectorsOffered: ['gmail'] })).toEqual([
+      'connectorsOffered:["gmail"]',
+    ]);
+  });
+
+  it('fails a declined place whose reply code would not send', () => {
+    const declined = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-declined-fr');
+    const value = { asks: true, reply: 'Pas de souci. Tes enfants ont quel âge?' };
+    expect(friendMarksMisses(declined, value, { judged: { ok: true } })).toEqual([]);
+    expect(
+      friendMarksMisses(declined, value, { judged: { ok: false, reason: 'question' } }),
+    ).toEqual(['reply:unsendable:question']);
+    expect(friendMarksMisses(declined, value)).toEqual(['reply:unsendable:not_judged']);
+    expect(
+      friendMarksMisses(declined, { ...value, postalCode: 'Z9Z' }, { judged: { ok: true } }),
+    ).toEqual(['postalCode:"Z9Z"']);
   });
 
   it('fails a calendar ask that offers Gmail under the calendar link', () => {

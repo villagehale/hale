@@ -68,11 +68,20 @@ export function urlSeenThisTurn(
   return null;
 }
 
+const OFFSET_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** An open time the model copied with its offset. A time with no zone is not one. */
+export function planOpensAtFromModel(raw: string | null): Date | null {
+  if (!raw || !OFFSET_TIME.test(raw)) return null;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
 export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
   return defineTool({
     name: OFFER_SIGNUP_TOOL,
     description:
-      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
+      "Call when Hale saw a real registration — from an email, a calendar, a flyer, or this chat — and you are offering to try signing a child up. `child` is the child's first name as this family knows them. `registrationUrl` must be a page already in this turn (the parent's words, or a link a tool returned). `evidence` is what Hale saw; for chat it must be a quote from the parent's message. `opensAt` is when registration opens, as an ISO 8601 time with its UTC offset, only when the page or message states it; otherwise null. After `recorded`, send the returned `text` as your message. Do not invent a different offer.",
     inputSchema: z.object({
       child: z.string().min(1).max(80),
       source: z.enum(SIGNUP_OFFER_SOURCES),
@@ -80,6 +89,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
       evidence: z.string().min(1).max(1600),
       sessions: z.array(sessionSchema).min(1).max(12),
       approvedPriceCents: z.number().int().nullable(),
+      opensAt: z.string().max(40).nullable().optional(),
     }),
     monetary: false,
     touchesChildContent: false,
@@ -117,6 +127,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
           parentUserId: ports.parentUserId,
           childId: matches[0].id,
           now: ports.now,
+          planOpensAt: planOpensAtFromModel(input.opensAt ?? null),
           facts: {
             source: input.source,
             evidence: input.evidence,

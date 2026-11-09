@@ -1,3 +1,4 @@
+import { hasLinkShape } from '../../format/link-shape';
 import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
 
 /**
@@ -102,10 +103,6 @@ export function spotOpenFacts(
   };
 }
 
-/** A link with or without a scheme. Clock words such as "a.m." never match: no TLD here
- * is one letter. */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|gov|us)\b/i;
-
 /** Every number a draft may print, as numbers, so "05:00 PM" backs a written "5". */
 function backedNumbers(facts: SpotOpenFacts): Set<number> {
   const sources = [facts.label, facts.schedule ?? '', String(facts.spotsLeft ?? '')];
@@ -121,7 +118,7 @@ export function spotOpenRefusals(text: string, facts: SpotOpenFacts): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
   const refusals: string[] = [];
-  if (LINK_SHAPE.test(body)) refusals.push('link');
+  if (hasLinkShape(body)) refusals.push('link');
   if (body.includes('?')) refusals.push('asks_a_question');
   const backed = backedNumbers(facts);
   if ((body.match(/\d+/g) ?? []).some((run) => !backed.has(Number(run)))) {

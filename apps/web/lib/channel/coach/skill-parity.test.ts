@@ -20,6 +20,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
@@ -32,7 +33,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       // Production wires the watch verb's three ports too (see productionChannelCoach),
       // and the frontmatter names it — a parity set built without them would report a
       // skill listing a tool nobody registers, which is a mid-turn throw in prod.
-      spots: { fetchBody: {} as never, reader: {} as never, watchConsentGranted: {} as never },
+      spots: {
+        fetchBody: {} as never,
+        reader: {} as never,
+        watchConsentGranted: {} as never,
+        readClassAvailability: {} as never,
+      },
       onOffer: () => {},
       onShare: () => {},
       onPromise: () => {},
@@ -120,6 +126,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     const watch = watchForOpeningTool({
       fetchBody: {} as never,
       reader: {} as never,
+      readClassAvailability: {} as never,
       watchConsentGranted: {} as never,
       onWatch: () => {},
     });

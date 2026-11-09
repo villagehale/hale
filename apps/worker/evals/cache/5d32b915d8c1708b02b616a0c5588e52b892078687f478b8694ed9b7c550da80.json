@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "No worries, we can skip that for now. Gmail is next: it lets me see the kids' school and activity emails so I can keep track of dates for you. Want to connect it?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": ["gmail"],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1587
+}

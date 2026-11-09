@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message says the items collide and asks who takes it, but both items are Maya's and sameKid is set, so it should say she is double-booked and ask which one she goes to. Instead it asks who takes it and tells people to reply 1 or 2, sends a link, and asks for a number/keyword. Invented fix framing and a link are present, and it does not name the day/time cleanly with the kid as the issue.",
+    "score": 1
+  }
+}

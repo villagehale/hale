@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { withdrawFreeBusyConsent } from '~/lib/channel/linq/free-busy-consent';
+import { renameDepartedMember } from '~/lib/channel/linq/group-plan-rsvp/departed-member';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -266,6 +268,15 @@ export async function departCoParent(
       parentUserId: actorUserId,
     });
 
+    // Their say-so for a shared group to use their busy times, in every chat (VIL-459).
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(tx, {
+      familyId,
+      userIds: [actorUserId],
+      chatId: null,
+      now,
+      interpretation: 'the co-parent left the family; their free/busy sharing ends',
+    });
+
     // ── what is KEPT, counted so the answer can say it out loud ──────────────
     const retainedChannels = await tx
       .select({
@@ -280,6 +291,14 @@ export async function departCoParent(
         ),
       );
     const hashes = retainedChannels.map((row) => row.phoneE164Hash);
+
+    // Their name and words off the household's group plans and polls; their answers stay
+    // counted. The member key of a seated number is its blind index, the same hash.
+    const groupNamesCleared = await renameDepartedMember(tx, {
+      familyId,
+      userId: actorUserId,
+      memberKeys: hashes,
+    });
     const retainedInvites =
       hashes.length === 0
         ? []
@@ -356,6 +375,8 @@ export async function departCoParent(
           role: 'co_parent',
           threadRetained: retainedThreads.length,
           openQuestionsDeleted,
+          freeBusyWithdrawn,
+          groupNamesCleared,
         },
       },
     ]);

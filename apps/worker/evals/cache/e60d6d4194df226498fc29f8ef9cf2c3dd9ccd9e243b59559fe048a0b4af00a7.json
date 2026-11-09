@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in French, that Hale stop sending emails without asking. turnedOffThisTurn lists send_email and reply_to_email, so saying it is done is true, and the reply is in French. It is a single plain sentence with no machinery, greeting or question.",
+    "score": 5
+  }
+}

@@ -92,7 +92,7 @@ describe('the year-open connector cards', () => {
     );
   }
 
-  it('sends the calendar card, then the Gmail card, one link each', async () => {
+  it('sends the calendar card, then the Gmail card, each link once as its own text', async () => {
     const fake = seeded();
     const transport = new FakeTransport();
     const { ports: offerPorts, threaded } = ports(transport);
@@ -100,13 +100,17 @@ describe('the year-open connector cards', () => {
     const outcome = await cards(fake, offerPorts, NOW, true);
 
     expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
-    expect(transport.bodies()).toHaveLength(2);
-    const calendar = transport.bodies()[0] as string;
-    const gmail = transport.bodies()[1] as string;
-    expect(calendar).not.toContain('Gmail');
-    expect((calendar.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
-    expect((gmail.match(/https:\/\/\S+/g) ?? []).length).toBe(1);
-    expect(threaded.map((turn) => turn.body)).toEqual([calendar, gmail]);
+    const [calendar, calendarLink, gmail, gmailLink] = transport.bodies() as string[];
+    expect(transport.bodies()).toHaveLength(4);
+    expect(calendar).toBe('Calendar prose (test fixture).');
+    expect(gmail).toBe('Gmail prose (test fixture).');
+    expect(calendarLink).toMatch(/^https:\/\/\S+\/connect\?t=\S+$/);
+    expect(gmailLink).toMatch(/^https:\/\/\S+\/connect\?t=\S+$/);
+    expect(calendarLink).not.toBe(gmailLink);
+    expect(threaded.map((turn) => turn.body)).toEqual([
+      `${calendar}\n${calendarLink}`,
+      `${gmail}\n${gmailLink}`,
+    ]);
     expect(ledgerRows(fake)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -137,7 +141,7 @@ describe('the year-open connector cards', () => {
     const ridingTransport = new FakeTransport();
     const sent = await cards(riding, ports(ridingTransport).ports, NOW_QUIET, true);
     expect(sent).toEqual({ calendar: 'sent', gmail: 'sent' });
-    expect(ridingTransport.sent).toHaveLength(2);
+    expect(ridingTransport.sent).toHaveLength(4);
   });
 
   it('still sends the Gmail card when the calendar card is refused', async () => {
@@ -155,10 +159,130 @@ describe('the year-open connector cards', () => {
     const outcome = await cards(fake, ports(transport).ports, NOW, true);
 
     expect(outcome).toEqual({ calendar: 'send_failed', gmail: 'sent' });
-    expect(real.bodies()).toHaveLength(1);
+    expect(real.bodies()).toHaveLength(2);
+    expect(real.bodies()[0]).toBe('Gmail prose (test fixture).');
   });
 
-  it('sends friend-voice prose with the minted calendar link attached', async () => {
+  describe('on iMessage the link goes out once', () => {
+    const CHAT = 'chat-1';
+    function imessageTransport(): { transport: ChannelTransport; real: FakeTransport } {
+      const real = new FakeTransport();
+      return {
+        real,
+        transport: {
+          async send(input) {
+            const sent = await real.send(input);
+            return { ...sent, transport: 'imessage', chatId: CHAT };
+          },
+        },
+      };
+    }
+    function linqFetch(status: number) {
+      return vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        status === 201
+          ? Response.json({ message: { id: 'link-1' } }, { status })
+          : Response.json({ error: { code: 2001 } }, { status }),
+      );
+    }
+    function linkParts(fetchMock: ReturnType<typeof linqFetch>): string[] {
+      return fetchMock.mock.calls.flatMap((call) => {
+        const body = JSON.parse(String(call[1]?.body ?? '{}')) as {
+          message?: { parts?: Array<{ type: string; value: string }> };
+        };
+        return (body.message?.parts ?? []).filter((p) => p.type === 'link').map((p) => p.value);
+      });
+    }
+    function urlsIn(texts: string[]): string[] {
+      return texts.flatMap((text) => text.match(/https?:\/\/\S+/g) ?? []);
+    }
+    function offer(fake: FakeDb, offerPorts: ConnectorOfferPorts) {
+      return sendYearConnectorCards(
+        fake.db,
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          phoneE164: PHONE,
+          language: 'en',
+          now: NOW,
+          ridesReply: true,
+          only: 'gcal',
+          voice: { gcal: 'Calendar prose (test fixture).' },
+        },
+        offerPorts,
+      );
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    });
+
+    it('sends the prose without the URL, then the preview bubble', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      const fetchMock = linqFetch(201);
+      vi.stubGlobal('fetch', fetchMock);
+      const fake = seeded();
+      const { transport, real } = imessageTransport();
+
+      const outcome = await offer(fake, ports(transport).ports);
+
+      expect(outcome.calendar).toBe('sent');
+      const links = linkParts(fetchMock);
+      expect(links).toHaveLength(1);
+      expect(links[0]).toContain('/connect?t=');
+      expect(real.bodies()).toEqual(['Calendar prose (test fixture).']);
+      expect([...urlsIn(real.bodies()), ...links]).toHaveLength(1);
+    });
+
+    it('sends the URL as its own text when the preview is refused', async () => {
+      vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+      const fetchMock = linqFetch(400);
+      vi.stubGlobal('fetch', fetchMock);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const fake = seeded();
+      const { transport, real } = imessageTransport();
+
+      const outcome = await offer(fake, ports(transport).ports);
+
+      expect(outcome.calendar).toBe('sent');
+      expect(real.bodies()).toHaveLength(2);
+      expect(real.bodies()[0]).toBe('Calendar prose (test fixture).');
+      expect(real.bodies()[1]).toMatch(/^https:\/\/\S+\/connect\?t=\S+$/);
+      expect(urlsIn(real.bodies())).toHaveLength(1);
+    });
+  });
+
+  it('names the card unsent when the prose went but its link did not', async () => {
+    const fake = seeded();
+    const real = new FakeTransport();
+    const transport: ChannelTransport = {
+      async send(input) {
+        if (input.body.startsWith('https://')) throw new LinqSendError('21610', 400, true);
+        return real.send(input);
+      },
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const outcome = await sendYearConnectorCards(
+      fake.db,
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        phoneE164: PHONE,
+        language: 'en',
+        now: NOW,
+        ridesReply: true,
+        only: 'gcal',
+        voice: { gcal: 'Calendar prose (test fixture).' },
+      },
+      ports(transport).ports,
+    );
+
+    expect(outcome.calendar).toBe('send_failed');
+    expect(real.bodies()).toEqual(['Calendar prose (test fixture).']);
+  });
+
+  it('sends friend-voice prose, then the minted calendar link', async () => {
     const fake = seeded();
     const transport = new FakeTransport();
     const prose = 'Want me to check your calendar? This link is just for you.';
@@ -177,9 +301,7 @@ describe('the year-open connector cards', () => {
       ports(transport).ports,
     );
     expect(outcome.calendar).toBe('sent');
-    const body = transport.bodies()[0] ?? '';
-    expect(body).toContain(prose);
-    expect(body).toContain('/connect?t=');
-    expect(body).not.toContain('Connect your calendar:');
+    expect(transport.bodies()[0]).toBe(prose);
+    expect(transport.bodies()[1]).toContain('/connect?t=');
   });
 });

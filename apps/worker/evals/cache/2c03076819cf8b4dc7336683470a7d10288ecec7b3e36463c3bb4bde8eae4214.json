@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly says registration is coming up, gives the right link and says plainly that the page could not be opened. But `offer` is false and the text still asks a question (\"Want me to keep trying and text you tomorrow?\"), which is disallowed. It also never asks the parent to check the page. It doesn't mention the teen, but that isn't required.",
+    "score": 2
+  }
+}

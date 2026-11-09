@@ -52,6 +52,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -81,36 +82,7 @@ const LONGEST_MESSAGE = 'x'.repeat(1600);
 const BROKEN_POLL_TEXT = 'Who can take it?';
 const BROKEN_POLL_PASS = "We'll figure it out";
 
-const JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE message Hale (a kids' year planner) posts in a family",
-  'group chat about two things the family has on that collide, and the who-takes poll Hale',
-  'posts right after it when one goes. Everyone in the chat reads both.',
-  'You get the input code checked (language, kids, the two items, who is suggested, who else is',
-  'free, who is busy, who may be asked, the poll Hale could post), the message, the poll that',
-  'goes (its options, or null when none goes), and watchFor notes.',
-  'Score 1-5 on FACTS, PRIVACY, ONE ASK and TONE, never on wording.',
-  'Facts: it names both things and when, plainly, with the kid; it gives the fix as one ask:',
-  'the suggested person by name taking the plan in suggested.takes; with no suggested person it',
-  'says nobody looks free on the calendars and asks who can, and may name the couldAsk people;',
-  'when both items are the same child it says the child is double-booked and asks which one,',
-  'instead of handing a plan to someone.',
-  'Poll: when one goes, the message is its question and asks who takes input.poll.takes; the',
-  'message and the poll are one ask. Its options are input.poll.choices, then one the writer',
-  'wrote: it names no one and means "we\'ll figure it out", in input.language. When none goes,',
-  'the message mentions no poll.',
-  'Tone: it reads like a friend texting, chill and casual, in input.language as a native',
-  'speaker writes it.',
-  'A LOW score is any of: a missing or wrong fact; anything invented (a time, place, person,',
-  'reason, cause, or anyone being free); calling a couldAsk person free; saying what a busy item',
-  'is, that its details are hidden, or its own times; more than one ask of the group; asking',
-  'anyone to send a number or a keyword; a link; a poll on two items that are the same',
-  "child's, where a name does not answer which one; a last option that names someone or is not",
-  'in input.language; a message that mentions a poll when none goes; the wrong language for',
-  'input.language; a corporate, formal or bot register; a spelling, elision or accent error.',
-  'Never mark it down for its length, its punctuation, emoji, exclamation marks, a greeting,',
-  'or "we".',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('group-conflict-alert');
 
 function parseMode(args) {
   const unknown = args.filter((arg) => !MODES.includes(arg));
@@ -195,7 +167,7 @@ function plan(clash, fixture) {
     kids: fixture.kids,
     timeZone: fixture.timeZone,
     language: fixture.language,
-    poll: fixture.polls ? clash.clashPollOffer(found, home.people) : null,
+    poll: fixture.polls ? clash.clashPollOffer(found, home.people, fixture.kids) : null,
   });
 }
 
@@ -264,6 +236,7 @@ function plannerFailures(fixture, line) {
   }
   const got = {
     second: line.items[1]?.kind,
+    sameKid: line.sameKid,
     suggested: line.suggested?.name ?? null,
     busy: line.busy,
     couldAsk: line.couldAsk,

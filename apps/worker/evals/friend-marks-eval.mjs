@@ -33,6 +33,7 @@ import {
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -54,11 +55,19 @@ register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 function inputFor(voice, fixture) {
-  const base = voice.nameAskVoiceInput(fixture.over.parentWords, fixture.over.language ?? 'en');
-  const retry = fixture.retry
-    ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
-    : {};
-  return { ...base, ...fixture.over, ...retry };
+  const base = voice.nameAskVoiceInput(
+    fixture.over.parentWords,
+    fixture.over.language ?? 'en',
+    NAME_ASK_STORED,
+  );
+  const input = { ...base, ...fixture.over };
+  if (!fixture.retry) return input;
+  // With askNote the retry is briefed as speakFriend briefs it: the problem, for this
+  // step, then what the message should ask. Older fixtures keep their recorded bytes.
+  const problem = fixture.retry.askNote
+    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step)}.`
+    : voice.retryProblem(fixture.retry.reason);
+  return { ...input, retry: { draft: fixture.retry.draft, problem } };
 }
 
 function estimateTokens(value) {
@@ -129,10 +138,7 @@ async function record() {
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(),
-      maxTokens:
-        fixture.prompt === 'short'
-          ? voice.ONBOARDING_REPLY_SHORT_MAX_TOKENS
-          : voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
@@ -141,13 +147,29 @@ async function record() {
       console.info(`DRY   ${fixture.id}`);
       continue;
     }
-    const misses = friendMarksMisses(fixture, result.value);
+    const input = inputFor(voice, fixture);
+    const kept = fixture.groupBubbles
+      ? (
+          voice.findShowGroupBubbles(
+            voice.readGroupLeads(result.value?.groupLeads),
+            input.findGroups,
+            input,
+          ) ?? []
+        ).filter((bubble) => bubble.length > 0).length
+      : 0;
+    // A reply code would send: the same judge speakFriend runs, for this step.
+    const judged = fixture.sendable
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      : null;
+    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept, judged });
     if (misses.length > 0) failed += 1;
     console.info(
       `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
-    if (fixture.printReply)
+    if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+    if (fixture.groupBubbles)
+      console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }
 
   console.info(

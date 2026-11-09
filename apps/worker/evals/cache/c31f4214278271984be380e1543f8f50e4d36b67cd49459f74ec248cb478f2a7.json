@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsAZeSVVHpPTM6DTG8Ee",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS2QoKEAgTGAI4AUIIdGhpbmtpbmcSDGCuzUYDZmaKxMKOiBoMgZUyfAJw8xaPJdprIjCsiVY2E2/pgFcjk80DhsVYoEwtqdIgrhYi5VW37H4OrOkDRP8Ivc892/YqTJ3sXYoq9gkevOAssXMQOvyx6EJlDfsnVnUkko9xwLQNunC9zSYadjjz3mseHCMrpV7+rPHT1hy59Tg2GzjSB+Vbz2lb9GIfRP2lYsqyvDH8OsSpsHGDGA+16Mcw3HfIEeElXpokrGSNUaHgjthfVmq6gFcB4dzHpiHoh0zJxEqOeP3/7bEiB+M6n/iKYtUw2S0kh2p0PVQu9VZZi8MovYU8ekAw/WXilXe3deahR6eLNvsfjhAlZcyiktpxlHiFmRKvom+9VC33VU9ADGyEtj4ZmF2k06sZhOR3i2QL5s2WRWDayXVXjdHTTtyMUol6VnLREJ/sb5ZVSVSd6GA/x+7UdqwWU/wx9ex/XwMfDH72faaDJ7iys4jPJWRWGJ8yrowVgFTOkPXXP1Pf9UI8VuR8jQNmNCTE9lz+RpUYkUv2woYQIYjHpTMg4PDRaypqAQdGeqFlZMNRj9O0LyNZ4v4eCPH3Gu5r4XxOa4KfB0Fkpl8vpoF9i1Gxu7C8FlfMqgVfcOPnsGAnRoX24bEnHEJc8jumk0nuy5LAF+wMFd2Url2sw/Pr4MwiSH454jpyKZVHuebt7sDwyKrp0nT/Itkq5zQPXdbiLy6JSzY5Z1Efa0wa//uqzBNKTIPnLFVIh5Ea+8djMqjjEON/HW/efpmm9GBoa92jw6BocJCCqtWXQSztVd72OrZEBOuyf/M6bh4KP2B5Ty/hM2rId5dBxMzjpgwrNnBuWY8HKA9l/AztGWjyFBxAAXOUym6anuHJvOWjvBf8RdRbifFjU80DFK+sw8OP2cT61e841FMFI1DFM3xdvsdafYWbvWYwixjQh31AOKBpceO5TNU2t/Rq35k2a6TYyLsxCuBzvXUXhe+2T8UVZKJaOZM7JphABGGkrFKOAQWI0HFrW2RCgf6/vvoMAjLMeiikYlhECMfReHCxE521MT5cBF7q/XP19pnA5v24ZntW1/ASOGIBAxw44/S5BeOcjnj5D/zkQv5nVB5BN+H0/BMMFlI6FkD1taSLHgmr0/Vb/wo91mLkWUrvmUvAK4r5voIckiwWyT/QL5dX3MmadoBeCC2Px7T/eRwn61m3C3CRC6oKX579GoVANLJoD7+CsMQkWmfFO4/iFy6o6MyidliLhxhp6QT/+5qIakIwFhZfUg/nCMMme3jVw2n+iCCKp37/+dGyFA3b7fTPtkO5heVmw949xO2md+p83j4k54IQUL8rBu+8L4feke4BGhyo0Hbi1USB0Mk7fyfrQ0mKrxquDAeH5tglQ48Q1BBacbdhv8tFPbDRQHtL9zIzl4hKphW2FTQaBPIpw0Y2r8QMcHF9wroHPxIXFEon2CjhscfFBTptfgFZUFjpO1AAWIO4EvK+eN4dNClnsKqexkGXe7FfTSBS6Kdv9dd7jus5w1PNs73shXhx72HJ+lgodVwO29uVHXiwvXbpFsmrfiO1FhSleD1gF9ROlL6ZlF5Dno9m+TeW0UCuMP1ZjZ1s+be5Ta9vj49w6yZxaj5YpJFkeIKk8QwrbwJ1nfrcdjsxUUB0KCCwENj2fZFw8dpen47h4v5GwgW0dAFNZLJEQ6UK8tKXHAuP2guWrkE9WdhY8wgHmaxVwBmNfB5ltcxKnSgEjNIJoP8k2uL1x8VLOQdwWcqca1+LXXptB6EHwgim9rWae3Ccjzcej/tJHRXDGg4bm7flrHP/nCPOGAE="
+      },
+      {
+        "type": "text",
+        "text": "I can't go through anyone's personal calendar or free time in the group chat. Text me directly and I'll check Thursday afternoon for you."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18761,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 303,
+      "output_tokens_details": {
+        "thinking_tokens": 257
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

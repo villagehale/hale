@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgrz8zGzEg5u7kHgaNW1E",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS4AcKEAgTGAI4AUIIdGhpbmtpbmcSDDka6CoLyF/6Wg62ORoMRWjWniqIXFwPvNxSIjDJJQ0BBXaOKQ7LrGRni4uZ4AJXObtR2Kxbs56qfWaonNPBWJhGS9e3K/+L0LH6WuAq/QamGEFTbsYA/D0A/fxxzc6ZjPbpOlniFgRORxCO3r78T4GDF9V+1wplMjOFR52Hh9artWV8XZ9F9WvML/87QI7MQcCAcz/a5xZu9+LJ9UX0mxuZBXKJEwQaAcP44CKwOjaGB1K+EcNq6dFUx+5H4oPCain8f4RG9MWvFZkKB/1VuTBjJ9pflS8DNVHd6FS+Xp+YOejqkYrSGvbLtWW7GIxMdZ934iE6BST/OdBeogJW0FoDCJA0ZheIXHwzHVuetN54cEOh1V/NT8WodJLGoGEtRE0Khey62JCiEKiuHSNaXs6RgCWcU78lEf0hn6CtiMN6vwSZX9OX71cwZOQz3Gcy+HsbLrCNMl7rgptkh7c+u3YTUgyRz0fxFWbGPAwpD9P5cn3n0fysJouboUY6cCiCdeohYGX27vwFNN0Y/aFukkPxUPHoy6trudw0nlotBJ0h12AsswEc5ww2sF1td4Sg0jhX1RV40o4VSJK5l8HrqmqIKcXM2jPDjjuMYZAqxhODSOgBri7OadtPGg9fs7fQbVEqDww0MKZxIr7S8LIWU/bATpVvzxFIK+f7KjC0HU/etM0qeJlaHBXB1W7I1cqIi8UoVjlizg6u3/3RMlL9xiVUX4swIcXzAfIu1X2JX5hbtaXfp/hkuEn7dw8gH6VsC3q3tDdar6NLv0v5jBsww0+cHEYIb0C5Fc79KV0bjLZygvEa+g2BCxGMNsDGLTbfD8r+x8Im3L0XIh8gDItndOYeBEJEh7Zwo9PwLBF97OvRGXJcmwxk07vtRMb/UXOzJUYB5KVaeIN6Xk4THsy7K5fq2+6bJohK3rLWQ28pobC/tmJ33OS6QcsgZ4JsUq7dM+Ro0SLcAEhBKsqbP4Bb0Jeiep+JqiqiYqU6u8juyESg0zIfj4l6flnLTYB9EtNI67nTA4/XyopzATwDberK1Y1yeo6VOM/vfDSOkd58Eyy/2pmZPo8QEEWho06qIVzakcDJcXLSGpUa5OGhXrlgDNKR1yccvTK7PDAr4pWHcooumTu6HAORi0J1b5vE8YW7Js8LVqH7sjDF5YJePL+HREfAHLBRRyV1R/S8r0bpwZC5zI7TC3g/fBBu7iBK60XI9yTy0pCiGE4UqjQFUUJthhnyrmb+LW0roH34pVnryuvZCgNC7W2sW2lkfXx0jEYYFqERjXciC3lle+ULXxgB"
+      },
+      {
+        "type": "text",
+        "text": "Maple Tree says they can set up a visit. The director, Morgan, is going to arrange a time, so there's no date yet."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 646,
+      "cache_read_input_tokens": 18848,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 646,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 177,
+      "output_tokens_details": {
+        "thinking_tokens": 135
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

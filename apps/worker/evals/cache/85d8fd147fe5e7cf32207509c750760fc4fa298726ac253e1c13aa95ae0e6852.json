@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgrnrjHr9HbqhcgXkchEL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "That sounds exhausting, and two hours of screaming is brutal. Long night screaming at 28 months is common, and it often comes from an overtired kid or a bedtime that's drifted late. Tonight, try moving bedtime 30 minutes earlier and keep everything else the same. If he screams again, stay close and keep your voice low and calm, without trying to wake him. If the screaming ever comes with a fever, vomiting, or he seems in pain, call 811 any time, or 911 if it's an emergency."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 116,
+      "cache_read_input_tokens": 21528,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 116,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 167,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

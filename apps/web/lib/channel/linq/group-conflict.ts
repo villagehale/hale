@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
+import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasWord } from './kid-event';
 import type { PollOptionWrite } from './poll';
 
 /**
@@ -17,7 +19,9 @@ import type { PollOptionWrite } from './poll';
  * The model writes the alert from {@link groupConflictLineInput}. With LINQ_POLLS on, the
  * alert may carry the who-takes poll ({@link clashPollOffer}): the names are the people in
  * the chat as stored, the last option is the model's, and the model decides whether the
- * poll fits the ask at all. Nothing here is copy.
+ * poll fits the ask at all. Two plans of one child ({@link clashSameKid}) go to the model
+ * with nobody to hand one to and no poll: a second driver cannot put a child in two places.
+ * Nothing here is copy.
  */
 
 const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
@@ -430,6 +434,8 @@ export interface GroupConflictLineInput {
   /** The family's kids the group may hear about, so the model can tell one child's two plans. */
   kids: readonly string[];
   items: readonly GroupConflictItem[];
+  /** The child both plans are for, or null. Then nobody is suggested and no poll goes. */
+  sameKid: string | null;
   suggested: { name: string; takes: string } | null;
   alsoFree: readonly string[];
   busy: readonly string[];
@@ -447,15 +453,32 @@ export interface ClashPollOffer {
 }
 
 /**
+ * The child both plans in a clash are for, when both titles name them, or null. A clash
+ * with someone's busy time has one plan, so it is never one child's two.
+ */
+export function clashSameKid(clash: GroupClash, kids: readonly string[]): string | null {
+  if (!('plan' in clash.second)) return null;
+  const titles = [clash.first.title, clash.second.plan.title];
+  return (
+    kids
+      .map((name) => name.trim())
+      .find((name) => name.length >= 2 && titles.every((title) => hasWord(title, name))) ?? null
+  );
+}
+
+/**
  * The poll a clash may carry, or null. It asks who takes one plan: the one the alert hands
  * over, or the one plan in a clash with someone's busy time. Two plans with nobody to hand
- * one to stay an open ask in words. The names are everyone in the chat with an account, as
- * stored, so none is invented; fewer than two, or two that read the same, is no poll.
+ * one to, or one child's two plans, stay an open ask in words. The names are everyone in the
+ * chat with an account, as stored, so none is invented; fewer than two, or two that read
+ * the same, is no poll.
  */
 export function clashPollOffer(
   clash: GroupClash,
   people: readonly ClashPerson[],
+  kids: readonly string[],
 ): ClashPollOffer | null {
+  if (clashSameKid(clash, kids) !== null) return null;
   const pair = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
   const plan = clash.suggested
     ? pair.find((row) => row.key === clash.suggested?.planKey)
@@ -571,14 +594,16 @@ export function groupConflictLineInput(
       ? plan(clash.second.plan)
       : { kind: 'busy', who: nameOf(clash.second.busy.personId) };
   const plans = 'plan' in clash.second ? [clash.first, clash.second.plan] : [clash.first];
-  const takes = plans.find((row) => row.key === clash.suggested?.planKey);
+  const sameKid = clashSameKid(clash, context.kids);
+  const takes = sameKid ? undefined : plans.find((row) => row.key === clash.suggested?.planKey);
   const suggestedName = nameOf(clash.suggested?.personId);
   return {
     language: context.language,
     kids: [...context.kids],
     items: [plan(clash.first), second],
+    sameKid,
     suggested: takes && suggestedName ? { name: suggestedName, takes: takes.title } : null,
-    alsoFree: names(clash.alsoFree),
+    alsoFree: sameKid ? [] : names(clash.alsoFree),
     busy: names(clash.busy),
     couldAsk: names(clash.couldAsk),
     poll: context.poll
@@ -616,7 +641,7 @@ export const GROUP_CONFLICT_MAX_TOKENS = 400;
 export function groupConflictTextUsable(text: string): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
-  if (/https?:\/\/|www\./i.test(body)) return null;
+  if (hasLinkShape(body)) return null;
   return body;
 }
 

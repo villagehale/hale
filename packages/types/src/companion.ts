@@ -9,6 +9,7 @@
  * "most kids by X — if not, worth asking", never a pass/fail. This is general
  * guidance a parent reads alongside (not instead of) their care provider.
  */
+import type { FamilyCountry } from './country.js';
 import { ageInMonths, type FamilyStage, stageFromAgeInMonths } from './stage.js';
 
 /** Standing reminder attached to every health and milestone item (rule #1). */
@@ -64,6 +65,20 @@ const HEALTH_TIMELINE: readonly HealthItem[] = [
   { ageMonths: 144, kind: 'immunization', what: 'Grade-7 / pre-teen immunizations' },
   { ageMonths: 144, kind: 'well_child_visit', what: 'Pre-teen periodic health visit' },
 ].map((item) => ({ ...item, note: CONFIRM_WITH_PROVIDER }) as HealthItem);
+
+/**
+ * Which routine health schedule a family is shown (decision D6, 2026-11-04). The table
+ * above is Canada's, so only a Canadian family gets it. A US family gets none until a
+ * verified US one (AAP/CDC) lands through the provenance pass, and a family Hale cannot
+ * place gets none rather than Canada's by default. Each outcome is named so a reader can
+ * say why there is no schedule instead of reading an empty list as "nothing is due".
+ */
+export type HealthSchedule = 'canada' | 'no_verified_us_schedule' | 'country_unknown';
+
+export function healthScheduleFor(country: FamilyCountry | null): HealthSchedule {
+  if (country === 'CA') return 'canada';
+  return country === 'US' ? 'no_verified_us_schedule' : 'country_unknown';
+}
 
 /**
  * A developmental or learning milestone for a stage, with the typical age window
@@ -243,6 +258,9 @@ export interface CompanionView {
   ageMonths: number;
   /** Name echoed back when provided, for personalized copy. */
   name: string | null;
+  /** The schedule the health lists below come from. Anything but 'canada' leaves all
+   * three empty. */
+  healthSchedule: HealthSchedule;
   /** Health items at or after the child's current age, soonest first. */
   nextHealth: readonly UpcomingHealthItem[];
   /**
@@ -353,23 +371,28 @@ function toUpcoming(item: HealthItem, months: number, done: CompanionDone): Upco
  * upcoming item within HEALTH_HORIZON_MONTHS, or null, so a "today" card never
  * leads with something years away. Each item carries `done` from `done.health`.
  *
+ * The health lists read the schedule for the family's `country` (healthScheduleFor):
+ * a family without a verified schedule gets three empty lists, never Canada's.
+ *
  * Milestones are the child's current stage, tagged with where they sit in the
  * typical window (rule #1: "watch" means worth asking, never "delayed") and
  * `done` from `done.milestones`.
  */
 export function companionForChild(
-  child: { dateOfBirth: string | Date; name?: string | null },
+  child: { dateOfBirth: string | Date; name?: string | null; country: FamilyCountry | null },
   now: Date = new Date(),
   done: CompanionDone = NO_DONE,
 ): CompanionView {
   const months = ageInMonths(child.dateOfBirth, now);
   const stage = stageFromAgeInMonths(months);
+  const healthSchedule = healthScheduleFor(child.country);
+  const timeline = healthSchedule === 'canada' ? HEALTH_TIMELINE : [];
 
-  const nextHealth = HEALTH_TIMELINE.filter((item) => item.ageMonths >= months)
+  const nextHealth = timeline.filter((item) => item.ageMonths >= months)
     .map((item) => toUpcoming(item, months, done))
     .sort((a, b) => a.ageMonths - b.ageMonths);
 
-  const recentlyPassedHealth = HEALTH_TIMELINE.filter(
+  const recentlyPassedHealth = timeline.filter(
     (item) => item.ageMonths < months && item.ageMonths >= months - RECENT_PASSED_MONTHS,
   )
     .map((item) => toUpcoming(item, months, done))
@@ -392,6 +415,7 @@ export function companionForChild(
     stage,
     ageMonths: months,
     name: child.name ?? null,
+    healthSchedule,
     nextHealth,
     todayHealth,
     recentlyPassedHealth,

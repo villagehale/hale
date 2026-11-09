@@ -10,7 +10,9 @@
  * whether `connectorsOffered` holds the connector this step is not: code
  * refuses that reply under this step's link. `noYesIn` names the
  * connector a question must not turn into a yes: code clears that yes only
- * when `parentQuestion` is set, so a yes without it is a miss.
+ * when `parentQuestion` is set, so a yes without it is a miss. `offersNone` is a
+ * turn whose reply must offer no connector at all. `sendable` is a reply that
+ * must pass the code judge for its step, so code would send it.
  */
 
 const DONE_THROUGH_NAME = {
@@ -29,6 +31,62 @@ const DONE_THROUGH_SCHEDULE = {
   calendar: true,
   schedule: true,
 };
+
+const NOTHING_YET = {
+  postal: false,
+  kids: false,
+  ages: false,
+  name: false,
+  gmail: false,
+  calendar: false,
+  schedule: false,
+  coparent: false,
+};
+
+// VIL-617: the first ask, turned down. Both attempts must write a reply code sends.
+const PLACE_DECLINED_EN = {
+  step: 'place',
+  parentWords: "I'd rather not give out my postal code",
+  checklist: NOTHING_YET,
+  recentTurns: [
+    {
+      role: 'hale',
+      body: "Hi, I'm Hale. I find what's on for your kids near you. What's your postal code or ZIP?",
+      asked: true,
+    },
+  ],
+};
+const PLACE_DECLINED_FR = {
+  step: 'place',
+  language: 'fr',
+  parentWords: 'je préfère ne pas donner mon code postal',
+  checklist: NOTHING_YET,
+  recentTurns: [
+    {
+      role: 'hale',
+      body: "Salut, c'est Hale. Je trouve ce qui se passe pour tes enfants près de chez toi. C'est quoi ton code postal?",
+      asked: true,
+    },
+  ],
+};
+// The first attempt's draft as Preview refused it: two questions. The retry is
+// told what this message should ask, as speakFriend tells it.
+const PLACE_DECLINED_RETRY = {
+  draft:
+    "Totally fair, you don't have to share it. Could you tell me the city instead? Or just the first three characters?",
+  reason: 'question',
+  askNote: true,
+};
+const PLACE_DECLINED_RETRY_FR = {
+  draft:
+    'Pas de souci, tu n’es pas obligé. Tu peux me dire ta ville à la place? Ou juste les trois premiers caractères?',
+  reason: 'question',
+  askNote: true,
+};
+
+const SWIM_LINE = 'Swim lessons at the community pool (ages 3-5) - Saturdays 10:00';
+const STORY_LINE = 'Library storytime (all ages) - Tuesdays 10:30 - free';
+const PLAY_LINE = 'Drop-in playgroup (0-6) - weekday mornings - free';
 
 const CARPOOL_TURN = {
   step: 'coparent',
@@ -113,9 +171,90 @@ export const FRIEND_MARKS_FIXTURES = [
       checklist: DONE_THROUGH_NAME,
     },
     emits: ['asks', 'parentQuestion', 'connectorsOffered'],
-    expect: {},
+    expect: { parentQuestion: true },
     offersOther: false,
     noYesIn: 'connectGmail',
+  },
+  // A question about Gmail is never a yes to it, with or without the question mark.
+  {
+    id: 'email-question-en',
+    over: {
+      step: 'email',
+      parentWords: 'do you read all my emails?',
+      parentName: 'Dana',
+      checklist: DONE_THROUGH_NAME,
+    },
+    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
+    expect: { parentQuestion: true },
+    offersOther: false,
+    noYesIn: 'connectGmail',
+  },
+  {
+    id: 'email-question-en-no-mark',
+    over: {
+      step: 'email',
+      parentWords: 'do you read all my emails',
+      parentName: 'Dana',
+      checklist: DONE_THROUGH_NAME,
+    },
+    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
+    expect: { parentQuestion: true },
+    offersOther: false,
+    noYesIn: 'connectGmail',
+  },
+  // Their own ask, mid-intake and about something else: answered, with no Gmail pitch.
+  {
+    id: 'ages-own-question',
+    over: {
+      step: 'ages',
+      parentWords: 'what kind of things do you find for them?',
+      agesLabel: 'Mia and Leo',
+      children: [
+        { name: 'Mia', ageMonths: null },
+        { name: 'Leo', ageMonths: null },
+      ],
+      checklist: { ...NOTHING_YET, postal: true, kids: true },
+    },
+    emits: ['asks', 'parentQuestion', 'connectorsOffered'],
+    expect: { parentQuestion: true },
+    offersNone: true,
+    printReply: true,
+  },
+  {
+    id: 'place-declined-en',
+    over: PLACE_DECLINED_EN,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    sendable: true,
+    printReply: true,
+  },
+  {
+    id: 'place-declined-en-retry',
+    prompt: 'short',
+    over: PLACE_DECLINED_EN,
+    retry: PLACE_DECLINED_RETRY,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    sendable: true,
+    printReply: true,
+  },
+  {
+    id: 'place-declined-fr',
+    over: PLACE_DECLINED_FR,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    sendable: true,
+    printReply: true,
+  },
+  {
+    id: 'place-declined-fr-retry',
+    prompt: 'short',
+    over: PLACE_DECLINED_FR,
+    retry: PLACE_DECLINED_RETRY_FR,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    sendable: true,
+    printReply: true,
   },
   {
     id: 'calendar-yes',
@@ -239,6 +378,31 @@ export const FRIEND_MARKS_FIXTURES = [
     expect: { claimsSaved: true },
     addsAtLeast: 1,
   },
+  // The map (VIL-526): the parent sees only the bubbles the model writes, so
+  // each group needs one that code keeps (its own lines' facts, no other group's).
+  {
+    id: 'find-show-two-groups',
+    over: {
+      step: 'find_show',
+      parentWords: 'Mia is 4 and Leo is 1',
+      placeLabel: 'Springfield',
+      agesLabel: 'Mia (4) and Leo (1)',
+      ageMonths: [48, 12],
+      children: [
+        { name: 'Mia', ageMonths: 48 },
+        { name: 'Leo', ageMonths: 12 },
+      ],
+      findLines: [SWIM_LINE, STORY_LINE, PLAY_LINE],
+      findGroups: [
+        { category: 'swimming', lines: [SWIM_LINE] },
+        { category: 'free_public', lines: [STORY_LINE, PLAY_LINE] },
+      ],
+      checklist: { ...DONE_THROUGH_NAME, name: false },
+    },
+    emits: [],
+    expect: {},
+    groupBubbles: 2,
+  },
 ];
 
 const OTHER_CONNECTOR = { email: 'calendar', calendar: 'gmail' };
@@ -253,9 +417,15 @@ const FIELD_TYPE = {
     v === null || ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'].includes(v),
 };
 
-/** The fields this fixture needed and the model left out or mistyped. Empty is a pass. */
-export function friendMarksMisses(fixture, value) {
+/**
+ * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
+ * `keptGroupBubbles` is how many map bubbles friend-voice kept from this reply.
+ */
+export function friendMarksMisses(fixture, value, { keptGroupBubbles = 0, judged = null } = {}) {
   const misses = [];
+  if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
+    misses.push(`groupBubbles:${keptGroupBubbles}`);
+  }
   for (const field of fixture.emits) {
     if (!value || !(field in value) || !FIELD_TYPE[field](value[field])) {
       misses.push(`${field}:omitted`);
@@ -265,6 +435,13 @@ export function friendMarksMisses(fixture, value) {
     const offered = Array.isArray(value?.connectorsOffered) ? value.connectorsOffered : [];
     const other = offered.includes(OTHER_CONNECTOR[fixture.over.step]);
     if (other !== fixture.offersOther) misses.push(`connectorsOffered:${JSON.stringify(offered)}`);
+  }
+  if (fixture.offersNone) {
+    const offered = Array.isArray(value?.connectorsOffered) ? value.connectorsOffered : [];
+    if (offered.length > 0) misses.push(`connectorsOffered:${JSON.stringify(offered)}`);
+  }
+  if (fixture.sendable && judged?.ok !== true) {
+    misses.push(`reply:unsendable:${judged?.reason ?? 'not_judged'}`);
   }
   if (fixture.noYesIn && value?.[fixture.noYesIn] === true && value?.parentQuestion !== true) {
     misses.push(`${fixture.noYesIn}:yes_kept`);
@@ -282,7 +459,7 @@ export function friendMarksMisses(fixture, value) {
     if (adds < fixture.addsAtLeast) misses.push(`scheduleAdds:${adds}`);
   }
   for (const [field, want] of Object.entries(fixture.expect)) {
-    const got = value?.[field];
+    const got = value?.[field] ?? null;
     if (got !== want) misses.push(`${field}:${JSON.stringify(got ?? null)}`);
   }
   return misses;

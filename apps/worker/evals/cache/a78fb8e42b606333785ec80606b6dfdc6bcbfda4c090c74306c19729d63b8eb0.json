@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgsAzwZpvZBK1GyWz4KFt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvwkKEAgTGAI4AUIIdGhpbmtpbmcSDH2KjKcWYdLBg7BoyxoMavzLmAlTcleyqg3gIjC3wpjO+6KJNk4ddjqwTaAWmWhc4vzyAtLVbVSyPnlk2k2u4Mt6WrXQLqF0RvDcZFQq3AjUDUShiNDsAPJZQMmRQrom/v7eKEXd8nxNBFKTryInOeNM6zEGR106ZNsR4nd7wVOJLQbChwlTUkSo8K5FBzSOhjDi3cdfcFDhD2+1hBTo8A/O5Cn0T4cOH97dkBowstlUFkFAdWIkYROZWIoAIVC0Z9JrFP2tELh553gWFgMht9QwrfQ7WFQbjUnORfDUoVQLAFzabZhtNAiEgb/wIpxyu7+cA2zIqgTuPovLn9XHqlMUIIkfrM+bNGag5GiDoHrgAKUpkZKKwPnVDvK1y5yX4lHwGcGSJtSqKhFk3ygEIPYMofJrNCrfeJU7G46uhQ1/ZynJPWkGRRCB+BaEm3d6wcd4yt3BINPxZ93vycf1Q5m2bsdezM/Ddg7wLG2Cu2GyH4Gux2RKLJ8EVBxpWsh9uYhn1ZDdWa5y9qLLTvCAU1GDY4Y8uTpaI+X4etfalL+2pXzKUDIA+kh98Icu27ALlWtXql5pSS9c988rftrEk8N+mdilQQPvf4796Yai8/sLAjK45zR2r581ulxbANB0dXshIETYjRHMIBMvMZlAHRxmlS5tnxj+TqJP4fd1aXONMpEb1b3mPuF86TXz37fIeTqTepKOsE+8pRa3vlSUepx31giSQBnwqSQwmH1uFFGySG9R2IeL3yFsoB+kWzavmDxxitWu4ocWPouQ/nmceI0Ssjl7B6DhtTkQvJyY2RW1Slzm0LzdotaSBQKouQJkk4cYmQtmyW9Hs1Kp2frG7aAJ5A2vD/UHZaw7+SQMYxGQLECOI1nBuxB8XBnt5rahce/ypIkvwQwn8myMQHJTO2SLmO/Apdlz5RfC8m2trR8modXum5T1OEi7jvndwWX+Xm39LHo0nbX6Sb5hhccfWO0DwFCTnEQnw4DXZQkShpPNw7qBd7fyNRtRzWr1PLcx/rTzrCJytDmHN+Yw8DU3FlA8zF8M3EOvvHaGAevtt944G/9RQb++b6yfdjeSU9JL1I8dIU1S9r5H1qo5dpmu/xIirr/W5A26O5L9jS91ALHpO7QrBZGTgGK+JgUnCxMZ7JqhvAFAm0KmjY3FjxzE+OuvTIYfE7AEfJLSgwDXgNvDKCLFzfUwBq5FNZ69UqgtUaAnzNNdtMSdlQ4AOiNSnsp+aGdSp1HkClW7c1rZM21wusXRbHWdZPYMk+0cIWAlDvrbs/0rF/+DOY7ht0sTiYWltnnRO9qcLeaJHQDPROIbb7gVr8/iYTKEgb9/ZMxukXIR/mJ8cOVp7nAj8eJ3grKgHbKEz26CoTVrmwE33kjoQD/4CaWsI5MDMiN0z6OMl5L3hbx3RGZrsF3UBJ/aoekc+I1mXyWfJkb0CkCfvY+beoK1d7sUgm0YgdKN4CeN17C0r7dNBfMQpmLwhb1MraDMyX/cgLpFFRl1uBhNz82mLB2Spia5h4PRUZwgEIB7ndPnrtTwHBr36Edg2LaTAX2QKU3hHQIp3y85VxoHidZ3gsNhWo66dA9jTQcYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01QJQszkXyWCnr1bYjxfAiA1",
+        "name": "promise_activity_followup",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 233,
+      "cache_read_input_tokens": 19505,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 233,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 264,
+      "output_tokens_details": {
+        "thinking_tokens": 232
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

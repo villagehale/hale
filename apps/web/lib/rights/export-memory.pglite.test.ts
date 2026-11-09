@@ -20,26 +20,92 @@ const NOW = new Date('2026-11-08T15:00:00.000Z');
 const TEEN_NAME = 'Tamsin';
 
 /**
+ * The tables that were still unreviewed when the set was frozen (VIL-622). This list
+ * only shrinks: a table leaves it when the export reads it or a written reason replaces
+ * `unreviewed`. A table that is not on it cannot be marked `unreviewed`, so every table
+ * added after the freeze declares its export.
+ */
+const UNREVIEWED_AT_FREEZE: ReadonlySet<string> = new Set([
+  'caregiver_invites',
+  'channel_pending_asks',
+  'chat_attachments',
+  'email_alert_offers',
+  'email_forwards_pending',
+  'email_sends',
+  'event_reminders',
+  'family_active_days',
+  'family_areas',
+  'family_forward_senders',
+  'family_interest_settings',
+  'family_invites',
+  'family_link_wallets',
+  'family_plans',
+  'family_upgrade_offers',
+  'family_watch_subscriptions',
+  'group_decision_sync',
+  'group_reminders',
+  'interest_next_step_offers',
+  'join_invites',
+  'kid_interests',
+  'kid_passport_profiles',
+  'kid_relevance_verdicts',
+  'linq_group_carpools',
+  'linq_group_members',
+  'linq_group_onboarding',
+  'linq_group_plans',
+  'linq_group_polls',
+  'linq_group_rosters',
+  'linq_multi_family_joins',
+  'linq_multi_family_ledger',
+  'linq_multi_family_members',
+  'linq_poll_options',
+  'linq_shared_group_people',
+  'mcp_authorization_codes',
+  'optional_ask_ledger',
+  'parent_calendar_blocks',
+  'parent_channels',
+  'party_invites',
+  'pending_disambiguations',
+  'proactive_candidates',
+  'provider_signup_sessions',
+  'sms_intake_sessions',
+  'social_spots',
+  'teen_access_grants',
+  'village_endorsements',
+  'week_plans',
+]);
+
+const UNREVIEWED = 'unreviewed';
+
+/** The entries marked unreviewed that the freeze does not hold. */
+function unreviewedAfterFreeze(entries: Record<string, string>): string[] {
+  return Object.entries(entries)
+    .filter(([table, reason]) => reason === UNREVIEWED && !UNREVIEWED_AT_FREEZE.has(table))
+    .map(([table]) => table)
+    .sort();
+}
+
+/**
  * Family tables the export does not read, and why. A new `family_id` table fails the
- * ratchet until it is exported or added here. Entries marked `unreviewed` predate the
- * ratchet (VIL-597) and are a known gap to work down, not a decision.
+ * ratchet until it is exported or added here with a reason. Only tables in
+ * UNREVIEWED_AT_FREEZE may say `unreviewed`; that is a known gap to work down, not a
+ * decision.
  */
 const NOT_IN_EXPORT: Record<string, string> = {
   family_sweep_marks: 'scheduling metadata, no family content',
+  capability_denials:
+    'a capability key and two message ids; each no and correction is an exported audit row',
   family_memory_aliases: 'derived search tokens of facts already exported',
   agent_runs: 'model usage accounting, no family content',
   caregiver_invites: 'unreviewed',
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
-  consent_records: 'unreviewed',
-  conversations: 'unreviewed',
   email_alert_offers: 'unreviewed',
   email_forwards_pending: 'unreviewed',
   email_sends: 'unreviewed',
   event_reminders: 'unreviewed',
   family_active_days: 'unreviewed',
   family_areas: 'unreviewed',
-  family_events: 'unreviewed',
   family_forward_senders: 'unreviewed',
   family_interest_settings: 'unreviewed',
   family_invites: 'unreviewed',
@@ -49,7 +115,6 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_watch_subscriptions: 'unreviewed',
   group_decision_sync: 'unreviewed',
   group_reminders: 'unreviewed',
-  integrations: 'unreviewed',
   interest_next_step_offers: 'unreviewed',
   join_invites: 'unreviewed',
   kid_interests: 'unreviewed',
@@ -183,13 +248,25 @@ describe('family memory in the right-to-access copy', () => {
         expiresAt: new Date('2026-12-01T00:00:00.000Z'),
       },
     ]);
-    await db.database.insert(schema.agentCommitments).values({
-      familyId,
-      commitmentKind: 'first_find',
-      createdFrom: 'msg-3',
-      summary: 'your first weekend find lands in a day or two',
-      dueAt: new Date('2026-11-10T00:00:00.000Z'),
-    });
+    await db.database.insert(schema.agentCommitments).values([
+      {
+        familyId,
+        commitmentKind: 'first_find',
+        createdFrom: 'msg-3',
+        summary: 'your first weekend find lands in a day or two',
+        heardFacts: ['when:time:9:15', 'price:free'],
+        dueAt: new Date('2026-11-10T00:00:00.000Z'),
+      },
+      {
+        familyId,
+        commitmentKind: 'plan_offer',
+        createdFrom: 'msg-4',
+        subjectChildId: teenId,
+        summary: 'teen raw promise',
+        heardFacts: ['when:time:teen-raw-anchor'],
+        dueAt: new Date('2026-11-11T00:00:00.000Z'),
+      },
+    ]);
 
     const doc = await assembleFamilyExport(db.database, familyId, {
       actorUserId,
@@ -217,6 +294,13 @@ describe('family memory in the right-to-access copy', () => {
       expect.objectContaining({
         kind: 'first_find',
         summary: 'your first weekend find lands in a day or two',
+        heardFacts: ['when:time:9:15', 'price:free'],
+      }),
+      expect.objectContaining({
+        kind: 'plan_offer',
+        summary: TEEN_REDACTED_PLACEHOLDER,
+        heardFacts: null,
+        withheld: 'teen',
       }),
     ]);
 
@@ -288,6 +372,7 @@ describe('family memory in the right-to-access copy', () => {
       commitmentKind: kind,
       createdFrom,
       summary,
+      heardFacts: [`price:money:${summary}`],
       dueAt: new Date('2026-11-10T00:00:00.000Z'),
     });
     await db.database
@@ -312,9 +397,9 @@ describe('family memory in the right-to-access copy', () => {
       [null, 'another_adult'],
       ['group carpool plan', null],
     ]);
-    expect(doc.memory.commitments.map((c) => [c.summary, c.withheld])).toEqual([
-      ['a find for A', null],
-      [null, 'another_adult'],
+    expect(doc.memory.commitments.map((c) => [c.summary, c.heardFacts, c.withheld])).toEqual([
+      ['a find for A', ['price:money:a find for A'], null],
+      [null, null, 'another_adult'],
     ]);
     expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
       ['pickup', 'pickup at three', null],
@@ -532,5 +617,20 @@ describe('family memory in the right-to-access copy', () => {
 
     const unread = familyTables().filter((table) => !read.has(table));
     expect(unread).toEqual(Object.keys(NOT_IN_EXPORT).sort());
+    // group_list_items has no family_id, so the schema scan above cannot see it; the
+    // export reads it through group_lists.
+    expect(read.has('group_list_items')).toBe(true);
+  });
+
+  it('marks no table unreviewed that the freeze does not hold', () => {
+    expect(unreviewedAfterFreeze(NOT_IN_EXPORT)).toEqual([]);
+    expect(unreviewedAfterFreeze({ ...NOT_IN_EXPORT, a_table_added_later: UNREVIEWED })).toEqual([
+      'a_table_added_later',
+    ]);
+    // Every frozen table is still a family table nobody exports; one that the export now
+    // reads, or that has a reason, comes off the freeze.
+    for (const table of UNREVIEWED_AT_FREEZE) {
+      expect(NOT_IN_EXPORT[table], table).toBe(UNREVIEWED);
+    }
   });
 });

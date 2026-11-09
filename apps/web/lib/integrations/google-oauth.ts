@@ -16,15 +16,21 @@ import type { OAuthTokens } from './token-vault';
  * {@link CONNECTOR_SCOPES} stay read-only. Calendar writes and Gmail drafts are
  * requested only when this user is armed (VIL-93) — the global flag is exactly
  * `true`, or their Hale user id is on `GOOGLE_WRITE_SCOPES_ALLOWLIST` — and only
- * on the connector they belong to. Drive is never asked for a write.
+ * on the connector they belong to.
  */
 
 export type ConnectorProvider = 'gcal' | 'gmail' | 'gdrive';
 
-export const CONNECTOR_SCOPES: Record<ConnectorProvider, readonly string[]> = {
+/**
+ * The connectors a parent can grant. Drive is a stored connector but not a consent
+ * connector: `drive.readonly` is restricted and out of the Google verification
+ * submission (VIL-556), so no consent URL or grant check can name it.
+ */
+export type ConsentConnector = Exclude<ConnectorProvider, 'gdrive'>;
+
+export const CONNECTOR_SCOPES: Record<ConsentConnector, readonly string[]> = {
   gcal: ['https://www.googleapis.com/auth/calendar.events.owned.readonly'],
   gmail: ['https://www.googleapis.com/auth/gmail.readonly'],
-  gdrive: ['https://www.googleapis.com/auth/drive.readonly'],
 };
 
 /**
@@ -36,7 +42,7 @@ export const CONNECTOR_SCOPES: Record<ConnectorProvider, readonly string[]> = {
 export const GOOGLE_PROFILE_SCOPE = 'https://www.googleapis.com/auth/userinfo.profile';
 
 /** The connector provider enum values — the single list the sync poller iterates. */
-export const CONNECTOR_PROVIDERS = Object.keys(CONNECTOR_SCOPES) as ConnectorProvider[];
+export const CONNECTOR_PROVIDERS: ConnectorProvider[] = ['gcal', 'gmail', 'gdrive'];
 
 /** Narrow an arbitrary path segment to a connector provider (rejects the other integration_provider values). */
 export function isConnectorProvider(value: string): value is ConnectorProvider {
@@ -50,15 +56,14 @@ export function isConnectorProvider(value: string): value is ConnectorProvider {
  * or `gmail.compose` to that connector only.
  */
 export function requestedConnectorScopes(
-  provider: ConnectorProvider,
+  provider: ConsentConnector,
   env: WriteScopeEnv = process.env,
   userId?: string | null,
 ): readonly string[] {
   const base = CONNECTOR_SCOPES[provider];
   if (!googleWriteScopesEnabledFor(userId, env)) return base;
   if (provider === 'gcal') return [...base, CALENDAR_EVENTS_SCOPE];
-  if (provider === 'gmail') return [...base, GMAIL_COMPOSE_SCOPE];
-  return base;
+  return [...base, GMAIL_COMPOSE_SCOPE];
 }
 
 const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -129,7 +134,7 @@ export function connectorRedirectUri(): string {
 
 /** The Google consent URL for connecting one connector. `state` is the CSRF/binding token. */
 export function buildGoogleAuthUrl(opts: {
-  provider: ConnectorProvider;
+  provider: ConsentConnector;
   state: string;
   redirectUri: string;
   /** The connecting Hale user. Omitted, the allowlist cannot arm this URL. */

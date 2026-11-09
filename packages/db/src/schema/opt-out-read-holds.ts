@@ -32,12 +32,16 @@ export const optOutHeldMessages = pgTable(
     heldAt: timestamp('held_at', { withTimezone: true }).notNull(),
     nextReadAt: timestamp('next_read_at', { withTimezone: true }).notNull(),
     readAttempts: integer('read_attempts').notNull().default(0),
-    /** VIL-602 · what the text was first read as, when it was read as a crisis: its
-     * language, and the situation and who from their closed lists. Here, not on the crisis
-     * claim, so they go when the row goes, and an erasure clears them. */
+    /** VIL-602 · retired plain copies of the read below (0204). Nothing writes them; an
+     * erasure still clears them. Dropped after a deprecation cycle (rule #9). */
     crisisLanguage: text('crisis_language'),
     crisisSituation: text('crisis_situation'),
     crisisWho: text('crisis_who'),
+    /** VIL-602 · what the text was first read as, when it was read as a crisis: its
+     * language, and the situation and who from their closed lists, as one encrypted JSON
+     * blob (APP_ENCRYPTION_KEY). Here, not on the crisis claim, so it goes when the row
+     * goes, and an erasure clears it. */
+    crisisReadEncrypted: text('crisis_read_encrypted'),
   },
   (t) => ({
     phoneIdx: index('opt_out_held_messages_phone_idx').on(t.phoneHash),

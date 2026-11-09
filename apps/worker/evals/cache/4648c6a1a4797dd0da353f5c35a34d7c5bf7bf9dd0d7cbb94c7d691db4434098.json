@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in French, that Hale stop sending emails without asking. Autonomy for send_email and reply_to_email was turned off this turn, so saying it is done is true and not an overclaim. The reply is in French, matches the parent's register, and stops after one plain sentence with no machinery.",
+    "score": 5
+  }
+}

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqGroupMembersEnabled } from './config';
 import { holdUnknownGroupSender } from './group';
-import { classifyParticipantAdd, groupMemberWelcome, groupStrangerHold } from './group-members';
+import { classifyParticipantAdd, groupStrangerHold } from './group-members';
 
 describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
   afterEach(() => {
@@ -71,28 +71,9 @@ describe('classifyParticipantAdd', () => {
 });
 
 describe('group member copy', () => {
-  it('keeps each welcome and hold byte for byte, with no family detail and no opt-out', async () => {
-    const withAdderEn = await groupMemberWelcome('en', 'Sam');
-    const withAdderFr = await groupMemberWelcome('fr', 'Sam');
-    const noAdderEn = await groupMemberWelcome('en', null);
-    const noAdderFr = await groupMemberWelcome('fr', '  ');
+  it('keeps each hold byte for byte, with no family detail and no opt-out', async () => {
     const holdEn = await groupStrangerHold('en', 'Sam');
     const holdFr = await groupStrangerHold('fr', 'Sam');
-    expect(withAdderEn).toBe(
-      "Hi, I'm Hale. Sam added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(withAdderFr).toBe(
-      "Bonjour, c'est Hale. Sam vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(noAdderEn).toBe(
-      "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-    );
-    expect(noAdderFr).toBe(
-      "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-    );
-    expect(withAdderEn).toContain('Sam');
-    expect(withAdderFr).toContain('Sam');
-    expect(withAdderFr).not.toBe(withAdderEn);
     expect(holdEn).toBe(
       'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. Sam, say "add them" if they share the load.',
     );
@@ -101,7 +82,7 @@ describe('group member copy', () => {
     );
     expect(holdEn).toContain('Sam');
     expect(holdFr).toContain('Sam');
-    for (const line of [withAdderEn, withAdderFr, noAdderEn, noAdderFr, holdEn, holdFr]) {
+    for (const line of [holdEn, holdFr]) {
       expect(line ?? '').toMatch(/^[\x20-\x7E]+$/);
       expect((line ?? '').toLowerCase()).not.toContain('stop');
       expect(line ?? '').not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);

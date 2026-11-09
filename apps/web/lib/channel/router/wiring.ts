@@ -15,6 +15,7 @@ import {
 import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/activity/deep-queue';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
+import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
@@ -38,6 +39,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
@@ -76,6 +78,7 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -184,7 +187,7 @@ export async function loadInboundContext(
   ]);
 
   return {
-    body: message.body ?? '',
+    body: withoutLiveViewLinks(message.body ?? ''),
     role,
     primaryParentName,
     reply,
@@ -734,6 +737,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createReplyTransport({
       // SMS-shaped answers leave through the shared phone door (Linq by default).
       phone: createOutboundTransport(),
+      mentionFor: ({ chatId, body }) => resolveGroupMention({ database, chatId, text: body }),
     }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
@@ -781,6 +785,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
     dispatchDeepResearch: (payload) =>

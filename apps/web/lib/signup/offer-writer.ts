@@ -1,6 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SignupSession } from './types';
 
@@ -44,23 +45,14 @@ export const SIGNUP_OFFER_TOOL_SCHEMA = {
   required: ['text'],
 } as const;
 
-const URL_PATTERN = /https?:\/\/[^\s)]+/gi;
-
 /** Why a draft cannot leave. Empty means it can. */
 export function signupOfferViolations(text: string, facts: SignupOfferFacts): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
   if (tidy.length > MAX_CHARS) out.push('too long');
-  const urls = tidy.match(URL_PATTERN) ?? [];
   if (!tidy.includes(facts.registrationUrl)) out.push('missing the registration link');
-  if (
-    urls.some(
-      (url) => !facts.registrationUrl.startsWith(url) && !url.startsWith(facts.registrationUrl),
-    )
-  ) {
-    out.push('contains another link');
-  }
+  if (hasLinkBeyond(tidy, [facts.registrationUrl])) out.push('contains another link');
   const grounded = facts.sessions.some((session) => tidy.includes(session.label));
   if (!grounded) out.push('missing a session Hale saw');
   return out;

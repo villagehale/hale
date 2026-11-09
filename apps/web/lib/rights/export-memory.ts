@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { namesAny } from '@hale/worker/memory-context';
+import { namesAnyIn } from '@hale/worker/memory-context';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
@@ -70,6 +70,9 @@ export interface FamilyMemoryExport {
   commitments: {
     kind: string;
     summary: string | null;
+    /** The schedule anchors Hale already told the parent on this promise. Null whenever
+     * `withheld` is set, like the summary. */
+    heardFacts: string[] | null;
     dueAt: string;
     createdAt: string;
     fulfilledAt: string | null;
@@ -78,18 +81,37 @@ export interface FamilyMemoryExport {
   }[];
 }
 
-interface ExportChild {
+export interface ExportChild {
   id: string;
   name: string;
   dateOfBirth: string;
 }
 
-function iso(date: Date | null): string | null {
-  return date ? date.toISOString() : null;
+/**
+ * The deterministic age gate every block of the copy applies (rule #1): a row is the
+ * teen's when it names a 13+ child by id, or its text names one. A teen's id never
+ * leaves, and a younger child is named.
+ */
+export interface ExportTeenGate {
+  isPrivate(childIds: readonly (string | null)[], texts: readonly unknown[]): boolean;
+  childName(childId: string | null): string | null;
 }
 
-function textOf(value: unknown): string {
-  return typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
+export function exportTeenGate(children: readonly ExportChild[], now: Date): ExportTeenGate {
+  const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
+  const teenIds = new Set(teens.map((child) => child.id));
+  const teenNames = teens.map((child) => child.name);
+  const nameById = new Map(children.map((child) => [child.id, child.name]));
+  return {
+    isPrivate: (childIds, texts) =>
+      childIds.some((id) => id !== null && teenIds.has(id)) || namesAnyIn(texts, teenNames),
+    childName: (childId) =>
+      childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null),
+  };
+}
+
+function iso(date: Date | null): string | null {
+  return date ? date.toISOString() : null;
 }
 
 const SHARED_FACT_TYPES: ReadonlySet<string> = new Set(['logistic', 'routine']);
@@ -191,15 +213,7 @@ export async function loadFamilyMemoryExport(
   requester: { userId: string },
   now: Date,
 ): Promise<FamilyMemoryExport> {
-  const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
-  const teenIds = new Set(teens.map((child) => child.id));
-  const teenNames = teens.map((child) => child.name);
-  const nameById = new Map(children.map((child) => [child.id, child.name]));
-  const isPrivate = (childIds: readonly (string | null)[], texts: readonly string[]) =>
-    childIds.some((id) => id !== null && teenIds.has(id)) ||
-    texts.some((text) => namesAny(text, teenNames));
-  const childName = (childId: string | null) =>
-    childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null);
+  const { isPrivate, childName } = exportTeenGate(children, now);
 
   const [factRows, episodeRows, workstreamRows, commitmentRows, laterWrites] = await Promise.all([
     database
@@ -256,7 +270,7 @@ export async function loadFamilyMemoryExport(
   };
   const withheldFor = (
     childIds: readonly (string | null)[],
-    texts: readonly string[],
+    texts: readonly unknown[],
     sourceReason: MemoryWithheldReason | null,
   ): MemoryWithheldReason | null => (isPrivate(childIds, texts) ? 'teen' : sourceReason);
   const words = <T>(withheld: MemoryWithheldReason | null, text: T): T | string | null => {
@@ -271,7 +285,7 @@ export async function loadFamilyMemoryExport(
         SHARED_FACT_TYPES.has(row.factType) || SHARED_FACT_SOURCES.has(row.memorySource);
       const withheld = withheldFor(
         [row.childId],
-        [row.factKey, textOf(row.factValue)],
+        [row.factKey, row.factValue],
         sharedBySource ? null : unattributed,
       );
       return {
@@ -325,6 +339,7 @@ export async function loadFamilyMemoryExport(
       return {
         kind: row.commitmentKind,
         summary: words(withheld, row.summary),
+        heardFacts: withheld === null ? row.heardFacts : null,
         dueAt: row.dueAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
         fulfilledAt: iso(row.fulfilledAt),

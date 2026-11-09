@@ -52,6 +52,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { RADAR_FIXTURES, WATCH_OFFER } from './radar-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -407,85 +408,14 @@ function checkMessage(fixture, message, judgeScore, attributionScore, askScore) 
   return failures;
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the FIRST useful text message Hale sends a parent,',
-  "sixty seconds after they texted their kids' names to a number on a poster. You are",
-  'given the FACTS Hale decided on and the message written from them.',
-  'Score VOICE & FAITHFULNESS on a 1-5 integer scale. A 5 sounds like a competent',
-  'neighbour who already looked something up: quiet, plain-spoken, specific, short,',
-  'leading with the useful thing. It states only the given facts, and when a fact is',
-  'absent (no pick, no registration date) it says so plainly instead of padding.',
-  'A field the facts do not carry - a null venue, no price, no age range - is simply',
-  'absent. A message that names no venue because there is none IS complete, and you never',
-  'mark it down for that, ask it for a placeholder, or suggest wording that would invent',
-  'one: a stand-in like "location TBA" is a detail Hale was not given.',
-  'A specific is INVENTED only when you cannot find it in the facts you were given. Read',
-  'the facts object before you call anything invented: a town, a cycle name, a date, a',
-  'time, an activity title, an age range or a name that appears there is GIVEN, however',
-  'specific it looks, and naming it is the message doing its job.',
-  "`registrationAbsence` is this town's LAST cycle - its name and the morning it opened.",
-  'It is not a claim that anything is shut and it is not a request for the next cycle.',
-  'When it carries `stillOpenPage: true` that cycle is the CURRENT one, still the one to',
-  'act on: a message that says it opened on `lastOpenedAtLocal` and stops is exactly',
-  'right, and you never mark it down for leaving out `nextCycle`, for not saying',
-  'registration has closed, or for not warning that the parent has missed it. When',
-  '`stillOpenPage` is false the season has gone and the next dates are not posted, and',
-  'saying both halves plainly is what a 5 looks like.',
-  'THE COMPOSER IS WRITING TO A CONTRACT (packages/agent/skills/radar-voice.md), and',
-  'three things that contract REQUIRES are neither padding nor inventions. ONE: a few',
-  'words inside the LEAD sentence saying Hale already went and looked - "I found", "I',
-  'checked", "I looked up", "I had a look" - are mandatory and are scored by a separate',
-  'reviewer. Never mark a message down for them and never read them as corporate voice.',
-  'They add no fact of their own, so they are invented only when they carry a scope the',
-  'facts do not: a count of places checked, an area swept, a postal code, a time the',
-  'check ran. TWO: when `registration` and `registrationAbsence` are BOTH null, one short',
-  'clause saying nothing has a registration date coming up is the instructed copy and not',
-  'a speculation - and so is one short clause saying Hale is still learning the area and',
-  'will have a pick soon when `weekendPick` is null. Neither is a claim about data the',
-  'writer lacks; both are what the absence is supposed to sound like. THREE:',
-  '`firstFindBeat`, where the facts carry it, is a sentence Hale HANDED the composer to',
-  'reproduce verbatim. It is not padding and not a promise the writer made up.',
-  'A LOW score is hype or exclamation marks, brand/corporate voice ("We are excited to"),',
-  'listing facts like a database row, restating every field, sounding like an ad, burying',
-  'the useful fact under the frame, or any detail not present in the facts. Reply with',
-  'ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('radar');
 
 /**
  * The second judge, and it scores ONE property so a lovely message cannot carry a missing
  * one past it. Kept apart from voice deliberately: the pre-change corpus proves they come
  * apart — the same bodies that scored 4 and 5 for voice attributed nothing at all.
  */
-const ATTRIBUTION_JUDGE_SYSTEM = [
-  'You are scoring ONE property of the first useful text message Hale sends a parent, a',
-  "minute after they texted their kids' names to a number on a poster: does the message",
-  'present its find as the product of a look Hale ALREADY TOOK for this family? Nothing',
-  'else. Not warmth, not length, not whether the facts are the right ones.',
-  'Score 1-5.',
-  'A 5 folds a few words into the FIRST sentence that make Hale the one who went and',
-  'checked, so the fact arrives as a service reporting back on work already done. It is',
-  'half a clause, not a preamble: the useful fact is still in that first sentence.',
-  'The test is WHO DID THE LOOKING, in whatever words. A first-person verb of finding or',
-  'checking inside the lead sentence - "I found", "I checked", "I looked up", "I had a',
-  'look" - IS the attribution, and scores 5 when the fact lands in that same sentence. It',
-  'does not have to say what was searched, how much was searched, or that it was searched',
-  'for these particular children: requiring that would be requiring the invented specifics',
-  'you are told to score 1 for below. Do not invent a further test.',
-  'A 3 gestures at it late - after the fact has already landed flat, or in a sentence of',
-  'its own that the fact then follows.',
-  'A 1 states the fact with nothing at all saying where it came from. True, and',
-  'indistinguishable from a piece of trivia a stranger sent.',
-  'Score 1 ALSO for the opposite failure - a look with specifics in it THE FACTS DO NOT',
-  'CARRY. The test is the facts object in front of you, not your sense of what Hale could',
-  "plausibly know: a town, a cycle name, a date, a time, an activity title or a child's",
-  'name that appears in those facts is GIVEN, and naming it inside the look is the message',
-  'reporting back, never an invented scope. A postal code, an area swept, a count of',
-  'places checked, a time the check ran or a schedule it runs on appears in no payload, so',
-  'any of THOSE is invented, and an invented scope is worse than no attribution at all.',
-  'Score 1 for a greeting, a brand line ("Welcome to Hale"), hype, or anything that reads',
-  'as a product introducing itself. This is a person saying they already looked.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const ATTRIBUTION_JUDGE_SYSTEM = judgePrompt('radar-attribution');
 
 /**
  * The third judge, and it scores ONE property: one ask per turn. The shell always appends
@@ -494,24 +424,7 @@ const ATTRIBUTION_JUDGE_SYSTEM = [
  * I'll hold it" asks with no question mark, and a question mark inside an activity's own
  * title asks nothing.
  */
-const ASK_JUDGE_SYSTEM = [
-  'You are scoring ONE property of the first useful text message Hale sends a parent:',
-  'how many things the whole text asks the parent. Nothing else. Not voice, not length,',
-  'not whether the facts are the right ones.',
-  'The text goes out in two parts. The composer writes `message`; the shell then appends',
-  '`shellQuestion` after it, every time. That shell question is the one ask this turn is',
-  "allowed, so the composer's `message` must ask nothing at all.",
-  'Score 1-5.',
-  'A 5: `message` asks the parent nothing. It reports what Hale found and stops, and the',
-  'only ask in the text is the shell question.',
-  'A 3: `message` leaves a soft opening the parent may still feel they owe a reply to.',
-  'A 1: `message` asks something of its own, in any wording and any language, with or',
-  'without a question mark: a question, a request to reply or confirm, an offer that',
-  'waits on a yes, or the shell question repeated or paraphrased, so the parent is asked',
-  'twice. A question mark that is not an ask (inside an activity title, say) is not an',
-  'ask, and you never mark a message down for one.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const ASK_JUDGE_SYSTEM = judgePrompt('radar-ask');
 
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
 // in any fixture's decision, re-asks the watch question, and rambles past the budget.
