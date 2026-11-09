@@ -16,10 +16,14 @@ import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
  * connect receipt for someone we have never heard from on iMessage has no
  * chat to enter.
  *
+ * The newest inbound text picks the app; the chat is a separate question. A
+ * chat is a door only if an inbound row recorded it as one-to-one
+ * (`in_group = false`): a group text, an outbound send's chat, and a row whose
+ * group bit is unknown never are. Someone whose only chats are groups is an
+ * iMessage person with no chat at all, and the caller refuses.
+ *
  * `excludeChatId` is a chat that must never be the door — the family group,
- * for a message meant for one person. It narrows which chat, never which app:
- * someone who has only ever spoken in the group is an iMessage person whose
- * door is a 1:1 Hale already has with them, or no chat at all.
+ * for a message meant for one person. It only narrows further.
  */
 
 const PHONE_CHANNELS = ['sms', 'imessage'] as const;
@@ -38,10 +42,7 @@ export async function resolveMessagingDoor(
 ): Promise<MessagingDoor> {
   const excluded = options.excludeChatId;
   const [latest] = await database
-    .select({
-      channel: schema.channelMessages.channel,
-      providerChatId: schema.channelMessages.providerChatId,
-    })
+    .select({ channel: schema.channelMessages.channel })
     .from(schema.channelMessages)
     .where(
       and(
@@ -61,21 +62,19 @@ export async function resolveMessagingDoor(
 
   if (!latest) {
     if (!excluded || !(await spokeIn(database, parentUserId, excluded))) return { channel: 'sms' };
-  } else {
-    if (latest.channel !== 'imessage') return { channel: 'sms' };
-    if (latest.providerChatId) return { channel: 'imessage', chatId: latest.providerChatId };
+  } else if (latest.channel !== 'imessage') {
+    return { channel: 'sms' };
   }
 
-  // The newest inbound forgot its chat id. An earlier imessage row — inbound
-  // or the outbound that answered it — may still have one. Using that keeps
-  // the receipt in the thread the parent already has.
   const [withChat] = await database
     .select({ providerChatId: schema.channelMessages.providerChatId })
     .from(schema.channelMessages)
     .where(
       and(
         eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'in'),
         eq(schema.channelMessages.channel, 'imessage'),
+        eq(schema.channelMessages.inGroup, false),
         isNotNull(schema.channelMessages.providerChatId),
         excluded ? ne(schema.channelMessages.providerChatId, excluded) : undefined,
       ),

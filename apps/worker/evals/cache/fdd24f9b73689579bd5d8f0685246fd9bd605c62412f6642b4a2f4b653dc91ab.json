@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "Yes names a Monday evening session, which matches none of the offered sessions",
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverAccepted": false,
+    "question": "There's no Monday evening session in this plan. The options are Preschool Swim Sat 9:00 and Preschool Swim Sun 10:00. Would you like either of those, and in what order?"
+  },
+  "latencyMs": 2418
+}
