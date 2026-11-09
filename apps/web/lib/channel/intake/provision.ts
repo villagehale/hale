@@ -269,6 +269,7 @@ export async function provisionFromIntake(
         category: 'intake',
         providerMessageId: entry.providerId,
         providerChatId: entry.channel === 'imessage' ? (entry.chatId ?? null) : null,
+        inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
         status:
           entry.direction === 'in' ? 'delivered' : entry.channel === 'imessage' ? 'sent' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:

@@ -102,6 +102,7 @@ describe('textFreshConnectorLink', () => {
         providerChatId: chatId,
         status: 'delivered',
         body: 'hi',
+        inGroup: chatId === GROUP,
         sentAt: at,
         createdAt: at,
       });
@@ -128,7 +129,7 @@ describe('textFreshConnectorLink', () => {
     expect(transport.sent).toEqual([]);
   });
 
-  it('a co-parent who has only talked in the group gets the link in the 1:1 Hale opened with them', async () => {
+  it('a co-parent who has only talked in the group is not texted into a chat Hale only sent to', async () => {
     const GROUP = 'chat-family-group';
     const OPENED = 'chat-hale-opened';
     await db.database
@@ -146,6 +147,7 @@ describe('textFreshConnectorLink', () => {
         providerChatId: GROUP,
         status: 'delivered',
         body: "I'm his dad",
+        inGroup: true,
         sentAt: new Date('2026-09-17T14:00:00.000Z'),
         createdAt: new Date('2026-09-17T14:00:00.000Z'),
       },
@@ -179,8 +181,8 @@ describe('textFreshConnectorLink', () => {
       },
     );
 
-    expect(outcome).toBe('sent');
-    expect(imessage.map((send) => send.chatId)).toEqual([OPENED]);
+    expect(outcome).toBe('no_chat');
+    expect(imessage).toEqual([]);
     expect(transport.sent).toEqual([]);
   });
 

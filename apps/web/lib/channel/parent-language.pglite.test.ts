@@ -121,7 +121,7 @@ describe('observeParentLanguage and readParentLanguage', () => {
   });
 
   it('migration 0212 applies a second time over itself', async () => {
-    await expect(db.applyMigration('0212_parent_proactive_language.sql')).resolves.toBeUndefined();
+    await expect(db.applyMigration('0213_parent_proactive_language.sql')).resolves.toBeUndefined();
     const result = await db.client.query<{ column_name: string }>(
       `select column_name from information_schema.columns
         where table_name = 'users' and column_name in

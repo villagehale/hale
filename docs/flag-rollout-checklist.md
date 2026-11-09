@@ -75,6 +75,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:126` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `apps/web/lib/channel/linq/config.ts:80` | `true` (trimmed) | OFF | `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | `apps/web/lib/channel/linq/config.ts:185` (also needs `VERCEL_ENV=preview`) | `true` (trimmed) | OFF (preview-only) | empty, or `false` | Noah |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `apps/web/lib/channel/linq/config.ts:99` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:134` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:143` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
@@ -229,6 +230,7 @@ Code is merged for every row.
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
 | `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:112-113`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
+| `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Preview only: the code also needs `VERCEL_ENV=preview`. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |
 | `LINQ_GROUP_PLAN_RSVP_ENABLED` | RSVP tracking for any plan in a Linq group (`apps/web/lib/channel/linq/config.ts:130-131`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | A parent can start a poll in a Linq group; others vote in their own words or on a native card, and Hale reads the tally back. The card also needs `LINQ_POLLS`. Needs migration `0190_linq_group_polls`. | A poll started while the flag is off, or a tally that invents a winner. | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | "Remind me" from anyone in a family group; it only reads a turn the AI turn reader judged Hale's, in a v2 group (`apps/web/lib/loop/reminders/group/flag.ts:5-11`). | The common checks above. | empty, or `false` | unassigned |
