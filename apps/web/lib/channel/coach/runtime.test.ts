@@ -317,10 +317,7 @@ describe('channelCoachRuntime', () => {
     );
     const p = ports({
       readInboundMedia: (parts) =>
-        readInboundMedia(
-          parts,
-          (async () => new Response(vcf, { status: 200 })) as unknown as typeof fetch,
-        ),
+        readInboundMedia(parts, fetch, async () => new Response(vcf, { status: 200 })),
       runAgent: async (args) => {
         seen.push({
           context: args.context as Record<string, unknown>,

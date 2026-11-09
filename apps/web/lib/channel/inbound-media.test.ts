@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type ContactFetch,
   classifyInboundMedia,
   httpsMediaUrl,
   inboundMediaFromStored,
@@ -101,6 +102,7 @@ describe('readInboundMedia', () => {
         { kind: 'file', url: 'https://cdn.example/form.pdf', mime: 'application/pdf' },
       ],
       fetchImpl as unknown as typeof fetch,
+      fetchImpl as unknown as ContactFetch,
     );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(read.blocks).toEqual([]);
@@ -127,6 +129,7 @@ describe('readInboundMedia', () => {
         { kind: 'contact', url: 'https://cdn.example/redirect.vcf', mime: 'text/vcard' },
       ],
       fetchImpl as unknown as typeof fetch,
+      fetchImpl as unknown as ContactFetch,
     );
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(read.contacts).toEqual([]);
@@ -144,6 +147,7 @@ describe('readInboundMedia', () => {
     const read = await readInboundMedia(
       [{ kind: 'contact', url: 'https://cdn.example/huge.vcf', mime: 'text/vcard' }],
       fetchImpl as unknown as typeof fetch,
+      fetchImpl as unknown as ContactFetch,
     );
     expect(read.contacts).toEqual([]);
     expect(read.unwatched).toEqual([{ kind: 'contact' }]);
@@ -174,6 +178,7 @@ describe('readInboundMedia', () => {
         { kind: 'contact', url: 'https://cdn.example/ok-hop.vcf', mime: 'text/vcard' },
       ],
       fetchImpl as unknown as typeof fetch,
+      fetchImpl as unknown as ContactFetch,
     );
     const called = fetchImpl.mock.calls.map(([url]) => url);
     expect(called).toEqual([

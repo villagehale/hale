@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { linqVoiceMemosEnabled } from '~/lib/channel/linq/config';
+import { createPublicFetch } from '~/lib/channel/public-fetch';
 import { type CoachContact, MAX_CONTACT_CARDS, parseContactCards } from '~/lib/channel/vcard';
 import { attachmentContentBlock } from '~/lib/coach/attachment-blocks';
 
@@ -110,6 +111,14 @@ export function publicMediaUrl(raw: string | null | undefined): string | null {
 
 const MAX_CONTACT_REDIRECTS = 3;
 
+/** Fetch-shaped, so a test can hand in a stub; production pins the vetted address. */
+export type ContactFetch = (
+  url: string,
+  init: { redirect: 'manual'; signal: AbortSignal },
+) => Promise<Response>;
+
+const publicContactFetch: ContactFetch = createPublicFetch({ maxBytes: CONTACT_BYTE_CAP });
+
 export function classifyInboundMedia(
   mime: string | null,
   url: string | null,
@@ -216,6 +225,7 @@ function headerMime(header: string | null): string | null {
 export async function readInboundMedia(
   parts: readonly InboundMediaPart[],
   fetchImpl: typeof fetch = fetch,
+  contactFetch: ContactFetch = publicContactFetch,
 ): Promise<ReadInboundMedia> {
   const blocks: Anthropic.ContentBlockParam[] = [];
   const unwatched: Array<{ kind: InboundMediaKind }> = [];
@@ -223,7 +233,7 @@ export async function readInboundMedia(
   let contactsTruncated = false;
   for (const part of parts.slice(0, MAX_PARTS)) {
     if (part.kind === 'contact') {
-      const read = await readContactPart(part, fetchImpl);
+      const read = await readContactPart(part, contactFetch);
       if (read.truncated) contactsTruncated = true;
       if (read.cards.length === 0) {
         unwatched.push({ kind: 'contact' });
@@ -290,7 +300,7 @@ const EMPTY_CONTACTS = { cards: [], truncated: false };
 
 async function readContactPart(
   part: InboundMediaPart,
-  fetchImpl: typeof fetch,
+  fetchImpl: ContactFetch,
 ): Promise<{ cards: CoachContact[]; truncated: boolean }> {
   const first = publicMediaUrl(part.url);
   if (!first) {
