@@ -95,6 +95,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-capability-correction.md": {
+    "file": "coach-capability-correction.md",
+    "sha256": "13170b75a276e27731b8434f30e5952c22ca802901be6d01b70f65e50ce02176"
+  },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
     "sha256": "a306f8314a4dec889237a14c1d41ff9006bccf9f7397695167a20505f0d05155"
