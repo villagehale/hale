@@ -800,6 +800,44 @@ export function drainBossFrom(boss: PgBoss): DrainBoss {
 }
 
 /**
+ * The drain's pg-boss options, one source for the run and the launch load probe
+ * (scripts/drain-load-probe.ts), so the probe measures the pool production opens.
+ *
+ * ONE connection, let go of as soon as it is idle, and no scheduler. The session pooler
+ * behind DATABASE_DIRECT_URL has 15 server connections, and every web function's
+ * transaction-mode queries share them; a session client holds one for as long as it is
+ * open. pg-boss's default pool of ten per instance meant two concurrent runs could
+ * exhaust it (EMAXCONNSESSION, 2026-09-17). Two, kept for pg's default ten idle seconds,
+ * still did at launch load: a run holds its client through the start of every turn,
+ * and a burst of texts is a burst of runs (launch load probe, VIL-314: 30 runs refused,
+ * 32 webhook enqueues refused, p95 drain delay 126 s with 60 families texting inside a
+ * minute). A run claims, works and completes one statement at a time, so one connection
+ * is all it can use, and dropping it after {@link DRAIN_POOL_IDLE_MS} gives it back for
+ * the model time of the turn, which is most of the run.
+ *
+ * The scheduler is pg-boss's cron Timekeeper, which this repo never uses (vercel.json is
+ * the schedule) and which kept a poller alive past the run's end, crashing the process
+ * on the way out ("Unhandled Rejection … Timekeeper.onCron").
+ */
+export function drainBossConfig(
+  connectionString: string,
+): PgBoss.ConstructorOptions & { idleTimeoutMillis: number } {
+  return {
+    connectionString,
+    schema: queueSchema(),
+    supervise: false,
+    schedule: false,
+    max: 1,
+    // pg-boss hands its config to pg.Pool, which reads this.
+    idleTimeoutMillis: DRAIN_POOL_IDLE_MS,
+  };
+}
+
+/** How long a drain run keeps an idle session connection. Short against a turn's model
+ * time (tens of seconds), long against the gap between a run's own statements. */
+export const DRAIN_POOL_IDLE_MS = 1_000;
+
+/**
  * Connection (recipe #4): pg-boss requires prepared statements, which Supabase's
  * TRANSACTION pooler (port 6543) breaks. We connect via DATABASE_DIRECT_URL —
  * the direct/session 5432 URL already used for DDL/migrations — falling back to
@@ -877,21 +915,7 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // Approved send_email actions leave from the approving parent's own Gmail.
   const sendEmail = createGmailEmailSender(db());
 
-  // Two connections, and no scheduler. The session pooler behind DATABASE_DIRECT_URL
-  // admits 15 clients in total; pg-boss's default pool of ten per instance meant two
-  // concurrent runs could exhaust it, and on 2026-09-17 a burst of kicked runs did
-  // (EMAXCONNSESSION), killing the runs that lost the race before their first fetch. A
-  // run fetches, works, completes — sequentially — so two is enough. The scheduler is
-  // pg-boss's cron Timekeeper, which this repo never uses (vercel.json is the schedule)
-  // and which kept a poller alive past the run's end, crashing the process on the way
-  // out ("Unhandled Rejection … Timekeeper.onCron").
-  const boss = new PgBoss({
-    connectionString,
-    schema: queueSchema(),
-    supervise: false,
-    schedule: false,
-    max: 2,
-  });
+  const boss = new PgBoss(drainBossConfig(connectionString));
   await boss.start();
   try {
     return await drainHotQueues(
