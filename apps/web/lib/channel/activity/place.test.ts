@@ -44,6 +44,20 @@ describe('activityPlaceOf — the town a find searches, for US and Canadian fami
     });
   });
 
+  it('a town of fewer than 10,000 people searches as the nearest larger one', async () => {
+    expect(await activityPlaceOf(row({ country: 'United States', postalCode: '62214' }))).toEqual({
+      status: 'known',
+      town: 'Centralia, Illinois, United States',
+    });
+  });
+
+  it('a place of 10,000 or more is searched as itself (positive control)', async () => {
+    expect(await activityPlaceOf(row({ country: 'United States', postalCode: '60101' }))).toEqual({
+      status: 'known',
+      town: 'Addison, Illinois, United States',
+    });
+  });
+
   it('a stored city with no postal code is searched by its checked-in spelling', async () => {
     expect(
       await activityPlaceOf(row({ country: 'United States', province: 'WA', city: 'seattle' })),

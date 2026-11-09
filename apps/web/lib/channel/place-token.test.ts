@@ -1,3 +1,4 @@
+import { placeTokensIn, scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { deidentifyLiveQuery } from '~/lib/channel/intake/live-lookup';
 import { deidentifyOfficialQuery } from '~/lib/channel/intake/official-page';
@@ -5,7 +6,6 @@ import { scrubDirectIdentifiers } from '~/lib/channel/off-domain/answer-request'
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
 import { validateReplyCopy } from '~/lib/channel/reply-copy/validate';
 import { haleMask } from '~/lib/telemetry/mask';
-import { placeTokensIn, scrubPlaceTokens } from './place-token';
 
 // Fixture codes are shaped like real ones and are not assigned: no ZIP is 99999 or 00000,
 // and no Canadian code starts with Z.
@@ -29,6 +29,12 @@ const EVASIONS: readonly [string, string, string][] = [
   ['Canadian code, no space, lower case', 'swim near z9z9z9', 'z9z'],
   ['Canadian code, full-width', 'swim near Ｚ９Ｚ ９Ｚ９', '９Ｚ９'],
   ['Canadian FSA', 'swim near Z9Z', 'Z9Z'],
+  ['first ZIP of a comma list', 'swim near 99999,00000', '99999'],
+  ['second ZIP of a comma list', 'swim near 99999,00000', '00000'],
+  ['Canadian code glued to a word before', 'swim nearZ9Z 9Z9', 'Z9Z'],
+  ['Canadian code glued to a word after', 'swim Z9Z9Z9please', 'Z9Z'],
+  ['Canadian code, one character at a time', 'swim near Z 9 Z 9 Z 9', 'Z 9 Z'],
+  ['ZIP split by a space', 'swim near 999 99', '999'],
 ];
 
 /** What must come through: a price, a grouped figure, a decimal, a year, small numbers. */
@@ -38,6 +44,9 @@ const SURVIVES: readonly string[] = [
   '12345 dollars for camp',
   '12,345 kids signed up',
   '12345.50 for the season',
+  '12345,50 for the season',
+  'ages 3 5 7 9 11',
+  'swim opens March 3 2027',
   'swim in 2027',
   'ages 10 12 14',
   'a 3 hour drive',
@@ -58,6 +67,24 @@ describe('scrubPlaceTokens', () => {
     expect(scrubPlaceTokens('swim near 99999-0000 or Z9Z 9Z9, $12345', '[x]')).toBe(
       'swim near [x] or [x], $12345',
     );
+  });
+});
+
+describe('scrubContactTokens', () => {
+  it.each([
+    ['an email', 'swim, email pat@example.com', 'example'],
+    ['a full-width email', 'swim, email ｐａｔ＠ｅｘａｍｐｌｅ．ｃｏｍ', 'ｅｘａｍｐｌｅ'],
+    ['a phone number', 'swim, call 555 555 0123', '0123'],
+    ['a full-width phone number', 'swim, call ５５５ ５５５ ０１２３', '０１２３'],
+    ['a phone number in another script', 'swim, call ٥٥٥ ٥٥٥ ٠١٢٣', '٠١٢٣'],
+  ])('takes out %s', (_label, text, leaked) => {
+    const out = scrubContactTokens(text, '');
+    expect(out).not.toContain(leaked);
+    expect(out).toContain('swim');
+  });
+
+  it('leaves a sentence with no contact as typed', () => {
+    expect(scrubContactTokens('swim on 3 days for $120', '[x]')).toBe('swim on 3 days for $120');
   });
 });
 
@@ -112,6 +139,25 @@ describe.each(SITES)('%s', (_site, scrub) => {
     expect(out).toContain('swim');
     expect(out).not.toContain('@');
     for (const part of parts) expect(out).not.toContain(part);
+  });
+});
+
+/** The searches that strip contacts by the same scrub: the intake ones and the activity
+ * and medical backstop. */
+const CONTACT_SITES = SITES.slice(0, 3);
+
+describe.each(CONTACT_SITES)('%s', (_site, scrub) => {
+  it('takes out a full-width email and phone number', () => {
+    const out = scrub('swim, write ｐａｔ＠ｅｘａｍｐｌｅ．ｃｏｍ or call ５５５ ５５５ ０１２３');
+    expect(out).toContain('swim');
+    expect(out).not.toContain('ｅｘａｍｐｌｅ');
+    expect(out).not.toContain('０１２３');
+  });
+
+  it("takes out a phone number in another script's digits", () => {
+    const out = scrub('swim, call ٥٥٥ ٥٥٥ ٠١٢٣');
+    expect(out).toContain('swim');
+    expect(out).not.toContain('٠١٢٣');
   });
 });
 

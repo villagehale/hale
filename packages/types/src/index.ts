@@ -17,3 +17,4 @@ export * from './child-gender.js';
 export * from './measurement-units.js';
 export * from './country.js';
 export * from './teen-name.js';
+export * from './place-token.js';

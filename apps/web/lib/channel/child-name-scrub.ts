@@ -31,13 +31,21 @@ function nameMatcher(name: string): RegExp {
     : new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu');
 }
 
+function wantedNames(names: readonly string[]): string[] {
+  return names.map((name) => canonical(name).trim()).filter((name) => name !== '');
+}
+
+/** True when `text` holds any of `names` in any form this file reads as that name: in any
+ * alphabet, without its accents, in any case. */
+export function namesAChild(text: string, names: readonly string[]): boolean {
+  const residue = folded(text);
+  return wantedNames(names).some((name) => nameMatcher(folded(name)).test(residue));
+}
+
 export function scrubChildNames(text: string, names: readonly string[]): ChildNameScrub {
-  const wanted = names.map((name) => canonical(name).trim()).filter((name) => name !== '');
+  const wanted = wantedNames(names);
   let out = canonical(text);
   for (const name of wanted) out = out.replace(nameMatcher(name), '');
-  const residue = folded(out);
-  if (wanted.some((name) => nameMatcher(folded(name)).test(residue))) {
-    return { ok: false, refusal: 'names_a_child' };
-  }
+  if (namesAChild(out, wanted)) return { ok: false, refusal: 'names_a_child' };
   return { ok: true, text: out };
 }

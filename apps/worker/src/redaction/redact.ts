@@ -8,9 +8,9 @@
  * #1. When in doubt, redact.
  */
 
+import { placeTokensIn, scrubPlaceTokens } from '@hale/types';
+
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-// Canadian postal: A1A 1A1 / A1A1A1.
-const POSTAL_RE = /\b[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d\b/g;
 // ISO-ish date: YYYY-MM-DD.
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 // NANP phone: optional +1, 3-3-4 with common separators.
@@ -25,17 +25,18 @@ function nameRe(names: readonly string[]): RegExp | null {
   return parts.length ? new RegExp(`\\b(?:${parts.join('|')})\\b`, 'gi') : null;
 }
 
-/** Redact known child names + dates/postal/email/phone from free text. */
+/** Redact known child names + dates/postal/ZIP/email/phone from free text. */
 export function redactText(text: string, knownChildNames: readonly string[]): string {
   let out = text;
   const nre = nameRe(knownChildNames);
   if (nre) out = out.replace(nre, '[CHILD]');
   // Email before phone (an email can contain digit runs a phone regex would grab).
   out = out.replace(EMAIL_RE, '[EMAIL]');
-  out = out.replace(POSTAL_RE, '[POSTAL]');
   out = out.replace(DATE_RE, '[DATE]');
   out = out.replace(PHONE_RE, '[PHONE]');
-  return out;
+  // A postal code or a ZIP by the matcher every search shares, last, so a phone's or a
+  // date's digits are already gone.
+  return scrubPlaceTokens(out, '[POSTAL]');
 }
 
 /** Deep-redact every string value in a payload; non-strings pass through. */
@@ -61,12 +62,14 @@ export function assertNoPII(text: string, knownChildNames: readonly string[] = [
   const hits: string[] = [];
   if (nre?.test(text)) hits.push('name');
   if (EMAIL_RE.test(text)) hits.push('email');
-  if (POSTAL_RE.test(text)) hits.push('postal');
+  if (placeTokensIn(text).length > 0) hits.push('postal');
   if (DATE_RE.test(text)) hits.push('date');
   if (PHONE_RE.test(text)) hits.push('phone');
   // RegExp with /g is stateful (lastIndex) — reset so a reused instance is clean.
-  for (const re of [EMAIL_RE, POSTAL_RE, DATE_RE, PHONE_RE]) re.lastIndex = 0;
+  for (const re of [EMAIL_RE, DATE_RE, PHONE_RE]) re.lastIndex = 0;
   if (hits.length) {
-    throw new Error(`PII leak — redaction left ${hits.join(', ')} in the input; dropping (rule #1)`);
+    throw new Error(
+      `PII leak — redaction left ${hits.join(', ')} in the input; dropping (rule #1)`,
+    );
   }
 }

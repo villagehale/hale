@@ -6,7 +6,7 @@
  * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
-import { placeTokensIn } from '~/lib/channel/place-token';
+import { placeTokensIn } from '@hale/types';
 
 export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
