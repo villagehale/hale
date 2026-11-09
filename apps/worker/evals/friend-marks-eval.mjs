@@ -22,6 +22,7 @@ import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
 import {
+  JUDGE_MIN,
   PRICE,
   REPO_ROOT,
   assertRunFlags,
@@ -31,8 +32,11 @@ import {
   isDryRun,
   lazyAnthropic,
   makeCost,
+  makeJudge,
+  readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
@@ -48,6 +52,13 @@ const SHORT_SKILL_PATH = join(
   'onboarding-friend-short.md',
 );
 const VOICE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'intake', 'friend-voice.ts');
+// A declined place is graded on meaning (VIL-641): fixtures with `watchFor` are judged.
+const PLACE_JUDGE_SYSTEM = judgePrompt('friend-place');
+// A conditional ("your ZIP would let me look near you") is not an empty promise; the
+// Haiku judge read it as one against its own rubric, so this judge is the Sonnet tier.
+const PLACE_JUDGE_TIER = 'sonnet';
+/** Judge input ceiling per verdict, for the estimate. */
+const JUDGE_ESTIMATE_OUTPUT_TOKENS = 4096;
 
 process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'false';
 
@@ -101,6 +112,14 @@ async function estimate() {
       estimateTokens(JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture)))) +
       estimateTokens(voice.onboardingReplyToolSchema());
     usd += (input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output;
+    if (fixture.watchFor) {
+      const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
+      if (!judgePrice) throw new Error('no list price for the judge model');
+      const judgeInput = estimateTokens(PLACE_JUDGE_SYSTEM) + 2000;
+      usd +=
+        (judgeInput / 1e6) * judgePrice.input +
+        (JUDGE_ESTIMATE_OUTPUT_TOKENS / 1e6) * judgePrice.output;
+    }
   }
   console.info(
     `friend-marks: estimate to record ${FRIEND_MARKS_FIXTURES.length} fixtures on ${lane.model}, priced at max_tokens. live API calls: 0. nothing written. $${usd.toFixed(4)} USD. Approved cap $${HARD_CAP_USD}.`,
@@ -127,6 +146,14 @@ async function record() {
   const cost = makeCost();
   const cachedOnly = process.argv.includes('--cached-only');
   const { skill, shortSkill, voice, lane } = await loadSubject();
+  const judge = makeJudge(
+    await readJudgeModel(PLACE_JUDGE_TIER),
+    PLACE_JUDGE_SYSTEM,
+    'friend-marks',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
   let failed = 0;
   for (const fixture of FRIEND_MARKS_FIXTURES) {
@@ -161,7 +188,24 @@ async function record() {
     const judged = fixture.sendable
       ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
       : null;
-    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept, judged });
+    const context = voice.friendVoiceContext(input);
+    const meaning = fixture.watchFor
+      ? await judge(fixture.id, {
+          facts: context.facts,
+          step: input.step,
+          recentTurns: input.recentTurns,
+          parentWords: input.parentWords,
+          reply: String(result.value?.reply ?? ''),
+          watchFor: fixture.watchFor,
+        })
+      : null;
+    if (meaning?.dry) continue;
+    const misses = friendMarksMisses(fixture, result.value, {
+      keptGroupBubbles: kept,
+      judged,
+      meaning,
+      meaningMin: JUDGE_MIN,
+    });
     if (misses.length > 0) failed += 1;
     console.info(
       `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,

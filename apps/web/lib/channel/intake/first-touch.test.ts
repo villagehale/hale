@@ -834,6 +834,10 @@ describe('friend voice onboarding', () => {
     const fire = inbound(transport3, 'fire');
     await handleInboundSms(fake3.db, fire, deps3);
     expect(transport3.bodies()).toEqual([]);
+    // VIL-641: the crisis text is marked, so the first-reply sweep never follows it
+    // with an onboarding ask.
+    const crisisSession = await loadOpenSession(fake3.db, PHONE);
+    expect(crisisSession?.transcript.at(-1)).toMatchObject({ direction: 'in', crisis: true });
     // Before any family exists the page still goes out, keyed on this inbound.
     expect(alerts).toEqual([
       {
@@ -1265,6 +1269,55 @@ describe('friend voice onboarding', () => {
     const session = await loadOpenSession(fake.db, PHONE);
     expect(session?.state).toBe('awaiting_place');
     expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
+  });
+
+  // VIL-641: a parent who declines the place for good still becomes a family.
+  it('provisions a family after two declined places, never asks the place again, and sends the Gmail card', async () => {
+    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
+    const { fake, transport, deps } = harness({ voice: true });
+    const steps: string[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    deps.friendVoice = {
+      async compose(input, options) {
+        steps.push(input.step);
+        return scripted.compose(input, options);
+      },
+    };
+    let finds = 0;
+    deps.radar = {
+      async compose() {
+        finds += 1;
+        throw new Error('a find needs a place');
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    const second = await text('not even that');
+
+    expect(second).toEqual({ status: 'first_touch', step: 'ages_waiting' });
+    const stored = await loadOpenSession(fake.db, PHONE);
+    expect(stored?.firstTouch?.given?.placeDeclined).toBe(true);
+    expect(stored?.state).toBe('awaiting_ages');
+    const sentBeforeThird = transport.bodies().length;
+
+    const third = await text('Maya is 4, Leo is 1');
+    expect(steps[3]).toBe('kids_names');
+    expect(third).toMatchObject({ status: 'provisioned' });
+    const [family] = fake.rows(schema.families);
+    expect(family?.areaCoarse ?? null).toBeNull();
+    expect(family?.postalCode ?? null).toBeNull();
+    expect(family?.country ?? null).toBeNull();
+    expect(finds).toBe(0);
+    // The provisioning turn still answers them: the next ask, with nothing nearby in it.
+    expect(transport.bodies().at(-1)).toBe('What should I call you?');
+
+    await text('Dana');
+    expect(lastCard(transport)).toMatch(/email/i);
+    expect(steps.slice(3)).not.toContain('place');
+    expect(transport.bodies().slice(sentBeforeThird).join('\n')).not.toMatch(/postal code/i);
   });
 
   it('names a later place turn the model could not write, instead of a step', async () => {

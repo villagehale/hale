@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "No problem at all, I won't push on it. Would you be okay with me connecting to your Gmail so I can spot kid things like class notices and schedule changes?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameDeclined": true,
+    "nameTakenBack": false
+  },
+  "latencyMs": 2022
+}

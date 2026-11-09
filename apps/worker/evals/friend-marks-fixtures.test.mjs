@@ -92,6 +92,29 @@ describe('friendMarksMisses', () => {
     ).toEqual(['postalCode:"Z9Z"']);
   });
 
+  // VIL-641: a declined place is graded on meaning, and the first no keeps the place open.
+  it('fails a declined place the judge scores low, one never judged, and a first no taken as final', () => {
+    const first = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-1-en-us');
+    const second = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-2-fr');
+    const ok = { judged: { ok: true }, meaning: { score: 5, reason: 'fine' } };
+    const value = { asks: true, reply: 'Totally fair. Just the five-digit ZIP?' };
+    expect(friendMarksMisses(first, value, ok)).toEqual([]);
+    expect(
+      friendMarksMisses(first, value, { ...ok, meaning: { score: 2, reason: 'promised nearby' } }),
+    ).toEqual(['meaning:2 (promised nearby)']);
+    expect(friendMarksMisses(first, value, { judged: { ok: true } })).toEqual([
+      'meaning:not_judged',
+    ]);
+    expect(friendMarksMisses(first, { ...value, placeDeclined: true }, ok)).toEqual([
+      'placeDeclined:true',
+    ]);
+    const moved = { asks: true, placeDeclined: true, reply: 'Pas de souci. Tes enfants?' };
+    expect(friendMarksMisses(second, moved, ok)).toEqual([]);
+    expect(friendMarksMisses(second, { ...moved, placeDeclined: false }, ok)).toEqual([
+      'placeDeclined:false',
+    ]);
+  });
+
   it('fails a calendar ask that offers Gmail under the calendar link', () => {
     const marks = { asks: true, parentQuestion: false };
     const calendar = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'calendar-yes');

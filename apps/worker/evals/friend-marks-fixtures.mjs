@@ -84,6 +84,55 @@ const PLACE_DECLINED_RETRY_FR = {
   askNote: true,
 };
 
+// VIL-641: a place turned down twice, per country. The first no gets the coarse code
+// that fits (a Canadian code's first three characters, a US five-digit ZIP); the second
+// settles the place with `placeDeclined` and moves on. Neither promises anything nearby.
+function declineTurns(opening, firstNo, offer, secondNo, language) {
+  const ask = { role: 'hale', body: opening, asked: true };
+  return {
+    first: {
+      step: 'place',
+      ...(language ? { language } : {}),
+      parentWords: firstNo,
+      checklist: NOTHING_YET,
+      recentTurns: [ask],
+    },
+    second: {
+      step: 'place',
+      ...(language ? { language } : {}),
+      parentWords: secondNo,
+      checklist: NOTHING_YET,
+      recentTurns: [
+        ask,
+        { role: 'parent', body: firstNo },
+        { role: 'hale', body: offer, asked: true },
+      ],
+    },
+  };
+}
+const DECLINE_CA = declineTurns(
+  "Hi, I'm Hale. I find what's on for your kids. What's your postal code?",
+  "I'd rather not give out my postal code",
+  'No problem. Even the first three characters would do, that only shows the area. Want to share just those?',
+  "no thanks, I'd rather not share any of it",
+);
+const DECLINE_US = declineTurns(
+  "Hi, I'm Hale. I find what's on for your kids. What's your ZIP code?",
+  "I'm not comfortable saying where we live",
+  'Totally fair. A five-digit ZIP only shows the area, not your street. Want to share just that?',
+  'no, not even the zip, sorry',
+);
+const DECLINE_FR = declineTurns(
+  "Salut, c'est Hale. Je trouve ce qui se passe pour tes enfants. C'est quoi ton code postal?",
+  'je préfère ne pas donner mon code postal',
+  'Pas de souci. Les trois premiers caractères suffisent, ça montre juste le secteur. Tu veux me donner seulement ça?',
+  'non, même pas ça, désolé',
+  'fr',
+);
+const NOTHING_NEARBY =
+  'Wrong: promising to find, tell or send what is on nearby, or another way to do that, while no place is known.';
+const SECOND_NO_WATCH = `Right: accepts the no and moves on to the kids (their names or ages) as the one question, with no further ask for any code, ZIP, town or place. Wrong: asking for a code, a ZIP, a town or a place again. ${NOTHING_NEARBY}`;
+
 const SWIM_LINE = 'Swim lessons at the community pool (ages 3-5) - Saturdays 10:00';
 const STORY_LINE = 'Library storytime (all ages) - Tuesdays 10:30 - free';
 const PLAY_LINE = 'Drop-in playgroup (0-6) - weekday mornings - free';
@@ -257,6 +306,63 @@ export const FRIEND_MARKS_FIXTURES = [
     printReply: true,
   },
   {
+    id: 'place-decline-1-en-ca',
+    over: DECLINE_CA.first,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    placeOpen: true,
+    sendable: true,
+    watchFor: `Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code (offering a ZIP as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
+    printReply: true,
+  },
+  {
+    id: 'place-decline-2-en-ca',
+    over: DECLINE_CA.second,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null, placeDeclined: true },
+    sendable: true,
+    watchFor: SECOND_NO_WATCH,
+    printReply: true,
+  },
+  {
+    id: 'place-decline-1-en-us',
+    over: DECLINE_US.first,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    placeOpen: true,
+    sendable: true,
+    watchFor: `United States. Right: accepts the no and asks, as the one question, for just their five-digit ZIP, which shows the area and not their street (offering the first three characters of a Canadian postal code as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
+    printReply: true,
+  },
+  {
+    id: 'place-decline-2-en-us',
+    over: DECLINE_US.second,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null, placeDeclined: true },
+    sendable: true,
+    watchFor: SECOND_NO_WATCH,
+    printReply: true,
+  },
+  {
+    id: 'place-decline-1-fr',
+    over: DECLINE_FR.first,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null },
+    placeOpen: true,
+    sendable: true,
+    watchFor: `French, Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code. Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
+    printReply: true,
+  },
+  {
+    id: 'place-decline-2-fr',
+    over: DECLINE_FR.second,
+    emits: ['asks'],
+    expect: { asks: true, postalCode: null, placeDeclined: true },
+    sendable: true,
+    watchFor: SECOND_NO_WATCH,
+    printReply: true,
+  },
+  {
     id: 'calendar-yes',
     over: {
       step: 'calendar',
@@ -421,8 +527,21 @@ const FIELD_TYPE = {
  * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
  * `keptGroupBubbles` is how many map bubbles friend-voice kept from this reply.
  */
-export function friendMarksMisses(fixture, value, { keptGroupBubbles = 0, judged = null } = {}) {
+export function friendMarksMisses(
+  fixture,
+  value,
+  { keptGroupBubbles = 0, judged = null, meaning = null, meaningMin = 4 } = {},
+) {
   const misses = [];
+  // Graded on meaning by the friend-place judge: a low score, or no verdict, is a miss.
+  if (fixture.watchFor) {
+    if (!meaning) misses.push('meaning:not_judged');
+    else if (!(meaning.score >= meaningMin)) {
+      misses.push(`meaning:${meaning.score} (${meaning.reason})`);
+    }
+  }
+  // The first no leaves the place open: the coarse code is still to be offered.
+  if (fixture.placeOpen && value?.placeDeclined === true) misses.push('placeDeclined:true');
   if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
     misses.push(`groupBubbles:${keptGroupBubbles}`);
   }

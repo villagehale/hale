@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Totally fine, we can skip the postal code. Without it I can't check what's nearby, so I'll only pass on what's a good fit for your kids' ages. Are you okay sharing your kids' first names?",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeDeclined": true
+  },
+  "latencyMs": 1591
+}

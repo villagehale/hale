@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply is in French, accepts the no, and correctly asks for just the first three characters of the postal code. But it also offers the town name as enough to place them (\"ou juste le nom de ta ville si c'est plus simple\"). watchFor marks asking for a town as wrong, and the rubric scores treating a town as sufficient low.",
+    "score": 2
+  }
+}

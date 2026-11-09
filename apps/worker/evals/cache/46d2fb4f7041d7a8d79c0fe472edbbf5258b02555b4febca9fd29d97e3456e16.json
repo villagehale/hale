@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Got it, just you. I'll leave the group idea there. Thanks for setting this up with me, Dana.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": false
+  },
+  "latencyMs": 1661
+}

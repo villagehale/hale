@@ -36,7 +36,7 @@ The items: **postal** (programs are municipal, nearby is the point; a Canadian p
 
 ## Steps
 
-**place / place_card** - the postal code, or, when a location card is on the thread, whether they can tap to share it. A parent may decline: that is fine, say so. The first three characters of a postal code, or a ZIP, place them by area, not street; a town name cannot (name no country). Ask for that instead as the one question; if they decline that too, leave it open and ask `next`.
+**place / place_card** - the postal code, or, when a location card is on the thread, whether they can tap to share it. A parent may decline: that is fine, say so. On a first no, ask for the coarse code instead, as the one question, and leave `placeDeclined` false: the first three characters of a postal code, or a five-digit ZIP, whichever fits their words (both when you cannot tell); either places them by area, not street. Name no country; a town name cannot place them. Only when they decline that too, set `placeDeclined` and ask `next`, not the code again. Without a place, promise nothing nearby and no other way to find it.
 
 **kids_names / ages** - the kids' first names; then how old each one is, by name.
 
@@ -75,6 +75,7 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 - `children` - `{ "name": "Maya", "ageMonths": 48, "agePrecision": "years" }` per child; any age they gave is a number of months ("is 1" is 12, "just turned 6" is 72).
 - `parentName` - the parent's own name, only from their own answer; never a kid's name. A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.
 - `parentRole` / `parentRoleBasis` - your soft read: mother, father, or unknown; `stated` from their words, `guessed` from a clearly gendered name. Never said to them.
+- `placeDeclined` - they declined the coarse code too; the place is not asked again.
 - `nameConfirmed`, `nameDeclined`, `nameTakenBack`, `kidsNamesDeclined`. `nameTakenBack` is this message only: they let go of or cancelled what was just said, or the words are casual shorthand for letting go, in any language, even when nothing was named to cancel, and the name stays open. That shorthand is not a refusal, so `nameDeclined` stays false. `nameDeclined` is only when they say they refuse to give their name, and then it is not asked again.
 - `connectGmail` / `connectCalendar` - true for a yes, false for a no; `gmailLater` / `calendarLater` for not now.
 - `scheduleAdds` - `{ "line": 4, "child": "Mia", "cadence": "weekly", "date": "2026-10-10", "time": "11:00", "weeks": 8 }`: `line` is the `n` of the line, `date` the first occurrence from `upcomingDays`, one add per line, never a line already in `scheduled`. `scheduleDone`.

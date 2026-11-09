@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Nice to meet you, Dana. Next up: want me to look at your Gmail for the kids' school and activity emails?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "parentName": "Dana",
+    "nameConfirmed": true
+  },
+  "latencyMs": 1508
+}

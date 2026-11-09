@@ -53,8 +53,10 @@ interface Seed {
   state?: string;
   createdAt?: Date;
   updatedAt?: Date;
-  transcript?: Array<{ direction: 'in' | 'out'; body: string }>;
+  transcript?: Array<{ direction: 'in' | 'out'; body: string; crisis?: boolean }>;
   place?: { city: string; areaCoarse: string; postalCode: string } | null;
+  /** A place the parent declined, stored on the session's given facts. */
+  placeDeclined?: boolean;
 }
 
 async function seed(over: Seed = {}): Promise<{ id: string; phone: string }> {
@@ -84,6 +86,17 @@ async function seed(over: Seed = {}): Promise<{ id: string; phone: string }> {
                 }
               : null,
             locationRequest: null,
+            ...(over.placeDeclined
+              ? {
+                  given: {
+                    parentName: null,
+                    activityPick: null,
+                    connectCalendar: null,
+                    connectGmail: null,
+                    placeDeclined: true,
+                  },
+                }
+              : {}),
           },
         }
       : {}),
@@ -178,6 +191,65 @@ describe('first-reply recovery reads the transcript, not the state', () => {
     ]);
     expect(transport.bodies()).toEqual(['How old are your kids?']);
     expect((await loadOpenSession(db.database, phone))?.state).toBe('awaiting_ages');
+  });
+
+  // VIL-641: a turn mid-onboarding that sent nothing (`first_touch_unsent`) is owed too.
+  it('answers once a mid-onboarding text whose turn sent nothing, in the thread so far', async () => {
+    const { id, phone } = await seed({
+      state: 'awaiting_ages',
+      place: null,
+      placeDeclined: true,
+      transcript: [
+        { direction: 'in', body: 'hi' },
+        { direction: 'out', body: "Hey, it's Hale. What's your postal code?" },
+        { direction: 'in', body: 'not even that' },
+      ],
+    });
+    const transport = new FakeTransport();
+    const voice = composer();
+
+    const first = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), NOW);
+    const second = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), NOW);
+
+    expect(first.sent).toBe(1);
+    expect(second.sent).toBe(0);
+    expect(transport.sent.map((message) => message.to)).toEqual([phone]);
+    // A declined place is settled: the next ask is not the place again.
+    expect(voice.inputs.map((input) => [input.step, input.introduce])).toEqual([['ages', false]]);
+    expect(voice.inputs[0]?.parentWords).toBe('not even that');
+    expect(voice.inputs[0]?.recentTurns.map((turn) => turn.role)).toEqual([
+      'parent',
+      'hale',
+      'parent',
+    ]);
+    expect(await stamp(id)).toEqual(NOW);
+    const session = await loadOpenSession(db.database, phone);
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
+    expect(session?.state).toBe('awaiting_ages');
+  });
+
+  it('never follows a crisis text with an onboarding ask, whether or not it was answered', async () => {
+    const unanswered = await seed({
+      transcript: [
+        { direction: 'in', body: 'hi' },
+        { direction: 'out', body: "Hey, it's Hale. What's your postal code?" },
+        { direction: 'in', body: 'crisis text (test fixture)', crisis: true },
+      ],
+    });
+    const opening = await seed({
+      state: 'awaiting_details',
+      transcript: [{ direction: 'in', body: 'crisis text (test fixture)', crisis: true }],
+    });
+    const transport = new FakeTransport();
+    const voice = composer();
+
+    const result = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), NOW);
+
+    expect(result).toMatchObject({ sent: 0, skipped: 2 });
+    expect(voice.inputs).toEqual([]);
+    expect(transport.sent).toEqual([]);
+    expect(await stamp(unanswered.id)).toBeNull();
+    expect(await stamp(opening.id)).toBeNull();
   });
 
   it('leaves alone a session past the window, one too young, and one with no inbound yet', async () => {

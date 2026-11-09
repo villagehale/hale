@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Yes, Google shares the whole inbox with me, so I can see all of it. What I keep and use is only what's about the kids, and I never send email. You can disconnect any time. Would you like to connect Gmail?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "zh"
+  },
+  "latencyMs": 1362
+}

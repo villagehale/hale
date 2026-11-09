@@ -450,7 +450,7 @@ export function readGroupLeads(value: unknown): string[] | null {
   return null;
 }
 
-const replySchema = z.object({
+const replyFields = z.object({
   reply: z
     .string()
     .nullish()
@@ -484,13 +484,14 @@ const replySchema = z.object({
   nameDeclined: z.boolean().optional().default(false).catch(false),
   nameTakenBack: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
+  placeDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
-  // Fails closed: a value that is there but not a boolean may hide a question, and a
-  // question must never stand as a yes.
-  parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
+  // Read with the rest of the turn below: whether a missing value is a question
+  // depends on whether the turn holds a yes.
+  parentQuestion: z.unknown(),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -507,6 +508,30 @@ const replySchema = z.object({
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
+
+const replySchema = replyFields.transform((value) => ({
+  ...value,
+  parentQuestion: readParentQuestion(value),
+}));
+
+/**
+ * Fails closed: a value that is there but not a boolean may hide a question, and a
+ * question must never stand as a yes. A missing value is a question too when the turn
+ * holds a yes, because a consent turn the model did not mark must not keep one.
+ */
+function readParentQuestion(value: {
+  parentQuestion?: unknown;
+  connectGmail: boolean | null;
+  connectCalendar: boolean | null;
+  coparentGroup: boolean | null;
+}): boolean {
+  if (value.parentQuestion === undefined) {
+    return (
+      value.connectGmail === true || value.connectCalendar === true || value.coparentGroup === true
+    );
+  }
+  return value.parentQuestion !== false;
+}
 
 const replyJsonSchema = {
   type: 'object',
@@ -562,6 +587,7 @@ const replyJsonSchema = {
     nameDeclined: { type: 'boolean' },
     nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
+    placeDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
@@ -2614,6 +2640,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           nameDeclined: value.nameDeclined,
           nameTakenBack: value.nameTakenBack,
           kidsNamesDeclined: value.kidsNamesDeclined,
+          placeDeclined: value.placeDeclined,
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
           stopAsking: value.stopAsking,

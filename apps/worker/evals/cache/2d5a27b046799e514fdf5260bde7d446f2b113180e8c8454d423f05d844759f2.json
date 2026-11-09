@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Totally fair, no need to share your address. Could you give me just the first three characters of your postal code, or a five-digit ZIP? That's enough for me to find things nearby, and it only places you by area.",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeDeclined": false
+  },
+  "latencyMs": 1598
+}

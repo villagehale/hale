@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no, but then asks for the parent's town. This is the third push for location after two refusals. watchFor marks asking for a town again as wrong, and treating a town name as enough to place them is also a fail. It does move on to the kids, but it bundles that with the place ask instead of making the kids the one question.",
+    "score": 1
+  }
+}

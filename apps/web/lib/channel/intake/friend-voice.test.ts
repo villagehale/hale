@@ -448,7 +448,7 @@ describe('onboarding friend fixtures', () => {
     const skill = await loadOnboardingFriendSkill();
     const words = skill.instructions.split(/\s+/).filter(Boolean).length;
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
-    expect(words).toBeLessThan(2450);
+    expect(words).toBeLessThan(2500);
     expect(skill.instructions).toContain(
       'A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.',
     );
@@ -2054,6 +2054,75 @@ describe('a garbled parentQuestion', () => {
     expect(await read(fields)).toBe(false);
     expect(await read({ ...fields, parentQuestion: true })).toBe(true);
     expect(await read({ ...fields, parentQuestion: false })).toBe(false);
+  });
+
+  // VIL-617 follow-up: a consent turn the model did not mark keeps no yes.
+  it('counts a missing parentQuestion as a question when the turn holds a connect yes', async () => {
+    const read = async (input: Record<string, unknown>) =>
+      (await composerReplying(input).compose(gmailAsk)).parentQuestion;
+    expect(await read({ ...fields, connectGmail: true })).toBe(true);
+    expect(await read({ ...fields, connectCalendar: true })).toBe(true);
+    // Positive control: with no yes in the turn, a missing value is no question.
+    expect(await read({ ...fields, connectGmail: false })).toBe(false);
+    expect(await read({ ...fields, connectGmail: true, parentQuestion: false })).toBe(false);
+  });
+
+  it('pins parentQuestion: null as a question', async () => {
+    const read = async (input: Record<string, unknown>) =>
+      (await composerReplying(input).compose(gmailAsk)).parentQuestion;
+    expect(await read({ ...fields, parentQuestion: null })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: null, connectGmail: false })).toBe(true);
+  });
+
+  it('keeps no Gmail yes on a draw that left parentQuestion out', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const unmarked = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true }),
+        gmailAsk,
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(unmarked.source).toBe('composed');
+      expect(unmarked.capture.connectGmail).not.toBe(true);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  // VIL-641: a place turned down for good reaches the capture, so code moves on.
+  it('passes the model placeDeclined through to the capture', async () => {
+    const placeAsk = blank({
+      step: 'place',
+      parentWords: 'not even that, sorry',
+      checklist: {
+        postal: false,
+        kids: false,
+        ages: false,
+        name: false,
+        gmail: false,
+        calendar: false,
+        schedule: false,
+        coparent: false,
+      },
+    });
+    const reply = { ...fields, reply: 'No problem at all. What are your kids called?' };
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const declined = await speakFriend(
+        composerReplying({ ...reply, parentQuestion: false, placeDeclined: true }),
+        placeAsk,
+        { page: async () => undefined },
+      );
+      expect(declined.capture.placeDeclined).toBe(true);
+      const open = await speakFriend(
+        composerReplying({ ...reply, parentQuestion: false }),
+        placeAsk,
+        { page: async () => undefined },
+      );
+      expect(open.capture.placeDeclined).toBe(false);
+    } finally {
+      info.mockRestore();
+    }
   });
 
   it('keeps no Gmail yes on a garbled draw, and keeps it on a clean one', async () => {

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'est pas obligés. Tu peux me dire si vous avez des enfants de quel âge ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 2140
+}

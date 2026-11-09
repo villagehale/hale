@@ -84,6 +84,11 @@ export interface TranscriptEntry {
    * inbounds. A question mark in `body` is not a substitute.
    */
   asked?: boolean;
+  /**
+   * INBOUND only: this text was read as a crisis and took the crisis path. A reply
+   * the crisis writer could not send is never followed up with an onboarding ask.
+   */
+  crisis?: boolean;
 }
 
 interface IntakeData {
@@ -171,6 +176,8 @@ export interface FirstTouchGiven {
   nameDeclined?: boolean;
   /** True once they declined the kids'-names ask. */
   kidsNamesDeclined?: boolean;
+  /** True once they declined to give any place, the coarse code included. */
+  placeDeclined?: boolean;
   /** True once they said later to the calendar. */
   calendarLater?: boolean;
   /** True once they said later to email. */
@@ -405,6 +412,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     parentRole?: unknown;
     nameDeclined?: unknown;
     kidsNamesDeclined?: unknown;
+    placeDeclined?: unknown;
     calendarLater?: unknown;
     gmailLater?: unknown;
     scheduleDone?: unknown;
@@ -426,6 +434,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     row.connectGmail === true || row.connectGmail === false ? row.connectGmail : null;
   const nameDeclined = row.nameDeclined === true;
   const kidsNamesDeclined = row.kidsNamesDeclined === true;
+  const placeDeclined = row.placeDeclined === true;
   const calendarLater = row.calendarLater === true;
   const gmailLater = row.gmailLater === true;
   const scheduleDone = row.scheduleDone === true;
@@ -445,6 +454,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !parentRole &&
     !nameDeclined &&
     !kidsNamesDeclined &&
+    !placeDeclined &&
     !calendarLater &&
     !gmailLater &&
     !scheduleDone &&
@@ -462,6 +472,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(parentRole ? { parentRole } : {}),
     ...(nameDeclined ? { nameDeclined } : {}),
     ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
+    ...(placeDeclined ? { placeDeclined } : {}),
     ...(calendarLater ? { calendarLater } : {}),
     ...(gmailLater ? { gmailLater } : {}),
     ...(scheduleDone ? { scheduleDone } : {}),
@@ -818,6 +829,33 @@ export function appendTranscript(
  * channel_messages. Pre-family sends have no ledger row they could occupy. */
 export function transcriptHasOutbound(transcript: readonly TranscriptEntry[]): boolean {
   return transcript.some((entry) => entry.direction === 'out');
+}
+
+/**
+ * The place item is settled: a place is stored, or the parent declined to give one.
+ * Every onboarding checklist reads `postal` from here, so a declined place is never
+ * asked again and never holds provisioning back.
+ */
+export function placeSettled(
+  touch:
+    | {
+        place?: FirstTouchPersisted['place'];
+        given?: Pick<FirstTouchGiven, 'placeDeclined'> | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  return touch?.place != null || touch?.given?.placeDeclined === true;
+}
+
+/**
+ * The parent's last text got no reply: the transcript ends on an inbound. A text that
+ * took the crisis path is not owed an onboarding reply, whether or not its crisis
+ * reply went out.
+ */
+export function transcriptOwesReply(transcript: readonly TranscriptEntry[]): boolean {
+  const last = transcript.at(-1);
+  return last?.direction === 'in' && last.crisis !== true;
 }
 
 /** What a recovery sweep reads from the blob: it must not decrypt the phone until it

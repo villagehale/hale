@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reply": "Mostly things for kids Mia and Leo's ages: classes, lessons, story times, play groups, that sort of thing, near you. Once I've looked, I'll show you what I find. How old are Mia and Leo?",
+    "asks": true,
+    "parentQuestion": "true</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1527
+}

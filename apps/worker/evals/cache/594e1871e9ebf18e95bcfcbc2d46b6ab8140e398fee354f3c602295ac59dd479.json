@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. Can I ask about Gmail next? I can check your inbox for kids' events and school notices, if you're up for it.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 3454
+}

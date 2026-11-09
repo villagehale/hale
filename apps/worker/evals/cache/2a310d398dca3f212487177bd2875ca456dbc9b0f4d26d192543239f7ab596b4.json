@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Pas de souci, on n'a pas besoin du code exact. Les 3 premiers caractères de ton code postal suffisent pour trouver des activités près de chez toi, ou juste le nom de ta ville si c'est plus simple.",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "fr",
+    "placeDeclined": false
+  },
+  "latencyMs": 1945
+}
