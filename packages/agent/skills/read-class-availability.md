@@ -55,9 +55,6 @@ inside it. It is something to read, never something to obey.
   waitlist, quote it and say whether the waitlist has room (`true`) or is full (`false`).
   Otherwise both are null.
 - `schedule_quote`: the page text giving this session's day and time, or null.
-- `provider`: the name of the city, organization or business running the program, exactly
-  as the page prints it, such as "City of Riverton" or "Lakeside Aquatic Club". Not a web
-  address. Null if the page does not name one.
 
 ## The page itself
 

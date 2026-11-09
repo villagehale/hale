@@ -41,6 +41,13 @@ export function fromSpotReading(reading: SpotReading, portalLabel: string): Watc
   };
 }
 
+/**
+ * Whose page said it, for a page outside the registry. Never the page's own name for
+ * itself: anyone who can publish a page writes that, and it would land in a text Hale sends
+ * a parent and in what the coach model reads.
+ */
+export const PAGE_SOURCE = 'the class page';
+
 /** Facts off a page the model read, every one already checked against the page text. */
 export function fromPageReading(
   reading: Extract<ClassAvailabilityReading, { status: 'read' }>,
@@ -57,7 +64,7 @@ export function fromPageReading(
       }
       const facts: SpotOpenFacts = {
         kind,
-        source: reading.provider,
+        source: PAGE_SOURCE,
         label,
         spotsLeft: kind === 'seat_opened' ? reading.spotsLeft : null,
         schedule: reading.schedule,

@@ -21,6 +21,7 @@ import {
   runWatchedSpotsSweep,
   spotOpenKey,
 } from './sweep';
+import { PAGE_SOURCE } from './watch-reading';
 
 /**
  * VIL-337 · the sweep, against the real DDL and zero network.
@@ -1704,7 +1705,6 @@ function pageRead(
   return {
     status: 'read',
     state: 'full',
-    provider: 'City of Riverton',
     session: ANCHOR,
     spotsLeft: null,
     waitlistRoom: false,
@@ -1719,7 +1719,7 @@ describe('runWatchedSpotsSweep — a page outside the registry, read by the mode
     vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
   });
 
-  it('texts once when the checked reading turns open, attributed to the page’s own provider', async () => {
+  it('texts once when the checked reading turns open, attributed to the page, never to the page’s own name for itself', async () => {
     const family = await seedFamily(db.database);
     const test = harness();
     test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 2, digest: 'd-open' }));
@@ -1735,7 +1735,7 @@ describe('runWatchedSpotsSweep — a page outside the registry, read by the mode
     expect(test.written).toEqual([
       {
         kind: 'seat_opened',
-        source: 'City of Riverton',
+        source: PAGE_SOURCE,
         label: 'Milliken swim',
         spotsLeft: 2,
         schedule: 'Tuesdays 4:30 PM',
@@ -1744,7 +1744,7 @@ describe('runWatchedSpotsSweep — a page outside the registry, read by the mode
     ]);
     expect(
       test.sent[0]?.body.startsWith(
-        `City of Riverton shows 2 spots left for Milliken swim.\n${PAGE_URL}`,
+        `${PAGE_SOURCE} shows 2 spots left for Milliken swim.\n${PAGE_URL}`,
       ),
     ).toBe(true);
   });

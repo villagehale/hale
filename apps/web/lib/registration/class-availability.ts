@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
+import { LINK_SHAPE } from '~/lib/channel/spots/copy';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
@@ -42,7 +43,6 @@ export const CLASS_AVAILABILITY_JSON_SCHEMA = {
   additionalProperties: false,
   properties: {
     page_kind: { type: 'string', enum: ['program_page', 'challenge_page', 'other_page'] },
-    provider: quote,
     session_quote: quote,
     sessions_matching: { type: 'string', enum: ['one', 'none', 'several'] },
     availability_quote: quote,
@@ -58,7 +58,6 @@ export const CLASS_AVAILABILITY_JSON_SCHEMA = {
   },
   required: [
     'page_kind',
-    'provider',
     'session_quote',
     'sessions_matching',
     'availability_quote',
@@ -74,7 +73,6 @@ export const CLASS_AVAILABILITY_JSON_SCHEMA = {
 const nullableQuote = z.string().max(QUOTE_MAX).nullable();
 const extractionSchema = z.object({
   page_kind: z.enum(['program_page', 'challenge_page', 'other_page']),
-  provider: nullableQuote,
   session_quote: nullableQuote,
   sessions_matching: z.enum(['one', 'none', 'several']),
   availability_quote: nullableQuote,
@@ -124,7 +122,6 @@ export type ClassAvailabilityUnknown =
   | 'not_stated'
   | 'uncorroborated'
   | 'unbacked_count'
-  | 'no_provider'
   | 'extract_failed';
 
 type PageFetchRefusal = Extract<RegistrationPageFetch, { outcome: 'refused' }>['reason'];
@@ -133,8 +130,6 @@ export type ClassAvailabilityReading =
   | {
       status: 'read';
       state: SpotState;
-      /** Who runs the program, as the page prints it: the text's attribution. */
-      provider: string;
       /** The page text naming the session, which later reads must find again. */
       session: string;
       spotsLeft: number | null;
@@ -186,10 +181,11 @@ export function isChallengePage(raw: string): boolean {
   return CHALLENGE_SIGNATURES.some((signature) => raw.includes(signature));
 }
 
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|gov|us)\b/i;
 const LETTER_RUN = /\p{L}{3}/u;
-/** What a schedule may hold to be printed in a text: words, digits and clock punctuation. */
-const SCHEDULE_SHAPE = /^[\p{L}\p{N} :.,/-]+$/u;
+/** What a schedule may hold to be printed in a text: words, digits, a colon, a comma and a
+ * dash. No '.' and no '/', so no host or path a phone would link survives into one. */
+const SCHEDULE_SHAPE = /^[\p{L}\p{N} :,-]+$/u;
+const SCHEDULE_MAX = 60;
 
 function digitsIn(text: string): number[] {
   return (text.match(/\d+/g) ?? []).map(Number);
@@ -240,11 +236,6 @@ export function normalizeClassAvailability(
     return { status: 'not_registrable', reason: 'not_yet_open', digest };
   }
 
-  const provider = extracted.provider?.trim() ?? null;
-  if (!onPage(provider) || LINK_SHAPE.test(provider) || !LETTER_RUN.test(provider)) {
-    return unknown('no_provider');
-  }
-
   const spotsLeft = extracted.spots_left;
   if (spotsLeft !== null && !digitsIn(normalizeQuote(availability)).includes(spotsLeft)) {
     return unknown('unbacked_count');
@@ -260,16 +251,18 @@ export function normalizeClassAvailability(
     return unknown('uncorroborated');
   }
 
-  const scheduleQuote = extracted.schedule_quote?.trim() ?? null;
+  const scheduleQuote = extracted.schedule_quote?.replace(/\s+/g, ' ').trim() ?? null;
   const schedule =
-    onPage(scheduleQuote) && SCHEDULE_SHAPE.test(scheduleQuote) && !LINK_SHAPE.test(scheduleQuote)
-      ? scheduleQuote.replace(/\s+/g, ' ')
+    onPage(scheduleQuote) &&
+    scheduleQuote.length <= SCHEDULE_MAX &&
+    SCHEDULE_SHAPE.test(scheduleQuote) &&
+    !LINK_SHAPE.test(scheduleQuote)
+      ? scheduleQuote
       : null;
 
   return {
     status: 'read',
     state: extracted.state,
-    provider,
     session,
     spotsLeft: extracted.state === 'open' ? spotsLeft : null,
     waitlistRoom: extracted.state === 'full' && extracted.waitlist_room === true,

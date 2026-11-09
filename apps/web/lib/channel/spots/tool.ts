@@ -15,6 +15,7 @@ import { type SpotReading, readSpot } from './availability';
 import { anyPageSpotWatchEnabled, watchedSpotsEnabled } from './flag';
 import type { SpotWatchIntent } from './store';
 import { SPOT_PORTAL_HOSTS, type SpotUrlRefusal, sanitizeSpotUrl } from './url';
+import { PAGE_SOURCE } from './watch-reading';
 
 /**
  * VIL-337 · `watch_for_opening` — the one verb that starts a watch.
@@ -135,7 +136,7 @@ function pageReadingRefusal(reading: ClassAvailabilityReading): string | null {
   switch (reading.status) {
     case 'read':
       if (reading.state !== 'open') return null;
-      return `There is nothing to wait for - ${reading.provider}'s page shows room in that class right now. Give the parent that link back and tell them to book it today.`;
+      return 'There is nothing to wait for - the page shows room in that class right now. Give the parent that link back and tell them to book it today.';
     case 'not_registrable':
       return reading.reason === 'not_yet_open'
         ? 'Registration for that class is not open yet, so there is no spot to watch for. Tell the parent the doors are not open on it at all.'
@@ -269,7 +270,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
         args.onWatch({
           url: page.url,
           host: new URL(page.url).hostname,
-          portalLabel: read.provider,
+          portalLabel: PAGE_SOURCE,
           label: collapsed,
           instant: input.instant ?? false,
           lastState: read.state as 'full' | 'waitlist_full',

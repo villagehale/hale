@@ -1,7 +1,6 @@
 {
   "value": {
     "page_kind": "program_page",
-    "provider": "City of Riverton",
     "session_quote": "Preschool Swim 2 Thursday 5:00 PM - 5:30 PM",
     "sessions_matching": "one",
     "availability_quote": "Full - waitlist full",
@@ -12,5 +11,5 @@
     "waitlist_room": false,
     "confidence": 0.95
   },
-  "latencyMs": 2547
+  "latencyMs": 3398
 }

@@ -1,7 +1,6 @@
 {
   "value": {
     "page_kind": "program_page",
-    "provider": "Town of Elmhaven Recreation",
     "session_quote": "Toddler Gym - Wednesday 9:30 AM",
     "sessions_matching": "one",
     "availability_quote": "Status: Full",
@@ -12,5 +11,5 @@
     "waitlist_room": null,
     "confidence": 0.9
   },
-  "latencyMs": 2909
+  "latencyMs": 2294
 }

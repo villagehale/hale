@@ -1,7 +1,6 @@
 {
   "value": {
-    "page_kind": "program_page",
-    "provider": "City of Riverton",
+    "page_kind": "challenge_page",
     "session_quote": null,
     "sessions_matching": "none",
     "availability_quote": null,
@@ -10,7 +9,7 @@
     "state": "unknown",
     "spots_left": null,
     "waitlist_room": null,
-    "confidence": 0.9
+    "confidence": 0.97
   },
-  "latencyMs": 2220
+  "latencyMs": 1263
 }

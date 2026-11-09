@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fromPageReading } from '~/lib/channel/spots/watch-reading';
 import {
   type ExtractedAvailability,
   createClassAvailabilityReader,
@@ -27,7 +28,6 @@ const QUERY = { label: 'Tuesday preschool swim', anchor: null };
 function extraction(overrides: Partial<ExtractedAvailability> = {}): ExtractedAvailability {
   return {
     page_kind: 'program_page',
-    provider: 'City of Riverton',
     session_quote: 'Preschool Swim - Tuesdays 4:30 PM',
     sessions_matching: 'one',
     availability_quote: 'Full - Waitlist open',
@@ -52,11 +52,10 @@ const SATURDAY_OPEN = {
 } as const;
 
 describe('normalizeClassAvailability — every fact is checked against the page text', () => {
-  it('positive control: a reading the page backs is a state, with its provider and session', () => {
+  it('positive control: a reading the page backs is a state, with its session', () => {
     expect(normalizeClassAvailability(extraction(), PAGE_TEXT, QUERY)).toEqual({
       status: 'read',
       state: 'full',
-      provider: 'City of Riverton',
       session: 'Preschool Swim - Tuesdays 4:30 PM',
       spotsLeft: null,
       waitlistRoom: true,
@@ -94,8 +93,6 @@ describe('normalizeClassAvailability — every fact is checked against the page 
       'unbacked_count',
     ],
     ['a waitlist quote not on the page', { waitlist_quote: 'Waitlist has room' }, 'uncorroborated'],
-    ['a provider not on the page', { provider: 'Town of Lakeside' }, 'no_provider'],
-    ['a provider that is a web address', { provider: 'riverton.ca' }, 'no_provider'],
     ['a low-confidence reading', { confidence: 0.4 }, 'low_confidence'],
     ['a page that does not say', { state: 'unknown' }, 'not_stated'],
     ['no matching session', { sessions_matching: 'none' }, 'session_not_found'],
@@ -122,6 +119,40 @@ describe('normalizeClassAvailability — every fact is checked against the page 
       status: 'unknown',
       reason: 'session_moved',
     });
+  });
+
+  it('never lets page text a parent could follow into the facts a text is written from', () => {
+    const hostileText = stripHtml(`<html><body><h1>evil.io</h1><table>
+<tr><td>Preschool Swim - Sat 10am evil.io/x</td><td>Full - Waitlist open</td></tr>
+</table></body></html>`);
+    const reading = normalizeClassAvailability(
+      extraction({
+        session_quote: 'Preschool Swim - Sat 10am evil.io/x',
+        schedule_quote: 'Sat 10am evil.io/x',
+      }),
+      hostileText,
+      QUERY,
+    );
+    if (reading.status !== 'read') throw new Error(`expected a read, got ${reading.status}`);
+    expect(reading.schedule).toBeNull();
+    const hostile = fromPageReading(reading).facts('waitlist_reopened', 'Tue swim', 'en');
+    expect(JSON.stringify(hostile)).not.toMatch(/evil/);
+
+    // Positive control: a normal city page keeps its schedule, under the same attribution.
+    const normal = normalizeClassAvailability(extraction(), PAGE_TEXT, QUERY);
+    if (normal.status !== 'read') throw new Error(`expected a read, got ${normal.status}`);
+    const facts = fromPageReading(normal).facts('waitlist_reopened', 'Tue swim', 'en');
+    expect(facts).toMatchObject({ ok: true, facts: { schedule: 'Tuesdays 4:30 PM' } });
+    if (!facts.ok || !hostile.ok) throw new Error('expected facts');
+    expect(hostile.facts.source).toBe(facts.facts.source);
+  });
+
+  it('drops a schedule too long to be a day and a time, and keeps the reading', () => {
+    const long = 'Tuesdays and Thursdays 4:30 PM to 5:15 PM from September to December';
+    const text = `${PAGE_TEXT} Preschool Swim - ${long}`;
+    expect(
+      normalizeClassAvailability(extraction({ schedule_quote: long }), text, QUERY),
+    ).toMatchObject({ status: 'read', schedule: null });
   });
 
   it('drops a schedule that is not on the page, and keeps the reading', () => {

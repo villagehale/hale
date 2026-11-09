@@ -1,16 +1,15 @@
 {
   "value": {
     "page_kind": "program_page",
-    "provider": "City of Riverton",
-    "session_quote": null,
-    "sessions_matching": "several",
+    "session_quote": "Junior Soccer - Saturdays 10:00 AM Ages 5-7",
+    "sessions_matching": "one",
     "availability_quote": null,
     "waitlist_quote": null,
-    "schedule_quote": null,
+    "schedule_quote": "Saturdays 10:00 AM",
     "state": "unknown",
     "spots_left": null,
     "waitlist_room": null,
-    "confidence": 0.95
+    "confidence": 0.9
   },
-  "latencyMs": 1626
+  "latencyMs": 2150
 }

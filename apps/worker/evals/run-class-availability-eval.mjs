@@ -164,7 +164,6 @@ function check(fixture, value) {
 function brokenAnswer() {
   return {
     page_kind: 'program_page',
-    provider: 'City of Riverton',
     session_quote: 'Preschool Swim 1',
     sessions_matching: 'one',
     availability_quote: '5 spots open',
