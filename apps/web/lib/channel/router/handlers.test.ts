@@ -552,9 +552,9 @@ describe('the village intro lane and the lanes behind it', () => {
 
 describe('recMorningHandler', () => {
   /** The families row both reads in this handler select from: language, then stored place.
-   * No primary parent row, so the family's zone is the read's own fallback. */
+   * No primary parent row, so no zone is on file. */
   function familyRow(row: { primaryLanguage: string | null; city: string | null }): Database {
-    const found = { ...row, postalCode: null, areaCoarse: null };
+    const found = { ...row, postalCode: null, areaCoarse: null, country: 'Canada', province: null };
     return {
       select: () => ({
         from: () => ({
@@ -673,6 +673,8 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
     countryCode: string;
     city: string | null;
     postalCode: string | null;
+    country?: string | null;
+    areaCoarse?: string | null;
   }): Promise<string> {
     const [row] = await placeDb.database
       .insert(schema.families)
@@ -734,10 +736,44 @@ describe('recMorningHandler · only a family whose place is in the GTA', () => {
   });
 
   it('leaves a Markham family texting "waitlist" to the coach', async () => {
-    const markham = await familyAt({ countryCode: 'CA', city: 'Markham', postalCode: null });
+    const markham = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Markham',
+      postalCode: null,
+    });
     expect(await handleFor(markham, 'waitlist')).toEqual({ claimed: false });
     // Positive control: the same family's rec ask is still this lane's.
     expect((await handleFor(markham, 'Markham fall rec dates?')).claimed).toBe(true);
+  });
+
+  it("leaves the Y's opening morning to the coach when no parent zone is on file", async () => {
+    // No primary parent row: Hale does not know the family's today, so it does not say
+    // the morning is still ahead (the eastern-parent test above is the positive control).
+    const zoneless = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    expect(
+      await handleFor(zoneless, 'when does ymca swim open', new Date('2026-08-20T14:00:00.000Z')),
+    ).toEqual({ claimed: false });
+  });
+
+  it('places a town name with no postal only for a family whose stored country is Canada', async () => {
+    // Burlington is a town in Vermont too; country_code defaults to CA, so it is no signal.
+    const vermont = await familyAt({
+      countryCode: 'CA',
+      country: 'United States',
+      city: 'Burlington',
+      postalCode: null,
+    });
+    expect(await handleFor(vermont, 'Burlington fall rec dates?')).toEqual({ claimed: false });
+    // Positive control: the Family page stores the city as the coarse area too.
+    const ontario = await familyAt({
+      countryCode: 'CA',
+      country: 'Canada',
+      city: 'Burlington',
+      postalCode: null,
+      areaCoarse: 'Burlington',
+    });
+    expect((await handleFor(ontario, 'Burlington fall rec dates?')).claimed).toBe(true);
   });
 
   it('leaves a Texas family texting "waitlist" to the coach', async () => {
