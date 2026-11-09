@@ -231,6 +231,10 @@
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
   },
+  "group-mention-read.md": {
+    "file": "group-mention-read.md",
+    "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"

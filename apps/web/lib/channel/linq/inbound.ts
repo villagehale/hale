@@ -88,6 +88,7 @@ import {
   shouldHoldGroupStranger,
   unseatParticipantRemoved,
 } from './group-members';
+import { groupMentionFactsFor } from './group-mention-reader';
 import type { GroupOnboardingComposer } from './group-onboarding-voice';
 import type { GroupPickupClaimReader } from './group-pickup-claim';
 import type { CalendarConsentReader } from './group-plan-rsvp/calendar';
@@ -962,11 +963,18 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       await deps.countOutcome('ignored');
       return json({ outcome: 'group_turn_reader_off' });
     }
+    const mentionFacts = optOut
+      ? null
+      : await groupMentionFactsFor(deps.database, {
+          chatId: message.chatId,
+          mentions: message.mentions,
+        });
     const reading = optOut
       ? null
       : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
           text: message.text,
           haleNames: ['Hale'],
+          ...(mentionFacts ? { mentions: mentionFacts } : {}),
           ...(await groupTurnReadContext(deps.database, {
             familyId: mapped.status === 'same_family' ? mapped.familyId : null,
             chatId: message.chatId,
@@ -1413,6 +1421,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
             otherHandles: [],
+            mentions: [],
           },
           { familyId: mapped.familyId, userId: mapped.userId },
         );
@@ -1455,6 +1464,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
             mediaCount: 0,
             receivedAt: deps.now?.() ?? new Date(),
             otherHandles: [],
+            mentions: [],
           },
           { familyId: mapped.familyId, userId: mapped.userId },
         );
