@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { namesAny } from '@hale/worker/memory-context';
+import { namesAnyIn } from '@hale/worker/memory-context';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
@@ -93,7 +93,7 @@ export interface ExportChild {
  * leaves, and a younger child is named.
  */
 export interface ExportTeenGate {
-  isPrivate(childIds: readonly (string | null)[], texts: readonly string[]): boolean;
+  isPrivate(childIds: readonly (string | null)[], texts: readonly unknown[]): boolean;
   childName(childId: string | null): string | null;
 }
 
@@ -104,8 +104,7 @@ export function exportTeenGate(children: readonly ExportChild[], now: Date): Exp
   const nameById = new Map(children.map((child) => [child.id, child.name]));
   return {
     isPrivate: (childIds, texts) =>
-      childIds.some((id) => id !== null && teenIds.has(id)) ||
-      texts.some((text) => namesAny(text, teenNames)),
+      childIds.some((id) => id !== null && teenIds.has(id)) || namesAnyIn(texts, teenNames),
     childName: (childId) =>
       childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null),
   };
@@ -113,10 +112,6 @@ export function exportTeenGate(children: readonly ExportChild[], now: Date): Exp
 
 function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
-}
-
-function textOf(value: unknown): string {
-  return typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
 }
 
 const SHARED_FACT_TYPES: ReadonlySet<string> = new Set(['logistic', 'routine']);
@@ -275,7 +270,7 @@ export async function loadFamilyMemoryExport(
   };
   const withheldFor = (
     childIds: readonly (string | null)[],
-    texts: readonly string[],
+    texts: readonly unknown[],
     sourceReason: MemoryWithheldReason | null,
   ): MemoryWithheldReason | null => (isPrivate(childIds, texts) ? 'teen' : sourceReason);
   const words = <T>(withheld: MemoryWithheldReason | null, text: T): T | string | null => {
@@ -290,7 +285,7 @@ export async function loadFamilyMemoryExport(
         SHARED_FACT_TYPES.has(row.factType) || SHARED_FACT_SOURCES.has(row.memorySource);
       const withheld = withheldFor(
         [row.childId],
-        [row.factKey, textOf(row.factValue)],
+        [row.factKey, row.factValue],
         sharedBySource ? null : unattributed,
       );
       return {

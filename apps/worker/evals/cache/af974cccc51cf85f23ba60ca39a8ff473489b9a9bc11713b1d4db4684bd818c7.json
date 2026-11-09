@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "msg_011CgsAXrTVik7KwLoLA4CqH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS9AUKEAgTGAI4AUIIdGhpbmtpbmcSDJT6MUXZKgpqmjPJ3hoMIS3LILqmZBRAIdxIIjAmmcDi8CPd+IpOvy7vUxnQqZNDR8qzVW8y1HlraJtVVe8uI2pV+93d9veqQblfT5UqkQUXontY9wjBj7KQ8m6lBThlPVtuV5Ffboe2ARtjZbJ81dr6Plir3L0I4GWxSjN/k3irHm3+dw0OnUFEKdOTiEu0Pi2Vzgwl9gN0ygl9O1ftoybrkVBzOMTOsJp3oKXIcHY22PfFU2H6woekOYfq2YZOILXOa4y1PIjhMwlWk2dJ1QeR9n530BqYWT2Yp2HiTOTrhbGdo0yI7Qqt7fUUonvROGdKxmIzzYkzjSPH8TwxMRAXOQAMLXoG2QL1I5fzV60mNFIlAmJAqTTuLpbG8Dz8FX941Cwf1Zy2x18dcLPmg/hujGjJ8MU+L4RiXeJAR8a3jCRZJegFifsfLR4smYYnOZSEPosPKDFQIpP2vu+gKmMLLETBic18juJ9KbdQcsu75+te9GjpBK2hDrh4y+t/xcJOrRwgsMuhk/+yzPMlCl3az7ihu1PTOD6Ywkn1Ff8vyVph49sDPNMtdEgS+XpDVprMzYDqSqJQebnVkpw7QwgdBSck+/DYPEIHyycoT5FPXrYhsj2pEEXu5A3MyZzw/o8wyfRXYz4E8pq9sE50NPum8j/brHCE08Xzzhtbmk3/unMSvyqnIR959LSsGOgvB0mRgFssmjdazNWAf3pybnNHho60jkKx7GYWWAx9rPVmBvt6F1fbInJFmBAVufdGExDI2fEwHElqZxKTu2rZhu2fFzJxs7FhvUbB76GoWluaPcx4lOS2N15EpBZ3AGTC5CJGi9qL5gAr/+vetFbGIVUk2yYZmOdNKYFVeJuamIxL2R9wKuHkZgcS9RajiAsX9YyAIHQz+sGWMlWXWN/0WdYyag7R3ZTfUqRNtz0GZ/3g6xmJ4uD9dvRsYEtkAVfFnVX2/PGScaeis+rDYhifhUcYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_017UNtP7v3v5ADe7hmdfCUFX",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 475,
+      "cache_creation_input_tokens": 22144,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 22144,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 85,
+      "output_tokens_details": {
+        "thinking_tokens": 56
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2564
+}
