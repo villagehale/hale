@@ -196,6 +196,22 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.sameActivityOptIns ?? []) };
   });
 
+  const requesterWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return {
+      limit: vi
+        .fn()
+        .mockResolvedValue([
+          { proactiveLanguage: null, languageStreakTag: null, languageStreakCount: 0 },
+        ]),
+    };
+  });
+
+  const requesterOrderedWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue([]) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
   // members, the village-saves join, this parent's assistant grants, the registration
   // preparation join, the watched spots, the activity bookings, the evening check-in
@@ -228,6 +244,13 @@ function fakeDb(args: {
     if (which === 20) {
       return { from: () => ({ where: () => ({ groupBy: vi.fn().mockResolvedValue([]) }) }) };
     }
+    // The requester's own section (export-requester.ts): their language settings, their
+    // 1:1 thread and their language changes; export.pglite.test.ts covers the content.
+    if (which === 21) return { from: () => ({ where: requesterWhere }) };
+    if (which === 22) {
+      return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
+    }
+    if (which === 23) return { from: () => ({ where: requesterOrderedWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -565,9 +588,8 @@ describe('assembleFamilyExport', () => {
 
   it('carries the classes this family signed up for, with the host and no receipt detail', async () => {
     // A booking is a fact Hale HOLDS and acts on a week later, so a right-to-access copy
-    // without it omits the thing Hale is doing on the family's behalf. The host and not
-    // the address; no confirmation number, no amount, no child, because the table has no
-    // column for any of them.
+    // without it omits the thing Hale is doing on the family's behalf. No confirmation
+    // number, no amount, no child, because the table has no column for any of them.
     const { db } = fakeDb({
       family: FAMILY,
       children: [],
@@ -647,14 +669,15 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Sixteen scoped selects (family, children, members, village saves, this parent's
+    // Nineteen scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
-    // field consents, and this household's same-activity opt-ins) each recorded a
+    // field consents, this household's same-activity opt-ins, and the requester's own
+    // language settings, text thread and language changes) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(16);
+    expect(spies.whereFamilyIds).toHaveLength(19);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

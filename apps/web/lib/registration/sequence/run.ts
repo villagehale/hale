@@ -64,7 +64,11 @@ import {
   morningFacts,
   windowPhrase,
 } from './copy.js';
-import { type DateUnconfirmedFacts, composeDateUnconfirmed } from './date-unconfirmed-compose.js';
+import {
+  type DateUnconfirmedFacts,
+  composeDateUnconfirmed,
+  dateUnconfirmedBody,
+} from './date-unconfirmed-compose.js';
 import { composeRegistrationEvening } from './evening-compose.js';
 import { composeRegistrationHeadsUp } from './heads-up-compose.js';
 import { composeRegistrationMorning } from './morning-compose.js';
@@ -986,7 +990,7 @@ async function runLegForSequence(
   };
   let body: string;
   if (unconfirmed !== null) {
-    const facts = dateUnconfirmedFacts(leg, legInput, sequence.window.sourceUrl, unconfirmed);
+    const facts = dateUnconfirmedFacts(leg, legInput, unconfirmed);
     const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
     const written =
       deps.client && language
@@ -1008,7 +1012,7 @@ async function runLegForSequence(
       });
       return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
     }
-    body = written;
+    body = dateUnconfirmedBody(written, sequence.window.sourceUrl);
   } else if (leg === 'battle_plan') {
     const decision = battlePlanDecision(legInput);
     // VIL-484 · THE ALREADY-OPEN RETRY. The anchor has just moved to the page's past

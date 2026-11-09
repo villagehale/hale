@@ -180,6 +180,47 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
   });
 });
 
+describe('invokeTool — untrusted-content rail (VIL-616)', () => {
+  function gatedTool(gate: () => { ok: boolean; reason: string }) {
+    const handler = vi.fn(async () => ({ drafted: true }));
+    const tool = defineTool({
+      name: 'propose_calendar_add',
+      description: 'Draft a calendar entry.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ title: z.string() }),
+      untrustedContentGate: gate,
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused call writes NO audit row: the input never reaches audit_log', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: false, reason: 'email_read_this_turn' }));
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { title: 'Pickup with a stranger' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'propose_calendar_add', rail: 'untrusted_content' });
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it('a call the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: true, reason: 'untainted' }));
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { title: 'Swim' }, ctx, deps)).resolves.toEqual({
+      drafted: true,
+    });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.actionTaken)).toEqual(['tool:propose_calendar_add']);
+  });
+});
+
 describe('invokeTool — input validation', () => {
   it('rejects hallucinated args at the boundary before any rail or handler runs', async () => {
     const handler = vi.fn(async () => ({ ok: true }));

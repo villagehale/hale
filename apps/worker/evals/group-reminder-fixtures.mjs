@@ -270,12 +270,12 @@ export const GROUP_REMINDER_FIXTURES = [
       plan: [{ delivery: 'group', moved: null }],
     },
     confirmMustSay: [
-      'written in French, in a tone that fits a message the whole group reads',
+      'written in French',
       'Jacqueline will be reminded to pick Léo up from swimming',
       'on Thursday at 16 h (4 PM)',
     ],
     reminderMustSay: [
-      'written in French, in a tone that fits a message the whole group reads',
+      'written in French',
       'it speaks to Jacqueline by name',
       'it reminds her to pick Léo up from swimming',
     ],
@@ -446,5 +446,42 @@ export const GROUP_REMINDER_FIXTURES = [
     sender: 'Ruth',
     message: 'Hale remind me at 4 to grab Maya, and what time does soccer start Saturday?',
     expect: { request: 'other' },
+  },
+];
+
+/**
+ * Texts whose address is known, read on every recording to show whether the address check
+ * reads who-is-reading right (VIL-493). Each is a French reminder to pick Léo up from
+ * swimming; `address` is how the text says "you", the fact the reader must report, and
+ * `audience` who would read it. The first two differ only in the form of "you".
+ */
+export const GROUP_REMINDER_REGISTER_CALIBRATION = [
+  {
+    id: 'group-familiar',
+    language: 'fr',
+    audience: 'group',
+    address: 'familiar_singular',
+    text: "Jacqueline, n'oublie pas d'aller chercher Léo à la natation !",
+  },
+  {
+    id: 'group-formal',
+    language: 'fr',
+    audience: 'group',
+    address: 'plural_or_formal',
+    text: "Jacqueline, n'oubliez pas d'aller chercher Léo à la natation !",
+  },
+  {
+    id: 'group-no-you',
+    language: 'fr',
+    audience: 'group',
+    address: 'none',
+    text: "Jacqueline, c'est le moment d'aller chercher Léo à la natation.",
+  },
+  {
+    id: 'direct-familiar',
+    language: 'fr',
+    audience: 'direct',
+    address: 'familiar_singular',
+    text: "N'oublie pas d'aller chercher Léo à la natation !",
   },
 ];

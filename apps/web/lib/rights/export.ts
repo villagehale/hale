@@ -8,6 +8,7 @@ import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import type { AuditVerb } from '~/lib/trail/verbs';
 import { type FamilyMemoryExport, loadFamilyMemoryExport } from './export-memory';
+import { type RequesterOnlyExport, loadRequesterOnlyExport } from './export-requester';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -35,6 +36,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'crisis_unanswered',
   // That Hale re-read one parent's held text to see whether they asked it to stop.
   'opt_out_hold_read',
+  // Which language one parent texts Hale in.
+  'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
   'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];
@@ -120,28 +123,36 @@ export interface FamilyExportDocument {
    * The places this family holds, read out of a provider's own confirmation email. A
    * booking is a fact about the family that Hale HOLDS and acts on a week later - it is
    * what makes the "how did it go?" ask happen - so a right-to-access copy without it
-   * would omit something Hale does on their behalf. The host and not the address, on the
-   * same reasoning as the block above; no confirmation number, no amount, no child,
-   * because the table has no column for any of them.
+   * would omit something Hale does on their behalf. The place and the street address
+   * leave as the email wrote them (null when it gave none); no confirmation number, no
+   * amount, no child, because the table has no column for any of them.
    */
   activityBookings: {
     title: string;
     firstSessionAt: string;
     providerHost: string;
+    location: string | null;
+    address: string | null;
     addedToCalendar: boolean;
     /** Set when the provider called the class off, so the copy does not read as a place
      * the family still holds. */
     cancelledAt: string | null;
   }[];
   /**
-   * VIL-375 — a signup the parent authorized Hale to attempt. Host and status
-   * only. The registration path, the child, and anything typed into the form
-   * stay off this copy; the trail below has the step codes.
+   * VIL-375 — a signup the parent authorized Hale to attempt: host, status and the
+   * day-before plan the parent approved (VIL-558; null until there is one). The
+   * registration path, the child, and anything typed into the form stay off this copy;
+   * the trail below has the step codes.
    */
   authorizedSignups: {
     host: string | null;
     status: string;
     sessionId: string | null;
+    planChoiceIds: string[] | null;
+    planMaxPriceCents: number | null;
+    planOpensAt: string | null;
+    planWaiverAccepted: boolean | null;
+    planApprovedAt: string | null;
     updatedAt: string;
   }[];
   /**
@@ -257,6 +268,8 @@ export interface FamilyExportDocument {
     outbound: number;
     openWorkstreamCount: number;
   }[];
+  /** The requester's own records, which no other adult's copy carries (export-requester.ts). */
+  requesterOnly: RequesterOnlyExport;
   /** What Hale remembers about the family: facts, episodes, jobs and promises. */
   memory: FamilyMemoryExport;
   /** The full, teen-redacted audit trail — the right-to-access record. */
@@ -475,6 +488,8 @@ export async function assembleFamilyExport(
       title: schema.activityBookings.title,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       providerHost: schema.activityBookings.providerHost,
+      location: schema.activityBookings.location,
+      address: schema.activityBookings.address,
       eventId: schema.activityBookings.eventId,
       cancelledAt: schema.activityBookings.cancelledAt,
     })
@@ -485,6 +500,8 @@ export async function assembleFamilyExport(
     title: row.title,
     firstSessionAt: row.firstSessionAt.toISOString(),
     providerHost: row.providerHost,
+    location: row.location,
+    address: row.address,
     addedToCalendar: row.eventId !== null,
     // The provider called it off. Without this a right-to-access copy reads as a place the
     // family still holds — a fact about them that stopped being true, and the one Hale
@@ -597,6 +614,11 @@ export async function assembleFamilyExport(
       registrationUrl: schema.authorizedSignupOffers.registrationUrl,
       status: schema.authorizedSignupOffers.status,
       authorizedSessionId: schema.authorizedSignupOffers.authorizedSessionId,
+      planChoiceIds: schema.authorizedSignupOffers.planChoiceIds,
+      planMaxPriceCents: schema.authorizedSignupOffers.planMaxPriceCents,
+      planOpensAt: schema.authorizedSignupOffers.planOpensAt,
+      planWaiverAccepted: schema.authorizedSignupOffers.planWaiverAccepted,
+      planApprovedAt: schema.authorizedSignupOffers.planApprovedAt,
       updatedAt: schema.authorizedSignupOffers.updatedAt,
     })
     .from(schema.authorizedSignupOffers)
@@ -606,6 +628,11 @@ export async function assembleFamilyExport(
     host: hostOf(row.registrationUrl),
     status: row.status,
     sessionId: row.authorizedSessionId,
+    planChoiceIds: row.planChoiceIds,
+    planMaxPriceCents: row.planMaxPriceCents,
+    planOpensAt: row.planOpensAt?.toISOString() ?? null,
+    planWaiverAccepted: row.planWaiverAccepted,
+    planApprovedAt: row.planApprovedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
   }));
 
@@ -674,6 +701,7 @@ export async function assembleFamilyExport(
     { userId: deps.actorUserId },
     now,
   );
+  const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId);
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -707,6 +735,7 @@ export async function assembleFamilyExport(
     activityReviews,
     trips,
     memoryDigests,
+    requesterOnly,
     memory,
     trail,
   };

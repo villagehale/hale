@@ -85,13 +85,19 @@ import { readRecentNotices } from './recent-notices';
  * decides whether Hale may speak right now. No sentence is assembled here.
  *
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
- *   - The SMS carries no line of the email. The snippet, the quote evidence and the body
- *     never reach the writer, a wire body or an audit row (rule #1).
+ *   - Barton's rule (2026-10-12): in the parent's 1:1 chat Hale may say what the email
+ *     says; in a group chat only what is relevant to the group, and never a quote of a
+ *     private email. This alert goes to the 1:1. The thread row keeps the snippet for the
+ *     coach as a separate untrusted turn, not as Hale's own text, and the coach's
+ *     `read_email` reads the body of a message this thread named (coach/read-email-tool).
+ *     A group turn gets neither. The snippet and the body never reach an audit row or a
+ *     log (rule #1), and a 13+ child's snippet is stored null.
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
  *     by the time this sees it, and the facts additionally drop the sender, subject, time
  *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
  *   - Nothing is sent that the writer did not write: an email that is not about the kids,
- *     is unclear, or could not be written ends as a named outcome with no text.
+ *     is unclear, or could not be written ends as a named outcome with no text. A passport
+ *     note is not composed and not joined onto the notice.
  *   - An email about an occasion already on the family's calendar is told only when it
  *     CHANGES it (a cancellation or a move). Anything else would be a second text about
  *     something the parent already has.
@@ -575,7 +581,7 @@ export interface EmailAlertPorts {
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
   /** This family's children, the notice writer's context for "is this about them". */
   familyChildren(): Promise<readonly FamilyChildRef[]>;
-  /** The language this parent texts Hale in (`readNoticeLanguage`): the notice is written in it. */
+  /** The parent's one proactive language (`readParentLanguage`): the notice is written in it. */
   parentLanguage(parentUserId: string, now: Date): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. */
@@ -842,9 +848,11 @@ export async function alertParentForEmail(
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
   }
 
+  // The notice is the whole text. sending:false stamps the receipt and composes no
+  // second sentence to join on (absolute zero: one model write, or nothing).
   const passport = await attachPassportToEmailAlert(database, {
     body: notice.text,
-    sending: true,
+    sending: false,
     familyId,
     parentUserId,
     integrationId,
@@ -914,7 +922,7 @@ export async function alertParentForEmail(
   try {
     const sent = await sendResolvingNewChat(ports.transport, {
       to,
-      body: withOptOut(passport.body, verdict.optOut),
+      body: withOptOut(notice.text, verdict.optOut),
     });
     providerMessageId = sent.providerMessageId;
     if (sent.transport === 'imessage') {
@@ -988,8 +996,21 @@ export async function alertParentForEmail(
   await passport.afterSend();
 
   // The written text. The opt-out line is not appended, so this is also the wire body.
-  // The coach re-reads this row next turn (channel/thread.ts).
-  await ports.threadMessage(database, { familyId, parentUserId, body: passport.body });
+  // The coach re-reads this row next turn (channel/thread.ts). The snippet is stored
+  // beside it and replayed as a tool turn, never as Hale's own text, and never for a
+  // 13+ child.
+  await ports.threadMessage(database, {
+    familyId,
+    parentUserId,
+    body: notice.text,
+    source: {
+      kind: 'gmail',
+      eventId: extraction.matchedEventRef?.id ?? null,
+      gmailMessageId: messageId,
+      snippet:
+        extraction.teenContent || extraction.teenAttributed ? null : input.envelope.snippet,
+    },
+  });
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -1109,6 +1130,7 @@ function bookingDraftFor(
     titleIsFallback: title === '',
     // The same fold the offer row's place goes through, and the same function.
     location: foldedPlace(extraction.event.location),
+    address: foldedAddress(extraction.event.address ?? null),
     now,
   });
 }
@@ -1762,6 +1784,16 @@ export function emailAlertOfferDraft(input: {
 function foldedPlace(location: string | null): string | null {
   const place = clamp(gsm7(location ?? ''), TITLE_MAX);
   return place === '' ? null : place;
+}
+
+/** Longer than any street line a receipt gives with its city and postal code. */
+const ADDRESS_MAX = 120;
+
+/** The street address through the place's fold, but never clamped: an address cut short is
+ * a different address, so one too long to keep is none. */
+function foldedAddress(address: string | null): string | null {
+  const folded = gsm7(address ?? '').trim();
+  return folded === '' || folded.length > ADDRESS_MAX ? null : folded;
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,

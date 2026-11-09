@@ -29,6 +29,7 @@ function offer(sessions: SignupSession[], approvedPriceCents: number | null = nu
     id: 'offer-1',
     familyId: 'family-1',
     childId: 'child-1',
+    parentUserId: 'parent-1',
     activityKey: 'swim-parent-tot',
     registrationUrl: 'https://example.test/register',
     sessions,

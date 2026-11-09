@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Super, je m'en occupe. Tu peux aussi m'ajouter à un groupe iMessage que vous avez déjà avec l'autre parent, si vous en avez un. Sinon, je démarre un nouveau groupe avec elle.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": true,
+    "coparentGroupMode": null,
+    "language": "fr"
+  },
+  "latencyMs": 1628
+}

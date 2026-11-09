@@ -122,6 +122,10 @@ function fakeSweepDb(
     events.push('delete-family');
   });
   const deleteFn = vi.fn(() => ({ where: deletedWhere }));
+  /** Only the family row's delete is the erasure under test; the crisis marks the sweep
+   * also deletes are pinned against the real DDL (opt-out-recovery.pglite.test.ts). */
+  const deleteFrom = (table: unknown) =>
+    table === schema.families ? deleteFn() : { where: async () => undefined };
 
   /** `.from(t)` answers a `.where(...)` AND awaits on its own — the orphan sweep that
    * rides this same run reads whole tables with no predicate, and a chain that only
@@ -156,7 +160,7 @@ function fakeSweepDb(
   const transaction = vi.fn(async (run: (tx: unknown) => Promise<unknown>) => run(null));
 
   return {
-    db: { select, delete: deleteFn, transaction } as never,
+    db: { select, delete: deleteFrom, transaction } as never,
     removeObject,
     spies: { deleteFn, deletedWhere, events },
   };

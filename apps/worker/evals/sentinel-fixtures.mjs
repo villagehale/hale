@@ -28,6 +28,9 @@ export const CHILDREN = [
  *   teenContent         — asserted only when present.
  *   expectedChildRef     — 'leo' | 'maya' | null | undefined (undefined = skip).
  *   requiresOriginalTime / requiresNewTime — asserted only when true.
+ *   expectedAddress      — the street address the body states, or null when it
+ *                          states none (undefined = skip). Never one the model
+ *                          could only complete or look up.
  */
 export const FIXTURES = [
   // ── true positives ─────────────────────────────────────────────────────
@@ -79,7 +82,7 @@ export const FIXTURES = [
       snippet: "Ava's mom has invited Leo to a birthday party on Saturday, August 8th at 2:00 PM at Jump Zone Trampoline Park.",
     },
     body: "You're invited!\n\nAva's 6th Birthday Party\nSaturday, August 8th at 2:00 PM\nJump Zone Trampoline Park, 123 Fun Ave\n\nLeo, we'd love for you to join us! Please RSVP by August 1st.\n\nHosted with Evite",
-    expected: { triagePositive: true, kind: 'new_event', requiresNewTime: true, expectedChildRef: 'leo' },
+    expected: { triagePositive: true, kind: 'new_event', requiresNewTime: true, expectedChildRef: 'leo', expectedAddress: '123 Fun Ave' },
   },
   {
     id: 'invite-paperless-post',
@@ -165,7 +168,8 @@ export const FIXTURES = [
       snippet: 'Thank you for your registration. Preschool Swim Level 2, Saturdays 9:00 AM, begins August 1. Total paid: $96.00.',
     },
     body: 'Thank you for your registration.\n\nConfirmation number: RC-88214\nParticipant: Leo Tremblay\nProgram: Preschool Swim Level 2\nSessions: Saturdays 9:00 AM - 9:45 AM, August 1 to September 19, 2026\nLocation: Brookfield Leisure Centre, Pool 2\nTotal paid: $96.00 (Visa ending 4412)\n\nPlease arrive ten minutes early for the first class. Withdrawals are accepted up to seven days before the session start.\n\nCity of Brookfield Recreation',
-    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo' },
+    // A place and a pool number, and no street: the pool number is not an address.
+    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo', expectedAddress: null },
   },
   {
     id: 'booking-swim-school-enrolment',
@@ -175,7 +179,19 @@ export const FIXTURES = [
       snippet: "Leo's spot in Level 3 is confirmed. First class Tuesday, September 8th at 4:30 PM.",
     },
     body: "Hi there,\n\nGreat news - Leo's spot in Level 3 is confirmed for our fall session. First class is Tuesday, September 8th at 4:30 PM at the Sunnybrook pool, and the session runs ten weeks.\n\nNo further action needed. See you in September!\n\nSunnybrook Swim School",
-    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo' },
+    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo', expectedAddress: null },
+  },
+  {
+    // The receipt that gives the place AND its street, on two lines: the address
+    // is the street line, copied as written, never the centre's name.
+    id: 'booking-receipt-with-street-address',
+    envelope: {
+      subject: 'Enrolment confirmed: Saturday Tumble Tots',
+      from: 'Northgate Community Centre <programs@northgate.example.org>',
+      snippet: "Leo is enrolled in Saturday Tumble Tots. First class Saturday, August 8 at 10:00 AM.",
+    },
+    body: "Hi,\n\nLeo is enrolled in Saturday Tumble Tots. The first class is Saturday, August 8 at 10:00 AM, and classes run eight weeks.\n\nWhere: Northgate Community Centre, Gym B\n450 Example Road, Brookfield\n\nPlease bring a water bottle.\n\nNorthgate Community Centre",
+    expected: { triagePositive: true, kind: 'booking_confirmation', requiresNewTime: true, expectedChildRef: 'leo', expectedAddress: '450 Example Road' },
   },
   {
     // THE HARD NEGATIVE, and the one the 0.7 floor alone would not stop. It uses

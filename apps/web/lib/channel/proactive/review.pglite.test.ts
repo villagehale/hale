@@ -1881,6 +1881,27 @@ describe('runProactiveReview', () => {
     expect(languages).toEqual(['en']);
   });
 
+  it('VIL-572 · writes a parent’s own copy in that parent’s proactive language', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await storedPaceAndPriorHold();
+    await db.database
+      .update(schema.users)
+      .set({ proactiveLanguage: 'zh' })
+      .where(eq(schema.users.id, parentUserId));
+    const languages: (string | null | undefined)[] = [];
+    const h = harness(sendAll, {
+      compose: async (input): Promise<WriterResult> => {
+        languages.push(input.language);
+        return { message: MESSAGE };
+      },
+    });
+
+    expect(await runProactiveReview(db.database, h.deps, THURSDAY_EVENING)).toMatchObject({
+      sent: 1,
+    });
+    expect(languages).toEqual(['zh']);
+  });
+
   it('reads only the newest parent texts the decider is shown on its first look', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     const texts = Array.from({ length: RECENT_PARENT_TEXTS + 3 }, (_, i) => `parent text ${i}`);

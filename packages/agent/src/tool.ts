@@ -81,6 +81,15 @@ export interface ToolDefinition<TInput, TOutput> {
    * first, or the same answer goes missing from the app's Ask.
    */
   registersOnly?: boolean;
+  /**
+   * A rail the CALLER layers onto a tool for one turn (VIL-616): the coach sets it once
+   * `read_email` has handed the turn a stranger's words. `ok:false` refuses on the
+   * `untrusted_content` rail BEFORE the audit row, so the refused input, which the email
+   * may have written, never lands in a family-visible `audit_log` row. Absent = no such
+   * rail on this turn. The handler-side check could not do this: the audit is written
+   * before any handler runs.
+   */
+  untrustedContentGate?: () => GuardResult;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
 }
 
@@ -164,7 +173,9 @@ export interface AuditEntry {
 export class GuardrailError extends Error {
   constructor(
     readonly toolName: string,
-    readonly rail: 'spending_cap' | 'child_content',
+    /** `untrusted_content`: the turn read text a stranger wrote, so it may no longer
+     * write or send (VIL-615, apps/web read-email-tool.ts). */
+    readonly rail: 'spending_cap' | 'child_content' | 'untrusted_content',
     reason: string,
   ) {
     super(`guardrail '${rail}' blocked tool '${toolName}': ${reason}`);
@@ -175,10 +186,11 @@ export class GuardrailError extends Error {
 /**
  * Run a tool through the rails. Order is deliberate:
  *   1. validate input (reject hallucinated args at the boundary)
- *   2. spending-cap gate (if monetary) — throw on reject
- *   3. child-content gate (if touchesChildContent) — throw on reject
- *   4. ALWAYS write the audit row (rule #6) — even a permitted call is logged
- *   5. run the handler
+ *   2. untrusted-content gate (if the caller set one) — throw on reject
+ *   3. spending-cap gate (if monetary) — throw on reject
+ *   4. child-content gate (if touchesChildContent) — throw on reject
+ *   5. ALWAYS write the audit row (rule #6) — even a permitted call is logged
+ *   6. run the handler
  *
  * Audit is written AFTER the gates pass and BEFORE the handler runs: a refused
  * call produces a GuardrailError (and the refusal is itself observable from the
@@ -192,6 +204,13 @@ export async function invokeTool<TInput, TOutput>(
   deps: GuardDeps,
 ): Promise<TOutput> {
   const input = tool.inputSchema.parse(rawInput);
+
+  if (tool.untrustedContentGate) {
+    const verdict = tool.untrustedContentGate();
+    if (!verdict.ok) {
+      throw new GuardrailError(tool.name, 'untrusted_content', verdict.reason);
+    }
+  }
 
   if (tool.monetary) {
     if (!deps.checkSpendingCap || !deps.monetaryCostOf) {

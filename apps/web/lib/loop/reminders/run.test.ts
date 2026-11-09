@@ -646,16 +646,19 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
   it('hands the writer the redacted facts: date, start and end with AM/PM, place, language', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const loadNameLevel = vi.fn(async () => 'relation' as const);
+    const loadLanguage = vi.fn(async () => 'fr');
     const { deps } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () =>
         liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z'), location: 'Main St pool' }),
-      loadLanguage: async () => 'fr',
+      loadLanguage,
       loadNameLevel,
     });
     await runReminderCron({} as never, deps, NOW_T1H);
 
     expect(loadNameLevel).toHaveBeenCalledWith({}, 'p1');
+    // VIL-572 · the recipient's own proactive language, not the family's alone.
+    expect(loadLanguage).toHaveBeenCalledWith({}, 'fam-1', 'p1');
     expect(composeText).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

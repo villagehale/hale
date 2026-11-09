@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgrtA27giq5eoUUdbEwtQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AUKEAgTGAI4AUIIdGhpbmtpbmcSDF0sjYyJibQvhf1GbxoMnk0AM7xb/iPB8o+WIjAMJH7r68GrzgFOEpYs4nc3D2Al//V10c2bs35+lhd2SR44mFaAig2g/EarXxo+zEcq8QQtR45ZFi7xw8EGtolgoyQ43FLSwxN66AMeFibYW8N28MFUkG0iHSt3vpKkfI3o8kdixgb7s0BuovgtNRCcFLwnA/htydpiTxXsSaxvlP16tgF1Pf6tp0z8YWylPvu9dhA3WeWcXWXxQgZki+52pOydUFDAeol9Jif6evI/kDJbNRhQim3g23yo+LuWSrsuRjIALGd3DVXuYBwPr0eEae6Ahl/jZRgk1x2CxHSPGz8BaKO1qjCwU8WYyaWXKC7dHS0DjCJ5xyB4wCAc3wlo6QH90fDqDV634XLgLvkj/7C7Jhxug4wn6G9UL/vxr/do7k7OoyKJpjT6P6XjUVYbA8QRcQwpjoOCsxIQ60D4JKjY1PZc0MYlcx6i7byvXAzSs6+XtnXJDKOvjcfZZ7ehgOqTxSGCYAXSF1dS+EFfeKazX0XVKU41pSbdcQZGMZG0s2c8sKq0kBkjuJ+wswq2ovnvJK/9aEDxFMMoJM0GpN2xpRak3lLW8zRhEMpBzc+a7a8aHfM1IMYscmNO0vUSjmt00G6xB3dyFoEIJfmEn0CgP0xS0pncJji+feNgsE5+tZWN676ZQcpDVS7AoYnjmR5AdkY7kDxYWMnQCygRoY3xyFrVcIGKKuHFBOfdnk2F+VC4NMzODLijYTXTFElutpwsJdW8Wk8/N5eNdMa0SwRTUoe7bHD3HMMoyN7qF2HmPSvmk+Z4wQl0jxoW8+6Jt9p4m7flXSU515TcxanejiPFodICHSDmmONqYmCkbUPS+fyW/aLeE7++FsrQCTjPCMaSUBH8YD5KI2m6X3dGad5B49X+SCakOgYZ0CufKVAJSHQJGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MmGtSyL6KgYLWebkcpztSU",
+        "name": "list_group_lists",
+        "input": {
+          "listName": "soccer snacks"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 392,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19809,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 99,
+      "output_tokens_details": {
+        "thinking_tokens": 42
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

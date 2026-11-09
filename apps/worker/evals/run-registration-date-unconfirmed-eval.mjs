@@ -35,6 +35,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const SUITE = 'registration-date-unconfirmed';
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -57,27 +58,7 @@ const TEXT_SCHEMA = {
   required: ['text'],
 };
 
-const JUDGE_SYSTEM = [
-  'You score one text Hale would send a parent about a registration window for their child',
-  'or children. Hale keeps an opening date on file, but the registration page did not',
-  'confirm it just before this text, so the text must state no opening date. You are given',
-  'the facts Hale handed the writer and the text. Score 1 to 5.',
-  'A 5 says registration for the handed window is coming up, says plainly that Hale could',
-  'not confirm the opening date on the page, asks the parent to check the page, carries the',
-  'handed link, sounds like a friend texting in the handed language, and names no child the',
-  'facts did not hand. `why` page_unreadable means Hale could not open or read the page;',
-  'page_unconfirmed means Hale read it and it did not confirm the date; saying either in',
-  'plain words is right. With `offer` true it asks once whether the parent wants Hale to',
-  'help the morning it opens; with `offer` false it asks nothing.',
-  'Score 2 or lower for any opening date, weekday, clock time or relative day ("tomorrow",',
-  '"tonight", "next week") stated for the opening; for saying the date changed or blaming',
-  'the town; for any claim the facts do not make (that something is booked, registered,',
-  'held, paid or confirmed; a price, a course, an age band, a link not handed); for a',
-  'question where `offer` is false; for the wrong language; or for a named child the facts',
-  'did not hand. Do not require particular words. The `now` date is when the text is sent,',
-  'not the opening. French may use tu or vous.',
-  'Call the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('registration-date-unconfirmed');
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 // Generic towns only: this repo is public.
@@ -144,18 +125,26 @@ export const BROKEN = [
   },
 ];
 
-/** --broken, offline: the composer's own gate must refuse every planted draft. */
+/** --broken, offline: the composer's own gate must refuse every planted draft. The
+ * writer is handed no link, so any link it writes is refused, the handed page included. */
 function brokenOffline(compose) {
-  const facts = BY_ID['heads-up-offer-unconfirmed'];
   const refused = [
-    compose.dateUnconfirmedRefusals('   ', facts),
-    compose.dateUnconfirmedRefusals('Check the page before it opens.', facts),
-    compose.dateUnconfirmedRefusals(`Check ${LINK} or https://evil.example/phish`, facts),
+    compose.dateUnconfirmedRefusals('   '),
+    compose.dateUnconfirmedRefusals(`Check the page: ${LINK}`),
+    compose.dateUnconfirmedRefusals('Check https://rec.example.org.evil.com/x'),
+    compose.dateUnconfirmedRefusals('Check bit.ly/x before it opens.'),
   ];
   const kept = [
-    compose.dateUnconfirmedRefusals(`Couldn't confirm the date. Check: ${LINK}`, facts),
+    compose.dateUnconfirmedRefusals("Couldn't confirm the date at 7 p.m. Check the page below."),
   ];
   return refused.every((r) => r.length > 0) && kept.every((r) => r.length === 0);
+}
+
+/** The writer's request as production builds it: the facts without the link, which code
+ * appends after the draft. */
+function writerMessage(facts) {
+  const { link: _link, ...handed } = facts;
+  return JSON.stringify(handed);
 }
 
 // ── dry pricing ─────────────────────────────────────────────────────────────
@@ -206,7 +195,7 @@ async function main() {
     let usd = 0;
     let calls = 0;
     for (const f of FIXTURES) {
-      const msg = JSON.stringify(f.facts);
+      const msg = writerMessage(f.facts);
       usd +=
         attempts *
         worst(lane.model, tokensFor(skill.instructions) + tokensFor(msg) + 200, maxTokens);
@@ -244,7 +233,7 @@ async function main() {
         tag: `${SUITE}:${f.id}#${attempt}`,
         lane,
         system: skill.instructions,
-        userMessage: JSON.stringify(f.facts),
+        userMessage: writerMessage(f.facts),
         toolName: compose.DATE_UNCONFIRMED_TOOL.name,
         toolDescription: compose.DATE_UNCONFIRMED_TOOL.description,
         toolSchema: TEXT_SCHEMA,
@@ -254,8 +243,8 @@ async function main() {
         cost,
       });
       const draft = String(value?.text ?? '').trim();
-      const refusals = compose.dateUnconfirmedRefusals(draft, f.facts);
-      if (refusals.length === 0) text = draft;
+      const refusals = compose.dateUnconfirmedRefusals(draft);
+      if (refusals.length === 0) text = compose.dateUnconfirmedBody(draft, f.facts.link);
       else console.info(`     refused ${f.id}#${attempt}: ${refusals.join(',')}`);
     }
     if (text === null) {
