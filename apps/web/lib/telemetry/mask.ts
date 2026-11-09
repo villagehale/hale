@@ -27,7 +27,7 @@
  * that throws would drop the whole export batch — see the Langfuse masking docs).
  */
 
-import { scrubPlaceTokens } from '~/lib/channel/place-token';
+import { CANADIAN_POSTAL, redactInShape, scrubPlaceTokens } from '~/lib/channel/place-token';
 
 const TEEN_CONTENT_PLACEHOLDER = '[REDACTED_TEEN_CONTENT]';
 const EMAIL_PLACEHOLDER = '[REDACTED_EMAIL]';
@@ -75,7 +75,7 @@ function scrubText(text: string): string {
 }
 
 /**
- * {@link scrubText} on each STRING of a payload. Not over the stringified whole: a bare
+ * {@link scrubText} on each STRING of a payload, keys included. Not over the stringified whole: a bare
  * five digits is a ZIP to the place matcher, and a JSON number (a token count, a latency)
  * is not a place.
  */
@@ -85,7 +85,7 @@ function scrubPlaceLeaves(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, child]) => [
-        key,
+        scrubText(key),
         scrubPlaceLeaves(child),
       ]),
     );
@@ -144,7 +144,12 @@ export function haleMask({ data }: { data: unknown }): string {
   }
 
   const teenRedacted = carriesTeenMarker(parsed) ? redactTeenContent(parsed) : parsed;
-  return scrubPii(JSON.stringify(scrubPlaceLeaves(teenRedacted)));
+  // A Canadian code needs letters, so this backstop over the whole output cannot hit a JSON number.
+  return redactInShape(
+    scrubPii(JSON.stringify(scrubPlaceLeaves(teenRedacted))),
+    CANADIAN_POSTAL,
+    POSTAL_PLACEHOLDER,
+  );
 }
 
 function safeStringify(value: unknown): string {

@@ -30,8 +30,10 @@ const NOT_A_FIGURE_AFTER = '(?![.,]?\\d)';
 const CURRENCY_AFTER = '(?!\\s*(?:dollars?|bucks|usd|cad)\\b)';
 const ONE_DIGIT_GAP = '[ .-]';
 
+export const CANADIAN_POSTAL = /(?<![\p{L}\p{N}])[a-z]\d[a-z][ -]?\d[a-z]\d(?![\p{L}\p{N}])/giu;
+
 export const PLACE_TOKENS: readonly RegExp[] = [
-  /(?<![\p{L}\p{N}])[a-z]\d[a-z][ -]?\d[a-z]\d(?![\p{L}\p{N}])/giu, // Canadian postal code
+  CANADIAN_POSTAL,
   /(?<![\p{L}\p{N}])[a-z]\d[a-z](?![\p{L}\p{N}])/giu, // Canadian FSA
   new RegExp(
     `${CURRENCY_BEFORE}${NOT_A_FIGURE_BEFORE}(?:\\d+ )*\\d{5}(?:-\\d{4})?(?: \\d+)*${NOT_A_FIGURE_AFTER}${CURRENCY_AFTER}`,

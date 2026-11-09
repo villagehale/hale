@@ -102,6 +102,17 @@ describe.each(SITES)('%s', (_site, scrub) => {
   it('keeps a price', () => {
     expect(scrub('swim with a $12345 budget')).toContain('$12345 budget');
   });
+
+  it.each([
+    ['a12345@example.com', ['a12345', 'example']],
+    ['pat.doe12345@example.org', ['pat', 'doe', 'example']],
+    ['sam.a1b@example.net', ['sam', 'a1b', 'example']],
+  ])('takes out the whole of an email whose local part looks like a place (%s)', (email, parts) => {
+    const out = scrub(`email ${email} about swim`);
+    expect(out).toContain('swim');
+    expect(out).not.toContain('@');
+    for (const part of parts) expect(out).not.toContain(part);
+  });
 });
 
 describe('trace mask', () => {
@@ -109,6 +120,13 @@ describe('trace mask', () => {
     expect(haleMask({ data: JSON.stringify({ input_tokens: 12345 }) })).toBe(
       '{"input_tokens":12345}',
     );
+  });
+
+  it('takes out a postal code or a ZIP used as a key', () => {
+    const out = haleMask({ data: JSON.stringify({ data: { 'Z9Z 9Z9': 'x', '99999': 1 } }) });
+    expect(out).not.toContain('Z9Z');
+    expect(out).not.toContain('99999');
+    expect(out).toContain('[REDACTED_POSTAL]');
   });
 
   it('takes a five-digit house number with its street', () => {

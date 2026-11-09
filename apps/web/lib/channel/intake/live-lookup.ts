@@ -102,9 +102,10 @@ export function deidentifyLiveQuery(
   const names = children.flatMap((child) => (child.name ? [child.name] : []));
   const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
   if (!scrub.ok) return scrub;
-  const query = scrubPlaceTokens(scrub.text, ' ')
+  const withoutContacts = scrub.text
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
+    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
+  const query = scrubPlaceTokens(withoutContacts, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return { ok: true, text: query === '' ? 'current official reputable source' : query };
