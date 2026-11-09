@@ -76,25 +76,27 @@ async function replayStep(
     case 'save': {
       const tool = buildInferenceTools(database, at).find((t) => t.name === 'save_memory');
       if (!tool) throw new Error('save_memory is not registered');
-      const result = (await tool.handler(
-        {
-          childId: childIdOf(family, step.child),
-          factType: step.factType,
-          factKey: step.factKey,
-          factValue: { summary: step.summary },
-          confidence: GOLD_CONFIDENCE,
-          memoryClass: step.memoryClass,
-          disposition: step.disposition,
-          ...(step.observedDay !== undefined
-            ? { observedAt: dayAt(step.observedDay).toISOString() }
-            : {}),
-          ...(step.expiresDay !== undefined
-            ? { expiresAt: dayAt(step.expiresDay).toISOString() }
-            : {}),
-          ...(step.correctsKey ? { correctsKey: step.correctsKey } : {}),
-        },
-        ctx,
-      )) as { saved: boolean; reason?: string };
+      const input = {
+        childId: childIdOf(family, step.child),
+        factType: step.factType,
+        factKey: step.factKey,
+        factValue: { summary: step.summary },
+        confidence: GOLD_CONFIDENCE,
+        memoryClass: step.memoryClass,
+        disposition: step.disposition,
+        ...(step.observedDay !== undefined
+          ? { observedAt: dayAt(step.observedDay).toISOString() }
+          : {}),
+        ...(step.expiresDay !== undefined
+          ? { expiresAt: dayAt(step.expiresDay).toISOString() }
+          : {}),
+        ...(step.correctsKey ? { correctsKey: step.correctsKey } : {}),
+      };
+      // The guarded invoker runs the tool's input gate before the handler; so does replay.
+      const gate = await tool.childContentGate?.(input, ctx);
+      const result = (
+        gate && !gate.ok ? { saved: false, reason: gate.reason } : await tool.handler(input, ctx)
+      ) as { saved: boolean; reason?: string };
       const expected = step.refused ? { saved: false, reason: step.refused } : { saved: true };
       if (result.saved !== expected.saved || (step.refused && result.reason !== step.refused)) {
         family.replayErrors.push(
