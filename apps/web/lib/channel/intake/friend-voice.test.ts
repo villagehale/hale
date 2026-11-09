@@ -924,20 +924,26 @@ describe('speakFriend', () => {
       expect(spoken.bubbles).toEqual([OPENER, multiline, STORY_BUBBLE]);
     });
 
-    it('leaves out a group the model wrote nothing for, and sends the one it wrote', async () => {
-      const { spoken } = await speakWith(() => ({ reply: OPENER, groupLeads: ['', STORY_BUBBLE] }));
-      expect(spoken.source).toBe('composed');
-      expect(spoken.bubbles).toEqual([OPENER, STORY_BUBBLE]);
-      expect(spoken.body).not.toContain(SWIM_LINE);
+    it('refuses a map the model wrote nothing for one group in, and sends the retry that writes every group', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: ['', STORY_BUBBLE] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
     });
 
-    it("drops a bubble that borrows another group's time, and keeps the one that uses its own", async () => {
+    it("sends no short map when every attempt borrows another group's time for one bubble", async () => {
       const borrowed = 'Swim at the rec centre on Tuesday at 10:30, made for ages 3-5.';
-      const { spoken } = await speakWith(() => ({
+      const { spoken, prompts } = await speakWith(() => ({
         reply: OPENER,
         groupLeads: [borrowed, STORY_BUBBLE],
       }));
-      expect(spoken.bubbles).toEqual([OPENER, STORY_BUBBLE]);
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
     });
 
     it('asks again when no group bubble survives, and sends the retry that writes them', async () => {
@@ -968,6 +974,57 @@ describe('speakFriend', () => {
       expect(readGroupLeads({ swimming: { lead: multiline } })).toEqual([multiline]);
       expect(readGroupLeads(JSON.stringify([multiline, 'Story']))).toEqual([multiline, 'Story']);
       expect(readGroupLeads(null)).toBeNull();
+    });
+  });
+
+  describe('a stop that still asks', () => {
+    const later = blank({ step: 'calendar', parentWords: 'later' });
+    const CLOSE = 'No worries, I will leave it there.';
+
+    async function speakStop(first: string, second: string, asks?: boolean) {
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            retries.push(given.retry?.problem);
+            const retry = options?.prompt === 'short';
+            return {
+              reply: retry ? second : first,
+              ...(asks === undefined || retry ? {} : { asks }),
+              capture: { stopAsking: true },
+            } as never;
+          },
+        },
+        later,
+        { page: async () => {} },
+      );
+      return { spoken, retries };
+    }
+
+    it.each([
+      ['a question mark', 'No worries. Want it on your calendar as a weekly reminder?', undefined],
+      [
+        'a full-width question mark',
+        'No worries. Want it on your calendar as a weekly reminder\uFF1F',
+        undefined,
+      ],
+      ['only the asks mark', 'No worries, tell me when you want the calendar.', true],
+    ])(
+      'asks again when the stop holds %s, and sends the close that asks nothing',
+      async (_, draft, asks) => {
+        const { spoken, retries } = await speakStop(draft, CLOSE, asks);
+        expect(retries[1]).toMatch(/set stopAsking and still asked a question/);
+        expect(spoken.source).toBe('retry');
+        expect(spoken.body).toBe(CLOSE);
+        expect(spoken.capture.stopAsking).toBe(true);
+      },
+    );
+
+    it('sends nothing and keeps the session open when the retry still asks', async () => {
+      const draft = 'No worries. Want it on your calendar as a weekly reminder?';
+      const { spoken } = await speakStop(draft, draft);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '' });
+      expect(spoken.capture.stopAsking).toBe(false);
     });
   });
 

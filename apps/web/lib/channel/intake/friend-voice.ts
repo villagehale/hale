@@ -1206,7 +1206,8 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 /**
  * The activity map as bubbles, every one written by the model: the opener,
  * then the bubble it wrote for each group, in group order. A group with no
- * bubble is left out. Code adds no numbers and no lines.
+ * lines has no bubble; speakFriend refuses a map short of any other group.
+ * Code adds no numbers and no lines.
  */
 export function assembleFindShowBubbles(
   opener: string,
@@ -2080,6 +2081,16 @@ export async function speakFriend(
           capture.nameDeclined ||
           (capture.nameConfirmed === false && capture.parentName === null),
       };
+      // A stop closes intake and tidyProse would strip its question, so a stop
+      // that still asks goes back to the model rather than out with the ask cut.
+      if (capture.stopAsking && (marks.asks || draft.normalize('NFKC').includes('?'))) {
+        noteRefusal({ reason: 'stop_still_asking', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('stop_still_asking') },
+        };
+      }
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
@@ -2136,8 +2147,13 @@ export async function speakFriend(
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
           const leads = findShowGroupBubbles(composed.groupLeads ?? null, groups, input);
-          // An opener with no group bubble under it is not the map.
-          if (!leads?.some((lead) => lead.length > 0)) return null;
+          // A map short of a group would go out as the whole map, and the
+          // missing group would no longer be owed. Every group with lines needs
+          // its own usable bubble, or nothing goes.
+          const short = groups.some(
+            (group, index) => group.lines.some((line) => line.trim().length > 0) && !leads?.[index],
+          );
+          if (!leads || short) return null;
           const bubbles = assembleFindShowBubbles(text, groups, leads);
           return { bubbles, judgedText: bubbles.join('\n\n') };
         }
@@ -2303,13 +2319,16 @@ export function retryProblem(
     | 'other_connector'
     | 'unbacked_save'
     | 'unbacked_claim'
-    | 'no_group_bubble',
+    | 'no_group_bubble'
+    | 'stop_still_asking',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
     case 'no_group_bubble':
-      return "No group bubble could be sent: each was missing, or named a time, day, price, name or activity that is not in that group's own lines. Write one bubble per group in findGroups, from that group's lines only.";
+      return "A group bubble could not be sent: it was missing, or named a time, day, price, name or activity that is not in that group's own lines. Write one bubble per group in findGroups, from that group's lines only.";
+    case 'stop_still_asking':
+      return 'It set stopAsking and still asked a question. stopAsking ends the conversation, so that question would never be answered. If the parent asked Hale to stop, write a close that asks nothing; if not, set stopAsking false and ask.';
     case 'join':
       return linqGroupOnboardingV2Enabled()
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
