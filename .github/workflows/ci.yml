@@ -287,6 +287,9 @@ jobs:
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
 
+      - name: Group mention read classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-mention-read
+
       - name: Introduction ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intro-voice
 
