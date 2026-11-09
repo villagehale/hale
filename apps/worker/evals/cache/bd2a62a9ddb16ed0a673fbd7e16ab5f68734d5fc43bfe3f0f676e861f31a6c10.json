@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Correct handling: carries the appended referral link and tells the parent to forward it. No invention, no app handoff, no markdown, no question. It runs long, though: the 'I won't be texting them first' explanation and the setup details are padding past what the answer needed.",
-    "score": 4
-  }
-}
