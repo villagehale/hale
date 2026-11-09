@@ -500,6 +500,46 @@ describe('a 1:1 decision syncs the group', () => {
     expect(http.linqUrls()).toEqual([]);
   });
 
+  it("on Preview a sweep touches only allowlisted families: another family's queued sync stays queued, unaudited", async () => {
+    const testFamily = await seedHousehold(GROUP);
+    const prodFamily = await seedHousehold('chat-home-cleared');
+    // With no chat claimed now, a sweep that reached this family would close its sync unsent.
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.id, prodFamily.familyId));
+    for (const seeded of [testFamily, prodFamily]) {
+      await db.database.insert(schema.groupDecisionSync).values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        originChatId: PERSONAL,
+        decision: 'passed',
+        activity: 'swim',
+        kid: 'Maya',
+        flushAfter: NOW,
+        createdAt: NOW,
+      });
+    }
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', testFamily.familyId);
+    const http = wire();
+
+    const flushed = await flushGroupDecisionSyncs(db.database, { now: NOW, fetch: http.fetch });
+
+    expect(flushed).toEqual({ sent: 1, held: 0 });
+    expect(http.linqUrls()).toEqual([GROUP_MESSAGES]);
+    const prodRows = await db.database
+      .select({ flushedAt: schema.groupDecisionSync.flushedAt })
+      .from(schema.groupDecisionSync)
+      .where(eq(schema.groupDecisionSync.familyId, prodFamily.familyId));
+    expect(prodRows).toEqual([{ flushedAt: null }]);
+    const prodAudit = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, prodFamily.familyId));
+    expect(prodAudit).toEqual([]);
+  });
+
   it('queues one row for a repeated pick, and does not sync it again the same day', async () => {
     const seeded = await seedHousehold(GROUP);
     const http = wire();
