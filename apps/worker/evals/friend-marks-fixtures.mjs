@@ -44,6 +44,7 @@ const CARPOOL_TURN = {
   ],
   // Sunday 10:28 p.m. Eastern: tomorrow is Monday.
   now: new Date('2026-11-02T03:28:00Z'),
+  timeZone: 'America/Toronto',
   scheduled: [],
   recentTurns: [
     { role: 'parent', body: "Mia has carpool tomorrow at 8am, it's a Saturday thing" },
@@ -223,6 +224,7 @@ export const FRIEND_MARKS_FIXTURES = [
       findLines: ['Swim Kids 3 (ages 6-8) - Saturdays 11:00'],
       listKind: 'week',
       now: new Date('2026-11-02T15:00:00Z'),
+      timeZone: 'America/Toronto',
       scheduled: [],
       recentTurns: [
         {
