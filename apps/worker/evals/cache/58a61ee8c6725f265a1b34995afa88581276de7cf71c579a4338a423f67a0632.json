@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsFdqsmRvu6KRGmeNww9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShwoKEAgTGAI4AUIIdGhpbmtpbmcSDNyPDioeBOx12coiChoMKxkWih1jZJBtxD8GIjAqJXyOVfARkuCgiulnv7vvrIGlORPZ8WsfV+sEYsEdPMWrCpCKn4KFhMZ0DUhY6pUqpAnNpGUiUFNIcjREtwQL+Jk+PWn8Z2g9Q/EZqsVjy8f9cVHNaL9m62CxKqahtyPUgEPWUBm25zbSiYtSqIoxmIRToYre6HDPHpWc/9nhAcFIUadjhHe0ERsgNNXbaqY8p0HrTvikg58QFETkRIdVuHwsatkZ8SzBl4tHDLjOmuDhXO/3x2UiY7LwKpd8+1aVSyTYy1Bxba+I9dv/x6WoBOMtehVlSsnktpKiz5XBBwMptJStfl4NZ+WoPoViu5z2b0Y1amn11+R4k9buaOVsSCaGWcNfk4KkRiPNGPy9XxIp2Facb/FAISbI5OFrmBX9HjrIIWacRL8ISZADxZkskbNMqsMtFnmnkPeDdTwS38fA9D4aaUljvznLaOyD5A67HNSb+XWfH/BdYdvy8/0AUMcEG1EL1VSSJNIHRDbOa0/WXckdDl8AnXBd0jwQzgyhzcU2TKxtBqDyu0HtPbmlnBUaNQ3MYbouW4pFqUOuKgo1IBSPTF3KWCEBJtNX9kYuUmWZFg5jz8nqI6pQckovWtqu0O6jTiSCIqGMRHkxgTwwduKR5QxQVA9AUre6LDzjWbryfyoh+skCHOic5/DGOAHNUfo/uw940XHKBoAANv5kMtHa5FflwK7a5kIHQO4Tbhhw6XFBbihuDMvsubPkkpZs2wzxvmumoRl7RDbCCCYABxyQRJ4aVNuO8wA2MHIlfiBFHcSqEFgubq+3Z2+aydaXJ6Zjthr12UXK59jRvjTBAJNiMt6csbPvY970IrYds0b8z8j9PXj2pO6l7l+iAUNSjrobGEDPvWiLtpnWRQLp9l3ahhrfOr1ENPBa4e6a4KT5Hg1y0/ii41tJ7H81/I7Ghq+i2sRhdBg9H5fSbUxigTe7xKyaXEl7kHuvvUsq4/NDDdeJMowcFWjP5QO9MC8fxIq94Ecpt8XwyRQYuiBlgXmbA/cjnErelmJFV5XvFCD54WdF7fdfaal1As1HFEGFYLSAE38mfbeRIVxIjgv/s+kH12G0LQxNJ+jbTloyFI9MUAKjVPbcFfCnRejNAF75bIP9qjmT9CgxK2eAol1H8S90karnlVpH6p63QKzgg+2+FYbl6GN3Iu9wOE1nRHD/ATiTby8SnhGpS3r4HsZ3Sxnnugc2o6AfRrtdzsIIOyxWAYjkWm/d1wcZW4Vt9gesJG5hF2pMNK062318EjBsvd3eZ+lHFzZ1DK27bAV7ENsBqtTLQ7rqKquNg25h1mJFtcVBsK8zU/x5m9UQGc74P7iIM1wn0n2aQh24uRcsSUiInATlS2JwPoYSmm7J1lZB+OEhHsQEx6ih1zGWEq/jkPAjKq0OMuYSkLnb35ETxQTT4y0lOJcYqhZMD+e/4NaK4r96hfTqamO3gbSksBjU3kd/oRTuQdlDzqVSI0nicS98AQAMjDCU9NM0ZiIgWUF67SEm0YpxP+GEstRpgmzycOCQ+83VpQhvnlgyvV92b5CZlYat9HEWwP5VHfk/FKJDRFzUF8ejWOjYlDfoM4+bhyjKew2VJC0O13NRs31AxXxtAcjB4LRqIYEUDXEP5cKpS160Z2CVxAze3VxZw9leSdsC9aYYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I don't have anything from Priya about the school thing, so I won't guess. If you tell me what it was, I can work from that."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18802,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 275,
+      "output_tokens_details": {
+        "thinking_tokens": 235
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
