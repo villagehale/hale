@@ -225,7 +225,9 @@ describe('Devin #982 finding 2: stopAsking paired with a question', () => {
     await handleInboundSms(h.fake.db, inbound(h.transport, 'Ada is 4, H0H 0H0'), h.deps);
     await handleInboundSms(h.fake.db, inbound(h.transport, 'no'), h.deps);
     await handleInboundSms(h.fake.db, inbound(h.transport, 'later'), h.deps);
-    expect(h.transport.bodies().at(-1)).toMatch(/calendar/i);
+    // The calendar card is its prose, then its link once as its own text (VIL-573).
+    expect(h.transport.bodies().at(-2)).toMatch(/calendar/i);
+    expect(h.transport.bodies().at(-1)).toMatch(/^https:\/\/\S+\/connect\?t=\S+$/);
     expect(await loadOpenSession(h.fake.db, PHONE)).not.toBeNull();
     return h;
   }

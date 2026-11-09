@@ -141,7 +141,8 @@ describe('offerConnectorLink', () => {
     );
 
     expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
-    const [calendarBody, gmailBody] = transport.bodies();
+    // Each card is its prose, then its link as its own text.
+    const [, calendarBody, , gmailBody] = transport.bodies();
     const calendarToken = calendarBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     const gmailToken = gmailBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     if (!calendarToken || !gmailToken) throw new Error('expected a token in each card');
