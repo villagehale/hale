@@ -286,7 +286,10 @@ describe('local registration PDF text extraction', () => {
       const baseline = process.memoryUsage.rss();
       let firstPastCeiling: number | null = null;
       const sampler = setInterval(() => {
-        if (firstPastCeiling === null && process.memoryUsage.rss() - baseline > MEMORY_CEILING_BYTES) {
+        if (
+          firstPastCeiling === null &&
+          process.memoryUsage.rss() - baseline > MEMORY_CEILING_BYTES
+        ) {
           firstPastCeiling = performance.now();
         }
       }, SAMPLE_EVERY_MS);
