@@ -70,4 +70,35 @@ describe('redactEventsForTeens (rule #1)', () => {
     expect(JSON.stringify(out)).not.toContain('boyfriend');
     expect(out[1]).toEqual(unnamed);
   });
+
+  // JSON text escapes a newline as `\n`, so a matcher run on the stringified payload sees
+  // the letter `n` touching the name and misses it. The match must run on the real strings.
+  it.each([
+    ['a newline before the name', { body: 'ok\nTamsin has a secret boyfriend' }],
+    ['a tab before the name', { body: 'ok\tTamsin has a secret boyfriend' }],
+    ['a control character before the name', { body: 'ok \u0007Tamsin has a secret boyfriend' }],
+    ['a name nested in an object', { message: { parts: { text: 'Tamsin has a secret boyfriend' } } }],
+    ['a name nested in an array', { lines: ['ok', '\nTamsin has a secret boyfriend'] }],
+    ['a name in an object key', { '\nTamsin': 'a secret boyfriend' }],
+  ])('redacts a family-wide event with %s', (_label, payload) => {
+    const event = {
+      childId: null,
+      eventType: 'message.received',
+      payload,
+      receivedAt: '2026-06-16T00:00:00.000Z',
+    };
+    const out = _internal.redactEventsForTeens([event], stages, ['Tamsin']);
+    expect(JSON.stringify(out)).not.toContain('boyfriend');
+    expect(out[0]?.childId).toBeNull();
+  });
+
+  it('keeps a multi-line, nested payload that names nobody', () => {
+    const event = {
+      childId: null,
+      eventType: 'message.received',
+      payload: { lines: ['ok\nthe toddler slept', { text: 'eleven\thours' }], n: 3 },
+      receivedAt: '2026-06-16T00:00:00.000Z',
+    };
+    expect(_internal.redactEventsForTeens([event], stages, ['Tamsin'])).toEqual([event]);
+  });
 });

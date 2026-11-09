@@ -104,7 +104,7 @@ function redactEventsForTeens(
 ): MemorySnapshot['recentEvents'] {
   return events.map((e) =>
     (e.childId !== null && stageByChild.get(e.childId) === 'teenager') ||
-    namesAny(JSON.stringify(e.payload) ?? '', teenNames)
+    stringLeaves(e.payload).some((text) => namesAny(text, teenNames))
       ? {
           childId: null,
           eventType: e.eventType,
@@ -113,6 +113,20 @@ function redactEventsForTeens(
         }
       : e,
   );
+}
+
+/**
+ * Every string value and object key in a payload. A name match runs on these, never on
+ * JSON text: JSON writes a newline as `\n`, so the escape's letter would touch the name
+ * and hide it from a word-boundary match.
+ */
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, v]) => [key, ...stringLeaves(v)]);
+  }
+  return [];
 }
 
 export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {

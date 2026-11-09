@@ -293,6 +293,8 @@ export const TIMELINES: readonly Timeline[] = [
     ],
     steps: [
       { day: 1, kind: 'inbound', source: 'sms', body: 'Otis has a crush on someone at school' },
+      // Multi-line: as JSON the newline is `\n`, which once hid the name from the match.
+      { day: 5, kind: 'inbound', source: 'sms', body: 'quick one\nOtis got detention for vaping' },
       { day: 1, kind: 'turn', child: null, content: 'Otis has a crush on someone at school' },
       {
         day: 1,
@@ -356,6 +358,7 @@ export const TIMELINES: readonly Timeline[] = [
       { kind: 'current', text: 'share a bedroom', reach: REACH.logistic, at: ['1w', '6w'] },
       { kind: 'secret', text: 'share a bedroom', secret: 'teen', at: ['6m'] },
       { kind: 'secret', text: 'crush on someone', secret: 'teen', at: ALL },
+      { kind: 'secret', text: 'detention for vaping', secret: 'teen', at: ALL },
       { kind: 'secret', text: 'rough week at hockey', secret: 'teen', at: ALL },
     ],
   },
