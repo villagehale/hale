@@ -261,6 +261,81 @@ export const REMINDER_FIXTURES = [
     watchFor:
       'Fake family (P0, Oct 27 18:12 prod text that put two events in one long block). VOICE CHECK: two events tomorrow. Each must keep its start, end, venue name and address (skate 10:30 to 11:20 AM at Mold-Masters SportsPlex, 221 Guelph St; storytime 1:30 to 2 PM at Georgetown Branch, 9 Church St). Then judge by meaning whether they reach the parent as short texts a person takes in at a glance, rather than both packed into one long block. One long block holding both events scores at most 3 even with every fact right; how the texts are split is otherwise up to the writer.',
   },
+  // VIL-551 · the reported single-event text read like a notice ("Toddler Storytime starts
+  // at 1:30 PM today at the ... It runs until 2:00 PM."). Place names here are made up.
+  {
+    id: 'en-voice-single-today',
+    args: args({
+      children: [KID],
+      offset: '-PT1H',
+      now: '2026-10-26T16:45:00Z',
+      events: [
+        ev({
+          childId: 'c-kid',
+          title: 'Toddler Storytime',
+          startsAt: '2026-10-26T17:30:00Z',
+          endsAt: '2026-10-26T18:00:00Z',
+          location: 'Maple Branch Library, 9 Elm Street, Riverton, Ontario',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family (VIL-551, the reported text). VOICE CHECK: one event today, Léa's Toddler Storytime 1:30 to 2 PM at Maple Branch Library, 9 Elm Street; it is 12:45 PM, so it starts in 45 minutes. Every fact must be there (the town and province may be left out). Then judge by meaning whether it reads like a friend texting, casual, or like a notice or report reciting the facts in stiff full sentences. A notice or report scores at most 3 even with every fact right.",
+  },
+  // VIL-551 · the reported clash (Oct 28 evening): two things Thursday morning whose times
+  // run into each other, and the text said only that both were in the morning.
+  {
+    id: 'en-overlap-two-kids',
+    args: args({
+      children: [KID, SIB],
+      now: '2026-10-28T22:12:00Z',
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-kid',
+          title: 'Swim lesson',
+          startsAt: '2026-10-29T13:30:00Z',
+          endsAt: '2026-10-29T14:30:00Z',
+          location: 'Cedar Park Pool, 40 Lake Rd',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-sib',
+          title: 'Music class',
+          startsAt: '2026-10-29T14:00:00Z',
+          endsAt: '2026-10-29T14:45:00Z',
+          location: 'Brightside Music, 7 Oak Ave',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family (VIL-551, the reported clash). Tomorrow, Thursday: Léa's swim lesson 9:30 to 10:30 AM at Cedar Park Pool, 40 Lake Rd, and Theo's music class 10 to 10:45 AM at Brightside Music, 7 Oak Ave. Every fact must be there. CLASH CHECK: the facts mark them as overlapping. The text must say plainly that they overlap and give one next step that settles it (such as who takes which). Saying only that both are in the morning, or to plan around them, is not telling them.",
+  },
+  {
+    id: 'en-overlap-same-child',
+    args: args({
+      children: [KID],
+      events: [
+        ev({
+          eventRef: 'e1',
+          childId: 'c-kid',
+          title: 'Swim lesson',
+          startsAt: '2026-10-26T13:30:00Z',
+          endsAt: '2026-10-26T14:30:00Z',
+          location: 'Cedar Park Pool, 40 Lake Rd',
+        }),
+        ev({
+          eventRef: 'e2',
+          childId: 'c-kid',
+          title: 'Dentist',
+          startsAt: '2026-10-26T14:00:00Z',
+          location: 'Northgate Dental, 15 Pine St',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family (VIL-551). Tomorrow: Léa's swim lesson 9:30 to 10:30 AM at Cedar Park Pool, 40 Lake Rd, and Léa's dentist at 10 AM at Northgate Dental, 15 Pine St (no end given; inventing one is a LOW score). CLASH CHECK: the facts mark them as overlapping, and both are Léa's, so she cannot be at both. The text must say plainly that they overlap and give one next step that settles it (such as which one she is going to).",
+  },
   // VIL-474 · bold. Facts carry no "changed" signal, so in every case below the right
   // answer is no bold, or at most one fact the parent might act on. The judge's BOLD
   // CHECK reads the [bold] line on every fixture; these add routine shapes where bold

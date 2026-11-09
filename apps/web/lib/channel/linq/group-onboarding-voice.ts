@@ -10,6 +10,7 @@ import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/com
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { resolveGroupMention } from './group-mention-reader';
 import {
   type GroupOnboardingKind,
   type GroupOnboardingLine,
@@ -33,6 +34,7 @@ export type GroupLineSend = (input: {
   chatId: string;
   text: string;
   replyTo?: string;
+  mention?: string;
 }) => Promise<{ providerMessageId: string }>;
 
 export type GroupLineSource = 'composed' | 'retry';
@@ -213,13 +215,14 @@ async function speak(
 
 async function deliver(
   send: GroupLineSend | undefined,
-  input: { chatId: string; text: string; replyTo?: string },
+  input: { chatId: string; text: string; replyTo?: string; mention?: string },
 ): Promise<{ providerMessageId: string }> {
   if (send) return send(input);
   return sendLinqChatMessage({
     chatId: input.chatId,
     text: input.text,
     replyTo: input.replyTo ? { messageId: input.replyTo } : undefined,
+    ...(input.mention ? { mention: input.mention } : {}),
   });
 }
 
@@ -311,10 +314,16 @@ export async function sendGroupOnboardingLine(
   if (!claimed) return { outcome: 'already_sent' };
 
   try {
+    const mention = await resolveGroupMention({
+      database,
+      chatId: input.chatId,
+      text: spoken.body,
+    });
     const sent = await deliver(input.send, {
       chatId: input.chatId,
       text: spoken.body,
       replyTo: input.replyTo,
+      ...(mention ? { mention } : {}),
     });
     await database
       .update(schema.channelMessages)

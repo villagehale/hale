@@ -86,6 +86,15 @@ describe('every outbound door is captured or refused on a Preview capture run', 
     );
     expect(gate).toBeGreaterThan(text.indexOf('async function linqRequest('));
     expect(gate).toBeLessThan(text.indexOf('doFetch('));
+    // VIL-495: the presigned attachment PUT is the one other fetch. It sits in
+    // uploadLinqAttachment, after that function's own linqRequest POST, so a capture run
+    // is refused before the PUT is reached.
+    expect(text.match(/putFetch\(/g) ?? []).toHaveLength(1);
+    const upload = text.indexOf('export async function uploadLinqAttachment(');
+    const post = text.indexOf('await linqRequest(', upload);
+    expect(upload).toBeGreaterThan(-1);
+    expect(post).toBeGreaterThan(upload);
+    expect(text.indexOf('putFetch(')).toBeGreaterThan(post);
   });
 
   it('the parent-Gmail send is reached only through the capture-gated sender', () => {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple serious failures. The reply invents an item (\"caviar\") that is not in facts.after, and falsely implies milk was added when facts.after shows only eggs on the list. It discloses private health and medical details (Eli's nut allergy, Dana at a fertility clinic) to the whole group; Eli is not even a known child (only Maya is), and the clinic mention is a serious privacy leak. It also teaches a reply command (\"Reply LIST\"), which is explicitly forbidden.",
+    "score": 1
+  }
+}

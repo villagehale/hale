@@ -19,6 +19,7 @@ import {
   questionsForCalendarReader,
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
+import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import {
@@ -74,6 +75,11 @@ import {
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import {
+  type VoiceReplyOutcome,
+  productionVoiceReplyDeps,
+  sendReplyAsVoiceMemo,
+} from '~/lib/channel/linq/voice-reply';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import type { PendingAsk } from '~/lib/channel/off-domain/answer-request';
 import {
@@ -81,9 +87,9 @@ import {
   type ReplySource,
   settlePendingAsks,
 } from '~/lib/channel/off-domain/lane';
-import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
+import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
 import { CLAIM_READ_MAX_BUDGET_MS } from '~/lib/channel/reconcile/claim-reader';
@@ -413,6 +419,12 @@ export interface ChannelRouterDeps {
   /** VIL-497 — the experience-card sender. Absent: the real `sendLinqAppCard`. A seam so
    * the router's card delivery is testable without Linq. */
   sendExperienceCard?: typeof sendLinqAppCard;
+  /** VIL-495 — the voice-memo send for one family's reply. Absent: the real
+   * `sendReplyAsVoiceMemo` over the Gateway TTS and a Linq pre-upload. */
+  sendVoiceReply?: (
+    input: Parameters<typeof sendReplyAsVoiceMemo>[0],
+    familyId: string,
+  ) => Promise<VoiceReplyOutcome>;
   /** VIL-477 — the guarded group leave. Absent: the real `leaveGroupOnFamilyAsk`. */
   leaveGroup?: typeof leaveGroupOnFamilyAsk;
   /** VIL-477 — claim release + audit after an accepted leave. Absent: the real one. */
@@ -677,6 +689,21 @@ export interface ChannelRouterDeps {
       now: Date;
     },
   ): Promise<WatchedSpotArmOutcome>;
+  /**
+   * VIL-303 · write down the no this reply gave about a deferred capability, or the
+   * earlier no it corrected, against the message that carried it. Non-nullable (rule
+   * #11): a no nobody recorded is one nobody can correct once the capability is real.
+   */
+  recordCapabilityNotes(
+    database: Database,
+    input: {
+      familyId: string;
+      parentUserId: string;
+      notes: CapabilityNotes;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<CapabilityNotesOutcome>;
   limiter: RateLimiter;
   now(): Date;
   log: Pick<Console, 'info' | 'warn' | 'error'>;
@@ -1201,6 +1228,7 @@ async function routeChannelMessageInner(
     groupSync?: GroupActivityDecision,
     pendingAsk: PendingAsk | null = null,
     onSent?: () => Promise<unknown>,
+    voiceMemo = false,
   ) =>
     sendReply(deps, {
       route,
@@ -1215,6 +1243,7 @@ async function routeChannelMessageInner(
       templateKey,
       beforeSend: stopTyping,
       onSent,
+      voiceMemo,
       inboundBody: context.body,
       stickerRead: {
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
@@ -1628,21 +1657,26 @@ async function routeChannelMessageInner(
       await noteUnanswered(deps, job, OFF_DOMAIN_TIMEOUT);
       verdict = { status: 'in_domain', fallback: null };
     }
-    // The screen already read the parent's words. Store the tag it returned, on
-    // this parent, when it differs. Both doors: an in-domain ask is the one a
-    // later follow-up has to answer in that language, and a deflection was still
-    // written in it. A timeout verdict has no tag, and a blank one writes nothing.
-    if (verdict.status !== 'unwritten' && typeof verdict.language === 'string') {
-      const wrote = await rememberParentLanguage(
-        deps.database,
-        turn.parentUserId,
-        verdict.language,
-      );
+    // The screen already read the parent's words. This turn is answered in the language
+    // it came in; the tags only feed the one language Hale writes to this parent in
+    // unprompted, which moves on an explicit ask or a run of texts, never on one
+    // (parent-language.ts). Both doors count. A timeout verdict has no tag.
+    if (
+      verdict.status !== 'unwritten' &&
+      (typeof verdict.language === 'string' || typeof verdict.languageRequest === 'string')
+    ) {
+      const observed = await observeParentLanguage(deps.database, {
+        familyId: turn.familyId,
+        parentUserId: turn.parentUserId,
+        seen: verdict.language ?? null,
+        requested: verdict.languageRequest ?? null,
+      });
       deps.log.info(
         {
           familyId: job.family_id,
-          outcome: wrote.status,
-          ...(wrote.status === 'not_written' ? { reason: wrote.reason } : {}),
+          outcome: observed.status,
+          ...(observed.status === 'not_written' ? { reason: observed.reason } : {}),
+          ...(observed.status === 'switched' ? { why: observed.why } : {}),
         },
         'channel router: parent language',
       );
@@ -1706,7 +1740,8 @@ async function routeChannelMessageInner(
     return await runAgentTurn(deps, {
       job,
       turn,
-      answer,
+      answer: (body, how) =>
+        answer(body, null, null, null, undefined, null, undefined, how?.voiceMemo === true),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
       conversationId,
@@ -2161,8 +2196,10 @@ async function runAgentTurn(
      * The turn's answer: sent, then claimed. Hands back the `channel_messages` id,
      * because a promise is minted against the message that CARRIED it (the MEM-10
      * send-time discipline) and this is the only place that knows which row that was.
+     * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
+     * goes as a memo or as this same text.
      */
-    answer: (body: string) => Promise<string>;
+    answer: (body: string, how?: { voiceMemo: true }) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
     /**
@@ -2213,8 +2250,10 @@ async function runAgentTurn(
       mints,
       experienceCard,
       groupLeave,
+      voiceMemo,
       attempts,
       enforced,
+      capabilityNotes,
     } = await composeReconciledReply(deps, args, view);
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
@@ -2234,7 +2273,11 @@ async function runAgentTurn(
       });
     }
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
-    const channelMessageId = await args.answer(card ? card.text : reply);
+    // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
+    const channelMessageId = await args.answer(
+      card ? card.text : reply,
+      voiceMemo === true && !card ? { voiceMemo: true } : undefined,
+    );
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
     // An enforced turn was already read before the send, so it starts no shadow.
     if (!enforced) {
@@ -2389,6 +2432,26 @@ async function runAgentTurn(
           ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
         },
         'channel router: activity promise recorded',
+      );
+    }
+    // VIL-303 · the no this reply gave, or the earlier no it corrected. Same send-time
+    // discipline and never-throws contract as the writers around it.
+    if (capabilityNotes) {
+      const noted = await deps.recordCapabilityNotes(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        notes: capabilityNotes,
+        channelMessageId,
+        now: args.turn.now,
+      });
+      deps.log.info(
+        {
+          status: noted.status,
+          ...(noted.status === 'recorded'
+            ? { declined: noted.declined, corrected: noted.corrected }
+            : { reason: noted.reason }),
+        },
+        'channel router: capability notes',
       );
     }
     // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
@@ -2818,6 +2881,7 @@ async function composeReconciledReply(
         // Enforce: nothing the cut reply no longer says is written after the send.
         const unsaid = {
           spotWatch: null,
+          capabilityNotes: null,
           ...(enforced ? { activityPromise: null, planOffer: null } : {}),
           mints: [],
           attempts,
@@ -2870,10 +2934,14 @@ async function composeReconciledReply(
     regexKinds.has('activity_followup');
   const offerSurvived =
     !enforced || composed.planOffer === null || reply.includes(composed.planOffer.sentence.trim());
+  // VIL-303: a cut reply may have lost the sentence a note rides on, and nothing names
+  // which sentence that was, so neither note is written. A no left unrecorded owes no
+  // correction; a correction left unrecorded is offered again on a later text.
   const drops = [
     ackSurvived ? null : ('ack_cut' as const),
     promiseSurvived ? null : ('promise_cut' as const),
     offerSurvived ? null : ('offer_cut' as const),
+    composed.capabilityNotes ? ('capability_notes_cut' as const) : null,
   ].filter((drop) => drop !== null);
   for (const reason of drops) {
     deps.log.error(
@@ -2888,6 +2956,7 @@ async function composeReconciledReply(
     spotWatch: ackSurvived ? armingAck : null,
     activityPromise: promiseSurvived ? composed.activityPromise : null,
     planOffer: offerSurvived ? composed.planOffer : null,
+    capabilityNotes: null,
     mints: enforced
       ? survivingMints(refusedVerdict, enforced.read, enforced.judged, reply)
       : refusedVerdict.mints,
@@ -3151,6 +3220,9 @@ async function sendReply(
     /** Runs once the transport accepted the text, before any receipt is written, so what
      * it records holds even when a receipt write then throws. */
     onSent?: () => Promise<unknown>;
+    /** VIL-495 — the model chose to say this reply as a voice memo. Tried first on a
+     * Linq 1:1 chat; every "no" sends the same body as the text below. */
+    voiceMemo?: boolean;
     /** The parent's words, when this reply is the turn's answer. A tapback or
      * a poll can stand in for the text. Absent on the caregiver line, which
      * keeps its sentence. */
@@ -3202,7 +3274,8 @@ async function sendReply(
     }
     if (left) throw new ChatLeftError();
   }
-  if (args.route.channel === 'imessage' && args.inboundBody !== undefined) {
+  const voiced = await voiceMemoFor(deps, args);
+  if (!voiced && args.route.channel === 'imessage' && args.inboundBody !== undefined) {
     try {
       const moment = await considerLinqReply(deps.database, {
         route: args.route,
@@ -3233,7 +3306,7 @@ async function sendReply(
       );
     }
   }
-  const sent = await deps.transport.send({ route: args.route, body: args.body });
+  const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,
   // on every turn, while max_pipeline was 0. The outbound channel_messages row
@@ -3295,6 +3368,8 @@ async function sendReply(
     actionTaken: REPLY_SENT_ACTION[carriedBy],
     targetTable: 'channel_messages',
     targetId: channelMessageId,
+    // The form only, never the words (rule #1): this reply went as a voice memo.
+    ...(voiced ? { after: { form: 'voice_memo' } } : {}),
   });
 
   if (args.conversationId) {
@@ -3303,6 +3378,60 @@ async function sendReply(
 
   await settleOpenAsks(channelMessageId);
   return channelMessageId;
+}
+
+/**
+ * VIL-495 · The model chose voice: try the SAME body as a native voice memo, on a Linq
+ * chat the door marked 1:1. A memo that went out is this reply's send (its ledger,
+ * audit and thread rows are written by sendReply exactly as for a text, and the thread
+ * keeps the words). Every "no" is null and logged with its reason code; the text send
+ * then runs, so the parent always gets the reply and never both.
+ */
+async function voiceMemoFor(
+  deps: ChannelRouterDeps,
+  args: {
+    route: ReplyRoute;
+    body: string;
+    job: ChannelMessageReceivedJob;
+    voiceMemo?: boolean;
+  },
+): Promise<ReplySent | null> {
+  if (!args.voiceMemo) return null;
+  const route = args.route;
+  const input = {
+    text: args.body,
+    modelChoseVoice: true,
+    isGroup: args.job.in_group !== false,
+    textOnly: false,
+    chatId: route.channel === 'imessage' ? route.chatId : null,
+    address: route.to,
+  };
+  let outcome: VoiceReplyOutcome;
+  try {
+    outcome = await (
+      deps.sendVoiceReply ??
+      ((i, familyId) => sendReplyAsVoiceMemo(i, productionVoiceReplyDeps(deps.database, familyId)))
+    )(input, args.job.family_id);
+  } catch (err) {
+    outcome = {
+      sent: 'text',
+      why: 'voice_failed',
+      code: err instanceof Error ? err.name : 'unknown',
+    };
+  }
+  if (outcome.sent === 'text') {
+    deps.log.info(
+      { voice: 'text', why: outcome.why, ...(outcome.code ? { code: outcome.code } : {}) },
+      'channel router: voice memo not sent - the reply goes as text',
+    );
+    return null;
+  }
+  deps.log.info({ voice: 'voice_memo' }, 'channel router: reply sent as a voice memo');
+  return {
+    providerMessageId: outcome.providerMessageId ?? '',
+    channel: 'imessage',
+    ...(input.chatId ? { chatId: input.chatId } : {}),
+  };
 }
 
 /**

@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest';
+import {
+  type PlanReplyFacts,
+  planOpensAtLocal,
+  planReplyBody,
+  planReplyUserMessage,
+  planReplyViolations,
+} from './writer';
+
+const FACTS: PlanReplyFacts = {
+  moment: 'offer',
+  childFirstName: 'Ada',
+  opensAt: { local: 'Tuesday, December 1, 2026 at 7:00 a.m.', timeZone: 'America/New_York' },
+  sessions: [],
+  maxPriceCents: null,
+  waiverAccepted: null,
+  question: null,
+  refusal: null,
+  run: null,
+  language: 'en',
+};
+
+describe('the plan reply gate', () => {
+  it.each([
+    'Finish here: https://live.example.test/s/1',
+    'Go to www.example.test',
+    'It is on register.example-rec.com now',
+    'Short link: bit.ly/x',
+    'Pay at evil.app before noon',
+    'See x.co',
+    'Book on ｅｖｉｌ．ａｐｐ now',
+    'Open xn--80ak6aa92e for the cart',
+  ])('refuses a draft with a link in it: %s', (text) => {
+    expect(planReplyViolations(text)).toContain(
+      'contains a link: Hale adds any link after the text',
+    );
+  });
+
+  it.each([
+    'Sunday first, then Saturday, up to $100.',
+    'Registration opens at 7 a.m. Hale joins then. The total was $98.50.',
+    "Dimanche d'abord, puis samedi. Jusqu'à 100 $.",
+    '周日优先，然后周六。最多100加元。',
+  ])('passes a plain draft: %s', (text) => {
+    expect(planReplyViolations(text)).toEqual([]);
+  });
+
+  it('a page-sourced label or question holding a host never reaches the model', () => {
+    const message = planReplyUserMessage(
+      {
+        ...FACTS,
+        moment: 'run_finished',
+        sessions: [
+          {
+            label: 'Preschool Swim evil.app Sat 9:00',
+            startsAt: '2027-01-09T14:00:00.000Z',
+            endsAt: '2027-01-09T14:45:00.000Z',
+            priceCents: 9800,
+          },
+        ],
+        question: 'Did you mean the one at bit.ly/x ?',
+        run: {
+          outcome: 'needs_human',
+          detail: 'security_code',
+          confirmed: false,
+          sessionLabel: 'Swim https://evil.example.test/x Sat',
+          cartTotalCents: 9800,
+          amountChargedCents: null,
+          liveBrowser: true,
+          holdMinutes: 10,
+        },
+      },
+      null,
+    );
+    expect(message).not.toContain('evil.app');
+    expect(message).not.toContain('bit.ly');
+    expect(message).not.toContain('evil.example.test');
+    // Positive control: the rest of each label still reaches the model.
+    expect(message).toContain('Preschool Swim Sat 9:00');
+    expect(message).toContain('Swim Sat');
+  });
+
+  it('appends the one link code chose after the text', () => {
+    expect(planReplyBody('Done.', null)).toBe('Done.');
+    expect(planReplyBody('Here it is.', 'https://register.example-rec.test/a')).toBe(
+      'Here it is.\nhttps://register.example-rec.test/a',
+    );
+  });
+
+  it('asks for the two-places note on the offer and the approval only', () => {
+    const offer = JSON.parse(planReplyUserMessage(FACTS, null));
+    const approved = JSON.parse(planReplyUserMessage({ ...FACTS, moment: 'approved' }, null));
+    const finished = JSON.parse(planReplyUserMessage({ ...FACTS, moment: 'run_finished' }, null));
+    expect(offer.facts.alsoQueueing).toBe(true);
+    expect(approved.facts.alsoQueueing).toBe(true);
+    expect(finished.facts.alsoQueueing).toBeUndefined();
+  });
+
+  it("restates the open in the parent's own zone", () => {
+    const at = new Date('2026-12-01T12:00:00.000Z');
+    expect(planOpensAtLocal(at, 'America/Chicago').local).toContain('6:00');
+    expect(planOpensAtLocal(at, 'America/New_York').local).toContain('7:00');
+  });
+});

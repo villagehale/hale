@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent asks Hale to find a specific practitioner (optometrist), which is a provider-access request, not a symptom or general question",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2315
+}

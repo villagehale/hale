@@ -548,14 +548,12 @@ export function legNoteFacts(
 export function dateUnconfirmedFacts(
   leg: SequenceLeg,
   input: LegCopyInput,
-  link: string,
   why: DateUnconfirmedFacts['why'],
 ): DateUnconfirmedFacts {
   return {
     now: moment(input.now, input.timeZone),
     window: windowPhrase(input.shortlist),
     who: whoPhrase(input.shortlist.fitNotes),
-    link,
     why,
     offer: leg === 'heads_up' && !headsUpPromisesPlan(input.optIn),
   };

@@ -47,6 +47,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { cachedLaneToolCall, laneToolCacheKey } from './lib/lane-tool-call.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -59,32 +60,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 /** The judge's ceiling: makeJudge's default for a Haiku judge. */
 const JUDGE_MAX_TOKENS = 4096;
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends a parent about an email in their',
-  'connected Gmail. A model wrote the whole text from the facts; nothing is added around it.',
-  'You are given the facts (now; children; email with sender, subject, kind, title,',
-  'namedChild, was, when, location; fromParentsOwnCalendar; alreadyOnCalendar; offer;',
-  'otherHaleFamiliesGoing; private; language; recentNotices), the text and watchFor notes. Score 1-5 on',
-  'FACTS, PRIVACY and TONE, not wording.',
-  'A 5: says what the occasion is and what happened with only the facts given; every date and',
-  'time is correct INCLUDING morning versus afternoon; nothing invented; in facts.language;',
-  'chill and casual, like a friend texting; asks whether to add it exactly when `offer`',
-  'is not null, and asks nothing when it is null; when `otherHaleFamiliesGoing` is a number,',
-  'says that many other Hale families, never just "families"; when `private` is true, says only',
-  'the generic category and that details were kept out, with no sender, time, place or subject.',
-  'Every claim in the text must be supported by the facts. `recentNotices` is only what Hale',
-  'already texted this parent; it supports no claim about this email.',
-  'A LOW score (1-2) is any of: a wrong or ambiguous AM/PM, time, date or place; ANY claim',
-  'the facts do not support, however small or plausible (for example "nothing on the',
-  'schedule for that slot now", "the rest of the week is unchanged", a reason, a refund, a',
-  'make-up date, or what the family should do instead); a detail taken from recentNotices;',
-  'an invented detail; quoting the subject line, an order or confirmation number, an amount or a surname;',
-  'a vague "sent something about" sentence; an ask to add it when `offer` is null or no ask',
-  'when it is not; offering to add something already on the calendar; a link or "reply YES"',
-  'keyword teaching; the wrong language; a form-letter or company register; anything a',
-  'private text must withhold.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('email-alert-notice');
 
 /** What main sent, for every email that reached it: the incident, as code. */
 function brokenText(fixture, notice) {

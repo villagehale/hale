@@ -95,6 +95,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-capability-correction.md": {
+    "file": "coach-capability-correction.md",
+    "sha256": "13170b75a276e27731b8434f30e5952c22ca802901be6d01b70f65e50ce02176"
+  },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
     "sha256": "a306f8314a4dec889237a14c1d41ff9006bccf9f7397695167a20505f0d05155"
@@ -115,6 +119,10 @@
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
   },
+  "coach-group-lists.md": {
+    "file": "coach-group-lists.md",
+    "sha256": "6356a5810c5a49937f948fa3dc2c8b7b147babbca9b843b41beb8f6489cf2cdb"
+  },
   "coach-local-day.md": {
     "file": "coach-local-day.md",
     "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
@@ -130,6 +138,10 @@
   "coach-plan.md": {
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
+  },
+  "coach-voice-memo.md": {
+    "file": "coach-voice-memo.md",
+    "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"
   },
   "connector-disconnect-read.md": {
     "file": "connector-disconnect-read.md",
@@ -173,7 +185,7 @@
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "4092659057ae076133c1e473c8310a920f0f0867db37512c5d79b25bfd08f96d"
+    "sha256": "d94ecb2e3d75632a4ee5b6d9d8f173db49c4597c99b52c8635d54c2cc3814f6e"
   },
   "extract-coparent-duty.md": {
     "file": "extract-coparent-duty.md",
@@ -234,6 +246,10 @@
   "group-conflict-alert.md": {
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
+  },
+  "group-mention-read.md": {
+    "file": "group-mention-read.md",
+    "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -313,7 +329,7 @@
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
-    "sha256": "18976791b8e75b73993815253621573bba04a492865b7720bc13adcc003a0ec3"
+    "sha256": "e08fada31d807c6841bb0668f487f1687be77bcf468f9584172b34ebd4974f4c"
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
@@ -385,11 +401,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "19b450dbabc8d849d43729e218761d5dcedccb0c1a694eff6cd0211b0f6a6428"
+    "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "e05ab699ac45adcb76d803a2fb56576939c981b53f734de0a1db9ab4be579799"
+    "sha256": "fbe913f37d281e75c9767acb0553cc417db6fec85fd330eefb4db3e219c6deec"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -415,13 +431,21 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "read-class-availability.md": {
+    "file": "read-class-availability.md",
+    "sha256": "972c8a7766aa8da30bf8dd30a77fe42f5deceeeebea82db99886f54a9a28fa0d"
+  },
+  "read-email-coach.md": {
+    "file": "read-email-coach.md",
+    "sha256": "5a51ac62fa9db9151b857b98e8434e8924e209fde72ffec39c24fc74447c6b21"
+  },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
   "registration-date-unconfirmed.md": {
     "file": "registration-date-unconfirmed.md",
-    "sha256": "df670bbb95411f7858b8e3b608d81d3153d800eaa736c2aa0ee8e94315a8fe20"
+    "sha256": "fae715649681313c25d563d4d387d7bb6ab7c210719e5e2be1f9e1d0db84df6d"
   },
   "registration-evening.md": {
     "file": "registration-evening.md",
@@ -445,7 +469,7 @@
   },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "5036b4da06914c0739a941a8d32a8a581fb9964fecf044c057c967ab62555473"
+    "sha256": "32bf310ee83d6708bd5ead832ebb2a16c7c7d230b78df880207a98d31e75a47e"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
@@ -486,6 +510,14 @@
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
     "sha256": "c14736437aa015313c1434cc73ffda77527fdb8955078fca1c4f8ac78c2d01a3"
+  },
+  "signup-plan-read.md": {
+    "file": "signup-plan-read.md",
+    "sha256": "e5753bb73887410aa6781c4a32d4fcd6dc5c7711b8edbc00b09f43da923dc428"
+  },
+  "signup-plan-reply.md": {
+    "file": "signup-plan-reply.md",
+    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

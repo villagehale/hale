@@ -91,6 +91,7 @@ import {
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -729,64 +730,7 @@ function tracesToEvidence(pick, evidence) {
   return hits >= Math.min(2, words.length);
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE SMS Hale sent a parent who asked what their young',
-  'child could do locally. Hale searched the live web first, then wrote this from what it',
-  'found - it never saw the child, only a de-identified subject, the family town and a',
-  'coarse stage. You are given the subject, the town, the stage, `notes` (what the search',
-  'and any opened pages actually said), the picks Hale extracted, the message it wrote, and',
-  'watchFor (fixture-specific notes). Score 1-5.',
-  'A 5: every pick is a real, specific, local thing a parent could turn up to - a named',
-  'place, plausibly fitting the stage - and at most three of them. The message leads with',
-  'the best one by name, says whose information it is ("their site says", "listed as"), and',
-  'attributes rather than claiming to have confirmed.',
-  'It is plain text with no link and NO QUESTION AT ALL. Do not score it down for length.',
-  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
-  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
-  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
-  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
-  'message down for ending on a statement.',
-  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
-  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
-  'watching and text you when they post"): that is a commitment that exists, not an',
-  'unverified claim. When it is FALSE no such row exists and any coming-back sentence is a',
-  'promise nothing is behind - THAT is the low score.',
-  'You are given `pageEvidence`. It bears on ONE thing: whether a NEGATIVE claim about what',
-  'a page carries is earned. A message that makes no such claim is correct under every',
-  'state and is never marked down for the field, and attribution is not such a claim - a',
-  'snippet off the venue\'s own site IS "their site says" in all three states.',
-  '`page_has_no_schedule` - a page was opened today and carries no time and no price, so',
-  '"no fall days, times or prices are up yet" is TRUE here and is not a fault.',
-  '`no_page_read` - nobody opened a page today, so "not posted yet" would be a report on a',
-  'page nobody read; where that sentence is wanted it is "I could not get into their page',
-  'today".',
-  '`page_has_schedule` - a page was opened and DOES publish times and prices, and Hale could',
-  "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
-  'first person - "I could not pin down the day or the price" - never "not posted yet".',
-  'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
-  'is going quiet about a find, or hedging instead of naming anything at all.',
-  'A pick whose `when` or `price` is null is CORRECT when the source had not published it -',
-  'a real program whose fall times are not up yet, or whose schedule sits behind a',
-  'registration login, is a genuine find. Score it a 5 when the message NAMES the gap in',
-  'the form `pageEvidence` earns - "their site lists it, the fall times are not posted yet"',
-  'only under `page_has_no_schedule`, and "their site lists it, I could not pin down the',
-  'day or the price" otherwise - and says what Hale is already doing about it.',
-  'Score it low only if the message invents a day, a time or a price the picks do not carry,',
-  'or quietly writes around the gap as though the detail were known.',
-  'A LOW score is any of: a venue that looks invented or generic ("your local community',
-  'centre"); a directory-style list; a pick whose source is a listings site or an',
-  "aggregator rather than that venue's own page (a museum guide or a things-to-do roundup",
-  'is that kind of page; Museums Montréal is an example); a pick for a',
-  'different town; a message that presents web-read facts as verified; a message that',
-  'WITHHOLDS a find because it is unverified, or hedges instead of naming something (a',
-  'parent who got "I will come back to you" was handed nothing - that is the failure this',
-  'lane exists to fix); a price or a time that appears nowhere in the picks.',
-  'An EMPTY pick list is correct when nothing is genuinely running, and the message should',
-  'then say plainly what was looked at and found nothing. Score that a 5 if it is honest and',
-  'specific; score it low if it is vague or apologetic.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('activity-finder');
 
 /**
  * THE TRAVEL RUBRIC — the picks alone, because the caller writes its own text.
@@ -803,38 +747,7 @@ const JUDGE_SYSTEM = [
  * Its own tag (`activity-finder-travel`) keeps it in a separate cache namespace, so this
  * rubric can be tuned without re-minting a single sample of the eight-fixture corpus above.
  */
-const TRAVEL_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring what Hale FOUND for a family who are visiting a city',
-  'they do not live in, with a young child, for a few days. Hale searched the live web and',
-  'saw only a de-identified subject, the destination and a coarse stage - never the child.',
-  'You are given the subject, the destination, the stage, the dates, `pagesRead` and',
-  '`pagesRefused` (how many pages Hale opened or was refused), `notes` (what the search and',
-  'those pages actually said), the picks, and watchFor (fixture-specific notes). Judge the',
-  'picks against the notes. There is NO MESSAGE to score: the caller composes the',
-  'text deterministically from these picks, so judge the FINDS. Score 1-5.',
-  'A 5: every pick is a real, specific, named place in that destination that this family',
-  'could TURN UP TO inside those dates - a museum, a zoo, an aquarium, a science centre, a',
-  'park, a library or a drop-in - and at most three of them.',
-  'THE FAILURE THIS RUBRIC EXISTS FOR, and score it 1 or 2 wherever it appears: a pick that',
-  'is a TERM rather than a visit. A multi-week session, a weekly class, a programme whose',
-  'value to the parent is a registration date, a "fall session starts in September" - all of',
-  'those are correct answers to a question about a family who LIVE there, and useless to one',
-  'who will be on a plane home. One such pick is a serious fault even if the other two are',
-  'right.',
-  'A pick whose `when` or `price` is NULL is CORRECT and is never a fault. This lane reads',
-  'search snippets and does not open pages, so an unpublished admission price is a gap the',
-  'caller names rather than a find to withhold - and requiring a price is what once lost',
-  'this corpus a real find outright. Score DOWN only an invented figure: a time or a price',
-  'that appears in the pick but nowhere in what a source would have published.',
-  'A LOW score is also: a venue that looks invented or generic ("a local playground"); a',
-  'pick in a different city; a directory-style list; a pick whose source is an aggregator or',
-  "a listings site rather than that venue's own page. A guide or roundup that covers many",
-  'venues is a fault even when the venue is real; Museums Montréal is that kind of page.',
-  "The venue's own organisation, or its municipality, is the source.",
-  'Seasonal reality is not a fault: a city in late December where much is closed should come',
-  'back with the things that are OPEN, and three of them is better than a longer list.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const TRAVEL_JUDGE_SYSTEM = judgePrompt('activity-finder-travel');
 
 /**
  * The deterministic broken stand-in - one failure per gate, so `--broken` proves each one
