@@ -25,11 +25,14 @@ END $$;
 -- could not both be live, so every write either overwrote the other adult's fact or
 -- refused in a way that showed it was there. The fifth column is the speaker of a
 -- private fact (said in their 1:1, and not a logistic, routine, calendar or receipt
--- fact, which R7 shares) and NULL for the household's. A private row whose speaker is
--- deleted (`source_user_id` ON DELETE SET NULL) is scoped to its own id, so a user
--- delete can never collide with a household row. `liveScopeSql`
+-- fact, which R7 shares), 'unrecorded' for a row no adult is recorded saying (the
+-- nightly writer, and every row saved before this file), and NULL for the household's.
+-- So the nightly writer only ever supersedes its own rows, never a household fact.
+-- A private row whose speaker is deleted (`source_user_id` ON DELETE SET NULL) is
+-- scoped to its own id, so a user delete can never collide with a household row.
+-- `liveScopeSql`
 -- (apps/worker/src/services/memory-context.ts) is the same expression.
--- This only loosens the rule between different adults' private rows; no row changes.
+-- This only loosens the rule (between different scopes); no row changes.
 -- The new index is created FIRST, so the table is never without one.
 -- Rollback (repair cross-scope duplicates the way 0084 did, then restore the old index):
 --   WITH ranked AS (SELECT id, first_value(id) OVER (PARTITION BY family_id, child_id,
@@ -51,7 +54,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "memory_facts_one_live_per_scope_idx"
       WHEN "source_audience" = 'one_to_one'
         AND "fact_type" NOT IN ('logistic', 'routine')
         AND "memory_source" NOT IN ('calendar', 'receipt')
-      THEN coalesce("source_user_id", "id")
+      THEN coalesce("source_user_id", "id")::text
+      WHEN "source_audience" = 'unrecorded' THEN 'unrecorded'
     END)
   )
   NULLS NOT DISTINCT

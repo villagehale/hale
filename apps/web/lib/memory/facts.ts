@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { isPrivateFact, liveScopeSql } from '@hale/worker/memory-context';
+import { UNRECORDED_SCOPE, isPrivateFact, liveScopeSql } from '@hale/worker/memory-context';
 import { type SQL, and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 /**
@@ -14,8 +14,8 @@ import { type SQL, and, eq, inArray, isNull, sql } from 'drizzle-orm';
  * only what they know.
  *
  * The identity of a fact is `(family, child, type, key, scope)`, where the scope names
- * the speaker of a private fact and is null for the household's (`liveScopeSql`,
- * VIL-599). Postgres enforces one live row per identity
+ * the speaker of a private fact, is `unrecorded` for a fact no adult is recorded saying,
+ * and is null for the household's (`liveScopeSql`, VIL-599). Postgres enforces one live row per identity
  * (`memory_facts_one_live_per_scope_idx`, migration 0218), which is
  * what makes this the only correct way in rather than the polite one: a writer that
  * skips the supersede now fails loudly instead of quietly leaving Hale holding two
@@ -85,24 +85,23 @@ export interface FactWrite {
 }
 
 /**
- * The scope a write lands in: the speaker when the fact is private to them, else the
- * household's (null). A write supersedes only within its own scope, so A's 1:1 never
- * closes B's private fact, and a household write (the nightly `unrecorded` writer
- * included) never closes anyone's private fact.
+ * The scope a write lands in (`liveScopeSql`): the speaker when the fact is private to
+ * them, the nightly writer's own when it is `unrecorded`, else the household's (null). A
+ * write supersedes only within its own scope, so A's 1:1 never closes B's private fact or
+ * the household's, and the nightly writer never closes anyone's fact but its own.
  */
 export function sameScope(write: {
   factType: MemoryFactType;
   memorySource?: FactWrite['memorySource'];
   heard: FactHeard;
 }): SQL {
-  const sourceAudience = write.heard === 'unrecorded' ? 'unrecorded' : write.heard.in;
+  if (write.heard === 'unrecorded') return sql`${liveScopeSql()} = ${UNRECORDED_SCOPE}`;
   const speaker =
-    write.heard !== 'unrecorded' &&
     write.heard.in === 'one_to_one' &&
     isPrivateFact({
       factType: write.factType,
       memorySource: write.memorySource ?? 'legacy',
-      sourceAudience,
+      sourceAudience: write.heard.in,
     })
       ? write.heard.userId
       : null;

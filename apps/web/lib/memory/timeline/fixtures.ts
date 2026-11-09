@@ -505,10 +505,12 @@ export const TIMELINES: readonly Timeline[] = [
       },
     ],
     probes: [
-      { kind: 'current', text: 'drop-off is at 8:15', reach: REACH.logistic, at: ALL },
-      { kind: 'current', text: 'goes to bed at 7:30', reach: REACH.routine, at: ALL },
-      { kind: 'coparentExport', text: 'drop-off is at 8:15', shared: true, at: ALL },
-      { kind: 'coparentExport', text: 'goes to bed at 7:30', shared: true, at: ALL },
+      // Every save here is the nightly writer's, which cannot say which adult a fact came
+      // from. With two adults on record it is held back from both, logistics and routines
+      // included: R7 shares those by type only when the row says where it was said
+      // (VIL-599), or a routine derived from one adult's private fact would reach the other.
+      { kind: 'coparentExport', text: 'drop-off is at 8:15', shared: false, at: ALL },
+      { kind: 'coparentExport', text: 'goes to bed at 7:30', shared: false, at: ALL },
       { kind: 'coparentExport', text: 'quieter weekends', shared: false, at: ALL },
     ],
   },

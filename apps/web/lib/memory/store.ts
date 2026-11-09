@@ -771,6 +771,7 @@ async function correctFamilyFact(
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
       inferredBy: schema.familyMemoryFacts.inferredBy,
+      sourceAudience: schema.familyMemoryFacts.sourceAudience,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -787,16 +788,19 @@ async function correctFamilyFact(
   // as their own fact, in their own scope, and the other adult's row is not touched
   // (VIL-599). So the outcome can never say whether a fact the sender cannot hear exists.
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
-  // A correction retires every row it corrects that the sender may hear, the household's
-  // included, as a forget would: the wrong value must not stay live beside the right one.
-  // The new value still lands in the sender's own scope, so what they said in their 1:1
-  // stays theirs (R7).
+  // The correction is written in the sender's scope and, like every write, supersedes only
+  // within it. A household row it corrects from a 1:1 stays live for the other adult; the
+  // sender's 1:1 reads the newer row, so they hear their correction (R7). Retiring the
+  // household's row here would leave the other adult with no value at all.
+  // The one exception is an `unrecorded` row (the nightly writer's guess, or a row saved
+  // before speakers were kept), retired as a forget would retire it. The sender can see
+  // one only while no other adult is on record, so this never takes a value from anyone.
   const subjects = new Map<
     string,
     {
       childId: string | null;
       factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
-      corrects: string[];
+      unrecorded: string[];
     }
   >();
   for (const row of live) {
@@ -804,13 +808,13 @@ async function correctFamilyFact(
     const subject = subjects.get(key) ?? {
       childId: row.childId,
       factType: row.factType,
-      corrects: [],
+      unrecorded: [],
     };
-    subject.corrects.push(row.id);
+    if (row.sourceAudience === 'unrecorded') subject.unrecorded.push(row.id);
     subjects.set(key, subject);
   }
   if (subjects.size === 0) {
-    subjects.set('', { childId: null, factType: factTypeFor(input.factKey), corrects: [] });
+    subjects.set('', { childId: null, factType: factTypeFor(input.factKey), unrecorded: [] });
   }
 
   await database.transaction(async (tx) => {
@@ -836,7 +840,7 @@ async function correctFamilyFact(
       factId = written.factId;
       superseded += written.supersededFactIds.length;
       const closed = await closeFacts(tx, {
-        factIds: subject.corrects.filter((id) => !written.supersededFactIds.includes(id)),
+        factIds: subject.unrecorded,
         closedAt: input.now,
         supersededBy: written.factId,
       });

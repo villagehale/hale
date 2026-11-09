@@ -368,25 +368,51 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     expect(await live(familyId, 'violin')).toHaveLength(0);
   });
 
-  it('A’s correction of A’s own fact supersedes it; of a group-said one, retires it and keeps A’s word A’s', async () => {
+  it('A’s correction of A’s own fact supersedes it; of a group-said one, leaves the household’s live for B', async () => {
     const { familyId, a, b } = await seedHousehold();
     await fact(familyId, 'skating', { in: 'one_to_one', userId: a });
     await fact(familyId, 'piano', { in: 'family', userId: b });
 
+    // Control: A's own fact is in A's scope, so the correction supersedes it.
     expect((await texted(familyId, a, 'correct skating: tuesdays')).corrected).toBe(1);
     expect(await live(familyId, 'skating')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
 
-    // The wrong value goes, as a forget would take it; the new one was said in A's 1:1,
-    // so only A hears it (R7).
+    // A write closes only rows in its own scope: A's word lands in A's scope and the
+    // household's row stays live, so B keeps the value and nothing is lost across adults.
     expect((await texted(familyId, a, 'correct piano: tuesdays')).corrected).toBe(1);
-    expect(await live(familyId, 'piano')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
+    const piano = await live(familyId, 'piano');
+    expect(piano).toHaveLength(2);
+    expect(piano).toContainEqual({ factValue: 'tuesdays', sourceUserId: a });
+    expect(piano).toContainEqual({ factValue: { summary: 'piano words' }, sourceUserId: b });
     const coached = async (reader: string, inGroup = false) =>
       (await coach(familyId, reader, inGroup)).memoryFacts
         .filter((f) => f.factKey === 'piano')
         .map((f) => f.factValue);
     expect(await coached(a)).toEqual(['tuesdays']);
-    expect(await coached(b)).toEqual([]);
-    expect(await coached(a, true)).toEqual([]);
+    expect(await coached(b)).toEqual([{ summary: 'piano words' }]);
+    expect(await coached(a, true)).toEqual([{ summary: 'piano words' }]);
+  });
+
+  it('a correction retires an unrecorded row only while one adult is on record', async () => {
+    // Two adults: the unrecorded row is held back from both, so A's correction cannot
+    // see it and leaves it live.
+    const { familyId, a } = await seedHousehold();
+    expect((await texted(familyId, a, 'correct legacy_pref: tuesdays')).corrected).toBe(1);
+    const shared = await live(familyId, 'legacy_pref');
+    expect(shared).toHaveLength(2);
+    expect(shared).toContainEqual({
+      factValue: { summary: 'legacy_pref words' },
+      sourceUserId: null,
+    });
+    // Control: alone on record, the adult's correction retires the unrecorded guess.
+    const solo = await seedFamily(db.database);
+    await fact(solo.familyId, 'legacy_pref', 'unrecorded');
+    expect(
+      (await texted(solo.familyId, solo.parentUserId, 'correct legacy_pref: tuesdays')).corrected,
+    ).toBe(1);
+    expect(await live(solo.familyId, 'legacy_pref')).toEqual([
+      { factValue: 'tuesdays', sourceUserId: solo.parentUserId },
+    ]);
   });
 
   it('in A’s 1:1, A’s own private row over the household’s on one key reads as the newer', async () => {
@@ -628,5 +654,134 @@ describe('an adult who leaves takes their private facts with them', () => {
     const { familyId, b } = await departing();
     await db.database.delete(schema.users).where(eq(schema.users.id, b));
     expect(await live(familyId, 'swim')).toHaveLength(2);
+  });
+});
+
+/**
+ * The nightly writer reads every adult's facts, so what it writes cannot say whose it is.
+ * R7 shares logistics, routines and calendar or receipt facts by type, but only when the
+ * row says where it was said; an `unrecorded` row is never shared by type while another
+ * adult is on record, and it lives in its own scope, so it never supersedes the
+ * household's.
+ */
+describe('a nightly fact can neither launder a private fact nor replace the household’s', () => {
+  async function nightlyRoutine(familyId: string, factKey: string, validFrom = NOW) {
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey,
+      factValue: `${factKey} nightly`,
+      confidence: 0.9,
+      inferredBy: 'memory_inferencer',
+      memorySource: 'inferred',
+      heard: 'unrecorded',
+      validFrom,
+    });
+  }
+
+  const valuesOf = (facts: { factKey: string; factValue: unknown }[], factKey: string) =>
+    facts.filter((f) => f.factKey === factKey).map((f) => f.factValue);
+
+  it('a routine the writer derived reaches neither adult in a two-adult family', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    // B's private fact, and the routine the writer could derive from it.
+    await fact(familyId, 'therapist', { in: 'one_to_one', userId: b });
+    await nightlyRoutine(familyId, 'saturday_busy');
+    // Control: a routine said where it was recorded is still shared by type.
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'routine',
+      factKey: 'bath_night',
+      factValue: 'bath_night said',
+      confidence: 0.9,
+      inferredBy: 'ask-hale',
+      heard: { in: 'one_to_one', userId: b },
+      validFrom: NOW,
+    });
+
+    for (const reader of [a, b]) {
+      const coached = (await coach(familyId, reader)).memoryFacts;
+      expect(valuesOf(coached, 'saturday_busy')).toEqual([]);
+      expect(valuesOf(coached, 'bath_night')).toEqual(['bath_night said']);
+      const recalled = await recallFamilyMemory(db.database, {
+        familyId,
+        now: NOW,
+        reader: { adult: reader },
+      });
+      expect(valuesOf(recalled, 'saturday_busy')).toEqual([]);
+      expect(valuesOf(recalled, 'bath_night')).toEqual(['bath_night said']);
+    }
+    expect(valuesOf((await coach(familyId, a, true)).memoryFacts, 'saturday_busy')).toEqual([]);
+    // The access export reads the same rule row by row.
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: a,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+    expect(JSON.stringify(doc.memory)).not.toContain('saturday_busy');
+    expect(JSON.stringify(doc.memory)).toContain('bath_night');
+  });
+
+  it('control: with one adult on record the routine is read, newest across scopes', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await nightlyRoutine(familyId, 'saturday_busy');
+    await fact(familyId, 'bedtime', { in: 'family', userId: parentUserId });
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'bedtime',
+      factValue: 'bedtime nightly',
+      confidence: 0.9,
+      inferredBy: 'chat_distiller',
+      memorySource: 'inferred',
+      heard: 'unrecorded',
+      validFrom: new Date(NOW.getTime() + 60_000),
+    });
+    const coached = (await coach(familyId, parentUserId)).memoryFacts;
+    expect(valuesOf(coached, 'saturday_busy')).toEqual(['saturday_busy nightly']);
+    expect(valuesOf(coached, 'bedtime')).toEqual(['bedtime nightly']);
+  });
+
+  it('a nightly write on a key the household holds leaves the household row live', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'bedtime', { in: 'family', userId: b });
+    const nightly = (factKey: string, correctsKey: string | null) =>
+      commitClassifiedMemory(db.database, {
+        familyId,
+        childId: null,
+        factType: 'preference',
+        factKey,
+        factValue: `${factKey} nightly`,
+        confidence: 0.9,
+        inferredBy: 'chat_distiller',
+        source: 'inferred',
+        now: NOW,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+        correctsKey,
+        heard: 'unrecorded',
+      });
+
+    await nightly('bedtime', null);
+    const bedtime = await live(familyId, 'bedtime');
+    expect(bedtime).toHaveLength(2);
+    expect(bedtime).toContainEqual({ factValue: { summary: 'bedtime words' }, sourceUserId: b });
+    // Control: the nightly writer still supersedes its own unrecorded row.
+    await nightly('bedtime', null);
+    expect(await live(familyId, 'bedtime')).toHaveLength(2);
+    // Both adults keep the household's value; the unrecorded one is held back from both.
+    for (const reader of [a, b]) {
+      expect(valuesOf((await coach(familyId, reader)).memoryFacts, 'bedtime')).toEqual([
+        { summary: 'bedtime words' },
+      ]);
+    }
+    // A nightly correction onto another key closes only the writer's own row on it.
+    await nightly('bed_time', 'bedtime');
+    expect(await live(familyId, 'bedtime')).toEqual([
+      { factValue: { summary: 'bedtime words' }, sourceUserId: b },
+    ]);
   });
 });

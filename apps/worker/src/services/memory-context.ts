@@ -70,9 +70,13 @@ export type FactReader = { adult: string } | 'every_adult' | 'memory_writer';
 export type ContextFact = schema.FamilyMemoryFact & { seenIn: FactSourceLabel | null };
 
 /** Shared with every adult whoever said them (R7): logistics, and what a calendar or a
- *  receipt recorded. */
+ *  receipt recorded. Only for a row in {@link ATTRIBUTED_AUDIENCES}. */
 export const SHARED_FACT_TYPES = ['logistic', 'routine'] as const;
 export const SHARED_FACT_SOURCES = ['calendar', 'receipt'] as const;
+/** The audiences that say where a fact was said; `unrecorded` is the one that does not. */
+const ATTRIBUTED_AUDIENCES = ['one_to_one', 'family'] as const;
+/** The scope of every `unrecorded` row in a live fact's identity ({@link liveScopeSql}). */
+export const UNRECORDED_SCOPE = 'unrecorded';
 
 /**
  * Whether any adult other than `readerUserId` was ever part of the family: a current
@@ -113,26 +117,34 @@ type HeardRow = Pick<
 /**
  * Whether `readerUserId` may hear a fact while another adult is on record (R7), and if
  * not, why. Null reads for every adult at once. {@link heardBySql} is the same rule as a
- * query predicate; the two are tested against each other.
+ * query predicate.
+ *
+ * The R7 exemption by type or source holds only for a row that says where it was said.
+ * An `unrecorded` row is never shared by it: the nightly writer reads every adult's
+ * facts, so a routine it derived from one adult's private fact would otherwise reach the
+ * other adult by its type.
  */
 export function factHeardBy(
   row: HeardRow,
   readerUserId: string | null,
 ): 'heard' | 'another_adult' | 'unrecorded' {
+  if (row.sourceAudience === 'unrecorded') return 'unrecorded';
   if ((SHARED_FACT_TYPES as readonly string[]).includes(row.factType)) return 'heard';
   if ((SHARED_FACT_SOURCES as readonly string[]).includes(row.memorySource)) return 'heard';
   if (row.sourceAudience === 'family') return 'heard';
-  if (row.sourceAudience === 'one_to_one') {
-    return readerUserId !== null && row.sourceUserId === readerUserId ? 'heard' : 'another_adult';
-  }
-  return 'unrecorded';
+  return readerUserId !== null && row.sourceUserId === readerUserId ? 'heard' : 'another_adult';
 }
 
 function heardBySql(readerUserId: string | null): SQL | undefined {
   const facts = schema.familyMemoryFacts;
   return or(
-    inArray(facts.factType, [...SHARED_FACT_TYPES]),
-    inArray(facts.memorySource, [...SHARED_FACT_SOURCES]),
+    and(
+      inArray(facts.sourceAudience, [...ATTRIBUTED_AUDIENCES]),
+      or(
+        inArray(facts.factType, [...SHARED_FACT_TYPES]),
+        inArray(facts.memorySource, [...SHARED_FACT_SOURCES]),
+      ),
+    ),
     eq(facts.sourceAudience, 'family'),
     readerUserId === null
       ? undefined
@@ -155,14 +167,18 @@ export function isPrivateFact(row: ScopedRow): boolean {
 }
 
 /**
- * Whose private fact a row is: the fifth part of a live fact's identity
- * (`memory_facts_one_live_per_scope_idx`, migration 0218). A private fact is scoped to
- * its speaker, so A's and B's private facts on one key are both live and no write by
- * one adult closes the other's. Every other fact is the household's (null), one live
- * row per key as before. A private row whose speaker was deleted (`source_user_id` is
- * `ON DELETE SET NULL`) is scoped to its own id: nobody's, and never in a shared row's
- * way, so deleting a user can never fail on this index. The migration spells the same
- * expression; change both or neither.
+ * Whose a row is: the fifth part of a live fact's identity
+ * (`memory_facts_one_live_per_scope_idx`, migration 0218), as text.
+ *  - A private fact is scoped to its speaker, so A's and B's private facts on one key are
+ *    both live and no write by one adult closes the other's. A private row whose speaker
+ *    was deleted (`source_user_id` is `ON DELETE SET NULL`) is scoped to its own id:
+ *    nobody's, and never in a shared row's way, so deleting a user can never fail on
+ *    this index.
+ *  - An `unrecorded` row (the nightly writer, and rows saved before 0218) is scoped to
+ *    {@link UNRECORDED_SCOPE}, so the nightly writer only ever supersedes its own rows and
+ *    never a household fact that two adults could both still hear.
+ *  - Every other fact is the household's (null), one live row per key.
+ * The migration spells the same expression; change both or neither.
  */
 export function liveScopeSql(): SQL {
   const facts = schema.familyMemoryFacts;
@@ -171,7 +187,7 @@ export function liveScopeSql(): SQL {
     notInArray(facts.factType, [...SHARED_FACT_TYPES]),
     notInArray(facts.memorySource, [...SHARED_FACT_SOURCES]),
   );
-  return sql`(case when ${isPrivate} then coalesce(${facts.sourceUserId}, ${facts.id}) end)`;
+  return sql`(case when ${isPrivate} then coalesce(${facts.sourceUserId}, ${facts.id})::text when ${facts.sourceAudience} = ${UNRECORDED_SCOPE} then ${UNRECORDED_SCOPE} end)`;
 }
 
 type IdentityRow = Pick<

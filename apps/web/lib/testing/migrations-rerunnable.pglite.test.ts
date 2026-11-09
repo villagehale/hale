@@ -525,8 +525,12 @@ describe('family_memory_facts source user', () => {
     await put('swim', 'one_to_one', a);
     await put('swim', 'one_to_one', b);
     await put('swim', 'family', null);
-    // One live row per scope still holds: the same adult, the household, a shared type.
+    // An unrecorded (nightly) row has its own scope, so it never supersedes the household's.
+    await put('swim', 'unrecorded', null);
+    // One live row per scope still holds: the same adult, the household, the nightly
+    // writer, a shared type.
     await expect(put('swim', 'one_to_one', a)).rejects.toThrow(/one_live_per_scope/);
+    await expect(put('swim', 'family', a)).rejects.toThrow(/one_live_per_scope/);
     await expect(put('swim', 'unrecorded', null)).rejects.toThrow(/one_live_per_scope/);
     await put('pickup', 'one_to_one', a, 'logistic');
     await expect(put('pickup', 'one_to_one', b, 'logistic')).rejects.toThrow(/one_live_per_scope/);
@@ -536,6 +540,6 @@ describe('family_memory_facts source user', () => {
     const swim = await db.client.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM family_memory_facts WHERE family_id = '${familyId}' AND fact_key = 'swim' AND valid_until IS NULL`,
     );
-    expect(swim.rows[0]?.n).toBe(3);
+    expect(swim.rows[0]?.n).toBe(4);
   });
 });
