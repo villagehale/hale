@@ -1,10 +1,12 @@
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpokenLineRequest } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { departCoParent } from '~/lib/channel/coparent/depart';
+import { freeBusyScope } from './free-busy-consent';
 import { takeMultiFamilyTurn } from './multi-family';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupReader, SharedGroupReading } from './shared-group-reading';
@@ -83,6 +85,31 @@ function findTime(ruledOut: SharedGroupReading['ruledOut'] = []) {
     },
   };
   return { reader, seen };
+}
+
+function saying(intent: SharedGroupReading['intent']): SharedGroupReader {
+  return {
+    async read() {
+      return { intent, role: 'unclear', familyLabel: null, kidName: null, confidence: 'high' };
+    },
+  };
+}
+
+const minutesLater = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+
+/** Each parent's latest free/busy row in this chat: true means it still stands. */
+async function freeBusyLedger(userId: string): Promise<boolean[]> {
+  const rows = await db.database
+    .select({ granted: schema.consentRecords.granted })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, userId),
+        eq(schema.consentRecords.consentScope, freeBusyScope(CHAT)),
+      ),
+    )
+    .orderBy(schema.consentRecords.grantedAt);
+  return rows.map((row) => row.granted);
 }
 
 function writer(text: string | null = 'written by the model') {
@@ -184,6 +211,7 @@ async function turn(
   wire: ReturnType<typeof sender>,
   id = 'in-1',
   from = MEI,
+  at = NOW,
 ) {
   return takeMultiFamilyTurn(
     db.database,
@@ -192,8 +220,8 @@ async function turn(
       senderHandle: from,
       text: ASK,
       providerMessageId: id,
-      receivedAt: NOW,
-      now: NOW,
+      receivedAt: at,
+      now: at,
       send: wire.send,
     },
     {
@@ -360,6 +388,147 @@ describe('common time in a shared group', () => {
     expect(first.calls[0]?.facts?.checkedFamilies).toBe('family 1, family 2');
     expect(calls[0]?.facts?.checkedFamilies).toBe('family 1');
     expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+  });
+
+  it("leaving ends a parent's say-so: after a re-join, their busy time is read only on a fresh ask", async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    await nameInGroup(ADA, 'Ada');
+    const shared = writer();
+    await turn({ reader, write: shared.write }, sender(), 'in-1');
+
+    await turn(
+      { reader: saying('leave'), write: writer().write },
+      sender(),
+      'in-2',
+      ADA,
+      minutesLater(1),
+    );
+    // Mei's next turn links Ada's family back by its known number: a new join, no new ask.
+    const rejoined = writer();
+    await turn({ reader, write: rejoined.write }, sender(), 'in-3', MEI, minutesLater(2));
+
+    expect(shared.calls[0]?.facts?.checkedFamilies).toBe('family 1, Ada');
+    expect(await freeBusyLedger(ada.userId)).toEqual([true, false]);
+    expect(rejoined.calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(rejoined.calls[0]?.facts?.askFamilies).toBe('family 2, Ada');
+
+    // Positive control: Ada's own ask after re-joining counts again.
+    await turn({ reader, write: writer().write }, sender(), 'in-4', ADA, minutesLater(3));
+    const asked = writer();
+    await turn({ reader, write: asked.write }, sender(), 'in-5', MEI, minutesLater(4));
+    expect(asked.calls[0]?.facts?.checkedFamilies).toBe('family 1, Ada');
+  });
+
+  it('a say-so from before the current join never opens the calendar', async () => {
+    const { ada } = await threeFamilies();
+    await db.database.insert(schema.consentRecords).values({
+      userId: ada.userId,
+      familyId: ada.familyId,
+      consentType: 'integration_specific',
+      granted: true,
+      consentScope: freeBusyScope(CHAT),
+      policyVersion: 'test',
+      grantedAt: new Date(NOW.getTime() - 86_400_000),
+    });
+    const { reader } = findTime();
+    const { write, calls } = writer();
+
+    await turn({ reader, write }, sender());
+
+    expect(calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+  });
+
+  it('a say-so counts only from a parent of the family who has not stopped Hale here', async () => {
+    const { ada } = await threeFamilies();
+    const bo = await seedParent(BO, 'Bo', ZONE, ada);
+    await connectCalendar(bo, [{ start: '2026-10-31T12:00:00Z', end: '2026-11-01T00:00:00Z' }]);
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+    await turn({ reader, write: writer().write }, sender(), 'in-1', BO);
+    // Neither change goes through a door that withdraws: only the read can hold the line.
+    await db.database
+      .update(schema.linqSharedGroupPeople)
+      .set({ stoppedAt: NOW })
+      .where(eq(schema.linqSharedGroupPeople.phoneE164Hash, phoneBlindIndex(ADA)));
+    await db.database
+      .delete(schema.familyMembers)
+      .where(eq(schema.familyMembers.userId, bo.userId));
+    const { write, calls } = writer();
+
+    await turn({ reader, write }, sender(), 'in-2');
+
+    expect(calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+  });
+
+  it("a parent's stop in this chat ends their say-so: their busy time is no longer read", async () => {
+    const { ada } = await threeFamilies();
+    const { reader } = findTime();
+    await turn({ reader, write: writer().write }, sender(), 'in-0', ADA);
+
+    await turn(
+      { reader: saying('stop_me'), write: writer().write },
+      sender(),
+      'in-1',
+      ADA,
+      minutesLater(1),
+    );
+    const { write, calls } = writer();
+    await turn({ reader, write }, sender(), 'in-2', MEI, minutesLater(2));
+
+    expect(await freeBusyLedger(ada.userId)).toEqual([true, false]);
+    expect(calls[0]?.facts?.checkedFamilies).toBe('family 1');
+    expect(calls[0]?.facts?.askFamilies).toBe('family 2, family 3');
+  });
+
+  it("a co-parent's departure ends their say-so in every chat", async () => {
+    const { ada } = await threeFamilies();
+    const bo = await seedParent(BO, 'Bo', ZONE, ada);
+    // Bo: Saturday 08:00 to 20:00 New York.
+    await connectCalendar(bo, [{ start: '2026-10-31T12:00:00Z', end: '2026-11-01T00:00:00Z' }]);
+    await db.database.insert(schema.consentRecords).values({
+      userId: bo.userId,
+      familyId: ada.familyId,
+      consentType: 'integration_specific',
+      granted: true,
+      consentScope: freeBusyScope('chat-elsewhere'),
+      policyVersion: 'test',
+      grantedAt: NOW,
+    });
+    const { reader } = findTime([FRIDAY]);
+    await turn({ reader, write: writer().write }, sender(), 'in-0', BO);
+    await turn({ reader, write: writer().write }, sender(), 'in-1', ADA);
+
+    const departed = await departCoParent(db.database, {
+      familyId: ada.familyId,
+      actorUserId: bo.userId,
+      now: minutesLater(1),
+    });
+    await turn({ reader, write: writer().write }, sender(), 'in-2', MEI, minutesLater(2));
+
+    expect(departed.outcome).toBe('departed');
+    expect(await freeBusyLedger(bo.userId)).toEqual([true, false]);
+    const elsewhere = await db.database
+      .select({ granted: schema.consentRecords.granted })
+      .from(schema.consentRecords)
+      .where(
+        and(
+          eq(schema.consentRecords.userId, bo.userId),
+          eq(schema.consentRecords.consentScope, freeBusyScope('chat-elsewhere')),
+        ),
+      )
+      .orderBy(schema.consentRecords.grantedAt);
+    expect(elsewhere.map((row) => row.granted)).toEqual([true, false]);
+    // Ada's own say-so still stands, so her family is still read, without Bo's Saturday.
+    const [, , after] = await proposedSlots();
+    expect(after).toEqual([
+      '2026-10-29T23:00:00.000Z',
+      '2026-10-31T12:00:00.000Z',
+      '2026-11-01T13:00:00.000Z',
+    ]);
   });
 
   it('sends nothing when the AI cannot write the line, and names it', async () => {

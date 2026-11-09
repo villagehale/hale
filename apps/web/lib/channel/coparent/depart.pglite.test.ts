@@ -974,7 +974,12 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
       (await auditRows(one.familyId)).filter((row) => row.actionTaken === 'co_parent_departed'),
     ).toEqual([
       expect.objectContaining({
-        after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 2 },
+        after: {
+          role: 'co_parent',
+          threadRetained: 0,
+          openQuestionsDeleted: 2,
+          freeBusyWithdrawn: 0,
+        },
       }),
     ]);
   });
@@ -1131,7 +1136,14 @@ describe('departCoParent: the questions Hale left open for the one leaving', () 
             ),
           ),
       ).toEqual([
-        { after: { role: 'co_parent', threadRetained: 0, openQuestionsDeleted: 'not_migrated' } },
+        {
+          after: {
+            role: 'co_parent',
+            threadRetained: 0,
+            openQuestionsDeleted: 'not_migrated',
+            freeBusyWithdrawn: 0,
+          },
+        },
       ]);
       expect(warned.mock.calls).toEqual([
         [{ pendingAsk: 'not_migrated' }, 'co-parent departure: pending-ask table missing'],

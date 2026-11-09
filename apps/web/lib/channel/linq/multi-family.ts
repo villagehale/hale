@@ -21,6 +21,12 @@ import {
   type SendOneToOne,
   runPrivateAside,
 } from './group-private-aside';
+import {
+  FREE_BUSY_CONSENT,
+  freeBusyScope,
+  latestFreeBusyRows,
+  withdrawFreeBusyConsent,
+} from './free-busy-consent';
 import { familyFreeBusy } from './household-calendar';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
@@ -541,12 +547,24 @@ export async function leaveFamilyFromSharedGroup(
         channel: 'imessage',
       },
     });
+    const parents = await tx
+      .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, input.familyId));
+    const freeBusyWithdrawn = await withdrawFreeBusyConsent(tx, {
+      familyId: input.familyId,
+      userIds: parents.filter((row) => isParentRole(row.role)).map((row) => row.userId),
+      chatId: input.chatId,
+      now: input.now,
+      interpretation: 'this family left this shared group, so no parent here shares busy times',
+    });
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
       actor: input.userId,
       actionTaken: 'linq_multi_family_left',
       targetTable: 'linq_multi_family_joins',
       targetId: join.id,
+      after: { freeBusyWithdrawn },
     });
   });
   return { outcome: 'left', notice: 'already_sent' };
@@ -1025,6 +1043,7 @@ async function proposeCommonTime(
       familyId: input.asker.familyId,
       userId: input.asker.userId,
       verbatim: input.verbatim,
+      now: input.now,
     });
   }
   const seen = new Set<string>();
@@ -1117,55 +1136,67 @@ function familyLabel(people: readonly PersonRow[], familyId: string, index: numb
   return named?.firstName?.trim() || `family ${index + 1}`;
 }
 
-const FREE_BUSY_CONSENT = 'integration_specific' as const;
-
-function freeBusyScope(chatId: string): string {
-  return `linq_free_busy:${chatId}`;
-}
-
 /**
- * The parents of this family whose own latest say-so in this chat lets Hale use their
+ * The parents of this family whose own say-so in this chat lets Hale use their
  * calendar's busy times here. Per parent: one parent's word never opens a co-parent's
- * calendar (rule #5). Latest row wins, so a later withdrawal or revoke closes it.
+ * calendar (rule #5). It counts only when it is the latest row, was given during the
+ * family's current join, and its parent is still a parent here who has not stopped Hale
+ * in this chat — a say-so never outlives the context it was given in.
  */
 async function freeBusyConsenters(
   database: Database,
   chatId: string,
   familyId: string,
 ): Promise<string[]> {
-  const rows = await database
-    .select({
-      userId: schema.consentRecords.userId,
-      granted: schema.consentRecords.granted,
-      revokedAt: schema.consentRecords.revokedAt,
-      grantedAt: schema.consentRecords.grantedAt,
-    })
-    .from(schema.consentRecords)
-    .where(
-      and(
-        eq(schema.consentRecords.familyId, familyId),
-        eq(schema.consentRecords.consentType, FREE_BUSY_CONSENT),
-        eq(schema.consentRecords.consentScope, freeBusyScope(chatId)),
+  const join = (await liveJoins(database, chatId)).find((row) => row.familyId === familyId);
+  if (!join?.joinedAt) return [];
+  const joinedAt = join.joinedAt.getTime();
+  const [rows, members, people] = await Promise.all([
+    database
+      .select({
+        userId: schema.consentRecords.userId,
+        consentScope: schema.consentRecords.consentScope,
+        granted: schema.consentRecords.granted,
+        revokedAt: schema.consentRecords.revokedAt,
+        grantedAt: schema.consentRecords.grantedAt,
+      })
+      .from(schema.consentRecords)
+      .where(
+        and(
+          eq(schema.consentRecords.familyId, familyId),
+          eq(schema.consentRecords.consentType, FREE_BUSY_CONSENT),
+          eq(schema.consentRecords.consentScope, freeBusyScope(chatId)),
+        ),
       ),
-    );
-  const latest = new Map<string, (typeof rows)[number]>();
-  for (const row of rows) {
-    const prior = latest.get(row.userId);
-    if (!prior || row.grantedAt.getTime() >= prior.grantedAt.getTime()) latest.set(row.userId, row);
-  }
-  return [...latest.values()]
-    .filter((row) => row.granted && row.revokedAt == null)
+    database
+      .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, familyId)),
+    peopleInChat(database, chatId),
+  ]);
+  const parents = new Set(members.filter((row) => isParentRole(row.role)).map((row) => row.userId));
+  const stopped = new Set(
+    people.filter((row) => row.userId && row.stoppedAt).map((row) => row.userId as string),
+  );
+  return latestFreeBusyRows(rows)
+    .filter(
+      (row) =>
+        row.standing &&
+        row.grantedAt.getTime() >= joinedAt &&
+        parents.has(row.userId) &&
+        !stopped.has(row.userId),
+    )
     .map((row) => row.userId);
 }
 
 /**
  * A parent's own ask for a common time is their say-so for Hale to use their own
- * calendar's busy times in this chat. Recorded once, with their words. A family linked
- * only by its number, and a co-parent who has not asked, gives none.
+ * calendar's busy times in this chat. Recorded once per join, with their words. A family
+ * linked only by its number, and a co-parent who has not asked, gives none.
  */
 async function recordFreeBusyConsent(
   database: Database,
-  input: { chatId: string; familyId: string; userId: string; verbatim: string },
+  input: { chatId: string; familyId: string; userId: string; verbatim: string; now: Date },
 ): Promise<void> {
   const role = await familyRoleOf(database, input.familyId, input.userId);
   if (!role || !isParentRole(role)) return;
@@ -1182,6 +1213,7 @@ async function recordFreeBusyConsent(
         granted: true,
         consentScope: freeBusyScope(input.chatId),
         policyVersion: POLICY_VERSION,
+        grantedAt: input.now,
         evidence: {
           verbatim: input.verbatim,
           interpretation:
@@ -1363,13 +1395,23 @@ export async function takeMultiFamilyTurn(
       participantHandle: input.senderHandle,
       now: input.now,
     });
+    const freeBusyWithdrawn =
+      me.familyId && me.userId
+        ? await withdrawFreeBusyConsent(database, {
+            familyId: me.familyId,
+            userIds: [me.userId],
+            chatId: input.chatId,
+            now: input.now,
+            interpretation: 'this parent stopped Hale in this shared group',
+          })
+        : 0;
     await audit(database, {
       familyId,
       actor: userId,
       actionTaken: 'linq_multi_family_member_stopped',
       targetTable: 'linq_shared_group_people',
       targetId: me.id,
-      after: { only: 'this_member' },
+      after: { only: 'this_member', freeBusyWithdrawn },
     });
     const notice = await speak(database, {
       familyId: host.familyId,
