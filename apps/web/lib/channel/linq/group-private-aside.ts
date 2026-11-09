@@ -1,12 +1,14 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { linqChatAuditKey } from './family-audit';
 import { type FamilyPrivateSlice, readFamilySliceForAudience } from './multi-family';
+import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledger';
 
 /**
  * VIL-457 — private info goes to that family 1:1, never into the group.
@@ -45,9 +47,12 @@ export interface PrivateAsideReadInput {
   recent: readonly { from: 'hale' | 'member'; text: string }[];
 }
 
-/** This family's last private aside in this chat, for the repeat call. Null when none. */
+/**
+ * This family's last private aside in this chat, for the repeat call. Null when none.
+ * Read back from the recipient's own 1:1 ledger row, which holds the text and not the
+ * draft's gist.
+ */
 export interface LastPrivateAside {
-  about: string;
   text: string;
   at: string;
 }
@@ -66,7 +71,7 @@ export interface PrivateAsideDraftInput {
 
 export interface PrivateAsideDraft {
   send: boolean;
-  /** A short gist of what the text is about, stored for the next repeat call. */
+  /** A short gist the draft skill writes. Not stored: the repeat call reads the sent text. */
   about: string;
   text: string;
 }
@@ -202,29 +207,8 @@ async function lastAsideOf(
   chatId: string,
   familyId: string,
 ): Promise<LastPrivateAside | null> {
-  const rows = await database
-    .select({ after: schema.auditLog.after, at: schema.auditLog.occurredAt })
-    .from(schema.auditLog)
-    .where(
-      and(
-        eq(schema.auditLog.actionTaken, PRIVATE_ASIDE_AUDIT),
-        eq(schema.auditLog.familyId, familyId),
-      ),
-    )
-    .orderBy(desc(schema.auditLog.occurredAt))
-    .limit(20);
-  for (const row of rows) {
-    const after = row.after as {
-      chatId?: string;
-      delivered?: string;
-      about?: string;
-      text?: string;
-    };
-    if (after?.chatId === chatId && after.delivered === 'sent' && after.text) {
-      return { about: after.about ?? '', text: after.text, at: row.at.toISOString() };
-    }
-  }
-  return null;
+  const last = await lastDeliveredAside(database, { chatId, familyId });
+  return last ? { text: last.text, at: last.at.toISOString() } : null;
 }
 
 function hasPrivateData(slice: FamilyPrivateSlice): boolean {
@@ -269,18 +253,22 @@ async function asideForFamily(
   const delivered = await deps.sendOneToOne({
     familyId,
     text,
-    dedupeKey: `linq:private_aside:${input.chatId}:${input.inboundId}:${familyId}`,
+    dedupeKey: privateAsideDedupeKey({
+      chatId: input.chatId,
+      inboundId: input.inboundId,
+      familyId,
+    }),
   });
   // Recorded whatever the delivery said, so a retry of the same message never re-sends to
-  // this family. The text and gist are this family's own, kept on its own row so the next
-  // draft can tell a repeat from a change.
+  // this family. Every adult in the family gets a copy of this row, so it says only that
+  // an aside went out: the text stays on the recipient's own 1:1 ledger row.
   await database.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: PRIVATE_ASIDE_AUDIT,
     targetTable: 'channel_messages',
     targetId: input.inboundId,
-    after: { chatId: input.chatId, delivered, about: draft.about, text },
+    after: { ...linqChatAuditKey(input.chatId), delivered },
   });
   return delivered;
 }
