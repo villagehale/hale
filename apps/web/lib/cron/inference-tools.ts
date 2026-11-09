@@ -92,14 +92,19 @@ interface MemorySnapshot {
  * Strip raw content from any recent event scoped to a 13+ child before the
  * memory-inferencer sees it (rule #1): the child scope is dropped to null and the raw
  * payload replaced with a marker, so no teen-specific fact can be inferred or stored.
+ * An event whose payload names a 13+ child is treated the same way, whatever child it
+ * is filed under: an inbound text carries no child id, so the name is the only sign it
+ * is about the teen (VIL-598 leg A found this one).
  * Facts and episodes need no pass here: the shared prompt read never returns a teen's.
  */
 function redactEventsForTeens(
   events: MemorySnapshot['recentEvents'],
   stageByChild: ReadonlyMap<string, FamilyStage>,
+  teenNames: readonly string[],
 ): MemorySnapshot['recentEvents'] {
   return events.map((e) =>
-    e.childId !== null && stageByChild.get(e.childId) === 'teenager'
+    (e.childId !== null && stageByChild.get(e.childId) === 'teenager') ||
+    stringLeaves(e.payload).some((text) => namesAny(text, teenNames))
       ? {
           childId: null,
           eventType: e.eventType,
@@ -108,6 +113,20 @@ function redactEventsForTeens(
         }
       : e,
   );
+}
+
+/**
+ * Every string value and object key in a payload. A name match runs on these, never on
+ * JSON text: JSON writes a newline as `\n`, so the escape's letter would touch the name
+ * and hide it from a word-boundary match.
+ */
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, v]) => [key, ...stringLeaves(v)]);
+  }
+  return [];
 }
 
 export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {
@@ -163,6 +182,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
             receivedAt: e.receivedAt.toISOString(),
           })),
           stageByChild,
+          childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
         ),
         recentEpisodes: recentEpisodes.map((e) => ({
           childId: e.childId,
