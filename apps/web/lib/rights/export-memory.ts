@@ -70,6 +70,9 @@ export interface FamilyMemoryExport {
   commitments: {
     kind: string;
     summary: string | null;
+    /** The schedule anchors Hale already told the parent on this promise. Null whenever
+     * `withheld` is set, like the summary. */
+    heardFacts: string[] | null;
     dueAt: string;
     createdAt: string;
     fulfilledAt: string | null;
@@ -325,6 +328,7 @@ export async function loadFamilyMemoryExport(
       return {
         kind: row.commitmentKind,
         summary: words(withheld, row.summary),
+        heardFacts: withheld === null ? row.heardFacts : null,
         dueAt: row.dueAt.toISOString(),
         createdAt: row.createdAt.toISOString(),
         fulfilledAt: iso(row.fulfilledAt),
