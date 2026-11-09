@@ -847,6 +847,7 @@ describe('speakFriend', () => {
       parentWords:
         "No calendar for now. Just save Mia's carpool, tomorrow Saturday 8am, and tell me what day and time you saved.",
       now: new Date('2026-11-02T03:28:00Z'),
+      timeZone: EASTERN,
       checklist: {
         postal: true,
         kids: true,
