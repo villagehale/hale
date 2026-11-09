@@ -12,6 +12,7 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { type FamilyCountry, familyCountryOf } from '@hale/types';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -279,9 +280,11 @@ export interface ChannelCoachPorts {
     /** The turn's offer ledger, owned by the runtime so the provenance match and the
      * nearby count read the same list. */
     offered: TurnOfferLedger,
-    onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    onGmailNotice: ((notice: GmailDraftNoticeBox) => void) | undefined,
     /** VIL-447: a tool registers how to undo a write it made; a failed turn runs them. */
-    onUndo?: (undo: () => Promise<void>) => void,
+    onUndo: ((undo: () => Promise<void>) => void) | undefined,
+    /** The family row's country, read off the turn's own context (familyCountryOf). */
+    familyCountry: FamilyCountry | null,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -621,6 +624,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               (undo) => {
                 undos.push(undo);
               },
+              familyCountryOf(familyContext.location.country),
             );
             // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
             // are busy-only, on every group turn. VIL-615: once read_email returns text,
@@ -979,6 +983,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       offered,
       onGmailNotice,
       onUndo,
+      familyCountry,
     ) => {
       const listJournal = createGroupListJournal();
       const listsLit = turn.audience === 'group' && groupSharedListsEnabled();
@@ -992,6 +997,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       }
       return buildChannelCoachTools({
         familyId: turn.familyId,
+        familyCountry,
         reader: channelScheduleReader(database, turn.now),
         // VIL-443: a calendar_add drafted in the family group records that origin, so its
         // placement is reported back to the group. Code writes it; the model never sees it.

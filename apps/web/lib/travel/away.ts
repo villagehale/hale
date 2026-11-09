@@ -1,7 +1,8 @@
 import { type Database, type Municipality, schema } from '@hale/db';
+import { postalCountryOf } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
-import { matchPostalToken, placeOf, postalCountryOf } from '~/lib/channel/off-domain/place';
+import { matchPostalToken, placeOf } from '~/lib/channel/off-domain/place';
 import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 

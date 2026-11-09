@@ -1070,7 +1070,8 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
  * what grounds it.
  */
 function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
-  const real = frameworkGuidanceTool();
+  // Canada, as every fixture's context says (channelContext `location.country`).
+  const real = frameworkGuidanceTool('CA');
   return {
     ...real,
     handler: async (input) => {
