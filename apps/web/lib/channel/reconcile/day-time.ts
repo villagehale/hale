@@ -7,7 +7,8 @@
  * so a gap in it fails open:
  *  - weekday names come from ICU for the family language plus English (long forms,
  *    and short forms only when they hold no ASCII letter, so `Sat` never matches "sat");
- *  - clock times are digit forms only (`9:00`, `9h00`, `15h`, `3pm`, `7 a.m.`, `9点`);
+ *  - clock times are digit forms only (`9:00`, `9h00`, `15h`, `3pm`, `7 a.m.`, `9点`,
+ *    `9点30分`, `9点半`);
  *  - NOT read (named gaps): relative days (tomorrow, demain, 明天), spelled-out times,
  *    non-ASCII digits;
  *  - NAMED RESIDUAL (fails closed): the check is per sentence, so a compound sentence
@@ -84,8 +85,8 @@ const CLOCK_FORMS: ReadonlyArray<{
     read: (m) => ({ hour: Number(m[1]), minute: 0, meridiem: m[2] }),
   },
   {
-    pattern: /(?<!\d)(\d{1,2})点/gu,
-    read: (m) => ({ hour: Number(m[1]), minute: 0 }),
+    pattern: /(?<!\d)(\d{1,2})点(?:(\d{1,2})分?(?!\d)|(半))?/gu,
+    read: (m) => ({ hour: Number(m[1]), minute: m[3] ? 30 : Number(m[2] ?? 0) }),
   },
 ];
 

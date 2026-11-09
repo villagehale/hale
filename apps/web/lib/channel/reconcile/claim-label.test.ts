@@ -51,11 +51,27 @@ describe('claimRowLabel — calendar rows', () => {
   });
 });
 
+describe('claimRowLabel — commitments about one child', () => {
+  const commitment = (childDateOfBirth: string) =>
+    claimRowLabel(
+      { from: 'commitment', summary: 'Practice follow-up', childId: 'c1', childDateOfBirth },
+      NOW,
+    );
+
+  it('a 13+ child is private; one day short of 156 months keeps the summary (control)', () => {
+    expect(commitment('2013-11-03')).toBe('A private item');
+    expect(commitment('2013-11-04')).toBe('Practice follow-up');
+  });
+});
+
 describe('claimRowLabel — named sources', () => {
   it('a commitment, a watched page, a stated booking and a pending intent carry their one field', () => {
-    expect(claimRowLabel({ from: 'commitment', summary: 'Swim classes' }, NOW)).toBe(
-      'Swim classes',
-    );
+    expect(
+      claimRowLabel(
+        { from: 'commitment', summary: 'Swim classes', childId: null, childDateOfBirth: null },
+        NOW,
+      ),
+    ).toBe('Swim classes');
     expect(claimRowLabel({ from: 'watched_page', label: 'Saturday swim' }, NOW)).toBe(
       'Saturday swim',
     );

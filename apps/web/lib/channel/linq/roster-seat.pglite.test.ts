@@ -1106,7 +1106,12 @@ describe('seatConfirmedMember for a number that texted STOP', () => {
         now: NOW,
       });
 
-      expect(result).toEqual({ outcome: 'seat_refused', reason: 'opted_out' });
+      // A STOP in another household is that household's fact: this family's audit row
+      // gets a household-neutral reason; the precise one stays in the outcome code.
+      expect(result).toEqual({
+        outcome: 'seat_refused',
+        reason: elsewhere ? 'opted_out_elsewhere' : 'opted_out',
+      });
       const channels = await channelsFor(GUEST);
       expect(channels).toHaveLength(1);
       expect(channels[0]?.revokedAt).not.toBeNull();
@@ -1124,10 +1129,15 @@ describe('seatConfirmedMember for a number that texted STOP', () => {
       ).toEqual([]);
       expect(await db.database.select().from(schema.linqGroupMembers)).toEqual([]);
       expect(await inviteState(familyId, GUEST)).toBe('awaiting_caregiver_reply');
-      expect(await verbs(familyId)).toContainEqual({
-        actionTaken: 'linq_group_member_refused',
-        after: { reason: 'opted_out', via: 'own_reply' },
-      });
+      const refusals = (await verbs(familyId)).filter(
+        (row) => row.actionTaken === 'linq_group_member_refused',
+      );
+      expect(refusals).toEqual([
+        {
+          actionTaken: 'linq_group_member_refused',
+          after: { reason: elsewhere ? 'number_unavailable' : 'opted_out', via: 'own_reply' },
+        },
+      ]);
     },
   );
 

@@ -518,7 +518,7 @@ function deps(over: Partial<ProviderHealthDeps> = {}): ProviderHealthDeps {
   return {
     probe: vi.fn(async () => ({ ok: true }) as const),
     claim: vi.fn(async () => true),
-    sender: { send: vi.fn(async () => true) },
+    sender: { send: vi.fn(async () => 'sent' as const) },
     ...over,
   };
 }
@@ -536,7 +536,7 @@ describe('raiseProviderIncident', () => {
 
     const outcome = await raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date());
 
-    expect(outcome).toEqual({ alerted: true, deduped: false });
+    expect(outcome).toEqual({ alerted: true, deduped: false, notConfigured: false });
     expect(d.sender.send).toHaveBeenCalledTimes(1);
   });
 
@@ -545,7 +545,7 @@ describe('raiseProviderIncident', () => {
 
     const outcome = await raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date());
 
-    expect(outcome).toEqual({ alerted: false, deduped: true });
+    expect(outcome).toEqual({ alerted: false, deduped: true, notConfigured: false });
     expect(d.sender.send).not.toHaveBeenCalled();
   });
 
@@ -560,7 +560,7 @@ describe('raiseProviderIncident', () => {
 
     await expect(
       raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date()),
-    ).resolves.toEqual({ alerted: false, deduped: false });
+    ).resolves.toEqual({ alerted: false, deduped: false, notConfigured: false });
   });
 });
 
@@ -629,13 +629,14 @@ describe('createProviderAlertSender', () => {
 
     const sent = await createProviderAlertSender().send('a subject', 'a body');
 
-    expect(sent).toBe(true);
+    expect(sent).toBe('sent');
     const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as { text: string };
     expect(body.text).toBe('a subject\na body');
   });
 
-  it('is a clean no-op when #ops is not configured', async () => {
+  it('names an unconfigured #ops instead of reporting a refused page', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
-    expect(await createProviderAlertSender().send('s', 'b')).toBe(false);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await createProviderAlertSender().send('s', 'b')).toBe('skipped_not_configured');
   });
 });

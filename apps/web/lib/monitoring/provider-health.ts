@@ -1,7 +1,7 @@
 import { type AgentClient, HAIKU_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 /**
  * VIL-255 · the LLM-provider health pre-flight, after the 2026-08-01 incident: the
@@ -417,17 +417,14 @@ export function formatProviderAlert(
 }
 
 export interface ProviderAlertSender {
-  /** True when Slack #ops accepted the page. */
-  send(subject: string, text: string): Promise<boolean>;
+  /** What Slack #ops did with the page; an unset webhook is its own outcome (rule #11). */
+  send(subject: string, text: string): Promise<OpsPageOutcome>;
 }
 
 /** The provider incident goes to Slack #ops. No founder email. */
 export function createProviderAlertSender(): ProviderAlertSender {
   return {
-    async send(subject, text) {
-      const outcome = await postOpsSlack(`${subject}\n${text}`);
-      return outcome === 'sent';
-    },
+    send: (subject, text) => postOpsSlack(`${subject}\n${text}`),
   };
 }
 
@@ -454,6 +451,8 @@ export interface ProviderAlertOutcome {
   alerted: boolean;
   /** True when another cron already alerted about this incident in the window. */
   deduped: boolean;
+  /** True when the page was due but #ops has no webhook configured. */
+  notConfigured: boolean;
 }
 
 /**
@@ -473,10 +472,10 @@ export async function raiseProviderIncident(
     won = await deps.claim(database, key, now);
   } catch (err) {
     logAlertFailure('provider incident claim failed', err);
-    return { alerted: false, deduped: false };
+    return { alerted: false, deduped: false, notConfigured: false };
   }
   if (!won) {
-    return { alerted: false, deduped: true };
+    return { alerted: false, deduped: true, notConfigured: false };
   }
 
   const { subject, text } = formatProviderAlert(incident, now);
@@ -484,10 +483,15 @@ export async function raiseProviderIncident(
   // ops event gets (audit_log is family-scoped by schema and this event has no family).
   console.error({ incident: { ...incident, key } }, subject);
   try {
-    return { alerted: await deps.sender.send(subject, text), deduped: false };
+    const page = await deps.sender.send(subject, text);
+    return {
+      alerted: page === 'sent',
+      deduped: false,
+      notConfigured: page === 'skipped_not_configured',
+    };
   } catch (err) {
     logAlertFailure('provider incident alert failed', err);
-    return { alerted: false, deduped: false };
+    return { alerted: false, deduped: false, notConfigured: false };
   }
 }
 
