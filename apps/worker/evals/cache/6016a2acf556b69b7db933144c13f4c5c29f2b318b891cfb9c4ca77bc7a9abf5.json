@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Good, I'll keep the group for the kids' plans and reminders only, nothing private. The number and phrase are right below this, so whenever you're ready, start a group text with the other parent and send that phrase in it.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "coparentGroup": true
+  },
+  "latencyMs": 1519
+}
