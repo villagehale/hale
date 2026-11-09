@@ -12,6 +12,8 @@ import {
 } from './aha-kids';
 import type { AhaSnapshot } from './aha-read';
 
+const EASTERN = 'America/Toronto';
+
 /** The skill's answer shape: one verdict per offered ref. */
 function verdicts(kid: readonly string[], others: readonly string[] = []) {
   return {
@@ -130,7 +132,7 @@ describe('kidRelatedAha', () => {
       ],
     };
     const { classifier, calls } = scripted(() => verdicts(['c0', 'c2'], ['c1', 'c3']));
-    const kept = await kidRelatedAha(snapshot, context, classifier);
+    const kept = await kidRelatedAha(snapshot, context, classifier, EASTERN);
     expect(calls).toHaveLength(1);
     expect(kept.read).toBe('ok');
     expect(kept.kidFilter).toBe('kept');
@@ -152,7 +154,7 @@ describe('kidRelatedAha', () => {
       overlaps: [],
     };
     const { classifier } = scripted(() => verdicts([]));
-    const kept = await kidRelatedAha(snapshot, context, classifier);
+    const kept = await kidRelatedAha(snapshot, context, classifier, EASTERN);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('none_for_kids');
     expect(kept.email).toEqual([]);
@@ -167,7 +169,7 @@ describe('kidRelatedAha', () => {
       overlaps: [],
     };
     const { classifier } = scripted(() => verdicts(['e4', 'c0'], ['e0']));
-    const kept = await kidRelatedAha(snapshot, context, classifier);
+    const kept = await kidRelatedAha(snapshot, context, classifier, EASTERN);
     expect(kept.read).toBe('none_for_kids');
   });
 
@@ -194,9 +196,9 @@ describe('kidRelatedAha', () => {
       email: [],
       overlaps: [],
     };
-    expect((await kidRelatedAha(failed, context, classifier)).read).toBe('failed');
-    expect((await kidRelatedAha(withheld, context, classifier)).read).toBe('withheld');
-    expect((await kidRelatedAha(empty, context, classifier)).read).toBe('empty');
+    expect((await kidRelatedAha(failed, context, classifier, EASTERN)).read).toBe('failed');
+    expect((await kidRelatedAha(withheld, context, classifier, EASTERN)).read).toBe('withheld');
+    expect((await kidRelatedAha(empty, context, classifier, EASTERN)).read).toBe('empty');
     expect(calls).toHaveLength(0);
   });
 
@@ -208,7 +210,7 @@ describe('kidRelatedAha', () => {
       email: [],
       overlaps: [],
     };
-    const kept = await kidRelatedAha(snapshot, context, undefined);
+    const kept = await kidRelatedAha(snapshot, context, undefined, EASTERN);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('classifier_unavailable');
     expect(kept.calendar).toEqual([]);
@@ -227,7 +229,7 @@ describe('kidRelatedAha', () => {
         throw new Error('boom');
       },
     };
-    const kept = await kidRelatedAha(snapshot, context, classifier);
+    const kept = await kidRelatedAha(snapshot, context, classifier, EASTERN);
     expect(kept.read).toBe('none_for_kids');
     expect(kept.kidFilter).toBe('classifier_failed');
   });

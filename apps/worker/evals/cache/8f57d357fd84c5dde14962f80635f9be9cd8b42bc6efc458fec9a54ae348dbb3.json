@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "stop sending the swim reminders but keep the rest",
+    "language": "en",
+    "confirmation": ""
+  },
+  "latencyMs": 1058
+}

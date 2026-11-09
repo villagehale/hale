@@ -47,4 +47,24 @@ export const GROUP_MENTION_READ_FIXTURES = [
     },
     accept: [null],
   },
+  {
+    // The coach's own reply when Dana asked Hale to loop Jordan in (group-privacy
+    // en-loop-in-other-parent): it asks Jordan, so Jordan is the one to notify.
+    id: 'loop-in-ask',
+    input: {
+      text: "Jordan, Dana can't do pickup after Maya's swim on Saturday, 11:00am at Y on Main. Can you take it?",
+      members: MEMBERS,
+      inbound: { haleMentioned: false, mentionedMembers: [] },
+    },
+    accept: ['m2'],
+  },
+  {
+    id: 'named-but-not-seated',
+    input: {
+      text: 'Grandma could take Saturday if someone asks her.',
+      members: MEMBERS,
+      inbound: { haleMentioned: true, mentionedMembers: [] },
+    },
+    accept: [null],
+  },
 ];

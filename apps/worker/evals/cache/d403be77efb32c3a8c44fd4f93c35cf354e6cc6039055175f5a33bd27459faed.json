@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message itself ends with 'Want me to keep an eye on all of this for you?' which is a direct question asking the parent to reply, duplicating the shell question. It asks something of its own, so the score is 1.",
+    "score": 1
+  }
+}

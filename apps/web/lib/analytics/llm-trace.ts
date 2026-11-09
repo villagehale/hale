@@ -32,6 +32,7 @@ export type HaleStage =
   | 'discovery'
   | 'coach'
   | 'retention'
+  | 'claim_read'
   | 'unattributed';
 
 export interface LlmTraceContext {

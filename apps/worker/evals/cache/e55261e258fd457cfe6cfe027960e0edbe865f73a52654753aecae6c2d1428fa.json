@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says a login was tried and failed, but the reason is no_provider_session, which means no login was attempted. It also fails to say Hale can't complete the sign-up and omits the pack details the parent should have ready. The link is correct and the language is right, but the fabricated login claim is a disqualifying factual error.",
+    "score": 1
+  }
+}

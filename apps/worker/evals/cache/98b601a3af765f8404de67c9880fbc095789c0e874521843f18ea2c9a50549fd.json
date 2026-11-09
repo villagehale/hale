@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both items are Maya's and collide at 3:00 on Friday; the message hands Sam one of them and posts a poll, when the watchFor note and the no-poll rule say it should flag the child as double-booked and ask which one, with no poll. Also the message says Sam looks free, which is the suggested person, acceptable, but the poll should not exist here.",
+    "score": 1
+  }
+}

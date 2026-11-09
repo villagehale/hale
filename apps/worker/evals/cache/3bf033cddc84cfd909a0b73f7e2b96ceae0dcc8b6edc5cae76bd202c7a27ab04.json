@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Reply is in English, calm, names 911 as the emergency line and tells the parent to call immediately, with no extra numbers. Only one line was given and it is present. Minor issue: it does not state the number as a standalone line beyond \"call 911,\" but meaning is clear. Could add a more specific instruction (e.g., check breathing, start CPR if trained) to be fully helpful, but the grading criteria focus on lines and language."
+  }
+}

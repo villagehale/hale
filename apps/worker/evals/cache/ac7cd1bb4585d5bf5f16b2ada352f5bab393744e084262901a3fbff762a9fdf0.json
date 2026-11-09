@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Says the session is full, confirmed is false and the text does not claim a sign-up or a held spot. The link is the provider's page as given. However the text hints that a spot may open up (\"有人退出\" / someone dropping out) for this session, which the rules forbid on sold_out. Language is zh as required and tone is warm and plain.",
+    "score": 2
+  }
+}

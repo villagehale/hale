@@ -8,11 +8,16 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
+import type { RegistrationReader } from '~/lib/registration/read';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
+import type { DateUnconfirmedInput } from './date-unconfirmed-compose.js';
 import type { EveningComposeInput } from './evening-compose.js';
 import type { MorningComposeInput } from './morning-compose.js';
+import type { RegistrationNoteFacts } from './note-compose.js';
 import {
   type LiveSequence,
+  MAX_SEQUENCE_FAMILIES_PER_RUN,
   type SequenceFamily,
   type SequenceRunDeps,
   defaultSequenceRunDeps,
@@ -125,6 +130,10 @@ interface Harness {
   /** Facts handed to the evening composer. The stub writes these; it does not call a model. */
   composed: EveningComposeInput[];
   composedMorning: MorningComposeInput[];
+  /** VIL-543 · facts handed to the note writer, in order. */
+  notes: RegistrationNoteFacts[];
+  /** VIL-423 · facts handed to the date-unconfirmed writer, in order. */
+  unconfirmed: DateUnconfirmedInput[];
 }
 
 function harness(
@@ -164,8 +173,14 @@ function harness(
     /** The morning-of composer. Undefined records the facts and returns a sendable stub. */
     composeMorning?: SequenceRunDeps['composeMorning'];
     composeHeadsUp?: SequenceRunDeps['composeHeadsUp'];
+    /** The note writer. Undefined records the facts and returns `composed note <kind>`. */
+    writeNote?: SequenceRunDeps['writeNote'];
     /** The already-open retry's wall clock. */
     clock?: () => Date;
+    /** VIL-423 · the date check's reader factory. The default throws, so a read while
+     * REGISTRATION_DATE_CHECK is off is a failure rather than a silent page fetch. */
+    createDateReader?: SequenceRunDeps['createDateReader'];
+    composeDateUnconfirmed?: SequenceRunDeps['composeDateUnconfirmed'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -179,6 +194,8 @@ function harness(
   const anchors: Harness['anchors'] = [];
   const composed: EveningComposeInput[] = [];
   const composedMorning: MorningComposeInput[] = [];
+  const notes: RegistrationNoteFacts[] = [];
+  const unconfirmed: DateUnconfirmedInput[] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
@@ -308,6 +325,23 @@ function harness(
       options.composeHeadsUp ??
       (async (_client, facts) =>
         `composed heads-up ${facts.window} for ${facts.who} ${facts.next}`),
+    writeNote:
+      options.writeNote ??
+      (async (_db, _familyId, facts) => {
+        notes.push(facts);
+        return `composed note ${facts.kind}`;
+      }),
+    createDateReader:
+      options.createDateReader ??
+      (() => {
+        throw new Error('unexpected date read');
+      }),
+    composeDateUnconfirmed:
+      options.composeDateUnconfirmed ??
+      (async (_client, facts) => {
+        unconfirmed.push(facts);
+        return `composed unconfirmed ${facts.why} ${facts.link}`;
+      }),
     ...(options.clock ? { clock: options.clock } : {}),
   };
 
@@ -325,6 +359,8 @@ function harness(
     anchors,
     composed,
     composedMorning,
+    notes,
+    unconfirmed,
   };
 }
 
@@ -388,28 +424,41 @@ describe('the shortlist proposal', () => {
       intentKind: 'registration_shortlist',
       childId: null,
     });
-    // The rationale is the reviewed copy, carrying the link and no invented program.
-    expect(String(h.drafts[0]?.rationale)).toContain(
-      'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
-    );
+    // VIL-543 · the card is the model's, written from facts that carry the link.
+    expect(h.drafts[0]?.rationale).toBe('composed note approval_card');
+    expect(h.notes[0]).toMatchObject({
+      kind: 'approval_card',
+      link: 'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx',
+    });
     expect(auditActions(h.writes)).toContain('registration_shortlist_drafted');
+  });
+
+  it('drafts no card and releases the claim when the card cannot be written', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()], writeNote: async () => null });
+    const result = await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
+    expect(h.drafts).toEqual([]);
+    expect(h.released).toEqual(['seq-1']);
+    expect(result.proposed).toBe(0);
+    expect(auditActions(h.writes)).not.toContain('registration_shortlist_drafted');
   });
 
   it('enumerates THREE texts on the card for a town with no portal Hale can read', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ windows: [win()] });
     await runRegistrationSequenceCron(db(), h.deps, PROPOSAL_TICK);
-    // Richmond Hill is one of the thirteen. The card a household there consents to is
-    // byte-identical to the one that shipped before VIL-338, because no readiness leg
-    // will ever fire for them — and the sentence enumerating the ladder is the one
-    // thing the approval IS. Kills a rationale that names a portal from anywhere but
-    // this window's own municipality.
-    const rationale = String(h.drafts[0]?.rationale);
-    expect(rationale).toContain(
-      'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.',
-    );
-    expect(rationale).not.toContain('a checklist a few days out');
-    expect(rationale).not.toContain('the morning text will carry it');
+    // Richmond Hill is one of the thirteen: no readiness leg will ever fire for them,
+    // and the texts the approval enumerates are the one thing the approval IS. Kills
+    // facts that name a portal from anywhere but this window's own municipality.
+    expect(h.notes[0]).toMatchObject({
+      kind: 'approval_card',
+      texts: [
+        { text: 'week_ahead', daysBefore: 7 },
+        { text: 'evening_before' },
+        { text: 'just_before_open', minutesBefore: 15 },
+      ],
+      courseLinkTip: false,
+    });
   });
 
   it('proposes at most ONE window per family per run', async () => {
@@ -763,7 +812,22 @@ describe('the legs', () => {
     vi.stubEnv('F14_ENABLED', 'true');
     const h = harness({ sequences: [live()] });
     await runRegistrationSequenceCron(db(), h.deps, new Date('2026-09-15T14:30:00.000Z'));
-    expect(h.transport.bodies()[0]).toContain('How did');
+    expect(h.notes).toEqual([expect.objectContaining({ kind: 'check_in_ask' })]);
+    expect(h.transport.bodies()[0]).toBe('composed note check_in_ask');
+  });
+
+  it('sends nothing and spends no dedupe key when a leg note is unwritten (VIL-543)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()], writeNote: async () => null });
+    const result = await runRegistrationSequenceCron(
+      db(),
+      h.deps,
+      new Date('2026-09-15T14:30:00.000Z'),
+    );
+    expect(result.sent).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect([...h.dedupeKeys]).toEqual([]);
+    expect(auditActions(h.writes)).toEqual(['registration_leg_unwritten']);
   });
 
   it('runs the waitlist guards off the parent’s reported clock', async () => {
@@ -782,7 +846,12 @@ describe('the legs', () => {
       new Date('2026-09-16T14:00:00.000Z'),
     );
     expect(result.sent).toBe(1);
-    expect(h.transport.bodies()[0]).toContain('36h');
+    // 36h from 11:00 on the 15th runs out at 23:00 on the 16th, Toronto time.
+    expect(h.notes[0]).toMatchObject({
+      kind: 'waitlist_halfway',
+      responseHours: 36,
+      deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
+    });
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:waitlist_half:user-1']);
   });
 
@@ -1521,7 +1590,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
       new Date('2026-09-15T14:30:00.000Z'),
     );
     expect(checkInResult).toMatchObject({ sent: 1, noFit: 1, quiet: 0, read: 0 });
-    expect(checkIn.transport.bodies()[0]).toContain('How did');
+    expect(checkIn.notes[0]).toMatchObject({ kind: 'check_in_ask' });
 
     const guard = harness({
       sequences: [
@@ -1539,7 +1608,7 @@ describe('VIL-338 · the bound course is read at send time', () => {
       new Date('2026-09-16T14:00:00.000Z'),
     );
     expect(guardResult).toMatchObject({ sent: 1, noFit: 1 });
-    expect(guard.transport.bodies()[0]).toContain('36h');
+    expect(guard.notes[0]).toMatchObject({ kind: 'waitlist_halfway', responseHours: 36 });
 
     // The other half of the rule, and the positive control for both: the two legs that
     // DO name who fits stay quiet for this household, bound or not — a heads-up "for
@@ -1557,7 +1626,10 @@ describe('VIL-338 · the bound course is read at send time', () => {
     const portalResult = await runRegistrationSequenceCron(db(), portal.deps, READINESS_TICK);
 
     expect(portalResult.sent).toBe(1);
-    expect(portal.transport.bodies()[0]).toContain('a Markham portal account');
+    expect(portal.notes[0]).toMatchObject({
+      kind: 'readiness_checklist',
+      account: 'a Markham portal account',
+    });
     expect([...portal.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:readiness:user-1']);
 
     // Richmond Hill sits in the same hours and still reads the heads-up, whose key was
@@ -1985,5 +2057,271 @@ describe('VIL-484 · the moved morning is composed, with no fallback', () => {
     const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
     expect(result).toMatchObject({ sent: 0, unwritten: 1 });
     expect(h.transport.bodies()).toEqual([]);
+  });
+});
+
+describe('VIL-423 · a watch a parent’s link created', () => {
+  /** Link watches are evaluated outside the per-run cap, so a family that pasted many
+   * links cannot push a dated catalog ladder off the end of the run. */
+  it('never takes a catalog ladder’s place under the per-run cap', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const linkWatches = Array.from({ length: MAX_SEQUENCE_FAMILIES_PER_RUN }, (_, index) =>
+      live({
+        sequenceId: `link-${index}`,
+        window: null,
+        courseUrl: `https://register.example.org/courses/c-${index}`,
+        courseOpensAt: null,
+      }),
+    );
+    const h = harness({ sequences: [...linkWatches, live()] });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.undated).toBe(MAX_SEQUENCE_FAMILIES_PER_RUN);
+    expect(result.sent).toBe(1);
+    expect(result.failed).toBe(0);
+  });
+});
+
+describe('VIL-423 · the send-time date check (REGISTRATION_DATE_CHECK)', () => {
+  /** The stored opening, as the page states it: Tuesday 15 Sept, 06:30 Toronto. */
+  const STORED = { date: '2026-09-15', time: '06:30' };
+  /** The page moved the opening to Thursday 17 Sept, 06:30 Toronto. */
+  const MOVED = { date: '2026-09-17', time: '06:30' };
+
+  function verified(date: { date: string; time: string }): LiveRegistrationReading {
+    return {
+      sourceUrl: win().sourceUrl,
+      checkedAt: HEADS_UP_TICK,
+      reader: 'ai',
+      status: 'verified',
+      timeZone: TZ,
+      dates: [{ kind: 'general_open', ...date, evidence: ['the page'] }],
+      partialDates: [],
+    };
+  }
+  const unverified: LiveRegistrationReading = {
+    sourceUrl: win().sourceUrl,
+    checkedAt: HEADS_UP_TICK,
+    reader: 'ai',
+    status: 'unverified',
+    reason: 'unknown_time_zone',
+    partialDates: [],
+  };
+  const unreadable: LiveRegistrationReading = {
+    sourceUrl: win().sourceUrl,
+    checkedAt: HEADS_UP_TICK,
+    reader: 'ai',
+    status: 'unreadable',
+    reason: 'http_status',
+  };
+
+  /** A reader that answers one reading, and records every page it was asked for. */
+  function pageSays(reading: LiveRegistrationReading) {
+    const asked: string[] = [];
+    const reader: RegistrationReader = async (target) => {
+      asked.push(target.sourceUrl);
+      return reading;
+    };
+    return { asked, createDateReader: () => reader };
+  }
+
+  function headsUpFacts(options: Parameters<typeof harness>[0]) {
+    const facts: Array<{ opensOn: string; opensAt: string }> = [];
+    const h = harness({
+      ...options,
+      composeHeadsUp: async (_client, input) => {
+        facts.push({ opensOn: input.opensOn, opensAt: input.opensAt });
+        return `composed heads-up opens ${input.opensOn}`;
+      },
+    });
+    return { h, facts };
+  }
+
+  it('off: no page is read and the stored date goes out as before', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // The harness default reader factory throws: reaching it would fail this test.
+    const { h, facts } = headsUpFacts({ sequences: [live()] });
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.sent).toBe(1);
+    expect(facts).toEqual([{ opensOn: 'Tuesday, September 15, 2026', opensAt: '6:30 a.m.' }]);
+    expect(result.dateCheck).toEqual({ agree: 0, disagree: 0, unread: 0 });
+  });
+
+  it('shadow: reads the page, logs the disagreement by window id, and changes nothing', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'shadow');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const page = pageSays(verified(MOVED));
+    const { h, facts } = headsUpFacts({
+      sequences: [live()],
+      createDateReader: page.createDateReader,
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(page.asked).toEqual([win().sourceUrl]);
+    expect(result.sent).toBe(1);
+    expect(facts).toEqual([{ opensOn: 'Tuesday, September 15, 2026', opensAt: '6:30 a.m.' }]);
+    expect(result.dateCheck).toEqual({ agree: 0, disagree: 1, unread: 0 });
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ windowId: 'w-1', mode: 'shadow', check: 'disagree' }),
+      'registration date check',
+    );
+    expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
+      dateCheck: 'disagree',
+    });
+    info.mockRestore();
+  });
+
+  it('enforce: a page that agrees sends the stored date', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { h, facts } = headsUpFacts({
+      sequences: [live()],
+      createDateReader: pageSays(verified(STORED)).createDateReader,
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.sent).toBe(1);
+    expect(facts).toEqual([{ opensOn: 'Tuesday, September 15, 2026', opensAt: '6:30 a.m.' }]);
+    expect(result.dateCheck.agree).toBe(1);
+  });
+
+  it('enforce: a page that moved the date lends the text its own date, never the stale one', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { h, facts } = headsUpFacts({
+      sequences: [live()],
+      createDateReader: pageSays(verified(MOVED)).createDateReader,
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.sent).toBe(1);
+    expect(facts).toEqual([{ opensOn: 'Thursday, September 17, 2026', opensAt: '6:30 a.m.' }]);
+    expect(h.transport.bodies()[0]).not.toContain('September 15');
+    expect(result.dateCheck.disagree).toBe(1);
+  });
+
+  it('enforce: the evening before carries the moved date too', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      sequences: [live()],
+      createDateReader: pageSays(verified(MOVED)).createDateReader,
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+    expect(result.sent).toBe(1);
+    expect(h.composed).toHaveLength(1);
+    expect(h.composed[0]).toMatchObject({ opensOn: 'Thursday, September 17, 2026' });
+  });
+
+  it('enforce: a page that cannot confirm the date gets the dateless text with the page link', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      sequences: [live({ optIn: 'pending' })],
+      createDateReader: pageSays(unverified).createDateReader,
+      composeHeadsUp: async () => {
+        throw new Error('the dated heads-up must not be composed');
+      },
+    });
+
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    expect(result.sent).toBe(1);
+    expect(h.unconfirmed).toHaveLength(1);
+    expect(h.unconfirmed[0]).toMatchObject({
+      link: win().sourceUrl,
+      why: 'page_unconfirmed',
+      offer: true,
+      window: expect.stringContaining('Fall 2026'),
+      who: 'Maya',
+      language: 'en',
+    });
+    // The facts carry no opening at all, so the text cannot state the unconfirmed one.
+    expect(JSON.stringify(h.unconfirmed[0])).not.toMatch(/September 15|6:30/);
+    expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
+      leg: 'heads_up',
+      dateCheck: 'unread',
+      version: 'date_unconfirmed',
+    });
+    expect(result.dateCheck.unread).toBe(1);
+  });
+
+  it('enforce: an approved heads-up without a date promises no plan', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      sequences: [live()],
+      createDateReader: pageSays(unreadable).createDateReader,
+    });
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(h.unconfirmed[0]).toMatchObject({ why: 'page_unreadable', offer: false });
+    expect(h.promised).toEqual([]);
+
+    // Positive control: the same household, the page agreeing, is promised its plan.
+    const agreed = harness({
+      sequences: [live()],
+      createDateReader: pageSays(verified(STORED)).createDateReader,
+    });
+    await runRegistrationSequenceCron(db(), agreed.deps, HEADS_UP_TICK);
+    expect(agreed.promised).toHaveLength(1);
+  });
+
+  it('enforce: an unwritten dateless text sends nothing, by name', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      sequences: [live()],
+      createDateReader: pageSays(unverified).createDateReader,
+      composeDateUnconfirmed: async () => null,
+    });
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result).toMatchObject({ sent: 0, unwritten: 1 });
+    expect(h.transport.sent).toEqual([]);
+    expect(auditAfter(h.writes, 'registration_leg_unwritten')).toMatchObject({
+      version: 'date_unconfirmed',
+    });
+  });
+
+  it('enforce: the go leg says nothing when the page does not confirm the minute', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    for (const reading of [unverified, verified(MOVED)]) {
+      const h = harness({
+        sequences: [live()],
+        createDateReader: pageSays(reading).createDateReader,
+      });
+      const result = await runRegistrationSequenceCron(db(), h.deps, GO_TICK);
+      expect(h.transport.sent).toEqual([]);
+      expect(result.skipped.date_unconfirmed).toBe(1);
+      expect(result.quiet).toBe(0);
+    }
+    // Positive control: the page agreeing, the go leg goes.
+    const agreed = harness({
+      sequences: [live()],
+      createDateReader: pageSays(verified(STORED)).createDateReader,
+    });
+    const result = await runRegistrationSequenceCron(db(), agreed.deps, GO_TICK);
+    expect(result.sent).toBe(1);
+  });
+
+  it('a bound course is not checked against the window page: its own page is read at send time', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    // The harness default reader factory throws: a check here would fail the test.
+    const h = harness({ sequences: [bound()] });
+    const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+    expect(result.failed).toBe(0);
+    expect(result.sent).toBe(1);
+    expect(result.dateCheck).toEqual({ agree: 0, disagree: 0, unread: 0 });
   });
 });

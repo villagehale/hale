@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "English, matches parent language. Link is whole and identical to the given URL. Says connecting is optional, that the Google unverified-app screen is expected and safe, gives the Advanced then continue path. Omits the 15-minute validity, a required fact, so it fails the omissions rule. Should score 1 under the rules, though the rest is warm and clear."
+  }
+}

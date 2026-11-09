@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The person asked to restart in English. The reply, also in English, plainly says the assistant is back and will text again. It is short, warm enough, asks nothing, and sells nothing. It explains how to stop again, which fits the start case. No readLate was given, so no lateness acknowledgement is needed."
+  }
+}

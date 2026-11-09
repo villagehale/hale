@@ -160,6 +160,46 @@ async function executeTheDraft(): Promise<void> {
     .where(eq(schema.actions.id, actionId));
 }
 
+/** VIL-423 · a watch a parent's link created: no catalog row, its own clock, approved.
+ * Nothing on the ladder ever asks it a question yet, so no reply reader may hear one
+ * for it — the pins below hold that in a household that also has a catalog ladder. */
+async function seedLinkWatch(courseOpensAt: Date): Promise<string> {
+  const [event] = await db.database
+    .insert(schema.events)
+    .values({
+      familyId,
+      source: 'test',
+      eventType: 'registration_shortlist',
+      dedupHash: `two-parents-link-${Math.random()}`,
+    })
+    .returning({ id: schema.events.id });
+  const [action] = await db.database
+    .insert(schema.actions)
+    .values({
+      eventId: event?.id as string,
+      familyId,
+      actionType: 'send_message',
+      payload: {},
+      userVisibleState: 'autonomous',
+      reviewerVerdict: 'approved',
+      draftedAt: new Date('2026-09-08T10:00:00.000Z'),
+      executedAt: new Date('2026-09-08T10:05:00.000Z'),
+    })
+    .returning({ id: schema.actions.id });
+  const [row] = await db.database
+    .insert(schema.registrationSequences)
+    .values({
+      familyId,
+      windowId: null,
+      parentUserId: primaryUserId,
+      actionId: action?.id as string,
+      courseUrl: 'https://register.example.org/courses/swim-a',
+      courseOpensAt,
+    })
+    .returning({ id: schema.registrationSequences.id });
+  return row?.id as string;
+}
+
 async function auditRows(verb: string) {
   return db.database
     .select()
@@ -225,6 +265,29 @@ describe('one shortlist card, both parents answering', () => {
     ).toBeNull();
   });
 
+  /** VIL-423 pin: an approved link watch with an EARLIER clock must not stand in front
+   * of the catalog heads-up this parent was actually asked. Fails under a LEFT JOIN that
+   * still takes the earliest anchor alone. */
+  it('still finds the catalog heads-up when an earlier link watch exists', async () => {
+    await executeTheDraft();
+    await seedLinkWatch(new Date('2026-09-15T09:00:00.000Z'));
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: primaryUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'registration_sequence',
+      templateKey: 'registration_sequence:heads_up',
+      dedupeKey: legDedupeKey(familyId, windowId, 'heads_up', primaryUserId),
+      status: 'delivered',
+      createdAt: new Date('2026-09-08T14:00:00.000Z'),
+    });
+
+    expect(
+      await approvedShortlistAskedOf(db.database, familyId, primaryUserId, PRE_OPEN_NOW),
+    ).toEqual({ sequenceId });
+  });
+
   it('says nothing while the card is still waiting — an unapproved shortlist is a real question', async () => {
     await db.database.insert(schema.channelMessages).values({
       familyId,
@@ -288,6 +351,26 @@ describe('one registration morning, both parents reporting it', () => {
     const [audit] = await auditRows('registration_outcome_recorded');
     expect(audit?.actor).toBe(coParentUserId);
     expect(audit?.actor).not.toBe(primaryUserId);
+  });
+
+  /** VIL-423 pin: a newer link watch, never asked anything, must not take the catalog
+   * morning's report. Fails under a LEFT JOIN of `loadAwaitingSequence` that picks the
+   * newest anchor. */
+  it('files a catalog report against the catalog row when a newer link watch exists', async () => {
+    const linkId = await seedLinkWatch(new Date('2026-09-15T11:00:00.000Z'));
+
+    const outcome = await reply('we got in', coParentUserId);
+
+    expect(outcome.status).toBe('recorded');
+    const rows = await db.database
+      .select({
+        id: schema.registrationSequences.id,
+        outcome: schema.registrationSequences.outcome,
+      })
+      .from(schema.registrationSequences)
+      .where(eq(schema.registrationSequences.familyId, familyId));
+    expect(rows.find((row) => row.id === sequenceId)?.outcome).toBe('registered');
+    expect(rows.find((row) => row.id === linkId)?.outcome).toBeNull();
   });
 
   /**

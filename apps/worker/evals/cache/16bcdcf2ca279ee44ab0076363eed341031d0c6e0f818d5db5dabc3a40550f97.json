@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Facts are carried: intros were already off, nothing changed, and Hale won't raise it again (given as facts.next). But the reply opens with \"So sorry about the mix-up,\" an apology no fact gives, and implies something went wrong. That fails the APOLOGY rule, so it cannot score above 1 under the strict standard. Tone is friendly and language is correct; no other-family hints or word-to-type issues."
+  }
+}

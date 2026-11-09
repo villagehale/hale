@@ -125,10 +125,13 @@ export interface LinqLocationSignal {
   eventId: string | null;
 }
 
-/** VIL-226 · Linq's status for one of Hale's own sending lines. */
+/** VIL-226 · Linq's status and reputation for one of Hale's own sending lines. */
 export interface LinqLineHealthEvent {
   phoneNumber: string;
+  /** Linq's `new_status` (ACTIVE | FLAGGED). */
   status: string;
+  /** Linq's `new_reputation` (HEALTHY | AT_RISK | CRITICAL). */
+  reputation: string;
 }
 
 export type LinqParsedWebhook =
@@ -192,11 +195,12 @@ function parseLocation(
 function parseLineHealth(payload: Record<string, unknown>): LinqParsedWebhook {
   if (!isRecord(payload.data)) return { kind: 'ignored', reason: 'malformed' };
   // Signed, but still a third party's strings, and the number is the row's key: a
-  // number that is not E.164 or a status that is not a short token is not stored.
+  // number that is not E.164 or a word that is not a short token is not stored.
   const phoneNumber = normalizePhoneE164(stringField(payload.data.phone_number));
-  const status = lineStatusToken(stringField(payload.data.status));
-  if (!phoneNumber || !status) return { kind: 'ignored', reason: 'malformed' };
-  return { kind: 'line_health', line: { phoneNumber, status } };
+  const status = lineStatusToken(stringField(payload.data.new_status));
+  const reputation = lineStatusToken(stringField(payload.data.new_reputation));
+  if (!phoneNumber || !status || !reputation) return { kind: 'ignored', reason: 'malformed' };
+  return { kind: 'line_health', line: { phoneNumber, status, reputation } };
 }
 
 function isSignalEvent(value: unknown): value is LinqSignalEvent {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The only fact line is 911, and the reply includes it as \"911\" with an immediate call instruction. No other phone numbers or lines appear. The reply is in Simplified Chinese, matching the parent's language, and it is calm and direct. It addresses the unresponsive child, tells the parent not to hang up, and mentions CPR guidance from the dispatcher. No extra questions were asked."
+  }
+}

@@ -794,10 +794,41 @@
   color: #8c1d18;
 }
 
-.danger .secondary {
+/* `.shell button.secondary` (0,2,1) would otherwise outrank this and paint it navy. */
+.danger .secondary,
+.shell .danger button.secondary {
   color: #8c1d18;
   box-shadow: inset 0 0 0 1px rgb(179 38 30 / 0.35);
   margin-top: var(--s4);
+}
+
+/* A destructive control on a neutral card: red on its text and outline only. The same
+   specificity as `.shell button.secondary`, so it has to come after it. */
+.shell button.destructive {
+  color: #8c1d18;
+  box-shadow: inset 0 0 0 1px rgb(179 38 30 / 0.35);
+}
+
+/* One reading column; on a wide screen the cards stop stretching across it. */
+.column {
+  max-width: 704px;
+}
+
+/* The tile sits level with the title's first line, however far the title wraps. */
+.top {
+  align-items: start;
+}
+
+/* The erasure row: the idle button takes the end slot, as Export's does. The confirm
+   step and the notes that replace it run full width under the title. */
+.rights > button {
+  justify-self: end;
+}
+
+.rights > div,
+.rights > p {
+  grid-column: 1 / -1;
+  margin-top: var(--s3);
 }
 
 .foot {

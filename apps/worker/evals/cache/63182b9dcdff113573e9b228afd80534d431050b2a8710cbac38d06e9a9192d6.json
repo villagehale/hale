@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the cancellation, date, time (1:00 PM), and that no new date was given; matches facts and does not offer to add anything since offer is null. Tone is casual and friend-like. Minor issue: 'emailed Tuesday' and 'Sept 19' are supported by facts, so no invented claims. Scores high.",
+    "score": 5
+  }
+}

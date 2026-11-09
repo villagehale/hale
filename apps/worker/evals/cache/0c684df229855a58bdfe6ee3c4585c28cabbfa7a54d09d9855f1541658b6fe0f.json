@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the wrong collision: the input has Maya swim pickup and a Barton busy block, not a Maya allergist item. It invents an allergist appointment and a second collision, asks the group to reply 1 or 2, and includes a link, which is not allowed. It also fails to give the single ask that Sam takes the swim pickup on Friday at 3.",
+    "score": 1
+  }
+}

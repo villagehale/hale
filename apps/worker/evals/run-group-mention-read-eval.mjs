@@ -1,23 +1,35 @@
-// Who should this group reply mention? · classifier eval (VIL-475, hard rule #8).
+// Who should this group reply mention? · classifier eval (VIL-475, hard rule #8: no LLM mocking).
 //
-// The subject is the REAL skill (packages/agent/skills/group-mention-read.md) through
-// the REAL request: `groupMentionUserMessage` is imported from group-mention-reader.ts,
-// not replicated. Scoring is the mentionId, never a word in the reply.
+// The subject is the REAL skill (packages/agent/skills/group-mention-read.md) through the REAL
+// request: `groupMentionUserMessage` is imported from group-mention-reader.ts, not replicated,
+// and the tool schema below mirrors its `outputJsonSchema`. The skill body and the model
+// routing are imported live, so a skill edit re-keys the cache and shows up as a miss.
 //
-//   node evals/run-group-mention-read-eval.mjs --dry
-//   node evals/run-group-mention-read-eval.mjs --cached-only
+// The gate is the mentionId: a reading outside the fixture's `accept` set notifies the wrong
+// person, or nobody. No word in the reply is checked.
 //
-// --dry (also --estimate) prices one live recording at max_tokens and exits 0.
-// It does not call the API and it does not write a cache file.
-// --cached-only replays committed cache. A miss prints that same estimate and
-// exits 1. This runner does not call the API.
+//   node evals/run-group-mention-read-eval.mjs --dry           # $0, no API: worst-case $ projection
+//   node evals/run-group-mention-read-eval.mjs --broken        # calibration, $0: must FAIL
+//   node evals/run-group-mention-read-eval.mjs --cached-only   # CI: replay only, $0
+//   node --env-file=../../.env evals/run-group-mention-read-eval.mjs --live   # live, PAID
+// Exactly one mode. Any other flag, none, or two exits 2 before the spend cap or a client
+// exists (lib/eval-flags.mjs).
 
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { GROUP_MENTION_READ_FIXTURES } from './group-mention-read-fixtures.mjs';
-import { PRICE, REPO_ROOT, cacheGet, cacheKey, evalRunTag } from './lib/harness.mjs';
+import { estimateTokens, noClient, parseEvalFlagsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
+import {
+  cachedToolCall,
+  installEvalSpendCap,
+  lazyAnthropic,
+  makeCost,
+  totalUsd,
+} from './lib/harness.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(HERE, '..', '..', '..');
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'group-mention-read.md');
@@ -26,111 +38,93 @@ const READER_SRC = join(WEB_ROOT, 'lib', 'channel', 'linq', 'group-mention-reade
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
+/** Mirrors createGroupMentionReader in group-mention-reader.ts. */
 const MAX_TOKENS = 200;
-const TOOL_NAME = 'group_mention';
-const TOOL_DESCRIPTION = 'Return who this group reply is addressing, if anyone.';
 const TOOL_SCHEMA = {
   type: 'object',
   properties: { mentionId: { type: ['string', 'null'] } },
   required: ['mentionId'],
 };
 
-function estimateTokens(value) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  let latin = 0;
-  let other = 0;
-  for (const ch of text) {
-    if (ch.codePointAt(0) <= 0x024f) latin += 1;
-    else other += 1;
-  }
-  return Math.ceil(latin / 4) + other;
-}
-
-function priced(model, input, output) {
-  const price = PRICE[model];
-  if (!price) throw new Error(`no list price for ${model}`);
-  return (input / 1e6) * price.input + (output / 1e6) * price.output;
-}
-
-function fixtureUsd(lane, skill, userMessage) {
-  const input =
-    estimateTokens(skill.instructions) +
-    estimateTokens(userMessage) +
-    estimateTokens({
-      name: TOOL_NAME,
-      description: TOOL_DESCRIPTION,
-      input_schema: TOOL_SCHEMA,
-    });
-  return priced(lane.model, input, MAX_TOKENS);
-}
-
-function estimateLine(worst, fixtureId, model) {
-  return `group-mention-read: --dry worst case for one live recording (${fixtureId}, ${model}, max_tokens=${MAX_TOKENS}): $${worst.toFixed(4)} USD. live API calls: 0. nothing written.`;
-}
-
 async function main() {
-  const dry = process.argv.includes('--dry') || process.argv.includes('--estimate');
-  const cachedOnly = process.argv.includes('--cached-only');
-  if (dry && cachedOnly) {
-    console.error('group-mention-read: pass only one of --dry and --cached-only');
-    process.exit(1);
-  }
-  if (!dry && !cachedOnly) {
-    console.error(
-      'group-mention-read: pass --dry or --cached-only. This runner does not call the API.',
-    );
-    process.exit(2);
-  }
-
+  const mode = parseEvalFlagsOrExit('group-mention-read');
+  if (mode === 'dry') return dryRun();
+  const broken = mode === 'broken';
+  const cachedOnly = mode === 'cached-only';
+  installEvalSpendCap();
+  // Only --live ever gets a real client.
+  const getClient =
+    mode === 'live' ? lazyAnthropic('group-mention-read') : noClient('group-mention-read');
+  const cost = makeCost();
   const agent = await importTs(AGENT_SRC);
   const { groupMentionUserMessage } = await importTs(READER_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
-  const lane = agent.pickLane(skill.meta.task);
   const model = agent.pickModel(skill.meta.task);
+  const lane = agent.pickLane(skill.meta.task);
 
-  let worst = { id: GROUP_MENTION_READ_FIXTURES[0]?.id ?? 'none', usd: 0 };
+  console.log(
+    `group-mention-read eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | model=${model}`,
+  );
+  const results = [];
   for (const fixture of GROUP_MENTION_READ_FIXTURES) {
-    const usd = fixtureUsd(lane, skill, groupMentionUserMessage(fixture.input));
-    if (usd > worst.usd) worst = { id: fixture.id, usd };
+    // Broken: always mention the first member, which is wrong for most fixtures.
+    const mentionId = broken
+      ? (fixture.input.members[0]?.id ?? null)
+      : (
+          await cachedToolCall({
+            tag: `group-mention-read:${fixture.id}`,
+            model,
+            lane,
+            system: skill.instructions,
+            userMessage: groupMentionUserMessage(fixture.input),
+            toolName: 'group_mention',
+            toolSchema: TOOL_SCHEMA,
+            toolDescription: 'Return who this group reply is addressing, if anyone.',
+            maxTokens: MAX_TOKENS,
+            cachedOnly,
+            getClient,
+            cost,
+          })
+        ).value.mentionId;
+    results.push({ fixture, mentionId, pass: fixture.accept.includes(mentionId) });
   }
-  const line = estimateLine(worst.usd, worst.id, model);
-
-  if (dry) {
-    console.info(line);
-    return;
-  }
-
-  for (const fixture of GROUP_MENTION_READ_FIXTURES) {
-    const userMessage = groupMentionUserMessage(fixture.input);
-    const fields = agent.laneRequestFields(lane);
-    const canonical = JSON.stringify({
-      fields,
-      system: skill.instructions,
-      userMessage,
-      toolName: TOOL_NAME,
-      toolSchema: TOOL_SCHEMA,
-      toolChoice: { type: 'tool', name: TOOL_NAME },
-      maxTokens: MAX_TOKENS,
-    });
-    const key = cacheKey(evalRunTag(`group-mention-read:${fixture.id}`), canonical);
-    const cached = await cacheGet(key);
-    if (!cached) {
-      console.error(line);
-      console.error(`group-mention-read: cache miss on ${fixture.id}. stopped. nothing recorded.`);
-      process.exit(1);
-    }
-    const mentionId = cached.value?.mentionId ?? null;
-    const pass = fixture.accept.some((allowed) => allowed === mentionId);
-    console.info(
-      `${pass ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(28)} mention=${String(mentionId)} accept=${fixture.accept.map(String).join('|')}`,
+  for (const r of results) {
+    console.log(
+      `${r.pass ? 'PASS' : 'FAIL'}  ${r.fixture.id.padEnd(28)} mention=${String(r.mentionId)} accept=${r.fixture.accept.map(String).join('|')}  "${r.fixture.input.text}"`,
     );
-    if (!pass) process.exitCode = 1;
   }
+  console.log(
+    `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
+  );
+  const allPass = results.every((r) => r.pass);
+  if (!broken) process.exit(allPass ? 0 : 1);
+  console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);
+  process.exit(allPass ? 1 : 0);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((err) => {
-    console.error(err instanceof Error ? err.message : 'group-mention-read failed');
-    process.exit(1);
-  });
+/** $0: no spend cap, no client. Prices every fixture as uncached (an upper bound). */
+async function dryRun() {
+  const agent = await importTs(AGENT_SRC);
+  const { groupMentionUserMessage } = await importTs(READER_SRC);
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const model = agent.pickModel(skill.meta.task);
+  console.log(`group-mention-read eval | mode=dry (no API calls) | model=${model}`);
+  let worst = 0;
+  for (const fixture of GROUP_MENTION_READ_FIXTURES) {
+    const inTokens = estimateTokens(skill.instructions + groupMentionUserMessage(fixture.input));
+    const usd = worstCaseUsd(model, inTokens, MAX_TOKENS);
+    worst += usd;
+    console.log(
+      `DRY  group-mention-read:${fixture.id}  ~${inTokens} in + ${MAX_TOKENS} max out  worst $${usd.toFixed(5)}`,
+    );
+  }
+  console.log(
+    `DRY summary | ${GROUP_MENTION_READ_FIXTURES.length} calls, all priced as uncached | worst $${worst.toFixed(5)}`,
+  );
+  console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
 }
+
+main().catch((err) => {
+  console.error('group-mention-read eval harness error:', err);
+  process.exit(2);
+});

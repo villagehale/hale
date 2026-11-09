@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
+import { factsForContext } from '@hale/worker/memory-context';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
@@ -27,6 +28,7 @@ import { digestWindows } from './period';
 
 export const MEMORY_BRIEF_CHAR_BUDGET = 1800;
 const FACT_LINE_LIMIT = 4;
+const BRIEF_FACT_LIMIT = 40;
 const WORKSTREAM_LIMIT = 4;
 const VALUE_CHARS = 72;
 const DAY_FRESH_MS = 36 * 60 * 60 * 1000;
@@ -66,6 +68,7 @@ interface BriefFact {
   memoryKind?: string | null;
   memorySource?: string | null;
   expiresAt?: Date | string | null;
+  sourceEventId?: string | null;
 }
 
 interface BriefWorkstream {
@@ -152,6 +155,10 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (fact.confidence < CONFIDENCE_FLOOR) return false;
     if (fact.childId !== null && input.teenChildIds.has(fact.childId)) return false;
     if (isReceiptKey(fact.factKey) || fact.factKey.includes(':')) return false;
+    // VIL-429: a fact read off an event reaches the coach only through `memoryFacts`,
+    // which carries where it was seen and leaves it out for a reader who may not hear
+    // that. The brief has no reader, so it does not carry the fact at all.
+    if (fact.sourceEventId) return false;
     // Decay is a read-time filter. An expired obligation stays stored and leaves
     // the prompt, so a finished one-off does not keep steering.
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
@@ -258,31 +265,7 @@ export async function assembleMemoryBrief(
         .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
-      database
-        .select({
-          factType: schema.familyMemoryFacts.factType,
-          factKey: schema.familyMemoryFacts.factKey,
-          factValue: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-          validFrom: schema.familyMemoryFacts.validFrom,
-          childId: schema.familyMemoryFacts.childId,
-          memoryKind: schema.familyMemoryFacts.memoryKind,
-          memorySource: schema.familyMemoryFacts.memorySource,
-          expiresAt: schema.familyMemoryFacts.expiresAt,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        )
-        .orderBy(
-          desc(schema.familyMemoryFacts.confidence),
-          desc(schema.familyMemoryFacts.validFrom),
-          schema.familyMemoryFacts.id,
-        )
-        .limit(40),
+      factsForContext(database, familyId, { now, limit: BRIEF_FACT_LIMIT }),
       database
         .select({
           kind: schema.agentCommitments.commitmentKind,

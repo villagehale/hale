@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event 'Saturday Art Club' (the weekday in the name is not a claim about the start) and states Thu, Jul 23 at 10:30 AM, which matches starts: Thursday, July 23, 2026, 10:30 in America/Chicago. Day, hour and minute all agree, and it offers a link to add the event rather than cancelling it.",
+    "match": true
+  },
+  "latencyMs": 2085
+}

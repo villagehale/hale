@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Correctly says it has no current source and gives no answer from memory, in English, matching the parent's language. Tone is friendly and honest. Minor issue: it asks the parent to check sites, which is a request for action, but it is reasonable since the purpose is to point them elsewhere. No invented facts or apology."
+  }
+}

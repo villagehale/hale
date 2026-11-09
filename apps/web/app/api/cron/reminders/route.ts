@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
+import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { cronRoute } from '~/lib/cron/auth';
+import { drainOrigin, kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
 import { runReminderCron } from '~/lib/loop/reminders/run';
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the send path reaches pg-boss + the channel seam, neither of which
@@ -20,9 +23,16 @@ export const maxDuration = 300;
  * gets 401 and NOTHING runs. The SEND itself is additionally gated by LOOP_SEND_ENABLED
  * (default off) — compose-not-send until the founder flips it.
  */
-export const GET = cronRoute('reminders', async () => {
+export const GET = cronRoute('reminders', async (req: Request) => {
   try {
     const summary = await runReminderCron(db());
+    // On Preview the sends went into Preview's own pg-boss schema, which no
+    // production drain can claim and no scheduled drain reaches, so Preview drains
+    // them itself right away. Production keeps the every-minute drain.
+    if (isPreviewDeploy()) {
+      const origin = drainOrigin(req);
+      after(() => kickDrain(origin, [CHANNEL_SEND_QUEUE]));
+    }
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     await flushTelemetry();

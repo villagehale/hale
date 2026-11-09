@@ -188,8 +188,14 @@ export interface KidRelevanceItem {
   ref: string;
   source: KidRelevanceSource;
   integrationId: string | null;
-  /** gcal: recurringEventId ?? eventId; gmail: messageId; group: sha256(title). */
+  /** gcal mirror: the event's own id, one per instance, since an instance can be retitled
+   * on its own; gcal block: recurringEventId ?? eventId; gmail: messageId; group:
+   * sha256(title). */
   itemKey: string;
+  /** gcal: the series the event belongs to (recurringEventId ?? eventId). Only a parent's
+   * own word is read under it - untrack keeps "that's mine" for the whole series - and a
+   * model verdict is never shared through it. */
+  seriesKey?: string;
   title: string;
   startsAt: string | null;
   place: string | null;

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event's title is \"Jour de congé\", which names a calendar event (something at the library). The text writes \"il y a un jour de congé\" (there is a day off), which turns the title into a plain description of what the day is rather than presenting it as the event's name. That changes the meaning of the title, a fact failure under the title rule, even though the day (demain), start 15 h, end 16 h, venue and address are all correct. No bold, which is fine.",
+    "score": 2
+  }
+}

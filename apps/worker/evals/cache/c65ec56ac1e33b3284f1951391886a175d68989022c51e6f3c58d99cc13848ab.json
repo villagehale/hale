@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states the session is not booked, gives the registration link exactly as provided, lists only the pack details, makes no login claim or retry promise, and is in English for a direct audience. Minor nit: 'can't complete sign-ups on this site yet' is slightly broader than the no_provider_session reason but is consistent with the facts.",
+    "score": 5
+  }
+}

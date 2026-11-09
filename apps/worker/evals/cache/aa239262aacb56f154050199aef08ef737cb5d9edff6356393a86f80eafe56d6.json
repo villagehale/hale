@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states a plan and a weather observation without asking the parent for any reply, confirmation, or decision.",
+    "score": 5
+  }
+}

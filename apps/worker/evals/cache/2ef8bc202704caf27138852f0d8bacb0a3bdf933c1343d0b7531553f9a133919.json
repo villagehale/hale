@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request to reply YES so Hale will book, plus a STOP instruction; that is a direct ask for a reply, so it scores at the bottom of the scale.",
+    "score": 1
+  }
+}

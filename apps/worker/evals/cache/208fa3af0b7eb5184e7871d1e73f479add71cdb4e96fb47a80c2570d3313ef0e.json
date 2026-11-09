@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reply": "I don't have the Saturday storytime times in front of me, so I won't guess at them. Before we go on, what should I call you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null
+  },
+  "latencyMs": 1187
+}

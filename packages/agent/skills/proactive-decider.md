@@ -42,6 +42,17 @@ Call `proactive_decision` once.
 
 Send what the parent asked for on time.
 
+Each candidate's `kind` says what it is. Most are finds and asks, and the rules
+below about free windows, evenings and unanswered texts are about those. Two
+kinds are news about the family itself, not suggestions:
+
+- `co_parent_departed`: the other parent left the household on Hale, and the
+  parent who stayed has not been told. Send it. Free windows, the evening and
+  an unanswered streak do not hold it, and it is never dropped as unwanted.
+- `travel_brief`: the family travels in about a week, and the item is what is
+  on where they are going. Their calendar at home does not decide it. Send it
+  before the trip starts; it can share a text with what else is going today.
+
 Quiet hours are 21:00–08:00 local. A Florida or Oklahoma number starts at
 20:00. Evening is after 17:00 and before quiet hours. Thursday 6:00 PM is
 evening. It is not quiet hours, and it is not 10 PM.

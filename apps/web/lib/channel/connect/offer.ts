@@ -1,11 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
-import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
  * The connector handoff's mint: a verified parent's plain "connect my calendar"
@@ -31,17 +30,15 @@ export type ConnectorOfferOutcome =
 
 /** Where the link lands: the redeem page, which signs the parent in and forwards them
  * straight into this provider's Google consent — no Settings, no Connect button to
- * find. Always the app host (appBaseUrl), never the marketing site: this is an app door.
- * A provider with no text-back path carries no `to` and keeps the Settings landing. */
-function connectUrl(token: string, provider: ConnectorProvider): string {
-  const deepLink = asTextConnectProvider(provider);
-  return `${appBaseUrl()}/connect?t=${token}${deepLink ? `&to=${deepLink}` : ''}`;
+ * find. Always the app host (appBaseUrl), never the marketing site: this is an app door. */
+function connectUrl(token: string, provider: TextConnectProvider): string {
+  return `${appBaseUrl()}/connect?t=${token}&to=${provider}`;
 }
 
 /** At least one provider, as a tuple, so the URLs come back one-per-provider in the
  * order asked and a caller offering two never has to prove to the compiler that its
  * second link exists. */
-type ProviderList = readonly [ConnectorProvider, ...ConnectorProvider[]];
+type ProviderList = readonly [TextConnectProvider, ...TextConnectProvider[]];
 
 export type ConnectorLinksOutcome<P extends ProviderList> =
   | { status: 'minted'; urls: { [K in keyof P]: string } }
@@ -54,7 +51,7 @@ export async function offerConnectorLink(
   input: {
     familyId: string;
     parentUserId: string;
-    provider: ConnectorProvider;
+    provider: TextConnectProvider;
     now: Date;
   },
 ): Promise<ConnectorOfferOutcome> {

@@ -17,6 +17,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { haleContactImageUrl } from './contact-card';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
 import { resolveGroupMention } from './group-mention-reader';
+import type { ListChatHandles } from './roster';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
@@ -289,10 +290,15 @@ export async function deliverLinqGroupNotice(
      * (e.g. a ride reminder) names its content class so an incomplete roster
      * holds it instead of treating it as a reply.
      */
-    lineClass?: GroupLineClass;
+    lineClass: GroupLineClass;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
-  if (!(await groupAudienceAllows(database, input.chatId, input.lineClass ?? 'reply')).allowed) {
+  const listChatHandles: ListChatHandles =
+    input.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: input.fetch }));
+  if (
+    !(await groupAudienceAllows(database, input.chatId, input.lineClass, listChatHandles)).allowed
+  ) {
     return 'group_audience_refused';
   }
   let sent: { providerMessageId: string };

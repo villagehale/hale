@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives tomorrow, the 15 h start, the 16 h end, and the venue name, but it omits the street address \"9 Church St\" that the facts provided. The title \"Jour de congé\" is quoted as the event's name and nothing is invented or inferred (no closure, no free-day claim). Bold is none, which is fine. The missing address is a fact failure.",
+    "score": 2
+  }
+}
