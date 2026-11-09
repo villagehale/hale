@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately says the session is sold out and signup did not happen, uses the provider link exactly, no personal details, no hint of a reopening spot, no promise to retry, correct French tu for a direct audience. Minor nit: 'vérifier' suggests checking availability, which is acceptable as the link is the registration page.",
+    "score": 5
+  }
+}

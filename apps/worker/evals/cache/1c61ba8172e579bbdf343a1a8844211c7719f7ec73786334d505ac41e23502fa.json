@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the question directly: there is no art on this week's calendar, but the Harbour Art Studio email in memory says Fridays at 4:30, so the class is likely still on. Every detail traces to `knows` or `week`, and Aug 7 fits the Sat Aug 8 dates in `offerable`. It names the drafted calendar add and asks once, in a plain sentence, whether to go ahead. No greeting, no YES keyword, no machinery.",
+    "score": 5
+  }
+}

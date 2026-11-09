@@ -318,21 +318,47 @@ describe('probeProviderHealth', () => {
     expect(create.mock.calls[0]?.[1]).toEqual({ maxRetries: 0 });
   });
 
-  it('reports the failure class and a provider detail on a credit-balance 400', async () => {
+  it('reports the failure class, status and error type on a credit-balance 400, never the message', async () => {
+    // A 4xx message can quote the request it refused; the result keeps only its shape.
+    const quoting = apiError(
+      400,
+      'invalid_request_error',
+      'Your credit balance is too low. messages.0.content: "Swim lesson at the pool"',
+    );
     const client = {
       messages: {
         create: vi.fn(async () => {
-          throw CREDIT_EXHAUSTED;
+          throw quoting;
         }),
       },
     } as unknown as AgentClient;
 
     const health = await probeProviderHealth(client);
 
-    expect(health.ok).toBe(false);
-    if (health.ok) return;
-    expect(health.failure).toBe('billing');
-    expect(health.detail).toContain('credit balance is too low');
+    expect(health).toEqual({
+      ok: false,
+      failure: 'billing',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    expect(JSON.stringify(health)).not.toContain('Swim lesson');
+  });
+
+  it('reports no status and no type when the provider never answered', async () => {
+    const client = {
+      messages: {
+        create: vi.fn(async () => {
+          throw new TypeError('fetch failed: Swim lesson');
+        }),
+      },
+    } as unknown as AgentClient;
+
+    expect(await probeProviderHealth(client)).toEqual({
+      ok: false,
+      failure: 'transient',
+      httpStatus: null,
+      errorType: null,
+    });
   });
 });
 
@@ -342,7 +368,8 @@ describe('providerIncidentKey', () => {
       kind: 'preflight',
       window: 'nudge_sweep',
       failure: 'billing',
-      detail: 'x',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
     });
     // The same billing outage seen from a DIFFERENT window is the SAME incident —
     // the founder gets one email, not one per cron.
@@ -350,13 +377,15 @@ describe('providerIncidentKey', () => {
       kind: 'preflight',
       window: 'memory_inference',
       failure: 'billing',
-      detail: 'y',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
     });
     const auth = providerIncidentKey({
       kind: 'preflight',
       window: 'nudge_sweep',
       failure: 'auth',
-      detail: 'x',
+      httpStatus: 401,
+      errorType: 'authentication_error',
     });
     const spike = providerIncidentKey({
       kind: 'run_spike',
@@ -382,14 +411,15 @@ describe('formatProviderAlert', () => {
         kind: 'preflight',
         window: 'nudge_sweep',
         failure: 'billing',
-        detail: 'Your credit balance is too low to access the Anthropic API.',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
       },
       AT,
     );
 
     expect(subject).toBe('Hale ops: nudge sweep did not send — Anthropic billing');
     expect(text).toContain("this hour's nudge sweep did not run.");
-    expect(text).toContain('credit balance is too low');
+    expect(text).toContain('the provider answered: HTTP 400 invalid_request_error');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     // The honest part: nothing was composed and nothing was charged.
     expect(text).toContain('before composing anything');
@@ -434,7 +464,8 @@ describe('formatProviderAlert', () => {
         kind: 'preflight',
         window: 'nudge_sweep',
         failure: 'usage_limit',
-        detail: USAGE_LIMIT_TEXT,
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
       },
       AT,
     );
@@ -518,7 +549,7 @@ function deps(over: Partial<ProviderHealthDeps> = {}): ProviderHealthDeps {
   return {
     probe: vi.fn(async () => ({ ok: true }) as const),
     claim: vi.fn(async () => true),
-    sender: { send: vi.fn(async () => true) },
+    sender: { send: vi.fn(async () => 'sent' as const) },
     ...over,
   };
 }
@@ -527,7 +558,8 @@ const BILLING_INCIDENT: ProviderIncident = {
   kind: 'preflight',
   window: 'nudge_sweep',
   failure: 'billing',
-  detail: 'Your credit balance is too low.',
+  httpStatus: 400,
+  errorType: 'invalid_request_error',
 };
 
 describe('raiseProviderIncident', () => {
@@ -536,7 +568,7 @@ describe('raiseProviderIncident', () => {
 
     const outcome = await raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date());
 
-    expect(outcome).toEqual({ alerted: true, deduped: false });
+    expect(outcome).toEqual({ alerted: true, deduped: false, notConfigured: false });
     expect(d.sender.send).toHaveBeenCalledTimes(1);
   });
 
@@ -545,7 +577,7 @@ describe('raiseProviderIncident', () => {
 
     const outcome = await raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date());
 
-    expect(outcome).toEqual({ alerted: false, deduped: true });
+    expect(outcome).toEqual({ alerted: false, deduped: true, notConfigured: false });
     expect(d.sender.send).not.toHaveBeenCalled();
   });
 
@@ -560,7 +592,7 @@ describe('raiseProviderIncident', () => {
 
     await expect(
       raiseProviderIncident({} as Database, BILLING_INCIDENT, d, new Date()),
-    ).resolves.toEqual({ alerted: false, deduped: false });
+    ).resolves.toEqual({ alerted: false, deduped: false, notConfigured: false });
   });
 });
 
@@ -570,21 +602,37 @@ describe('providerPreflight', () => {
 
   it('aborts the window and alerts on a billing failure', async () => {
     const d = deps({
-      probe: vi.fn(async () => ({ ok: false, failure: 'billing', detail: 'no credit' }) as const),
+      probe: vi.fn(
+        async () =>
+          ({
+            ok: false,
+            failure: 'billing',
+            httpStatus: 400,
+            errorType: 'invalid_request_error',
+          }) as const,
+      ),
     });
 
     const result = await providerPreflight({} as Database, 'nudge_sweep', client, NOW, d);
 
     expect(result).toEqual({
       proceed: false,
-      abort: { failure: 'billing', detail: 'no credit', alerted: true },
+      abort: {
+        failure: 'billing',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     });
     expect(d.sender.send).toHaveBeenCalledTimes(1);
   });
 
   it('PROCEEDS on a transient failure — a blip must not cancel a send window', async () => {
     const d = deps({
-      probe: vi.fn(async () => ({ ok: false, failure: 'transient', detail: '529' }) as const),
+      probe: vi.fn(
+        async () =>
+          ({ ok: false, failure: 'transient', httpStatus: 529, errorType: 'overloaded_error' }) as const,
+      ),
     });
 
     const result = await providerPreflight({} as Database, 'nudge_sweep', client, NOW, d);
@@ -629,13 +677,14 @@ describe('createProviderAlertSender', () => {
 
     const sent = await createProviderAlertSender().send('a subject', 'a body');
 
-    expect(sent).toBe(true);
+    expect(sent).toBe('sent');
     const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as { text: string };
     expect(body.text).toBe('a subject\na body');
   });
 
-  it('is a clean no-op when #ops is not configured', async () => {
+  it('names an unconfigured #ops instead of reporting a refused page', async () => {
     vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
-    expect(await createProviderAlertSender().send('s', 'b')).toBe(false);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await createProviderAlertSender().send('s', 'b')).toBe('skipped_not_configured');
   });
 });

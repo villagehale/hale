@@ -20,6 +20,20 @@ import {
 } from './sweep';
 
 /**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
+
+/**
  * THE SEND SWEEP THROUGH ITS OWN PRODUCTION WIRING, against real Postgres.
  *
  * Everything this sweep is judged on is a query or a write: which trips are due on the
@@ -750,5 +764,63 @@ describe('the flags', () => {
     const result = await run(harness());
     expect(result.sent).toBe(0);
     expect((await tripRow(held))?.closedAt).toBeNull();
+  });
+});
+
+describe('under live cadence, the decider sends the brief', () => {
+  async function candidates(familyId: string) {
+    return database
+      .select({
+        kind: schema.proactiveCandidates.kind,
+        dedupeKey: schema.proactiveCandidates.dedupeKey,
+        what: schema.proactiveCandidates.what,
+        worthlessAfter: schema.proactiveCandidates.worthlessAfter,
+      })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+  }
+
+  it('queues the composed brief, sends nothing, and leaves the trip open for the decider', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const family = await seedFamily();
+    const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+    const h = harness();
+
+    const result = await run(h);
+    expect(result.queued).toBe(1);
+    expect(result.sent).toBe(0);
+    expect(h.sent).toEqual([]);
+    expect(await ledgerRows(family.familyId)).toEqual([]);
+    expect((await tripRow(trip))?.closedAt).toBeNull();
+    const [queued] = await candidates(family.familyId);
+    expect(queued?.kind).toBe('travel_brief');
+    expect(queued?.dedupeKey).toBe(travelBriefDedupeKey(trip));
+    expect(queued?.what).toContain('American Museum of Natural History');
+    // Worthless once the trip starts, on the parent's own clock (Toronto, EDT).
+    expect(queued?.worthlessAfter?.toISOString()).toBe('2026-09-12T04:00:00.000Z');
+
+    // The next tick does not search again: the decider holds it now.
+    const next = await run(h, new Date(MORNING.getTime() + 3_600_000));
+    expect(next.awaitingDecider).toBe(1);
+    expect(next.queued).toBe(0);
+    expect(h.queries).toHaveLength(1);
+    expect(await candidates(family.familyId)).toHaveLength(1);
+  });
+
+  it('sends on its own path while live cannot arm', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    routing.complete = false;
+    try {
+      const family = await seedFamily();
+      const trip = await seedTrip({ ...family, startsOn: '2026-09-12', endsOn: '2026-09-15' });
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const h = harness();
+      const result = await run(h);
+      expect(result.sent).toBe(1);
+      expect(result.queued).toBe(0);
+      expect((await tripRow(trip))?.closedReason).toBe('sent');
+    } finally {
+      routing.complete = true;
+    }
   });
 });

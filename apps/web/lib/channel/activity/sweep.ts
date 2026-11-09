@@ -15,11 +15,13 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
   type DueCommitment,
+  deferCommitment,
   fulfillCommitment,
   loadDueCommitments,
 } from '~/lib/commitments/ledger';
 import { activityClient, pipelineClient } from '~/lib/pipeline/client';
 import {
+  ACTIVITY_WATCH_DUE_HOURS,
   cancelActivityPromise,
   defaultActivityPromisePorts,
   recordActivityPromise,
@@ -30,6 +32,7 @@ import {
   type FollowUpDelivery,
   type FollowUpRecipient,
   deliverFollowUp,
+  learnedSomethingNew,
   noEvidence,
 } from './deliver';
 import type { PageVerdict } from './evidence';
@@ -155,6 +158,13 @@ export interface ActivityFollowUpResult {
    * parent has been told Hale is on it and nothing in the system knows.
    */
   watchUnrecorded: number;
+  /**
+   * Watches whose next look found nothing the parent has not already been told — no new
+   * time, price, date or opening. Nothing was sent and the watch was moved to its next
+   * look (VIL-564). Its own count, never `deferred`: that one is the composer failing,
+   * and this is the sweep deciding a repeat is not worth a text.
+   */
+  nothingNew: number;
 }
 
 function emptyResult(enabled: boolean): ActivityFollowUpResult {
@@ -174,6 +184,7 @@ function emptyResult(enabled: boolean): ActivityFollowUpResult {
     deepUnavailable: 0,
     watching: 0,
     watchUnrecorded: 0,
+    nothingNew: 0,
   };
 }
 
@@ -204,6 +215,9 @@ export interface ActivityFollowUpDeps extends FollowUpDelivery {
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive: typeof dedupeActive;
   cancelPromise: typeof cancelActivityPromise;
+  /** Moves a watch whose look found nothing new to its next look. Required: without it a
+   * silent watch stays due and is re-researched every hour (rule #11). */
+  deferWatch: typeof deferCommitment;
 }
 
 export async function runActivityFollowUpSweep(
@@ -414,6 +428,26 @@ async function keepOne(
   }
   evidence.picks = picks.length;
 
+  // A WATCH SENDS NEWS OR NOTHING. A row with heard facts is a continuation: its last
+  // follow-up already went out, and this look is worth a text only if it found a time,
+  // price, date or opening the parent was not given then. Otherwise silence, and the
+  // watch stays owed on its own clock (VIL-564). The coach's first promise has no heard
+  // facts and always gets its answer.
+  if (commitment.heardFacts !== null && !learnedSomethingNew(picks, commitment.heardFacts)) {
+    result.nothingNew += 1;
+    const deferred = await deps.deferWatch(database, {
+      commitmentId: commitment.id,
+      familyId: commitment.familyId,
+      dueAt: new Date(now.getTime() + ACTIVITY_WATCH_DUE_HOURS * 3_600_000),
+      reason: 'nothing_new',
+    });
+    console.info(
+      { commitmentId: commitment.id, outcome: 'nothing_new', deferral: deferred.status },
+      'activity follow-up: the watch found nothing the parent has not heard - nothing sent',
+    );
+    return;
+  }
+
   // THE SEND HALF, shared verbatim with the question-time deep job (deliver.ts). Nine
   // steps in a fixed order, seven of them added because one had gone wrong in production
   // — and exactly one copy of them, so the two callers cannot drift.
@@ -432,6 +466,7 @@ async function keepOne(
       held,
       pageEvidence,
       evidence,
+      heardFacts: commitment.heardFacts,
       ...(searched ? { searched } : {}),
     },
     now,
@@ -521,6 +556,7 @@ export function defaultActivityFollowUpDeps(): ActivityFollowUpDeps {
     threadMessage: threadProactiveMessage,
     fulfillCommitment,
     cancelPromise: cancelActivityPromise,
+    deferWatch: deferCommitment,
     refuseUnbackedSend,
     recordWatch: (database, input) =>
       recordActivityPromise(database, input, defaultActivityPromisePorts()),

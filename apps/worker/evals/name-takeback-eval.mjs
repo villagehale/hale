@@ -40,6 +40,15 @@ const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'onboarding-friend.md');
 const VOICE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'intake', 'friend-voice.ts');
+const CALL_NAME_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'identity',
+  'call-name-voice.ts',
+);
 
 // Production name capture sends the v2 tool (coparentGroupMode included).
 process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'true';
@@ -64,12 +73,19 @@ function priced(model, input, output) {
   return (input / 1e6) * price.input + (output / 1e6) * price.output;
 }
 
-function suiteUsd({ lane, skill, voice }) {
+/** The request production sends: the open name ask, or the reply to a held-name confirm
+ * as parentCallNameVoice builds it. */
+function fixtureMessage({ voice, callName }, fixture) {
+  const input = fixture.held
+    ? callName.nameReplyVoiceInput(fixture.parentWords, fixture.held.name, fixture.held.language)
+    : voice.nameAskVoiceInput(fixture.parentWords, null);
+  return JSON.stringify(voice.friendVoiceContext(input));
+}
+
+function suiteUsd({ lane, skill, voice, callName }) {
   let usd = 0;
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
-    const userMessage = JSON.stringify(
-      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords, null)),
-    );
+    const userMessage = fixtureMessage({ voice, callName }, fixture);
     const input =
       estimateTokens(skill.instructions) +
       estimateTokens(userMessage) +
@@ -86,14 +102,15 @@ function suiteUsd({ lane, skill, voice }) {
 async function loadSubject() {
   const agent = await importTs(AGENT_SRC);
   const voice = await importTs(VOICE_SRC);
+  const callName = await importTs(CALL_NAME_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
-  return { agent, voice, skill, lane };
+  return { agent, voice, callName, skill, lane };
 }
 
 async function estimate() {
-  const { skill, voice, lane } = await loadSubject();
-  const usd = suiteUsd({ lane, skill, voice });
+  const { skill, voice, callName, lane } = await loadSubject();
+  const usd = suiteUsd({ lane, skill, voice, callName });
   if (usd > HARD_CAP_USD) {
     console.error(
       `name-takeback: estimate $${usd.toFixed(4)} is over the $${HARD_CAP_USD} cap. live API calls: 0.`,
@@ -105,7 +122,27 @@ async function estimate() {
       parentName: null,
       nameDeclined: fixture.expect.nameDeclined === true,
       nameTakenBack: fixture.expect.nameTakenBack === true,
+      nameConfirmed: fixture.expect.nameConfirmed,
     });
+    if (
+      'nameConfirmed' in fixture.expect &&
+      nameTakebackMatches(fixture, {
+        parentName: null,
+        nameConfirmed: !fixture.expect.nameConfirmed,
+      })
+    ) {
+      throw new Error(`${fixture.id}: the opposite nameConfirmed must fail`);
+    }
+    if (
+      fixture.held &&
+      fixture.expect.parentName === '' &&
+      nameTakebackMatches(fixture, {
+        parentName: fixture.held.name,
+        nameConfirmed: fixture.expect.nameConfirmed,
+      })
+    ) {
+      throw new Error(`${fixture.id}: a held name turned down must not come back as parentName`);
+    }
     if (fixture.expect.parentName === '' && fixture.expect.nameDeclined !== true && !empty) {
       throw new Error(`${fixture.id}: empty parentName must count as left empty`);
     }
@@ -121,7 +158,7 @@ async function estimate() {
     ) {
       throw new Error(`${fixture.id}: a lasting no must set nameDeclined`);
     }
-    if (fixture.expect.parentName !== '' && empty) {
+    if (fixture.expect.parentName !== undefined && fixture.expect.parentName !== '' && empty) {
       throw new Error(`${fixture.id}: a name must not count as left empty`);
     }
     if (
@@ -157,13 +194,11 @@ async function record() {
   const getClient = lazyAnthropic('name-takeback');
   const cost = makeCost();
   const cachedOnly = process.argv.includes('--cached-only');
-  const { skill, voice, lane } = await loadSubject();
+  const { skill, voice, callName, lane } = await loadSubject();
 
   let failed = 0;
   for (const fixture of NAME_TAKEBACK_FIXTURES) {
-    const userMessage = JSON.stringify(
-      voice.friendVoiceContext(voice.nameAskVoiceInput(fixture.parentWords, null)),
-    );
+    const userMessage = fixtureMessage({ voice, callName }, fixture);
     const result = await cachedToolCall({
       tag: `name-takeback:${fixture.id}`,
       lane,
@@ -185,8 +220,9 @@ async function record() {
     const ok = nameTakebackMatches(fixture, result.value);
     if (!ok) failed += 1;
     const declined = JSON.stringify(result.value?.nameDeclined ?? null);
+    const confirmed = JSON.stringify(result.value?.nameConfirmed ?? null);
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(14)} parentName=${JSON.stringify(parentName)} nameDeclined=${declined}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(14)} parentName=${JSON.stringify(parentName)} nameDeclined=${declined} nameConfirmed=${confirmed}`,
     );
   }
 

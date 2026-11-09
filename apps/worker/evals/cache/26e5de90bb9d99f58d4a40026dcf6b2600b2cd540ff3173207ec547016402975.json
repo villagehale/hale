@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French, correct date and 9 AM time, names the daycare and Robin, and asks to add to the week as offer requires. However it states the email arrived Tuesday, which matches arrivedOn, so no fault there. The phrase 'Ça se prépare' is a casual opener, acceptable. The text does not invent details and the ask matches the non-null offer. Minor concern: the wording 'a écrit mardi pour annoncer' is supported. Overall faithful, chill, correct language.",
+    "score": 5
+  }
+}

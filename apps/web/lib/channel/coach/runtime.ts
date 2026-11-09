@@ -98,6 +98,14 @@ import {
 } from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
+  type ForecastDay,
+  augmentCoachSkillForLocalDay,
+  loadCoachForecast,
+  loadCoachTimeZone,
+  localDayContext,
+} from './local-day';
+import { familyLocalNow } from './local-now';
+import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
@@ -214,6 +222,12 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
+   * Optional: absent or null, the turn carries only the UTC instant, as before. */
+  loadTimeZone?(familyId: string): Promise<string | null>;
+  /** Their coarse area's outlook, today onward (VIL-435). Optional: absent or empty
+   * leaves the key out. */
+  loadForecast?(familyId: string): Promise<ForecastDay[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -330,12 +344,16 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(turn.parentUserId, turn.familyId),
-        ports.loadTranscript(turn.conversationId),
-        ports.loadChildren(turn.familyId),
-        ports.loadRegistrationWindows(turn.familyId, now),
-      ]);
+      const [loadedSkill, transcript, children, registrationWindows, timeZone, forecast] =
+        await Promise.all([
+          ports.loadSkill(turn.parentUserId, turn.familyId),
+          ports.loadTranscript(turn.conversationId),
+          ports.loadChildren(turn.familyId),
+          ports.loadRegistrationWindows(turn.familyId, now),
+          ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
+          ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
+        ]);
+      const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
       const providerWatch = ports.loadProviderWatch
         ? await ports.loadProviderWatch(turn.familyId, now)
         : [];
@@ -387,12 +405,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         focusedChildId: null,
         transcript,
         sourceNote: null,
+        readerUserId: turn.parentUserId,
       });
       // VIL-566: the household-group addendum rides only when the fact does, so every
-      // other turn keeps its system bytes.
-      const skill = familyContext.householdGroup
+      // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
+      // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.
+      const householdSkill = familyContext.householdGroup
         ? await appendHouseholdGroupSkill(composedSkill)
         : composedSkill;
+      const sourcedSkill =
+        turn.audience !== 'group' && familyContext.memoryFacts.some((fact) => fact.seenIn)
+          ? await appendFactSourceSkill(householdSkill)
+          : householdSkill;
+      // VIL-435: the local-day addendum rides only when a day fact does.
+      const skill = augmentCoachSkillForLocalDay(
+        sourcedSkill,
+        Object.keys(localDay).length > 0 ? await loadCronSkill('coach-local-day') : null,
+      );
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -414,6 +443,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // TODAY WHERE THE FAMILY LIVES, AND ITS WEATHER (VIL-435). Facts for the model to
+        // reason over (a holiday there? a day for indoors?), never a filter and never
+        // copy. Each key is absent when unknown.
+        ...localDay,
         // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
         // FACT about state, handed to the model the same way the family's schedule is —
         // so a turn that is plainly an answer to one of them can be treated as one, and a
@@ -683,6 +716,11 @@ async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
 }
 
+async function appendFactSourceSkill(skill: Skill): Promise<Skill> {
+  const addendum = await loadCronSkill('coach-fact-source');
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
+}
+
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('coach-channel-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -743,6 +781,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
+    loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
+    loadForecast: (familyId) => loadCoachForecast(database, familyId),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(

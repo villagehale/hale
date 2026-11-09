@@ -9,6 +9,7 @@ import {
   healthLineFacts,
   healthNumbersIn,
 } from '~/lib/channel/health-line';
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -429,9 +430,8 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
   /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi, // email
   /\d{7,}/g, // long digit runs (health-card / account numbers)
   /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, // NANP phone
-  /\b[a-z]\d[a-z]\s?\d[a-z]\d\b/gi, // Canadian postal code
   // WHERE THEY LIVE, in the two forms a regex can hold with near-zero false positives.
-  // A postal code was already here and a street was not, which is backwards: "L7G 4S6"
+  // A postal code was already scrubbed and a street was not, which is backwards: "L7G 4S6"
   // names a block and "42 Wallace St" names a door.
   /(?<![\p{L}\p{N}])\d{1,5}[a-z]?\s+(?:[\p{L}\p{N}'’.-]+\s+){0,3}(?:st|street|ave|avenue|rd|road|blvd|boulevard|cres|crescent|hwy|highway|pkwy|parkway|sideroad|concession)\b\.?/giu, // street address, unambiguous suffix
   // The same shape with suffixes that are also ORDINARY WORDS ("a 3 hour drive", "on the
@@ -469,8 +469,13 @@ const RESIDUAL_PII_PATTERNS: RegExp[] = [
 ];
 const REDACTED = '[redacted]';
 
+/** A postal code or a ZIP goes through the one matcher every search shares
+ * (place-token.ts), and LAST, so a five-digit house number is taken with its street. */
 export function scrubResidualPii(text: string): string {
-  return RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text);
+  return scrubPlaceTokens(
+    RESIDUAL_PII_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, REDACTED), text),
+    REDACTED,
+  );
 }
 
 /**

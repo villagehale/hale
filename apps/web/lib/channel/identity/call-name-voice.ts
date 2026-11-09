@@ -55,6 +55,15 @@ export async function composeParentCallNameAsk(
   return spoken.body;
 }
 
+/** The model input for a reply to the confirm ask of a held name. */
+export function nameReplyVoiceInput(
+  body: string,
+  heldName: string,
+  language: ReplyLanguage,
+): FriendVoiceInput {
+  return { ...base('name_reply', language, body), parentName: heldName };
+}
+
 /** Reads a reply to the confirm ask and writes its receipt. */
 export function parentCallNameVoice(
   composer: FriendVoiceComposer | undefined,
@@ -62,10 +71,10 @@ export function parentCallNameVoice(
 ): ParentCallNameVoice {
   return {
     async read(input) {
-      const spoken = await speakFriend(composer, {
-        ...base('name_reply', language, input.body),
-        parentName: input.heldName,
-      });
+      const spoken = await speakFriend(
+        composer,
+        nameReplyVoiceInput(input.body, input.heldName, language),
+      );
       const reply =
         spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
       return {

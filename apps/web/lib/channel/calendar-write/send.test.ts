@@ -87,6 +87,13 @@ describe('VIL-454 noticeAfterSync', () => {
     expect(p.send).not.toHaveBeenCalled();
   });
 
+  it('names a parent zone it cannot read, and composes nothing', async () => {
+    const p = ports({ loadEvent: vi.fn(async () => 'zone_unreadable' as const) });
+    expect(await noticeAfterSync(REQUEST, WRITTEN, p)).toBe('zone_unreadable');
+    expect(p.compose).not.toHaveBeenCalled();
+    expect(p.send).not.toHaveBeenCalled();
+  });
+
   it('swallows a throw', async () => {
     const p = ports({ loadEvent: vi.fn(async () => Promise.reject(new Error('db'))) });
     expect(await noticeAfterSync(REQUEST, WRITTEN, p)).toBe('errored');

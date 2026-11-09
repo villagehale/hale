@@ -8,9 +8,11 @@ import { handleLinqInboundRequest } from './inbound';
 import { parseLinqWebhook } from './payload';
 
 /**
- * VIL-226 · Linq `phone_number.status_updated`. Armed, a flagged or throttled line is
- * stored as paused (the hourly decider then holds unrequested sends) and #ops is paged;
- * a healthy status lifts it. Unset, the event is ignored exactly as it is today.
+ * VIL-226 · Linq `phone_number.status_updated`. Armed, a flagged line or a CRITICAL
+ * reputation is stored as paused (the hourly decider then holds unrequested sends) and
+ * #ops is paged; an active, healthy line lifts it. Unset, the event is ignored exactly as
+ * it is today. VIL-611 · the fixture is Linq's documented payload (webhook version
+ * 2026-02-03): `new_status` and `new_reputation`, not a `status` field.
  */
 
 const KEY_BYTES = Buffer.alloc(32, 9);
@@ -42,14 +44,33 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function statusEvent(status: string, phoneNumber = LINE): Record<string, unknown> {
+type Line = { status: string; reputation: string };
+const FLAGGED: Line = { status: 'FLAGGED', reputation: 'HEALTHY' };
+const CRITICAL: Line = { status: 'ACTIVE', reputation: 'CRITICAL' };
+const AT_RISK: Line = { status: 'ACTIVE', reputation: 'AT_RISK' };
+const CLEAR: Line = { status: 'ACTIVE', reputation: 'HEALTHY' };
+
+function lineData(line: Line, phoneNumber = LINE): Record<string, unknown> {
+  return {
+    phone_number: phoneNumber,
+    previous_status: 'ACTIVE',
+    new_status: line.status,
+    previous_reputation: 'HEALTHY',
+    new_reputation: line.reputation,
+    changed_at: NOW.toISOString(),
+  };
+}
+
+function statusEvent(line: Line, phoneNumber = LINE): Record<string, unknown> {
   return {
     api_version: 'v3',
     webhook_version: '2026-02-03',
     event_type: 'phone_number.status_updated',
     event_id: 'evt_line',
     created_at: NOW.toISOString(),
-    data: { phone_number: phoneNumber, status },
+    trace_id: 'trace_line',
+    partner_id: 'partner_fixture',
+    data: lineData(line, phoneNumber),
   };
 }
 
@@ -87,21 +108,34 @@ function deps(outcomes: InboundRouteOutcome[]): InboundRouteDeps {
 
 describe('parseLinqWebhook · phone_number.status_updated', () => {
   it('is ignored as another event while the flag is unset', () => {
-    expect(parseLinqWebhook(statusEvent('flagged'), NOW)).toEqual({
+    expect(parseLinqWebhook(statusEvent(FLAGGED), NOW)).toEqual({
       kind: 'ignored',
       reason: 'not_message_received',
     });
   });
 
-  it('reads the line and its status when armed, and names a malformed one', () => {
+  it('reads the line, its new status and its new reputation when armed', () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
-    expect(parseLinqWebhook(statusEvent('flagged'), NOW)).toEqual({
+    expect(parseLinqWebhook(statusEvent(CRITICAL), NOW)).toEqual({
       kind: 'line_health',
-      line: { phoneNumber: LINE, status: 'flagged' },
+      line: { phoneNumber: LINE, status: 'ACTIVE', reputation: 'CRITICAL' },
     });
-    expect(
-      parseLinqWebhook({ ...statusEvent('flagged'), data: { status: 'flagged' } }, NOW),
-    ).toEqual({ kind: 'ignored', reason: 'malformed' });
+    expect(parseLinqWebhook(statusEvent(FLAGGED), NOW)).toEqual({
+      kind: 'line_health',
+      line: { phoneNumber: LINE, status: 'FLAGGED', reputation: 'HEALTHY' },
+    });
+  });
+
+  it('names an event without the number, the new status or the new reputation', () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    for (const drop of ['phone_number', 'new_status', 'new_reputation']) {
+      const data = lineData(CRITICAL);
+      delete data[drop];
+      expect(parseLinqWebhook({ ...statusEvent(CRITICAL), data }, NOW)).toEqual({
+        kind: 'ignored',
+        reason: 'malformed',
+      });
+    }
   });
 });
 
@@ -109,22 +143,24 @@ describe('parseLinqWebhook · a line event that is not the shape Linq sends', ()
   it('names an unbounded or malformed number or status, and normalises a real number', () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
     for (const data of [
-      { phone_number: 'not a number', status: 'flagged' },
-      { phone_number: '9'.repeat(400), status: 'flagged' },
-      { phone_number: LINE, status: 'x'.repeat(400) },
-      { phone_number: LINE, status: 'flagged\nactive' },
+      lineData(FLAGGED, 'not a number'),
+      lineData(FLAGGED, '9'.repeat(400)),
+      lineData({ status: 'x'.repeat(400), reputation: 'HEALTHY' }),
+      lineData({ status: 'FLAGGED\nACTIVE', reputation: 'HEALTHY' }),
+      lineData({ status: 'ACTIVE', reputation: 'x'.repeat(400) }),
+      lineData({ status: 'ACTIVE', reputation: 'CRITICAL HEALTHY' }),
     ]) {
-      expect(parseLinqWebhook({ ...statusEvent('flagged'), data }, NOW)).toEqual({
+      expect(parseLinqWebhook({ ...statusEvent(FLAGGED), data }, NOW)).toEqual({
         kind: 'ignored',
         reason: 'malformed',
       });
     }
     expect(
-      parseLinqWebhook(
-        { ...statusEvent('flagged'), data: { phone_number: '(555) 555-0199', status: 'flagged' } },
-        NOW,
-      ),
-    ).toEqual({ kind: 'line_health', line: { phoneNumber: LINE, status: 'flagged' } });
+      parseLinqWebhook({ ...statusEvent(FLAGGED), data: lineData(FLAGGED, '(555) 555-0199') }, NOW),
+    ).toEqual({
+      kind: 'line_health',
+      line: { phoneNumber: LINE, status: 'FLAGGED', reputation: 'HEALTHY' },
+    });
   });
 });
 
@@ -133,30 +169,45 @@ describe('the Linq door · line health', () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const outcomes: InboundRouteOutcome[] = [];
     const bad = {
-      ...statusEvent('flagged'),
-      data: { phone_number: LINE, status: 'x'.repeat(400) },
+      ...statusEvent(FLAGGED),
+      data: lineData({ status: 'x'.repeat(400), reputation: 'HEALTHY' }),
     };
     const response = await handleLinqInboundRequest(signed(bad), deps(outcomes));
     expect(await response.json()).toEqual({ outcome: 'malformed' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
   });
 
-  it('stores a flagged line as paused, then clears it on a healthy status', async () => {
+  it('pauses unrequested sends on a CRITICAL reputation, then clears on an active, healthy line', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
     const outcomes: InboundRouteOutcome[] = [];
 
-    const flagged = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
-    expect(await flagged.json()).toEqual({ outcome: 'line_health', paused: true });
+    const critical = await handleLinqInboundRequest(signed(statusEvent(CRITICAL)), deps(outcomes));
+    expect(await critical.json()).toEqual({ outcome: 'line_health', paused: true });
     expect(await db.database.select().from(schema.linqLineHealth)).toMatchObject([
-      { phoneNumber: LINE, status: 'flagged', paused: true },
+      { phoneNumber: LINE, status: 'ACTIVE/CRITICAL', paused: true },
     ]);
+    expect(await readLineHold(db.database)).toBe('line_health');
 
-    const cleared = await handleLinqInboundRequest(signed(statusEvent('active')), deps(outcomes));
+    const cleared = await handleLinqInboundRequest(signed(statusEvent(CLEAR)), deps(outcomes));
     expect(await cleared.json()).toEqual({ outcome: 'line_health', paused: false });
     expect(await db.database.select().from(schema.linqLineHealth)).toMatchObject([
-      { phoneNumber: LINE, status: 'active', paused: false },
+      { phoneNumber: LINE, status: 'ACTIVE/HEALTHY', paused: false },
     ]);
+    expect(await readLineHold(db.database)).toBeNull();
     expect(outcomes).toEqual(['line_health', 'line_health']);
+  });
+
+  it('pauses a FLAGGED line, and does not pause an AT_RISK one', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const outcomes: InboundRouteOutcome[] = [];
+
+    const atRisk = await handleLinqInboundRequest(signed(statusEvent(AT_RISK)), deps(outcomes));
+    expect(await atRisk.json()).toEqual({ outcome: 'line_health', paused: false });
+    expect(await readLineHold(db.database)).toBeNull();
+
+    const flagged = await handleLinqInboundRequest(signed(statusEvent(FLAGGED)), deps(outcomes));
+    expect(await flagged.json()).toEqual({ outcome: 'line_health', paused: true });
+    expect(await readLineHold(db.database)).toBe('line_health');
   });
 
   it('pauses sends for Hale’s sending line, and never for another line on the account', async () => {
@@ -164,14 +215,14 @@ describe('the Linq door · line health', () => {
     const outcomes: InboundRouteOutcome[] = [];
 
     const other = await handleLinqInboundRequest(
-      signed(statusEvent('flagged', OTHER_LINE)),
+      signed(statusEvent(FLAGGED, OTHER_LINE)),
       deps(outcomes),
     );
     expect(await other.json()).toEqual({ outcome: 'other_line' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
     expect(await readLineHold(db.database)).toBeNull();
 
-    const sending = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    const sending = await handleLinqInboundRequest(signed(statusEvent(FLAGGED)), deps(outcomes));
     expect(await sending.json()).toEqual({ outcome: 'line_health', paused: true });
     expect(await readLineHold(db.database)).toBe('line_health');
   });
@@ -181,7 +232,7 @@ describe('the Linq door · line health', () => {
     vi.stubEnv('LINQ_FROM_E164', ' +1 (555) 555-0199 ');
     const outcomes: InboundRouteOutcome[] = [];
 
-    const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    const response = await handleLinqInboundRequest(signed(statusEvent(FLAGGED)), deps(outcomes));
     expect(await response.json()).toEqual({ outcome: 'line_health', paused: true });
     expect(await db.database.select().from(schema.linqLineHealth)).toMatchObject([
       { phoneNumber: LINE, paused: true },
@@ -194,7 +245,7 @@ describe('the Linq door · line health', () => {
     vi.stubEnv('LINQ_FROM_E164', '');
     const outcomes: InboundRouteOutcome[] = [];
 
-    const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    const response = await handleLinqInboundRequest(signed(statusEvent(FLAGGED)), deps(outcomes));
     expect(await response.json()).toEqual({ outcome: 'no_sending_line' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
     expect(await readLineHold(db.database)).toBe('no_sending_line');
@@ -214,7 +265,7 @@ describe('the Linq door · line health', () => {
 
   it('writes nothing while the flag is unset', async () => {
     const outcomes: InboundRouteOutcome[] = [];
-    const response = await handleLinqInboundRequest(signed(statusEvent('flagged')), deps(outcomes));
+    const response = await handleLinqInboundRequest(signed(statusEvent(FLAGGED)), deps(outcomes));
     expect(await response.json()).toEqual({ outcome: 'ignored_event' });
     expect(await db.database.select().from(schema.linqLineHealth)).toEqual([]);
     expect(outcomes).not.toContain('line_health');

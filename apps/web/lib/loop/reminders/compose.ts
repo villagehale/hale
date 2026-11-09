@@ -10,9 +10,11 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild, ReminderEventView } from '~/lib/loop/templates/reminder/payload';
 import {
+  type ProviderErrorShape,
   type ProviderFailureClass,
   abortsSendWindow,
   classifyProviderFailure,
+  providerErrorShape,
 } from '~/lib/monitoring/provider-health';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import type { SourceChange } from './change';
@@ -326,22 +328,7 @@ export type ReminderCompose =
   | ({ status: 'unavailable'; cause: ReminderUnavailableCause } & ProviderErrorShape)
   | ({ status: 'rejected'; cause: ReminderRejectedCause } & ProviderErrorShape);
 
-/** What the provider said went wrong, without what it quoted: its HTTP status and its
- * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
- * a 4xx can quote the request, and the request is the family's facts. Null when the
- * provider never answered (a connection error, a bug, the skill file). */
-export interface ProviderErrorShape {
-  httpStatus: number | null;
-  errorType: string | null;
-}
-
 const NO_PROVIDER_ANSWER: ProviderErrorShape = { httpStatus: null, errorType: null };
-
-function providerErrorShape(err: unknown): ProviderErrorShape {
-  if (!(err instanceof Anthropic.APIError)) return NO_PROVIDER_ANSWER;
-  const type = (err.error as { error?: { type?: unknown } } | undefined)?.error?.type;
-  return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
-}
 
 export type ReminderUnavailableCause = ProviderFailureClass | 'skill_unavailable';
 

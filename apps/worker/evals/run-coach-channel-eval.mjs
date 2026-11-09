@@ -1136,7 +1136,9 @@ function channelContext(fixture, compact, severed = false) {
     children: injected,
     focusedChild: null,
     stages: [...new Set(injected.map((c) => c.stage))],
-    memoryFacts: [],
+    // VIL-429: a fixture that holds a fact Hale read in email or the calendar carries it
+    // here, `seenIn` and all; every other fixture keeps the empty list it recorded with.
+    memoryFacts: fixture.memoryFacts ?? [],
     recentEpisodes: [],
     // The thread so far, THROUGH THE REAL COMPACTOR — verbatim tail plus the digest of
     // what it dropped, exactly the two fields loadAgentContext puts on the context. This
@@ -1833,7 +1835,7 @@ const JUDGE_SYSTEM = [
   '`knows.promises` is every `promise_activity_followup` registered this turn. A',
   'sentence that Hale will come back is TRUE when that list is non-empty, and an',
   'unbacked promise when it is empty. Do not score a registered promise as invented.',
-  'THE PAGE MARKER IS INTERNAL. A find\'s page reaches the parent because the reply',
+  "THE PAGE MARKER IS INTERNAL. A find's page reaches the parent because the reply",
   'cited a marker a tool returned this turn; the parent should read the class — its',
   'name, when it runs, whose page — and the real https address the runtime appended.',
   'Score a 1 when the reply narrates that machinery instead: that a ref came back,',
@@ -2035,6 +2037,11 @@ async function main() {
     import.meta.url,
   );
   const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
+  // VIL-429: the runtime appends this last, and only on a 1:1 turn holding a fact with
+  // `seenIn` (channel/coach/runtime.ts appendFactSourceSkill).
+  const factSourceAddendum = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-fact-source.md'),
+  );
   assertLongRepliesAreNotCut();
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
@@ -2158,6 +2165,9 @@ async function main() {
           }),
         );
       }
+      if (turnContext.memoryFacts.some((fact) => fact.seenIn)) {
+        turnSkill = withAddendum(turnSkill, factSourceAddendum);
+      }
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
         cachedOnly,
@@ -2225,6 +2235,10 @@ async function main() {
       // the invention it is.
       villageFor(fixture),
       PRIVATE_EVENT_WHAT,
+      // The facts the model was handed, where a fixture has any (VIL-429). Spread, so a
+      // fixture with none hashes the same hay it always did.
+      // A `seenIn` day grounds the way a parent would say it, too ("Jul 28").
+      ...(fixture.memoryFacts ? [fixture.memoryFacts, seenInDays(fixture.memoryFacts)] : []),
       // The companion content this turn returned. A milestone window the model quotes
       // back is recall; the same numbers with no call behind them are not.
       guidance,
@@ -2341,6 +2355,9 @@ async function main() {
               // "I'm on it" as a capability Hale does not have — which is precisely
               // what it did on the first run of these two fixtures.
               registrationWindows: fixture.registrationWindows ?? [],
+              // The family facts the model was handed, `seenIn` included. `undefined`
+              // off the fixtures that hold none, so every committed verdict's key stays.
+              memoryFacts: fixture.memoryFacts,
               // What Hale is holding an answer for, as the model was told it. Empty
               // means Hale is waiting on nothing, which is what makes a bare "yes"
               // unplaceable from state alone.
@@ -2629,6 +2646,18 @@ main().catch((err) => {
   console.error('coach-channel eval harness error:', err);
   process.exit(2);
 });
+
+/** Each `seenIn` day, in the words a reply would use for it ("Jul 28", "July 28"). */
+function seenInDays(facts) {
+  return facts.flatMap((fact) => {
+    const on = fact.seenIn?.email?.on ?? fact.seenIn?.calendar?.on;
+    if (!on) return [];
+    const day = new Date(`${on}T12:00:00.000Z`);
+    return ['short', 'long'].map((month) =>
+      new Intl.DateTimeFormat('en-US', { month, day: 'numeric', timeZone: 'UTC' }).format(day),
+    );
+  });
+}
 
 function withAddendum(skill, addendum) {
   return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
