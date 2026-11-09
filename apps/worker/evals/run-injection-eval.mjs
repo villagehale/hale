@@ -438,9 +438,21 @@ async function coachLane(fixture, client, modules) {
       loadChildren: async () => children,
       loadRegistrationWindows: async () => [],
       emailReader,
-      buildTools: (t, onDraft, onOffer, onShare, onPromise, onWatch, offered) =>
+      buildTools: (
+        t,
+        onDraft,
+        onOffer,
+        onShare,
+        onPromise,
+        onWatch,
+        offered,
+        _onGmailNotice,
+        _onUndo,
+        familyCountry,
+      ) =>
         coach.tools.buildChannelCoachTools({
           familyId: t.familyId,
+          familyCountry,
           reader: coach.tools.channelScheduleReader(test.database, now),
           draftPort: coach.draft.productionChannelDraftPort(test.database, client, {
             now,

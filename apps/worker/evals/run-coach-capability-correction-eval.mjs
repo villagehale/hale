@@ -156,7 +156,8 @@ function toolsFor(real, fixture, calls, listed, offers) {
         return result;
       },
     });
-  const framework = real.frameworkGuidanceTool();
+  // Built for the fixture family's own country, as the runtime does (D6).
+  const framework = real.frameworkGuidanceTool(fixture.location.country);
   const tools = [
     stub('lookup_week', { days: [], events: [] }),
     {

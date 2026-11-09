@@ -43,6 +43,8 @@ function fakeDb(opts: {
   children: Array<{ id: string; dateOfBirth: string; name?: string }>;
   weekEpisodes: WeekEpisodeRow[];
   savedCandidateIds: string[];
+  /** The family row's stored country. Canada unless a test says otherwise. */
+  country?: string | null;
   doneEpisodes?: Array<{
     childId: string | null;
     episodeType: string;
@@ -77,6 +79,11 @@ function fakeDb(opts: {
     // companionForFamily's done-episodes read: { childId, episodeType, payload }
     if (keys.includes('episodeType') && keys.includes('payload')) {
       return { from: () => ({ where: async () => opts.doneEpisodes ?? [] }) };
+    }
+    // companionForFamily's family read: { country }
+    if (keys.length === 1 && keys[0] === 'country') {
+      const country = opts.country === undefined ? 'Canada' : opts.country;
+      return { from: () => ({ where: () => ({ limit: async () => [{ country }] }) }) };
     }
     // listFamilySavedCandidateIds: { candidateId }
     if (keys.length === 1 && keys[0] === 'candidateId') {
@@ -162,6 +169,24 @@ describe('readHomeStats — Home stat aggregates', () => {
 
     expect(noDone.upcomingHealth).toBe(2);
     expect(withDone.upcomingHealth).toBe(1);
+  });
+
+  it("a US family's baby counts no Canadian health items as coming up (D6)", async () => {
+    const baby = { children: [{ id: BABY_ID, dateOfBirth: BABY_DOB }], weekEpisodes: [] };
+    const canadian = await readHomeStats(
+      fakeDb({ ...baby, savedCandidateIds: [] }),
+      FAMILY_ID,
+      null,
+      NOW,
+    );
+    const american = await readHomeStats(
+      fakeDb({ ...baby, savedCandidateIds: [], country: 'United States' }),
+      FAMILY_ID,
+      null,
+      NOW,
+    );
+    expect(canadian.upcomingHealth).toBe(2);
+    expect(american.upcomingHealth).toBe(0);
   });
 
   it('a teenager contributes zero upcoming health items (curated schedule ends pre-teen)', async () => {

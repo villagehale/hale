@@ -1,5 +1,12 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { CONFIRM_WITH_PROVIDER, type FamilyStage, companionForChild } from '@hale/types';
+import {
+  CONFIRM_WITH_PROVIDER,
+  type FamilyCountry,
+  type FamilyStage,
+  type HealthSchedule,
+  companionForChild,
+  healthScheduleFor,
+} from '@hale/types';
 import { z } from 'zod';
 
 /**
@@ -36,11 +43,29 @@ function stageReferenceDob(stage: FamilyStage, ageMonths?: number, now: Date = n
   return new Date(year, month, Math.min(now.getDate(), lastDay));
 }
 
-export function frameworkGuidanceTool(): RegisteredTool {
+const AGE_AND_PROVIDER =
+  "ALWAYS pass ageMonths when you know the child's age (get_child_profile returns it) — the 'child' stage spans four years old to twelve, and without an age this answers for the middle of it. Every item is general guidance — surface the confirm-with-provider note for anything health-related (rule #1).";
+
+/**
+ * The Canadian text is byte for byte what every family was sent before D6: it rides each
+ * coach-channel recording's cache key, so a Canadian turn's request is unchanged.
+ */
+const DESCRIPTION_BY_SCHEDULE: Record<HealthSchedule, string> = {
+  canada: `The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance, milestone windows, and the Canadian health/immunization cadence. ${AGE_AND_PROVIDER}`,
+  no_verified_us_schedule: `The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance and milestone windows. It carries no health/immunization schedule for this family: \`healthSchedule\` says Hale has no verified one for the United States yet. ${AGE_AND_PROVIDER}`,
+  country_unknown: `The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance and milestone windows. It carries no health/immunization schedule for this family: \`healthSchedule\` says Hale does not know which country's to use. ${AGE_AND_PROVIDER}`,
+};
+
+/**
+ * `country` is the family's (familyCountryOf): the routine health table is Canada's, so
+ * only a Canadian family's answer carries `nextHealth` (decision D6). Every other answer
+ * leaves it out and carries `healthSchedule`, the named reason.
+ */
+export function frameworkGuidanceTool(country: FamilyCountry | null): RegisteredTool {
+  const schedule = healthScheduleFor(country);
   return defineTool({
     name: 'get_framework_guidance',
-    description:
-      "The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance, milestone windows, and the Canadian health/immunization cadence. ALWAYS pass ageMonths when you know the child's age (get_child_profile returns it) — the 'child' stage spans four years old to twelve, and without an age this answers for the middle of it. Every item is general guidance — surface the confirm-with-provider note for anything health-related (rule #1).",
+    description: DESCRIPTION_BY_SCHEDULE[schedule],
     inputSchema: z.object({
       stage: z.enum(['newborn', 'toddler', 'preschool', 'child', 'teenager']),
       ageMonths: z.number().int().min(0).max(215).optional(),
@@ -56,8 +81,8 @@ export function frameworkGuidanceTool(): RegisteredTool {
     touchesChildContent: false,
     handler: async (input) => {
       const reference = stageReferenceDob(input.stage, input.ageMonths);
-      const companion = companionForChild({ dateOfBirth: reference });
-      return {
+      const companion = companionForChild({ dateOfBirth: reference, country });
+      const guidance = {
         stage: companion.stage,
         ageMonths: companion.ageMonths,
         whatsNow: companion.whatsNow,
@@ -67,6 +92,16 @@ export function frameworkGuidanceTool(): RegisteredTool {
           what: m.what,
           typicalWindowMonths: m.typicalWindowMonths,
         })),
+      };
+      if (companion.healthSchedule !== 'canada') {
+        return {
+          ...guidance,
+          healthSchedule: companion.healthSchedule,
+          confirmWithProvider: CONFIRM_WITH_PROVIDER,
+        };
+      }
+      return {
+        ...guidance,
         nextHealth: companion.nextHealth.map((h) => ({ what: h.what, kind: h.kind })),
         confirmWithProvider: CONFIRM_WITH_PROVIDER,
       };
