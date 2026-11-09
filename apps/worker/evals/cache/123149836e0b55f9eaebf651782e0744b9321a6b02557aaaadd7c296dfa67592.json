@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgrr1RqUoPLS8xbp8YHAc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSyAcKEAgTGAI4AUIIdGhpbmtpbmcSDOaKpbkgQI7TZNJTJhoMTQp1YiH7zkkgOGb8IjD1nR1i4Lgh0Ffhq675xAO0AK9vhd6/0ZuZzmMgp5oxa2vnsNGgeYwGbyBSpM4vVDcq5Qb9zs0NxXAq6r1ZMNF0jPzorJUwMtSrSnkELPd/T+hgDcu3hcV8y8oCBs6RCzLtT4bJ15r0Ll6L1NmUCWugx1CqXo7i1kqKJqgrev01oochNL/NvvobaxMOPnv3Ro2j+mfWl7X7pgvnyi6PLd545tZGbuXRLmIi28trMay2hGn47SoV+vjktE4pZwbVv44BB3M6RCtcad6liWxfds6m2XE1Tfh/sadD/ZBItR3eXF2IFSs3zCdmIsfdCNtVP3QumEAYy0AOVpzcnmJdaf9BTM0v9zCXHiUgtPcqYe6S+L03b0QN3PYK2vXBbivEVut7iD15Bvryzo0X9yluiwMypnv7q3/EKBebBh2/l+zajr4iNuUG6Y96UxzPDKkXr9K0WgVLmIo2FeuNfLj27z1T+mE7ly/xBgiwboSwLPA7hS3XoQlP9qOJjV34BdL7WWLlauTq6fNYRPK6gSDk5abG/0+ao3U+AYh7Ggsru5nrOdhQ14jhQJplyW43Gya4R5xJ8WO8Yj2wT7QyNnWtvec9CpbSWU/iYb9L2X8CSEgkjpmqcjTCYow0SMb7UgBXCsuDkPC8i3L7c/E5sZqp8b3RHxbhnBZPQwposWJxUJFvpF4H95LotasehJFyHI1/Xk7qgKb7ynmAUGLNgaeLYtxqbxKE4BNllGLA8ms7+eQY9wKsCqgp78QvAw5jc9cW2SeqaIdn9rUgYjrDCNbAUv0nwc5luSLb6VnJcbNqCBHQK5uu+Z1j5Bl9ngeNm0Xefa5llsMXvC4VsQY3xuniPlkfShQJF4WF2j5NzSQGjSyoNVdsNh27t3FY0ZxuqvkGFiIiHDVhi5/JVgXGbCNq4VjCKy8ETX/Rr76FCX9lcPYyoMNRkz5sXnbs/ZdCyyDWwyBgslZw65P1Q2wmq270xfSUrWYqmmjsZAFuCaKAqtsSHffHlGSwPhXbwKrIdYvFdsyLqsvElY1HPNAbWT5YcPlBsnHd8HC3iLArp4mkobDrhB8zxTfp1d+sobqy7y355B7VWq6C65C+xsX5v5DNz7bPxBqg8ChaYDNFBsaiYafAE6aaiz+OA7KIiyzXHoG+2fxvOxy/46ujPjNnHUGZSJEORUkEkHypnERPiq9Boyq230CoCViwfYDZkiXMUSmxG+HGC3lDiZnYrRgB"
+      },
+      {
+        "type": "text",
+        "text": "Your day's clear, and it's sunny and 22. Riverbend Community Centre has the Indoor open play gym today, Saturdays 9 a.m. to noon, $6 per child, for ages 1 to 5, per their program page. [link-187000] There's also the Toddler nature walk (outdoor trail), Saturdays 10 a.m., free, for 2 to 5, per Cedar Park Conservancy's events page. [link-0b6114] It's already 10:30, so you'd be joining that one late."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 293,
+      "cache_read_input_tokens": 21022,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 293,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 291,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

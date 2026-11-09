@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers both picks, and their times, prices and ages match the facts. It correctly notes that the 10 a.m. trail walk is already underway at 10:30, and it gives no rain or cold warning. However, it calls the day 'sunny'. The forecast gives only a 5% rain chance and a 22C high, with no sky condition, so 'sunny' is weather the forecast does not give. That touches the rubric's fail clause, although it is a mild, plausible stretch rather than a steer away from outdoors.",
+    "score": 3
+  }
+}

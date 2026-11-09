@@ -284,6 +284,9 @@ async function main() {
       facts: {
         localNow,
         location: fixture.location,
+        // The coach holds the child's age (contextFor); a judge without it grades a
+        // correct "fits your 26-month-old" as an invented family detail.
+        children: [fixture.child],
         forecast: fixture.forecast,
         picks: fixture.picks.map(({ url, ...pick }) => pick),
       },

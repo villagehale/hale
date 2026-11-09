@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgrrLka8h5D1NSu4oFvw3",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAgKEAgTGAI4AUIIdGhpbmtpbmcSDFgXG9eolI4DjeonyxoMngDTqdn904ftgDIUIjDDGDp11vUMLBk1e1TE+C/fEZClWydi/cxVEAtAmZj8cr0oUyq+JbrNx5GI8xu5cTYqxQfb4vap0tyiiB/bWdRpatV3uHW7GxIUvZH2lBwXGUZ77QINHnFI8rittIClHTkRsvLNBufWdQzHe6nHQEcoYxAAYLISL/uDreJD0jG/kvOPZbZvFnuEQfvtFUGtqvGKx7yN/H2OqikCOz6ZM/6PXMa/pBDFtJhvGyNuwvgdKDllqyzWLP85WXqTlKNw4qHWRHMOp7MtBj2liOtcIwwIBwRJDPBeTGDixbmhat66LaXi90Ozt7+iMFaGL9hOuit/4ZQX3Cw2QslqE59Zkvvs+7HP4Sn5h0QoH5FvLq5gNTOdDg2S5dRapvlpHMV40rpsXitocEs63MNCI85ubp0z/Q84bjLJzH3ltI1XN4vm6+DIIZOxt4ZHxddb1QXeqMiEcb8WLEOM+pvYjWVFHFpHaw74gSVRpI49HCXd51FESVG4ieOUVdD0RP8z6sOgVZPYGqI7esA1HOz498iVnfE6jyPU+CM9G/TbMUdczRQZBfQecpTfqTLv8SOEXv3s5LJQ4hDF/fXBLxpwplI6mnV8ImvnSEaeDCA6iS96UMVW/fP/M1nqeU9qOrTCekxo9B1DB5d5jm6S3cIIO8/LlbarIVx7j1Uaug8BkckImHZ1q00HQ1syGOwtZOzHAMmkrJXCyLtWbELVsYg4p+iM3pBidDnVRmuHleP2kONBGoFpuLCOYYtEzQDz/qzohai8X99gE03H5mJzQsUe+tNLzdbg2Qe9B/yp1lmZs2tkF1QLebuUXFaPI3Dl08hXZiZ2tuIG5mX6QFTqJgNAlUc00tKUoBR+QMrhqcA5wKDlw5JxdynuHSRzmpbY9MVztvVAsM8GY+M+Zv63NU9/y5IPKF9tOQe3equHRQi4dPhao7T+hrPf5x58SR640aEjeusnLur3vTRtpzCLq7aBY8/eANkXiMMvCJ5NoOuMyawbLJOYJD1kPKVBzs7jTbniswzuV+cRAsZBf11WuecjDNIgqc1KRzaF2GWofYAnPqMmkkpe3rQ7HgK6o5mqlet9plqY93TASe9DtQDUC7zfBVwskufAoSn987rPcW7sjGakOSxEWX15XO9ZbqIZQhcOjBqrb5jY2QoAz+fE5n3QqlBcFg262jRs3cdjE4PcTNCId92edYSSAtjyOW8L45zZVaECdpMdkhHAzy3h3o9q4K55whhKbSlP+zIMKMkPQ6Dir3+GvawyH7eOMRvALVwQIfUgNF/U4D2xTUWjY1E8eJJFZOWQ3j2vqcOEMhUKflOLGU2ZPwnrDCHyYzF6pf7K1AVOIPrXVz9igYewzhgB"
+      },
+      {
+        "type": "text",
+        "text": "Got it, I won't cancel anything. Nothing's changed on your week."
+      }
+    ],
+    "usage": {
+      "input_tokens": 382,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 22369,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 203,
+      "output_tokens_details": {
+        "thinking_tokens": 177
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3387
+}
