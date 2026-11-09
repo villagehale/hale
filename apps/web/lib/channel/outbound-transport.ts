@@ -612,3 +612,10 @@ export async function checkLinqIMessageCapability(
   refuseCaptureWithoutGroups();
   return linq.checkLinqIMessageCapability(input);
 }
+
+export async function uploadLinqAttachment(
+  input: In<typeof linq.uploadLinqAttachment>,
+): ReturnType<typeof linq.uploadLinqAttachment> {
+  refuseCaptureWithoutGroups();
+  return linq.uploadLinqAttachment(input);
+}

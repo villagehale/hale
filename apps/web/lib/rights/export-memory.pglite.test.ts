@@ -26,6 +26,8 @@ const TEEN_NAME = 'Tamsin';
  */
 const NOT_IN_EXPORT: Record<string, string> = {
   family_sweep_marks: 'scheduling metadata, no family content',
+  capability_denials:
+    'a capability key and two message ids; each no and correction is an exported audit row',
   family_memory_aliases: 'derived search tokens of facts already exported',
   agent_runs: 'model usage accounting, no family content',
   caregiver_invites: 'unreviewed',
@@ -48,6 +50,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_upgrade_offers: 'unreviewed',
   family_watch_subscriptions: 'unreviewed',
   group_decision_sync: 'unreviewed',
+  group_lists: 'unreviewed',
   group_reminders: 'unreviewed',
   integrations: 'unreviewed',
   interest_next_step_offers: 'unreviewed',
