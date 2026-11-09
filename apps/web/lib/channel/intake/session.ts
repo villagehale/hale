@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
@@ -831,6 +831,30 @@ export function decodeIntakeForRecovery(dataEncrypted: string): {
     firstTouch: data.firstTouch ?? null,
     ladderLanguage: data.ladderLanguage ?? null,
   };
+}
+
+/**
+ * The family's newest answer to the co-parent group ask, including a closed session:
+ * true for a yes, false for a no, null when it was never answered.
+ */
+export async function latestCoparentGroupWish(
+  database: Database,
+  familyId: string,
+): Promise<boolean | null> {
+  const rows = await database
+    .select({ dataEncrypted: schema.smsIntakeSessions.dataEncrypted })
+    .from(schema.smsIntakeSessions)
+    .where(eq(schema.smsIntakeSessions.familyId, familyId))
+    .orderBy(desc(schema.smsIntakeSessions.updatedAt));
+  for (const row of rows) {
+    try {
+      const wish = decodeData(row.dataEncrypted).firstTouch?.given?.coparentGroup;
+      if (wish === true || wish === false) return wish;
+    } catch {
+      // A session blob that will not decrypt is not this answer.
+    }
+  }
+  return null;
 }
 
 /** The newest stored co-parent group choice for this parent, including a closed session. */

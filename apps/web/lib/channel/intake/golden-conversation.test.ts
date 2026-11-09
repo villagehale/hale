@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ahaWhenLabel,
@@ -571,6 +572,37 @@ describe('golden onboarding conversation', () => {
     expect(existing.bodies.join('\n')).not.toMatch(/add this number to your group/i);
   });
 
+  it('reads the co-parent yes with the group unclaimed, and claimed once Hale is in one (VIL-566)', async () => {
+    const WALK = ['hi', 'M5V 2T6', 'Maya', "she's 4", 'Dana', 'yes', 'ok', 'yes', 'ok', 'yes'];
+    const seen: FriendVoiceInput[] = [];
+    const recording = (input: FriendVoiceInput) => {
+      seen.push(input);
+      return scriptedTurn(input);
+    };
+    const talk = conversation({ compose: recording });
+    for (const words of WALK) await talk.say(words);
+    // Before the co-parent ask is open, no turn carries the group.
+    expect(seen.some((input) => input.householdGroup != null)).toBe(false);
+    await talk.say('sounds good');
+    seen.length = 0;
+    await talk.say('yes');
+    expect(seen.map((input) => input.householdGroup)).toContain('unclaimed');
+    expect(seen.every((input) => input.householdGroup !== 'pending')).toBe(true);
+
+    const claimed: FriendVoiceInput[] = [];
+    const talk2 = conversation({
+      compose: (input) => {
+        claimed.push(input);
+        return scriptedTurn(input);
+      },
+    });
+    for (const words of [...WALK, 'sounds good']) await talk2.say(words);
+    for (const row of talk2.fake.rows(schema.families)) row.linqGroupChatId = 'chat-household';
+    claimed.length = 0;
+    await talk2.say('yes');
+    expect(claimed.map((input) => input.householdGroup)).toContain('claimed');
+  });
+
   it('takes postal, kids, ages, a name, and both connections from the first message', async () => {
     const talk = conversation();
     const first = await talk.say(
@@ -864,6 +896,25 @@ describe('golden onboarding conversation', () => {
       emptyAha('gcal'),
     );
     expect(quiet).toBe('Your calendar is connected.');
+
+    // VIL-566: a yes to the group with none claimed yet reaches the receipt as pending.
+    const groups: unknown[] = [];
+    const receiptFor = (householdGroup: 'pending' | null) =>
+      connectedReceiptBody(
+        'en',
+        'gcal',
+        {
+          async compose(input) {
+            groups.push(input.householdGroup);
+            return { reply: 'Your calendar is connected.', ahaMention: null };
+          },
+        },
+        emptyAha('gcal'),
+        { householdGroup },
+      );
+    await receiptFor('pending');
+    await receiptFor(null);
+    expect(groups).toEqual(['pending', undefined]);
     expect(quiet).not.toContain('Swim at the rec centre');
     expect(quiet).not.toContain('Camp registration');
 

@@ -301,12 +301,11 @@ export async function readBack(
     name: child.name,
     dateOfBirth: child.dateOfBirth,
   }));
-  const householdAdults = family.coParentUserId ? 2 : 1;
   const primaryExport = await loadFamilyMemoryExport(
     database,
     familyId,
     roster,
-    { userId: family.parentUserId, householdAdults },
+    { userId: family.parentUserId },
     now,
   );
   const coParentExport = family.coParentUserId
@@ -314,7 +313,7 @@ export async function readBack(
         database,
         familyId,
         roster,
-        { userId: family.coParentUserId, householdAdults },
+        { userId: family.coParentUserId },
         now,
       )
     : null;

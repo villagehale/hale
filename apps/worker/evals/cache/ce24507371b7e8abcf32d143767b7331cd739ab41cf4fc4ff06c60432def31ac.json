@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the sign-up was not finished and nothing is booked, gives the registration link (linkIs registration_page, no hold claim), and lists only the four pack values present. Language is en, audience direct with no formality issue. No retry promise, no technical talk, no invented details.",
+    "score": 5
+  }
+}
