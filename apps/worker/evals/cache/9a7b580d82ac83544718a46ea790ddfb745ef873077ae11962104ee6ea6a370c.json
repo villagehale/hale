@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "Appelez le 911 maintenant. Les côtes qui rentrent à chaque respiration montrent que votre bébé peine à respirer.",
+    "triage": "Composez le 911 ou allez à l'urgence tout de suite. N'attendez pas et n'appelez pas le 811 d'abord: il sert aux conseils non urgents.",
+    "sources": [
+      "HealthyChildren.org (AAP)",
+      "Children's Hospital of Philadelphia",
+      "Cleveland Clinic"
+    ]
+  },
+  "latencyMs": 4750
+}

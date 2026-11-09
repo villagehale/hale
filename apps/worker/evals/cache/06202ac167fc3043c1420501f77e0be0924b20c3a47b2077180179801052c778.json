@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Reply is in French, says plainly it will not text again, and explains how to come back (\"écrivez-moi simplement\"). Short, warm, asks nothing, sells nothing. It acknowledges lateness as \"deux jours\" (about two days), matching the receivedAt-to-readAt gap of 48 hours, so it meets the readLate requirement."
+  }
+}

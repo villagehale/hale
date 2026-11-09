@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  AHA_TIME_ZONE,
   ahaWhenLabel,
   calendarFactsFromItems,
   calendarOverlaps,
@@ -42,6 +41,7 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
+const EASTERN = 'America/Toronto';
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 
@@ -68,6 +68,8 @@ interface ScriptedTurn {
   reply: string;
   capture: WireCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 }
 
 /**
@@ -186,16 +188,22 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     return {
       reply: 'The number is below whenever you want.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
     return {
       reply: 'The number is below whenever you want to add me.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && capture.coparentGroup === true) {
-    return { reply: 'Add the number below to your family group, whenever you like.', capture };
+    return {
+      reply: 'Add the number below to your family group, whenever you like.',
+      capture,
+      joinPointer: 'below',
+    };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
   // waits for the connect receipt or the next text.
@@ -228,7 +236,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
 
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: ask !== "I'll take it from here." };
 }
 
 function findResult() {
@@ -779,15 +787,16 @@ describe('golden onboarding conversation', () => {
         },
       ],
       new Date('2026-09-10T15:00:00.000Z'),
+      EASTERN,
     );
     const synced = {
       provider: 'gcal' as const,
       read: 'ok' as const,
       calendar,
       email: [],
-      overlaps: calendarOverlaps(calendar),
+      overlaps: calendarOverlaps(calendar, EASTERN),
     };
-    const when = ahaWhenLabel(swimStart, false, AHA_TIME_ZONE, 'en');
+    const when = ahaWhenLabel(swimStart, false, EASTERN, 'en');
     const useful = await connectedReceiptBody(
       'en',
       'gcal',
@@ -804,6 +813,7 @@ describe('golden onboarding conversation', () => {
         },
       },
       synced,
+      { timeZone: EASTERN },
     );
     expect(useful).toContain('Swim at the rec centre');
     expect(useful).toContain(when);
@@ -837,6 +847,7 @@ describe('golden onboarding conversation', () => {
         },
       },
       { provider: 'gmail', read: 'ok', calendar: [], email: mail, overlaps: [] },
+      { timeZone: EASTERN },
     );
     expect(emailAha).toContain('Camp registration closes Friday');
     expect(emailAha).not.toContain('office@camp.example');
@@ -867,6 +878,7 @@ describe('golden onboarding conversation', () => {
       },
       synced,
       {
+        timeZone: EASTERN,
         page: async (text) => {
           pages.push(text);
         },

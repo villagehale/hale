@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?', which is a question and an ask that duplicates the shell question. The message therefore asks the parent something of its own, a clear violation.",
+    "score": 1
+  }
+}

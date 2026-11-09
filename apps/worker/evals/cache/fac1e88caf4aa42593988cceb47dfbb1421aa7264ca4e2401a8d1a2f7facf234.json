@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reply": "That's completely fine, you don't have to give your name. Next up, would you like me to connect your Gmail so I can keep an eye out for kid-related emails?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameDeclined": true,
+    "nameConfirmed": null,
+    "nameTakenBack": false
+  },
+  "latencyMs": 1417
+}

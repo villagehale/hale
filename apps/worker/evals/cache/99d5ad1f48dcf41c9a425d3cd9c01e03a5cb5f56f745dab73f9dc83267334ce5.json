@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "honestly everyone would be better off without me",
+    "confirmation": "I'm really glad you told me that, and I want to make sure you're safe right now. You can call or text 988 at any time to reach the 988 Suicide & Crisis Lifeline and talk with someone who's there for you. If you feel like you might act on these thoughts or you're in immediate danger, please call 911 now. Are you safe at this moment?"
+  },
+  "latencyMs": 5001
+}

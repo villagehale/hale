@@ -83,7 +83,7 @@ export const messages = pgTable(
     childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     /** Coarse topic tag (health/sleep/feeding/…) for timeline filtering; null when untagged. */
     topic: text('topic'),
-    /** What a proactive turn was about (0198). Null for every turn that has none.
+    /** What a proactive turn was about (0208). Null for every turn that has none.
      * Never copied to a log or an audit row. */
     source: jsonb('source').$type<MessageSource>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

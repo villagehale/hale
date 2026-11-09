@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request for a reply ('Reply YES and I'll book it for you'), which is an ask waiting on a yes. It also includes 'Reply STOP to opt out', a standard opt-out line that is not a request to reply to the message's content but is still a reply instruction. The core ask to confirm booking pulls the parent into a reply, so the message scores low on asking nothing.",
+    "score": 1
+  }
+}

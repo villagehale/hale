@@ -1,15 +1,27 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { smsConsentCopyForScope } from '~/lib/channels/sms-consent-copy';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import { askWriter } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
   reenrolOnStart,
 } from './channel-state';
+import {
+  FakeExtractor,
+  FakeIdentityAsk,
+  FakeIntentReader,
+  fakeNoOpenQuestions,
+  fakeRadar,
+  fakeSilentAnswerComposer,
+} from './fakes';
+import { type IntakeDeps, handleInboundSms } from './machine';
+import { FakeTransport } from './transport';
 
 /**
  * VIL-355 · one revoked `parent_channels` row, two different questions.
@@ -151,5 +163,139 @@ describe('reenrolOnStart — which consent copy a row is recorded under', () => 
     expect(smsConsentCopyForScope('sms_service_messages:v2')).toBe(
       "Hale texts this number about the kids' year: activities, registration dates, reminders, and questions that need the parent's OK. Hale stops when the parent asks, in any wording.",
     );
+  });
+});
+
+/**
+ * VIL-310 · START is a door onto an active channel like any other, so it keeps the same
+ * invariant: a number that owns an active channel has no open caregiver invite. A number
+ * that STOPped can be invited by another household (only an ACTIVE channel blocks an
+ * invite), and the invite is read BEFORE the channel in the intake machine — so an invite
+ * left open after START outranks the channel START just wrote, and the "yes" that answers
+ * it tries to enrol the number a second time.
+ */
+describe('reenrolOnStart — closes the invite in flight on the same number', () => {
+  async function seedOpenInviteFromAnotherFamily(): Promise<string> {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Other household', provinceOrState: 'BC' })
+      .returning({ id: schema.families.id });
+    const [inviter] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'sms:the-inviting-parent' })
+      .returning({ id: schema.users.id });
+    const familyId = family?.id as string;
+    const invitedByUserId = inviter?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: invitedByUserId, role: 'primary_parent' });
+    const [invite] = await db.database
+      .insert(schema.caregiverInvites)
+      .values({
+        familyId,
+        invitedByUserId,
+        role: 'grandparent',
+        displayName: 'Sam',
+        phoneE164Encrypted: encryptString(PHONE),
+        phoneE164Hash: phoneBlindIndex(PHONE),
+        state: 'awaiting_caregiver_reply',
+        expiresAt: new Date(NOW.getTime() + 72 * 3_600_000),
+        createdAt: NOW,
+      })
+      .returning({ id: schema.caregiverInvites.id });
+    return invite?.id as string;
+  }
+
+  function activeChannels() {
+    return db.database
+      .select({ id: schema.parentChannels.id })
+      .from(schema.parentChannels)
+      .where(
+        and(
+          eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(PHONE)),
+          isNull(schema.parentChannels.revokedAt),
+        ),
+      );
+  }
+
+  function inviteAudit() {
+    return db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.targetTable, 'caregiver_invites'));
+  }
+
+  function intakeDeps(): IntakeDeps {
+    return {
+      transport: new FakeTransport(),
+      threadMessage: async () => 'conv-1',
+      extractor: new FakeExtractor([{ children: [], postalCode: null }]),
+      intentReader: new FakeIntentReader([
+        { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
+      ]),
+      radar: fakeRadar,
+      answerComposer: fakeSilentAnswerComposer,
+      openQuestions: fakeNoOpenQuestions,
+      identityAsk: new FakeIdentityAsk(),
+      limiter: new FakeRateLimiter(() => NOW.getTime()),
+      consent: { read: async () => ({ verdict: 'yes' as const, target: 'none' as const }) },
+      consentAsk: askWriter(),
+      now: NOW,
+    };
+  }
+
+  it('closes it as superseded_by_enrollment, and the number\'s "yes" never reaches it', async () => {
+    const { familyId, userId } = await seedRevokedChannel(true);
+    const inviteId = await seedOpenInviteFromAnotherFamily();
+
+    await reenrolOnStart(
+      db.database,
+      { userId, familyId, phoneE164: PHONE, verbatimReply: 'START' },
+      NOW,
+    );
+
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state, closedAt: schema.caregiverInvites.closedAt })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite).toEqual({ state: 'superseded_by_enrollment', closedAt: NOW });
+    expect(await activeChannels()).toHaveLength(1);
+    expect(await inviteAudit()).toEqual([
+      { actionTaken: 'caregiver_invite_superseded_by_enrollment', targetId: inviteId },
+    ]);
+
+    // The number's next word. With the invite still armed this reached the invite's
+    // accept, whose second channel insert the active-phone unique index refuses.
+    await handleInboundSms(
+      db.database,
+      { from: PHONE, body: 'yes', providerId: 'in-yes-1', receivedAt: NOW },
+      intakeDeps(),
+    );
+
+    expect(await activeChannels()).toHaveLength(1);
+    const [after] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(after?.state).toBe('superseded_by_enrollment');
+    const grandparentSeats = await db.database
+      .select({ userId: schema.familyMembers.userId })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.role, 'grandparent'));
+    expect(grandparentSeats).toEqual([]);
+  });
+
+  it('positive control: with no invite in flight, START re-enrols and touches no invite', async () => {
+    const { familyId, userId } = await seedRevokedChannel(true);
+
+    await reenrolOnStart(
+      db.database,
+      { userId, familyId, phoneE164: PHONE, verbatimReply: 'START' },
+      NOW,
+    );
+
+    expect(await activeChannels()).toHaveLength(1);
+    expect(await db.database.select().from(schema.caregiverInvites)).toEqual([]);
+    expect(await inviteAudit()).toEqual([]);
   });
 });

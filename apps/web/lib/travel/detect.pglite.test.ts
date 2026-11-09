@@ -331,6 +331,59 @@ describe('the rules that decide whether a trip is a trip', () => {
     expect(await tripCount()).toBe(1);
   });
 
+  /** A family outside the GTA, by its own row: a US ZIP whose postal table city is
+   * Seattle. */
+  async function homeInSeattle(): Promise<void> {
+    await database
+      .update(schema.families)
+      .set({ country: 'United States', postalCode: '98103', areaCoarse: '981' })
+      .where(eq(schema.families.id, familyId));
+  }
+
+  it("a Seattle family's Seattle hotel is `not_away`", async () => {
+    await homeInSeattle();
+    expect(await run(ports({ destinationCity: 'Seattle', destinationRegion: 'WA' }))).toEqual([
+      'not_away',
+    ]);
+    expect(await tripCount()).toBe(0);
+  });
+
+  it("a Seattle family's flight to Toronto is a trip", async () => {
+    await homeInSeattle();
+    expect(await run(ports({ destinationCity: 'Toronto', destinationRegion: 'ON' }))).toEqual([
+      'trip_written',
+    ]);
+    expect(await tripCount()).toBe(1);
+  });
+
+  /**
+   * FAIL CLOSED. A family whose home cannot be named has nothing to be away FROM, so the
+   * mailbox is not opened and the model is not called — the outcome names why. The
+   * positive control gives the same family a home and the same envelope writes.
+   */
+  it('an unknown home is `home_region_unknown`, reads nothing and writes nothing', async () => {
+    await database
+      .update(schema.families)
+      .set({ areaCoarse: null })
+      .where(eq(schema.families.id, familyId));
+    const spy = ports();
+    const notBooking = { ...envelope({ messageId: 'msg-0' }), subject: 'Your order has shipped' };
+    expect(await run(spy, { envelopes: [notBooking, envelope()] })).toEqual([
+      'not_booking_shaped',
+      'home_region_unknown',
+    ]);
+    expect(spy.bodyFetches).toEqual([]);
+    expect(spy.extractions).toBe(0);
+    expect(await tripCount()).toBe(0);
+
+    await database
+      .update(schema.families)
+      .set({ country: 'Canada', postalCode: 'K1A' })
+      .where(eq(schema.families.id, familyId));
+    expect(await run(ports())).toEqual(['trip_written']);
+    expect(await tripCount()).toBe(1);
+  });
+
   it('a 30-night stay is a lease, not a trip', async () => {
     expect(await run(ports({ startDate: '2026-09-12', endDate: '2026-10-12' }))).toEqual([
       'implausible_window',

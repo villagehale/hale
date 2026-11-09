@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import type { LinqInboundText } from './payload';
 import { type ListChatHandles, startGroupRoster } from './roster';
@@ -436,7 +437,14 @@ describe('takeRosterTurn', () => {
   }
 
   it('seats the dad on his own reply and acknowledges him in a threaded group line', async () => {
-    await askedFamily();
+    const { familyId, userId } = await askedFamily();
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: DAD,
+      role: 'co_parent',
+      now: NOW,
+    });
     const voice = fakeGroupOnboardingComposer();
     const { send, sent } = wire();
     const { ports, recorded, direct } = turnPorts(voice, send);
@@ -528,7 +536,14 @@ describe('takeRosterTurn', () => {
   });
 
   it('keeps the seat but sends no acknowledgement when the model cannot write it, and names that', async () => {
-    const { familyId } = await askedFamily();
+    const { familyId, userId } = await askedFamily();
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: GRAN,
+      role: 'grandparent',
+      now: NOW,
+    });
     const { send, sent } = wire();
     const { ports } = turnPorts(fakeGroupOnboardingComposer({ fail: true }), send);
 
@@ -554,10 +569,10 @@ describe('takeRosterTurn', () => {
     ]);
   });
 
-  it('seats an aunt as extended family, not as not family', async () => {
-    await askedFamily();
+  it('labels an aunt as extended family and seats her nowhere, since no grant door exists for that role', async () => {
+    const { familyId } = await askedFamily();
     const voice = fakeGroupOnboardingComposer();
-    const { send } = wire();
+    const { send, sent } = wire();
     const { ports } = turnPorts(voice, send);
 
     const turn = await takeRosterTurn(
@@ -565,17 +580,27 @@ describe('takeRosterTurn', () => {
       inbound(GRAN, "I'm your aunt", 'in-aunt'),
       ports,
     );
-    expect(turn).toMatchObject({ handled: true, outcome: 'role_confirmed' });
-    expect(await memberStatus(GRAN)).toBe('confirmed');
-    expect(voice.calls[0]?.input).toMatchObject({
-      kind: 'role_confirmed',
-      facts: { role: 'aunt' },
-    });
+    expect(turn).toMatchObject({ handled: true, outcome: 'seat_needs_parent_grant' });
+    expect(await memberStatus(GRAN)).toBe('refused');
+    expect(voice.calls).toEqual([]);
+    expect(sent).toEqual([]);
     expect(
       (
         await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers)
       ).map((row) => row.role),
-    ).toEqual(expect.arrayContaining(['extended']));
+    ).toEqual(['primary_parent']);
+    const labels = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'linq_group_member_refused'),
+        ),
+      );
+    expect(labels.map((row) => row.after)).toEqual([
+      { reason: 'seat_needs_parent_grant', claimedRole: 'extended', via: 'own_reply' },
+    ]);
   });
 
   it('records "not family" and seats nothing', async () => {

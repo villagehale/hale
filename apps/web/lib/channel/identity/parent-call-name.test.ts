@@ -139,6 +139,20 @@ describe('handleParentCallNameReply', () => {
     expect(fake.rows(schema.users).find((row) => row.id === USER_B)?.googleGivenName).toBe('Other');
   });
 
+  it('a one-word name given instead of the held one is stored, though it is the whole message', async () => {
+    const fake = await seedConfirm('Bea');
+    const outcome = await handleParentCallNameReply(
+      fake.db,
+      { familyId: FAMILY_A, parentUserId: USER_A, body: 'Robin' },
+      voiceReading({ parentName: 'Robin', nameConfirmed: false, reply: 'Got it, Robin.' }),
+    );
+    expect(outcome).toEqual({ status: 'answered', reply: 'Got it, Robin.' });
+    expect(fake.rows(schema.users).find((row) => row.id === USER_A)).toMatchObject({
+      name: 'Robin',
+      googleGivenName: null,
+    });
+  });
+
   it('a preference stores that name, not the Google one', async () => {
     const fake = await seedConfirm('Bea');
     const outcome = await handleParentCallNameReply(
