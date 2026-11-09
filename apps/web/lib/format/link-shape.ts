@@ -33,7 +33,11 @@ const CJK = String.raw`\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}
 // NFKC folds U+FF0E and U+FE52 to '.', and U+FF61 to U+3002, which it leaves alone.
 const IDEOGRAPHIC_DOT = /\u3002/gu;
 const CJK_RUN = new RegExp(`[${CJK}]+`, 'uy');
-const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
+const CJK_OR_DIGITS = new RegExp(`^[${CJK}\\p{N}]+$`, 'u');
+const CJK_RUN_WITHOUT_PATH = new RegExp(`[${CJK}]+(?![${CJK}/])`, 'uy');
+/** Bracketed or spaced dots ("evil[.]app", "bit . ly"), which a reader closes up. Exported
+ * for a gate that keeps its own index map over the text (coach/email-only-tokens.ts). */
+export const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
 // 'EE.UU.' (Spanish for the US) when nothing name-like follows it.
 const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p{N}])/gu;
 

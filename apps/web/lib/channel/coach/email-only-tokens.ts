@@ -17,17 +17,19 @@
  *
  * Both sides are read as a handset reads them before they are compared: NFKC (full-width
  * digits, letters and dots), format characters dropped (a zero-width space inside a
- * host), and the ideographic full stop read as a dot. Spans found in that reading are
- * cut from the reply as written, so a reply with nothing to drop is returned byte for
- * byte.
+ * host), and bracketed or spaced dots closed up ("evil [.] example"). For a number the
+ * ideographic full stop is a dot; for a host the shared link check decides, so a CJK
+ * sentence's full stop stays one. Spans found in that reading are cut from the reply as
+ * written, so a reply with nothing to drop is returned byte for byte.
  *
- * Host shape: this module reads hosts itself because the shared link check (VIL-613,
- * `lib/format/link-shape.ts`) has not landed on main. Once it has, the host reading here
- * should ask it instead.
+ * Host shape: a word is a host when the shared link check (VIL-613, `hasLinkShape`)
+ * says a phone would make a link of it. That check fails closed, so on a read turn
+ * "St.Mary" is cut too.
  *
  * No `~/` imports: the injection eval loads the coach runtime under tsx.
  */
 
+import { BRACKETED_OR_SPACED_DOT, hasLinkShape } from '../../format/link-shape';
 import { MARKETING_SITE_URL } from '../../legal-links';
 import { crisisFactsForRegion } from '../crisis-resources';
 
@@ -69,7 +71,7 @@ function asHandsetReads(text: string): Reading {
   let read = '';
   let at = 0;
   for (const point of text) {
-    const folded = FORMAT_CHAR.test(point) ? '' : point.normalize('NFKC').replace(/\u3002/g, '.');
+    const folded = FORMAT_CHAR.test(point) ? '' : point.normalize('NFKC');
     for (let i = 0; i < folded.length; i += 1) {
       start.push(at);
       end.push(at + point.length);
@@ -77,7 +79,28 @@ function asHandsetReads(text: string): Reading {
     read += folded;
     at += point.length;
   }
-  return { read, start, end };
+  return closeSplitDots({ read, start, end });
+}
+
+/** "evil [.] example" reads as "evil.example"; the one dot stands for the whole span. */
+function closeSplitDots(reading: Reading): Reading {
+  const closed: Reading = { read: '', start: [], end: [] };
+  let at = 0;
+  const keep = (to: number) => {
+    closed.read += reading.read.slice(at, to);
+    closed.start.push(...reading.start.slice(at, to));
+    closed.end.push(...reading.end.slice(at, to));
+  };
+  for (const match of reading.read.matchAll(BRACKETED_OR_SPACED_DOT)) {
+    keep(match.index);
+    const to = match.index + match[0].length;
+    closed.read += '.';
+    closed.start.push(reading.start[match.index] as number);
+    closed.end.push(reading.end[to - 1] as number);
+    at = to;
+  }
+  keep(reading.read.length);
+  return closed;
 }
 
 // Seven digits or more, any of them split by up to three spaces, dots, dashes or brackets.
@@ -105,27 +128,24 @@ const PRICE_BEFORE = /(?:\p{Sc}|\b(?:USD|CAD|US|CA))\s?$/iu;
 const UNIT_AFTER =
   /^\s?(?:%|dollars?|bucks|cents?|steps?|calories|kcal|km|kms|kilometers?|kilometres?|miles?|mi|meters?|metres?|m|ft|feet|kg|lbs?|pounds?|grams?|g|ml|mL|l|litres?|liters?|min|mins|minutes?|hours?|hrs?|days?|weeks?|months?|years?|yrs?|people|kids|children|families|words|pages|points|pts)\b/iu;
 
-const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}`;
-const LABEL_CHAR = String.raw`(?:(?![${CJK}])[\p{L}\p{M}\p{N}-])`;
-const ENDING_CHAR = String.raw`(?:(?![${CJK}])\p{L})`;
-// A dotted name whose ending is two or more letters, with an optional scheme and path. A
-// CJK sentence's full stop is not a dot here: neither side of it is a label.
-const HOST = new RegExp(
-  String.raw`(?<![\p{L}\p{M}\p{N}.\-])(?:[a-z][a-z\d+.\-]*:\/\/)?(?:${LABEL_CHAR}+\.)+${ENDING_CHAR}{2,}(?![\p{L}\p{M}\p{N}\-])(?:[\/?#:][^\s]*)?`,
-  'giu',
-);
+// A word as a host can be one: quotes, brackets and commas end it, so a host inside a
+// fact's JSON reads as itself.
+const WORD = /[^\s"'<>{}[\](),;]+/gu;
+const LEADING_PROSE = /^[([{<'"‘“]+/u;
 const TRAILING_PROSE = /[.,;:!?)\]}>'"’”]+$/u;
 
 function digitsOf(text: string): string {
   return text.replace(/\D/g, '');
 }
 
-function hostKey(token: string): string {
-  return token
-    .replace(/^[a-z][a-z\d+.-]*:\/\//i, '')
-    .replace(/[/?#:].*$/s, '')
-    .toLowerCase()
-    .replace(/^www\./, '');
+/** The host a link-shaped word names: no scheme, user, path, port or `www.`. */
+function hostKey(word: string): string {
+  const lower = word.toLowerCase().replace(/\u3002/g, '.');
+  const afterScheme = lower.includes('://') ? lower.slice(lower.indexOf('://') + 3) : lower;
+  const host = afterScheme.split(/[/?#]/)[0] as string;
+  const parts = host.slice(host.lastIndexOf('@') + 1).split(':');
+  const bare = parts.find((part) => part.includes('.')) ?? host;
+  return bare.startsWith('www.') ? bare.slice('www.'.length) : bare;
 }
 
 function isQuantityOrPrice(read: string, from: number, to: number): boolean {
@@ -147,7 +167,9 @@ function isCode(token: string): boolean {
 
 function tokensIn(reading: Reading): Token[] {
   const { read } = reading;
-  const numbers = read.replace(DATE_SPAN, (date) => '#'.repeat(date.length));
+  const numbers = read
+    .replace(/\u3002/g, '.')
+    .replace(DATE_SPAN, (date) => '#'.repeat(date.length));
   const found: Token[] = [];
   const push = (kind: EmailOnlyKind, key: string, from: number, length: number) =>
     found.push({ kind, key, from, to: from + length });
@@ -160,9 +182,10 @@ function tokensIn(reading: Reading): Token[] {
       push('code', match[0].replace(/[-_]/g, '').toLowerCase(), match.index, match[0].length);
     }
   }
-  for (const match of read.matchAll(HOST)) {
-    const token = match[0].replace(TRAILING_PROSE, '');
-    push('host', hostKey(token), match.index, token.length);
+  for (const match of read.matchAll(WORD)) {
+    const lead = match[0].match(LEADING_PROSE)?.[0].length ?? 0;
+    const word = match[0].slice(lead).replace(TRAILING_PROSE, '');
+    if (word && hasLinkShape(word)) push('host', hostKey(word), match.index + lead, word.length);
   }
   // Read last, so a run inside a phone, a code or a host's path is not one.
   const taken = [...found];
