@@ -134,6 +134,11 @@
     "version": null,
     "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
   },
+  "judges/group-lists": {
+    "name": "judges/group-lists",
+    "version": null,
+    "sha256": "b2c8a1d7dde629b691f3db0d951457593ad4750ec9eaa984d7c72215b35f9877"
+  },
   "judges/group-plan-calendar-report": {
     "name": "judges/group-plan-calendar-report",
     "version": null,
