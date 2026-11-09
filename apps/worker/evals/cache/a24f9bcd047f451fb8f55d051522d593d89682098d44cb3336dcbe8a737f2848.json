@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment with no safety, provider, or off-domain signal; likely a follow-up answer",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 976
+}

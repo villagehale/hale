@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrrDqmU2BsamoPPsx7UG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjAgKEAgTGAI4AUIIdGhpbmtpbmcSDG1vWxrlj3D0ZDJr5RoMDGXpdmB7bWwl61KxIjAcy7PJh2e2SvWODvkwA2+JzhIj9+eIbbEwpbMobu7/4PsvZY9xRuTasMs/iNWYvsoqqQc052p69RDzG+tUYA7m4Ps0Mz1n0zaYZ5kqzZ3Bd0z//6nGKtNCX3XjHUrcstnJMYg2GaSR8d+Q8PHhXkEKyz9TQ3x06yj0Hp+mT5wp7/rNCff4B1xrIiqosBPGC5dtdp+Bifn5K41MDmK3+uA5zbj+aDyHpRIUc6bLIjbI4ZIR76KulxlGVHC7WdP9zpW5m5/AryFQFdzhJLVKW7IC9rF5VBpijQmokAig7X/HpnKFs4reK+iQAqGapQ1tF/sy+6rZrEoP/5+ASi+S59S7DIIvglymJ5vX4CUM9ZRue81QW9mmxx0ANdZvA1FdolYQRZBMTKDfSzwx4GpfICFjMblGMmpqQr/hhqfMPAkJClnXOkNpnakgHh63pXGcEJwq5zSGdfVOcau4JO0QClSUU9ISckHzAAb7TUg2wr9DceB7lu9ySOEoxZTjtPSpRdEy9W8vsqF9HLDaCzK/ga86TKqbt3Z8aXKxZFFLQY9Uf3s4ocrkQH0nQErme9zRZTG9SWjDvlyYqr4oKIJtoMyrwVwgD76WBLbE7aDpUKUIujEq+AwFRvVKJ/TZpKMT2/Thl+tZ+mL1FV5wtyw+unBfoqoxp7eAan8EVlefkJdVzvZJgTVlbw/y6ovlodp9WLoZ4frC7IZL+y1FwZH8SEJMUVsUqw+wgirlTL0xQcvxSFXbkF50KbCPkZE4VFAJvzXSCOHk2yWmYzc/g8xOOvmfbGSUHLw4jwHx8k87A+yaUr8E342AM1P5VICATmnUer2gk+AZLotMIb/08x8TqkweLBNC/BQBAFeElb4kP5zmsc+2yJMfDyMi5+QerpzX63/G/I064IC5n8P9ZwtbhACaOOk3LNs2S9Cr5DpYeZJjuLUpA0sZlo9cnnpZQ6ff8hb77tuxsMT+W48hr+M4hoKyc+ikM/2iGRdkjug895f0K/IDPIRebui1NvsovxgMBVpVyBWo8CosQ2GK7GIzXCIPDq3ffcYxdAMrcGjJILaI+JxVFINXOMyItSrUuAYUY+25RLNwwQ4EbfXtp4mkHuq3DLawGuxnW13H4wS2z3QU+65eKdyc8rzG0lq8f8PoU0+yHIW4nRBVwp0J8qhCT998DYBpEF0bUozU2Xwwwznjba58uzu/nfkpIwWONLGlHqYg981ZqVE40ApTWGtE+AAuLBDSygRxsUX3HhZsbc8z2uUz/w9ErVR8m2I6cqm7C24NR4t1AWnTAQYk2YvJKDN/syWBB7EJh/o2uD2MGAE="
+      },
+      {
+        "type": "text",
+        "text": "Jordan, Dana can't do pickup after Maya's swim on Saturday, 11:00am at Y on Main. Can you take it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 761,
+      "cache_read_input_tokens": 18744,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 761,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 184,
+      "output_tokens_details": {
+        "thinking_tokens": 137
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

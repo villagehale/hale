@@ -5,6 +5,10 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
+import type {
+  ClassAvailabilityReading,
+  ClassAvailabilityTarget,
+} from '~/lib/registration/class-availability';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { SpotOpenFacts } from './copy';
 import { recordSpotWatchPromise } from './promise';
@@ -17,6 +21,7 @@ import {
   runWatchedSpotsSweep,
   spotOpenKey,
 } from './sweep';
+import { PAGE_SOURCE } from './watch-reading';
 
 /**
  * VIL-337 · the sweep, against the real DDL and zero network.
@@ -120,6 +125,11 @@ interface Harness {
    * notice writer is (testing/email-alert-notice.ts). */
   writer: (facts: SpotOpenFacts) => string | null;
   language: string;
+  /** What the model reader returns for a page outside the registry, per url. Its gate is
+   * proven in class-availability.test.ts and the model in its eval; here it is a port. */
+  pageReadings: Map<string, ClassAvailabilityReading>;
+  /** Every target the sweep asked the model reader about, in order. */
+  pageTargets: ClassAvailabilityTarget[];
 }
 
 /** A stand-in written text that says what the facts say. */
@@ -144,6 +154,8 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
     written: [],
     writer: scriptedSpotText,
     language: 'en',
+    pageReadings: new Map(),
+    pageTargets: [],
     ...overrides,
     deps: undefined as unknown as WatchedSpotsSweepDeps,
   };
@@ -175,6 +187,12 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
       if (page === undefined) throw new Error(`no fixture wired for ${url}`);
       if (page instanceof Error) throw page;
       return page;
+    },
+    readClassAvailability: async (target) => {
+      state.pageTargets.push(target);
+      const reading = state.pageReadings.get(target.sourceUrl);
+      if (reading === undefined) throw new Error('no page reading wired');
+      return reading;
     },
     claimSlot: claimWatchedSpotsSlot,
     buildGate: () => ports,
@@ -228,6 +246,8 @@ interface SeedOptions {
   nextPollAt?: Date;
   expiresAt?: Date;
   now?: Date;
+  sessionAnchor?: string | null;
+  pageDigest?: string | null;
 }
 
 /** One live watch and the open promise it is owed against. Written directly rather than
@@ -257,6 +277,8 @@ async function seedWatch(
       notifiedMessageId: options.notifiedMessageId ?? null,
       nextPollAt: options.nextPollAt ?? later(now, -TEN_MINUTES),
       expiresAt,
+      sessionAnchor: options.sessionAnchor ?? null,
+      pageDigest: options.pageDigest ?? null,
       createdFrom: 'CM-ack',
     })
     .returning({ id: schema.watchedSpots.id });
@@ -805,7 +827,7 @@ describe('runWatchedSpotsSweep — a held observation is re-derived, never repla
     // full waitlist, held through quiet hours, retaken by morning — but the queue has room
     // now. That is a `waitlist_reopened` text, and it is only reachable because the claim
     // no longer moves `last_state`: with the claimed state written at 02:00 the morning
-    // question was `transitionKind('open', full-with-room)`, which is null, so the parent
+    // question was `watchTransition('open', full-with-room)`, which is null, so the parent
     // heard nothing and the Radar counted a `closed_before_send` that never happened.
     // The kill: put `lastState: input.to` back in claimOpenTransition.
     const family = await seedFamily(db.database);
@@ -885,7 +907,7 @@ describe('runWatchedSpotsSweep — a reopened waitlist is news, a closed one is 
     // The mutation this kills: STATE_TOLD.waitlist_reopened = 'open'. What that text said
     // is "the queue has room", never "there is a seat" — so the state the parent's
     // knowledge is now consistent with is still `full`. Get it wrong and the next tick
-    // asks `transitionKind('open', ...)`, which makes a real seat opening on this page
+    // asks `watchTransition('open', ...)`, which makes a real seat opening on this page
     // no longer news: the parent is never told about the thing they are waiting for.
     // The mirror — a `seat_opened` receipt moving the column to 'open' — is asserted in
     // the delivery-truth test above.
@@ -1669,7 +1691,141 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
         delivery_failed: 0,
         send_unconfirmed: 0,
       },
-      skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, slotClaimed: false },
+      skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, anyPageOff: 0, slotClaimed: false },
     });
+  });
+});
+
+/** A program page outside the PerfectMind registry: invented host, invented class. */
+const PAGE_URL = 'https://recreation.example.org/programs/swim';
+const ANCHOR = 'Preschool Swim - Tuesdays 4:30 PM';
+function pageRead(
+  overrides: Partial<Extract<ClassAvailabilityReading, { status: 'read' }>> = {},
+): ClassAvailabilityReading {
+  return {
+    status: 'read',
+    state: 'full',
+    session: ANCHOR,
+    spotsLeft: null,
+    waitlistRoom: false,
+    schedule: 'Tuesdays 4:30 PM',
+    digest: 'digest-full',
+    ...overrides,
+  };
+}
+
+describe('runWatchedSpotsSweep — a page outside the registry, read by the model', () => {
+  beforeEach(() => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'true');
+  });
+
+  it('texts once when the checked reading turns open, attributed to the page, never to the page’s own name for itself', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 2, digest: 'd-open' }));
+    await seedWatch(db.database, family, { sourceUrl: PAGE_URL, sessionAnchor: ANCHOR });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect(test.fetched).toEqual([]);
+    expect(test.pageTargets).toEqual([
+      { sourceUrl: PAGE_URL, label: 'Milliken swim', anchor: ANCHOR, lastDigest: null },
+    ]);
+    expect(test.written).toEqual([
+      {
+        kind: 'seat_opened',
+        source: PAGE_SOURCE,
+        label: 'Milliken swim',
+        spotsLeft: 2,
+        schedule: 'Tuesdays 4:30 PM',
+        language: 'en',
+      },
+    ]);
+    expect(
+      test.sent[0]?.body.startsWith(
+        `${PAGE_SOURCE} shows 2 spots left for Milliken swim.\n${PAGE_URL}`,
+      ),
+    ).toBe(true);
+  });
+
+  it('sends nothing on a challenge page or an uncorroborated reading, and counts it unreadable', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, { status: 'refused', reason: 'challenge_page' });
+    const spotId = await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+    });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+    expect(first.unreadable).toBe(1);
+    expect(first.sent).toBe(0);
+    let row = await readWatch(spotId);
+    expect(row.lastState).toBe('full');
+    expect(row.consecutiveFailures).toBe(1);
+
+    test.pageReadings.set(PAGE_URL, { status: 'unknown', reason: 'uncorroborated' });
+    await db.database
+      .update(schema.watchedSpots)
+      .set({ nextPollAt: MIDDAY })
+      .where(eq(schema.watchedSpots.id, spotId));
+    const second = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+    expect(second.unreadable).toBe(1);
+    expect(test.sent).toEqual([]);
+    row = await readWatch(spotId);
+    expect(row.consecutiveFailures).toBe(2);
+  });
+
+  it('stores the digest of a quiet page, and an unchanged page costs no model read', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ digest: 'd-full' }));
+    const spotId = await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+    });
+
+    expect((await runWatchedSpotsSweep(db.database, test.deps, MIDDAY)).quiet).toBe(1);
+    expect((await readWatch(spotId)).pageDigest).toBe('d-full');
+
+    test.pageReadings.set(PAGE_URL, { status: 'unchanged', digest: 'd-full' });
+    const next = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(next.quiet).toBe(1);
+    expect(test.pageTargets.map((target) => target.lastDigest)).toEqual([null, 'd-full']);
+    expect((await readWatch(spotId)).lastPolledAt).toEqual(later(MIDDAY, TEN_MINUTES));
+  });
+
+  it('re-reads a held opening afresh rather than trusting the digest', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 1, digest: 'd-open' }));
+    await seedWatch(db.database, family, {
+      sourceUrl: PAGE_URL,
+      sessionAnchor: ANCHOR,
+      pendingKind: 'seat_opened',
+      openTransitions: 1,
+      pageDigest: 'd-open',
+    });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(test.pageTargets.map((target) => target.lastDigest)).toEqual([null]);
+    expect(summary.sent).toBe(1);
+  });
+
+  it('does not read the page while its flag is off, and names the skip', async () => {
+    vi.stubEnv('ANY_PAGE_SPOT_WATCH_ENABLED', 'false');
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.pageReadings.set(PAGE_URL, pageRead({ state: 'open', spotsLeft: 2 }));
+    await seedWatch(db.database, family, { sourceUrl: PAGE_URL, sessionAnchor: ANCHOR });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.skipped.anyPageOff).toBe(1);
+    expect(test.pageTargets).toEqual([]);
+    expect(test.sent).toEqual([]);
   });
 });

@@ -258,6 +258,7 @@ const DRAFT_INPUT = {
   title: 'Swim Level 2',
   titleIsFallback: false,
   location: 'the Leisure Centre',
+  address: null,
   now: NOW,
 };
 
@@ -271,6 +272,7 @@ describe('bookingDraft', () => {
         title: 'Swim Level 2',
         firstSessionAt: new Date(FIRST_SESSION),
         location: 'the Leisure Centre',
+        address: null,
         eventId: null,
         // The session, folded once and here. The stored string is what the count is read
         // on, so it is pinned by value rather than by "not null".
@@ -371,6 +373,20 @@ describe('bookingDraft', () => {
       matchedEventRef: { table: 'week_plans_item', id: randomUUID() },
     });
     expect(planned.ok && planned.draft.eventId).toBeNull();
+  });
+
+  it('keeps the address only beside a place it does not repeat', () => {
+    const addressOf = (location: string | null, address: string | null) => {
+      const draft = bookingDraft({ ...DRAFT_INPUT, location, address });
+      return draft.ok ? draft.draft.address : 'refused';
+    };
+    // Positive control: a place and its own street address.
+    expect(addressOf('the Leisure Centre', '450 Example Road')).toBe('450 Example Road');
+    // No place, no address: the venue is the place, and the address only completes it.
+    expect(addressOf(null, '450 Example Road')).toBeNull();
+    // Already in the place: sending it again would say it twice.
+    expect(addressOf('Leisure Centre, 450 Example Road', '450 example road')).toBeNull();
+    expect(addressOf('the Leisure Centre', null)).toBeNull();
   });
 });
 
@@ -920,6 +936,68 @@ describe('the booking write', () => {
     expect((booking?.location ?? '').length).toBeLessThanOrEqual(60);
   });
 
+  it("writes the email's own street address beside the place, and none when it gives none", async () => {
+    const h = harness({ classification: classified({ address: '450 Example Road, Brookfield' }) });
+    await expect(alert(h)).resolves.toMatchObject({ alert: 'sent', booking: 'recorded' });
+    const [booking] = await bookingRows();
+    expect(booking).toMatchObject({
+      location: 'the Leisure Centre',
+      address: '450 Example Road, Brookfield',
+    });
+    // Rule #1: the street address is never copied into the audit trail.
+    expect(JSON.stringify(await auditRows())).not.toContain('Example Road');
+
+    family = await seedFamily(db.database);
+    INTEGRATION = randomUUID();
+    await expect(alert(harness())).resolves.toMatchObject({ booking: 'recorded' });
+    const [unsourced] = await bookingRows();
+    expect(unsourced).toMatchObject({ location: 'the Leisure Centre', address: null });
+
+    // Too long to keep whole is none, never a clipped street line.
+    family = await seedFamily(db.database);
+    INTEGRATION = randomUUID();
+    const long = `450 Example Road, ${'Unit 7 '.repeat(20)}Brookfield`;
+    await expect(
+      alert(harness({ classification: classified({ address: long }) })),
+    ).resolves.toMatchObject({ booking: 'recorded' });
+    const [clipped] = await bookingRows();
+    expect(clipped).toMatchObject({ location: 'the Leisure Centre', address: null });
+  });
+
+  it('moves the address with the place on a re-sent receipt, and keeps it when the new one names no place', async () => {
+    const draft = bookingDraft({ ...DRAFT_INPUT, address: '450 Example Road' });
+    if (!draft.ok) throw new Error('fixture lost its draft');
+    const record = async (messageId: string, over: Partial<typeof draft.draft>) =>
+      recordActivityBooking(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: INTEGRATION,
+        messageId,
+        channelMessageId: await sentAlertRow(),
+        draft: { ...draft.draft, ...over },
+      });
+
+    await expect(record('m-a', {})).resolves.toMatchObject({ outcome: 'recorded' });
+    // A receipt with no place says nothing about where: the place and its address stay.
+    await expect(record('m-b', { location: null, address: null })).resolves.toMatchObject({
+      outcome: 'refreshed',
+    });
+    expect(await bookingRows()).toMatchObject([
+      { location: 'the Leisure Centre', address: '450 Example Road' },
+    ]);
+    // A new place with no address: the old street belongs to the old place, so it goes.
+    await expect(record('m-c', { location: 'Pool 2', address: null })).resolves.toMatchObject({
+      outcome: 'refreshed',
+    });
+    expect(await bookingRows()).toMatchObject([{ location: 'Pool 2', address: null }]);
+    await expect(
+      record('m-d', { location: 'North pool', address: '9 Sample Street' }),
+    ).resolves.toMatchObject({ outcome: 'refreshed' });
+    expect(await bookingRows()).toMatchObject([
+      { location: 'North pool', address: '9 Sample Street' },
+    ]);
+  });
+
   it('is idempotent on (connection, message): a re-fired sweep records nothing twice', async () => {
     const draft = bookingDraft(DRAFT_INPUT);
     if (!draft.ok) throw new Error('fixture lost its draft');
@@ -1420,3 +1498,27 @@ async function sentAlertRow(): Promise<string> {
   if (!row) throw new Error('sentAlertRow: insert returned no row');
   return row.id;
 }
+
+describe('migration 0214', () => {
+  let old: TestDb;
+
+  beforeAll(async () => {
+    // 0214 is the next file after this name. The column is not added here.
+    old = await createTestDb('0213_parent_proactive_language.sql');
+  });
+
+  afterAll(async () => {
+    await old.close();
+  });
+
+  it('applies twice and leaves one nullable text address column', async () => {
+    const column = () =>
+      old.client.query<{ data_type: string; is_nullable: string }>(
+        "SELECT data_type, is_nullable FROM information_schema.columns WHERE table_name = 'activity_bookings' AND column_name = 'address'",
+      );
+    expect((await column()).rows).toEqual([]);
+    await old.applyMigration('0214_activity_bookings_address.sql');
+    await expect(old.applyMigration('0214_activity_bookings_address.sql')).resolves.toBeUndefined();
+    expect((await column()).rows).toEqual([{ data_type: 'text', is_nullable: 'YES' }]);
+  });
+});

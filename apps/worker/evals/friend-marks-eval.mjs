@@ -33,6 +33,7 @@ import {
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -54,7 +55,11 @@ register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 function inputFor(voice, fixture) {
-  const base = voice.nameAskVoiceInput(fixture.over.parentWords, fixture.over.language ?? 'en');
+  const base = voice.nameAskVoiceInput(
+    fixture.over.parentWords,
+    fixture.over.language ?? 'en',
+    NAME_ASK_STORED,
+  );
   const retry = fixture.retry
     ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
     : {};
@@ -141,13 +146,25 @@ async function record() {
       console.info(`DRY   ${fixture.id}`);
       continue;
     }
-    const misses = friendMarksMisses(fixture, result.value);
+    const input = inputFor(voice, fixture);
+    const kept = fixture.groupBubbles
+      ? (
+          voice.findShowGroupBubbles(
+            voice.readGroupLeads(result.value?.groupLeads),
+            input.findGroups,
+            input,
+          ) ?? []
+        ).filter((bubble) => bubble.length > 0).length
+      : 0;
+    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept });
     if (misses.length > 0) failed += 1;
     console.info(
       `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
-    if (fixture.printReply)
+    if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+    if (fixture.groupBubbles)
+      console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }
 
   console.info(

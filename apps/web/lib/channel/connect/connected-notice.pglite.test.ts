@@ -246,6 +246,7 @@ describe('sendConnectorConnectedText', () => {
       providerChatId: chatId,
       status: 'delivered',
       body: 'hello',
+      inGroup: false,
       sentAt: new Date('2026-09-23T22:40:00.000Z'),
     });
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));
@@ -280,6 +281,7 @@ describe('sendConnectorConnectedText', () => {
       providerChatId: chatId,
       status: 'delivered',
       body: 'hello',
+      inGroup: false,
       sentAt: new Date('2026-09-23T22:40:00.000Z'),
     });
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-linq' }));

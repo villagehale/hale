@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "Planned status; parent only acknowledges, no change or cancellation",
+    "verdict": "unrelated",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverAccepted": false,
+    "question": null
+  },
+  "latencyMs": 1303
+}

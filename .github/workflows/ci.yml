@@ -284,8 +284,17 @@ jobs:
       - name: Group privacy coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-privacy
 
+      - name: Read-email coach eval (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email
+
+      - name: Read-email coach eval broken calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email:broken
+
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
+
+      - name: Group mention read classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-mention-read
 
       - name: Introduction ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intro-voice
@@ -305,8 +314,14 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Group shared lists eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-lists
+
       - name: Coach local day eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-local-day
+
+      - name: Coach voice-memo choice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-voice-memo
 
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
@@ -337,6 +352,9 @@ jobs:
 
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
+
+      - name: Class availability reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:class-availability
 
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
@@ -418,6 +436,16 @@ jobs:
 
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
+
+      # VIL-558: the day-before registration plan read (exact) and its replies (judge).
+      - name: Signup plan read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-read
+
+      - name: Signup plan reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply
+
+      - name: Signup plan reply calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
 
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read

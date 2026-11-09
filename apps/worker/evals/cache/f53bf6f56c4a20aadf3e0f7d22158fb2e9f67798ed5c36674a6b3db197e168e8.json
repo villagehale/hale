@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrY2nFEPFuX5q8Uyw3b6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSuwkKEAgTGAI4AUIIdGhpbmtpbmcSDI2PADy07zzz8GJ1zRoMHMJnIZ1CRWt/YZyzIjCdvEOyW2hnjMpEZv9mkkovn9NWMSovDmr7+X5tWXf1jhN7a2qVPTu+NpY7zop8wf8q2Ajy9XRAodkDaePgTJdd+0cQUOISjWjWrHhIOl2GN2y9OFsUCFc1XwsazuyIUdPMPfbUiOx55i8l22zzj5qE8ZkdooCjY2iyrEPthbIGz4eh6OER6i3IPIHNsJWkxHfigN3pnGtd2gckfgVw+gq0OUhxWpYi90HTn9YG15s7g4DTrlTRRbQGCPa0+TmdEi+UOCK/cFCo21hlYUJbwPi0N56OzTXmEYWcJyANHE2OuBNeiood3nqHUHPYHR9IgD8bk7j0LxKbv77neKYOuZCfiM9ON70swF9VX9oTnbYOe3KMhN8cbYUliUnIAEMSlEwsRTm2XVixJEQdhLoLddp5Bvuc3DipsGbTe3RRQLIXEtNPjs8YZm7UrKKnJPL8BpAtGPLDjJqbYI0prjsZMeydixAu6yLHE/wE5C6fH9+Kz3cOPVql7ZpYJZC1gbTkADgkZ5pKklWyU457kavq7qVZnZc0WrJ5qWVTrc1ztfd/qaNsTJgLo5k2Hs3kzIJJ6T1vbIoZ4izP0H6YxXSr/GULH1biw25SF5hvHqzr8LdvF+Hnm+ycmzsW8IuI5b1CHkBDsB54bB0ol1o3oCabKxE/9lSA6+cwZq+SWtqwvwmT2qVRd1lJNvY3kBc/RW2gAk0UugJnS5/a8tBvrOlArk09CC6uom1P+khmtlEx9V2NJlkgTiG7xdhG6mFS1ul7Xg8HLtfjTqubI1mEOLSOqeTocBU8qVA3d8gb3aD3nrOX7QKpr995NKNOk+2XS5lDVsVIGbhnPdrxbW0/nzMKjA6ikxnpyx89WE7xM+FF1IQLWo5Fwg38u1W46iTMJi5JLT6Sy6iX27GcHw75JDtxALda0XVOSpnYjkNYYzdVJMWlrrWeiG6t89jUt2qMH5RBJRVa0RKlbu9bM1WA4WaqIXobcVZ6SUhKzYJuk0YR2wtvNInoC5yevaqlIz+h+IhDj3yuUGOpwGesOFrTGgCFY+PQPxBJtIAP/20s1782G3nl7xwM7ZR14g22Vm3mMSVQIchAJP6DpcgZjhvZK9JfnlGehdjc98L5X4cFc6y7wsGOTZOyLm6XoSCQNwRPbynkXHw0WuA7yP08t7yS3TvlbFCTBJO37aHG2tpReP3fxT1t+xtDVzDAhVIO/araTxJEw9XIDpbEiN26QXuP6SrZKczVtXgFG8v2F3xiuzLeU77f3lAZtVEA77gEI87WOaYn7FOkHAZEhFRKOS+6vqnJL0BBq8hb7vKrt6E+3VoMpbJBKJYESXe4dWpYeZep5fCKOCE6Cdu7aIJmDO+UjnpxCIB+JfZ0oSFv3JTxQT8bo/qCNUntbljloB6kvwQoNhW8ZS23eTYOhxGS6P1jfTmJp2vZtsNGd68BebYNvgit59W5N1jiNlKNrY2xHsK0ug4/py9Tkx58pI4o6JRngSKCm+yJfxnrjyUnhI02uP78bkzTNnjrKVj5bGkiISRQ4QSML7BVixvCQTAcF9+57xgB"
+      },
+      {
+        "type": "text",
+        "text": "I can't open that email from here, so I can't tell you what it says. All I have is the note that an appointment email came in."
+      }
+    ],
+    "usage": {
+      "input_tokens": 441,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18727,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 260,
+      "output_tokens_details": {
+        "thinking_tokens": 223
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
