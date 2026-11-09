@@ -196,6 +196,16 @@ describe('channelCoachRuntime', () => {
     expect(p.contextInputs).toEqual([expect.objectContaining({ readerUserId: PARENT })]);
   });
 
+  it('asks for a group turn’s context as every adult, a 1:1 turn’s as that parent (VIL-599)', async () => {
+    const p = ports();
+    await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    await channelCoachRuntime(p).respond({ ...turn(), audience: 'direct' }, []);
+    expect(p.contextInputs).toEqual([
+      expect.objectContaining({ readerUserId: PARENT, inGroup: true }),
+      expect.objectContaining({ readerUserId: PARENT, inGroup: false }),
+    ]);
+  });
+
   it('hands the loop the channel context: the surface and the family clock', async () => {
     const seen: unknown[] = [];
     const p = ports({

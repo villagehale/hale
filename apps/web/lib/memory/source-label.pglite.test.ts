@@ -10,7 +10,7 @@ import {
   seedIntegration,
 } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
-import { loadFactSources } from './source-label';
+import { loadFactSources } from '@hale/worker/fact-sources';
 import { handleParentMemory } from './store';
 
 const NOW = new Date('2026-10-09T15:00:00.000Z');
@@ -79,6 +79,7 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
       factValue,
       confidence: 0.9,
       inferredBy: 'memory_inferencer',
+      heard: 'unrecorded',
       sourceEventId,
       validFrom: NOW,
       memoryKind: 'lasting',

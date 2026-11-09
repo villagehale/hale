@@ -58,6 +58,15 @@ export const familyMemoryFacts = pgTable(
      * positive feedback). The inference itself does not increment this.
      */
     signalCount: integer('signal_count').notNull().default(0),
+    /**
+     * VIL-599 · where the fact was said (decision R7). `one_to_one`: in that adult's own
+     * thread, so a non-logistics fact stays theirs. `family`: where every adult heard it.
+     * `unrecorded`: saved before this was kept, or by a writer that cannot say; held back
+     * from every adult while another adult is on record (migration 0218).
+     */
+    sourceAudience: text('source_audience').notNull().default('unrecorded'),
+    /** The adult who said it. Null when no one adult did, or once that user is erased. */
+    sourceUserId: uuid('source_user_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => ({
     // Hot path: agent reads facts by (family, type, key) where still valid
@@ -72,6 +81,10 @@ export const familyMemoryFacts = pgTable(
     sourceCheck: check(
       'family_memory_facts_source_chk',
       sql`${table.memorySource} IN ('parent_message', 'calendar', 'receipt', 'inferred', 'legacy')`,
+    ),
+    sourceAudienceCheck: check(
+      'family_memory_facts_source_audience_chk',
+      sql`${table.sourceAudience} IN ('one_to_one', 'family', 'unrecorded')`,
     ),
     temporaryExpiryCheck: check(
       'family_memory_facts_temporary_expiry_chk',

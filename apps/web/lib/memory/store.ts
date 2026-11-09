@@ -1,13 +1,20 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
+import {
+  type FactSource,
+  type FactSourceLabel,
+  loadFactSources,
+  readerTimeZone,
+} from '@hale/worker/fact-sources';
+import { type FactReader, audiencePredicate } from '@hale/worker/memory-context';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { promptKind, readDisposition } from './classify-write';
-import { writeFact } from './facts';
+import { type FactHeard, writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import { renderMemoryGroupSync } from './group-sync';
 import {
@@ -32,12 +39,6 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
-import {
-  type FactSource,
-  type FactSourceLabel,
-  loadFactSources,
-  readerTimeZone,
-} from './source-label';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
@@ -285,13 +286,17 @@ function beliefRow(row: { factKey: string; inferredBy: string | null }): boolean
 /**
  * What a parent may be told Hale holds. Lasting, unexpired temporary, and
  * one-off beliefs. Expired temporary rows are already gone at read time.
- * Teen-attributed rows and control-plane receipts stay out.
+ * Teen-attributed rows and control-plane receipts stay out, and so does what another
+ * adult said in their own 1:1 (VIL-599, the rule every prompt read uses).
  */
 export async function recallFamilyMemory(
   database: Database,
-  input: { familyId: string; now: Date },
+  input: { familyId: string; now: Date; reader: FactReader },
 ): Promise<RecallFact[]> {
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -312,6 +317,7 @@ export async function recallFamilyMemory(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt))
@@ -373,8 +379,8 @@ async function familyDoor(
 async function inboundOrigin(
   database: Database,
   messageId: string | null,
-): Promise<{ chatId: string | null; oneToOne: boolean }> {
-  if (!messageId) return { chatId: null, oneToOne: false };
+): Promise<{ chatId: string | null; oneToOne: boolean; inGroup: boolean }> {
+  if (!messageId) return { chatId: null, oneToOne: false, inGroup: false };
   const [row] = await database
     .select({
       providerChatId: schema.channelMessages.providerChatId,
@@ -383,7 +389,11 @@ async function inboundOrigin(
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, messageId))
     .limit(1);
-  return { chatId: row?.providerChatId ?? null, oneToOne: row?.inGroup === false };
+  return {
+    chatId: row?.providerChatId ?? null,
+    oneToOne: row?.inGroup === false,
+    inGroup: row?.inGroup === true,
+  };
 }
 
 export async function syncMemoryDecisionToGroup(
@@ -541,7 +551,11 @@ export async function handleParentMemory(
   };
 
   if (intent.kind === 'recall') {
-    const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
+    const facts = await recallFamilyMemory(database, {
+      familyId: input.familyId,
+      now: input.now,
+      reader: inbound.oneToOne ? { adult: input.parentUserId } : 'every_adult',
+    });
     const [sources, timeZone] = await Promise.all([
       loadFactSources(database, {
         familyId: input.familyId,
@@ -634,6 +648,11 @@ export async function handleParentMemory(
   const corrected = await correctFamilyFact(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
+    // A correction is the speaker's own unless the door recorded the family group: a turn
+    // it could not place stays with the adult who sent it (decision R7).
+    heard: inbound.inGroup
+      ? { in: 'family', userId: input.parentUserId }
+      : { in: 'one_to_one', userId: input.parentUserId },
     factKey: intent.factKey ?? '',
     value: intent.value ?? '',
     now: input.now,
@@ -720,7 +739,14 @@ async function forgetMatchingFacts(
 
 async function correctFamilyFact(
   database: Database,
-  input: { familyId: string; actor: string; factKey: string; value: string; now: Date },
+  input: {
+    familyId: string;
+    actor: string;
+    heard: FactHeard;
+    factKey: string;
+    value: string;
+    now: Date;
+  },
 ): Promise<{ corrected: boolean }> {
   if (isReceiptKey(input.factKey) || !input.factKey || !input.value) return { corrected: false };
   const teens = await teenIds(database, input.familyId, input.now);
@@ -762,6 +788,7 @@ async function correctFamilyFact(
         factValue: input.value,
         confidence: 1,
         inferredBy: 'ask-hale',
+        heard: input.heard,
         validFrom: input.now,
         memoryKind: 'lasting',
         memorySource: 'parent_message',

@@ -468,7 +468,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
           villageTool: searchVillageTool(database),
           // The REAL reader over the REAL rows, and the REAL lane over the web port.
           activity: {
-            reader: bindActivityReader(database, productionActivityFamilyReader()),
+            reader: bindActivityReader(database, productionActivityFamilyReader(), 'every_adult'),
             finder: createActivityFinder(client),
           },
           spots: null,

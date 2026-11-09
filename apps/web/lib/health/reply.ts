@@ -286,6 +286,7 @@ export async function recordCheckpointDone(
       factValue: { checkpointId: input.checkpointId, status: 'done' },
       confidence: 1,
       inferredBy: HEALTH_FACT_WRITER,
+      heard: { in: 'one_to_one', userId: input.parentUserId },
       validFrom: new Date(),
     });
   });

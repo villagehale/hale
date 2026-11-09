@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  type FactHeard,
   type FactWrite,
   type FactWriteResult,
   closeFacts,
@@ -233,6 +234,7 @@ export interface ClassifiedCommit {
   expiresAt?: string | null;
   correctsKey?: string | null;
   sourceEventId?: string;
+  heard: FactHeard;
 }
 
 /**
@@ -253,6 +255,7 @@ export async function commitClassifiedMemory(
     confidence: input.confidence,
     inferredBy: input.inferredBy,
     sourceEventId: input.sourceEventId,
+    heard: input.heard,
     validFrom: accepted.validFrom,
     memoryKind: accepted.memoryKind,
     memorySource: input.source,

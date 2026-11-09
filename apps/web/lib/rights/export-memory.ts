@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { namesAnyIn } from '@hale/worker/memory-context';
+import { anotherAdultOnRecord, factHeardBy, namesAnyIn } from '@hale/worker/memory-context';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
@@ -18,10 +18,12 @@ import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
  *   - `another_adult`: it came from another adult's one-to-one thread. Decision R7:
  *     co-parents share logistics; anything else said in one adult's 1:1 stays theirs;
  *   - `source_not_recorded`: another adult is on record for the family and the row
- *     does not record which one it came from. A fact records no adult, so only a
- *     logistics or routine fact, or one read from a calendar or a receipt, is shared
- *     by source. "On record" reads history, not today's seats: a co-parent who left
- *     still counts, so their past words never pass to the parent who stayed.
+ *     does not record which one it came from. A fact records who said it and where
+ *     (VIL-599), read by the same rule every prompt uses (`factHeardBy`): a logistics or
+ *     routine fact, one read from a calendar or a receipt, and one every adult heard are
+ *     shared; one said in an adult's 1:1 is theirs. A fact saved before that was kept
+ *     records no adult. "On record" reads history, not today's seats: a co-parent who
+ *     left still counts, so their past words never pass to the parent who stayed.
  * A group-thread row and the requester's own 1:1 row are theirs to read; a workstream
  * is checked against every message that wrote it. The row keeps only the one that
  * opened it and the one that last changed it, so a job changed more than once, or
@@ -91,9 +93,6 @@ function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
 }
 
-const SHARED_FACT_TYPES: ReadonlySet<string> = new Set(['logistic', 'routine']);
-const SHARED_FACT_SOURCES: ReadonlySet<string> = new Set(['calendar', 'receipt']);
-
 interface MessageSource {
   parentUserId: string;
   inGroup: boolean | null;
@@ -153,34 +152,6 @@ async function workstreamLaterWrites(
       row.targetId === null ? [] : [[row.targetId, Math.max(0, row.writes - 1)] as const],
     ),
   );
-}
-
-/**
- * Whether any adult other than the requester was ever part of the family: a current
- * seat, anyone who texted in it (departure keeps their messages), or any user named as
- * an actor on its immutable audit trail (departure writes one).
- */
-async function anotherAdultOnRecord(
-  database: Database,
-  familyId: string,
-  requesterUserId: string,
-): Promise<boolean> {
-  const rows = (await database.execute(sql`
-    select 1 from (
-      select ${schema.familyMembers.userId} as user_id from ${schema.familyMembers}
-        where ${schema.familyMembers.familyId} = ${familyId}
-      union
-      select ${schema.channelMessages.parentUserId} from ${schema.channelMessages}
-        where ${schema.channelMessages.familyId} = ${familyId}
-      union
-      select ${schema.users.id} from ${schema.auditLog}
-        join ${schema.users} on ${schema.users.id}::text = ${schema.auditLog.actor}
-        where ${schema.auditLog.familyId} = ${familyId}
-    ) adults
-    where adults.user_id <> ${requesterUserId}
-    limit 1
-  `)) as unknown as { rows?: unknown[] } | unknown[];
-  return (Array.isArray(rows) ? rows : (rows.rows ?? [])).length > 0;
 }
 
 export async function loadFamilyMemoryExport(
@@ -265,12 +236,11 @@ export async function loadFamilyMemoryExport(
   return {
     facts: factRows.map((row) => {
       const exported = toFamilyMemoryExportFact(row);
-      const sharedBySource =
-        SHARED_FACT_TYPES.has(row.factType) || SHARED_FACT_SOURCES.has(row.memorySource);
+      const heard = otherAdult ? factHeardBy(row, requester.userId) : 'heard';
       const withheld = withheldFor(
         [row.childId],
         [row.factKey, row.factValue],
-        sharedBySource ? null : unattributed,
+        heard === 'heard' ? null : heard === 'another_adult' ? 'another_adult' : unattributed,
       );
       return {
         child: childName(row.childId),

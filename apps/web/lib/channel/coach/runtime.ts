@@ -12,6 +12,7 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import type { FactReader } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -492,6 +493,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         transcript,
         sourceNote: null,
         readerUserId: turn.parentUserId,
+        inGroup: turn.audience === 'group',
       });
       // VIL-566: the household-group addendum rides only when the fact does, so every
       // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
@@ -981,6 +983,8 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       onUndo,
     ) => {
       const listJournal = createGroupListJournal();
+      const factReader: FactReader =
+        turn.audience === 'group' ? 'every_adult' : { adult: turn.parentUserId };
       const listsLit = turn.audience === 'group' && groupSharedListsEnabled();
       if (listsLit && onUndo) {
         onUndo(() =>
@@ -1014,7 +1018,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // loop's — a turn that could reach Anthropic for the loop and not for the search
         // is not a state worth being able to represent.
         activity: {
-          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
           // NOT the coach's client. A web-grounded search is a different job with a
           // different duration, and running it on the coach's 30s-plus-a-retry budget
           // meant the calls that needed forty seconds were killed twice before the lane
@@ -1028,7 +1032,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // the gate would then refuse to text.
         spots: {
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
-          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
           readClassAvailability: createLiveClassAvailabilityReader(
             anthropicClient(),

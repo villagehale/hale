@@ -342,6 +342,7 @@ export async function recordWeekdayCare(
       factValue: { care: input.care, provider: input.provider },
       confidence: 1,
       inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      heard: { in: 'one_to_one', userId: input.parentUserId },
       validFrom: input.now,
     });
   });

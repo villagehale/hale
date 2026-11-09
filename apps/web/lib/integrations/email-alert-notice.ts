@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
-import { senderLabel } from './sender-label';
+import { senderLabel } from '@hale/worker/sender-label';
 
-export { senderLabel } from './sender-label';
+export { senderLabel } from '@hale/worker/sender-label';
 
 /**
  * The email-alert text. ONE model call decides, from facts, whether the email is about this

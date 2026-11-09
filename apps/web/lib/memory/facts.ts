@@ -31,6 +31,24 @@ type MemoryFactType = schema.NewFamilyMemoryFact['factType'];
 /** The query surface a write needs — satisfied by both `Database` and a transaction. */
 export type FactWriter = Pick<Database, 'insert' | 'update'>;
 
+/**
+ * VIL-599 · who said a fact, and so which adult may hear it back (decision R7: co-parents
+ * share logistics; anything else said in one adult's 1:1 stays with that adult). Every
+ * writer states it; the read (`factsForContext`) enforces it.
+ *  - `one_to_one`: said in `userId`'s own thread.
+ *  - `family`: said where every adult of the family heard it (the family group, a
+ *    household record). `userId` names the speaker when one adult said it.
+ *  - `unrecorded`: the writer cannot say which adult it came from. Held back from every
+ *    adult while another adult is on record, like a row saved before this was kept.
+ */
+export type FactHeard =
+  | { in: 'one_to_one'; userId: string }
+  | { in: 'family'; userId: string | null }
+  | 'unrecorded';
+
+/** Hale's own household bookkeeping (what it asked, a count it keeps): no adult said it. */
+export const HALE_RECORD: FactHeard = { in: 'family', userId: null };
+
 export interface FactWrite {
   familyId: string;
   /** Null = family-wide. Part of the identity: siblings hold their own truths. */
@@ -43,6 +61,7 @@ export interface FactWrite {
   inferredBy: string;
   /** The event this was derived from, when one is known. */
   sourceEventId?: string;
+  heard: FactHeard;
   /**
    * When the fact BECAME true — the source event's time, not the moment Hale
    * learned it. "Mia started daycare in September", read in November, is valid
@@ -112,6 +131,8 @@ export async function writeFact(writer: FactWriter, write: FactWrite): Promise<F
       confidence: write.confidence,
       inferredBy: write.inferredBy,
       sourceEventId: write.sourceEventId,
+      sourceAudience: write.heard === 'unrecorded' ? 'unrecorded' : write.heard.in,
+      sourceUserId: write.heard === 'unrecorded' ? null : write.heard.userId,
       validFrom: write.validFrom,
       ...(write.memoryKind ? { memoryKind: write.memoryKind } : {}),
       ...(write.memorySource ? { memorySource: write.memorySource } : {}),

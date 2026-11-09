@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq, inArray } from 'drizzle-orm';
-import { senderLabel } from '../integrations/sender-label';
+import { senderLabel } from './sender-label.js';
 
 /**
  * VIL-429 · where Hale saw a fact it took from a connector. An email is named by its

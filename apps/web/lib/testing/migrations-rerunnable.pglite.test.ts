@@ -444,3 +444,52 @@ describe('opt_out_held_messages sealed crisis read', () => {
     ]);
   });
 });
+
+/** VIL-599 · who said a memory fact, found by suffix so it survives renumbering at merge. */
+describe('family_memory_facts source user', () => {
+  const FILE = migrationFiles().find((f) => f.endsWith('_family_memory_facts_source_user.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'family_memory_facts' AND column_name IN ('source_audience', 'source_user_id') ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice, and a row saved before it records no speaker', async () => {
+    expect(FILE).toMatch(/^\d{4}_family_memory_facts_source_user\.sql$/);
+    // Positive control: the columns are absent before the file.
+    expect(await columns()).toEqual([]);
+    const { familyId } = await seedFamily(db.database);
+    await db.exec(
+      `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value) VALUES ('${familyId}', 'preference', 'before', '"x"')`,
+    );
+
+    await db.applyMigration(FILE as string);
+    await expect(db.applyMigration(FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'source_audience', is_nullable: 'NO', data_type: 'text' },
+      { column_name: 'source_user_id', is_nullable: 'YES', data_type: 'uuid' },
+    ]);
+    const legacy = await db.client.query(
+      "SELECT source_audience, source_user_id FROM family_memory_facts WHERE fact_key = 'before'",
+    );
+    expect(legacy.rows).toEqual([{ source_audience: 'unrecorded', source_user_id: null }]);
+    await expect(
+      db.exec(
+        `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value, source_audience) VALUES ('${familyId}', 'preference', 'bad', '"x"', 'everyone')`,
+      ),
+    ).rejects.toThrow(/source_audience_chk/);
+  });
+});

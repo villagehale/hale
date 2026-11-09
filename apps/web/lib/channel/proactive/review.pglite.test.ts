@@ -1290,9 +1290,9 @@ describe('runProactiveReview', () => {
       cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
-    expect((await assembleMemoryBrief(db.database, familyId, THURSDAY_EVENING)).text).not.toContain(
-      'text me less',
-    );
+    expect(
+      (await assembleMemoryBrief(db.database, familyId, 'every_adult', THURSDAY_EVENING)).text,
+    ).not.toContain('text me less');
 
     await handOffProactive(
       db.database,

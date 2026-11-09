@@ -26,7 +26,7 @@ import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
-import { closeFacts, writeFact } from '~/lib/memory/facts';
+import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
 import {
   type CadenceLine,
   type CadencePlan,
@@ -1028,6 +1028,7 @@ async function noteLinesSent(
       }),
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: HALE_RECORD,
       validFrom: input.now,
     });
     await auditDuty(database, {
@@ -1049,6 +1050,7 @@ async function noteLinesSent(
       },
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: HALE_RECORD,
       validFrom: input.now,
     });
     await auditDuty(database, {
@@ -1405,6 +1407,7 @@ export async function answerParentDutyAsk(
       },
       confidence: 1,
       inferredBy: 'coparent_duty_ask',
+      heard: { in: 'family', userId: input.actorUserId },
       validFrom: input.now,
     });
     await auditDuty(database, {
