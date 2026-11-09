@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { hasLinkBeyond, hasLinkShape, linksOutside, withoutLinks } from './link-shape';
+import {
+  asHandsetReads,
+  hasLinkBeyond,
+  hasLinkShape,
+  linkHostname,
+  linksOutside,
+  withoutLinks,
+  wordSpans,
+} from './link-shape';
 
 describe('hasLinkShape: the evasion table', () => {
   it.each([
@@ -117,6 +125,39 @@ describe('linksOutside: an allowed word counts only whole', () => {
     ['a spaced-dot host', 'See bit . ly/x', []],
   ])('refuses %s', (_label, text, allowed) => {
     expect(linksOutside(text, allowed)).not.toEqual([]);
+  });
+});
+
+describe('linkHostname: the host the browser parser reads, or null', () => {
+  it.each([
+    ['a query that carries another scheme', 'evil.app/x?r=https://villagehale.com', 'evil.app'],
+    [
+      'a backslash, which the parser reads as a slash',
+      'https://evil.app\\@villagehale.com',
+      'evil.app',
+    ],
+    ['a port before the path', 'villagehale.com:443/x', 'villagehale.com'],
+    ['a scheme-less host', 'Evil.App/slip', 'evil.app'],
+    ['a host and a query', 'https://villagehale.com/x?y=1', 'villagehale.com'],
+  ])('%s', (_label, word, host) => {
+    expect(linkHostname(word)).toBe(host);
+  });
+
+  it.each([
+    ['a user part, whose host a reader mistakes', 'https://villagehale.com:443@evil.app/login'],
+    ['an address', 'parents@evil.app'],
+    ['a word the parser refuses', 'go:https://evil.app'],
+  ])('null for %s', (_label, word) => {
+    expect(linkHostname(word)).toBeNull();
+  });
+});
+
+describe('wordSpans: the shared word reading, with where each word sits', () => {
+  it('drops the prose edges and points at the word in the reading', () => {
+    const read = asHandsetReads('See (evil [。] example), then 9:00.');
+    const spans = wordSpans(read);
+    expect(spans.map((span) => span.word)).toEqual(['See', 'evil.example', 'then', '9:00']);
+    for (const span of spans) expect(read.slice(span.from, span.to)).toBe(span.word);
   });
 });
 
