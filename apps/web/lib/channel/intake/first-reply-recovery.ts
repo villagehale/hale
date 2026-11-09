@@ -11,6 +11,7 @@ import {
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
+import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
   appendTranscript,
@@ -39,7 +40,7 @@ import {
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { FOUNDER_PAIR_SESSION_IDS, SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
+import { SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
 
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
@@ -118,6 +119,8 @@ export interface FirstReplyRecoveryResult {
   deferred: number;
   /** The tick did not speak: the provider cannot serve any family right now. */
   held?: AbortedWindow;
+  /** VIL-553 · owed rows not claimed because the number has an unread opt-out read. */
+  optOutHeld?: number;
 }
 
 export interface FirstReplyRecoveryRow {
@@ -185,11 +188,6 @@ export async function runFirstReplyRecoveryCron(
 
   const owed: Array<FirstReplyCandidate & { recovery: RecoveryView }> = [];
   for (const row of await loadFirstReplyCandidates(database, now)) {
-    if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
-      await claimFirstReplyRecovery(database, row.id, row.state, now);
-      result.skipped += 1;
-      continue;
-    }
     const recovery = decodeIntakeForRecovery(row.dataEncrypted);
     if (
       !firstReplyRecoveryEligible({
@@ -203,6 +201,14 @@ export async function runFirstReplyRecoveryCron(
       })
     ) {
       result.skipped += 1;
+      continue;
+    }
+    if (await isSenderHeld(database, row.phoneHash)) {
+      result.optOutHeld = (result.optOutHeld ?? 0) + 1;
+      console.info(
+        { skipped: 'opt_out_unread' },
+        'first-reply recovery: number held - not claimed',
+      );
       continue;
     }
     owed.push({ ...row, recovery });
@@ -340,6 +346,7 @@ function languageFromTranscript(
 
 interface FirstReplyCandidate {
   id: string;
+  phoneHash: string;
   phoneEncrypted: string;
   state: string;
   closedAt: Date | null;
@@ -357,6 +364,7 @@ async function loadFirstReplyCandidates(
   return database
     .select({
       id: schema.smsIntakeSessions.id,
+      phoneHash: schema.smsIntakeSessions.phoneHash,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,

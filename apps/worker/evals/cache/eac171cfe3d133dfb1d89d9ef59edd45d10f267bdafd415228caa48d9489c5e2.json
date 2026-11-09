@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The title \"PD Day\" names the event in the facts, and the day (tomorrow) is correct with no clock time, which is right for an all-day event. But the text adds \"so school is closed for students,\" a consequence the facts do not state. The facts only say there is an all-day event called PD Day; closure and who is affected are an unstated inference, which is a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

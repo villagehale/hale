@@ -13,8 +13,8 @@ import Anthropic from '@anthropic-ai/sdk';
 
 /** Why the alarm did or did not ring. Four outcomes, none of them silence (rule #11). */
 export type SmokeAlarmOutcome =
-  /** An outage met a crisis token: nothing went out (no line is fixed, #868), the
-   * urgent #ops log fired, and the inbound is claimed so a re-drive pages once. */
+  /** Never produced: no word list decides a crisis, so the alarm does not fire. Kept for
+   * the outcome vocabulary; nothing pages from it. */
   | 'fired'
   /** The turn broke, but the provider was reachable — an ordinary failed turn. */
   | 'not_an_outage'

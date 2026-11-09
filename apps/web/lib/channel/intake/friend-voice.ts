@@ -17,6 +17,7 @@ import {
 } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -37,6 +38,8 @@ import {
   acceptOnboardingCapture,
   checklistAfter,
   countRejectedScheduleAdds,
+  dropTakeBackName,
+  foldMessage,
   mergeCaptures,
   onboardingMissing,
 } from './onboarding-turn';
@@ -66,6 +69,12 @@ import {
  */
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
+export const ONBOARDING_REPLY_SHORT_MAX_TOKENS = SHORT_MAX_TOKENS;
+
+export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
+export const ONBOARDING_REPLY_TOOL = 'reply';
+export const ONBOARDING_REPLY_TOOL_DESCRIPTION =
+  'Return the onboarding reply and any facts the parent just gave.';
 
 /** What a worried parent wants to hear and Hale cannot say: Google shares all of it. */
 const ACCESS_UNTRUE = [
@@ -143,6 +152,11 @@ export type FriendFallback =
 export interface FriendTurn {
   role: 'parent' | 'hale';
   body: string;
+  /**
+   * The model set `asks` on the outbound that produced this turn. Absent on
+   * older rows: a question mark in `body` is not a substitute.
+   */
+  asked?: boolean;
 }
 
 /** One group on the activity map, as code found it. */
@@ -189,6 +203,11 @@ export interface FriendVoiceInput {
   activity: string | null;
   day: string | null;
   parentName: string | null;
+  /**
+   * The model already read this message as taking the name back. The reply
+   * must not address them by it. Absent means the message may be their name.
+   */
+  nameTakenBack?: boolean;
   /** The soft read of this parent's role, when one is stored. */
   parentRole?: ParentRoleGuess | null;
   /** Which connector just landed. Set only on the connected step. */
@@ -245,6 +264,8 @@ export interface FriendVoiceResult {
   step: FriendStep;
   /** Shape-checked fields from the model. Empty when nothing was stored. */
   capture: OnboardingCapture;
+  /** The model's `asks` on the reply that went out. False when nothing was sent. */
+  asks: boolean;
 }
 
 export interface FriendComposeOptions {
@@ -258,6 +279,53 @@ export interface FriendComposed {
   ahaMention?: string | null;
   /** On find_show: one short lead per group, same order as facts.findGroups. */
   groupLeads?: readonly string[] | null;
+  /** This reply asks the parent something. Omitted means the model did not say. */
+  asks?: boolean;
+  /** Their message is a question, not a yes to Gmail, the calendar, or the group. */
+  parentQuestion?: boolean;
+  /** Every connector this reply asks, offers, or agrees to connect. */
+  connectorsOffered?: readonly OfferedConnector[];
+  /** How a co-parent yes points at the number and phrase code places under the reply. */
+  joinPointer?: JoinPointer | null;
+  /** This reply tells the parent something was saved, added or set this turn. */
+  claimsSaved?: boolean;
+}
+
+export type OfferedConnector = 'gmail' | 'calendar';
+
+/** What the model says a co-parent yes does with the number code places under the reply. */
+export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
+
+const JOIN_POINTERS = new Set<JoinPointer>([
+  'below',
+  'wrong_owner',
+  'placeholder',
+  'hale_starts',
+  'missing',
+]);
+
+/** The connector a card on this step is not for. The link under the reply connects only its own. */
+const OTHER_CONNECTOR: Partial<Record<FriendStep, OfferedConnector>> = {
+  email: 'calendar',
+  calendar: 'gmail',
+};
+
+/** The four decisions the model makes instead of a text match. Omitted is "did not say". */
+function replyMarks(composed: FriendComposed): {
+  asks: boolean;
+  parentQuestion: boolean;
+  offered: readonly OfferedConnector[];
+  joinPointer: JoinPointer | null;
+  claimsSaved: boolean;
+} {
+  const pointer = composed.joinPointer;
+  return {
+    asks: composed.asks === true,
+    parentQuestion: composed.parentQuestion === true,
+    offered: composed.connectorsOffered ?? [],
+    joinPointer: pointer != null && JOIN_POINTERS.has(pointer) ? pointer : null,
+    claimsSaved: composed.claimsSaved === true,
+  };
 }
 
 export interface FriendVoiceComposer {
@@ -398,10 +466,25 @@ const replySchema = z.object({
   coparentGroup: z.boolean().nullable().optional().default(null).catch(null),
   coparentGroupMode: z.enum(['existing', 'new']).nullable().optional().default(null).catch(null),
   nameDeclined: z.boolean().optional().default(false).catch(false),
+  nameTakenBack: z.boolean().optional().default(false).catch(false),
   kidsNamesDeclined: z.boolean().optional().default(false).catch(false),
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
+  asks: z.boolean().optional().default(false).catch(false),
+  parentQuestion: z.boolean().optional().default(false).catch(false),
+  claimsSaved: z.boolean().optional().default(false).catch(false),
+  connectorsOffered: z
+    .array(z.enum(['gmail', 'calendar']))
+    .optional()
+    .default([])
+    .catch([]),
+  joinPointer: z
+    .enum(['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'])
+    .nullable()
+    .optional()
+    .default(null)
+    .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
@@ -459,21 +542,31 @@ const replyJsonSchema = {
     coparentGroup: { type: ['boolean', 'null'] },
     coparentGroupMode: { type: ['string', 'null'], enum: ['existing', 'new', null] },
     nameDeclined: { type: 'boolean' },
+    nameTakenBack: { type: 'boolean' },
     kidsNamesDeclined: { type: 'boolean' },
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    asks: { type: 'boolean' },
+    parentQuestion: { type: 'boolean' },
+    connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
+    joinPointer: {
+      type: ['string', 'null'],
+      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing', null],
+    },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
+    claimsSaved: { type: 'boolean' },
   },
-  required: ['reply'],
+  // Code reads these instead of the reply's words, so the model always says.
+  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
-function replyToolSchema(): {
+export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
-  required: readonly ['reply'];
+  required: readonly string[];
 } {
   if (!linqGroupOnboardingV2Enabled()) {
     const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
@@ -552,11 +645,12 @@ const FLEX_QUESTION_STEPS = new Set<FriendStep>(['name_reply']);
 const LINK_STEPS = new Set<FriendStep>(['calendar', 'email']);
 
 export function turnsFromTranscript(
-  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  transcript: readonly { direction: 'in' | 'out'; body: string; asked?: boolean }[],
 ): FriendTurn[] {
   return transcript.slice(-8).map((entry) => ({
     role: entry.direction === 'in' ? 'parent' : 'hale',
     body: entry.body,
+    ...(entry.asked === true ? { asked: true } : {}),
   }));
 }
 
@@ -633,12 +727,17 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
         return { category: group.category, lines };
       })
     : null;
+  // The parent's words decide the reply's language (#868). A stored tag is for a
+  // message Hale sends on its own; beside their words it only pulled the retry
+  // into French for an English parent (VIL-538).
+  const theirWords = input.parentWords.trim().length > 0;
+  const french = copyLanguage(input.language) === 'fr';
   return {
     step: input.step,
-    // A hint only when certain; the parent's words decide the reply's language (#868).
-    languageHint: certainLanguageHint(input.language),
+    languageHint: theirWords ? null : certainLanguageHint(input.language),
     // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
-    ...(copyLanguage(input.language) === 'fr' ? { address: input.address } : {}),
+    // A group's vous is the thread's, so it stays beside their words.
+    ...(french && (!theirWords || input.address === 'vous') ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.
@@ -712,19 +811,58 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
 }
 
 /**
+ * The open name ask, as the name-capture reader hands it to the model. The ask
+ * is the structured `answering` fact; no Hale turn is written here.
+ */
+export function nameAskVoiceInput(
+  parentWords: string,
+  language: ReplyLanguage | null,
+): FriendVoiceInput {
+  return {
+    step: 'names',
+    language,
+    address: 'tu',
+    introduce: false,
+    parentWords,
+    recentTurns: [],
+    placeLabel: null,
+    agesLabel: null,
+    ageMonths: [],
+    children: [],
+    findLines: [],
+    listKind: 'none',
+    activity: null,
+    day: null,
+    parentName: null,
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  };
+}
+
+/**
  * What code can read from the parent's words without the model: a lone name
  * after the name ask, or a plain yes to a connector or the group chat. The
- * model is told, and the capture is held to it.
+ * model is told, and the capture is held to it. A model `nameDeclined` is not
+ * replaced by that lone name.
  */
 export function parentReading(
   input: FriendVoiceInput,
 ): { kind: 'name'; name: string } | { kind: 'yes'; item: OnboardingItem } | null {
   const words = input.parentWords.trim();
   const item = answeringItem(input);
-  if (!item || words.length === 0) return null;
-  // A plain "ok" answers a question only when Hale's last text asked one.
+  if (!item) return null;
+  // A plain "ok" answers only when the previous reply's model field said it asked.
+  // A question mark in that text, in any script, is not the signal.
   const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
-  if (!lastHale?.body.includes('?')) return null;
+  if (lastHale?.asked !== true) return null;
   if (item === 'name' && LONE_NAME.test(words)) {
     const name = words.replace(/[.!]+$/u, '');
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
@@ -766,11 +904,11 @@ function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): Onb
 }
 
 /**
- * A question is not a yes. "Do you read all my emails?" asks; it does not
- * agree to connect Gmail or to a group chat.
+ * A question is not a yes. The model says so with `parentQuestion`; a question
+ * mark in the parent's words, in any script, is not the signal.
  */
-function noYesInAQuestion(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
-  if (!input.parentWords.includes('?')) return capture;
+function noYesInAQuestion(capture: OnboardingCapture, parentQuestion: boolean): OnboardingCapture {
+  if (!parentQuestion) return capture;
   return {
     ...capture,
     connectGmail: capture.connectGmail === true ? null : capture.connectGmail,
@@ -795,6 +933,8 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   const reading = parentReading(input);
   if (!reading) return capture;
   if (reading.kind === 'name') {
+    // A take-back or a lasting no is the model's. A lone capital word does not replace it.
+    if (capture.nameDeclined || capture.nameTakenBack) return capture;
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
     if (capture.parentName || kids.includes(reading.name.toLowerCase())) return capture;
     return { ...capture, parentName: reading.name };
@@ -1263,6 +1403,40 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * A fact check on Hale's draft, not a reading of the parent: the model has
+ * already marked this message as a take-back or a turned-down name
+ * (`nameTakenBack`), and the draft still uses that whole message as a name
+ * (quoted, capitalised, or ending a sentence). The parent's words are only the
+ * literal compared against; nothing here decides what they meant.
+ */
+function replyAddressesByOtherName(reply: string, input: FriendVoiceInput): boolean {
+  if (!input.nameTakenBack) return false;
+  const message = input.parentWords.trim().replace(/[.!]+$/u, '');
+  const folded = foldMessage(message);
+  if (folded.length === 0) return false;
+  for (const match of reply.matchAll(/["“«']\s*([^"”»']+?)\s*["”»']/gu)) {
+    if (foldMessage(match[1] ?? '') === folded) return true;
+  }
+  const title = message.replace(/(^|\s)(\p{L})/gu, (_gap, space: string, letter: string) => {
+    return `${space}${letter.toUpperCase()}`;
+  });
+  if (new RegExp(`(?<![\\p{L}\\p{M}])${escapeRegExp(title)}(?![\\p{L}\\p{M}])`, 'u').test(reply)) {
+    return true;
+  }
+  const sentences = reply.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const token =
+      sentence
+        .replace(/[.!?]+$/u, '')
+        .trim()
+        .split(/\s+/u)
+        .at(-1) ?? '';
+    if (foldMessage(token) === folded) return true;
+  }
+  return false;
+}
+
 /** "I'm Barton" from Hale, when Barton is the parent. */
 function speaksAsParent(text: string, parentName: string | null | undefined): boolean {
   const name = parentName?.trim() ?? '';
@@ -1324,6 +1498,9 @@ export function judgeFriendReply(
   }
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
+  if (replyAddressesByOtherName(trimmed, input)) {
+    return { ok: false, reason: 'identity', detail: 'unknown_name' };
+  }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
   if (COMPLIANCE.test(trimmed)) return { ok: false, reason: 'compliance' };
@@ -1368,33 +1545,6 @@ export function judgeFriendReply(
     const follows = options.linkFollows === true && LINK_STEPS.has(input.step);
     if (!attached && !follows && !above) return { ok: false, reason: 'link' };
   }
-  // A card is for one connector. Prose about the other one under its link
-  // sends the parent to the wrong place.
-  if (options.linkFollows || options.link) {
-    // Naming the other connector is fine ("so I can add them to your calendar");
-    // asking to connect it under this link is not.
-    const connects = (thing: string) =>
-      new RegExp(
-        `\\b(?:connect|link|hook up|sync|access)\\w*\\b[^.?!]{0,25}\\b(?:${thing})\\b|\\b(?:${thing})\\b[^.?!]{0,15}\\b(?:connect|link|access)\\w*`,
-        'i',
-      ).test(trimmed);
-    // The ask is for this connector: a question about the other one is the wrong ask.
-    const otherAsked = (thing: RegExp) =>
-      sentencesOf(trimmed).some((sentence) => sentence.includes('?') && thing.test(sentence));
-    if (input.step === 'calendar' && otherAsked(/\b(?:gmail|inbox|e-?mails?)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && otherAsked(/\b(?:calendars?|calendrier|agenda)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'calendar' && connects('gmail|inbox|e-?mail')) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && connects('calendar|calendrier|agenda')) {
-      return { ok: false, reason: 'link' };
-    }
-  }
-
   // Nothing is connected until they tap the link: the ask and the reply to a yes say so.
   if (LINK_STEPS.has(input.step) && CONNECTED_CLAIM.test(trimmed)) {
     return { ok: false, reason: 'premature' };
@@ -1572,6 +1722,7 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
     fallback: reason,
     step,
     capture: acceptOnboardingCapture(null),
+    asks: false,
   };
 }
 
@@ -1697,14 +1848,25 @@ export async function speakFriend(
       : null;
   const base = pre?.input ?? given;
   const input = base;
-  const withPre = (capture: OnboardingCapture): OnboardingCapture =>
-    pre ? mergeCaptures(pre.settled, capture) : capture;
+  const withPre = (capture: OnboardingCapture): OnboardingCapture => {
+    if (!pre) return capture;
+    const merged = mergeCaptures(pre.settled, capture);
+    if (!capture.nameDeclined && !capture.nameTakenBack) return merged;
+    return {
+      ...merged,
+      parentName: capture.parentName,
+      // A later take-back must not wipe a refusal an earlier pass already settled.
+      nameDeclined: merged.nameDeclined || capture.nameDeclined,
+      nameTakenBack: capture.nameTakenBack,
+    };
+  };
   const finish = (
     prose: string,
     bubbles: string[],
     source: FriendVoiceResult['source'],
     turnCapture: OnboardingCapture,
     step: FriendStep,
+    asks: boolean,
   ): FriendVoiceResult => {
     const capture = withPre(turnCapture);
     const body =
@@ -1719,6 +1881,7 @@ export async function speakFriend(
       fallback: null,
       step,
       capture,
+      asks,
     };
   };
 
@@ -1751,6 +1914,7 @@ export async function speakFriend(
         bubbles: string[];
         capture: OnboardingCapture;
         step: FriendStep;
+        asks: boolean;
       }
     | {
         fail: FriendFallback;
@@ -1758,9 +1922,9 @@ export async function speakFriend(
         retry?: FriendVoiceInput['retry'];
       }
   > => {
-    // The full attempt still has the short retry. An error log here is what
-    // pages #ops, so a refusal that can still recover is a warning. The short
-    // attempt is the last one: its refusal is the error, and failed() pages.
+    // The full attempt still has the short retry, so a refusal that can still
+    // recover is a warning. The short attempt is the last one: its refusal is the
+    // error, and failed() pages #ops through page() (a log alone pages nobody).
     const terminal = prompt === 'short';
     const noteRefusal = (fields: Record<string, unknown>, kind: 'unusable' | 'compose'): void => {
       if (terminal) {
@@ -1777,27 +1941,31 @@ export async function speakFriend(
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
+      const marks = replyMarks(composed);
       const limits = scheduleLimits(input);
       // A message Hale sends on its own (a card, a receipt) answers nothing:
       // there are no parent words to read a yes or a fact from.
       const capture =
         input.parentWords.trim().length > 0
-          ? settleSchedule(
-              withGroupMode(
-                withReading(
-                  noYesInAQuestion(
-                    ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+          ? dropTakeBackName(
+              input.parentWords,
+              settleSchedule(
+                withGroupMode(
+                  withReading(
+                    noYesInAQuestion(
+                      ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
+                      marks.parentQuestion,
+                    ),
                     input,
                   ),
                   input,
                 ),
-                input,
               ),
             )
           : empty;
       const draft = composed.reply.trim();
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step };
+        return { prose: '', bubbles: [], capture, step: input.step, asks: marks.asks };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -1817,41 +1985,43 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('schedule') },
         };
       }
-      const judgeInput = judgeInputFor(input, capture);
+      // The claim gate, onboarding's half (VIL-538): this lane sends straight to the
+      // transport, past the dispatch choke point. The only calendar write onboarding
+      // makes is this turn's accepted adds, so a reply that says something was saved
+      // is checked against them, in any language, by the model's own field.
+      if (marks.claimsSaved && capture.scheduleAdds.length === 0) {
+        noteRefusal({ reason: 'unbacked_save', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_save') },
+        };
+      }
+      const judgeInput = {
+        ...judgeInputFor(input, capture),
+        nameTakenBack:
+          capture.nameTakenBack ||
+          capture.nameDeclined ||
+          (capture.nameConfirmed === false && capture.parentName === null),
+      };
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
-      const tidied = tidyProse(
+      const prose = tidyProse(
         composed.reply,
         input,
         judgeInput.step,
         yesToLink(input, capture) || capture.scheduleAdds.length > 0,
       );
-      // Flag off: the number and phrase ride below, so a sentence that ends
-      // "send this phrase: Hale" points at them and stops there. Flag on writes
-      // the choice itself and does not get that rewrite.
+      // Under a yes to the group, code adds the number and phrase. The model
+      // says whether the reply points at them. Words are not the signal.
       const v2 = linqGroupOnboardingV2Enabled();
-      const prose =
-        !v2 && input.coparentJoin != null && capture.coparentGroup === true
-          ? tidied.replace(/:\s*[^.?!:\n]{0,24}$/u, '.')
-          : tidied;
-      // Under a yes to the group, code adds the number and phrase: the reply says they are below.
       const joinBelow = !v2 && input.coparentJoin != null && capture.coparentGroup === true;
-      // The number below is Hale's, never the other parent's.
-      const wrongOwner =
-        /\b(?:her|his|their|(?:mom|mum|dad|mother|father)['’]?s) (?:number|phone)\b/i;
-      if (
-        joinBelow &&
-        (!/\bbelow\b|\bhere\b|\bnumber\b|ci-dessous|en dessous|plus bas|num[ée]ro/i.test(prose) ||
-          wrongOwner.test(prose) ||
-          // A placeholder where the number or phrase would go ("this number: Hale's number").
-          /\b(?:number|phrase)\s*:?\s+(?:hale['’]s|the) (?:number|phrase)\b/i.test(prose) ||
-          // They start the group; Hale does not.
-          /\bI(?:['’]ll| will) (?:set up|start|create|make)\b[^.?!]{0,15}\bgroup\b|\bI(?:['’]ll| will) set (?:that|it|this) up\b/i.test(
-            prose,
-          ))
-      ) {
-        noteRefusal({ reason: 'join_not_pointed', step: input.step, prompt }, 'unusable');
+      if (joinBelow && marks.joinPointer !== 'below') {
+        noteRefusal(
+          { reason: 'join_not_pointed', joinPointer: marks.joinPointer, step: input.step, prompt },
+          'unusable',
+        );
         return {
           fail: 'unusable',
           capture,
@@ -1875,6 +2045,17 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
+      // A card is for one connector. The model lists what the reply offers to connect.
+      const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
+      const other = OTHER_CONNECTOR[judgeInput.step];
+      if (linkInPlay && other && marks.offered.includes(other)) {
+        noteRefusal({ reason: 'other_connector', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('other_connector') },
+        };
+      }
       const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
@@ -1888,24 +2069,28 @@ export async function speakFriend(
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
-      // A good draft with one fixable slip (a second question mark) is repaired
-      // by code and judged again rather than dropped. Length is not a reason.
+      // A draft that fails the judge is not rewritten. The model is asked once
+      // more; if that also fails, nothing is sent.
       const assembled = bubblesFor(prose);
       if (!assembled) return { fail: 'unusable', capture };
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-      const repaired = repairedProse(prose, judgeInput.step);
-      const again = repaired.length > 0 ? bubblesFor(repaired) : null;
-      if (
-        again &&
-        (judged.reason === 'question' || judged.reason === 'link') &&
-        judgeFriendReply(again.judgedText, judgeInput, judgeOptions).ok
-      ) {
-        console.error(
-          { repaired: judged.reason, step: input.step, prompt },
-          'onboarding-friend: draft repaired',
-        );
-        return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
+      // The promises no row can ever back, refused here as dispatch refuses them.
+      if (judged.ok && claimsNoLedgerCanBack(assembled.judgedText).length > 0) {
+        noteRefusal({ reason: 'unbacked_claim', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_claim') },
+        };
+      }
+      if (judged.ok) {
+        return {
+          prose,
+          bubbles: assembled.bubbles,
+          capture,
+          step: judgeInput.step,
+          asks: marks.asks,
+        };
       }
       return reject(judged);
 
@@ -1967,6 +2152,7 @@ export async function speakFriend(
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
       first.step,
+      first.asks,
     );
   }
   if (firstPrompt === 'short') return failed(first.fail, first.capture);
@@ -1991,7 +2177,7 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+    return finish(second.prose, second.bubbles, 'retry', capture, second.step, second.asks);
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2022,18 +2208,30 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 }
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
-function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join',
+export function retryProblem(
+  reason:
+    | FriendJudgeFailure
+    | 'schedule'
+    | 'join'
+    | 'other_connector'
+    | 'unbacked_save'
+    | 'unbacked_claim',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
     case 'join':
       return linqGroupOnboardingV2Enabled()
-        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
-        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
+        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Set joinPointer to below when the reply points at them, wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
+    case 'other_connector':
+      return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
-      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
+      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map, so nothing was saved. Use the n of a map line that matches, for a child its ages suit. When no line matches, nothing is saved: do not say it was, and do not confirm a day or time for it.';
+    case 'unbacked_save':
+      return 'It says something was saved, added or set, and nothing was saved this turn. Do not say it was or confirm a day or time for it; say plainly it is not saved.';
+    case 'unbacked_claim':
+      return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? 'This message asks nothing. No question mark.'
@@ -2053,7 +2251,9 @@ function retryProblem(
     case 'identity':
       return detail === 'price'
         ? 'They asked about price: say in a clause that villagehale.com has the details, including price. Never say it is free or quote a price.'
-        : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
+        : detail === 'unknown_name'
+          ? 'unknown_name'
+          : 'You are Hale; talk to the parent, never about them by name, and never call yourself by their name. When they asked who this is, name the company from facts.identity.';
     default:
       return `It broke a rule (${reason}). Write it again, plainly, keeping every rule.`;
   }
@@ -2125,42 +2325,6 @@ function factsOnly(capture: OnboardingCapture): OnboardingCapture {
 }
 
 /** Sentences, split after . ! ? or at a line break. Each keeps its punctuation. */
-/** Opens a question: "Which of these…?", "Would you…?". */
-const QUESTION_OPENER =
-  /^(?:which|what|who|when|where|how|would|could|can|do|does|did|is|are|want|should|shall|will)\b/i;
-/** A question that only points at the options a later one names: "Which of these would help?" */
-const OPTIONS_OPENER =
-  /^(?:which|what)\b[^?]{0,40}\b(?:these|those|ones?|options?|activities|programs)\b[^?]{0,40}\?$/i;
-const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
-
-/**
- * Code's repair of a draft that broke one countable rule. Two or three
- * questions offering choices become one: an earlier question that only opens
- * ("Which of these would help?") is dropped, any other earlier one becomes a
- * statement. Empty when there is nothing safe to repair. Length is not repaired.
- */
-export function repairedProse(prose: string, step: FriendStep): string {
-  if (ZERO_QUESTION_STEPS.has(step)) return '';
-  let sentences = sentencesOf(prose);
-  const asks = sentences.filter((sentence) => sentence.includes('?'));
-  // Never fold in an ask that belongs to another step.
-  if (step !== 'coparent' && asks.some((sentence) => COPARENT_WORDS.test(sentence))) return '';
-  if (asks.length > 1) {
-    const last = sentences.lastIndexOf(asks[asks.length - 1] ?? '');
-    sentences = sentences.flatMap((sentence, index) => {
-      if (index === last || !sentence.includes('?')) return [sentence];
-      if (OPTIONS_OPENER.test(sentence)) return [];
-      // "Do you have kids? If so, …": the later question leans on it. No safe repair.
-      if (QUESTION_OPENER.test(sentence)) return ['\u0000'];
-      return [sentence.replace(/\?+/g, '.')];
-    });
-    if (sentences.includes('\u0000')) return '';
-  }
-  const repaired = sentences.join(' ');
-  if (repaired === prose.trim()) return '';
-  return repaired.includes('?') ? repaired : '';
-}
-
 function sentencesOf(text: string): string[] {
   // "Village Hale Technologies Inc. made Hale" is one sentence.
   return text
@@ -2263,7 +2427,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: replyToolSchema(),
+        inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
         maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
         transport: llmTransport(),
@@ -2286,6 +2450,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           coparentGroup: value.coparentGroup,
           coparentGroupMode: value.coparentGroupMode,
           nameDeclined: value.nameDeclined,
+          nameTakenBack: value.nameTakenBack,
           kidsNamesDeclined: value.kidsNamesDeclined,
           calendarLater: value.calendarLater,
           gmailLater: value.gmailLater,
@@ -2293,6 +2458,11 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,
+        asks: value.asks,
+        parentQuestion: value.parentQuestion,
+        connectorsOffered: value.connectorsOffered,
+        joinPointer: value.joinPointer,
+        claimsSaved: value.claimsSaved,
       };
     },
   };

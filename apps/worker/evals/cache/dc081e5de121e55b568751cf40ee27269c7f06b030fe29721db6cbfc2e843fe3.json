@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is wrong on nearly every fact. It is in English, not the requested Chinese. It never mentions the Piano lesson, the 7:00-8:00 PM time, or Ms. Chen studio; instead it invents a \"Jour de congé\" event at 3:00 that is not in the facts. It also says tomorrow is a day off with \"breathing room\", which implies a free day when there is a timed event today, and that inference is not in the facts.",
+    "score": 1
+  }
+}

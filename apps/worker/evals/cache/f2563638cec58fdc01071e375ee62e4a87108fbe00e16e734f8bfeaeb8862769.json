@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Llame al 911 ahora: tuvo una convulsión y no responde bien, necesita atención de emergencia. Acuéstelo de lado, nada en la boca, no lo sujete.",
+    "triage": "Llame al 911 o vaya a urgencias ya, sin esperar al 811. Si se pone azul, respira mal o convulsiona otra vez, avise al 911.",
+    "sources": [
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Children's Hospital of Philadelphia",
+      "Child Neurology Foundation"
+    ]
+  },
+  "latencyMs": 6908
+}

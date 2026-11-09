@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { createLinqIntroGroupOpener } from '~/lib/village/intros/group';
 import { defaultOneToOneSend } from './linq/connect-link-1to1';
@@ -52,7 +53,9 @@ afterEach(async () => {
   clearCapturedSends();
   clearCapturedChatOps();
   setPreviewGroupCaptureSinkForTest(null);
-  await db.exec('truncate table families, users, preview_captured_linq_calls cascade');
+  await db.exec(
+    'truncate table families, users, linq_group_rosters, preview_captured_linq_calls cascade',
+  );
 });
 
 describe('former bypasses are captured', () => {
@@ -89,6 +92,23 @@ describe('former bypasses are captured', () => {
       .insert(schema.users)
       .values({ externalAuthId: `imessage:${family?.id}`, name: 'Parent' })
       .returning({ id: schema.users.id });
+    // The floor's live read is not what this test captures: one confirmed parent, listed.
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 6).toString('base64'));
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({
+        chatId: 'chat-group',
+        familyId: family?.id as string,
+        source: 'added_to_existing',
+        status: 'confirmed',
+      })
+      .returning({ id: schema.linqGroupRosters.id });
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster?.id as string,
+      chatId: 'chat-group',
+      phoneE164Hash: phoneBlindIndex('+15555550161'),
+      status: 'known_parent',
+    });
     const outcome = await sendClaimedGroupLine(db.database, {
       familyId: family?.id as string,
       parentUserId: user?.id as string,
@@ -98,6 +118,7 @@ describe('former bypasses are captured', () => {
       dedupeKey: 'capture-test-1',
       templateKey: 'capture:test',
       contentClass: 'schedule',
+      listChatHandles: async () => ({ status: 'ok', handles: ['+15555550161'], isGroup: true }),
     });
     expect(outcome).toBe('sent');
     expect(capturedChatOps()).toMatchObject([

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not mention the only event in the facts. Toddler gym today 10:30-11:15 AM at Birchwood Rec Centre, 14 Alder Ave is entirely absent, and the text invents a different event, 'Jour de congé at 3:00', with no AM/PM, no venue, and no end. It also claims tomorrow is a day off and that there is 'breathing room', which are invented inferences and imply the family has nothing to be at when a timed event starts in 18 minutes. The date is wrong, since it says 'Mon, Oct 26' with no relation to the real event. Bold is none, which is fine, but every fact is wrong or missing.",
+    "score": 1
+  }
+}

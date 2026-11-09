@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request for a reply ('Reply YES and I'll book it for you'), which is an ask that waits on the parent's answer. It also includes a 'Reply STOP' opt-out, which is a standard compliance line rather than a request for the parent to act on the content, but the YES prompt is a clear ask.",
+    "score": 1
+  }
+}

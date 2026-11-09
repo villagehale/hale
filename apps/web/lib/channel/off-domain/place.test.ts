@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported } from '~/lib/family/location-input';
-import { coarsenPlace, placeOf } from './place';
+import { coarsenPlace, healthPlaceOf, placeOf, provinceOfPostal } from './place';
 import ca from './postal-cities/ca.json';
 import coarsen from './postal-cities/coarsen.json';
 import us from './postal-cities/us.json';
@@ -627,5 +627,76 @@ describe('a sensitive search is not told a place under 10,000 people', () => {
     const read = await readPlace(row);
     expect(read).toEqual({ status: 'known', ...place });
     expect(await coarsenPlace(read, true)).toEqual(read);
+  });
+});
+
+/**
+ * The province a Canadian postal token is in, by the table's own name (VIL-589): the
+ * one grain the health line needs. A US or other code has none here.
+ */
+describe('provinceOfPostal', () => {
+  it.each([
+    ['K7L 3N6', 'Ontario'],
+    ['P3A', 'Ontario'],
+    ['V6B', 'British Columbia'],
+    ['H2X', 'Quebec'],
+  ])('%s is in %s', async (token, province) => {
+    expect(await provinceOfPostal(token)).toBe(province);
+  });
+
+  it.each([['98101'], ['SW1A 1AA'], ['']])('%j has no province', async (token) => {
+    expect(await provinceOfPostal(token)).toBeNull();
+  });
+});
+
+/**
+ * The health line's place (VIL-589): the country on the row, and for Canada the province
+ * the postal area is in, or a stored province only when it is the table's own name or
+ * abbreviation. A US family has no state here: nothing Hale says by state differs.
+ */
+describe('healthPlaceOf', () => {
+  const HEALTH_ROW = { country: null, province: null, postalCode: null, areaCoarse: null };
+
+  it('reads the province from the postal area, never from a city name', async () => {
+    expect(await healthPlaceOf({ ...HEALTH_ROW, country: 'Canada', postalCode: 'P3A' })).toEqual({
+      country: 'CA',
+      provinceOrState: 'Ontario',
+    });
+    expect(await healthPlaceOf({ ...HEALTH_ROW, country: 'CA', areaCoarse: 'V6B' })).toEqual({
+      country: 'CA',
+      provinceOrState: 'British Columbia',
+    });
+    // A city name in the coarse area is not a postal area, whatever letter it starts with.
+    expect(
+      await healthPlaceOf({ ...HEALTH_ROW, country: 'Canada', areaCoarse: 'Kelowna' }),
+    ).toEqual({ country: 'CA', provinceOrState: null });
+  });
+
+  it("uses a stored province only when it is the table's own name or abbreviation", async () => {
+    expect(await healthPlaceOf({ ...HEALTH_ROW, country: 'Canada', province: 'on' })).toEqual({
+      country: 'CA',
+      provinceOrState: 'Ontario',
+    });
+    expect(await healthPlaceOf({ ...HEALTH_ROW, country: 'Canada', province: 'Ontaryo' })).toEqual({
+      country: 'CA',
+      provinceOrState: null,
+    });
+    // The postal area outranks what the row says, as it does for the city.
+    expect(
+      await healthPlaceOf({
+        ...HEALTH_ROW,
+        country: 'Canada',
+        province: 'Ontario',
+        postalCode: 'V6B',
+      }),
+    ).toEqual({ country: 'CA', provinceOrState: 'British Columbia' });
+  });
+
+  it('a US family is the US with no state; a country with no table is not placed', async () => {
+    expect(
+      await healthPlaceOf({ ...HEALTH_ROW, country: 'United States', province: 'Ontario' }),
+    ).toEqual({ country: 'US', provinceOrState: null });
+    expect(await healthPlaceOf({ ...HEALTH_ROW, country: 'France', postalCode: 'P3A' })).toBeNull();
+    expect(await healthPlaceOf({ ...HEALTH_ROW, postalCode: 'P3A' })).toBeNull();
   });
 });

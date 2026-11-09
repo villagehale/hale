@@ -88,14 +88,31 @@ describe('/connect — the texted redeem page', () => {
 
   it('falls back to the plain sign-in tap for a `to` it does not recognise', async () => {
     // Drive has no text-back path, and `../evil` is somebody probing: both land on the
-    // destination the flow has always had rather than on a provider-shaped promise.
+    // family page rather than on a provider-shaped promise.
     for (const to of ['gdrive', '../evil', 'GCAL ']) {
       const html = await render({ t: 'tok', to });
       expect(html).toContain('Continue');
       expect(html).not.toContain('Continue with Google');
       expect(html).not.toContain('Connect Google Calendar');
-      expect(html).toContain('One tap signs you in and opens your connected apps.');
+      expect(html).toContain('One tap signs you in.');
+      expect(html).not.toContain('connected apps');
     }
+  });
+
+  it('gives a privacy link the plain sign-in tap, not the Google one', async () => {
+    const html = await render({ t: 'tok', to: 'privacy' });
+
+    expect(html).toContain('Continue');
+    expect(html).not.toContain('Continue with Google');
+    expect(html).toContain('One tap signs you in.');
+    expect(html).toContain('Sign in');
+
+    const { generateMetadata } = await import('./page');
+    const meta = await generateMetadata({
+      searchParams: Promise.resolve({ t: 'tok', to: 'privacy' }),
+    });
+    expect(meta.title).toBe('Sign in');
+    expect(meta.description).toBe('One tap signs you in.');
   });
 
   /**

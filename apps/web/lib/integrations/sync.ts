@@ -12,6 +12,7 @@ import {
 import type { CalendarAlertOutcome, CalendarAlertSweep, CalendarChange } from './calendar-alert';
 import type { CalendarMirrorCounts } from './calendar-mirror';
 import type { EmailAlertResult, GmailAlertEnvelope } from './email-alert';
+import { parentsOwnMail } from './gmail-labels';
 import type { ConnectorProvider } from './google-oauth';
 import type { ActiveConnectorConnection } from './store';
 import { type ConnectorErrorCode, ConnectorSyncError, classifyConnectorError } from './sync-error';
@@ -786,6 +787,10 @@ interface GmailHistoryResponse {
 }
 interface GmailMessageResponse {
   id?: string;
+  threadId?: string;
+  /** Gmail's system and user labels. `format=metadata` returns them unasked; SENT and
+   * DRAFT are how the alert lane knows a message is the parent's own. */
+  labelIds?: string[];
   snippet?: string;
   /** Epoch milliseconds, as a string. Gmail returns it on `format=metadata` without
    * being asked, and it is the ONLY timestamp this sync has: the metadata GET requests
@@ -906,6 +911,8 @@ async function readGmailMessageBatch(
   const events: IngestedEventPayload[] = [];
   const envelopes: GmailAlertEnvelope[] = [];
   let skippedNotFound = 0;
+  const skippedOwn = { own_mail: 0, draft: 0 };
+  let labelsMissing = 0;
   for (const id of messageIds) {
     const { status, data } = await getJson<GmailMessageResponse>(
       googleFetch,
@@ -917,6 +924,16 @@ async function readGmailMessageBatch(
       // Gone between history.list and this fetch (deleted or trashed). The rest
       // of the batch is still real mail — one missing id must not park the mailbox.
       skippedNotFound += 1;
+      continue;
+    }
+    // Gmail omits an empty repeated field, and archived provider mail can carry no label at
+    // all, so a message with none is read as inbound: fails open, and is counted.
+    if (data.labelIds === undefined) labelsMissing += 1;
+    // MAIL THE PARENT WROTE never leaves the sync: no ingest payload, no envelope for the
+    // alert or travel passes. The alert lane refuses it again on its own.
+    const own = parentsOwnMail(data.labelIds ?? []);
+    if (own !== null) {
+      skippedOwn[own] += 1;
       continue;
     }
     const headers = data.payload?.headers ?? [];
@@ -932,6 +949,7 @@ async function readGmailMessageBatch(
     );
     envelopes.push({
       messageId: id,
+      ...threadAndLabels(data),
       subject: subject ?? '',
       from: from ?? '',
       snippet: data.snippet ?? '',
@@ -943,6 +961,19 @@ async function readGmailMessageBatch(
     console.warn(
       { integrationId: connection.id, skippedNotFound },
       'connector sync: gmail messages gone before fetch, skipped',
+    );
+  }
+  if (skippedOwn.own_mail + skippedOwn.draft > 0) {
+    // Counts only, as above (rule #1).
+    console.info(
+      { integrationId: connection.id, skippedOwnMail: skippedOwn },
+      'connector sync: the parent’s own gmail skipped before ingest',
+    );
+  }
+  if (labelsMissing > 0) {
+    console.info(
+      { integrationId: connection.id, labelsMissing },
+      'connector sync: gmail messages with no labels read as inbound',
     );
   }
   return { events, envelopes };
@@ -1103,6 +1134,7 @@ export async function backfillBookedMail(
         envelopes: [
           {
             messageId: id,
+            ...threadAndLabels(data),
             subject,
             from,
             snippet: data.snippet ?? '',
@@ -1308,6 +1340,19 @@ async function syncDrive(
     }),
   );
   return { events, nextMetadata: { pageToken: newStartPageToken } };
+}
+
+/** The thread and labels of a SUCCESSFUL metadata read. Gmail's JSON omits an empty
+ * repeated field, so a 200 with no `labelIds` is a message with no labels (archived, read
+ * mail), not an unread one: `[]`. An envelope with no `labelIds` at all is one no label
+ * read produced, and the alert lane refuses it (`labels_unread`). */
+function threadAndLabels(
+  data: GmailMessageResponse,
+): Pick<GmailAlertEnvelope, 'threadId' | 'labelIds'> {
+  return {
+    ...(data.threadId ? { threadId: data.threadId } : {}),
+    labelIds: data.labelIds ?? [],
+  };
 }
 
 /** Gmail's `internalDate` as an ISO instant, or undefined when it is absent or not a

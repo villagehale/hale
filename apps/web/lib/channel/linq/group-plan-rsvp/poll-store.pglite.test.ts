@@ -18,8 +18,8 @@ import { fakeGroupPlanRsvpComposer } from './voice-fake';
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PARENT = '+14165550111';
-const NOT_HALE = '+14165550199';
+const PARENT = '+15555550111';
+const NOT_HALE = '+15555550199';
 const CHAT = 'chat-pglite-poll';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 
@@ -182,7 +182,7 @@ describe('postgres group poll store', () => {
 });
 
 describe('group poll inbound adapters', () => {
-  it('opens a parent poll through the ledgered send; the card is named not_configured with Linq unset', async () => {
+  it('opens a parent poll through the ledgered send; the card carries the family-chat floor reason', async () => {
     vi.stubEnv('LINQ_POLLS', 'on');
     await seedFamily();
     const sent: string[] = [];
@@ -200,7 +200,8 @@ describe('group poll inbound adapters', () => {
       { chatId: CHAT, senderHandle: PARENT, text: 'a group message', tapback: null },
     );
     expect(result.handled && result.outcome).toBe('group_poll_spoken');
-    expect(result.handled && result.card).toEqual({ skipped: 'not_configured' });
+    // The family holds the chat and its roster is not confirmed: the floor holds the card.
+    expect(result.handled && result.card).toEqual({ skipped: 'group_roles_unconfirmed' });
     expect(sent).toHaveLength(1);
     const [poll] = await db.database.select().from(schema.linqGroupPolls);
     expect(poll?.origin).toBe('parent');

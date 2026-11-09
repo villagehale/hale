@@ -1,8 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { type PendingAsksForgotten, forgetPendingAsks } from '~/lib/channel/off-domain/lane';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
+import {
+  type GoogleDisconnectPorts,
+  settleGoogleRevocations,
+} from '~/lib/integrations/google-disconnect';
+import { type EndedConnection, endGoogleConnections } from '~/lib/integrations/store';
 import { appendMcpGrantWithdrawals } from '~/lib/mcp/oauth-store';
 import { revokeTeenAccessGrantsForDepartingMember } from '~/lib/teen-access';
 
@@ -56,7 +61,8 @@ export interface CoParentDeparted {
   channelRevoked: number;
   /** Live MCP bearer grants closed — the connected-assistant door into this family. */
   mcpGrantsRevoked: number;
-  /** Their user-scoped connectors (Gmail/Calendar/Drive) disconnected, tokens purged. */
+  /** Their user-scoped connectors (Gmail/Calendar/Drive) disconnected, tokens purged and
+   * revoked at Google after the transaction (VIL-156). */
   connectorsRevoked: number;
   /** Teen raw-content windows closed — rule #1's named exception, held by THEM. */
   teenGrantsRevoked: number;
@@ -133,10 +139,12 @@ async function standingMessagingScopes(
 export async function departCoParent(
   database: Database,
   input: { familyId: string; actorUserId: string; now: Date },
+  ports?: GoogleDisconnectPorts,
 ): Promise<CoParentDeparture> {
   const { familyId, actorUserId, now } = input;
+  let endedGoogle: EndedConnection[] = [];
 
-  return database.transaction(async (rawTx) => {
+  const departure = await database.transaction(async (rawTx): Promise<CoParentDeparture> => {
     const tx = rawTx as unknown as Database;
 
     const removed = await tx
@@ -230,17 +238,14 @@ export async function departCoParent(
       grantedAt: now,
     });
 
-    const revokedConnectors = await tx
-      .update(schema.integrations)
-      .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: now })
-      .where(
-        and(
-          eq(schema.integrations.familyId, familyId),
-          eq(schema.integrations.userId, actorUserId),
-          ne(schema.integrations.status, 'revoked'),
-        ),
-      )
-      .returning({ id: schema.integrations.id, provider: schema.integrations.provider });
+    // The one writer that ends a Google connection (VIL-156): keys out of the live column,
+    // calendar mirrors retired, one token held for Google's revoke after commit.
+    const revokedConnectors = await endGoogleConnections(tx, {
+      familyId,
+      userId: actorUserId,
+      now,
+    });
+    endedGoogle = revokedConnectors;
 
     // Asked for by name rather than done here, and that is structural: `lib/channel` is
     // banned from the teen-grant machinery (`teen-access-outbound.test.ts`), because an
@@ -370,4 +375,16 @@ export async function departCoParent(
       identityRetained: true,
     };
   });
+
+  // Google's half runs after commit, as every disconnect's does: the stop and the revoke
+  // are network calls that must not hold the transaction. The tally above is unchanged
+  // (its shape is the erasure answer's), so what Google said is logged per row and
+  // written as Hale's own audit rows, in sentences that read right to the parent who
+  // stayed.
+  if (departure.outcome === 'departed') {
+    for (const settlement of await settleGoogleRevocations(database, endedGoogle, ports)) {
+      console.info(settlement, 'coparent depart: google settled');
+    }
+  }
+  return departure;
 }

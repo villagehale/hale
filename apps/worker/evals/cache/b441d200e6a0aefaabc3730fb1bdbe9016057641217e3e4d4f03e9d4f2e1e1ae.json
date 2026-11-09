@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text covers a different event than the facts. It mentions 'Jour de congé at 3:00' and a day off, neither of which is in the facts, and it omits both real events: Library story time (11:00-11:45 AM at Georgetown library, 9 Church St) and Soccer (5:30-6:30 PM at Riverside Field, 22 Park Rd). It implies breathing room when two timed events exist, invents details, and is not in Chinese. Bold is none, which is fine, but every fact is wrong or missing.",
+    "score": 1
+  }
+}

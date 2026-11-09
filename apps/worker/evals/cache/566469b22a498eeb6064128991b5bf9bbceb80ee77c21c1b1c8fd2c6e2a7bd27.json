@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "游泳老师叫什么名字？",
+    "language": "zh",
+    "situation": "none",
+    "confirmation": ""
+  },
+  "latencyMs": 1425
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "answer": "اذهبوا إلى قسم الطوارئ الآن. الحمى مع بقع لا تتلاشى بالضغط تحتاج إلى تقييم في المستشفى اليوم، حتى لو بدا الطفل بخير.",
+    "triage": "لا تنتظروا. اتصلوا بالرقم 911 فورًا إذا صار الطفل ناعسًا أو مترهلًا أو يتنفس بسرعة أو رقبته متيبسة أو انتشرت البقع. الرقم 811 للنصائح غير العاجلة فقط.",
+    "sources": [
+      "Royal Children's Hospital Melbourne (Kids Health Info)",
+      "Children's Health Queensland",
+      "Kingston and Richmond NHS Foundation Trust",
+      "Connecticut Children's",
+      "Banner Health"
+    ]
+  },
+  "latencyMs": 6848
+}

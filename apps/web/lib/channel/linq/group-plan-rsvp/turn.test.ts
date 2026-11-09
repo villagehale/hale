@@ -2,14 +2,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { memberKeyFromHandle } from './member-key';
 import { createMemoryGroupPlanRsvpStore, createMemoryWorld } from './memory-store';
 import type { GroupPlanRsvpReader, GroupPlanRsvpReading } from './reading';
+import { GroupPlanRsvpHeld } from './send';
 import { groupPlanRsvpTakesTheTurn, takeGroupPlanRsvpTurn } from './turn';
 import { fakeGroupPlanRsvpComposer } from './voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const CHAT = 'chat-picnic';
-const PRIYA = '+14165550101';
-const SAM = '+14165550102';
-const MAYA = '+14165550103';
+const PRIYA = '+15555550101';
+const SAM = '+15555550102';
+const MAYA = '+15555550103';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 
 beforeAll(() => {
@@ -373,5 +374,56 @@ describe('takeGroupPlanRsvpTurn', () => {
       outcome: 'group_plan_line_unsent',
       notice: { skipped: 'model_failed' },
     });
+  });
+
+  it('names the family-chat floor reason when the tally is held, not a generic not_sent', async () => {
+    const { store } = await startPicnic();
+    const ask = {
+      chatId: CHAT,
+      senderHandle: PRIYA,
+      senderName: 'Priya',
+      text: 'where do we stand',
+      tapback: null,
+      language: 'en' as const,
+      now: NOW,
+    };
+    const tallyAsk = readerOf({
+      intent: 'ask_tally',
+      planTitle: null,
+      startsAt: null,
+      location: null,
+      deadline: null,
+      response: null,
+      headcount: 1,
+      householdLabel: null,
+      coversNames: [],
+      confidence: 'high',
+    });
+    const held = await takeGroupPlanRsvpTurn(ask, {
+      store,
+      reader: tallyAsk,
+      composer: fakeGroupPlanRsvpComposer(),
+      send: async () => {
+        throw new GroupPlanRsvpHeld('participant_unresolved');
+      },
+      enabled: () => true,
+    });
+    expect(held).toMatchObject({
+      handled: true,
+      outcome: 'group_plan_line_unsent',
+      notice: { skipped: 'participant_unresolved' },
+    });
+
+    // Positive control: any other failed send is still not_sent.
+    const failed = await takeGroupPlanRsvpTurn(ask, {
+      store,
+      reader: tallyAsk,
+      composer: fakeGroupPlanRsvpComposer(),
+      send: async () => {
+        throw new Error('linq refused');
+      },
+      enabled: () => true,
+    });
+    expect(failed).toMatchObject({ notice: { skipped: 'not_sent' } });
   });
 });

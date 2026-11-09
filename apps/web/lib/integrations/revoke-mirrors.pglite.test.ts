@@ -4,7 +4,8 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { defaultReminderRunDeps } from '~/lib/loop/reminders/run';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { revokeConnection, saveConnection } from './store';
+import { disconnectGoogle } from './google-disconnect';
+import { saveConnection } from './store';
 
 /**
  * Disconnecting a calendar ends its mirrors. The integrations row survives a revoke
@@ -99,7 +100,7 @@ async function reminderStatus(eventRef: string): Promise<string | undefined> {
   return row?.status;
 }
 
-describe('revokeConnection retires the revoked calendar’s mirrors', () => {
+describe('disconnectGoogle retires the revoked calendar’s mirrors', () => {
   it("soft-deletes only the disconnecting parent's mirror and leaves the co-parent's mirror and a placement", async () => {
     const parentIntegration = await connect(parentUserId);
     const coParentIntegration = await connect(coParentUserId);
@@ -124,9 +125,25 @@ describe('revokeConnection retires the revoked calendar’s mirrors', () => {
     await scheduleReminder(parentMirror, parentUserId);
     await scheduleReminder(coParentMirror, coParentUserId);
 
-    const revoked = await revokeConnection(db.database, familyId, parentUserId, 'gcal', 'settings');
+    const result = await disconnectGoogle(
+      db.database,
+      { familyId, userId: parentUserId, via: 'settings', named: 'gcal' },
+      {
+        revoker: { revoke: async () => ({ outcome: 'revoked' }) },
+        google: {
+          request: async () => {
+            throw new Error('push is off in this suite');
+          },
+        },
+        tokenFetch: async () => {
+          throw new Error('push is off in this suite');
+        },
+        env: {},
+        now: () => SATURDAY,
+      },
+    );
 
-    expect(revoked).toBe(1);
+    expect(result).toMatchObject({ status: 'disconnected', providers: ['gcal'] });
     expect(await deletedAtOf(parentMirror)).toBeInstanceOf(Date);
     expect(await deletedAtOf(coParentMirror)).toBeNull();
     expect(await deletedAtOf(placement)).toBeNull();

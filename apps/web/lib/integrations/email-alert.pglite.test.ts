@@ -174,8 +174,9 @@ function alertPair(
       parentUserId: family.parentUserId,
       integrationId: INTEGRATION,
       messageId,
+      threadId: `t-${messageId}`,
+      labelIds: ['INBOX'],
       envelope: ENVELOPE,
-      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now: NOW,
       ...over,
@@ -210,6 +211,7 @@ beforeEach(async () => {
   INTEGRATION = randomUUID();
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -399,6 +401,8 @@ describe('alertParentForGmailSweep', () => {
   function envelope(n: number, receivedAt?: string): GmailAlertEnvelope {
     return {
       messageId: `m${n}`,
+      threadId: `t-m${n}`,
+      labelIds: ['INBOX'],
       subject: ENVELOPE.subject,
       from: ENVELOPE.from,
       snippet: ENVELOPE.snippet,
@@ -453,7 +457,7 @@ describe('alertParentForGmailSweep', () => {
     expect(h.classifyCalls).toBe(0);
   });
 
-  it('reads every dated envelope, newest first, and drops none for a count', async () => {
+  it('reads every dated envelope, oldest first, and drops none for a count', async () => {
     const h = harness();
     // 12 messages, m1 oldest .. m12 newest. All of them are told.
     const envelopes = Array.from({ length: 12 }, (_, i) =>
@@ -515,8 +519,15 @@ describe('the email_alert lane', () => {
       integrationId: INTEGRATION,
       seeding: false,
       envelopes: [
-        { messageId: 'm1', ...ENVELOPE },
-        { messageId: 'm2', subject: ENVELOPE.subject, from: ENVELOPE.from, snippet: '' },
+        { messageId: 'm1', threadId: 't-m1', labelIds: ['INBOX'], ...ENVELOPE },
+        {
+          messageId: 'm2',
+          threadId: 't-m2',
+          labelIds: ['INBOX'],
+          subject: ENVELOPE.subject,
+          from: ENVELOPE.from,
+          snippet: '',
+        },
       ],
       now: NOW,
       ...over,
@@ -574,7 +585,10 @@ describe('the email_alert lane', () => {
 
     const outcomes = await alertParentForGmailSweep(
       db.database,
-      sweepInput({ backfill: true, envelopes: [{ messageId: 'm1', ...ENVELOPE }] }),
+      sweepInput({
+        backfill: true,
+        envelopes: [{ messageId: 'm1', threadId: 't-m1', labelIds: ['INBOX'], ...ENVELOPE }],
+      }),
       h.ports,
     );
 
@@ -1267,8 +1281,9 @@ describe('the going count in the alert path', () => {
         parentUserId: household.parentUserId,
         integrationId: randomUUID(),
         messageId,
+        threadId: `t-${messageId}`,
+        labelIds: ['INBOX'],
         envelope: RECEIPT,
-        cancelledThisSweep: new Set<string>(),
         timeZone: 'America/Toronto',
         now: NOW,
       },

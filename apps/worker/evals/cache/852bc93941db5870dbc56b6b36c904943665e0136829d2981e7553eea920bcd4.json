@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The reply gives 911 and tells the parent to call now, which covers the emergency. However, the text is mojibake-corrupted in the transmission. Arabic appears as garbled characters, so the reply is not clearly in Arabic script for the parent to read. The line is present in the facts, but the Arabic text is largely unreadable. The score is low because the message cannot be reliably read by the parent."
+  }
+}

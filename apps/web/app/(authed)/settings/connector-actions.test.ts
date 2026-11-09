@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * `{status:'revoked'}` regardless of whether a row matched — a co-parent clicking
  * disconnect on a connection that wasn't theirs saw success while nothing was
  * revoked. This action delegates to revokeFamilyConnector (whose not_found path is
- * real) and must surface every non-revoked result as an error — and its success
- * copy must own the local-only truth: Google's own record of the grant survives.
+ * real) and must surface every non-revoked result as an error. Its success label says
+ * what Google confirmed, one label per outcome, and never claims more.
  */
 vi.mock('~/lib/integrations/load', () => ({
   revokeFamilyConnector: vi.fn(),
@@ -27,21 +27,40 @@ function form(provider?: string): FormData {
   return data;
 }
 
+async function successLabel(google: 'revoked' | 'pending_retry' | 'not_confirmed') {
+  revokeMock.mockResolvedValue({ status: 'revoked', google });
+  const state = await disconnectConnectorAction({ status: 'idle' }, form('gcal'));
+  expect(state.status).toBe('success');
+  return state.status === 'success' ? state.message : '';
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe('disconnectConnectorAction', () => {
-  it('on revoked: succeeds, refreshes the page, and states the Google-side truth', async () => {
-    revokeMock.mockResolvedValue({ status: 'revoked' });
-    const state = await disconnectConnectorAction({ status: 'idle' }, form('gcal'));
-    expect(state.status).toBe('success');
-    expect(state).toMatchObject({
-      message:
-        'Disconnected. Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions.',
-    });
+  it('on revoked: succeeds, refreshes the page, and names both services', async () => {
+    const message = await successLabel('revoked');
+    expect(message).toContain('Gmail');
+    expect(message).toContain('Google Calendar');
     expect(revokeMock).toHaveBeenCalledWith('gcal');
     expect(revalidatePath).toHaveBeenCalledWith('/settings');
+  });
+
+  /** Hale now revokes at Google, so no label sends the parent to do it by hand. */
+  it('never points the parent at Google to remove Hale themselves', async () => {
+    const labels = [
+      await successLabel('revoked'),
+      await successLabel('pending_retry'),
+      await successLabel('not_confirmed'),
+    ];
+    for (const label of labels) {
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toContain('myaccount.google.com');
+    }
+    // Each outcome has its own truthful label: an unconfirmed revoke never reads as a
+    // pending one, and neither reads as the confirmed one.
+    expect(new Set(labels).size).toBe(3);
   });
 
   it('on not_found: an error, never a false success (the co-parent no-op bug)', async () => {

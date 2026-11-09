@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type NonGoogleClearance, assertClearance } from './provider-clearance';
 
 const ENDPOINT = 'https://ai-gateway.vercel.sh/v1/evaluate';
 const MODEL = 'typesafe-ai/jev';
@@ -44,6 +45,7 @@ export interface JevChoiceArgs<TChoice extends string> {
 
 export type JevChoiceEvaluator<TChoice extends string> = (
   args: JevChoiceArgs<TChoice>,
+  clearance: NonGoogleClearance,
 ) => Promise<JevChoiceResult<TChoice>>;
 
 export function meetsJevConfidence<TChoice extends string>(
@@ -66,10 +68,14 @@ interface JevDependencies {
   fetch?: typeof fetch;
 }
 
+/** A non-Anthropic transport (VIL-556): it runs only for a minted clearance, checked
+ * before the key is read or anything is sent. */
 export async function evaluateJevChoice<TChoice extends string>(
   args: JevChoiceArgs<TChoice>,
+  clearance: NonGoogleClearance,
   dependencies: JevDependencies = {},
 ): Promise<JevChoiceResult<TChoice>> {
+  assertClearance(clearance);
   const apiKey =
     dependencies.apiKey ??
     process.env.AI_GATEWAY_API_KEY ??

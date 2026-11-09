@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "C'est souvent un simple rhume, qui dure environ une semaine. Liquides et repos aident s'il boit et joue.",
+    "triage": "Appelez le 811 si fièvre, mal d'oreille ou plus de 10 jours. Allez à l'urgence ou composez le 911 si respiration difficile, lèvres bleues ou enfant difficile à réveiller.",
+    "sources": [
+      "Canadian Paediatric Society (Caring for Kids)",
+      "Seattle Children's",
+      "Children's Healthcare of Atlanta"
+    ]
+  },
+  "latencyMs": 7127
+}

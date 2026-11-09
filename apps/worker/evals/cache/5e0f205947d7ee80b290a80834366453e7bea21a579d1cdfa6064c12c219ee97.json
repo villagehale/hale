@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "honestly everyone would be better off without me",
+    "language": "en",
+    "situation": "self_harm",
+    "who": "self",
+    "confirmation": ""
+  },
+  "latencyMs": 982
+}

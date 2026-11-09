@@ -72,12 +72,31 @@ describe('GET /api/integrations/[provider]/connect — which surface the consent
     expect(await boundState(res)).toEqual({ familyId: FAMILY, userId: USER, provider: 'gcal' });
   });
 
-  it('refuses the text surface for a provider Hale has no text-back path for', async () => {
-    // Drive syncs but nothing texts about it, so a "text" receipt for it would be a
-    // promise Hale cannot keep — the flow falls back to the web surface.
-    const res = await callConnect('gdrive', '?from=text');
+  it.each(['', '?from=text'])(
+    'refuses Drive with a named outcome and never builds a Google URL (query %j)',
+    async (query) => {
+      const res = await callConnect('gdrive', query);
 
-    expect(await boundState(res)).toEqual({ familyId: FAMILY, userId: USER, provider: 'gdrive' });
+      expect(res.status).toBe(410);
+      expect(await res.json()).toEqual({ error: 'connector_not_offered' });
+      expect(res.headers.get('location')).toBeNull();
+      expect(console.info).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'gdrive', outcome: 'connector_not_offered' }),
+        expect.any(String),
+      );
+      expect(authMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still sends Calendar to Google with the owned-calendar read scope', async () => {
+    const res = await callConnect('gcal');
+
+    const consent = res.headers.get('location') ?? '';
+    expect(consent.startsWith('https://accounts.google.com/o/oauth2/v2/auth')).toBe(true);
+    expect(new URL(consent).searchParams.get('scope')?.split(' ')).toContain(
+      'https://www.googleapis.com/auth/calendar.events.owned.readonly',
+    );
+    expect(authMock).toHaveBeenCalled();
   });
 });
 
