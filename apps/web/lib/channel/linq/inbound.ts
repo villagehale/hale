@@ -84,6 +84,7 @@ import {
 } from './group-coparent';
 import {
   holdTrueStrangerOnce,
+  retryMemberWelcome,
   seatParticipantAdded,
   shouldHoldGroupStranger,
   unseatParticipantRemoved,
@@ -763,7 +764,20 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 }
 
 async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
-  if ((await optOutIntentOf(message.text)) !== 'stop') {
+  const stopping = (await optOutIntentOf(message.text)) === 'stop';
+  if (!stopping && !linqGroupOnboardingV2Enabled()) {
+    const welcome = await retryMemberWelcome(deps.database, {
+      chatId: message.chatId,
+      senderHandle: message.senderHandle,
+      now: deps.now?.() ?? new Date(),
+      send: deps.sendGroupText,
+      voice: deps.groupVoice,
+    });
+    if (welcome.outcome === 'welcome_retried') {
+      deps.log.info(welcome, 'linq inbound: group member welcome');
+    }
+  }
+  if (!stopping) {
     const rsvp = await tryGroupPlanRsvpTurn(deps, {
       chatId: message.chatId,
       senderHandle: message.senderHandle,
@@ -1509,6 +1523,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
         isFromMe: signal.isFromMe,
         now,
         send: deps.sendGroupText,
+        voice: deps.groupVoice,
       });
       await deps.countOutcome(seated.outcome === 'group_member_seated' ? 'intake' : 'ignored');
       return json({

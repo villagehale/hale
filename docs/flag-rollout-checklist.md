@@ -71,13 +71,13 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `HOLDING_LINE_ENABLED` | `apps/web/lib/channel/router/holding-line.ts:36` | `true` (no trim) | OFF | unset | Barton |
 | `INTEREST_PASSPORT_DEMO` | `apps/web/lib/passport/demo.ts:26` (also needs `INTEREST_PASSPORT_ENABLED` to be `true`) | `true` | OFF | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `apps/web/lib/passport/flag.ts:12` | `true` | OFF | `false` | Noah |
-| `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:116` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
-| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:126` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
+| `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:107` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
+| `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:117` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
 | `LINQ_GROUP_MEMBERS_ENABLED` | `apps/web/lib/channel/linq/config.ts:80` | `true` (trimmed) | OFF | `false` | Noah |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | `apps/web/lib/channel/linq/config.ts:99` | `true` (trimmed) | OFF | empty, or `false` | Noah (copy: Sloane) |
-| `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:134` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
-| `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:143` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
+| `LINQ_GROUP_PLAN_RSVP_ENABLED` | `apps/web/lib/channel/linq/config.ts:125` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
+| `LINQ_GROUP_POLLS_ENABLED` | `apps/web/lib/channel/linq/config.ts:134` | `true` (trimmed) | OFF | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | `apps/web/lib/loop/reminders/group/flag.ts:14` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_GROUP_TURN_AI_ENABLED` | `apps/web/lib/channel/linq/group-turn-reader.ts:67` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | `apps/web/lib/channel/linq/config.ts:90` | `true` (trimmed) | OFF | `false` | Noah |
@@ -152,11 +152,10 @@ Built from every `process.env.X`, `process.env['X']`, `env.X`, `env['X']`, `_ENV
 | `CALENDAR_WRITE_NOTICE_ENABLED` | `apps/web/lib/channel/calendar-write/notice.ts:29` | `true` (trimmed) | OFF | unassigned |
 | `GROUP_PLAN_CALENDAR_REPORT_ENABLED` | `apps/web/lib/channel/group-plan/report.ts:28` | `true` (trimmed) | OFF | unassigned |
 | `HALE_LLM_NO_STREAM` | `apps/web/lib/pipeline/structured.ts:20` | `1` (exact): plain `create` instead of a stream. A transport knob, not a product flag | OFF | unassigned |
-| `LINQ_EXPERIENCES_ENABLED` | `apps/web/lib/channel/linq/config.ts:163` | `true` (trimmed) | OFF | unassigned |
-| `LINQ_GROUP_LEAVE_ENABLED` | `apps/web/lib/channel/linq/config.ts:172` | `true` (trimmed) | OFF | unassigned |
-| `LINQ_GROUP_WELCOME_VOICE_ENABLED` | `apps/web/lib/channel/linq/config.ts:108` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_EXPERIENCES_ENABLED` | `apps/web/lib/channel/linq/config.ts:154` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_GROUP_LEAVE_ENABLED` | `apps/web/lib/channel/linq/config.ts:163` | `true` (trimmed) | OFF | unassigned |
 | `LINQ_STICKERS_ENABLED` | `apps/web/lib/channel/linq/sticker.ts:22` | `true` (trimmed) | OFF | unassigned |
-| `LINQ_VOICE_MEMOS_ENABLED` | `apps/web/lib/channel/linq/config.ts:153` | `true` (trimmed) | OFF | unassigned |
+| `LINQ_VOICE_MEMOS_ENABLED` | `apps/web/lib/channel/linq/config.ts:144` | `true` (trimmed) | OFF | unassigned |
 | `MID_ACTIVITY_SIGNUP_TOOL_ENABLED` | `apps/web/lib/channel/mid-activity/said-tool.ts:23` | `true` | OFF | unassigned |
 | `PREVIEW_CAPTURE_GROUPS` | `apps/web/lib/channel/preview-linq-capture.ts:36` | `on`; also needs `VERCEL_ENV === 'preview'` (:34) and the capture transport requested (:35) | OFF (preview-only) | unassigned |
 | `PREVIEW_CAPTURE_TRANSPORT` | `apps/web/lib/channel/preview-capture-transport.ts:31` | `on`; also needs `VERCEL_ENV` exactly `preview` (docstring :8) | OFF (preview-only) | unassigned |
@@ -227,9 +226,9 @@ Code is merged for every row.
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` uses JEV for reply intent. Assent still goes through Sonnet. | A yes/no stored for a reply the parent did not mean. | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` uses JEV for sentinel triage, with Haiku when confidence is low. | Triage latency and low-confidence retries. | `current` | Eugene |
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
-| `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:112-113`). | The common checks above. | empty, or `false` | unassigned |
+| `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:103-104`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
-| `LINQ_GROUP_PLAN_RSVP_ENABLED` | RSVP tracking for any plan in a Linq group (`apps/web/lib/channel/linq/config.ts:130-131`). | The common checks above. | empty, or `false` | unassigned |
+| `LINQ_GROUP_PLAN_RSVP_ENABLED` | RSVP tracking for any plan in a Linq group (`apps/web/lib/channel/linq/config.ts:121-122`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_POLLS_ENABLED` | A parent can start a poll in a Linq group; others vote in their own words or on a native card, and Hale reads the tally back. The card also needs `LINQ_POLLS`. Needs migration `0190_linq_group_polls`. | A poll started while the flag is off, or a tally that invents a winner. | `false` | Noah (copy: Sloane) |
 | `LINQ_GROUP_REMINDERS_ENABLED` | "Remind me" from anyone in a family group; it only reads a turn the AI turn reader judged Hale's, in a v2 group (`apps/web/lib/loop/reminders/group/flag.ts:5-11`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_TURN_AI_ENABLED` | The model reads whether a group message is Hale's turn; dark means silent in the group (`apps/web/lib/channel/linq/group-turn-reader.ts:13-17`). | The common checks above. | empty, or `false` | unassigned |
