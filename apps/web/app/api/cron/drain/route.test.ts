@@ -232,7 +232,12 @@ describe('GET /api/cron/drain', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const held = {
       proceed: false,
-      abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+      abort: {
+        failure: 'billing',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     };
     providerPreflightMock.mockResolvedValue(held);
     const { GET } = await import('./route');
@@ -292,7 +297,12 @@ describe('GET /api/cron/drain', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const held = {
       proceed: false,
-      abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+      abort: {
+        failure: 'billing',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     };
     providerPreflightMock.mockResolvedValue(held);
     const { GET } = await import('./route');
