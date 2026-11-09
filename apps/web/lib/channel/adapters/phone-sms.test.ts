@@ -39,7 +39,7 @@ describe('createSmsChannel().send', () => {
       configured: true,
     }).send({ userId: USER_ID, rendered: SMS });
 
-    expect(outcome).toEqual({ status: 'sent', providerMessageId: 'fake-out-1' });
+    expect(outcome).toEqual({ status: 'sent', providerMessageId: 'fake-out-1', transport: 'sms' });
     expect(transport.sent).toEqual([{ to: PHONE, body: SMS.text }]);
   });
 
@@ -91,7 +91,7 @@ describe('createSmsChannel().send', () => {
       resolveTarget: async () => PHONE,
     }).send({ userId: USER_ID, rendered: SMS });
 
-    expect(sent).toEqual({ status: 'sent', providerMessageId: 'fake-out-1' });
+    expect(sent).toEqual({ status: 'sent', providerMessageId: 'fake-out-1', transport: 'sms' });
   });
 
   it('sends a family with no group through Linq, and does not call Twilio', async () => {
@@ -112,6 +112,7 @@ describe('createSmsChannel().send', () => {
     expect(outcome).toEqual({
       status: 'sent',
       providerMessageId: 'msg-1',
+      transport: 'imessage',
       providerChatId: 'chat-1',
     });
     expect(fetchMock).toHaveBeenCalledOnce();
