@@ -28,6 +28,10 @@ describe('VIL-423 · dateUnconfirmedRefusals: the writer is handed no link, so a
     'Details at bit . ly/x',
     // The format character sits before the dot, so only the \p{Cf} strip makes a host of it.
     'Details at bit\u200B.ly/x',
+    'Details at evil.Com',
+    // Fails closed: glued prose reads as a host, and the writer re-drafts.
+    'I could not confirm it on the page.Check it below.',
+    'The St.Mary pool page did not show it. Mr.Smith may know.',
   ])('refuses a link shape: %s', (text) => {
     expect(dateUnconfirmedRefusals(text)).toEqual(['link']);
   });
@@ -36,8 +40,6 @@ describe('VIL-423 · dateUnconfirmedRefusals: the writer is handed no link, so a
     "I couldn't confirm when Springfield fall swim opens on the page. Can you check it below?",
     'Je n’ai pas pu confirmer la date sur la page, e.g. vérifie-la ci-dessous. Il est 10.30am.',
     'It is 7:00 p.m. now, St. Mary’s pool page did not show the date.',
-    'I could not confirm it on the page.Check it below.',
-    'The St.Mary pool page did not show it. Mr.Smith may know.',
   ])('passes a plain draft: %s', (text) => {
     expect(dateUnconfirmedRefusals(text)).toEqual([]);
   });

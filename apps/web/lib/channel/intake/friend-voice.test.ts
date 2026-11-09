@@ -595,6 +595,21 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
   });
 
+  it('lets a host through only as a whole word the parent wrote, never a piece of one', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. club.ca it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+    expect(judgeFriendReply('Done. kidsclub.ca.evil.app it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+  });
+
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
@@ -1799,8 +1814,9 @@ describe('#868 question marks in any script', () => {
       parentName: null,
     } as const;
     expect(
-      judgeFriendReply('你好！我是Hale。你住在哪个邮编？', { ...base, parentWords: '你好' }),
+      judgeFriendReply('你好！我是Hale，你住在哪个邮编？', { ...base, parentWords: '你好' }),
     ).toEqual({ ok: true });
+    // 'Hale。你…' reads as the host 'hale.你…' (fails closed), so the full stop is not used here.
     expect(
       judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
     ).toEqual({ ok: true });

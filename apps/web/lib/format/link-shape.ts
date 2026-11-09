@@ -3,18 +3,20 @@
  * that refuses a link in model-written text asks here, so an evasion fixed once is fixed
  * for every text. A handset linkifies more eagerly than any URL parser: a scheme, `www.`,
  * punycode, a dotted-quad host, or any dotted host whose ending is two or more letters
- * ("bit.ly/x", "evil.app", "EVIL.IO", "evil.рф"). A TLD list would miss every new TLD.
+ * ("bit.ly/x", "evil.app", "Evil.Com", "evil.рф", "مثال.مصر"). Case means nothing in a
+ * host, so none is read. A TLD list would miss every new TLD.
  *
  * The text is read the way a handset reads it first: NFKC (full-width letters and dots),
  * format characters dropped (a zero-width space inside a host), ideographic full stops
- * between Latin parts read as dots ("evil。app"), and bracketed or spaced dots
- * ("evil[.]app", "bit . ly") closed up.
+ * read as dots ("evil。app"), and bracketed or spaced dots ("evil[.]app", "bit . ly")
+ * closed up.
  *
- * What still passes, because it is prose: one-letter endings ("a.m.", "e.g.", "U.S."), a
- * dot before digits ("10.30am"), a dot before a space ("St. Mary's"), a capitalised word
- * glued after a lowercase word or a short abbreviation ("the page.Check it", "St.Mary
- * pool", "Mr.Smith") unless a path follows, a doubled-letter plural ("EE.UU."), and a
- * full stop ending a sentence before Chinese, Japanese or Korean.
+ * It fails closed: a false positive costs the writer one re-draft, a miss puts a link in
+ * a parent's text. So "the page.Check it", "St.Mary pool", "Mr.Smith" and "请拨打988.你"
+ * are refused. What still passes: one-letter endings ("a.m.", "e.g.", "U.S."), a dot
+ * before digits ("10.30am"), a dot before a space ("St. Mary's"), a doubled-letter plural
+ * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 after a CJK
+ * character or a digit and before a CJK run with no '/' after it ("你好。我们", "988。全天").
  */
 
 const SCHEME = /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\//i;
@@ -24,10 +26,9 @@ const DOTTED_QUAD = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?!\p{N}|\.\p{N})/u;
 
 const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}`;
 // NFKC folds U+FF0E and U+FE52 to '.', and U+FF61 to U+3002, which it leaves alone.
-const IDEOGRAPHIC_DOT_BETWEEN_NAMES = new RegExp(
-  `(?<=[^\\P{L}${CJK}]|\\p{N}|-)\\u3002(?=[^\\P{L}${CJK}]|\\p{N})`,
-  'gu',
-);
+const IDEOGRAPHIC_DOT = /\u3002/gu;
+const CJK_OR_DIGITS = new RegExp(`^[${CJK}\\p{N}]+$`, 'u');
+const CJK_RUN_WITHOUT_PATH = new RegExp(`[${CJK}]+(?![${CJK}/])`, 'uy');
 const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
 // 'EE.UU.' (Spanish for the US) when nothing name-like follows it.
 const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p{N}])/gu;
@@ -35,16 +36,15 @@ const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p
 const NAME_CHAR = /^[\p{L}\p{M}\p{N}-]$/u;
 const RUN_AFTER_DOT = /[\p{L}\p{M}\p{N}]+/uy;
 const LETTERS_ONLY = /^[\p{L}\p{M}]{2,}$/u;
-const TITLE_CASE = /^\p{Lu}[\p{Ll}\p{M}]+$/u;
-const SHORT_ABBREVIATION = /^\p{Lu}\p{Ll}{0,2}$/u;
-const CASED = /[\p{Lu}\p{Ll}]/u;
-const LAST_LETTER = /(\p{L})[\p{M}\p{N}-]*$/u;
+const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
 function asHandsetReads(text: string): string {
   return text
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')
-    .replace(IDEOGRAPHIC_DOT_BETWEEN_NAMES, '.')
+    .replace(IDEOGRAPHIC_DOT, (dot, at: number, whole: string) =>
+      endsACjkSentence(whole, at) ? dot : '.',
+    )
     .replace(BRACKETED_OR_SPACED_DOT, '.')
     .replace(DOUBLED_PAIR_ABBREVIATION, ' ');
 }
@@ -62,21 +62,17 @@ function nameBefore(text: string, at: number): string {
   return text.slice(start, at);
 }
 
-/** Whether the dot at `at` joins a name to a domain ending. */
+function endsACjkSentence(text: string, at: number): boolean {
+  CJK_RUN_WITHOUT_PATH.lastIndex = at + 1;
+  return CJK_OR_DIGITS.test(nameBefore(text, at)) && CJK_RUN_WITHOUT_PATH.test(text);
+}
+
+/** Whether the dot at `at` joins a name to a domain ending, in any script or case. */
 function dotEndsAHost(text: string, at: number): boolean {
   const name = nameBefore(text, at);
   RUN_AFTER_DOT.lastIndex = at + 1;
   const ending = RUN_AFTER_DOT.exec(text)?.[0];
-  if (!name || !ending || !LETTERS_ONLY.test(ending)) return false;
-  if (!CASED.test(ending)) {
-    // An uncased ending (Han, Arabic...) is a host only after a cased name ('example.中国');
-    // after its own script it is a sentence end.
-    const last = LAST_LETTER.exec(name)?.[1];
-    return last !== undefined && CASED.test(last);
-  }
-  if (!TITLE_CASE.test(ending)) return true;
-  if (text[at + 1 + ending.length] === '/') return true;
-  return /\p{Lu}/u.test(name) && !SHORT_ABBREVIATION.test(name);
+  return LETTER_OR_DIGIT.test(name) && ending !== undefined && LETTERS_ONLY.test(ending);
 }
 
 export function hasLinkShape(text: string): boolean {
@@ -88,6 +84,30 @@ export function hasLinkShape(text: string): boolean {
     if (dotEndsAHost(read, at)) return true;
   }
   return false;
+}
+
+const WORD_EDGE = /^[([{<"'“‘]+|[.,;:!?)\]}>"'”’]+$/gu;
+
+function wordsAsHandsetReads(text: string): string[] {
+  return asHandsetReads(text)
+    .split(/\s+/)
+    .map((word) => word.replace(WORD_EDGE, ''))
+    .filter((word) => word.length > 0);
+}
+
+/**
+ * The link-shaped words in a draft, lowercased, that are not exactly a word of one of
+ * `allowed` (code's required facts, the slots a parent or a page supplied). Both sides
+ * are read as a handset reads them and compared whole, so a host built around an allowed
+ * word ('evilvillagehale.com', 'kidsclub.ca.evil.app') or cut from one ('club.ca' out of
+ * 'kidsclub.ca') is still a link.
+ */
+export function linksOutside(text: string, allowed: readonly string[]): string[] {
+  const known = new Set(allowed.flatMap(wordsAsHandsetReads).map((word) => word.toLowerCase()));
+  const found = wordsAsHandsetReads(text)
+    .map((word) => word.toLowerCase())
+    .filter((word) => !known.has(word) && hasLinkShape(word));
+  return [...new Set(found)];
 }
 
 // A handed link is code's URL.href, so printable ASCII; the token ends at the first other

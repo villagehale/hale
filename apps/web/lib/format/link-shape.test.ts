@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasLinkBeyond, hasLinkShape } from './link-shape';
+import { hasLinkBeyond, hasLinkShape, linksOutside } from './link-shape';
 
 describe('hasLinkShape: the evasion table', () => {
   it.each([
@@ -30,6 +30,28 @@ describe('hasLinkShape: the evasion table', () => {
     ['a zero-width space after the dot', 'see bit.​ly/x'],
     ['a two-letter pair before a host', 'see EE.UU.com'],
     ['a capitalised second label', 'see mail.Google.Com'],
+    ['a title-case ending', 'evil.Com'],
+    ['a title-case name and ending', 'Abc.Com'],
+    ['a capitalised short link with no path', 'Bit.Ly'],
+    ['a short capitalised name', 'Go.Com'],
+    ['a title-case app ending', 'visit evil.App'],
+    ['a title-case ending mid-sentence', 'see evil.Com now'],
+    ['a title-case ending after a crisis line', 'Call 988 or see crisis.Org'],
+    ['a capitalised short link after a verb', 'visit Bit.Ly'],
+    ['a title-case ending ending a sentence', 'see evil.App.'],
+    ['a title-case ending after an ideographic full stop', 'see evil。App'],
+    ['a glued sentence (fails closed)', 'Look at the page.Check it tonight.'],
+    ['a saint, unspaced (fails closed)', 'The St.Mary pool is open.'],
+    ['an honorific, unspaced (fails closed)', 'Ask Mr.Smith at the desk.'],
+    ['an Arabic host', 'مثال.مصر'],
+    ['a Hebrew host', 'דוגמה.ישראל'],
+    ['a digit name with an Arabic ending', '123.مصر'],
+    ['an ASCII dot between Chinese runs', '你好.我们明天见'],
+    ['an ASCII dot after digits in Chinese (fails closed)', '请拨打988.你并不孤单。'],
+    ['a Han name with a Latin ending', '例子。com'],
+    ['an ideographic full stop with a path after it', '你好。我们/x'],
+    ['a Latin and digit name before an ideographic full stop', 'see evil1。中国'],
+    ['a Latin name before an ideographic full stop (fails closed)', '我是Hale。你住在哪里'],
   ])('refuses %s', (_label, text) => {
     expect(hasLinkShape(text)).toBe(true);
   });
@@ -40,13 +62,10 @@ describe('hasLinkShape: the evasion table', () => {
     ['a.m.', 'It starts at 9 a.m. sharp.'],
     ['e.g.', 'Bring a snack, e.g. fruit.'],
     ['a country abbreviation', 'In the U.S. and Canada, it is free.'],
-    ['a sentence with no space after it', 'Look at the page.Check it tonight.'],
-    ['a saint, unspaced', 'The St.Mary pool is open.'],
-    ['an honorific', 'Ask Mr.Smith at the desk.'],
     ['a Spanish country abbreviation', 'En EE.UU., es gratis.'],
     ['a price', 'It costs $12.50 a week.'],
-    ['a Chinese full stop', '请拨打988。全天都有人接听。'],
-    ['an ASCII full stop in Chinese', '请拨打988.你并不孤单。'],
+    ['a Chinese full stop after a number', '请拨打988。全天都有人接听。'],
+    ['a Chinese full stop between sentences', '你好。我们明天见'],
     ['an Arabic sentence', 'حسناً، لن نراسلك بعد الآن.'],
     ['an ellipsis', 'Maybe...we will see.'],
   ])('passes %s', (_label, text) => {
@@ -74,5 +93,25 @@ describe('hasLinkBeyond: only the handed link, exactly', () => {
   ])('refuses %s', (label, text) => {
     const handed = label.startsWith('any link') ? [] : [LINK];
     expect(hasLinkBeyond(text, handed)).toBe(true);
+  });
+});
+
+describe('linksOutside: an allowed word counts only whole', () => {
+  it('passes an allowed host or address standing as a word, any case or edge', () => {
+    expect(linksOutside('See villagehale.com.', ['villagehale.com'])).toEqual([]);
+    expect(linksOutside('(VillageHale.com)', ['villagehale.com'])).toEqual([]);
+    expect(linksOutside('Write aloha@villagehale.com!', ['aloha@villagehale.com'])).toEqual([]);
+    expect(linksOutside('St.Mary pool', ['The St.Mary pool'])).toEqual([]);
+  });
+
+  it.each([
+    ['a host built around an allowed host', 'See evilvillagehale.com', ['villagehale.com']],
+    ['a mailbox built around an allowed one', 'xaloha@villagehale.com', ['aloha@villagehale.com']],
+    ['a host built on an allowed word', 'See kidsclub.evil.app', ['kidsclub']],
+    ['a host cut out of an allowed one', 'See club.ca', ['kidsclub.ca']],
+    ['a look-alike joined by a zero-width space', 'See evil\u200Bvillagehale.com', ['villagehale.com']],
+    ['a spaced-dot host', 'See bit . ly/x', []],
+  ])('refuses %s', (_label, text, allowed) => {
+    expect(linksOutside(text, allowed)).not.toEqual([]);
   });
 });
