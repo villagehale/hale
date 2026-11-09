@@ -1,7 +1,7 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
+import { foreignLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -58,18 +58,29 @@ export const SIGNUP_OUTCOME_TOOL_SCHEMA = {
   required: ['text'],
 } as const;
 
-/** Why a draft cannot leave. Empty means it can. */
+/**
+ * Why a draft cannot leave, each as 'code' or 'code: the words', so the retry knows exactly
+ * what to change. Empty means it can. The pack is read from the family record, so its
+ * values (the parent's own email among them) are not links.
+ */
 export function signupOutcomeViolations(text: string, facts: SignupOutcomeFacts): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (facts.link) {
-    if (!tidy.includes(facts.link)) out.push('missing the hand-off link');
-    if (hasLinkBeyond(tidy, [facts.link])) out.push('contains another link');
-  } else if (hasLinkShape(tidy)) {
-    out.push('contains a link');
+  const links = foreignLinks(tidy, {
+    handed: facts.link ? [facts.link] : [],
+    words: (facts.pack ?? []).map((item) => item.value),
+  });
+  if (facts.link && !tidy.includes(facts.link)) out.push('missing the hand-off link');
+  if (links.length > 0) {
+    out.push(`${facts.link ? 'contains another link' : 'contains a link'}: ${links.join(', ')}`);
   }
   return out;
+}
+
+/** A log carries the codes, never the draft's words. */
+function violationCodes(violations: readonly string[]): string {
+  return violations.map((violation) => violation.split(':')[0]).join('; ');
 }
 
 /** The user turn the writer sends: the facts, and why the last draft could not leave. */
@@ -104,6 +115,7 @@ export function createSignupOutcomeWriter(
         return unwritten('skill_unavailable');
       }
       let note: string | null = null;
+      let codes = '';
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
           const { value } = await forceToolJson({
@@ -120,11 +132,12 @@ export function createSignupOutcomeWriter(
           const violations = signupOutcomeViolations(value.text, facts);
           if (violations.length === 0) return value.text.replace(/\s+/g, ' ').trim();
           note = violations.join('; ');
+          codes = violationCodes(violations);
         } catch {
           return unwritten('model_failed');
         }
       }
-      return unwritten('violations', note ?? '');
+      return unwritten('violations', codes);
     },
   };
 }
