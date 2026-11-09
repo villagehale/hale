@@ -419,6 +419,9 @@ jobs:
       - name: Area read eval (cached-only)
         run: pnpm --filter @hale/worker eval:area-read
 
+      - name: Carpool reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:carpool
+
       - name: Group reminder eval (cached-only)
         working-directory: apps/worker
         run: node evals/group-reminder-eval.mjs --cached-only

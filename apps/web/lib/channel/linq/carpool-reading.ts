@@ -16,6 +16,8 @@ import type { CarpoolIntent } from './carpool-cadence';
 
 export const CARPOOL_READ_ATTEMPTS = 2;
 export const CARPOOL_READING_MAX_TOKENS = 300;
+export const CARPOOL_READING_TOOL = 'carpool_reading';
+export const CARPOOL_READING_TOOL_DESCRIPTION = 'Who is driving after this group message.';
 
 export const CARPOOL_INTENTS = [
   'driver_claim',
@@ -218,8 +220,8 @@ export function createCarpoolReader(
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
       userMessage: carpoolUserMessage(input),
-      toolName: 'carpool_reading',
-      toolDescription: 'Who is driving after this group message.',
+      toolName: CARPOOL_READING_TOOL,
+      toolDescription: CARPOOL_READING_TOOL_DESCRIPTION,
       inputJsonSchema: readingJsonSchema,
       schema: readingSchema,
       maxTokens: CARPOOL_READING_MAX_TOKENS,
