@@ -1312,6 +1312,26 @@ export const COACH_CHANNEL_FIXTURES = [
         'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
     },
   },
+  {
+    id: 'fact-seen-in-email',
+    text: 'is Ada still doing art on fridays?',
+    // VIL-429. The one fact here came from an email, not from the parent. The context
+    // carries it exactly as loadAgentContext does for the mailbox owner.
+    memoryFacts: [
+      {
+        childId: 'kid-ada',
+        factType: 'routine',
+        factKey: 'art_class_day',
+        factValue: 'art class Fridays at 4:30',
+        confidence: 0.9,
+        seenIn: { email: { from: 'Harbour Art Studio', on: '2026-07-28' } },
+      },
+    ],
+    note: 'VIL-429. Hale knows the Friday art class only from a Harbour Art Studio email of Jul 28. The answer leans on that fact, so it says, in its own words, that it saw it in that email and roughly when, and lets the parent correct it. It never quotes the email or claims anything about it beyond the sender and the day.',
+    expect: {
+      mustMention: ['harbour'],
+    },
+  },
 ];
 
 /**

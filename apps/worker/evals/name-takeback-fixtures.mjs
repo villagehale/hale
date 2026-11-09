@@ -47,6 +47,22 @@ export const NAME_TAKEBACK_FIXTURES = [
     parentWords: "I'd rather not give my name",
     expect: { parentName: '', nameDeclined: true, nameTakenBack: false },
   },
+  // The confirm of a held name. Turning it down leaves `parentName` empty, so
+  // the held name is never stored as the parent's own answer, and sets
+  // `nameConfirmed` false. A yes sets it true (control); its `parentName` may
+  // repeat the held name, so it is not checked.
+  {
+    id: 'held-non',
+    held: { name: 'Dana', language: 'fr' },
+    parentWords: 'non',
+    expect: { parentName: '', nameConfirmed: false },
+  },
+  {
+    id: 'held-oui',
+    held: { name: 'Dana', language: 'fr' },
+    parentWords: 'oui',
+    expect: { nameConfirmed: true },
+  },
 ];
 
 /** The stored field after a take-back. Empty means nothing to write. */
@@ -59,12 +75,16 @@ export function nameTakebackMatches(fixture, value) {
   const parentName = value?.parentName ?? null;
   const want = fixture.expect.parentName;
   const nameOk =
-    want === ''
+    want === undefined ||
+    (want === ''
       ? parentNameLeftEmpty(parentName)
       : String(parentName ?? '')
           .trim()
-          .toLowerCase() === want.toLowerCase();
+          .toLowerCase() === want.toLowerCase());
   if (!nameOk) return false;
+  if ('nameConfirmed' in fixture.expect && value?.nameConfirmed !== fixture.expect.nameConfirmed) {
+    return false;
+  }
   if (
     'nameDeclined' in fixture.expect &&
     flagIs(value, 'nameDeclined') !== fixture.expect.nameDeclined

@@ -3,7 +3,13 @@
     "id": "nightly-classifies-every-save",
     "familyId": "aaaaaaa1-0000-4000-8000-000000000004",
     "familyName": "Writeback Family D",
-    "children": [{ "id": "ccccccc1-0000-4000-8000-000000000004", "name": "Pip", "ageMonths": 26 }],
+    "children": [
+      {
+        "id": "ccccccc1-0000-4000-8000-000000000004",
+        "name": "Pip",
+        "ageMonths": 26
+      }
+    ],
     "runAt": "2026-10-06T06:00:00.000Z",
     "transcript": [
       {
@@ -62,6 +68,85 @@
         "required": false,
         "kind": "curiosity",
         "disposition": "asked"
+      }
+    ]
+  },
+  {
+    "id": "nightly-names-email-source",
+    "familyId": "aaaaaaa1-0000-4000-8000-000000000005",
+    "familyName": "Writeback Family E",
+    "children": [
+      {
+        "id": "ccccccc1-0000-4000-8000-000000000005",
+        "name": "Pip",
+        "ageMonths": 50
+      }
+    ],
+    "runAt": "2026-10-06T06:00:00.000Z",
+    "transcript": [
+      {
+        "role": "user",
+        "childId": "ccccccc1-0000-4000-8000-000000000005",
+        "minutesBefore": 7000,
+        "content": "Pip is on the Northside Rec U5 soccer team this fall, we signed him up last month. He can't wait."
+      },
+      {
+        "role": "assistant",
+        "childId": "ccccccc1-0000-4000-8000-000000000005",
+        "minutesBefore": 6999,
+        "content": "Love that. I'll keep soccer in mind when I look at his week."
+      }
+    ],
+    "events": [
+      {
+        "id": "eeeeeee1-0000-4000-8000-000000000001",
+        "source": "gmail",
+        "eventType": "activity_signup_open",
+        "minutesBefore": 8640,
+        "payload": {
+          "sender": "Northside Rec <programs@northside-rec.example>",
+          "subject": "Fall soccer: Pip's team plays Thursdays",
+          "category": "activity",
+          "snippet": "Pip's U5 team practises Thursdays 5:00 to 5:45 all fall."
+        }
+      },
+      {
+        "id": "eeeeeee1-0000-4000-8000-000000000002",
+        "source": "gmail",
+        "eventType": "school_communication",
+        "minutesBefore": 4320,
+        "payload": {
+          "sender": "Northside Rec <programs@northside-rec.example>",
+          "subject": "Reminder: soccer Thursday 5:00",
+          "category": "activity",
+          "snippet": "Practice is Thursday 5:00 to 5:45 at the north field."
+        }
+      },
+      {
+        "id": "eeeeeee1-0000-4000-8000-000000000003",
+        "source": "gmail",
+        "eventType": "school_communication",
+        "minutesBefore": 1440,
+        "payload": {
+          "sender": "Northside Rec <programs@northside-rec.example>",
+          "subject": "Soccer this Thursday at 5:00",
+          "category": "activity",
+          "snippet": "See you Thursday 5:00 to 5:45 for practice."
+        }
+      }
+    ],
+    "expect": [
+      {
+        "item": "the Thursday practice time, read in the Northside Rec emails",
+        "terms": ["thursday"],
+        "required": true,
+        "kind": "enduring",
+        "disposition": "confirmed",
+        "sourceEvents": [
+          "eeeeeee1-0000-4000-8000-000000000001",
+          "eeeeeee1-0000-4000-8000-000000000002",
+          "eeeeeee1-0000-4000-8000-000000000003"
+        ]
       }
     ]
   }

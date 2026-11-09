@@ -7,6 +7,7 @@ import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
 import { YEAR_OPEN_SUBJECT, collectYearOpenLines, yearOpenQuery } from './year-open';
 
 const SEB = { name: 'Seb', ageMonths: 17, dobPrecision: 'derived' as const };
+const TODAY = '2026-11-08';
 
 describe('the search seeds', () => {
   it('name no one province program, so a US or Alberta family gets its own', () => {
@@ -120,6 +121,7 @@ describe('collectYearOpenLines', () => {
       town: 'Halton Hills',
       finder: { find },
       familyId: 'fam',
+      today: TODAY,
     });
     expect(find).toHaveBeenCalledOnce();
     expect(opened.finder).toBe('used');
@@ -138,6 +140,7 @@ describe('collectYearOpenLines', () => {
       town: 'Halton Hills',
       finder: null,
       familyId: 'fam',
+      today: TODAY,
     });
     expect(opened.finder).toBe('not_configured');
     expect(opened.lines).toEqual([]);
@@ -155,6 +158,7 @@ describe('collectYearOpenLines', () => {
       town: 'Halton Hills',
       finder,
       familyId: 'fam',
+      today: TODAY,
     });
     expect(opened.finder).toBe('used');
     expect(opened.lines).toHaveLength(3);
@@ -182,6 +186,7 @@ describe('collectYearOpenLines', () => {
         },
       },
       familyId: 'fam',
+      today: TODAY,
     });
     // ages 8-12 is 96..144 months; 17 + 6 < 96.
     expect(opened.lines.map((line) => line.split(' (')[0])).toEqual([
@@ -209,6 +214,7 @@ describe('collectYearOpenLines', () => {
         },
       },
       familyId: 'fam',
+      today: TODAY,
     });
     expect(opened.lines[0]).toContain('U12 soccer tryouts');
     expect(opened.lines[1]).toContain('Parent and tot swim');
@@ -231,11 +237,12 @@ describe('collectYearOpenLines', () => {
       town: 'Toronto',
       finder: { find },
       familyId: 'fam',
+      today: TODAY,
     });
     // Ages 0-1 is 0..12 months and 18 > 12.
     expect(exact.titles).toEqual(['Toddler gym', 'Family fair']);
     const logged = info.mock.calls.find((call) => call[1] === 'intake year find');
-    expect(logged?.[0]).toEqual({ familyId: 'fam', picks: 3, droppedAge: 1 });
+    expect(logged?.[0]).toEqual({ familyId: 'fam', picks: 3, droppedAge: 1, droppedPast: 0 });
 
     const derived = await collectYearOpenLines({
       civic: [],
@@ -243,9 +250,38 @@ describe('collectYearOpenLines', () => {
       town: 'Toronto',
       finder: { find },
       familyId: 'fam',
+      today: TODAY,
     });
     // 12 + 6 >= 18: a derived age keeps it.
     expect(derived.titles).toEqual(['Baby rhyme circle', 'Toddler gym', 'Family fair']);
+    info.mockRestore();
+  });
+
+  it('leaves a past-dated pick and an Ages 0-1 pick out of the facts for an 18-month-old', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const opened = await collectYearOpenLines({
+      civic: [],
+      children: [{ name: 'Wren', ageMonths: 18, dobPrecision: 'exact' }],
+      town: 'Toronto',
+      finder: {
+        async find() {
+          return {
+            found: true,
+            picks: [
+              { ...webPick('Spring egg hunt', '1-5 years'), when: 'Saturday, March 8, 2026' },
+              webPick('Baby rhyme circle', 'Ages 0-1'),
+              webPick('Lantern walk', 'All ages'),
+            ],
+          };
+        },
+      },
+      familyId: 'fam',
+      today: TODAY,
+    });
+    expect(opened.titles).toEqual(['Lantern walk']);
+    expect(opened.lines.join('\n')).not.toMatch(/egg hunt|rhyme circle/i);
+    const logged = info.mock.calls.find((call) => call[1] === 'intake year find');
+    expect(logged?.[0]).toEqual({ familyId: 'fam', picks: 3, droppedAge: 1, droppedPast: 1 });
     info.mockRestore();
   });
 
@@ -260,6 +296,7 @@ describe('collectYearOpenLines', () => {
         },
       },
       familyId: 'fam',
+      today: TODAY,
     });
     expect(opened.finder).toBe('used');
     expect(opened.lines).toHaveLength(1);

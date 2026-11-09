@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011Cgrsz37Bv6RG81N1f54bo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+QYKEAgTGAI4AUIIdGhpbmtpbmcSDKpJhV4RYNHKmOOx+hoMPio8pMywXU/djEFAIjBNtBHFtxmjLWZLy1J5O1z79IRUwKrIdPywRK2GUm7tSdLfqfsI/i0Xn4cIw4IefjUqlga1NeHn4p0Yfpgp0wxpVjnxarxp4SKssZ+RiR1NFtWQb3USShopr0VGb43gw5opPjRQHyHuZpKJGE8JTZFani1XQZbjdylgqDXfzg6D/oNq0esWxcf2v2KPRFeo7WZtJS3xfs0eGKWDy22vnsv4FrscxB3QWs350ac2SC/FcEG3VYF8N+Lxm8DkbUQZMbWn1qLaLz0eQ2urRJB2E1o+GakSxggXdXjXBii9fnEEeyc0aTlb6Kg44fQNc5xAJGWDSH+Bvd+wHgZXJn2pFyO+kPNt+kz+uBzrNaQjmKxhoJzRo2kPE61SvK7PfcwBZ5+viGYUDlNNFZjvy4rQgAsPjbtDRP4uL5j2fLpzFdlMqjNdWaEVD1DCTtZx5fC4QeIPX6qWSr1Z2fqx2+4AUXRubgnXv8htVghZ0LHiH3TxMU/HWZIamx2hH/h5PL3ef/uW3s56TcmtvXZ+ONGw29+RwO4My2La9RZ1NGZX05qCKELkAIJQNk7+EB0HRdghkPfwLHEb7ds+R7yRx1/pEivhr8SEijkFC/jxG4K8rarG7LpCnm9ZWjX0PUa+lGBwRzQCavBJjWR/QNmwbsgbJY6KuZ0nDmAQ/E/7G2UuGWEEOBsHE/1JSwJ00u5uXqAe4W59pxaFkgg0fnC6exjTq5q4PTCpJnhxe+6tf/EUVXzY1xsHOrm13adJNOJdC+fVL6NrkkE+a6brZdOfhtnolr/fyujQFBWycdQbKSFeGhHYQFU6EKeS+9Cf/AlsQwPGJSfOnW8XpCzloWY8b14SdQz8b2/bgk60e9G3nTng3iNvPjdMkVVfSYuPxaOLdKpdUmEU1rhdCgAUDuXoX32U94Ljj0riFjf9N3awHF8NCMPkmIIuGi+t+CNSjDKH80izhZe21MNovXIyqBJUW1TsTcMQoaIDkJF8+CgSVTHzDAdyJ5eDfUp0GT/8lR1W6j7o+30QAGXCSsfMtSs8oz7zW3q1Bhd5dp7CiNs/OEwj4ZcKKI3kjQq7esyDaVZtqgpkfAdR4QkY60EEIW0269+cpSeih+PLafu66CBtGAE="
+      },
+      {
+        "type": "text",
+        "text": "Today's Thanksgiving, so places may be closed or on holiday hours. Worth checking before you head out. Willow Branch Library's events page lists Toddler story time Mondays at 10:30 a.m., free, for 18 months to 3 years, which fits your 26-month-old. [link-ce743d] Riverbend Community Centre's program page lists Little Movers drop-in Mondays 9:30 to 11:30 a.m., free, ages 1 to 4. [link-c6988f] Those times come from their own sites, and I haven't confirmed either one."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 607,
+      "cache_read_input_tokens": 21030,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 607,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 270,
+      "output_tokens_details": {
+        "thinking_tokens": 84
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

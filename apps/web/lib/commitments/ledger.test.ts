@@ -128,6 +128,7 @@ describe('recordCommitment', () => {
         topic: null,
         subjectChildId: null,
         subjectFamilyId: null,
+        heardFacts: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },

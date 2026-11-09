@@ -397,6 +397,21 @@ export function statesAFigure(field: string): boolean {
 }
 
 /**
+ * The facts a field states, one canonical key per anchor — the form a follow-up's facts are
+ * remembered in, so the next follow-up can tell a fact the parent has heard from one they
+ * have not (deliver.ts `followUpFacts`).
+ *
+ * EVERY anchor kind, numbers included. A day and a month name are English words here, so
+ * "samedi 9h15" reads as the numbers 9 and 15 and nothing else; leaving numbers out would
+ * make every French schedule fact invisible, and a new French time could never count as
+ * new. The meridiem is dropped on purpose: a source retyped as `9:15` instead of `9:15am`
+ * is the same fact, and reading it as news would be the repeat this exists to stop.
+ */
+export function factKeys(field: string): string[] {
+  return readAnchors(normaliseForMatch(field)).map((anchor) => `${anchor.kind}:${anchor.value}`);
+}
+
+/**
  * FREE IS A PRICE — a complete one, and the answer to the question.
  *
  * {@link statesAFigure} asks for a figure, and a free drop-in has none. Requiring one made

@@ -1,8 +1,12 @@
+export interface LocalNow {
+  date: string;
+  weekday: string;
+  time: string;
+  timeZone: string;
+}
+
 /** Today's date, weekday and time as the family reads them on their own clock. */
-export function familyLocalNow(
-  now: Date,
-  timeZone: string,
-): { date: string; weekday: string; time: string; timeZone: string } {
+export function familyLocalNow(now: Date, timeZone: string): LocalNow {
   const part = (opts: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat('en-CA', { timeZone, ...opts }).format(now);
   return {

@@ -123,6 +123,7 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
           return {
             status: 'sent',
             providerMessageId: delivered.providerMessageId,
+            transport: delivered.channel,
             providerChatId: delivered.chatId,
           };
         }
@@ -135,6 +136,7 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
         return {
           status: 'sent',
           providerMessageId: sent.providerMessageId,
+          transport: sent.transport === 'imessage' ? 'imessage' : 'sms',
           ...(sent.chatId ? { providerChatId: sent.chatId } : {}),
         };
       } catch (error) {

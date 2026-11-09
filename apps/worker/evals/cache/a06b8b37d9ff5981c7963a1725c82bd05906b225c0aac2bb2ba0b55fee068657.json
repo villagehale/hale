@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Great, thanks Dana. Next, could you tell me the kids' names? Just first names is fine.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "parentName": "Dana",
+    "nameConfirmed": true
+  },
+  "latencyMs": 1237
+}

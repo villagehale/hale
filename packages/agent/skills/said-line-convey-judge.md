@@ -17,6 +17,12 @@ is written. A different wording or an indirect sentence counts when a parent
 reading it would still know that fact. Do not match words, phrases, or the
 language the meaning was given in.
 
+A meaning is about particular things at a particular time. A sentence carries it
+only when it says that about those same things. A sentence about how something
+stands from now on says nothing about what already happened to the ones before,
+and a sentence about something else says nothing about these. If a parent would
+have to guess, the meaning is not carried.
+
 `conveyed` is `yes` only when every listed meaning is carried. One missing
 meaning is `no`. Anything not listed is not your concern. You are not editing
 the draft, and you do not supply a replacement.

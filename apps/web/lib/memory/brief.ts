@@ -68,6 +68,7 @@ interface BriefFact {
   memoryKind?: string | null;
   memorySource?: string | null;
   expiresAt?: Date | string | null;
+  sourceEventId?: string | null;
 }
 
 interface BriefWorkstream {
@@ -154,6 +155,10 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (fact.confidence < CONFIDENCE_FLOOR) return false;
     if (fact.childId !== null && input.teenChildIds.has(fact.childId)) return false;
     if (isReceiptKey(fact.factKey) || fact.factKey.includes(':')) return false;
+    // VIL-429: a fact read off an event reaches the coach only through `memoryFacts`,
+    // which carries where it was seen and leaves it out for a reader who may not hear
+    // that. The brief has no reader, so it does not carry the fact at all.
+    if (fact.sourceEventId) return false;
     // Decay is a read-time filter. An expired obligation stays stored and leaves
     // the prompt, so a finished one-off does not keep steering.
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {

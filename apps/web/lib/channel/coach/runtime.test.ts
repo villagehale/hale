@@ -77,7 +77,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     loadTranscript: async () => [{ role: 'user' as const, content: 'earlier' }],
     loadContext: async (input) => {
       contextInputs.push(input);
-      return { question: input.question, transcript: input.transcript } as never;
+      return { question: input.question, transcript: input.transcript, memoryFacts: [] } as never;
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
@@ -140,6 +140,7 @@ describe('channelCoachRuntime', () => {
           ({
             question: input.question,
             transcript: input.transcript,
+            memoryFacts: [],
             ...(householdGroup ? { householdGroup } : {}),
           }) as never,
         runAgent: async (args) => {
@@ -156,6 +157,38 @@ describe('channelCoachRuntime', () => {
     const none = await run();
     expect(none?.context).not.toHaveProperty('householdGroup');
     expect(none?.instructions).not.toContain(group);
+  });
+
+  it('carries the fact-source skill only on a 1:1 turn holding a fact read in email (VIL-429)', async () => {
+    const addendum = (await loadCronSkill('coach-fact-source')).instructions;
+    const fact = { childId: null, factType: 'routine', factKey: 'soccer_day', factValue: 'Thu' };
+    const sourced = { ...fact, seenIn: { email: { from: 'Northside Rec', on: '2026-10-03' } } };
+    const run = async (seen: boolean, audience: ChannelTurn['audience']) => {
+      const calls: string[] = [];
+      const p = ports({
+        loadContext: async (input) =>
+          ({
+            question: input.question,
+            transcript: input.transcript,
+            memoryFacts: [seen ? sourced : fact],
+          }) as never,
+        runAgent: async (args) => {
+          calls.push(args.skill.instructions);
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
+      return calls[0] ?? '';
+    };
+    expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(await run(false, 'direct')).not.toContain(addendum);
+    expect(await run(true, 'group')).not.toContain(addendum);
+  });
+
+  it('asks for the context as the parent who texted (VIL-429)', async () => {
+    const p = ports();
+    await channelCoachRuntime(p).respond(turn(), []);
+    expect(p.contextInputs).toEqual([expect.objectContaining({ readerUserId: PARENT })]);
   });
 
   it('hands the loop the channel context: the surface and the family clock', async () => {
@@ -176,6 +209,62 @@ describe('channelCoachRuntime', () => {
         question: 'move swim to tuesday',
       }),
     );
+  });
+
+  it('hands the loop the family-local day and forecast as facts, with their skill (VIL-435)', async () => {
+    const addendum = (await loadCronSkill('coach-local-day')).instructions;
+    const seen: { context: Record<string, unknown>; instructions: string }[] = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      seen.push({
+        context: args.context as Record<string, unknown>,
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+    const rainy = { date: '2026-10-12', precipitationChancePct: 80, highTempC: 9 };
+    // 10:07 on Canadian Thanksgiving in Toronto is 14:07 UTC.
+    const thanksgiving = new Date('2026-10-12T14:07:20Z');
+
+    await channelCoachRuntime(
+      ports({
+        runAgent,
+        now: () => thanksgiving,
+        loadTimeZone: async () => 'America/Toronto',
+        loadForecast: async () => [{ ...rainy, weekday: 'Monday' }],
+      }),
+    ).respond(turn('find me something to do today'), []);
+
+    expect(seen[0]?.context.localNow).toEqual({
+      date: '2026-10-12',
+      weekday: 'Monday',
+      time: '10:07',
+      timeZone: 'America/Toronto',
+    });
+    expect(seen[0]?.context.forecast).toEqual([{ ...rainy, weekday: 'Monday' }]);
+    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+  });
+
+  it('leaves the day facts and their skill out when neither is known', async () => {
+    const addendum = (await loadCronSkill('coach-local-day')).instructions;
+    const seen: { context: Record<string, unknown>; instructions: string }[] = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      seen.push({
+        context: args.context as Record<string, unknown>,
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+
+    await channelCoachRuntime(
+      ports({ runAgent, loadTimeZone: async () => null, loadForecast: async () => [] }),
+    ).respond(turn(), []);
+    await channelCoachRuntime(ports({ runAgent })).respond(turn(), []);
+
+    expect(seen[0]?.context).not.toHaveProperty('localNow');
+    expect(seen[0]?.context).not.toHaveProperty('forecast');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+    expect(JSON.stringify(seen[0]?.context)).toBe(JSON.stringify(seen[1]?.context));
+    expect(seen[0]?.instructions).toBe(seen[1]?.instructions);
   });
 
   it('reads a photo into the loop and names a video it did not watch', async () => {
@@ -533,6 +622,7 @@ describe('the watch a turn started', () => {
         fetchBody: async () => fullPage,
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
+        readClassAvailability: {} as never,
         onWatch: onWatch as never,
       }),
     ];
@@ -575,6 +665,7 @@ describe('the watch a turn started', () => {
       instant: false,
       lastState: 'full',
       sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
+      sessionAnchor: null,
     });
   });
 

@@ -90,10 +90,10 @@ const JUDGE_SYSTEM = [
   'goes (its options, or null when none goes), and watchFor notes.',
   'Score 1-5 on FACTS, PRIVACY, ONE ASK and TONE, never on wording.',
   'Facts: it names both things and when, plainly, with the kid; it gives the fix as one ask:',
-  'the suggested person by name taking the plan in suggested.takes; with no suggested person it',
-  'says nobody looks free on the calendars and asks who can, and may name the couldAsk people;',
-  'when both items are the same child it says the child is double-booked and asks which one,',
-  'instead of handing a plan to someone.',
+  'the suggested person by name taking the plan in suggested.takes; with no suggested person and',
+  'no sameKid it says nobody looks free on the calendars and asks who can, and may name the',
+  "couldAsk people; when sameKid is set (both items are that child's) it says the child is",
+  'double-booked and asks which one, instead of handing a plan to someone.',
   'Poll: when one goes, the message is its question and asks who takes input.poll.takes; the',
   'message and the poll are one ask. Its options are input.poll.choices, then one the writer',
   'wrote: it names no one and means "we\'ll figure it out", in input.language. When none goes,',
@@ -195,7 +195,7 @@ function plan(clash, fixture) {
     kids: fixture.kids,
     timeZone: fixture.timeZone,
     language: fixture.language,
-    poll: fixture.polls ? clash.clashPollOffer(found, home.people) : null,
+    poll: fixture.polls ? clash.clashPollOffer(found, home.people, fixture.kids) : null,
   });
 }
 
@@ -264,6 +264,7 @@ function plannerFailures(fixture, line) {
   }
   const got = {
     second: line.items[1]?.kind,
+    sameKid: line.sameKid,
     suggested: line.suggested?.name ?? null,
     busy: line.busy,
     couldAsk: line.couldAsk,

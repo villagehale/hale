@@ -94,10 +94,11 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       callsThisTurn += 1;
 
       const childId = input.childId ?? null;
-      const [place, stage, householdNames] = await Promise.all([
+      const [place, stage, householdNames, today] = await Promise.all([
         args.reader.place(ctx.familyId),
         args.reader.stage(ctx.familyId, childId),
         args.reader.householdNames(ctx.familyId),
+        args.reader.today ? args.reader.today(ctx.familyId) : null,
       ]);
 
       const deidentified = deidentifyActivityQuery({
@@ -106,6 +107,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
         town: place.status === 'known' ? place.town : null,
         stage,
         householdNames,
+        today,
       });
       // No place is an outcome, not a subject to recompose: nothing was searched.
       if (!deidentified.ok && deidentified.refusal === 'no_place') {
