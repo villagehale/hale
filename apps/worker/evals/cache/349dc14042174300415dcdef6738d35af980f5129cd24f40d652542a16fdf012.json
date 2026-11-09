@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks about the family's own schedule availability",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 950
+}

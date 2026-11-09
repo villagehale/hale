@@ -42,6 +42,7 @@ describe('catalog history cutover', () => {
       '0206_authorized_signup_plan',
       '0207_family_sweep_marks',
       '0209_agent_commitments_heard_facts',
+      '0212_parent_proactive_language',
     ]);
   });
 });

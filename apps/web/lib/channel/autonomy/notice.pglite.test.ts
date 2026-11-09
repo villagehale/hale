@@ -462,11 +462,11 @@ describe('telling a parent a kind turned on', () => {
     expect(transport.bodies()).toEqual([text]);
   });
 
-  it('gives the model the parent’s own texts and the stored locale, and picks no language', async () => {
+  it('gives the model the parent’s own texts and their proactive language, and picks no language', async () => {
     const parent = await seedParent();
     await db.database
       .update(schema.users)
-      .set({ locale: 'fr' })
+      .set({ locale: 'zh', proactiveLanguage: 'fr' })
       .where(eq(schema.users.id, parent.parentUserId));
     await db.database.insert(schema.channelMessages).values([
       {

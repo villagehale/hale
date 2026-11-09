@@ -76,6 +76,45 @@ export const LANE_FIXTURES = [
   { id: 'inbound-language-zh', text: '这周末有亲子活动吗', expect: 'in_domain' },
   { id: 'inbound-language-ar', text: 'هل يوجد نشاط للأطفال هذا الأسبوع', expect: 'in_domain' },
 
+  // ── VIL-572 · an explicit ask for the language Hale writes in ──────────────
+  // `expectLanguageRequest` is the primary subtag the ask names. Every OTHER fixture
+  // must come back with no request: a false one would switch every unprompted message
+  // to that parent on one text, which is the failure this field exists to prevent.
+  {
+    id: 'language-ask-fr-in-en',
+    text: 'can you text me in French from now on please',
+    expect: 'in_domain',
+    expectLanguageRequest: 'fr',
+  },
+  {
+    id: 'language-ask-zh',
+    text: '以后请用中文给我发消息',
+    expect: 'in_domain',
+    expectLanguageRequest: 'zh',
+  },
+  {
+    id: 'language-ask-en-in-es',
+    text: 'Por favor, a partir de ahora escríbeme en inglés',
+    expect: 'in_domain',
+    expectLanguageRequest: 'en',
+  },
+  // Not asks: a language named about a word or a class, and a plain off-language text.
+  {
+    id: 'language-word-question',
+    text: 'how do you say swimming lessons in French? the class flyer is all in French',
+    expect: 'in_domain',
+  },
+  {
+    id: 'language-immersion-class',
+    text: 'is the french immersion playgroup still open for fall',
+    expect: 'in_domain',
+  },
+  {
+    id: 'language-plain-fr',
+    text: 'Est-ce qu’il y a des activités pour les enfants samedi matin?',
+    expect: 'in_domain',
+  },
+
   // ── in_domain · the hardest trap in the corpus ────────────────────────────
   // Weather words, but the ASK is the weekend arranged. Answering this with "not my
   // department" is exactly the failure the lane exists to avoid, dressed as its
