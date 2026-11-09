@@ -405,14 +405,14 @@ describe('common time in a shared group', () => {
       ADA,
       minutesLater(1),
     );
-    // Mei's next turn links Ada's family back by its known number: a new join, no new ask.
+    // Mei's next turn does not join Ada's family back: only Ada's own words can.
     const rejoined = writer();
     await turn({ reader, write: rejoined.write }, sender(), 'in-3', MEI, minutesLater(2));
 
     expect(shared.calls[0]?.facts?.checkedFamilies).toBe('family 1, Ada');
     expect(await freeBusyLedger(ada.userId)).toEqual([true, false]);
     expect(rejoined.calls[0]?.facts?.checkedFamilies).toBe('family 1');
-    expect(rejoined.calls[0]?.facts?.askFamilies).toBe('family 2, Ada');
+    expect(rejoined.calls[0]?.facts?.askFamilies).toBe('Ada, family 3');
 
     // Positive control: Ada's own ask after re-joining counts again.
     await turn({ reader, write: writer().write }, sender(), 'in-4', ADA, minutesLater(3));

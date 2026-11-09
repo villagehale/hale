@@ -446,6 +446,14 @@ export async function runDeletionSweep(
   // Their pre-signup intake has no family for the cascade to reach.
   await redactErasedIntake(database, erasedHolds, now);
 
+  // A shared chat's people rows only SET NULL on the family delete, which would keep the
+  // erased family's numbers and first names as anonymous rows.
+  if (familyIds.length > 0) {
+    await database
+      .delete(schema.linqSharedGroupPeople)
+      .where(inArray(schema.linqSharedGroupPeople.familyId, familyIds));
+  }
+
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
