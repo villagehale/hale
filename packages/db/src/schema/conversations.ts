@@ -1,7 +1,16 @@
-import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { families } from './families.js';
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { children } from './children.js';
+import { families } from './families.js';
 
 /**
  * Multi-turn Ask Hale threads. A conversation is a family-scoped container; its
@@ -33,7 +42,7 @@ export const conversations = pgTable(
   },
   (table) => ({
     familyIdx: index('conversations_family_idx').on(table.familyId),
-    // VIL-447 (0212): the target of group_lists' (conversation_id, family_id) FK, so a
+    // VIL-447 (0215): the target of group_lists' (conversation_id, family_id) FK, so a
     // shared list can only point at its own family's thread.
     idFamilyUniq: uniqueIndex('conversations_id_family_uniq').on(table.id, table.familyId),
     // At most one note-anchored conversation per (family, note). Partial (note_key
@@ -55,6 +64,15 @@ export const conversations = pgTable(
  * is valid (topic null). ON DELETE SET NULL on `childId` — a removed child must
  * not cascade-delete the family's conversation history.
  */
+/** What a proactive email-alert turn was about, so the coach can answer a reply to it.
+ * The SMS itself stays the notice text. A 13+ child's mail stores no snippet. */
+export interface MessageSource {
+  kind: 'gmail';
+  eventId: string | null;
+  gmailMessageId: string;
+  snippet: string | null;
+}
+
 export const messages = pgTable(
   'messages',
   {
@@ -68,6 +86,9 @@ export const messages = pgTable(
     childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     /** Coarse topic tag (health/sleep/feeding/…) for timeline filtering; null when untagged. */
     topic: text('topic'),
+    /** What a proactive turn was about (0212). Null for every turn that has none.
+     * Never copied to a log or an audit row. */
+    source: jsonb('source').$type<MessageSource>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Soft delete (rule #6 / #9): a parent-removed turn is stamped, not erased, so
      * the audit row that references it stays intact. NULL = live; the read path

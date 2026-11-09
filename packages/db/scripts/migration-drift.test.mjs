@@ -43,7 +43,9 @@ describe('catalog history cutover', () => {
       '0207_family_sweep_marks',
       '0209_agent_commitments_heard_facts',
       '0210_watched_spots_any_page',
-      '0212_group_lists',
+      '0212_message_source',
+      '0213_parent_proactive_language',
+      '0215_group_lists',
     ]);
   });
 });

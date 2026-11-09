@@ -25,7 +25,12 @@ import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } 
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
 import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
 import { readFamilyPlace, readHealthPlace } from './place';
-import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
+import {
+  type InboundLaneScreen,
+  type LaneReading,
+  type LaneScreenFallback,
+  createInboundLaneScreen,
+} from './screen';
 
 /**
  * VIL-273 — the off-domain capability lane, end to end minus the sending.
@@ -94,7 +99,13 @@ export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
    * existed — carrying WHY, when the screen could not run (rule #11).
    * `language` is present only when the screen read a tag. */
-  | { status: 'in_domain'; fallback: LaneScreenFallback | null; language?: string }
+  | {
+      status: 'in_domain';
+      fallback: LaneScreenFallback | null;
+      language?: string;
+      /** VIL-572 · a language the parent explicitly asked for. Omitted otherwise. */
+      languageRequest?: string;
+    }
   /** The lane finished the turn itself. See the module note on why this kept its name
    * now that one of the three branches is an answer rather than a refusal. */
   | {
@@ -105,6 +116,8 @@ export type OffDomainVerdict =
       replySource: ReplySource;
       /** The BCP-47 tag the screen read, when it read one. Omitted otherwise. */
       language?: string;
+      /** VIL-572 · a language the parent explicitly asked for. Omitted otherwise. */
+      languageRequest?: string;
       /**
        * The medical lane's own outcome, for the router to stamp on the reply it sends —
        * and null on every other branch, which is what MARKS a sent row as a medical
@@ -283,7 +296,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
                 medicalSource: null,
                 signal: 'not_applicable',
               },
-              reading.language,
+              reading,
             );
           }
         }
@@ -292,7 +305,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       if (reading.lane === 'in_domain' || reading.category === null) {
         return withSeenLanguage(
           { status: 'in_domain', fallback: reading.fallback },
-          reading.language,
+          reading,
         );
       }
       const lane = reading.lane;
@@ -318,7 +331,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
             signal: 'not_applicable',
             pendingAsk: null,
           },
-          reading.language,
+          reading,
         );
       }
 
@@ -389,7 +402,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           signal,
           pendingAsk,
         },
-        reading.language,
+        reading,
       );
     },
   };
@@ -422,11 +435,19 @@ async function coarseMomentPlace(family: FamilyFacts): Promise<MomentPlace> {
  * Absent means the router writes nothing. A fail-open, a timeout, and the emergency
  * short-circuit never invent a language (rule #11).
  */
-function withSeenLanguage(verdict: OffDomainVerdict, language: string | null): OffDomainVerdict {
-  if (language === null || language.trim() === '') return verdict;
+function withSeenLanguage(
+  verdict: OffDomainVerdict,
+  reading: Pick<LaneReading, 'language' | 'languageRequest'>,
+): OffDomainVerdict {
   // An unwritten moment has no language field. The screen's tag is not invented onto it.
   if (verdict.status === 'unwritten') return verdict;
-  return { ...verdict, language: language.trim() };
+  const language = reading.language?.trim() ?? '';
+  const requested = reading.languageRequest?.trim() ?? '';
+  return {
+    ...verdict,
+    ...(language === '' ? {} : { language }),
+    ...(requested === '' ? {} : { languageRequest: requested }),
+  };
 }
 
 /**

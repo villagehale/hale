@@ -39,6 +39,7 @@ import {
   scoreFirstJudgeSchema,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -92,25 +93,11 @@ const JUDGE_REASON_MAX_CHARS = 160;
 const JUDGE_TOOL_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 const JUDGE_MAX_TOKENS = 440;
 
-const READ_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE reading of a group-chat message about a poll.',
-  'You are given `situation` and `reading`. `reading` is the model tool output: intent,',
-  'pollQuestion, pollOptions, pollChoice, confidence. Score 1-5 on MEANING.',
-  'Do not require particular words. A 5 matches the situation. A 1 or 2 is the wrong intent',
-  '(a vote read as chatter, chatter read as a vote, "whatever works" or speaking for',
-  'someone else read as a vote, a start without the choices they named).',
-  'Reply with ONLY the score tool. score first, then reason. Reason at most',
-  `${JUDGE_REASON_MAX_CHARS} characters.`,
-].join(' ');
+const READ_JUDGE_SYSTEM = judgePrompt('group-poll-read', {
+  reasonMaxChars: JUDGE_REASON_MAX_CHARS,
+});
 
-const VOICE_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE message Hale posts in a group chat about a poll.',
-  'You are given `situation`, `watchFor`, `facts`, and `message`. Score 1-5 on FACTS and TONE, not wording.',
-  'A 5 uses only the choices, counts, names, leaders, and waiting list from facts, in its own words.',
-  'A LOW score invents a winner not in leaders, a reply keyword, a button, a name or number not in facts,',
-  'or claims Hale can see email or a private calendar. A tie in facts must stay a tie.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const VOICE_JUDGE_SYSTEM = judgePrompt('group-poll-voice');
 
 const JUDGE_TOOL = {
   name: 'score',

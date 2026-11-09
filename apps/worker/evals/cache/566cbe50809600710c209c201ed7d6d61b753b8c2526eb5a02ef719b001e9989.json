@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply invents email contents (a visit on Thursday at 4:00 PM, a director named Morgan, Dr. Rivera, and a $50 PTA wire request) when Hale only has its own alert text. This directly breaks the rule, so it scores at the lowest level.",
+    "score": 1
+  }
+}

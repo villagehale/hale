@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { redactSignupAudit } from './audit';
 import {
   type SignupOfferFacts,
@@ -192,10 +192,9 @@ async function writePlanOffer(
     run: null,
     language:
       input.facts.language ??
-      (await readNoticeLanguage(database, {
+      (await readParentLanguage(database, {
         familyId: input.familyId,
         parentUserId: input.parentUserId,
-        now: input.now,
       })),
   });
   return text ? planReplyBody(text, known.registrationUrl) : null;

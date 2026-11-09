@@ -684,6 +684,24 @@ describe('in-domain is the fall-through', () => {
     const deflected = await consider(ports({ read: reading({ language: 'ar' }) }));
     expect(deflected).toMatchObject({ status: 'deflected', language: 'ar' });
   });
+
+  it('carries an explicit language ask onto the verdict, on both doors', async () => {
+    const asked = await consider(
+      ports({
+        read: reading({ lane: 'in_domain', category: null, language: 'en', languageRequest: 'fr' }),
+      }),
+    );
+    expect(asked).toEqual({
+      status: 'in_domain',
+      fallback: null,
+      language: 'en',
+      languageRequest: 'fr',
+    });
+    const deflected = await consider(
+      ports({ read: reading({ language: 'zh', languageRequest: 'zh' }) }),
+    );
+    expect(deflected).toMatchObject({ status: 'deflected', languageRequest: 'zh' });
+  });
 });
 
 describe('the demand signal', () => {

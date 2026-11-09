@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "reports child currently having trouble breathing after eating peanuts",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 1019
+}

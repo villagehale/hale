@@ -118,6 +118,33 @@ describe('toReading', () => {
     ).toBe('ZH');
   });
 
+  it('carries an explicit language ask, and leaves the key off when there is none', () => {
+    expect(
+      toReading({
+        lane: 'in_domain',
+        category: 'none',
+        language: 'en',
+        language_request: ' fr ',
+      }),
+    ).toEqual({
+      lane: 'in_domain',
+      category: null,
+      fallback: null,
+      language: 'en',
+      languageRequest: 'fr',
+    });
+    for (const none of [null, '  ', undefined]) {
+      expect(
+        toReading({ lane: 'in_domain', category: 'none', language: 'en', language_request: none }),
+      ).not.toHaveProperty('languageRequest');
+    }
+    const log = quiet();
+    expect(
+      toReading({ lane: 'sort_of_ours', category: 'none', language: 'en', language_request: 'fr' }),
+    ).not.toHaveProperty('languageRequest');
+    log.mockRestore();
+  });
+
   it('treats a blank tag as no language, and drops a tag on a lane it cannot read', () => {
     const log = quiet();
     expect(toReading({ lane: 'in_domain', category: 'none', language: '   ' }).language).toBeNull();

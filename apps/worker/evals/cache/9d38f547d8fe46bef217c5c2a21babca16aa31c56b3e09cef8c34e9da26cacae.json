@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "sleep guidance question about night wakings, a raising-kids coaching topic, not a symptom report",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 939
+}

@@ -41,6 +41,7 @@ import {
   WEEKDAY_CARE_REPLY_BROKEN,
   WEEKDAY_CARE_REPLY_FIXTURES,
 } from './weekday-care-reply-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -55,29 +56,9 @@ const JUDGE_REASON_MAX_CHARS = 160;
 const JUDGE_TOOL_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 const JUDGE_MAX_TOKENS = 440;
 
-export const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE reading of a parent reply about how a child',
-  'spends weekdays. You are given `parentText`, `situation` and `reading`. `reading` is',
-  'the model tool output: care, provider, confidence, and an optional reason. Read the',
-  'whole reading, reason included. Score 1-5.',
-  'Call the score tool with `score` first, then `reason`. The reason is at most',
-  `${JUDGE_REASON_MAX_CHARS} characters. Do not quote the parent. Do not quote the`,
-  'situation.',
-  'A 5 matches the situation. care is home, daycare, starting_soon, or nothing, and',
-  'it is the one the situation describes. provider is present only when the situation',
-  "says this child's own place was named, and it is that place, spelled as given.",
-  'confidence is high when the situation is clear enough to file for months, and not',
-  'high when the situation settles nothing. The parent may have written in any language',
-  'or script. Grade the meaning. Do not require particular words.',
-  'A 1 or 2 is any of: the wrong care; a provider that belongs to a different child or',
-  "another family (that is someone else's private fact); a provider when none was",
-  'named; a misspelled or invented provider; high confidence on a reply that settles',
-  'nothing; a reason that invents facts the parent did not give (dates, places, people,',
-  'a diagnosis or a judgement of the family), or that judges or lectures the parent.',
-  'A 3 is the right care with a confidence the runtime would not file, or a right',
-  'care whose provider is missing or extra.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+export const JUDGE_SYSTEM = judgePrompt('weekday-care-reply', {
+  reasonMaxChars: JUDGE_REASON_MAX_CHARS,
+});
 
 function estimateTokens(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

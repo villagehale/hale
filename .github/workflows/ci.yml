@@ -284,8 +284,17 @@ jobs:
       - name: Group privacy coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-privacy
 
+      - name: Read-email coach eval (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email
+
+      - name: Read-email coach eval broken calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email:broken
+
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
+
+      - name: Group mention read classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-mention-read
 
       - name: Introduction ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intro-voice
