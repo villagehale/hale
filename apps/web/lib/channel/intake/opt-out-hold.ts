@@ -3,8 +3,8 @@ import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
-import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
-import { decodeIntakeForRecovery } from './session';
+import { INTAKE_CONTENT_REDACTED, redactIntakeSessionsById } from '~/lib/rights/message-retention';
+import { decodeIntakeForRecovery, isUnreadableIntakeBlob } from './session';
 
 /**
  * #868 · the hold after an opt-out read fails twice. No keyword list stands behind the
@@ -57,8 +57,14 @@ export interface ErasedHolds {
   /** The numbers of their intake sessions that would not decode. What those sessions name
    * cannot be read, so a held row on such a number is taken only where nobody holds it. */
   undecodableNumbers: string[];
-  /** How many of their intake sessions would not decode. */
-  undecodableSessions: number;
+  /** Their intake sessions that would not decode. Each is kept, redacted, so the page has a
+   * row to name: ops resolves it to its number. */
+  undecodableSessions: { id: string; phoneHash: string }[];
+  /** Every inbound text their intake transcripts name. A pre-signup text has no ledger row,
+   * so its crisis marks are found by these alone. */
+  intakeInboundIds: string[];
+  /** Their pre-signup sessions (no family yet), which the family cascade never reaches. */
+  presignupSessionIds: string[];
 }
 
 /** What {@link releaseErasedHolds} did about intake sessions that would not decode. */
@@ -69,17 +75,16 @@ export interface UndecodableIntakeOutcome {
 
 const UNDECODABLE_REASON = 'intake_session_undecodable';
 
-/** The held texts a session's transcript names, or `undecodable` for a blob that will not
- * decrypt (a corrupt row, a rotated key): one such session must never stop an erasure. */
-function heldTextsNamedBy(
-  session: { id: string; dataEncrypted: string },
-  heldIds: ReadonlySet<string>,
-): string[] | 'undecodable' {
+/** The inbound texts a session's transcript names, or `undecodable` for a blob that will
+ * not open (a corrupt row, a rotated key): one such session must never stop an erasure. Any
+ * other throw is a fault in the code, not the row, and stops the sweep. */
+function inboundTextsOf(session: { id: string; dataEncrypted: string }): string[] | 'undecodable' {
   if (session.dataEncrypted === INTAKE_CONTENT_REDACTED) return [];
   let transcript: ReturnType<typeof decodeIntakeForRecovery>['transcript'];
   try {
     transcript = decodeIntakeForRecovery(session.dataEncrypted).transcript;
-  } catch {
+  } catch (err) {
+    if (!isUnreadableIntakeBlob(err)) throw err;
     console.error(
       { session: session.id, reason: UNDECODABLE_REASON },
       'erasure: an intake session would not decode - its held rows are taken by number only where nobody holds it',
@@ -87,9 +92,7 @@ function heldTextsNamedBy(
     return 'undecodable';
   }
   return transcript.flatMap((line) =>
-    line.direction === 'in' && line.providerId && heldIds.has(line.providerId)
-      ? [line.providerId]
-      : [],
+    line.direction === 'in' && line.providerId ? [line.providerId] : [],
   );
 }
 
@@ -103,7 +106,9 @@ export async function erasedFamilyHolds(
       phoneHashes: [],
       providerMessageIds: [],
       undecodableNumbers: [],
-      undecodableSessions: 0,
+      undecodableSessions: [],
+      intakeInboundIds: [],
+      presignupSessionIds: [],
     };
   }
   const channels = await database
@@ -146,50 +151,79 @@ export async function erasedFamilyHolds(
       heldUntil.set(row.phoneHash, row.revokedAt);
     }
   }
-  const sessions =
-    held.length === 0
-      ? []
-      : (
-          await database
-            .select({
-              id: schema.smsIntakeSessions.id,
-              phoneHash: schema.smsIntakeSessions.phoneHash,
-              familyId: schema.smsIntakeSessions.familyId,
-              createdAt: schema.smsIntakeSessions.createdAt,
-              dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
-            })
-            .from(schema.smsIntakeSessions)
-            .where(
-              or(
-                inArray(schema.smsIntakeSessions.familyId, [...familyIds]),
-                phoneHashes.length === 0
-                  ? undefined
-                  : and(
-                      isNull(schema.smsIntakeSessions.familyId),
-                      inArray(schema.smsIntakeSessions.phoneHash, phoneHashes),
-                    ),
+  const sessions = (
+    await database
+      .select({
+        id: schema.smsIntakeSessions.id,
+        phoneHash: schema.smsIntakeSessions.phoneHash,
+        familyId: schema.smsIntakeSessions.familyId,
+        createdAt: schema.smsIntakeSessions.createdAt,
+        dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
+      })
+      .from(schema.smsIntakeSessions)
+      .where(
+        or(
+          inArray(schema.smsIntakeSessions.familyId, [...familyIds]),
+          phoneHashes.length === 0
+            ? undefined
+            : and(
+                isNull(schema.smsIntakeSessions.familyId),
+                inArray(schema.smsIntakeSessions.phoneHash, phoneHashes),
               ),
-            )
-        ).filter((session) => {
-          if (session.familyId !== null) return true;
-          const until = heldUntil.get(session.phoneHash);
-          return until === null || (until !== undefined && session.createdAt <= until);
-        });
+        ),
+      )
+  ).filter((session) => {
+    if (session.familyId !== null) return true;
+    const until = heldUntil.get(session.phoneHash);
+    return until === null || (until !== undefined && session.createdAt <= until);
+  });
   const intakeTexts: string[] = [];
-  const undecodable: string[] = [];
+  const undecodable: { id: string; phoneHash: string }[] = [];
   for (const session of sessions) {
-    const named = heldTextsNamedBy(session, heldIds);
-    if (named === 'undecodable') undecodable.push(session.phoneHash);
+    const named = inboundTextsOf(session);
+    if (named === 'undecodable') undecodable.push({ id: session.id, phoneHash: session.phoneHash });
     else intakeTexts.push(...named);
   }
   return {
     phoneHashes,
     providerMessageIds: [
-      ...new Set([...texts.flatMap((row) => (row.id === null ? [] : [row.id])), ...intakeTexts]),
+      ...new Set([
+        ...texts.flatMap((row) => (row.id === null ? [] : [row.id])),
+        ...intakeTexts.filter((id) => heldIds.has(id)),
+      ]),
     ],
-    undecodableNumbers: [...new Set(undecodable)],
-    undecodableSessions: undecodable.length,
+    undecodableNumbers: [...new Set(undecodable.map((session) => session.phoneHash))],
+    undecodableSessions: undecodable,
+    intakeInboundIds: [...new Set(intakeTexts)],
+    presignupSessionIds: sessions
+      .filter((session) => session.familyId === null)
+      .map((session) => session.id),
   };
+}
+
+/**
+ * Before the family cascade: what the erased parents texted before their family existed is
+ * redacted with it, not a year later by retention. A session that would not decode is
+ * detached from its family and redacted rather than cascaded, so the page names a row that
+ * still stands: no content, only the number's hash ops looks the held rows up by.
+ */
+export async function redactErasedIntake(
+  database: Database,
+  erased: ErasedHolds,
+  now: Date,
+): Promise<void> {
+  const undecodable = erased.undecodableSessions.map((session) => session.id);
+  if (undecodable.length > 0) {
+    await database
+      .update(schema.smsIntakeSessions)
+      .set({ familyId: null, userId: null })
+      .where(inArray(schema.smsIntakeSessions.id, undecodable));
+  }
+  await redactIntakeSessionsById(
+    database,
+    [...new Set([...erased.presignupSessionIds, ...undecodable])],
+    now,
+  );
 }
 
 /**
@@ -272,16 +306,17 @@ export async function releaseErasedHolds(
       .delete(schema.optOutReadHolds)
       .where(inArray(schema.optOutReadHolds.phoneHash, released));
   }
-  if (erased.undecodableSessions === 0) return { sessions: 0, page: 'nothing_to_page' };
+  const [first] = erased.undecodableSessions;
+  if (first === undefined) return { sessions: 0, page: 'nothing_to_page' };
+  // A session on a number someone still holds is the one ops has rows to act on.
+  const named =
+    erased.undecodableSessions.find((session) => stillHeld.has(session.phoneHash)) ?? first;
   const page = await pageOps(database, {
     site: 'erasure_intake_undecodable',
-    facts: {
-      number: erased.undecodableNumbers.some((hash) => stillHeld.has(hash))
-        ? 'still_held'
-        : 'released',
-    },
+    facts: { number: stillHeld.has(named.phoneHash) ? 'still_held' : 'released' },
+    ref: named.id,
   });
-  return { sessions: erased.undecodableSessions, page };
+  return { sessions: erased.undecodableSessions.length, page };
 }
 
 /** Held while any unread text of this number stands, or a pre-VIL-553 row does. */
