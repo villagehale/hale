@@ -141,13 +141,25 @@ async function record() {
       console.info(`DRY   ${fixture.id}`);
       continue;
     }
-    const misses = friendMarksMisses(fixture, result.value);
+    const input = inputFor(voice, fixture);
+    const kept = fixture.groupBubbles
+      ? (
+          voice.findShowGroupBubbles(
+            voice.readGroupLeads(result.value?.groupLeads),
+            input.findGroups,
+            input,
+          ) ?? []
+        ).filter((bubble) => bubble.length > 0).length
+      : 0;
+    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept });
     if (misses.length > 0) failed += 1;
     console.info(
       `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
-    if (fixture.printReply)
+    if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+    if (fixture.groupBubbles)
+      console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }
 
   console.info(

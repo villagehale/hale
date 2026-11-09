@@ -785,9 +785,8 @@ describe('speakFriend', () => {
     expect(opener.length).toBeGreaterThan(120);
     const line = 'Swim at the rec centre (ages 3-5) - Saturday morning at the community pool';
     const lines = Array.from({ length: 24 }, () => line);
-    const lead =
-      'A calm one for the younger kid, easy to get to and easy to leave when they have had enough of it for one morning and still want the rest of the day open with nothing else planned';
-    expect(lead.length).toBeGreaterThan(160);
+    const lead = `A calm one for the younger kid, every Saturday morning:\n${lines.join('\n')}`;
+    expect(lead.length).toBeGreaterThan(1200);
     const spoken = await speakFriend(
       {
         async compose() {
@@ -809,11 +808,99 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.fallback).toBeNull();
-    expect(spoken.bubbles[0]).toBe(opener);
-    expect(spoken.bubbles[1]).toContain(lead);
-    expect(spoken.body.length).toBeGreaterThan(1200);
+    expect(spoken.bubbles).toEqual([opener, lead]);
     expect(pages).toEqual([]);
     expect(spoken.body).not.toContain('?');
+  });
+
+  describe('find_show: every map bubble is one the model wrote (VIL-526)', () => {
+    const SWIM_LINE = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const STORY_LINE = 'Story time at the library (all ages) - Tuesday 10:30';
+    const OPENER = 'I looked near you for what fits a 4-year-old.';
+    const map = blank({
+      step: 'find_show',
+      parentWords: "she's 4",
+      placeLabel: 'M5V',
+      ageMonths: [48],
+      findLines: [SWIM_LINE, STORY_LINE],
+      findGroups: [
+        { category: 'swimming', lines: [SWIM_LINE] },
+        { category: 'parent_baby', lines: [STORY_LINE] },
+      ],
+    });
+    const SWIM_BUBBLE = 'Swim at the rec centre on Saturday at 10:00, made for ages 3-5.';
+    const STORY_BUBBLE = 'Story time at the library, Tuesday at 10:30, any age is welcome.';
+
+    async function speakWith(drafts: (prompt: string) => { reply: string; groupLeads?: unknown }) {
+      const prompts: string[] = [];
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            const prompt = options?.prompt ?? 'full';
+            prompts.push(prompt);
+            retries.push(given.retry?.problem);
+            return drafts(prompt) as never;
+          },
+        },
+        map,
+        { page: async () => {} },
+      );
+      return { spoken, prompts, retries };
+    }
+
+    it('sends the opener and each group bubble as the model wrote it, with no numbers added', async () => {
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [SWIM_BUBBLE, STORY_BUBBLE],
+      }));
+      expect(spoken.source).toBe('composed');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+      expect(spoken.body).not.toMatch(/^\d+\.\s/m);
+    });
+
+    it('keeps a group bubble with line breaks as one bubble', async () => {
+      const multiline = 'Two swims this week:\nSaturday at 10:00 at the rec centre\nages 3-5';
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [multiline, STORY_BUBBLE],
+      }));
+      expect(spoken.bubbles).toEqual([OPENER, multiline, STORY_BUBBLE]);
+    });
+
+    it('leaves out a group the model wrote nothing for, and sends the one it wrote', async () => {
+      const { spoken } = await speakWith(() => ({ reply: OPENER, groupLeads: ['', STORY_BUBBLE] }));
+      expect(spoken.source).toBe('composed');
+      expect(spoken.bubbles).toEqual([OPENER, STORY_BUBBLE]);
+      expect(spoken.body).not.toContain(SWIM_LINE);
+    });
+
+    it("drops a bubble that borrows another group's time, and keeps the one that uses its own", async () => {
+      const borrowed = 'Swim at the rec centre on Tuesday at 10:30, made for ages 3-5.';
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [borrowed, STORY_BUBBLE],
+      }));
+      expect(spoken.bubbles).toEqual([OPENER, STORY_BUBBLE]);
+    });
+
+    it('asks again when no group bubble survives, and sends the retry that writes them', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: [] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+    });
+
+    it('sends nothing at all when neither attempt writes a group bubble', async () => {
+      const { spoken, prompts } = await speakWith(() => ({ reply: OPENER, groupLeads: null }));
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
   });
 
   it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {
