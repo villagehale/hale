@@ -410,6 +410,9 @@ jobs:
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read
 
+      - name: Find reasoning judge eval (cached-only)
+        run: pnpm --filter @hale/worker eval:find-reasoning-judge
+
       - name: Crisis reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:crisis-reply
 
