@@ -139,7 +139,7 @@ describe('every prompt reads family memory one way', () => {
   });
 
   it('the memory brief', async () => {
-    const brief = await assembleMemoryBrief(db.database, familyId, NOW);
+    const brief = await assembleMemoryBrief(db.database, familyId, 'every_adult', NOW);
     expectOnlyLive(brief.text);
   });
 
@@ -151,12 +151,14 @@ describe('every prompt reads family memory one way', () => {
 
   it('the find slice', async () => {
     const reader = productionActivityFamilyReader();
-    const fit = await reader.familyFit?.(db.database, familyId, NOW);
+    const fit = await reader.familyFit?.(db.database, familyId, 'every_adult', NOW);
     expect(fit?.preferences.map((p) => p.key).sort()).toEqual([...LIVE_KEYS].sort());
   });
 
   it('the plan composer reads family-wide facts only', async () => {
-    expect(await loadPlanFacts(db.database, familyId, NOW)).toEqual(['loves outdoor play']);
+    expect(await loadPlanFacts(db.database, familyId, 'every_adult', NOW)).toEqual([
+      'loves outdoor play',
+    ]);
   });
 
   it('the nightly inferencer', async () => {

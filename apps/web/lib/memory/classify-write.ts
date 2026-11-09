@@ -2,10 +2,12 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  type FactHeard,
   type FactWrite,
   type FactWriteResult,
   closeFacts,
   resolveValidFrom,
+  sameScope,
   writeFact,
 } from './facts';
 import { temporaryExpiry } from './kinds';
@@ -233,6 +235,7 @@ export interface ClassifiedCommit {
   expiresAt?: string | null;
   correctsKey?: string | null;
   sourceEventId?: string;
+  heard: FactHeard;
 }
 
 /**
@@ -253,6 +256,7 @@ export async function commitClassifiedMemory(
     confidence: input.confidence,
     inferredBy: input.inferredBy,
     sourceEventId: input.sourceEventId,
+    heard: input.heard,
     validFrom: accepted.validFrom,
     memoryKind: accepted.memoryKind,
     memorySource: input.source,
@@ -274,6 +278,9 @@ export async function commitClassifiedMemory(
             : eq(schema.familyMemoryFacts.childId, input.childId),
           eq(schema.familyMemoryFacts.factKey, correctsKey),
           isNull(schema.familyMemoryFacts.validUntil),
+          // Only within the writer's own scope: the nightly writer cannot close a fact
+          // private to one adult by naming its key (VIL-599).
+          sameScope({ factType: input.factType, memorySource: input.source, heard: input.heard }),
         ),
       );
     if (prior.length > 0) {

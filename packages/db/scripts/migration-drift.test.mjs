@@ -50,6 +50,7 @@ describe('catalog history cutover', () => {
       '0217_capability_denials',
       '0205_opt_out_held_crisis_read_sealed',
       '0220_event_reminders_compose_backoff',
+      '0218_family_memory_facts_source_user',
     ]);
   });
 });
