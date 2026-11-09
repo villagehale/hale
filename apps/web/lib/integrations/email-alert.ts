@@ -793,6 +793,7 @@ export async function alertParentForEmail(
     language: await ports.parentLanguage(parentUserId, now),
     recentNotices: await readRecentNotices(database, { familyId, parentUserId }),
     durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
+    receivedAt,
     timeZone: input.timeZone,
     now,
   });

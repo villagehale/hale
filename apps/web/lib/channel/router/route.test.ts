@@ -1972,7 +1972,8 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
     return channelCoachRuntime({
       loadSkill: async () => skill,
       loadTranscript: async () => [],
-      loadContext: async (ctx) => ({ question: ctx.question, transcript: ctx.transcript }) as never,
+      loadContext: async (ctx) =>
+        ({ question: ctx.question, transcript: ctx.transcript, memoryFacts: [] }) as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
       buildTools: (_turn, onDraft) => {

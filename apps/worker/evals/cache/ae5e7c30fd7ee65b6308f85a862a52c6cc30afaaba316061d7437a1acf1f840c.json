@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "named child, library storytime fits age, clear reschedule with old and new times, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maplewood Library emailed Tuesday that Robin's Storytime got moved. It was Saturday at 1:00 PM and it's now Sunday, September 20 at 1:00 PM, running about 45 minutes. It's already updated on your calendar.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

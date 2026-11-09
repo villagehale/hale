@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Names both items, the day, time and child correctly, notes Maya is double-booked, and asks one question (which one she is going to) addressed to Barton without inventing anything. It mentions no poll, which matches poll null. The message reads casually in English. Minor issue: it addresses Barton directly, which is fine, but the reply has a slightly odd framing (\"a second driver won't fix this\") that is accurate and not invented. Overall it meets the facts, privacy and single-ask requirements.",
+    "score": 5
+  }
+}
