@@ -93,7 +93,9 @@ const EXTRACT_TOOL_SCHEMA = {
         child_ref: { type: ['string', 'null'] },
         original_time: { type: ['string', 'null'] },
         new_time: { type: ['string', 'null'] },
+        end_time: { type: ['string', 'null'] },
         location: { type: ['string', 'null'] },
+        address: { type: ['string', 'null'] },
       },
       required: ['title'],
     },
@@ -119,6 +121,7 @@ const BROKEN_EXTRACTION = {
     original_time: null,
     new_time: '2026-01-01T09:00:00-05:00',
     location: null,
+    address: '1 Invented Street',
   },
   source_confidence: 0.9,
   quote_evidence: 'stand-in quote',
@@ -139,6 +142,31 @@ function extractUserMessage(fixture) {
     family_timezone: FAMILY_TIMEZONE,
     children: CHILDREN.map((c) => ({ id: c.id, name: c.name, ageInMonths: c.ageInMonths })),
   });
+}
+
+/** The address check, as words in order (case, spacing and punctuation aside). */
+function addressWords(text) {
+  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+function containsRun(haystack, needle) {
+  for (let start = 0; start + needle.length <= haystack.length; start += 1) {
+    if (needle.every((w, i) => haystack[start + i] === w)) return true;
+  }
+  return false;
+}
+
+/** Null expected: the model gave none. Expected: the model's address holds the expected
+ * street and every word of it is a run of the email's own words. */
+function addressMatches(fixture, actual) {
+  const expected = fixture.expected.expectedAddress;
+  if (expected === null) return actual == null;
+  if (typeof actual !== 'string') return false;
+  const got = addressWords(actual);
+  return (
+    containsRun(got, addressWords(expected)) &&
+    containsRun(addressWords(`${fixture.envelope.subject}\n${fixture.body}`), got)
+  );
 }
 
 function numberOrNull(value) {
@@ -383,6 +411,13 @@ async function main() {
     return missingOriginal || missingNew;
   });
 
+  const addressCheckable = results.filter(
+    (r) => r.extractValue && r.fixture.expected.expectedAddress !== undefined,
+  );
+  const addressMismatches = addressCheckable.filter(
+    (r) => !addressMatches(r.fixture, r.extractValue.event.address),
+  );
+
   // ── report ───────────────────────────────────────────────────────────────
   console.log('--- per-fixture ---');
   for (const r of results) {
@@ -414,6 +449,13 @@ async function main() {
   );
   console.log(
     `required-time-field presence: ${timeCheckable.length - timeMismatches.length}/${timeCheckable.length} correct`,
+  );
+  console.log(
+    `street address (stated, never invented): ${addressCheckable.length - addressMismatches.length}/${addressCheckable.length} correct${
+      addressMismatches.length
+        ? ` — miss: ${addressMismatches.map((r) => r.fixture.id).join(', ')}`
+        : ''
+    }`,
   );
 
   const extractionCount = results.filter((r) => r.extractValue !== null).length;
@@ -452,7 +494,8 @@ async function main() {
       (kindAccuracy >= 0.9 &&
         teenAccuracy === 1 &&
         childRefMismatches.length === 0 &&
-        timeMismatches.length === 0));
+        timeMismatches.length === 0 &&
+        addressMismatches.length === 0));
 
   console.log('\n--- gate ---');
   if (!broken) {

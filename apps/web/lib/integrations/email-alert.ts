@@ -1130,6 +1130,7 @@ function bookingDraftFor(
     titleIsFallback: title === '',
     // The same fold the offer row's place goes through, and the same function.
     location: foldedPlace(extraction.event.location),
+    address: foldedAddress(extraction.event.address ?? null),
     now,
   });
 }
@@ -1783,6 +1784,16 @@ export function emailAlertOfferDraft(input: {
 function foldedPlace(location: string | null): string | null {
   const place = clamp(gsm7(location ?? ''), TITLE_MAX);
   return place === '' ? null : place;
+}
+
+/** Longer than any street line a receipt gives with its city and postal code. */
+const ADDRESS_MAX = 120;
+
+/** The street address through the place's fold, but never clamped: an address cut short is
+ * a different address, so one too long to keep is none. */
+function foldedAddress(address: string | null): string | null {
+  const folded = gsm7(address ?? '').trim();
+  return folded === '' || folded.length > ADDRESS_MAX ? null : folded;
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
