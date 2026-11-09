@@ -140,6 +140,71 @@ function heardBySql(readerUserId: string | null): SQL | undefined {
   );
 }
 
+type ScopedRow = Pick<schema.FamilyMemoryFact, 'factType' | 'memorySource' | 'sourceAudience'>;
+
+/**
+ * A fact only its speaker may hear: said in their own 1:1 and not shared by R7. The
+ * same rule as `factHeardBy`'s `one_to_one` branch, and as {@link liveScopeSql}.
+ */
+export function isPrivateFact(row: ScopedRow): boolean {
+  return (
+    row.sourceAudience === 'one_to_one' &&
+    !(SHARED_FACT_TYPES as readonly string[]).includes(row.factType) &&
+    !(SHARED_FACT_SOURCES as readonly string[]).includes(row.memorySource)
+  );
+}
+
+/**
+ * Whose private fact a row is: the fifth part of a live fact's identity
+ * (`memory_facts_one_live_per_scope_idx`, migration 0218). A private fact is scoped to
+ * its speaker, so A's and B's private facts on one key are both live and no write by
+ * one adult closes the other's. Every other fact is the household's (null), one live
+ * row per key as before. A private row whose speaker was deleted (`source_user_id` is
+ * `ON DELETE SET NULL`) is scoped to its own id: nobody's, and never in a shared row's
+ * way, so deleting a user can never fail on this index. The migration spells the same
+ * expression; change both or neither.
+ */
+export function liveScopeSql(): SQL {
+  const facts = schema.familyMemoryFacts;
+  const isPrivate = and(
+    eq(facts.sourceAudience, 'one_to_one'),
+    notInArray(facts.factType, [...SHARED_FACT_TYPES]),
+    notInArray(facts.memorySource, [...SHARED_FACT_SOURCES]),
+  );
+  return sql`(case when ${isPrivate} then coalesce(${facts.sourceUserId}, ${facts.id}) end)`;
+}
+
+type IdentityRow = Pick<
+  schema.FamilyMemoryFact,
+  'id' | 'childId' | 'factType' | 'factKey' | 'validFrom' | 'createdAt'
+>;
+
+function newerFact(a: IdentityRow, b: IdentityRow): boolean {
+  const byValidFrom = a.validFrom.getTime() - b.validFrom.getTime();
+  if (byValidFrom !== 0) return byValidFrom > 0;
+  const byCreatedAt = a.createdAt.getTime() - b.createdAt.getTime();
+  if (byCreatedAt !== 0) return byCreatedAt > 0;
+  return a.id > b.id;
+}
+
+/**
+ * One fact per (child, type, key) for one reader. In an adult's own 1:1 their private
+ * row and the household's row may both be live on one key (the identity above); the
+ * reader gets the newer, so a correction A made in A's 1:1 is what A hears back. A read
+ * for every adult only ever sees household rows, one per key, so this changes nothing
+ * there. Order is kept.
+ */
+export function newestPerIdentity<T extends IdentityRow>(rows: readonly T[]): T[] {
+  const newest = new Map<string, T>();
+  for (const row of rows) {
+    const key = `${row.childId ?? ''}|${row.factType}|${row.factKey}`;
+    const held = newest.get(key);
+    if (!held || newerFact(row, held)) newest.set(key, row);
+  }
+  const kept = new Set(newest.values());
+  return rows.filter((row) => kept.has(row));
+}
+
 /** The predicate a fact read adds for `reader`, or none when nothing is another adult's. */
 export async function audiencePredicate(
   database: Database,
@@ -286,16 +351,19 @@ export async function factsForContext(
       ? rows
       : rows.filter((row) => !namesAnyIn([row.factKey, row.factValue], teens.names));
   if (options.reader === 'memory_writer') return named.map((row) => ({ ...row, seenIn: null }));
+  // Deduplicated after the limit: two live rows on one key are an adult's own correction
+  // over a household fact, rare enough that the slot it costs is not worth a window query.
+  const current = newestPerIdentity(named);
   const sources = await loadFactSources(database, {
     familyId,
     readerUserId: options.reader === 'every_adult' ? null : options.reader.adult,
     inGroup: options.reader === 'every_adult',
     now: options.now,
-    sourceEventIds: named.map((row) => row.sourceEventId),
+    sourceEventIds: current.map((row) => row.sourceEventId),
   });
   // A connector fact this reader may not be told the source of is left out, so no reply
   // can use it without saying where it came from (VIL-429).
-  return named.flatMap((row): ContextFact[] => {
+  return current.flatMap((row): ContextFact[] => {
     const source = row.sourceEventId ? sources.get(row.sourceEventId) : undefined;
     if (!source?.connector) return [{ ...row, seenIn: null }];
     return source.label ? [{ ...row, seenIn: source.label }] : [];

@@ -1,11 +1,14 @@
 import { schema } from '@hale/db';
+import type { FactReader } from '@hale/worker/memory-context';
 import { getMemorySlice } from '@hale/worker/memory-writer';
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordWeekdayCare } from '~/lib/care/weekday';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { departCoParent } from '~/lib/channel/coparent/depart';
 import { loadPlanFacts } from '~/lib/channel/plan/reply';
 import { loadAgentContext } from '~/lib/coach/context';
+import { requestErasure } from '~/lib/rights/delete';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import {
   type TestDb,
@@ -14,8 +17,10 @@ import {
   seedFamily,
   seedIntegration,
 } from '~/lib/testing/pglite';
+import { commitClassifiedMemory } from './classify-write';
 import { type FactHeard, writeFact } from './facts';
-import { handleParentMemory } from './store';
+import { handleParentMemory, recallFamilyMemory } from './store';
+import { runFamilySynthesis } from './synthesis';
 
 /**
  * VIL-599 · decision R7 in code: co-parents share logistics; anything else one adult said
@@ -294,52 +299,52 @@ describe('the right-to-access copy reads the same rule', () => {
   });
 });
 
-describe('a forget or a correction touches only what the sender may hear (R7)', () => {
-  async function inboundFrom(familyId: string, parentUserId: string): Promise<string> {
-    const [row] = await db.database
-      .insert(schema.channelMessages)
-      .values({
-        familyId,
-        parentUserId,
-        channel: 'imessage',
-        direction: 'in',
-        category: 'reply',
-        status: 'delivered',
-        inGroup: false,
-      })
-      .returning({ id: schema.channelMessages.id });
-    if (!row) throw new Error('inbound insert returned no row');
-    return row.id;
-  }
-
-  async function texted(familyId: string, parentUserId: string, body: string) {
-    return handleParentMemory(db.database, {
+async function inboundFrom(familyId: string, parentUserId: string): Promise<string> {
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
       familyId,
       parentUserId,
-      body,
-      now: NOW,
-      inboundChannelMessageId: await inboundFrom(familyId, parentUserId),
-      env: { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
-      replyClient: null,
-    });
-  }
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      inGroup: false,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('inbound insert returned no row');
+  return row.id;
+}
 
-  async function live(familyId: string, factKey: string) {
-    return db.database
-      .select({
-        factValue: schema.familyMemoryFacts.factValue,
-        sourceUserId: schema.familyMemoryFacts.sourceUserId,
-      })
-      .from(schema.familyMemoryFacts)
-      .where(
-        and(
-          eq(schema.familyMemoryFacts.familyId, familyId),
-          eq(schema.familyMemoryFacts.factKey, factKey),
-          isNull(schema.familyMemoryFacts.validUntil),
-        ),
-      );
-  }
+async function texted(familyId: string, parentUserId: string, body: string) {
+  return handleParentMemory(db.database, {
+    familyId,
+    parentUserId,
+    body,
+    now: NOW,
+    inboundChannelMessageId: await inboundFrom(familyId, parentUserId),
+    env: { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
+    replyClient: null,
+  });
+}
 
+async function live(familyId: string, factKey: string) {
+  return db.database
+    .select({
+      factValue: schema.familyMemoryFacts.factValue,
+      sourceUserId: schema.familyMemoryFacts.sourceUserId,
+    })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, familyId),
+        eq(schema.familyMemoryFacts.factKey, factKey),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    );
+}
+
+describe('a forget or a correction touches only what the sender may hear (R7)', () => {
   it('A’s forget in A’s 1:1 leaves B’s 1:1 fact live; A’s own and a heard-by-both fact go', async () => {
     const { familyId, a, b } = await seedHousehold();
     await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
@@ -363,21 +368,265 @@ describe('a forget or a correction touches only what the sender may hear (R7)', 
     expect(await live(familyId, 'violin')).toHaveLength(0);
   });
 
-  it('A’s correction leaves B’s 1:1 fact as B said it; A’s own and a heard-by-both fact change', async () => {
+  it('A’s correction of A’s own fact supersedes it; of a group-said one, retires it and keeps A’s word A’s', async () => {
     const { familyId, a, b } = await seedHousehold();
-    await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
     await fact(familyId, 'skating', { in: 'one_to_one', userId: a });
     await fact(familyId, 'piano', { in: 'family', userId: b });
 
-    const held = await texted(familyId, a, 'correct swimming: tuesdays');
-    expect([held.outcome, held.corrected]).toEqual(['refused', 0]);
-    expect(await live(familyId, 'swimming')).toEqual([
-      { factValue: { summary: 'swimming words' }, sourceUserId: b },
-    ]);
-
     expect((await texted(familyId, a, 'correct skating: tuesdays')).corrected).toBe(1);
     expect(await live(familyId, 'skating')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
+
+    // The wrong value goes, as a forget would take it; the new one was said in A's 1:1,
+    // so only A hears it (R7).
     expect((await texted(familyId, a, 'correct piano: tuesdays')).corrected).toBe(1);
     expect(await live(familyId, 'piano')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
+    const coached = async (reader: string, inGroup = false) =>
+      (await coach(familyId, reader, inGroup)).memoryFacts
+        .filter((f) => f.factKey === 'piano')
+        .map((f) => f.factValue);
+    expect(await coached(a)).toEqual(['tuesdays']);
+    expect(await coached(b)).toEqual([]);
+    expect(await coached(a, true)).toEqual([]);
+  });
+
+  it('in A’s 1:1, A’s own private row over the household’s on one key reads as the newer', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'piano', { in: 'family', userId: b });
+    // A save in A's 1:1 (not a correction) lands in A's scope beside the household row.
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'piano',
+      factValue: 'tuesdays',
+      confidence: 0.9,
+      inferredBy: 'ask-hale',
+      heard: { in: 'one_to_one', userId: a },
+      validFrom: new Date(NOW.getTime() + 60_000),
+    });
+    expect(await live(familyId, 'piano')).toHaveLength(2);
+    const value = async (reader: FactReader) =>
+      (await recallFamilyMemory(db.database, { familyId, now: NOW, reader }))
+        .filter((f) => f.factKey === 'piano')
+        .map((f) => f.factValue);
+    const coached = async (reader: string, inGroup = false) =>
+      (await coach(familyId, reader, inGroup)).memoryFacts
+        .filter((f) => f.factKey === 'piano')
+        .map((f) => f.factValue);
+    expect(await value({ adult: a })).toEqual(['tuesdays']);
+    expect(await coached(a)).toEqual(['tuesdays']);
+    // Control: B and the group read the household row.
+    expect(await value({ adult: b })).toEqual([{ summary: 'piano words' }]);
+    expect(await coached(b)).toEqual([{ summary: 'piano words' }]);
+    expect(await coached(a, true)).toEqual([{ summary: 'piano words' }]);
+  });
+});
+
+/**
+ * One live row per identity used to mean A's private fact and B's private fact on one key
+ * could not both be live, so every write either overwrote the other adult's fact or
+ * refused in a way that showed it was there. A private fact's identity now names its
+ * speaker (`memory_facts_one_live_per_scope_idx`).
+ */
+describe("a fact's live identity includes whose private fact it is", () => {
+  it('A’s correction on a key only B’s 1:1 fact holds reads exactly as one on an empty key', async () => {
+    const hidden = await seedHousehold();
+    await fact(hidden.familyId, 'swimming', { in: 'one_to_one', userId: hidden.b });
+    const empty = await seedHousehold();
+
+    const onHidden = await texted(hidden.familyId, hidden.a, 'correct swimming: tuesdays');
+    const onEmpty = await texted(empty.familyId, empty.a, 'correct swimming: tuesdays');
+    // Positive control: the empty key is corrected and answered, so equality says something.
+    expect([onEmpty.outcome, onEmpty.corrected]).toEqual(['corrected', 1]);
+    // The reply is the model's, written from (outcome, key, value) alone; with no model
+    // configured both are null, and the whole result, group sync included, must match.
+    expect(onHidden).toEqual(onEmpty);
+
+    const rows = await live(hidden.familyId, 'swimming');
+    expect(rows).toHaveLength(2);
+    expect(rows).toContainEqual({
+      factValue: { summary: 'swimming words' },
+      sourceUserId: hidden.b,
+    });
+    expect(rows).toContainEqual({ factValue: 'tuesdays', sourceUserId: hidden.a });
+  });
+
+  it('afterwards each adult’s 1:1 reads their own value, and the group reads neither', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
+    await texted(familyId, a, 'correct swimming: tuesdays');
+
+    const swimming = (facts: { factKey: string; factValue: unknown }[]) =>
+      facts.filter((f) => f.factKey === 'swimming').map((f) => f.factValue);
+    expect(swimming((await coach(familyId, a)).memoryFacts)).toEqual(['tuesdays']);
+    expect(swimming((await coach(familyId, b)).memoryFacts)).toEqual([
+      { summary: 'swimming words' },
+    ]);
+    expect(
+      swimming(await recallFamilyMemory(db.database, { familyId, now: NOW, reader: { adult: a } })),
+    ).toEqual(['tuesdays']);
+    expect(
+      swimming(await recallFamilyMemory(db.database, { familyId, now: NOW, reader: { adult: b } })),
+    ).toEqual([{ summary: 'swimming words' }]);
+
+    const group = await coach(familyId, a, true);
+    expect(swimming(group.memoryFacts)).toEqual([]);
+    expect(JSON.stringify(group)).not.toContain('tuesdays');
+    // Control: the group read is not empty; it carries what every adult heard.
+    expect(group.memoryFacts.map((f) => f.factKey).sort()).toEqual(EVERY_ADULT_SEES);
+  });
+
+  it('a write by one adult never closes the other adult’s private fact', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'nap', { in: 'one_to_one', userId: b });
+    await fact(familyId, 'nap', { in: 'one_to_one', userId: a });
+    expect((await live(familyId, 'nap')).map((r) => r.sourceUserId).sort()).toEqual([a, b].sort());
+
+    // Control: A's second write supersedes A's first, and B's is still there.
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'preference',
+      factKey: 'nap',
+      factValue: 'later',
+      confidence: 0.9,
+      inferredBy: 'ask-hale',
+      heard: { in: 'one_to_one', userId: a },
+      validFrom: NOW,
+    });
+    const nap = await live(familyId, 'nap');
+    expect(nap).toHaveLength(2);
+    expect(nap).toContainEqual({ factValue: 'later', sourceUserId: a });
+    expect(nap).toContainEqual({ factValue: { summary: 'nap words' }, sourceUserId: b });
+  });
+
+  it('a logistic said in a 1:1 is the household’s: it keeps one live row', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'pickup', { in: 'one_to_one', userId: b }, 'logistic');
+    await fact(familyId, 'pickup', { in: 'one_to_one', userId: a }, 'logistic');
+    expect(await live(familyId, 'pickup')).toEqual([
+      { factValue: { summary: 'pickup words' }, sourceUserId: a },
+    ]);
+  });
+
+  it('the nightly writer never closes a 1:1 fact, by key or by a correction', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'bedtime', { in: 'one_to_one', userId: a });
+    await fact(familyId, 'bedtime', { in: 'one_to_one', userId: b });
+    await fact(familyId, 'bath', { in: 'one_to_one', userId: a });
+    await fact(familyId, 'bath', 'unrecorded');
+    const nightly = (factKey: string, correctsKey: string | null) =>
+      commitClassifiedMemory(db.database, {
+        familyId,
+        childId: null,
+        factType: 'preference',
+        factKey,
+        factValue: `${factKey} nightly`,
+        confidence: 0.9,
+        inferredBy: 'chat_distiller',
+        source: 'inferred',
+        now: NOW,
+        memoryClass: 'enduring',
+        disposition: 'confirmed',
+        correctsKey,
+        heard: 'unrecorded',
+      });
+
+    await nightly('bedtime', null);
+    expect((await live(familyId, 'bedtime')).map((r) => r.sourceUserId).sort()).toEqual(
+      [a, b, null].sort(),
+    );
+    // A correction onto another key closes the unrecorded row it names (control), and
+    // leaves A's own row on that key live.
+    await nightly('bath_time', 'bath');
+    expect(await live(familyId, 'bath')).toEqual([
+      { factValue: { summary: 'bath words' }, sourceUserId: a },
+    ]);
+    // Control: a second nightly write supersedes the first unrecorded one.
+    await nightly('bedtime', null);
+    expect(await live(familyId, 'bedtime')).toHaveLength(3);
+  });
+
+  it('the nightly merge never folds one adult’s private fact into another spelling', async () => {
+    const { familyId, a } = await seedHousehold();
+    await fact(familyId, 'bedtime_routine', { in: 'one_to_one', userId: a });
+    const distilled = (factKey: string) =>
+      writeFact(db.database, {
+        familyId,
+        childId: null,
+        factType: 'preference',
+        factKey,
+        factValue: factKey,
+        confidence: 0.8,
+        inferredBy: 'chat_distiller',
+        heard: 'unrecorded',
+        validFrom: NOW,
+      });
+    await distilled('bedtime-routine');
+    await distilled('Bedtime Routine');
+
+    const result = await runFamilySynthesis(db.database, familyId, NOW, true);
+    // Control: the two unrecorded spellings merge into one.
+    expect([result.mergedGroups, result.mergedLosers]).toEqual([1, 1]);
+    expect(await live(familyId, 'bedtime_routine')).toEqual([
+      { factValue: { summary: 'bedtime_routine words' }, sourceUserId: a },
+    ]);
+  });
+});
+
+describe('an adult who leaves takes their private facts with them', () => {
+  async function departing() {
+    const household = await seedHousehold();
+    // B's private fact on a key that also has a shared row, and B's 1:1 logistic.
+    await fact(household.familyId, 'swim', 'unrecorded');
+    await fact(household.familyId, 'swim', { in: 'one_to_one', userId: household.b });
+    return household;
+  }
+
+  async function bRows(familyId: string, b: string) {
+    return (
+      await db.database
+        .select({ factKey: schema.familyMemoryFacts.factKey })
+        .from(schema.familyMemoryFacts)
+        .where(
+          and(
+            eq(schema.familyMemoryFacts.familyId, familyId),
+            eq(schema.familyMemoryFacts.sourceUserId, b),
+          ),
+        )
+    )
+      .map((row) => row.factKey)
+      .sort();
+  }
+
+  it('B’s erasure request deletes B’s private facts and keeps the household’s', async () => {
+    const { familyId, b } = await departing();
+    const erased = await requestErasure(db.database, { familyId, actorUserId: b, now: NOW });
+    expect(erased).toMatchObject({
+      outcome: 'co_parent_departed',
+      departure: { outcome: 'departed', privateFactsDeleted: 2 },
+    });
+    // b_pickup is a logistic (shared by R7) and group_said was said where both heard it.
+    expect(await bRows(familyId, b)).toEqual(['b_pickup', 'group_said']);
+    expect(await live(familyId, 'swim')).toEqual([
+      { factValue: { summary: 'swim words' }, sourceUserId: null },
+    ]);
+  });
+
+  it('B’s departure does the same', async () => {
+    const { familyId, a, b } = await departing();
+    const departed = await departCoParent(db.database, { familyId, actorUserId: b, now: NOW });
+    expect(departed).toMatchObject({ outcome: 'departed', privateFactsDeleted: 2 });
+    expect(await bRows(familyId, b)).toEqual(['b_pickup', 'group_said']);
+    // Control: A's own private fact is untouched.
+    expect(await live(familyId, 'a_own')).toEqual([
+      { factValue: { summary: 'a_own words' }, sourceUserId: a },
+    ]);
+  });
+
+  it('deleting a user row whose private fact shares a key with a shared row succeeds', async () => {
+    const { familyId, b } = await departing();
+    await db.database.delete(schema.users).where(eq(schema.users.id, b));
+    expect(await live(familyId, 'swim')).toHaveLength(2);
   });
 });

@@ -7,14 +7,14 @@ import {
   loadFactSources,
   readerTimeZone,
 } from '@hale/worker/fact-sources';
-import { type FactReader, audiencePredicate } from '@hale/worker/memory-context';
+import { type FactReader, audiencePredicate, newestPerIdentity } from '@hale/worker/memory-context';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { linqGroupCoparentEnabled } from '~/lib/channel/linq/config';
 import { replyFrame, replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { promptKind, readDisposition } from './classify-write';
-import { type FactHeard, writeFact } from './facts';
+import { type FactHeard, closeFacts, writeFact } from './facts';
 import { forgetFamilyFact } from './forget';
 import { renderMemoryGroupSync } from './group-sync';
 import {
@@ -311,6 +311,8 @@ export async function recallFamilyMemory(
       expiresAt: schema.familyMemoryFacts.expiresAt,
       validUntil: schema.familyMemoryFacts.validUntil,
       sourceEventId: schema.familyMemoryFacts.sourceEventId,
+      validFrom: schema.familyMemoryFacts.validFrom,
+      createdAt: schema.familyMemoryFacts.createdAt,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -323,7 +325,7 @@ export async function recallFamilyMemory(
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt))
     .limit(40);
 
-  return rows
+  return newestPerIdentity(rows)
     .filter((row) => !row.childId || !teens.has(row.childId))
     .filter((row) => beliefRow(row))
     .filter((row) => includeInRecommendations(row, input.now, true) || row.memoryKind === 'one_off')
@@ -780,24 +782,41 @@ async function correctFamilyFact(
       ),
     );
 
+  // Only what the sender may hear decides anything here. A key nobody holds and a key
+  // only another adult's private fact holds read the same: the sender's word is written
+  // as their own fact, in their own scope, and the other adult's row is not touched
+  // (VIL-599). So the outcome can never say whether a fact the sender cannot hear exists.
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
-  // One live row per identity: a new family-wide fact here would supersede what another
-  // adult said in their own 1:1, so the sender's word does not reach it (R7).
-  if (live.length === 0 && (await liveFamilyWideFact(database, input))) {
-    return { corrected: false };
+  // A correction retires every row it corrects that the sender may hear, the household's
+  // included, as a forget would: the wrong value must not stay live beside the right one.
+  // The new value still lands in the sender's own scope, so what they said in their 1:1
+  // stays theirs (R7).
+  const subjects = new Map<
+    string,
+    {
+      childId: string | null;
+      factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
+      corrects: string[];
+    }
+  >();
+  for (const row of live) {
+    const key = `${row.childId ?? ''}|${row.factType}`;
+    const subject = subjects.get(key) ?? {
+      childId: row.childId,
+      factType: row.factType,
+      corrects: [],
+    };
+    subject.corrects.push(row.id);
+    subjects.set(key, subject);
   }
-  const subjects: Array<{
-    childId: string | null;
-    factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
-  }> =
-    live.length > 0
-      ? live.map((row) => ({ childId: row.childId, factType: row.factType }))
-      : [{ childId: null, factType: factTypeFor(input.factKey) }];
+  if (subjects.size === 0) {
+    subjects.set('', { childId: null, factType: factTypeFor(input.factKey), corrects: [] });
+  }
 
   await database.transaction(async (tx) => {
     let superseded = 0;
     let factId = input.familyId;
-    for (const subject of subjects) {
+    for (const subject of subjects.values()) {
       const written = await writeFact(tx, {
         familyId: input.familyId,
         childId: subject.childId,
@@ -816,6 +835,12 @@ async function correctFamilyFact(
       });
       factId = written.factId;
       superseded += written.supersededFactIds.length;
+      const closed = await closeFacts(tx, {
+        factIds: subject.corrects.filter((id) => !written.supersededFactIds.includes(id)),
+        closedAt: input.now,
+        supersededBy: written.factId,
+      });
+      superseded += closed.closedFactIds.length;
     }
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
@@ -827,26 +852,6 @@ async function correctFamilyFact(
     });
   });
   return { corrected: true };
-}
-
-async function liveFamilyWideFact(
-  database: Database,
-  input: { familyId: string; factKey: string },
-): Promise<boolean> {
-  const [row] = await database
-    .select({ id: schema.familyMemoryFacts.id })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, input.familyId),
-        isNull(schema.familyMemoryFacts.childId),
-        eq(schema.familyMemoryFacts.factType, factTypeFor(input.factKey)),
-        eq(schema.familyMemoryFacts.factKey, input.factKey),
-        isNull(schema.familyMemoryFacts.validUntil),
-      ),
-    )
-    .limit(1);
-  return row !== undefined;
 }
 
 function factTypeFor(factKey: string): 'logistic' | 'preference' {

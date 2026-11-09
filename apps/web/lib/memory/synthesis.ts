@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, count, eq, inArray, isNull, notInArray, or } from 'drizzle-orm';
+import { liveScopeSql } from '@hale/worker/memory-context';
+import { and, count, eq, inArray, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { closeFacts } from './facts';
 
 /**
@@ -141,6 +142,8 @@ interface Candidate {
   inferredBy: string | null;
   validFrom: Date;
   createdAt: Date;
+  /** Whose private fact this is, or null for the household's (`liveScopeSql`). */
+  scope: string | null;
 }
 
 /** One thing the pass decided to do, and the sentence it will file about it. The verb
@@ -221,6 +224,7 @@ export async function runFamilySynthesis(
       inferredBy: schema.familyMemoryFacts.inferredBy,
       validFrom: schema.familyMemoryFacts.validFrom,
       createdAt: schema.familyMemoryFacts.createdAt,
+      scope: sql<string | null>`${liveScopeSql()}`,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -308,7 +312,9 @@ export async function runFamilySynthesis(
     }
     // `child_id` is part of the group key: a household fact and a child's fact are
     // different beliefs, and 0084's NULLS NOT DISTINCT already treats them that way.
-    const groupKey = `${fact.childId ?? 'house'}|${fact.factType}|${normalizeKey(fact.factKey)}`;
+    // So is the scope: one adult's private fact is never folded into the household's
+    // spelling or another adult's, which would close it on nobody's word (VIL-599).
+    const groupKey = `${fact.childId ?? 'house'}|${fact.factType}|${fact.scope ?? 'shared'}|${normalizeKey(fact.factKey)}`;
     const group = groups.get(groupKey);
     if (group) group.push(fact);
     else groups.set(groupKey, [fact]);

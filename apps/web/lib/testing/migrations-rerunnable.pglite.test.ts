@@ -468,8 +468,15 @@ describe('family_memory_facts source user', () => {
 
   it('applies twice, and a row saved before it records no speaker', async () => {
     expect(FILE).toMatch(/^\d{4}_family_memory_facts_source_user\.sql$/);
-    // Positive control: the columns are absent before the file.
+    // Positive control: the columns are absent before the file, and 0084's index stands.
     expect(await columns()).toEqual([]);
+    expect(
+      (
+        await db.client.query(
+          "SELECT 1 FROM pg_indexes WHERE indexname = 'memory_facts_one_live_per_key_idx'",
+        )
+      ).rows,
+    ).toHaveLength(1);
     const { familyId } = await seedFamily(db.database);
     await db.exec(
       `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value) VALUES ('${familyId}', 'preference', 'before', '"x"')`,
@@ -491,5 +498,44 @@ describe('family_memory_facts source user', () => {
         `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value, source_audience) VALUES ('${familyId}', 'preference', 'bad', '"x"', 'everyone')`,
       ),
     ).rejects.toThrow(/source_audience_chk/);
+  });
+
+  it('a live fact’s identity names whose private fact it is', async () => {
+    const indexes = async () =>
+      (
+        await db.client.query<{ indexname: string }>(
+          "SELECT indexname FROM pg_indexes WHERE tablename = 'family_memory_facts' AND indexname LIKE 'memory_facts_one_live_per_%' ORDER BY indexname",
+        )
+      ).rows.map((row) => row.indexname);
+    expect(await indexes()).toEqual(['memory_facts_one_live_per_scope_idx']);
+
+    const { familyId, parentUserId: a } = await seedFamily(db.database);
+    const [other] = (
+      await db.client.query<{ id: string }>(
+        "INSERT INTO users (email, name) VALUES ('other-parent@example.test', 'Other') RETURNING id",
+      )
+    ).rows;
+    const b = other?.id as string;
+    const put = (key: string, audience: string, user: string | null, type = 'preference') =>
+      db.exec(
+        `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value, source_audience, source_user_id) VALUES ('${familyId}', '${type}', '${key}', '"x"', '${audience}', ${user ? `'${user}'` : 'NULL'})`,
+      );
+
+    // Two adults' private facts and the household's on one key are all live.
+    await put('swim', 'one_to_one', a);
+    await put('swim', 'one_to_one', b);
+    await put('swim', 'family', null);
+    // One live row per scope still holds: the same adult, the household, a shared type.
+    await expect(put('swim', 'one_to_one', a)).rejects.toThrow(/one_live_per_scope/);
+    await expect(put('swim', 'unrecorded', null)).rejects.toThrow(/one_live_per_scope/);
+    await put('pickup', 'one_to_one', a, 'logistic');
+    await expect(put('pickup', 'one_to_one', b, 'logistic')).rejects.toThrow(/one_live_per_scope/);
+
+    // Deleting B sets B's speaker to null; that row stays clear of the household's.
+    await db.exec(`DELETE FROM users WHERE id = '${b}'`);
+    const swim = await db.client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM family_memory_facts WHERE family_id = '${familyId}' AND fact_key = 'swim' AND valid_until IS NULL`,
+    );
+    expect(swim.rows[0]?.n).toBe(3);
   });
 });

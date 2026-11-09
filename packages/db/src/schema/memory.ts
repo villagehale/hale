@@ -90,14 +90,19 @@ export const familyMemoryFacts = pgTable(
       'family_memory_facts_temporary_expiry_chk',
       sql`${table.memoryKind} <> 'temporary' OR ${table.expiresAt} IS NOT NULL`,
     ),
-    // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_key_idx` (migration
-    // 0084) is a partial UNIQUE index on (family_id, child_id, fact_type, fact_key)
-    // WHERE valid_until IS NULL, with NULLS NOT DISTINCT so family-wide facts are
-    // covered too. Drizzle's index builder cannot express NULLS NOT DISTINCT (only
-    // `unique()` constraints can, and those cannot be partial), so declaring it as a
-    // plain uniqueIndex would MISdescribe the live object — nulls-distinct, which
-    // exempts most of the table. It lives in hand-written SQL; `writeFact`
-    // (apps/web/lib/memory/facts.ts) is the writer that satisfies it.
+    // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_scope_idx` (migration
+    // 0218, replacing 0084's `memory_facts_one_live_per_key_idx`) is a partial UNIQUE
+    // index on (family_id, child_id, fact_type, fact_key, scope) WHERE valid_until IS
+    // NULL, with NULLS NOT DISTINCT so family-wide and household facts are covered too.
+    // The scope is the speaker of a private fact (said in their 1:1 and not shared by
+    // R7), coalesced to the row's own id once that user is deleted, and NULL for every
+    // household fact; `liveScopeSql` (apps/worker/src/services/memory-context.ts) is the
+    // same expression. So two adults' private facts on one key are both live, and a
+    // household key still holds one live row. Drizzle's index builder cannot express
+    // NULLS NOT DISTINCT (only `unique()` constraints can, and those cannot be partial),
+    // so declaring it as a plain uniqueIndex would MISdescribe the live object —
+    // nulls-distinct, which exempts most of the table. It lives in hand-written SQL;
+    // `writeFact` (apps/web/lib/memory/facts.ts) is the writer that satisfies it.
   }),
 );
 
