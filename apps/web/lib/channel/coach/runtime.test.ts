@@ -930,6 +930,87 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
   });
 });
 
+describe('channelCoachRuntime · read_email (VIL-433)', () => {
+  function emailReader(connected: boolean) {
+    const reads: unknown[] = [];
+    const asked: string[] = [];
+    return {
+      reads,
+      asked,
+      reader: {
+        connected: async (_familyId: string, parentUserId: string) => {
+          asked.push(parentUserId);
+          return connected;
+        },
+        read: async (request: unknown) => {
+          reads.push(request);
+          return { read: true as const, body: 'We can set up a visit.', truncated: false };
+        },
+      },
+    };
+  }
+
+  function seeing(seen: { tools: string[]; skillTools: string[]; instructions: string }[]) {
+    return async (args: Parameters<ChannelCoachPorts['runAgent']>[0]) => {
+      seen.push({
+        tools: args.tools.map((t) => t.name),
+        skillTools: [...args.skill.meta.tools],
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+  }
+
+  it('1:1 with their own Gmail connected: lists and registers the verb, read in this thread', async () => {
+    const e = emailReader(true);
+    const p = ports({
+      emailReader: e.reader,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('read_email');
+        expect(args.skill.instructions).toContain('read_email');
+        const tool = args.tools.find((t) => t.name === 'read_email');
+        if (!tool) throw new Error('no read_email verb');
+        await tool.handler({ gmailMessageId: 'gm-1' } as never, {} as never);
+        return answering('They can set up a visit.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('what did it say'), []);
+    expect(e.asked).toEqual([PARENT]);
+    expect(e.reads).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        conversationId: CONVERSATION,
+        gmailMessageId: 'gm-1',
+      },
+    ]);
+  });
+
+  it('1:1 without a connected Gmail: no verb and the skill is untouched', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const e = emailReader(false);
+    await channelCoachRuntime(ports({ emailReader: e.reader, runAgent: seeing(seen) })).respond(
+      turn('what did it say'),
+      [],
+    );
+    expect(e.asked).toEqual([PARENT]);
+    expect(seen[0]?.tools).not.toContain('read_email');
+    expect(seen[0]?.skillTools).toEqual([]);
+    expect(seen[0]?.instructions).not.toContain('read_email');
+  });
+
+  it('a group turn never offers it, even when the parent has Gmail connected', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const e = emailReader(true);
+    await channelCoachRuntime(ports({ emailReader: e.reader, runAgent: seeing(seen) }))
+      .respond({ ...turn('what did the daycare say'), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(e.asked).toEqual([]);
+    expect(seen[0]?.tools ?? []).not.toContain('read_email');
+    expect(seen[0]?.skillTools ?? []).not.toContain('read_email');
+  });
+});
+
 describe('find reasoning stays off the reply (VIL-524)', () => {
   const send = async () => ({ verdict: 'send' as const });
 
@@ -1101,6 +1182,28 @@ describe('the day a find is for (VIL-567)', () => {
     await channelCoachRuntime(p).respond(turn('find me something to do'), []);
     expect(instructions).toContain('The day a find is for');
     expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a find with their own Gmail connected keeps the day addendum and the email addendum, email last', async () => {
+    let instructions = '';
+    const p = ports({
+      judgeFindReply: send,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true as const, body: 'unused', truncated: false }),
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do today'), []);
+    const findPrivateAt = instructions.indexOf('Keep the finding to yourself');
+    const findDayAt = instructions.indexOf('The day a find is for');
+    const readEmailAt = instructions.indexOf('An email Hale told them about');
+    expect(findPrivateAt).toBeGreaterThan(-1);
+    expect(findDayAt).toBeGreaterThan(findPrivateAt);
+    expect(readEmailAt).toBeGreaterThan(findDayAt);
   });
 
   it('a calendar edit does not get the day addendum', async () => {
