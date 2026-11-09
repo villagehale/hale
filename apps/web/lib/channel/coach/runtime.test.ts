@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RegisteredTool, Skill } from '@hale/agent';
+import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
@@ -1000,7 +1000,8 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
   });
 
   /** VIL-615: the runtime applies the taint to the whole turn's tool set, so a write
-   * the model reaches for after reading the email never runs. */
+   * the model reaches for after reading the email never runs. Each call goes through the
+   * real `invokeTool`, where the refusal lands before the audit row (VIL-616). */
   function draftingTurn(order: 'read_first' | 'write_first') {
     const e = emailReader(true);
     const drafted: string[] = [];
@@ -1023,7 +1024,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
         const call = async (name: string, input: unknown) => {
           const tool = args.tools.find((t) => t.name === name);
           if (!tool) throw new Error(`no ${name}`);
-          await tool.handler(input as never, {} as never).then(
+          await invokeTool(tool, input, { familyId: 'fam', actor: 'parent' }, args.guardDeps).then(
             () => outcomes.push(`${name}:ran`),
             (err: unknown) => outcomes.push(`${name}:${(err as { rail?: string }).rail}`),
           );
@@ -1046,6 +1047,8 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     expect(t.outcomes).toEqual(['read_email:ran', 'propose_calendar_add:untrusted_content']);
     expect(t.drafted).toEqual([]);
     expect(result.reply).toBe('Picture day is Friday.');
+    // VIL-616: the router marks the thread row this reply lands in.
+    expect(result.emailRead).toBe(true);
   });
 
   it('a write before the email was read still runs (positive control)', async () => {
@@ -1053,6 +1056,14 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     await channelCoachRuntime(t.p).respond(turn('add picture day, then what did it say'), []);
     expect(t.outcomes).toEqual(['propose_calendar_add:ran', 'read_email:ran']);
     expect(t.drafted).toEqual(['propose_calendar_add']);
+  });
+
+  it('a turn that never read an email does not mark its reply', async () => {
+    const e = emailReader(true);
+    const result = await channelCoachRuntime(
+      ports({ emailReader: e.reader, runAgent: answering('Swim is at 4.') }),
+    ).respond(turn('when is swim'), []);
+    expect(result.emailRead).toBe(false);
   });
 
   it('a group turn never offers it, even when the parent has Gmail connected', async () => {

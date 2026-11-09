@@ -7,7 +7,7 @@ import {
   namesAny,
   teenRoster,
 } from '@hale/worker/memory-context';
-import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import {
@@ -429,6 +429,9 @@ async function loadDistillTurns(
         inArray(schema.messages.conversationId, conversationIds),
         gte(schema.messages.createdAt, since),
         isNull(schema.messages.deletedAt),
+        // VIL-616: a reply written after `read_email` may repeat a stranger's name,
+        // number or code. The router marks its row, and no fact is learned from it.
+        sql`coalesce(${schema.messages.source} ->> 'kind', '') <> 'read_email'`,
       ),
     )
     .orderBy(desc(schema.messages.createdAt))

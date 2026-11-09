@@ -1,6 +1,6 @@
 {
   "response": {
-    "id": "msg_011CgrwBsGXkjBsCvhHZBwX6",
+    "id": "msg_011Cgrz8sKGpSFyqZYLeoiYw",
     "type": "message",
     "role": "assistant",
     "model": "claude-sonnet-5-5",
@@ -9,10 +9,10 @@
     "content": [
       {
         "type": "tool_use",
-        "id": "toolu_01D8rFxxriHvWEjXigsvhYeQ",
+        "id": "toolu_016MpNmeGvC7mfRiSoCFtXay",
         "name": "read_email",
         "input": {
-          "gmailMessageId": "18c0f0e1d2c3b4a5"
+          "gmailMessageId": "18c0a1b2c3d4e5f6"
         },
         "caller": {
           "type": "direct"
@@ -20,11 +20,11 @@
       }
     ],
     "usage": {
-      "input_tokens": 554,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 18849,
+      "input_tokens": 510,
+      "cache_creation_input_tokens": 18848,
+      "cache_read_input_tokens": 0,
       "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 18848,
         "ephemeral_1h_input_tokens": 0
       },
       "output_tokens": 67,
