@@ -433,6 +433,86 @@ describe('open calendar asks follow the current seat', () => {
     const open = await store.listOpenCalendarAsks(sam.userId);
     expect(open.map((item) => item.consent.familyId)).toEqual([sam.familyId]);
   });
+
+  it('lists nothing when the parent holds live seats for two households in one chat', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const sam = await parent({ name: 'Sam', phone: SAM });
+    const [other] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Other home', provinceOrState: 'ON', primaryLanguage: 'en' })
+      .returning({ id: schema.families.id });
+    const otherFamilyId = other?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: otherFamilyId, userId: sam.userId, role: 'co_parent' });
+    for (const familyId of [sam.familyId, otherFamilyId]) {
+      const [consent] = await db.database
+        .insert(schema.consentRecords)
+        .values({
+          userId: sam.userId,
+          familyId,
+          consentType: 'multi_family_group',
+          granted: true,
+          consentScope: CHAT,
+          policyVersion: 'test',
+        })
+        .returning({ id: schema.consentRecords.id });
+      await db.database.insert(schema.linqMultiFamilyJoins).values({
+        chatId: CHAT,
+        familyId,
+        joinedByUserId: sam.userId,
+        consentRecordId: consent?.id,
+        joinedAt: NOW,
+      });
+    }
+    // A phone holds at most one live seat per chat in each seat table, so the two
+    // households are seated through the two tables.
+    await db.database.insert(schema.linqMultiFamilyMembers).values({
+      chatId: CHAT,
+      familyId: sam.familyId,
+      userId: sam.userId,
+      phoneE164Encrypted: encryptString(SAM),
+      phoneE164Hash: phoneBlindIndex(SAM),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: otherFamilyId,
+      chatId: CHAT,
+      userId: sam.userId,
+      phoneE164Encrypted: encryptString(SAM),
+      phoneE164Hash: phoneBlindIndex(SAM),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    for (const familyId of [sam.familyId, otherFamilyId]) {
+      await store.claimCalendarAsk({
+        planId: plan.id,
+        familyId,
+        memberKey: 'sam',
+        displayName: 'Sam',
+        householdLabel: null,
+        now: NOW,
+      });
+    }
+
+    expect(
+      await postgresGroupPlanHouseholds(db.database).resolve({ chatId: CHAT, userId: sam.userId }),
+    ).toEqual({ status: 'ambiguous' });
+    expect(await store.listOpenCalendarAsks(sam.userId)).toEqual([]);
+  });
 });
 
 describe('the private reply and a tapback use the household language', () => {
