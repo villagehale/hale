@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { introAskDedupeKey } from './run';
+import { introAskDedupeKey, introCardDedupeKey } from './run';
 
 /**
  * VIL-302 · the intro asks are dated through the router's REAL reader.
@@ -16,6 +16,9 @@ import { introAskDedupeKey } from './run';
 const NOW = new Date('2026-08-20T18:18:00.000Z');
 const OPT_IN_ASKED = new Date('2026-08-20T09:00:00.000Z');
 const CARD_ASKED = new Date('2026-08-20T10:30:00.000Z');
+/** When a ledger row was written. Never the ask time: a row is written before the
+ * provider has said anything about delivery. */
+const ROW_WRITTEN = new Date('2026-08-20T07:00:00.000Z');
 
 let db: TestDb;
 
@@ -48,42 +51,90 @@ async function seedFamily(label: string): Promise<{ familyId: string; parentUser
   return { familyId, parentUserId };
 }
 
-describe('the intro asks, through the production reader', () => {
-  it('dates the opt-in by its ledger row and the card by its own side', async () => {
-    const asked = await seedFamily('a');
-    const other = await seedFamily('b');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: asked.familyId,
-      parentUserId: asked.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'village_intro',
-      status: 'sent',
-      dedupeKey: introAskDedupeKey(asked.familyId),
-      createdAt: OPT_IN_ASKED,
-    });
-    const askedIsA = asked.familyId < other.familyId;
-    await db.database.insert(schema.villageIntroProposals).values({
+type SendStatus = 'queued' | 'sent' | 'delivered' | 'failed';
+
+async function seedAsk(
+  family: { familyId: string; parentUserId: string },
+  dedupeKey: string,
+  status: SendStatus,
+  sentAt: Date,
+): Promise<void> {
+  await db.database.insert(schema.channelMessages).values({
+    familyId: family.familyId,
+    parentUserId: family.parentUserId,
+    channel: 'sms',
+    direction: 'out',
+    category: 'village_intro',
+    status,
+    dedupeKey,
+    sentAt,
+    createdAt: ROW_WRITTEN,
+  });
+}
+
+/** A live card for `asked` and `other`. The proposal's own per-side ask stamps are set to
+ * NOW on purpose: the reader must date the card off the delivered ledger row, not them. */
+async function seedCard(
+  asked: { familyId: string },
+  other: { familyId: string },
+): Promise<{ proposalId: string; askedSide: 'a' | 'b'; otherSide: 'a' | 'b' }> {
+  const askedIsA = asked.familyId < other.familyId;
+  const [row] = await db.database
+    .insert(schema.villageIntroProposals)
+    .values({
       fsa: 'A1A',
       status: 'proposed',
       stage: 'toddler',
       familyAId: askedIsA ? asked.familyId : other.familyId,
       familyBId: askedIsA ? other.familyId : asked.familyId,
-      // Only the side under test was asked at CARD_ASKED; the other side's time must not leak.
-      familyAAskedAt: askedIsA ? CARD_ASKED : NOW,
-      familyBAskedAt: askedIsA ? NOW : CARD_ASKED,
+      familyAAskedAt: NOW,
+      familyBAskedAt: NOW,
       expiresAt: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
-    });
+    })
+    .returning({ id: schema.villageIntroProposals.id });
+  return {
+    proposalId: row?.id as string,
+    askedSide: askedIsA ? 'a' : 'b',
+    otherSide: askedIsA ? 'b' : 'a',
+  };
+}
 
-    const questions = await defaultOpenQuestionReader().open(db.database, { ...asked, now: NOW });
+async function introAsks(family: { familyId: string; parentUserId: string }) {
+  const questions = await defaultOpenQuestionReader().open(db.database, { ...family, now: NOW });
+  return questions
+    .filter((q) => q.kind === 'intro_optin' || q.kind === 'intro_proposal')
+    .map((q) => ({ kind: q.kind, askedAt: q.askedAt }))
+    .sort((x, y) => x.kind.localeCompare(y.kind));
+}
 
-    expect(
-      questions
-        .map((q) => ({ kind: q.kind, askedAt: q.askedAt }))
-        .sort((x, y) => x.kind.localeCompare(y.kind)),
-    ).toEqual([
+describe('the intro asks, through the production reader', () => {
+  it('dates both asks by when the delivered message was sent, on this family side', async () => {
+    const asked = await seedFamily('a');
+    const other = await seedFamily('b');
+    await seedAsk(asked, introAskDedupeKey(asked.familyId), 'sent', OPT_IN_ASKED);
+    const card = await seedCard(asked, other);
+    await seedAsk(
+      asked,
+      introCardDedupeKey(card.proposalId, card.askedSide),
+      'delivered',
+      CARD_ASKED,
+    );
+    // The other side's card went out at a different time; it must not leak into this side.
+    await seedAsk(other, introCardDedupeKey(card.proposalId, card.otherSide), 'delivered', NOW);
+
+    expect(await introAsks(asked)).toEqual([
       { kind: 'intro_optin', askedAt: OPT_IN_ASKED },
       { kind: 'intro_proposal', askedAt: CARD_ASKED },
     ]);
+  });
+
+  it.each(['failed', 'queued'] as const)('does not count a %s message as asked', async (status) => {
+    const asked = await seedFamily('a');
+    const other = await seedFamily('b');
+    await seedAsk(asked, introAskDedupeKey(asked.familyId), status, OPT_IN_ASKED);
+    const card = await seedCard(asked, other);
+    await seedAsk(asked, introCardDedupeKey(card.proposalId, card.askedSide), status, CARD_ASKED);
+
+    expect(await introAsks(asked)).toEqual([]);
   });
 });

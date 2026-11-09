@@ -1999,17 +1999,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  // VIL-302 · the parent is replying to the last thing Hale asked. Their words are read
-  // against that ask first, and against everything open only when they are not about it
-  // (`no_target`): "yes" after a search offer is the search, "yes to the intro" is still
-  // the intro. Any other reading of the newest ask stands, including `ambiguous` when two
-  // offers went out together, which is when Hale asks which.
-  const latest = latestAsked(questions);
-  const first = latest ? await readOpenQuestions(deps, turn, latest) : null;
-  const read =
-    first && !(first.status === 'unresolved' && first.reason === 'no_target')
-      ? first
-      : await readOpenQuestions(deps, turn, questions);
+  // VIL-302 · the words are read against everything open FIRST, so a reply that names an
+  // older ask ("no thanks to the intro") is placed on it. Only when that read cannot tell
+  // which ask a reply answers (`ambiguous`) are the words read again against the newest
+  // ask: a bare "yes" after a search offer is the search. Narrowing first is unsafe: shown
+  // only the newest ask, the real model put a decline of an older intro on the newest
+  // offer (the `vil-302-declines-*` eval fixtures). If the newest ask is itself two
+  // offers, the second read is still `ambiguous`, and Hale asks which.
+  const whole = await readOpenQuestions(deps, turn, questions);
+  const latest =
+    whole.status === 'unresolved' && whole.reason === 'ambiguous' ? latestAsked(questions) : null;
+  const read = latest ? await readOpenQuestions(deps, turn, latest) : whole;
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);

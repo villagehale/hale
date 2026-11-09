@@ -104,4 +104,22 @@ export const CALENDAR_OFFER_FIXTURES = [
     expect: { status: 'unresolved', reason: 'no_target' },
     why: 'VIL-302. The same narrowed read, but the parent named the older intro ask. Not about this offer, so it must be none, and the router then reads it against everything open.',
   },
+  {
+    id: 'vil-302-declines-an-older-ask',
+    role: 'parent',
+    text: 'no thanks to the intro',
+    now: '2026-08-20T18:18:00.000Z',
+    timeZone: 'America/New_York',
+    questions: [SEARCH_OFFER],
+    // RECORDED HAZARD, not an aspiration (the french-consent pattern in the reply-resolver
+    // corpus). Shown only the newest offer, the real model reads "no thanks to the intro"
+    // as a high-confidence NO to that offer: it took "the intro" to mean the offer. That
+    // reading would drop a find the parent never declined. It is why the router reads the
+    // whole open list FIRST and narrows to the newest ask only when the whole-list read is
+    // `ambiguous` (route.ts, resolveNaturalReply): words that name an older ask get placed
+    // on the whole list and never reach this narrowed read. If this fixture starts failing
+    // because the model says none, the narrowed read became safer; it is not a regression.
+    expect: { status: 'resolved', questionId: SEARCH_OFFER.id, polarity: 'no' },
+    why: 'VIL-302 hazard. A no naming the older intro ask, read against the newest offer alone, is misread as a no to the offer. The router must never send this read first.',
+  },
 ];

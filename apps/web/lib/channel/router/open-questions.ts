@@ -472,22 +472,28 @@ export function newestSolicitedKind(questions: readonly OpenQuestion[]): OpenQue
 
 /**
  * VIL-302 · THE ASK THE PARENT IS REPLYING TO: the open questions Hale asked most
- * recently, or null when that cannot be told.
+ * recently, or null when recency may not decide.
  *
  * On 2026-08-20 Hale offered an introduction, later answered a search with an offer to
  * add the find, and the founder's "yes" was bound to the introduction. A parent who says
- * yes is answering the last thing Hale asked, so the router reads their words against
- * this subset first and falls back to the whole list only when the words are not about it.
+ * a bare yes is answering the last thing Hale asked, so when the whole open list cannot
+ * place their words (`ambiguous`), the router reads them again against this subset.
  *
  * Every ask on the top tie is kept, so two offers in one message still reach the reader
  * together and a bare yes between them is ambiguous: Hale asks which. Null when any open
  * question is undated (an approval draft is: its draft time is not when it was put to the
- * parent), or when nothing is older than the newest, because then there is nothing to
- * prefer it over.
+ * parent), when nothing is older than the newest, because then there is nothing to prefer
+ * it over, and when the newest ask and an older one are both consequential: a household
+ * disclosure and a calendar write are not picked between by which came last, so Hale asks.
  */
 export function latestAsked(questions: readonly OpenQuestion[]): readonly OpenQuestion[] | null {
   const newest = newestAsks(questions);
   if (!newest || newest.length === questions.length) return null;
+  const consequential = (question: OpenQuestion) => GRADE[question.kind] === 'consequential';
+  const olderConsequential = questions.some(
+    (question) => !newest.includes(question) && consequential(question),
+  );
+  if (olderConsequential && newest.some(consequential)) return null;
   return newest;
 }
 

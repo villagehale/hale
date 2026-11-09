@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
 import type { ChannelKind } from './types';
 
@@ -92,6 +92,41 @@ export const SENT_STATUSES = ['queued', 'sent', 'delivered'] as const;
  * and deliberate retries, when we build them, will mint their own keys.
  */
 export const CONSUMED_SEND_STATUSES = [...SENT_STATUSES, 'failed'] as const;
+
+/**
+ * The statuses that say a message got to the parent's phone: the provider handed it on
+ * ('sent', terminal on accept for iMessage) or a receipt confirmed it ('delivered').
+ * 'queued' is still waiting for airtime and 'failed' never arrived.
+ */
+const DELIVERED_STATUSES = ['sent', 'delivered'] as const;
+
+/**
+ * An ASK as the parent holds it: the message under this dedupe key, when it reached the
+ * parent, and who it went to. Null while it is queued, after it failed, or if it never
+ * went. A question Hale put to nobody is not open, and its time is when it was sent,
+ * not when its row was written.
+ */
+export async function deliveredAsk(
+  database: Database,
+  dedupeKey: string,
+): Promise<{ parentUserId: string; sentAt: Date } | null> {
+  const [row] = await database
+    .select({
+      parentUserId: schema.channelMessages.parentUserId,
+      sentAt: schema.channelMessages.sentAt,
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.dedupeKey, dedupeKey),
+        inArray(schema.channelMessages.status, [...DELIVERED_STATUSES]),
+        isNotNull(schema.channelMessages.sentAt),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return { parentUserId: row.parentUserId, sentAt: row.sentAt as Date };
+}
 
 /**
  * Historical marker on a channel_messages row whose dedupe key was claimed

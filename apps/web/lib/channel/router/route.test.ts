@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
@@ -3236,16 +3237,31 @@ describe('natural reply resolution', () => {
   /**
    * VIL-302 · intro offer, then a search, then "yes".
    *
-   * The reader stand-in follows the reply-resolver skill's own contract for these words
-   * (the eval pins the real model to it): a bare yes with one answerable question is that
-   * question; with several it is `ambiguous`; words naming something not on the list are
-   * `none`. What is under test is which list the router shows it.
+   * The router reads the parent's words against everything open first, and narrows to
+   * the newest ask only when that read says `ambiguous`. The reader stand-in in the first
+   * four tests follows the reply-resolver skill's own contract (the eval pins the real
+   * model to it): a reply naming one question is that question; a bare yes with one
+   * answerable question is that question; with several it is `ambiguous`. What is under
+   * test is which lists the router shows it, and in what order. The last test replays the
+   * real model's recorded readings.
    */
   describe('a bare yes answers the newest ask (VIL-302)', () => {
     const EARLIER = new Date(NOW.getTime() - 2 * 60 * 60 * 1000);
     const LATER = new Date(NOW.getTime() - 60 * 1000);
 
-    function datedIntro(): OpenQuestion {
+    function datedOptIn(): OpenQuestion {
+      return {
+        id: 'opt-in',
+        kind: 'intro_optin',
+        description: 'Whether to be introduced to other Hale families nearby',
+        subject: 'being introduced to families nearby',
+        answerable: { yes: true, no: true },
+        askedAt: EARLIER,
+        solicited: false,
+      };
+    }
+
+    function datedCard(): OpenQuestion {
       return { ...introQuestion(), askedAt: EARLIER };
     }
 
@@ -3262,12 +3278,9 @@ describe('natural reply resolution', () => {
     }
 
     function skillContract(text: string, questions: readonly OpenQuestion[]): ReplyReading {
-      const named = /meeting the family/i.test(text)
-        ? questions.find((q) => q.kind === 'intro_proposal')
+      const named = /intros/i.test(text)
+        ? questions.find((q) => q.kind === 'intro_optin')
         : undefined;
-      if (/meeting the family/i.test(text) && !named) {
-        return { status: 'unresolved', reason: 'no_target' };
-      }
       const takers = named ? [named] : questions.filter((q) => q.answerable.yes);
       const [only] = takers;
       if (takers.length !== 1 || !only) return { status: 'unresolved', reason: 'ambiguous' };
@@ -3280,14 +3293,14 @@ describe('natural reply resolution', () => {
       };
     }
 
-    function readers() {
+    function readers(reading = skillContract) {
       const lists: string[][] = [];
       const read = async ({
         text,
         questions,
       }: { text: string; questions: readonly OpenQuestion[] }) => {
         lists.push(questions.map((q) => q.id));
-        return skillContract(text, questions);
+        return reading(text, questions);
       };
       return {
         lists,
@@ -3298,12 +3311,12 @@ describe('natural reply resolution', () => {
 
     it('lands on the search offer, not the older intro', async () => {
       const offerOwner = owningHandler('email_alert_add');
-      const introOwner = owningHandler('intro_proposal');
+      const introOwner = owningHandler('intro_optin');
       const r = readers();
       const h = harness({
         context: { body: 'yes' },
         handlers: [introOwner.handler, offerOwner.handler],
-        questions: fakeQuestions([datedIntro(), searchOffer()]),
+        questions: fakeQuestions([datedOptIn(), searchOffer()]),
         replyResolver: r.replyResolver,
         calendarOffers: r.calendarOffers,
       });
@@ -3312,31 +3325,36 @@ describe('natural reply resolution', () => {
 
       expect(result).toMatchObject({ status: 'resolved', handler: 'owner_email_alert_add' });
       expect(offerOwner.seen.map((seen) => seen.resolved)).toEqual([
-        { kind: 'email_alert_add', questionId: 'search-offer', polarity: 'yes', confidence: 'high' },
+        {
+          kind: 'email_alert_add',
+          questionId: 'search-offer',
+          polarity: 'yes',
+          confidence: 'high',
+        },
       ]);
       expect(introOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
-      expect(r.lists).toEqual([['search-offer']]);
+      expect(r.lists).toEqual([['opt-in', 'search-offer'], ['search-offer']]);
     });
 
-    it('still reads a reply that names the older ask against everything open', async () => {
-      const introOwner = owningHandler('intro_proposal');
+    it('places a reply that names the older ask on the whole list, without narrowing', async () => {
+      const introOwner = owningHandler('intro_optin');
       const offerOwner = owningHandler('email_alert_add');
       const r = readers();
       const h = harness({
-        context: { body: 'yes to meeting the family' },
+        context: { body: 'yes to the intros' },
         handlers: [introOwner.handler, offerOwner.handler],
-        questions: fakeQuestions([datedIntro(), searchOffer()]),
+        questions: fakeQuestions([datedOptIn(), searchOffer()]),
         replyResolver: r.replyResolver,
         calendarOffers: r.calendarOffers,
       });
 
       const result = await routeChannelMessage(h.deps, job());
 
-      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_intro_proposal' });
+      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_intro_optin' });
       expect(introOwner.seen.map((seen) => seen.resolved).filter(Boolean)).toEqual([
-        { kind: 'intro_proposal', questionId: 'proposal-1', polarity: 'yes', confidence: 'high' },
+        { kind: 'intro_optin', questionId: 'opt-in', polarity: 'yes', confidence: 'high' },
       ]);
-      expect(r.lists).toEqual([['search-offer'], ['proposal-1', 'search-offer']]);
+      expect(r.lists).toEqual([['opt-in', 'search-offer']]);
     });
 
     it('asks rather than guessing when two offers are the newest ask', async () => {
@@ -3347,7 +3365,7 @@ describe('natural reply resolution', () => {
         context: { body: 'yes' },
         coach,
         handlers: [offerOwner.handler],
-        questions: fakeQuestions([datedIntro(), searchOffer('swim'), searchOffer('art')]),
+        questions: fakeQuestions([datedOptIn(), searchOffer('swim'), searchOffer('art')]),
         replyResolver: r.replyResolver,
         calendarOffers: r.calendarOffers,
       });
@@ -3357,7 +3375,103 @@ describe('natural reply resolution', () => {
       expect(result.status).toBe('agent_replied');
       expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
       expect(coach.calls).toBe(1);
-      expect(r.lists).toEqual([['swim', 'art']]);
+      expect(r.lists).toEqual([
+        ['opt-in', 'swim', 'art'],
+        ['swim', 'art'],
+      ]);
+    });
+
+    it('keeps the whole list when the newest ask and an older one are both consequential', async () => {
+      const offerOwner = owningHandler('email_alert_add');
+      const cardOwner = owningHandler('intro_proposal');
+      const coach = fakeCoach('Did you mean the swim class, or meeting the family nearby?');
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes' },
+        coach,
+        handlers: [cardOwner.handler, offerOwner.handler],
+        questions: fakeQuestions([datedCard(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      // A household disclosure and a calendar write are both standing: recency alone does
+      // not get to pick between them, so Hale asks.
+      expect(result.status).toBe('agent_replied');
+      expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(cardOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(coach.calls).toBe(1);
+      expect(r.lists).toEqual([['proposal-1', 'search-offer']]);
+    });
+
+    /**
+     * REPLAY OF THE REAL MODEL. Both readings are the reply-resolver eval's recorded
+     * answers (apps/worker/evals/reply-resolver-fixtures.mjs, the two
+     * `vil-302-declines-older-ask-*` fixtures), passed through the production `toReading`.
+     * The questions carry the fixtures' own ids and descriptions so the replay answers the
+     * question it was recorded for.
+     *
+     * Shown only the newest ask, the model put "no thanks to the intro" on the plan offer
+     * (`not_answerable`, so the decline would never be recorded). Shown the whole list, it
+     * placed the no on the intro. A router that narrowed first fails this test.
+     */
+    it('replays the recorded readings: a decline of the older intro reaches the intro', async () => {
+      const recorded = (hash: string) =>
+        (
+          JSON.parse(
+            readFileSync(
+              new URL(`../../../../worker/evals/cache/${hash}.json`, import.meta.url),
+              'utf8',
+            ),
+          ) as { value: { target: string; polarity: string; confidence: string } }
+        ).value;
+      const optIn: OpenQuestion = {
+        ...datedOptIn(),
+        id: 'intro_optin:6f1c9a54-2d3b-4c8e-9a71-0b5d4e2f8a13',
+      };
+      const planOffer: OpenQuestion = {
+        id: 'a72b6e05-4c93-4d18-b7f2-6e0a51c38d94',
+        kind: 'plan_offer',
+        description: 'A plan for the 4am wake-ups, in three texts',
+        subject: 'a plan for the early wake-ups',
+        answerable: { yes: true, no: false },
+        askedAt: LATER,
+        solicited: false,
+      };
+      const byList = new Map([
+        [
+          JSON.stringify([planOffer.id]),
+          recorded('1f8309c83a8d59878a668cecd1a4a3e4a1b58277c2a0ab9fed421b19dbc44018'),
+        ],
+        [
+          JSON.stringify([optIn.id, planOffer.id]),
+          recorded('9ca8e10fa89386de58802029320dce589f9081b21208578227d76f2e15d4d807'),
+        ],
+      ]);
+      const r = readers((text, questions) => {
+        expect(text).toBe('no thanks to the intro');
+        const raw = byList.get(JSON.stringify(questions.map((q) => q.id)));
+        if (!raw) throw new Error('no recorded reading for this list');
+        return toReading(raw, questions);
+      });
+      const introOwner = owningHandler('intro_optin');
+      const h = harness({
+        context: { body: 'no thanks to the intro' },
+        handlers: [introOwner.handler],
+        questions: fakeQuestions([optIn, planOffer]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_intro_optin' });
+      expect(introOwner.seen.map((seen) => seen.resolved).filter(Boolean)).toEqual([
+        { kind: 'intro_optin', questionId: optIn.id, polarity: 'no', confidence: 'high' },
+      ]);
+      expect(r.lists).toEqual([[optIn.id, planOffer.id]]);
     });
   });
 

@@ -109,15 +109,33 @@ describe('latestAsked — the ask a bare reply answers (VIL-302)', () => {
   const T2 = new Date('2026-08-28T02:00:00.000Z');
 
   it('picks the newer of two standing offers', () => {
-    const intro = question('intro_proposal', { id: 'intro', askedAt: T0 });
+    const intro = question('intro_optin', { id: 'intro', askedAt: T0 });
     const search = question('email_alert_add', { id: 'search', askedAt: T1 });
     expect(latestAsked([intro, search])?.map((q) => q.id)).toEqual(['search']);
     // Order on the list must not matter: oldest-first selection would pick the intro.
     expect(latestAsked([search, intro])?.map((q) => q.id)).toEqual(['search']);
   });
 
+  it('prefers nothing when the newest ask and an older one are both consequential', () => {
+    const card = question('intro_proposal', { id: 'card', askedAt: T0 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([card, search])).toBeNull();
+    expect(latestAsked([search, card])).toBeNull();
+  });
+
+  it('still prefers the newest when only one side of the gap is consequential', () => {
+    const optIn = question('intro_optin', { id: 'opt-in', askedAt: T0 });
+    const card = question('intro_proposal', { id: 'card', askedAt: T0 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    const plan = question('plan_offer', { id: 'plan', askedAt: T1 });
+    // Consequential newest, ordinary older.
+    expect(latestAsked([optIn, search])?.map((q) => q.id)).toEqual(['search']);
+    // Ordinary newest, consequential older.
+    expect(latestAsked([card, plan])?.map((q) => q.id)).toEqual(['plan']);
+  });
+
   it('keeps every ask that ties at the top, so the model can still say which', () => {
-    const older = question('intro_proposal', { id: 'intro', askedAt: T0 });
+    const older = question('intro_optin', { id: 'intro', askedAt: T0 });
     const a = question('email_alert_add', { id: 'a', askedAt: T2 });
     const b = question('email_alert_add', { id: 'b', askedAt: T2 });
     expect(latestAsked([older, a, b])?.map((q) => q.id)).toEqual(['a', 'b']);
