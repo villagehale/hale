@@ -1352,8 +1352,9 @@ describe('a calendar line on the household clock', () => {
   }
 
   it('states the start on the household’s own clock, across a DST change', async () => {
-    // 16:00Z on Sunday Nov 1 2026 is after Pacific DST ends: 8:00 AM PST, not 9:00.
-    expect(await askStartsAt('America/Vancouver')).toBe('Sun, Nov 1 at 8:00 AM');
+    // 16:00Z on Sunday Nov 1 2026 is after US Pacific DST ends: 8:00 AM PST, not 9:00.
+    // Not Vancouver: newer tzdata changes its rules, so the expected hour depends on the runner's ICU.
+    expect(await askStartsAt('America/Los_Angeles')).toBe('Sun, Nov 1 at 8:00 AM');
     expect(await askStartsAt('America/Halifax')).toBe('Sun, Nov 1 at 12:00 PM');
   });
 

@@ -58,6 +58,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   linq_group_carpools: 'unreviewed',
   linq_group_members: 'unreviewed',
   linq_group_onboarding: 'unreviewed',
+  linq_group_plan_calendar_consents: 'unreviewed',
   linq_group_plans: 'unreviewed',
   linq_group_polls: 'unreviewed',
   linq_group_rosters: 'unreviewed',
