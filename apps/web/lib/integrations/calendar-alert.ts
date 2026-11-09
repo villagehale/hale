@@ -18,6 +18,7 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -28,7 +29,6 @@ import {
   kidNoticeTitle,
   readKidNoticeGates,
 } from './calendar-kid-notice';
-import { readNoticeLanguage } from './notice-language';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
@@ -489,7 +489,7 @@ async function kidNoticeSweep(
 
   let language: Promise<string> | undefined;
   const languageOnce = () => {
-    language ??= readNoticeLanguage(database, { familyId, parentUserId, now });
+    language ??= readParentLanguage(database, { familyId, parentUserId });
     return language;
   };
   const offers = [
