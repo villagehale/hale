@@ -123,6 +123,7 @@ import {
   augmentCoachSkillForReadEmail,
   productionCoachEmailReader,
   readEmailTool,
+  taintTurnOnEmailRead,
 } from './read-email-tool';
 import {
   type RegistrationWindowContext,
@@ -562,8 +563,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             },
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
-          // are busy-only, on every group turn.
-          const tools = [
+          // are busy-only, on every group turn. VIL-615: once read_email returns text,
+          // only reads run for the rest of the turn.
+          const tools = taintTurnOnEmailRead([
             ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
             ...(cardsLit
               ? [
@@ -633,7 +635,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                   ),
                 ]
               : []),
-          ];
+          ]);
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.

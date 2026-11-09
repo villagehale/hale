@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Text omits the time (10 AM) and day (Thursday) and never says who is reminded or what the reminder is about. Missing mustSay items make it a low score."
+  }
+}

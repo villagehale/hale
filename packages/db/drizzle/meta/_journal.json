@@ -1398,8 +1398,15 @@
     {
       "idx": 203,
       "version": "7",
-      "when": 1793579577428,
-      "tag": "0214_capability_denials",
+      "when": 1793665976427,
+      "tag": "0214_activity_bookings_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1793665977427,
+      "tag": "0215_capability_denials",
       "breakpoints": true
     }
   ]
