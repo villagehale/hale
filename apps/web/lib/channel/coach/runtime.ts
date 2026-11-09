@@ -339,12 +339,12 @@ export interface ChannelCoachPorts {
   client(): AgentClient;
   /**
    * VIL-524. On a nearby-find turn, after the model writes, this decides whether
-   * the whole reply is internal reasoning. Production always sets it. Absent is
-   * named `not_configured` and the draft is sent, so a scripted coach is not
-   * silenced. A wired judge that withholds or fails sends nothing. The judge
-   * does not rewrite parent text.
+   * the whole reply is internal reasoning. Required: production wires the model
+   * judge, and a scripted coach passes `findReplyNotJudged`, which sends the draft
+   * and logs `not_configured` (rule #11). A judge that withholds or fails sends
+   * nothing. The judge does not rewrite parent text.
    */
-  judgeFindReply?(draft: string): Promise<FindReplyGate>;
+  judgeFindReply(draft: string): Promise<FindReplyGate>;
   /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
@@ -798,36 +798,28 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             }
             // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
             // turn whose tools handed over a find (any language). It does not edit the
-            // draft. withhold, or a judge that failed, sends nothing.
-            // A runtime built without the port (scripted journey coaches) names that
-            // and sends the draft: production always wires the judge.
+            // draft. withhold, or a judge that failed, sends nothing. It reads the
+            // draft with teen names already redacted, as the parent would (rule #1).
             const handedOverFind =
               offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
             if (!noticeReady && (findTurn || handedOverFind)) {
-              if (!ports.judgeFindReply) {
+              const gate = await ports.judgeFindReply(redactTeenNames(spoken, children, now));
+              if (gate.verdict !== 'send') {
                 console.error(
-                  { reason: 'not_configured' },
-                  'channel coach: find-reasoning judge absent - draft sent unjudged',
+                  {
+                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                  },
+                  'channel coach: find reply withheld - nothing sent',
                 );
-              } else {
-                const gate = await ports.judgeFindReply(spoken);
-                if (gate.verdict !== 'send') {
-                  console.error(
-                    {
-                      reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
-                    },
-                    'channel coach: find reply withheld - nothing sent',
-                  );
-                  await ports.recordRun(record('failed'));
-                  // A failed turn, not a deliberate silence (Devin #983): the router's
-                  // failed-turn path keeps the drafts receipt and the failed-turn ledger.
-                  // The withheld draft itself is never sent.
-                  throw failed(
-                    gate.verdict === 'withhold'
-                      ? 'channel coach: find reply withheld (find_reasoning)'
-                      : `channel coach: find reply judge failed (${gate.reason})`,
-                  );
-                }
+                await ports.recordRun(record('failed'));
+                // A failed turn, not a deliberate silence (Devin #983): the router's
+                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                // The withheld draft itself is never sent.
+                throw failed(
+                  gate.verdict === 'withhold'
+                    ? 'channel coach: find reply withheld (find_reasoning)'
+                    : `channel coach: find reply judge failed (${gate.reason})`,
+                );
               }
             }
             // VIL-434: the model's answer goes out whole. Length is the model's judgment
