@@ -2176,6 +2176,7 @@ export async function familyFreeBusy(
       .where(
         and(
           eq(schema.familyEvents.familyId, familyId),
+          householdFamilyEvent(),
           isNotNull(schema.familyEvents.placedGoogleEventId),
         ),
       ),
