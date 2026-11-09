@@ -89,6 +89,12 @@ export interface TranscriptEntry {
    * the crisis writer could not send is never followed up with an onboarding ask.
    */
   crisis?: boolean;
+  /**
+   * INBOUND only: the turn that read this text sent nothing and said so
+   * (`first_touch_unsent`). Mid-onboarding, this is the only thing that lets the
+   * first-reply sweep follow up: an unmarked text is never assumed to be owed.
+   */
+  unsent?: boolean;
 }
 
 interface IntakeData {
@@ -849,13 +855,16 @@ export function placeSettled(
 }
 
 /**
- * The parent's last text got no reply: the transcript ends on an inbound. A text that
- * took the crisis path is not owed an onboarding reply, whether or not its crisis
- * reply went out.
+ * The first-reply sweep owes the parent's last text a reply. Opt-in: the opening text
+ * that heard nothing at all (no outbound anywhere, so no turn may have lived to mark
+ * it), or a later text whose turn marked it `unsent`. A text with no marker is never
+ * owed, so a crisis text written before `crisis` was recorded is not followed up. A
+ * text that took the crisis path is never owed an onboarding reply, marker or not.
  */
 export function transcriptOwesReply(transcript: readonly TranscriptEntry[]): boolean {
   const last = transcript.at(-1);
-  return last?.direction === 'in' && last.crisis !== true;
+  if (last?.direction !== 'in' || last.crisis === true) return false;
+  return last.unsent === true || !transcriptHasOutbound(transcript);
 }
 
 /** What a recovery sweep reads from the blob: it must not decrypt the phone until it

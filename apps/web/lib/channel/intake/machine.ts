@@ -1506,11 +1506,18 @@ async function crisisReply(
   return { body: crisis.status === 'sent' ? crisis.body : null };
 }
 
-/** The pre-family inbound just recorded took the crisis path: no sweep follows it with an ask. */
-function markedCrisis(transcript: TranscriptEntry[]): TranscriptEntry[] {
+/**
+ * Marks the pre-family inbound just recorded. `crisis`: it took the crisis path, and no
+ * sweep follows it with an ask. `unsent`: its turn sent nothing, and only this marker
+ * lets the first-reply sweep answer it.
+ */
+function markedLastInbound(
+  transcript: TranscriptEntry[],
+  mark: 'crisis' | 'unsent',
+): TranscriptEntry[] {
   const last = transcript.at(-1);
   if (last?.direction !== 'in') return transcript;
-  return [...transcript.slice(0, -1), { ...last, crisis: true }];
+  return [...transcript.slice(0, -1), { ...last, [mark]: true }];
 }
 
 /** Who hears about a crisis that got no reply, and which inbound, household and parent it was. */
@@ -1819,7 +1826,7 @@ async function friendOnboardingTurn(
   let transcript = recorded.transcript;
   const safety = await crisisReply(database, session, inbound, language, deps);
   if (safety) {
-    transcript = markedCrisis(transcript);
+    transcript = markedLastInbound(transcript, 'crisis');
     if (safety.body) {
       ({ transcript } = await sendAndRecord(database, ctx, safety.body, deps, transcript));
     }
@@ -1963,7 +1970,7 @@ async function friendOnboardingTurn(
       session,
       {
         state: opening ? 'awaiting_details' : settled ? 'awaiting_ages' : 'awaiting_place',
-        transcript,
+        transcript: markedLastInbound(transcript, 'unsent'),
         collected,
         lastProviderId: inbound.providerId,
         ladderLanguage: language,

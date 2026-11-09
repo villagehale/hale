@@ -1347,12 +1347,18 @@ describe('friend voice onboarding', () => {
     const session = await loadOpenSession(fake.db, PHONE);
     expect(session?.state).toBe('awaiting_place');
     expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in']);
+    // VIL-641: the turn that sent nothing marks its inbound; only that lets the
+    // first-reply sweep follow up mid-onboarding.
+    expect(session?.transcript.at(-1)).toMatchObject({ direction: 'in', unsent: true });
 
     // Positive control: their next text re-runs the step and a model that answers sends it.
     modelUp = true;
     const answered = await handleInboundSms(fake.db, inbound(transport, 'still here'), flaky);
     expect(answered).toEqual({ status: 'first_touch', step: 'place_waiting' });
     expect(transport.sent).toHaveLength(2);
+    const after = await loadOpenSession(fake.db, PHONE);
+    expect(after?.transcript.at(-2)).toMatchObject({ direction: 'in', body: 'still here' });
+    expect(after?.transcript.at(-2)?.unsent).toBeUndefined();
   });
 
   it('is answered once by the first-reply sweep when the opening turn sent nothing', async () => {

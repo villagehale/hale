@@ -53,7 +53,12 @@ interface Seed {
   state?: string;
   createdAt?: Date;
   updatedAt?: Date;
-  transcript?: Array<{ direction: 'in' | 'out'; body: string; crisis?: boolean }>;
+  transcript?: Array<{
+    direction: 'in' | 'out';
+    body: string;
+    crisis?: boolean;
+    unsent?: boolean;
+  }>;
   place?: { city: string; areaCoarse: string; postalCode: string } | null;
   /** A place the parent declined, stored on the session's given facts. */
   placeDeclined?: boolean;
@@ -193,8 +198,9 @@ describe('first-reply recovery reads the transcript, not the state', () => {
     expect((await loadOpenSession(db.database, phone))?.state).toBe('awaiting_ages');
   });
 
-  // VIL-641: a turn mid-onboarding that sent nothing (`first_touch_unsent`) is owed too.
-  it('answers once a mid-onboarding text whose turn sent nothing, in the thread so far', async () => {
+  // VIL-641: a turn mid-onboarding that sent nothing and marked its inbound
+  // (`first_touch_unsent`) is owed too.
+  it('answers once a mid-onboarding text whose turn marked it unsent, in the thread so far', async () => {
     const { id, phone } = await seed({
       state: 'awaiting_ages',
       place: null,
@@ -202,7 +208,7 @@ describe('first-reply recovery reads the transcript, not the state', () => {
       transcript: [
         { direction: 'in', body: 'hi' },
         { direction: 'out', body: "Hey, it's Hale. What's your postal code?" },
-        { direction: 'in', body: 'not even that' },
+        { direction: 'in', body: 'not even that', unsent: true },
       ],
     });
     const transport = new FakeTransport();
@@ -226,6 +232,47 @@ describe('first-reply recovery reads the transcript, not the state', () => {
     const session = await loadOpenSession(db.database, phone);
     expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
     expect(session?.state).toBe('awaiting_ages');
+  });
+
+  // VIL-641 P1: following up mid-onboarding is opt-in. A last inbound with no marker
+  // (a crisis text written before `crisis` was recorded reads exactly like this) is
+  // never answered by the sweep; only the turn that failed to send may ask for that.
+  it('leaves alone a mid-onboarding text that carries no unsent marker', async () => {
+    const unmarked = await seed({
+      state: 'awaiting_place',
+      transcript: [
+        { direction: 'in', body: 'hi' },
+        { direction: 'out', body: "Hey, it's Hale. What's your postal code?" },
+        { direction: 'in', body: 'text with no marks (test fixture)' },
+      ],
+    });
+    const transport = new FakeTransport();
+    const voice = composer();
+
+    const result = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), NOW);
+
+    expect(result).toMatchObject({ sent: 0, skipped: 1 });
+    expect(voice.inputs).toEqual([]);
+    expect(transport.sent).toEqual([]);
+    expect(await stamp(unmarked.id)).toBeNull();
+  });
+
+  it('never follows a crisis text with an onboarding ask, even one marked unsent', async () => {
+    const marked = await seed({
+      transcript: [
+        { direction: 'in', body: 'hi' },
+        { direction: 'out', body: "Hey, it's Hale. What's your postal code?" },
+        { direction: 'in', body: 'crisis text (test fixture)', crisis: true, unsent: true },
+      ],
+    });
+    const transport = new FakeTransport();
+    const voice = composer();
+
+    const result = await runFirstReplyRecoveryCron(db.database, deps(transport, voice), NOW);
+
+    expect(result).toMatchObject({ sent: 0, skipped: 1 });
+    expect(transport.sent).toEqual([]);
+    expect(await stamp(marked.id)).toBeNull();
   });
 
   it('never follows a crisis text with an onboarding ask, whether or not it was answered', async () => {

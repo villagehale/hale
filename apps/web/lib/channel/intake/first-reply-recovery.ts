@@ -49,14 +49,15 @@ import { placeZone } from './sitting-reminder';
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
  *
- * The invariant, owned by code: an open pre-family session whose transcript ends on an
- * inbound is owed one reply, whatever state the turn left it in: the opening text that
- * heard nothing, and a text mid-onboarding whose turn sent nothing (the named
- * `first_touch_unsent`). A text that took the crisis path is never owed an onboarding
- * ask (`TranscriptEntry.crisis`). The
+ * The invariant, owned by code: an open pre-family session is owed one reply when
+ * {@link transcriptOwesReply} says so, whatever state the turn left it in: the opening
+ * text that heard nothing (no outbound anywhere, unchanged since VIL-332), and a text
+ * mid-onboarding whose turn sent nothing and marked it `unsent` (`first_touch_unsent`).
+ * Mid-onboarding the follow-up is opt-in: an unmarked text is never owed. A text that
+ * took the crisis path is never owed an onboarding ask (`TranscriptEntry.crisis`). The
  * transcript is the record (pre-family outbound has no channel_messages row to occupy —
- * family_id is NOT NULL there), so it is what this sweep reads; never a marker a turn
- * writes. `first_reply_recovered_at` is this sweep's claim and nothing else, and only
+ * family_id is NOT NULL there), so it is what this sweep reads.
+ * `first_reply_recovered_at` is this sweep's claim and nothing else, and only
  * {@link claimFirstReplyRecovery} writes it.
  *
  * Not VIL-324's 8am Still here: that is next-morning only. This runs every minute from
@@ -146,7 +147,7 @@ export interface FirstReplyRecoveryRow {
   firstReplyRecoveredAt: Date | null;
   familyId: string | null;
   lastProviderId: string | null;
-  /** The transcript ends on an inbound that did not take the crisis path. */
+  /** {@link transcriptOwesReply}: an unanswered opening text, or a text marked unsent. */
   owesReply: boolean;
 }
 
