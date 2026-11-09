@@ -409,6 +409,29 @@ describe('reconcile — what a refused body produces', () => {
     expect(withoutRefusedClaims(named, verdictFor(named, view()))).toBe('Swim runs Tuesdays at 4.');
   });
 
+  it('cuts a claim ending "Sat." together with the question it was joined to', () => {
+    const body = 'Swim runs Tuesdays at 4. Your visit is booked for Sat. Want me to add swim?';
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_scheduled_row']);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts a joined sentence once when two of its pieces are refused', () => {
+    const body = "Swim runs Tuesdays at 4. I'll send an invite Sat. Your visit is booked.";
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual([
+      'no_coparent_invite',
+      'no_scheduled_row',
+    ]);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts every copy of a repeated joined sentence', () => {
+    const twice = "I'll send an invite Sat. Your visit is booked.";
+    const body = `${twice} Swim runs Tuesdays at 4. ${twice}`;
+    expect(withoutRefusedClaims(body, verdictFor(body, view()))).toBe('Swim runs Tuesdays at 4.');
+  });
+
   it('a cut that leaves a dangling clause is a fragment, not a reply', () => {
     const dangling = "Here's where things stand:\nYour visit is booked.";
     expect(withoutRefusedClaims(dangling, verdictFor(dangling, view()))).toBe('fragment');

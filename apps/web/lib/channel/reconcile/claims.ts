@@ -83,18 +83,44 @@ export interface StateClaim {
  */
 const SENTENCE_BREAK = /(?<=[.!?])\s+(?=[A-Z(])|\n+/g;
 
-function sentencesOf(body: string): string[] {
-  const sentences: string[] = [];
+/**
+ * VIL-575 · a sentence is the span a lane cuts; its pieces are what gets judged. A break
+ * after "St." or "Sat." is joined so a cut never ends at the abbreviation, but the join
+ * is only sometimes right: "booked for Sat. Want me to add swim?" is two sentences, and
+ * judging the joined text would let the trailing "?" (or a negation in either half)
+ * exempt the booking claim before it.
+ */
+interface JoinedSentence {
+  sentence: string;
+  pieces: string[];
+}
+
+function sentencesOf(body: string): JoinedSentence[] {
+  const sentences: JoinedSentence[] = [];
+  let pieces: string[] = [];
   let from = 0;
+  let pieceFrom = 0;
+  const close = (end: number) => {
+    pieces.push(body.slice(pieceFrom, end));
+    const sentence = body.slice(from, end).trim();
+    if (sentence.length > 0) {
+      sentences.push({ sentence, pieces: pieces.map((piece) => piece.trim()) });
+    }
+    pieces = [];
+  };
   for (const boundary of body.matchAll(SENTENCE_BREAK)) {
-    const sentence = body.slice(from, boundary.index);
-    // VIL-575: "St. Mary's" is one sentence; a line break always ends one.
-    if (!boundary[0].includes('\n') && endsInAbbreviation(sentence)) continue;
-    sentences.push(sentence);
-    from = boundary.index + boundary[0].length;
+    const next = boundary.index + boundary[0].length;
+    // "St. Mary's" is one sentence; a line break always ends one.
+    if (!boundary[0].includes('\n') && endsInAbbreviation(body.slice(from, boundary.index))) {
+      pieces.push(body.slice(pieceFrom, boundary.index));
+    } else {
+      close(boundary.index);
+      from = next;
+    }
+    pieceFrom = next;
   }
-  sentences.push(body.slice(from));
-  return sentences.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0);
+  close(body.length);
+  return sentences;
 }
 
 /** Hale is about to do something: "I'll text you", "I will send", "I'm going to check". */
@@ -275,14 +301,22 @@ function kindOf(sentence: string): ClaimKind | null {
  */
 export function extractStateClaims(body: string): StateClaim[] {
   const claims: StateClaim[] = [];
-  for (const sentence of sentencesOf(body)) {
-    const kind = kindOf(sentence);
-    if (kind === null) continue;
-    claims.push({
-      sentence,
-      kind,
-      words: kind === 'scheduled_event' ? contentWords(sentence) : [],
-    });
+  for (const { sentence, pieces } of sentencesOf(body)) {
+    // Each piece is judged as if it stood alone, and the joined text too, for a claim
+    // that spans the abbreviation ("when St. Mary's registration opens"). One claim per
+    // kind, all spanning the joined sentence, so no piece's claim hides behind another's.
+    const judged = pieces.length > 1 ? [...pieces, sentence] : [sentence];
+    const seen = new Set<ClaimKind>();
+    for (const text of judged) {
+      const kind = kindOf(text);
+      if (kind === null || seen.has(kind)) continue;
+      seen.add(kind);
+      claims.push({
+        sentence,
+        kind,
+        words: kind === 'scheduled_event' ? contentWords(text) : [],
+      });
+    }
   }
   return claims;
 }

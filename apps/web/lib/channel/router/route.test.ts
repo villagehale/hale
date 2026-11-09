@@ -3878,6 +3878,16 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     expect(result.status).toBe('agent_failed');
   });
 
+  it('(d1) a booking claim ending "Sat." is not hidden by the question after it (VIL-575)', async () => {
+    const asked = 'Your well-baby visit is booked for Sat. Want me to add a reminder?';
+    const coach = scriptedCoach([{ reply: asked }, { reply: asked }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+  });
+
   it('(d2) the same claim is sent when the calendar actually holds it', async () => {
     const h = harness({
       coach: fakeCoach('Your well-baby visit is booked.'),

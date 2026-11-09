@@ -308,11 +308,17 @@ export function violationsFor(reasons: readonly RefusalReason[]): string[] {
 export function refusedClaimSpans(body: string, verdict: ReconcileVerdict): Span[] {
   const spans: Span[] = [];
   let from = 0;
+  let previous: string | null = null;
   for (const resolution of verdict.refused) {
-    const start = body.indexOf(resolution.claim.sentence, from);
+    const sentence = resolution.claim.sentence;
+    const start = body.indexOf(sentence, from);
+    // A joined sentence can carry several refused claims (VIL-575), and every copy of it
+    // carries the same ones, so the extras find no later copy: that sentence is cut already.
+    if (start < 0 && sentence === previous) continue;
     if (start < 0) throw new RangeError('reconcile: a refused sentence is not in the body');
-    spans.push({ start, end: start + resolution.claim.sentence.length });
-    from = start + resolution.claim.sentence.length;
+    spans.push({ start, end: start + sentence.length });
+    from = start + sentence.length;
+    previous = sentence;
   }
   return spans;
 }
