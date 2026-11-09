@@ -177,7 +177,7 @@
   },
   "extract-child-event.md": {
     "file": "extract-child-event.md",
-    "sha256": "4092659057ae076133c1e473c8310a920f0f0867db37512c5d79b25bfd08f96d"
+    "sha256": "d94ecb2e3d75632a4ee5b6d9d8f173db49c4597c99b52c8635d54c2cc3814f6e"
   },
   "extract-coparent-duty.md": {
     "file": "extract-coparent-duty.md",
@@ -389,11 +389,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "19b450dbabc8d849d43729e218761d5dcedccb0c1a694eff6cd0211b0f6a6428"
+    "sha256": "0e308f7892235faaaf657c01ec399f02af1fed98bb567aed15b0bc683dcd165c"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "e05ab699ac45adcb76d803a2fb56576939c981b53f734de0a1db9ab4be579799"
+    "sha256": "fbe913f37d281e75c9767acb0553cc417db6fec85fd330eefb4db3e219c6deec"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
@@ -425,7 +425,7 @@
   },
   "read-email-coach.md": {
     "file": "read-email-coach.md",
-    "sha256": "bc30ea5a6f6be0eb9c76b1759bbe6f5b15e2733711d329ce03389a7fe36fd4f3"
+    "sha256": "5a51ac62fa9db9151b857b98e8434e8924e209fde72ffec39c24fc74447c6b21"
   },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",

@@ -52,6 +52,9 @@ export interface BookingDraft {
   title: string;
   firstSessionAt: Date;
   location: string | null;
+  /** The street address the email gave for `location`, or null. Null whenever there is
+   * no place, or the place already carries it. */
+  address: string | null;
   /**
    * The `family_events` row this booking duplicates, when the correlation found one AND
    * it is a family_events ref. A `week_plans_item` ref is NOT written here: the follow-up
@@ -124,6 +127,9 @@ export function bookingDraft(input: {
   /** The place, through the SAME fold the offer row keeps (`gsm7`, clamped), for the same
    * reason: this string reaches a parent later, in a reminder. */
   location: string | null;
+  /** The street address the extraction kept from the email (`sourcedAddress`), through
+   * the same fold as the place. */
+  address: string | null;
   now: Date;
 }): BookingDraftResult {
   if (input.kind !== 'booking_confirmation') return { ok: false, reason: 'not_a_booking' };
@@ -145,6 +151,7 @@ export function bookingDraft(input: {
       title: input.title,
       firstSessionAt,
       location: input.location,
+      address: addressBeside(input.location, input.address),
       eventId: input.matchedEventRef?.table === 'family_events' ? input.matchedEventRef.id : null,
       // One decision, two readers - the row the count is read from and the row it is
       // written on carry the SAME string, because there is one function and one call.
@@ -158,12 +165,20 @@ export function bookingDraft(input: {
   };
 }
 
+/** The address only beside a place, and only when the place does not already say it. */
+function addressBeside(location: string | null, address: string | null): string | null {
+  if (location === null || address === null) return null;
+  const fold = (text: string) => (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(' ');
+  return ` ${fold(location)} `.includes(` ${fold(address)} `) ? null : address;
+}
+
 interface LiveClassBooking {
   id: string;
   providerHost: string;
   title: string;
   firstSessionAt: Date;
   location: string | null;
+  address: string | null;
   eventId: string | null;
   createdAt: Date;
 }
@@ -190,6 +205,7 @@ async function findLiveClassBooking(
       title: schema.activityBookings.title,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       location: schema.activityBookings.location,
+      address: schema.activityBookings.address,
       eventId: schema.activityBookings.eventId,
       createdAt: schema.activityBookings.createdAt,
     })
@@ -312,6 +328,9 @@ export async function recordActivityBooking(
           firstSessionAt: input.draft.firstSessionAt,
         }),
         location: input.draft.location ?? existing.location,
+        // The address belongs to the place it was given with: a receipt naming no place
+        // keeps both, and one naming a place replaces both.
+        address: input.draft.location === null ? existing.address : input.draft.address,
         eventId: existing.eventId ?? input.draft.eventId,
         // The newer of the two emails: GREATEST ignores a NULL on either side.
         ...(input.receivedAt === undefined
@@ -377,6 +396,7 @@ export async function recordActivityBooking(
         title: input.draft.title,
         firstSessionAt: input.draft.firstSessionAt,
         location: input.draft.location,
+        address: input.draft.address,
         sessionKey: input.draft.sessionKey,
         dedupeKey: bookingDedupeKey({
           providerHost: input.draft.providerHost,
