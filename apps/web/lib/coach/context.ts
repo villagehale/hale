@@ -9,6 +9,7 @@ import {
 } from '@hale/types';
 import { episodesForContext, factsForContext } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
+import type { HouseholdGroupFact } from '../channel/intake/household-group';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
@@ -210,6 +211,12 @@ export interface AgentContext {
   intent: string | null;
   /** The Hale note this reply is grounding on, or null for the general thread. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * VIL-566 — they said yes to a group with the other parent: `claimed` once Hale is in
+   * it, `pending` until then. Absent when they never said yes, so that turn's prompt
+   * bytes are unchanged. Set by the channel coach's production `loadContext`.
+   */
+  householdGroup?: HouseholdGroupFact;
 }
 
 function toChildContext(

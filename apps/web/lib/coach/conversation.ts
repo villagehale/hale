@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
 import { isConversationVisibleToParent } from './note-key.js';
 
@@ -303,7 +304,9 @@ export interface MessageScope {
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
  * Returns the new message id so the caller can link per-turn rows (e.g. chat
- * attachments) to the exact message that was just written. */
+ * attachments) to the exact message that was just written. A Browser Use live-view
+ * link is never stored: every later turn re-reads this thread, and the link is a
+ * credential to the parent's provider session (live-view.ts). */
 export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
@@ -314,7 +317,7 @@ export async function appendMessage(
   const values = {
     conversationId,
     role,
-    content,
+    content: withoutLiveViewLinks(content),
     childId: scope.childId,
     topic: scope.topic,
     ...(scope.source ? { source: scope.source } : {}),
@@ -336,10 +339,10 @@ export async function appendMessage(
   const inserted = await database.execute(
     keepSource
       ? sql`insert into messages (conversation_id, role, content, child_id, topic, source)
-            values (${conversationId}, ${role}, ${content}, ${scope.childId}, ${scope.topic}, ${JSON.stringify(scope.source)}::jsonb)
+            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic}, ${JSON.stringify(scope.source)}::jsonb)
             returning id`
       : sql`insert into messages (conversation_id, role, content, child_id, topic)
-            values (${conversationId}, ${role}, ${content}, ${scope.childId}, ${scope.topic})
+            values (${conversationId}, ${role}, ${values.content}, ${scope.childId}, ${scope.topic})
             returning id`,
   );
   const id = insertedId(inserted);

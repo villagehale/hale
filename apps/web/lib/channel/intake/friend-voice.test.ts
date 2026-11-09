@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import {
+  loadCronSkill,
+  loadOnboardingFriendShortSkill,
+  loadOnboardingFriendSkill,
+} from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
   assembleFriendBody,
   friendVoiceContext,
+  friendVoiceSystem,
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
@@ -35,6 +40,36 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
 }
 
 describe('friend voice brief', () => {
+  it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {
+    const facts = (input: FriendVoiceInput) =>
+      (friendVoiceContext(input) as { facts: Record<string, unknown> }).facts;
+    expect(facts(blank({ step: 'ack', householdGroup: 'pending' })).householdGroup).toBe('pending');
+    expect(facts(blank({ step: 'ack', householdGroup: 'claimed' })).householdGroup).toBe('claimed');
+    expect(facts(blank({ step: 'coparent', householdGroup: 'unclaimed' })).householdGroup).toBe(
+      'unclaimed',
+    );
+    expect(facts(blank({ step: 'ack' }))).not.toHaveProperty('householdGroup');
+    expect(facts(blank({ step: 'ack', householdGroup: null }))).not.toHaveProperty(
+      'householdGroup',
+    );
+  });
+
+  it('appends the household-group skill only when the fact rides; other turns keep their bytes (VIL-566)', async () => {
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    const group = (await loadCronSkill('household-group')).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
+    expect((await friendVoiceSystem({ step: 'ack', householdGroup: null }, false)).system).toBe(
+      base,
+    );
+    expect(
+      (await friendVoiceSystem({ step: 'ack', householdGroup: 'pending' }, false)).system,
+    ).toBe(`${base}\n\n${group}`);
+    const short = (await loadOnboardingFriendShortSkill()).instructions;
+    expect((await friendVoiceSystem({ step: 'ack', householdGroup: 'claimed' }, true)).system).toBe(
+      `${short}\n\n${group}`,
+    );
+  });
+
   it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {
     const stored = { language: 'fr', address: 'tu' as const };
     const answering = friendVoiceContext(

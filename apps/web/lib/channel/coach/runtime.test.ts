@@ -10,6 +10,7 @@ import {
 } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -128,6 +129,33 @@ describe('channelCoachRuntime', () => {
         transcript: [{ role: 'user', content: 'earlier' }],
       }),
     ]);
+  });
+
+  it('carries the household group and its skill only when the context has one (VIL-566)', async () => {
+    const group = (await loadCronSkill('household-group')).instructions;
+    const run = async (householdGroup?: 'pending' | 'claimed') => {
+      const seen: { context: unknown; instructions: string }[] = [];
+      const p = ports({
+        loadContext: async (input) =>
+          ({
+            question: input.question,
+            transcript: input.transcript,
+            ...(householdGroup ? { householdGroup } : {}),
+          }) as never,
+        runAgent: async (args) => {
+          seen.push({ context: args.context, instructions: args.skill.instructions });
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond(turn(), []);
+      return seen[0];
+    };
+    const pending = await run('pending');
+    expect(pending?.context).toMatchObject({ householdGroup: 'pending' });
+    expect(pending?.instructions.endsWith(`\n\n${group}`)).toBe(true);
+    const none = await run();
+    expect(none?.context).not.toHaveProperty('householdGroup');
+    expect(none?.instructions).not.toContain(group);
   });
 
   it('hands the loop the channel context: the surface and the family clock', async () => {

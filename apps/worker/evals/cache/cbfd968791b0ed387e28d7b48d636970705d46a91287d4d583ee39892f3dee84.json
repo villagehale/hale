@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The householdGroup is unclaimed, yet the reply says setup is done, everything is in place, and the other parent is in. That is exactly the false completion claim the rubric forbids, and watchFor calls it out directly.",
+    "score": 1
+  }
+}
