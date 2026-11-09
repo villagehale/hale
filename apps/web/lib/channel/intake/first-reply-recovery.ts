@@ -58,7 +58,8 @@ import { placeZone } from './sitting-reminder';
  * uses. A row owed a reply stays owed overnight and is not claimed; the first tick
  * after 08:00 there answers it, and the 24h window still covers a text that arrived
  * late the night before. A session with no postal place has no zone, and none is
- * guessed: its reply answers the text they just sent, whenever the sweep reaches it.
+ * guessed: its reply answers the text they just sent, whenever the sweep reaches it,
+ * and the tick counts it as `zoneUnknownAnswered`.
  * The reply is the first-touch ladder's own step, written by the model when
  * friend voice is on: the ages when a place is known (the silent turn stored one, or the
  * venue gives one), otherwise the place. The brief tells the model how long ago the
@@ -125,6 +126,11 @@ export interface FirstReplyRecoveryResult {
   optOutHeld?: number;
   /** Owed rows not claimed because it is night on the family's own clock. Still owed. */
   quietHeld?: number;
+  /**
+   * Rows answered with no zone to read the night in: the session holds no postal place
+   * and none is guessed, so the reply answers the parent's own text whenever it is owed.
+   */
+  zoneUnknownAnswered?: number;
 }
 
 export interface FirstReplyRecoveryRow {
@@ -266,6 +272,9 @@ export async function runFirstReplyRecoveryCron(
       const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
       await recordFirstReplyOutbound(database, phoneE164, wireBody, sent.providerMessageId, now);
       result.sent += 1;
+      if (row.timeZone === null) {
+        result.zoneUnknownAnswered = (result.zoneUnknownAnswered ?? 0) + 1;
+      }
     } catch (err) {
       await reportFirstHelloFailure(database, {
         sessionId: row.id,
@@ -287,6 +296,12 @@ export async function runFirstReplyRecoveryCron(
       result.failed += 1;
       console.error({ code: refusal?.code ?? 'unknown' }, 'first-reply recovery send failed');
     }
+  }
+  if (result.zoneUnknownAnswered) {
+    console.info(
+      { zoneUnknownAnswered: result.zoneUnknownAnswered },
+      'first-reply recovery: answered with no zone for the session',
+    );
   }
   return result;
 }

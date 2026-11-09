@@ -1712,6 +1712,23 @@ describe("ladder: a safety outcome names the health line for the family's region
     expect(calls[0]?.mustInclude).toEqual(['911']);
   });
 
+  it('the composer is handed the first code as the region its searches look in', async () => {
+    const { fake, transport, deps } = ladder({ collected: null, firstTouch: 'K7L 3N6' });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls[0]?.regionToken).toBe('K7L 3N6');
+  });
+
+  it('a session with no code hands the composer no region', async () => {
+    const { fake, transport, deps } = ladder({ collected: null });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls).toHaveLength(1);
+    expect(composer.calls[0]?.regionToken).toBeNull();
+  });
+
   it('a write that fails sends nothing and names the hold', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fake, transport, deps } = ladder({ collected: '98101' }, null);

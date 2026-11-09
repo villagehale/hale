@@ -24,6 +24,7 @@ function deps(over: Partial<GooglePushHandleDeps> = {}): GooglePushHandleDeps {
     claimPushDebounce: async () => 'run',
     takePushPending: async () => false,
     releasePushDebounce: async () => undefined,
+    releaseIdlePushDebounce: async () => true,
     syncIntegration: async () => undefined,
     verifyPubSubToken: async () => ({ status: 'verified' }),
     mailboxKey: (email) => `key:${email.toLowerCase()}`,
@@ -157,6 +158,7 @@ describe('handleGooglePushNotification', () => {
       now: NOW,
       env: ON,
       deps: deps({
+        releaseIdlePushDebounce: async () => !pending,
         takePushPending: async () => {
           if (!pending) return false;
           pending = false;
@@ -170,6 +172,35 @@ describe('handleGooglePushNotification', () => {
     });
     expect(result.body.status).toBe('synced');
     expect(synced).toHaveLength(2);
+  });
+
+  it('stops at the trailing cap and gives the window back while pushes keep coming', async () => {
+    const synced: string[] = [];
+    let released = 0;
+    const result = await handleGooglePushNotification({
+      provider: 'gcal',
+      headers: headerBag({
+        'x-goog-channel-id': 'chan-1',
+        'x-goog-channel-token': TOKEN,
+        'x-goog-resource-id': 'res-1',
+      }),
+      rawBody: '',
+      now: NOW,
+      env: ON,
+      deps: deps({
+        releaseIdlePushDebounce: async () => false,
+        takePushPending: async () => true,
+        releasePushDebounce: async () => {
+          released += 1;
+        },
+        syncIntegration: async (id) => {
+          synced.push(id);
+        },
+      }),
+    });
+    expect(result.body.status).toBe('synced');
+    expect(synced).toHaveLength(3);
+    expect(released).toBe(1);
   });
 
   it('decodes a Gmail notice and syncs by mailbox, without handing historyId to the sync', async () => {

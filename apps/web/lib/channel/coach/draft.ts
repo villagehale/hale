@@ -125,7 +125,21 @@ export interface ChannelDraftPort {
     startsAt: string;
     childId: string | null;
   }): Promise<PendingCalendarAdd>;
+  /**
+   * Where the parent's yes to a draft of this kind is given, told to the model so a group
+   * reply does not ask for a yes the group cannot give (VIL-595). Only a group turn's port
+   * has it: a 1:1 turn's drafts wait in that same private text. Null when the group chat
+   * is not known, which drafts nothing.
+   */
+  approvalWaitsIn?(input: {
+    familyId: string;
+    actionType: ChannelCalendarActionType;
+  }): Promise<GroupApprovalPlace | null>;
 }
+
+/** `this_group`: a yes in this household group approves it. `private_texts`: only a yes
+ * in a parent's private text with Hale does. */
+export type GroupApprovalPlace = 'this_group' | 'private_texts';
 
 /**
  * Bound to one turn: every draft it mints records that turn's origin, and every ask it
@@ -146,7 +160,26 @@ export function productionChannelDraftPort(
         now: turn.now,
         origin: turn.origin,
       }),
+    ...(turn.origin.surface === 'group'
+      ? {
+          approvalWaitsIn: (input: { familyId: string; actionType: ChannelCalendarActionType }) =>
+            groupApprovalPlace(database, input.familyId, turn.origin, input.actionType),
+        }
+      : {}),
   };
+}
+
+/** Only a household-group add is answered in the group; every other draft is private. */
+async function groupApprovalPlace(
+  database: Database,
+  familyId: string,
+  origin: DraftOrigin,
+  actionType: ChannelCalendarActionType,
+): Promise<GroupApprovalPlace | null> {
+  if (actionType !== 'calendar_add') return 'private_texts';
+  const recorded = await recordOrigin(database, familyId, origin);
+  if (recorded === 'group_chat_unknown') return null;
+  return approvalSurfaceOf(recorded).surface === 'household_group' ? 'this_group' : 'private_texts';
 }
 
 async function recordOrigin(
@@ -190,6 +223,16 @@ function parseRecordedOrigin(after: unknown): RecordedOrigin | null {
 }
 
 /**
+ * A `group_plan.drafted` row's chat key. A stamp written before the key carries the raw
+ * chat id (VIL-443), which is keyed on read: audit rows are never rewritten.
+ */
+export function stampChatKey(after: unknown): string | null {
+  const stamp = after as { chatKey?: unknown; chatId?: unknown } | null | undefined;
+  if (typeof stamp?.chatKey === 'string') return stamp.chatKey;
+  return typeof stamp?.chatId === 'string' ? linqChatBlindIndex(stamp.chatId) : null;
+}
+
+/**
  * Each action's approval surface, which listing and dedupe both read. The mint row's
  * recorded origin when it has one. A draft minted before origins were recorded is read
  * from the group-plan stamp, which only the household group ever got: stamped is that
@@ -225,19 +268,19 @@ export async function calendarDraftApprovalSurfaces(
       if (origin) recorded.set(row.targetId, origin);
       continue;
     }
-    const chatId = (row.after as { chatId?: unknown } | null)?.chatId;
-    if (typeof chatId === 'string') stamped.set(row.targetId, chatId);
+    const chatKey = stampChatKey(row.after);
+    if (chatKey) stamped.set(row.targetId, chatKey);
   }
   return new Map(
     actionIds.map((id): [string, ApprovalSurface] => {
       const origin = recorded.get(id);
       if (origin) return [id, approvalSurfaceOf(origin)];
-      const chatId = stamped.get(id);
+      const chatKey = stamped.get(id);
       return [
         id,
-        chatId === undefined
+        chatKey === undefined
           ? { surface: 'private', originChatKey: null }
-          : { surface: 'household_group', chatKey: linqChatBlindIndex(chatId) },
+          : { surface: 'household_group', chatKey },
       ];
     }),
   );
@@ -296,19 +339,15 @@ export async function findPendingIdenticalCalendarAdd(
       ),
     )
     // No row limit: audience and child are read after the query, so a page of newer
-    // drafts for another chat or child would hide the one this ask is about.
+    // drafts for another chat or child would hide the one this ask is about. A draft
+    // never expires, so there is no drafted_at window either (VIL-595).
     .orderBy(desc(schema.actions.draftedAt));
-  const surfaces = await calendarDraftApprovalSurfaces(
-    database,
-    input.familyId,
-    rows.map((row) => row.id),
-  );
-  const askSurface = approvalSurfaceOf(origin);
-  const hit = rows.find((row) => {
+  // The occasion first, in memory, so the audit read below names only this occasion's
+  // drafts rather than every add the family has waiting.
+  const sameOccasion = rows.filter((row) => {
     const payload = row.payload as { title?: unknown; startsAt?: unknown; childId?: unknown };
     const childId = typeof payload.childId === 'string' ? payload.childId : null;
     return (
-      sameApprovalSurface(surfaces.get(row.id), askSurface) &&
       childId === input.childId &&
       typeof payload.title === 'string' &&
       typeof payload.startsAt === 'string' &&
@@ -316,6 +355,13 @@ export async function findPendingIdenticalCalendarAdd(
       calendarInstantsClose(payload.startsAt, input.startsAt)
     );
   });
+  const surfaces = await calendarDraftApprovalSurfaces(
+    database,
+    input.familyId,
+    sameOccasion.map((row) => row.id),
+  );
+  const askSurface = approvalSurfaceOf(origin);
+  const hit = sameOccasion.find((row) => sameApprovalSurface(surfaces.get(row.id), askSurface));
   if (hit) return { outcome: 'already_pending', id: hit.id };
   if (input.origin.surface === 'group') return { outcome: 'none' };
   const offerId = await standingCalendarOfferId(database, {
@@ -360,9 +406,9 @@ export async function mintChannelCalendarDraft(
       childId,
       teenContent: input.teenContent,
       // The parent's own words are NOT copied here (rule #1): the message body lives in
-      // exactly one place (the conversation thread), and the payload carries only the
-      // resolved change. What the trail needs is what would happen, not what was typed.
-      payload: { actionType: input.actionType, title: payload.title },
+      // exactly one place (the conversation thread). Nor is the title: the action's
+      // payload already carries it, and a second clear copy is one more to redact.
+      payload: { actionType: input.actionType },
       classifierSuggestion: { kind: 'autonomous_action', actionType: input.actionType },
       classifiedAt: now,
       dedupHash,

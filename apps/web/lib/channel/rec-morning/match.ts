@@ -32,13 +32,15 @@ export type RecHelloCity =
   | 'milton';
 
 /**
- * The place a family has on file: the families row's city and postal code, and the
- * family's own zone, which says what day "today" is for a dated fact. Null when no zone
- * is known.
+ * The place a family has on file: the families row's city, postal code, country and
+ * province, and the family's own zone, which says what day "today" is for a dated fact.
+ * Null when no zone is known.
  */
 export type RecMorningPlace = {
   city: string | null;
   postal: string | null;
+  country: string | null;
+  province: string | null;
   timeZone: string | null;
 };
 
@@ -156,16 +158,30 @@ function helloCityFromPostal(postal: string): RecHelloCity | null {
   return only;
 }
 
+const CANADA = new Set(['canada', 'ca', 'can']);
+const ONTARIO = new Set(['ontario', 'on']);
+
+/**
+ * Whether the stored place says Canada: a Canadian FSA, or the country or province the
+ * family set. `families.country_code` is not read - it defaults to CA for everyone.
+ */
+function storedInCanada(place: RecMorningPlace): boolean {
+  if (place.postal !== null && fsaOf(place.postal) !== null) return true;
+  if (place.country !== null && CANADA.has(fold(place.country))) return true;
+  return place.province !== null && ONTARIO.has(fold(place.province));
+}
+
 /**
  * The family's stored place as a GTA municipality: the city on file, then the postal on
  * file. Null for anywhere else, and for an ambiguous or unverified FSA - no guessed town.
  * A stored code that is not a Canadian FSA (a US ZIP) is never in the GTA, whatever
- * town name sits beside it: Richmond Hill and Burlington are US towns too.
+ * town name sits beside it: Richmond Hill and Burlington are US towns too. For the same
+ * reason a town name with no code places the family only when its country says Canada.
  */
 export function resolveRecMorningWhere(place: RecMorningPlace | null): RecMorningWhere | null {
   if (place === null) return null;
   if (place.postal && fsaOf(place.postal) === null) return null;
-  const fromCity = place.city ? namedHelloCity(fold(place.city)) : null;
+  const fromCity = place.city && storedInCanada(place) ? namedHelloCity(fold(place.city)) : null;
   const municipality = fromCity ?? (place.postal ? helloCityFromPostal(place.postal) : null);
   if (municipality === null) return null;
   return { municipality, postal: place.postal, timeZone: place.timeZone };
@@ -241,11 +257,13 @@ export function matchRecMorning(
     return city === 'toronto' && !isYmca(text) ? 'toronto_waitlist' : null;
   }
 
+  // Two phones, the wishlist and eFun are Toronto's portal facts. Another town's family
+  // asking them gets the coach, never Toronto's answer as if it were theirs.
   if (
     /\b(two phones|two logins|both parents|one login|one phone)\b/.test(text) ||
     (/\b(co-?parent|other parent)\b/.test(text) && /\b(phone|login|thread|text)\b/.test(text))
   ) {
-    return 'two_parents';
+    return city === 'toronto' ? 'two_parents' : null;
   }
 
   if (isYmca(text)) {
@@ -263,10 +281,10 @@ export function matchRecMorning(
     /\bwish\s*lists?\b/.test(text) ||
     (/\bfrozen\b/.test(text) && /\b(refresh|search live|wishlist|wish list)\b/.test(text))
   ) {
-    return 'toronto_wishlist';
+    return city === 'toronto' ? 'toronto_wishlist' : null;
   }
 
-  if (/\befun\b/.test(text)) return 'toronto_efun';
+  if (/\befun\b/.test(text)) return city === 'toronto' ? 'toronto_efun' : null;
 
   if (/\bactiveto\b/.test(text) || /\bfitnessto\b/.test(text)) return 'toronto_rec';
 

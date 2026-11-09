@@ -476,6 +476,42 @@ describe('createRadarComposer', () => {
   });
 });
 
+describe('createRadarComposer age fit for a stated age', () => {
+  const babyCircle: ActivityPick = {
+    name: 'Baby rhyme circle',
+    ageFit: 'Ages 0-1',
+    when: 'Tuesdays',
+    price: 'free',
+    sourceName: 'Town library',
+    source: 'web',
+  };
+  const toddlerGym: ActivityPick = { ...babyCircle, name: 'Toddler gym', ageFit: '1-3 years' };
+
+  async function titlesFor(child: { ageMonths: number; agePrecision: 'months' | 'years' }) {
+    const db = makeFakeDb();
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => NOW,
+      yearFinder: { find: async () => ({ found: true, picks: [babyCircle, toddlerGym] }) },
+    }).compose({ familyId: FAMILY_ID, children: [{ name: 'Wren', ...child }], ...at('L7G') });
+    return payload.titles;
+  }
+
+  it('reads "18 months" as the age the parent narrowed to, so Ages 0-1 is left out', async () => {
+    expect(await titlesFor({ ageMonths: 18, agePrecision: 'months' })).toEqual(['Toddler gym']);
+  });
+
+  it('keeps the tolerance for an age stated in years (control)', async () => {
+    // "she's 1" is 12 to 23 months, so Ages 0-1 may still fit.
+    expect(await titlesFor({ ageMonths: 12, agePrecision: 'years' })).toEqual([
+      'Baby rhyme circle',
+      'Toddler gym',
+    ]);
+  });
+});
+
 describe('checkpointSurvivedCompose — the told-marker is earned by the text (review P0, 2026-08-11)', () => {
   const TASK = 'Book the Enhanced 18-month well-baby visit with your doctor';
 
