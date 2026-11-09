@@ -441,7 +441,7 @@
   },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "5036b4da06914c0739a941a8d32a8a581fb9964fecf044c057c967ab62555473"
+    "sha256": "32bf310ee83d6708bd5ead832ebb2a16c7c7d230b78df880207a98d31e75a47e"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
@@ -482,6 +482,14 @@
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
     "sha256": "c14736437aa015313c1434cc73ffda77527fdb8955078fca1c4f8ac78c2d01a3"
+  },
+  "signup-plan-read.md": {
+    "file": "signup-plan-read.md",
+    "sha256": "e5753bb73887410aa6781c4a32d4fcd6dc5c7711b8edbc00b09f43da923dc428"
+  },
+  "signup-plan-reply.md": {
+    "file": "signup-plan-reply.md",
+    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

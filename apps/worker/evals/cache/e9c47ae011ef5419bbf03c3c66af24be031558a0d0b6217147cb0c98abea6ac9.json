@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep every given fact: day (tomorrow), start, end, venue name and address, and who each is for (Theo, Léa). Times are correct, but AM/PM is not stated; \"10 to 11\" and \"1:30 to 2:15\" are the natural spoken equivalents and are unambiguous in context (10-11 morning, 1:30 afternoon), so I do not treat them as wrong or ambiguous. Nothing invented, no link, no travel claims, no bold. However, the text says \"Those two clash\", and the facts contain no `overlaps` field: the events are 10-11 AM and 1:30-2:15 PM and do not overlap. Per the CLASH CHECK, saying or hinting that anything clashes when no event has `overlaps` is an invented detail and a LOW score.",
+    "score": 1
+  }
+}
