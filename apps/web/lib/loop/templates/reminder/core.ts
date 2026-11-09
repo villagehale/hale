@@ -12,7 +12,7 @@ import type { ReminderChild, ReminderEventView } from './payload';
 
 // A teen (or any flagged-sensitive) event is reduced to this — the calendar detail is
 // never surfaced, only that SOMETHING is on the parent's radar.
-const GENERIC_DESCRIPTOR = 'an appointment';
+export const GENERIC_DESCRIPTOR = 'an appointment';
 
 /**
  * The family-local calendar day of an instant — "Sat, Jul 25". The reminder's lead is this
