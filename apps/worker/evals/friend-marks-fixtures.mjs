@@ -30,6 +30,10 @@ const DONE_THROUGH_SCHEDULE = {
   schedule: true,
 };
 
+const SWIM_LINE = 'Swim lessons at the community pool (ages 3-5) - Saturdays 10:00';
+const STORY_LINE = 'Library storytime (all ages) - Tuesdays 10:30 - free';
+const PLAY_LINE = 'Drop-in playgroup (0-6) - weekday mornings - free';
+
 const CARPOOL_TURN = {
   step: 'coparent',
   parentWords:
@@ -239,6 +243,31 @@ export const FRIEND_MARKS_FIXTURES = [
     expect: { claimsSaved: true },
     addsAtLeast: 1,
   },
+  // The map (VIL-526): the parent sees only the bubbles the model writes, so
+  // each group needs one that code keeps (its own lines' facts, no other group's).
+  {
+    id: 'find-show-two-groups',
+    over: {
+      step: 'find_show',
+      parentWords: 'Mia is 4 and Leo is 1',
+      placeLabel: 'Springfield',
+      agesLabel: 'Mia (4) and Leo (1)',
+      ageMonths: [48, 12],
+      children: [
+        { name: 'Mia', ageMonths: 48 },
+        { name: 'Leo', ageMonths: 12 },
+      ],
+      findLines: [SWIM_LINE, STORY_LINE, PLAY_LINE],
+      findGroups: [
+        { category: 'swimming', lines: [SWIM_LINE] },
+        { category: 'free_public', lines: [STORY_LINE, PLAY_LINE] },
+      ],
+      checklist: { ...DONE_THROUGH_NAME, name: false },
+    },
+    emits: [],
+    expect: {},
+    groupBubbles: 2,
+  },
 ];
 
 const OTHER_CONNECTOR = { email: 'calendar', calendar: 'gmail' };
@@ -253,9 +282,15 @@ const FIELD_TYPE = {
     v === null || ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'].includes(v),
 };
 
-/** The fields this fixture needed and the model left out or mistyped. Empty is a pass. */
-export function friendMarksMisses(fixture, value) {
+/**
+ * The fields this fixture needed and the model left out or mistyped. Empty is a pass.
+ * `keptGroupBubbles` is how many map bubbles friend-voice kept from this reply.
+ */
+export function friendMarksMisses(fixture, value, { keptGroupBubbles = 0 } = {}) {
   const misses = [];
+  if (fixture.groupBubbles != null && keptGroupBubbles < fixture.groupBubbles) {
+    misses.push(`groupBubbles:${keptGroupBubbles}`);
+  }
   for (const field of fixture.emits) {
     if (!value || !(field in value) || !FIELD_TYPE[field](value[field])) {
       misses.push(`${field}:omitted`);
