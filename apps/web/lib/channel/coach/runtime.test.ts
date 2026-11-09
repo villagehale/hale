@@ -575,6 +575,27 @@ describe('channelCoachRuntime', () => {
 
     expect(buildTools).toHaveBeenCalledTimes(2);
   });
+
+  /** D6: the tool set is built for the family's own country, so a US family's coach
+   * never answers from Canada's health schedule. Canada is the positive control. */
+  it("builds the tool set for the family's country", async () => {
+    const countryBuiltFor = async (country: string) => {
+      const buildTools = vi.fn(() => [] as RegisteredTool[]);
+      const p = ports({ buildTools });
+      p.loadContext = async (input) =>
+        ({
+          question: input.question,
+          transcript: input.transcript,
+          memoryFacts: [],
+          location: { city: null, province: null, country },
+        }) as never;
+      await channelCoachRuntime(p).respond(turn(), []);
+      return (buildTools.mock.calls[0] as unknown[])[8];
+    };
+
+    expect(await countryBuiltFor('United States')).toBe('US');
+    expect(await countryBuiltFor('Canada')).toBe('CA');
+  });
 });
 
 /**

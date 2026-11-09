@@ -675,6 +675,36 @@ describe('get_framework_guidance — the coaching tool the skill instructs (audi
     expect(result.whatsNow.length).toBeGreaterThan(0);
     expect(result.confirmWithProvider.length).toBeGreaterThan(0);
   });
+
+  /** D6: the family's country reaches the tool, so a US family's coach answer carries no
+   * Canadian cadence. The Canadian build is the positive control for the same input. */
+  it("answers with the family's country: Canada's cadence only for a Canadian family", async () => {
+    const guidance = async (familyCountry: ChannelCoachToolArgs['familyCountry']) => {
+      const tool = buildChannelCoachTools({
+        familyId: FAMILY,
+        familyCountry,
+        reader: {} as never,
+        draftPort: {} as never,
+        villageTool: null,
+        activity: null,
+        spots: null,
+        now: NOW,
+      }).find((t) => t.name === 'get_framework_guidance');
+      if (!tool) throw new Error('get_framework_guidance is not registered');
+      return (await tool.handler({ stage: 'newborn', ageMonths: 3 }, {} as never)) as Record<
+        string,
+        unknown
+      >;
+    };
+
+    const us = await guidance('US');
+    expect(us).not.toHaveProperty('nextHealth');
+    expect(us.healthSchedule).toBe('no_verified_us_schedule');
+
+    const ca = await guidance('CA');
+    expect((ca.nextHealth as unknown[]).length).toBeGreaterThan(0);
+    expect(ca).not.toHaveProperty('healthSchedule');
+  });
 });
 
 /**
