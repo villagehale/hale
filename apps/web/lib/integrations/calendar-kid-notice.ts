@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { teenChildIds } from '~/lib/channel/role-scope';
+import { noticeTitleFor } from './calendar-notice-title';
 
 /**
  * VIL-570. Which calendar changes may become a 1:1 notice, and what the writer is told.
@@ -15,19 +16,32 @@ import { teenChildIds } from '~/lib/channel/role-scope';
  * A teenager's event never reaches the parent from here (rule #1): the deterministic age
  * gate reads each child's date of birth, and a kid verdict tied to no child is held when
  * the family has a teenager at all.
+ *
+ * VIL-633: only the parent's own event is spoken about: one they organized, accepted, or
+ * that has no one else on it. Anyone can send an invite, and its title is then a
+ * stranger's words in Hale's voice. A copy whose standing was never read (mirrored before
+ * the column existed) is held too, until the next mirror sweep writes it. And only the
+ * parent's own or organized event lends the writer its title: an accepted invite's title
+ * is still its organizer's, who can rename it after the yes. The raw title never leaves
+ * this module; `title` is what the writer may be handed, or '' (noticeTitleFor).
  */
 
 export type KidNoticeGate =
   | { cleared: true; title: string; kidName: string | null }
-  | { cleared: false; why: 'not_kid_tracked' | 'teen_held' };
+  | {
+      cleared: false;
+      why: 'not_kid_tracked' | 'teen_held' | 'invite_not_accepted' | 'standing_unknown';
+    };
 
 const NOT_TRACKED: KidNoticeGate = { cleared: false, why: 'not_kid_tracked' };
 
 export async function readKidNoticeGates(
   database: Database,
   input: { familyId: string; integrationId: string; now: Date },
-  eventIds: readonly string[],
+  changes: ReadonlyArray<{ eventId: string; title?: string | null }>,
 ): Promise<Map<string, KidNoticeGate>> {
+  const eventIds = changes.map((change) => change.eventId);
+  const arrivingTitle = new Map(changes.map((change) => [change.eventId, change.title]));
   const gates = new Map<string, KidNoticeGate>(eventIds.map((id) => [id, NOT_TRACKED]));
   if (eventIds.length === 0) return gates;
   const events = schema.familyEvents;
@@ -41,6 +55,7 @@ export async function readKidNoticeGates(
         verdict: verdicts.verdict,
         teen: verdicts.teen,
         verdictChildId: verdicts.childId,
+        standing: events.calendarStanding,
       })
       .from(events)
       .innerJoin(verdicts, eq(events.kidVerdictId, verdicts.id))
@@ -70,19 +85,23 @@ export async function readKidNoticeGates(
       gates.set(row.eventId, { cleared: false, why: 'teen_held' });
       continue;
     }
+    if (row.standing === null) {
+      gates.set(row.eventId, { cleared: false, why: 'standing_unknown' });
+      continue;
+    }
+    if (row.standing === 'invited') {
+      gates.set(row.eventId, { cleared: false, why: 'invite_not_accepted' });
+      continue;
+    }
     const kid = childId === null ? undefined : children.find((child) => child.id === childId);
-    gates.set(row.eventId, { cleared: true, title: row.title, kidName: kid?.name ?? null });
+    gates.set(row.eventId, {
+      cleared: true,
+      // Google's title as it arrives first; the kid copy's for a bare tombstone.
+      title: noticeTitleFor(row.standing, arrivingTitle.get(row.eventId), row.title),
+      kidName: kid?.name ?? null,
+    });
   }
   return gates;
-}
-
-/** The parent's own title, made safe to hand the writer: one line, no mailbox, bounded. */
-const NOTICE_TITLE_MAX = 80;
-
-export function kidNoticeTitle(raw: string | null | undefined): string {
-  const text = (raw ?? '').replace(/\s+/g, ' ').trim();
-  if (text.includes('@')) return '';
-  return text.length <= NOTICE_TITLE_MAX ? text : `${text.slice(0, NOTICE_TITLE_MAX - 3)}...`;
 }
 
 /**
