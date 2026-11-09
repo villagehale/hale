@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CACHE_DIR } from './lib/harness.mjs';
+import { linqEditRecordingTag } from './run-linq-edit-eval.mjs';
 
 const RUNNER = join(dirname(fileURLToPath(import.meta.url)), 'run-linq-edit-eval.mjs');
 
@@ -37,4 +38,13 @@ describe('VIL-479 linq-edit eval modes never spend', () => {
     const out = spawnSync(process.execPath, [RUNNER], { env, encoding: 'utf8' });
     expect(out.status).toBe(2);
   }, 120_000);
+});
+
+describe('linq-edit recordings are keyed on the tool description', () => {
+  it('a changed description is a new recording, not a replay of the old decision', () => {
+    const before = linqEditRecordingTag('correct-time', 'edit is null, or one part.');
+    expect(linqEditRecordingTag('correct-time', 'edit is null, or one part.')).toBe(before);
+    expect(linqEditRecordingTag('correct-time', 'Only edit to correct a fact.')).not.toBe(before);
+    expect(linqEditRecordingTag('correct-venue', 'edit is null, or one part.')).not.toBe(before);
+  });
 });

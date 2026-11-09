@@ -345,8 +345,8 @@ describe('VIL-479 Linq message edit', () => {
   });
 
   it('edits a correction in another language instead of sending it as a second message', async () => {
-    const bubble = 'La natation de samedi est à 16 h à la piscine Regent Park.';
-    const corrected = 'La natation de samedi est à 17 h à la piscine Regent Park.';
+    const bubble = 'La natation de samedi est à 16 h à la piscine Maple Street.';
+    const corrected = 'La natation de samedi est à 17 h à la piscine Maple Street.';
     const followUp = 'La natation est à 17 h, pas à 16 h.';
     expect(
       linqEditRefusals({ edit: { messageId: MESSAGE, partIndex: 0, text: corrected } }, [

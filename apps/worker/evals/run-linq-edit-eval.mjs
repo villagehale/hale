@@ -6,10 +6,8 @@
 // runtime's own. A judge scores each edit-or-new-bubble decision on facts, safety,
 // privacy and tone against a situation; nothing here names the replacement wording.
 //
-// Design deferred the mocked decision cases here for one paid record. The cache is
-// not recorded on this PR, so CI runs the suite cached-only on a soft path. A miss
-// never spends. Monday's sweep picks this file up because it is named run-*.mjs;
-// that sweep fails closed on a miss until the record lands.
+// The cache is recorded on this branch and CI replays it cached-only as a hard gate.
+// A miss never spends; it prints the price and fails.
 //
 //   node evals/run-linq-edit-eval.mjs --dry           # worst-case price to record; no API, nothing written
 //   node evals/run-linq-edit-eval.mjs --estimate      # same as --dry
@@ -17,6 +15,7 @@
 //   node evals/run-linq-edit-eval.mjs --broken        # calibration: a known-bad stand-in must FAIL (exit 1)
 //   node --env-file=../../.env evals/run-linq-edit-eval.mjs --record --max-usd 0.10   # live, then caches
 
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
@@ -42,6 +41,15 @@ const EDIT_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'linq', 'edit.
 
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
+
+/**
+ * cachedToolCall keys on the request but not on the tool description, so the description
+ * goes in the tag: a reworded description re-records instead of replaying old decisions.
+ */
+export function linqEditRecordingTag(fixtureId, toolDescription) {
+  const description = createHash('sha256').update(toolDescription).digest('hex').slice(0, 12);
+  return `linq-edit:${fixtureId}:${description}`;
+}
 
 /** makeJudge's live ceiling for a Haiku judge. The worst case is priced at it. */
 const JUDGE_MAX_TOKENS = 4096;
@@ -190,7 +198,7 @@ async function main() {
   for (const fixture of LINQ_EDIT_FIXTURES) {
     const userMessage = edit.linqEditUserMessage(fixture.input);
     const { value } = await cachedToolCall({
-      tag: `linq-edit:${fixture.id}`,
+      tag: linqEditRecordingTag(fixture.id, edit.LINQ_EDIT_TOOL_DESCRIPTION),
       lane,
       system: skill.instructions,
       userMessage,

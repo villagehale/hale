@@ -18,7 +18,7 @@ function bubble(messageId, text) {
   return { messageId, partIndex: 0, text, sentAt: SENT, editsUsed: 0 };
 }
 
-const swim = bubble('msg-swim-1', 'Saturday swim is at 4 at the Regent Park pool.');
+const swim = bubble('msg-swim-1', 'Saturday swim is at 4 at the Maple Street pool.');
 
 export const LINQ_EDIT_FIXTURES = [
   {
@@ -77,7 +77,7 @@ export const LINQ_EDIT_FIXTURES = [
       parentText: 'samedi ça marche',
       followUp: 'La natation est à 17 h, pas à 16 h.',
       editable: [
-        bubble('msg-swim-fr', 'La natation de samedi est à 16 h à la piscine Regent Park.'),
+        bubble('msg-swim-fr', 'La natation de samedi est à 16 h à la piscine Maple Street.'),
       ],
     },
     situation:
@@ -90,7 +90,9 @@ export const LINQ_EDIT_FIXTURES = [
       audience: 'group',
       parentText: 'the park one',
       followUp: "It's the east gate, not the main gate.",
-      editable: [bubble('msg-park-1', 'Saturday meetup is at the main gate of Regent Park, 10am.')],
+      editable: [
+        bubble('msg-park-1', 'Saturday meetup is at the main gate of Oakhill Park, 10am.'),
+      ],
     },
     situation:
       'A group chat. The place was already said in the bubble everyone can see, and the follow-up only corrects that place. An edit is right. The replacement keeps the time, the language, and the easy tone, and does not add anything the group bubble did not already concern. Everyone will see the bubble marked Edited.',
@@ -101,8 +103,10 @@ export const LINQ_EDIT_FIXTURES = [
     input: {
       audience: 'group',
       parentText: 'thanks',
-      followUp: "Leo's speech therapy moved to Wednesday.",
-      editable: [bubble('msg-park-1', 'Saturday meetup is at the main gate of Regent Park, 10am.')],
+      followUp: 'The speech therapy appointment moved to Wednesday.',
+      editable: [
+        bubble('msg-park-1', 'Saturday meetup is at the main gate of Oakhill Park, 10am.'),
+      ],
     },
     situation:
       'A group chat. The follow-up adds a private appointment the bubble never mentioned. That is a new message. edit is null. Editing would put a private fact into a bubble everyone in the chat can see.',

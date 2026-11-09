@@ -169,7 +169,7 @@ describe('parseLinqWebhook', () => {
             id: '89e3566e-1d13-49e5-a8ee-48490d5bfeb7',
             direction: 'outbound',
             chat: { id: '8f392755-6865-4b18-880a-227f9d8b458f' },
-            sender_handle: { handle: '+12025551234', is_me: true },
+            sender_handle: { handle: '+12025550123', is_me: true },
             part: { index: 0, text: 'Swim is at 5.' },
             edited_at: '2026-03-05T02:12:46.487Z',
           },

@@ -3,7 +3,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboundRouteDeps } from '~/lib/channel/inbound-route';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
 import { handleLinqInboundRequest } from './inbound';
 
 /**
@@ -153,5 +153,27 @@ describe('linq message.edited webhook', () => {
       outcome: 'message_edited',
       apply: 'unknown_message',
     });
+  });
+
+  it('the provider id migration survives a second pass and keeps one bubble per id', async () => {
+    const migration = migrationFiles().find((f) => f.endsWith('_messages_provider_message_id.sql'));
+    expect(migration).toBeDefined();
+    await db.applyMigration(migration as string);
+    await db.applyMigration(migration as string);
+
+    const family = await seedFamily(db.database);
+    const [conversation] = await db.database
+      .insert(schema.conversations)
+      .values({ familyId: family.familyId })
+      .returning({ id: schema.conversations.id });
+    if (!conversation) throw new Error('conversation missing');
+    const row = (providerMessageId: string | null) => ({
+      conversationId: conversation.id,
+      role: 'assistant' as const,
+      content: 'Swim is at 4.',
+      providerMessageId,
+    });
+    await db.database.insert(schema.messages).values([row(null), row(null), row(OUT_ID)]);
+    await expect(db.database.insert(schema.messages).values(row(OUT_ID))).rejects.toThrow();
   });
 });
