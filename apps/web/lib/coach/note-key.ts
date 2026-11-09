@@ -48,6 +48,10 @@ export function isChannelSmsNoteKey(noteKey: string | null): boolean {
   return noteKey?.startsWith(CHANNEL_SMS_NOTE_KEY_PREFIX) ?? false;
 }
 
+export function isChannelGroupNoteKey(noteKey: string | null): boolean {
+  return noteKey?.startsWith(CHANNEL_GROUP_NOTE_KEY_PREFIX) ?? false;
+}
+
 /** LIKE pattern matching every parent's text thread — lets a read exclude the ones
  * that are not the viewer's IN SQL, so another parent's texts are never even fetched. */
 export const CHANNEL_SMS_NOTE_KEY_LIKE = `${CHANNEL_SMS_NOTE_KEY_PREFIX}%`;
