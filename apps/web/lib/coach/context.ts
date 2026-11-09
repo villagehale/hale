@@ -374,8 +374,8 @@ export async function loadAgentContext(
   return {
     parentName: parentRows[0]?.name ?? null,
     // The postal code is the current home, read in the find's order (postal code, then
-    // coarse area). A stored city loses when the code names one town: L3P is Markham
-    // even if the city column still says Georgetown.
+    // coarse area). A stored city loses when the code names one town, even if the city
+    // column still names an older one.
     location: {
       city: townFromStoredArea(place.postalCode || place.areaCoarse) ?? place.city,
       province: place.province,

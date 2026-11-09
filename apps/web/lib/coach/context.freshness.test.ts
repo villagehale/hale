@@ -150,7 +150,7 @@ describe('coach context — the coach names the town the find searches (Devin #9
     const { familyId } = await seedFamily(db.database, 'Mixed Area');
     await db.database
       .update(schema.families)
-      .set({ city: null, country: 'Canada', postalCode: 'M5V 2T6', areaCoarse: 'L3P' })
+      .set({ city: null, country: 'Canada', postalCode: 'M5V', areaCoarse: 'L3P' })
       .where(eq(schema.families.id, familyId));
 
     const find = await readActivityPlace(db.database, familyId);
@@ -162,11 +162,11 @@ describe('coach context — the coach names the town the find searches (Devin #9
     const { familyId } = await seedFamily(db.database, 'Away Area');
     await db.database
       .update(schema.families)
-      .set({ city: 'Toronto', country: 'Canada', postalCode: 'M5V 2T6', areaCoarse: 'M5V' })
+      .set({ city: null, country: 'Canada', postalCode: 'M5V', areaCoarse: 'M5V' })
       .where(eq(schema.families.id, familyId));
     await db.database
       .insert(schema.familyAreas)
-      .values({ familyId, city: 'Markham', postalCode: 'L3P', isActive: true });
+      .values({ familyId, city: 'Away', postalCode: 'L3P', isActive: true });
 
     const find = await readActivityPlace(db.database, familyId);
     expect(find).toEqual({ status: 'known', town: 'Markham' });
