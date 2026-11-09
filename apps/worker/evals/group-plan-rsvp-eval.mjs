@@ -109,10 +109,16 @@ const JUDGE_MAX_TOKENS = 440;
 
 const READ_JUDGE_SYSTEM = [
   "You are a strict reviewer scoring ONE reading of a group-chat message about a shared plan.",
-  "You are given `situation` and `reading`. `reading` is the model tool output: intent,",
-  "response, headcount, householdLabel, coversNames, confidence. Score 1-5 on MEANING.",
+  "You are given `situation`, `message`, and `reading`. `message` is what the sender wrote, who sent it,",
+  "and the plan as Hale tracks it (who already said yes, who is still waiting). `reading` is the model",
+  "tool output: intent, response, headcount, householdLabel, coversNames, confidence. Score 1-5 on MEANING.",
+  "Ask who is speaking, where the plan already has them, and what they meant for the plan now.",
+  "Intent `rsvp` is a first answer; `edit` is changing an answer the sender already gave, and `response`",
+  "is the new answer. Someone the plan already counts who now says they cannot come has changed their",
+  "mind: an `edit` or `rsvp` with response no is that meaning in full, a plan-level answer, not a partial one.",
   "Do not require particular words. A 5 matches the situation. A 1 or 2 is the wrong intent",
-  "(a vote read as chatter, chatter read as a vote, a household answer missing the household).",
+  "(a vote read as chatter, chatter read as a vote, a household answer missing the household)",
+  "or the wrong answer (a changed mind read as still coming).",
   "Reply with ONLY the score tool. score first, then reason. Reason at most",
   `${JUDGE_REASON_MAX_CHARS} characters.`,
 ].join(" ");
@@ -179,6 +185,7 @@ function suiteUsd({
       estimateTokens(READ_JUDGE_SYSTEM) +
         estimateTokens({
           situation: fixture.situation,
+          message: fixture.input,
           reading: { intent: "chatter" },
         }) +
         estimateTokens(JUDGE_TOOL),
@@ -367,6 +374,7 @@ async function main() {
     });
     const verdict = await readJudge(fixture.id, {
       situation: fixture.situation,
+      message: fixture.input,
       reading: value,
     });
     const ok =
