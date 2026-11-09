@@ -164,7 +164,9 @@ export interface AuditEntry {
 export class GuardrailError extends Error {
   constructor(
     readonly toolName: string,
-    readonly rail: 'spending_cap' | 'child_content',
+    /** `untrusted_content`: the turn read text a stranger wrote, so it may no longer
+     * write or send (VIL-615, apps/web read-email-tool.ts). */
+    readonly rail: 'spending_cap' | 'child_content' | 'untrusted_content',
     reason: string,
   ) {
     super(`guardrail '${rail}' blocked tool '${toolName}': ${reason}`);

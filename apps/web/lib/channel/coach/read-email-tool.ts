@@ -1,4 +1,4 @@
-import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
+import { GuardrailError, type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -160,6 +160,59 @@ export function readEmailTool(
     touchesChildContent: false,
     inputSchema: z.object({ gmailMessageId: z.string().min(1).max(128) }),
     handler: async (input) => read(input.gmailMessageId),
+  });
+}
+
+/**
+ * VIL-615 · what a turn may still call once `read_email` has handed it an email's text.
+ *
+ * An email is a stranger's words, and they now sit in the same loop as every verb that
+ * drafts, watches, offers or links. So from that point the turn may only read and answer
+ * in words. This is an ALLOW-list on purpose: a verb added later is refused after a read
+ * until someone decides it is a pure read. `find_activities` and `search_village` are
+ * left out because what they find is linked in the reply, so a sentence in the email
+ * could choose a link.
+ */
+export const READS_AFTER_EMAIL: ReadonlySet<string> = new Set([
+  READ_EMAIL_TOOL,
+  'lookup_week',
+  'get_framework_guidance',
+]);
+
+/**
+ * The turn's tools, tainted by the first `read_email` that returns text: from then on
+ * every tool outside {@link READS_AFTER_EMAIL} throws a `GuardrailError` on the
+ * `untrusted_content` rail before its handler runs. runAgent hands that back to the
+ * model as a refusal not to retry, so the coach still answers the parent in words. A
+ * fresh call is a fresh turn: build it once per turn, like the tools themselves.
+ */
+export function taintTurnOnEmailRead(tools: RegisteredTool[]): RegisteredTool[] {
+  let tainted = false;
+  return tools.map((tool): RegisteredTool => {
+    if (tool.name === READ_EMAIL_TOOL) {
+      return {
+        ...tool,
+        handler: async (input, ctx) => {
+          const result = (await tool.handler(input, ctx)) as ReadEmailResult;
+          if (result.read) tainted = true;
+          return result;
+        },
+      };
+    }
+    if (READS_AFTER_EMAIL.has(tool.name)) return tool;
+    return {
+      ...tool,
+      handler: async (input, ctx) => {
+        if (tainted) {
+          console.info(
+            { outcome: 'email_tainted', tool: tool.name },
+            'coach: tool refused after read_email',
+          );
+          throw new GuardrailError(tool.name, 'untrusted_content', 'email_read_this_turn');
+        }
+        return tool.handler(input, ctx);
+      },
+    };
   });
 }
 
