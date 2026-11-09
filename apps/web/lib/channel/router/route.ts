@@ -85,14 +85,26 @@ import { rememberParentLanguage } from '~/lib/channel/off-domain/locale';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import { type Moment, momentUnwritten } from '~/lib/channel/off-domain/moment-reply';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { CLAIM_READ_MAX_BUDGET_MS } from '~/lib/channel/reconcile/claim-reader';
 import type { ClaimShadow, CoachShadowAttempt } from '~/lib/channel/reconcile/claim-shadow';
 import { extractStateClaims } from '~/lib/channel/reconcile/claims';
+import {
+  type CoachJudgement,
+  citedOnSurvivors,
+  coachClaimLayout,
+  cutSegments,
+  inviteOnlyCut,
+  judgeCoachRead,
+  survivingMints,
+} from '~/lib/channel/reconcile/coach-enforce';
 import {
   type ReconcileVerdict,
   type ReconcileView,
   type RegistrationWatchMint,
   reconcile,
   reconcileViolations,
+  violationsFor,
   withoutRefusedClaims,
 } from '~/lib/channel/reconcile/reconcile';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
@@ -136,9 +148,12 @@ import {
 } from './coach-runtime';
 import {
   assertTurnLive,
+  currentTurnSignal,
   isCallTimeout,
   isTurnTimeout,
   runTurnThen,
+  turnDeadlineSignal,
+  turnRemainingMs,
   turnSignalAborted,
   withTimeout,
 } from './deadline';
@@ -625,6 +640,11 @@ export interface ChannelRouterDeps {
    */
   claimShadow: ClaimShadow;
   /**
+   * VIL-581 PR 3 · the claim reader as part of the decision, for a family the flag
+   * enforces. Required (rule #11): `off` is the flag's job, never an absent dep.
+   */
+  claimEnforcer: ClaimEnforcer;
+  /**
    * Write down the registration watch the coach just promised, against the message that
    * carried it. Non-nullable for the same reason `recordActivityPromise` is: the whole
    * point of MINTING rather than refusing is that the promise gets kept, and a mint that
@@ -811,7 +831,7 @@ export async function routeChannelMessage(
   job: ChannelMessageReceivedJob,
 ): Promise<RouterResult> {
   const deadlineMs = deps.turnDeadlineMs ?? TURN_DEADLINE_MS;
-  const signal = AbortSignal.timeout(deadlineMs);
+  const signal = turnDeadlineSignal(deadlineMs);
   const trailed: Promise<unknown>[] = [];
   const turnDeps = detachWorkstream(deps, trailed);
   const wait: TurnWait = { end: async () => undefined };
@@ -2193,6 +2213,7 @@ async function runAgentTurn(
       experienceCard,
       groupLeave,
       attempts,
+      enforced,
     } = await composeReconciledReply(deps, args, view);
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
@@ -2214,14 +2235,17 @@ async function runAgentTurn(
     const card = experienceCardDelivery(reply, experienceCard ?? null, args.cardRoute ?? null);
     const channelMessageId = await args.answer(card ? card.text : reply);
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
-    deps.claimShadow.coachTurn(deps.database, {
-      familyId: args.turn.familyId,
-      parentUserId: args.turn.parentUserId,
-      now: args.turn.now,
-      inbound: args.turn.body,
-      view: await view,
-      attempts,
-    });
+    // An enforced turn was already read before the send, so it starts no shadow.
+    if (!enforced) {
+      deps.claimShadow.coachTurn(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        now: args.turn.now,
+        inbound: args.turn.body,
+        view: await view,
+        attempts,
+      });
+    }
     if (card) {
       // AFTER the text, like every other send-time writer here, and never throws: the
       // parent already has the message. Any reason the card cannot go out (flag dark,
@@ -2429,7 +2453,7 @@ async function runAgentTurn(
     // A turn can break AFTER its drafts landed, and those are real rows the parent can
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
-    const drafted = draftsFromFailure(err);
+    const drafted = err instanceof ClaimReadFailed ? err.draftedActionIds : draftsFromFailure(err);
     const disposition = await disposeOfFailedTurn(deps, args, err, drafted);
     // The error object may carry a provider payload, so only its class and message are
     // kept — never the turn body (rule #1). The disposition rides along so a turn that
@@ -2495,6 +2519,10 @@ async function runAgentTurn(
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
       await disposition.afterSend?.(channelMessageId);
+    } else if (err instanceof ClaimReadFailed) {
+      // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
+      // reads `answered` and never reruns it (#973's rule).
+      await args.claimSilent?.();
     }
     // AN APOLOGY IS NOT AN ANSWER. The reply above claims the turn (turn-ledger.ts), so
     // `sms_turn_answered` is written and the re-drive stays quiet — correctly: the parent
@@ -2555,6 +2583,99 @@ async function runAgentTurn(
  */
 const MAX_RECONCILE_ATTEMPTS = 2;
 
+/** Time kept back from a claim read for the send that follows it. */
+const CLAIM_READ_SEND_RESERVE_MS = 10_000;
+
+/**
+ * VIL-581 PR 3 · the claim reader could not read a composed reply. It is thrown AFTER
+ * the coach ran, so its tool writes have landed: the turn is claimed and the coach is
+ * never re-driven (disposeOfFailedTurn). The message is constant, because the failed-
+ * turn log prints it.
+ */
+export class ClaimReadFailed extends Error {
+  readonly reason: ClaimEnforceFailure;
+  readonly draftedActionIds: readonly string[];
+
+  constructor(reason: ClaimEnforceFailure, draftedActionIds: readonly string[]) {
+    super('channel router: the claim reader could not read the reply');
+    this.name = 'ClaimReadFailed';
+    this.reason = reason;
+    this.draftedActionIds = draftedActionIds;
+  }
+}
+
+type EnforcedAttempt = {
+  read: Extract<Awaited<ReturnType<ClaimEnforcer['read']>>, { status: 'read' }>;
+  judged: CoachJudgement;
+};
+
+/** Read every model-written string this attempt can send, inside what is left of the
+ * turn. A read the turn cannot finish is not started (the reader's `no_budget`). */
+async function readCoachAttempt(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  view: ReconcileView,
+  result: ChannelTurnResult,
+): Promise<EnforcedAttempt | null> {
+  const layout = coachClaimLayout(
+    result.reply,
+    result.experienceCard?.title ?? null,
+    result.groupLeave?.ifLeaveFails ?? null,
+  );
+  if (layout.body.trim() === '') return null;
+  const remaining = turnRemainingMs();
+  const read = await deps.claimEnforcer.read(deps.database, {
+    familyId: turn.familyId,
+    parentUserId: turn.parentUserId,
+    now: turn.now,
+    body: layout.body,
+    inbound: turn.body,
+    view,
+    pending: {
+      activityFollowup: result.activityPromise?.subject ?? null,
+      spotWatch: result.spotWatch?.label ?? null,
+    },
+    signal: currentTurnSignal() ?? new AbortController().signal,
+    budgetMs:
+      remaining === undefined
+        ? CLAIM_READ_MAX_BUDGET_MS
+        : Math.min(CLAIM_READ_MAX_BUDGET_MS, remaining - CLAIM_READ_SEND_RESERVE_MS),
+  });
+  if (read.status === 'failed') {
+    throw new ClaimReadFailed(read.reason, result.draftedActionIds ?? []);
+  }
+  return { read, judged: judgeCoachRead(read, layout) };
+}
+
+/** A refused card title sends no card; a refused leave line is never sent. Named and
+ * counted, never a quiet nothing. */
+async function withoutRefusedExtras(
+  deps: ChannelRouterDeps,
+  familyId: string,
+  result: ChannelTurnResult,
+  enforced: EnforcedAttempt | null,
+): Promise<ChannelTurnResult> {
+  if (!enforced) return result;
+  let out = result;
+  if (enforced.judged.cardRefused && result.experienceCard) {
+    deps.log.error(
+      { reason: 'card_cut' },
+      'channel router: the card title claimed a row - no card',
+    );
+    await captureAgentError({ lane: 'reconcile', reason: 'card_cut', familyId });
+    out = { ...out, experienceCard: null };
+  }
+  if (enforced.judged.leaveRefused && result.groupLeave) {
+    deps.log.error(
+      { reason: 'leave_line_cut' },
+      'channel router: the leave-refused line claimed a row - it will not be sent',
+    );
+    await captureAgentError({ lane: 'reconcile', reason: 'leave_line_cut', familyId });
+    out = { ...out, groupLeave: { ifLeaveFails: '' } };
+  }
+  return out;
+}
+
 async function composeReconciledReply(
   deps: ChannelRouterDeps,
   args: {
@@ -2568,12 +2689,16 @@ async function composeReconciledReply(
   ChannelTurnResult & {
     mints: readonly RegistrationWatchMint[];
     attempts: readonly CoachShadowAttempt[];
+    /** VIL-581: the reader decided this turn, so no shadow read is started for it. */
+    enforced: boolean;
   }
 > {
   const standingQuestions = args.questions.map((question) => question.subject);
   let rejected: readonly string[] = [];
   let result: ChannelTurnResult | null = null;
   let verdict: ReconcileVerdict | null = null;
+  let enforced: EnforcedAttempt | null = null;
+  const enforcing = deps.claimEnforcer.enforces(args.turn.familyId);
   // What each attempt wrote and what the gate decided about it, for the claim shadow.
   const attempts: CoachShadowAttempt[] = [];
 
@@ -2610,18 +2735,35 @@ async function composeReconciledReply(
       spotWatch: result.spotWatch,
       verdict,
     });
-    if (verdict.refused.length === 0) {
-      return { ...result, mints: verdict.mints, attempts };
+    // VIL-581 enforce: the regex verdict is the floor and the reader's joins it. Every
+    // claim a sentence makes is checked, so a true follow-up cannot carry a false
+    // booking in the same sentence (VIL-580).
+    enforced = enforcing ? await readCoachAttempt(deps, args.turn, await view, result) : null;
+    const readerReasons = enforced?.judged.replyReasons ?? [];
+    if (verdict.refused.length === 0 && readerReasons.length === 0) {
+      return {
+        ...(await withoutRefusedExtras(deps, args.turn.familyId, result, enforced)),
+        mints: enforced
+          ? survivingMints(
+              verdict,
+              enforced.read,
+              enforced.judged,
+              result.reply.replace(/\s+/g, ' '),
+            )
+          : verdict.mints,
+        attempts,
+        enforced: enforcing,
+      };
     }
-    rejected = reconcileViolations(verdict);
-    for (const refusal of verdict.refused) {
+    rejected = [...new Set([...reconcileViolations(verdict), ...violationsFor(readerReasons)])];
+    for (const reason of [...verdict.refused.map((r) => r.reason), ...readerReasons]) {
       deps.log.error(
-        { attempt, reason: refusal.reason },
+        { attempt, reason },
         'channel router: the reply claimed a row that does not exist - not sent as written',
       );
       await captureAgentError({
         lane: 'reconcile',
-        reason: refusal.reason,
+        reason,
         familyId: args.turn.familyId,
       });
     }
@@ -2629,17 +2771,27 @@ async function composeReconciledReply(
 
   // Asked twice, claimed it twice. `result` and `verdict` are both set — the loop runs at
   // least once and only leaves early on the clean path.
-  const composed = result as ChannelTurnResult;
+  const composed = await withoutRefusedExtras(
+    deps,
+    args.turn.familyId,
+    result as ChannelTurnResult,
+    enforced,
+  );
   const refusedVerdict = verdict as ReconcileVerdict;
-  const reply = withoutRefusedClaims(composed.reply, refusedVerdict);
+  const reply = withoutRefusedClaims(
+    enforced
+      ? cutSegments(composed.reply, enforced.read, enforced.judged.replyCut)
+      : composed.reply,
+    refusedVerdict,
+  );
   if (reply === '') {
     // The whole reply was an unbacked invite. On Linq a number is not an
     // invite. The backstop is the locked co-parent ask, one bubble, so the
     // cut does not 500 and does not say an invite left. SMS still fails the
     // turn rather than promising a text that did not leave.
-    const inviteOnly = refusedVerdict.refused.every(
-      (resolution) => resolution.reason === 'no_coparent_invite',
-    );
+    const inviteOnly = enforced
+      ? inviteOnlyCut(refusedVerdict, enforced.judged)
+      : refusedVerdict.refused.every((resolution) => resolution.reason === 'no_coparent_invite');
     if (inviteOnly && parseCoParentNumberReply(args.turn.body)) {
       const door = await resolveMessagingDoor(deps.database, args.turn.parentUserId);
       if (door.channel === 'imessage') {
@@ -2648,18 +2800,26 @@ async function composeReconciledReply(
         const instruction = from
           ? await linqCoParentAsk(formatLinqLineForParent(from), language)
           : await linqGroupLineMissing(language);
+        // Enforce: nothing the cut reply no longer says is written after the send.
+        const unsaid = {
+          spotWatch: null,
+          ...(enforced ? { activityPromise: null, planOffer: null } : {}),
+          mints: [],
+          attempts,
+          enforced: enforcing,
+        };
         if (!instruction) {
           deps.log.error(
             { reason: 'model_unreachable' },
             'channel router: co-parent ask unreachable - nothing sent',
           );
-          return { ...composed, reply: '', spotWatch: null, mints: [], attempts };
+          return { ...composed, reply: '', ...unsaid };
         }
         deps.log.error(
           { reason: 'no_coparent_invite' },
           'channel router: an invite claim was replaced with the Linq co-parent ask',
         );
-        return { ...composed, reply: instruction, spotWatch: null, mints: [], attempts };
+        return { ...composed, reply: instruction, ...unsaid };
       }
     }
     throw new Error(
@@ -2667,7 +2827,7 @@ async function composeReconciledReply(
     );
   }
   deps.log.error(
-    { cut: refusedVerdict.refused.length },
+    { cut: refusedVerdict.refused.length + (enforced?.judged.replyCut.size ?? 0) },
     'channel router: sending the reply with the unbacked sentences cut out',
   );
   // THE WATCH GOES OUT WITH ITS SENTENCE, OR NOT AT ALL. `armWatchedSpot` writes a row
@@ -2678,23 +2838,46 @@ async function composeReconciledReply(
   // the halves swapped: a poll running with no promise, instead of a promise with no
   // poll. So the intent is dropped here, and the drop is named and counted rather than
   // being a quiet nothing (rule #11).
+  //
+  // VIL-581 enforce: the same rule for every write that rides on a sentence. A pending
+  // watch or follow-up is kept if a surviving sentence cites it (or, the English floor,
+  // a surviving regex claim of its kind); a mint only from a surviving sentence; a plan
+  // offer only while its sentence is still in the reply.
+  const cited = enforced ? citedOnSurvivors(enforced.read, enforced.judged, reply) : null;
+  const regexKinds = new Set(extractStateClaims(reply).map((claim) => claim.kind));
   const armingAck = composed.spotWatch;
   const ackSurvived =
-    armingAck === null ||
-    extractStateClaims(reply).some((claim) => claim.kind === 'registration_watch');
-  if (!ackSurvived) {
+    armingAck === null || cited?.has('p2') === true || regexKinds.has('registration_watch');
+  const promiseSurvived =
+    !enforced ||
+    composed.activityPromise === null ||
+    cited?.has('p1') === true ||
+    regexKinds.has('activity_followup');
+  const offerSurvived =
+    !enforced || composed.planOffer === null || reply.includes(composed.planOffer.sentence.trim());
+  const drops = [
+    ackSurvived ? null : ('ack_cut' as const),
+    promiseSurvived ? null : ('promise_cut' as const),
+    offerSurvived ? null : ('offer_cut' as const),
+  ].filter((drop) => drop !== null);
+  for (const reason of drops) {
     deps.log.error(
-      { reason: 'ack_cut', host: armingAck?.host },
-      'channel router: the watch ack did not survive the cut - the spot is not armed',
+      { reason, ...(reason === 'ack_cut' ? { host: armingAck?.host } : {}) },
+      'channel router: a sentence a write rides on did not survive the cut - not written',
     );
-    await captureAgentError({ lane: 'reconcile', reason: 'ack_cut', familyId: args.turn.familyId });
+    await captureAgentError({ lane: 'reconcile', reason, familyId: args.turn.familyId });
   }
   return {
     ...composed,
     reply,
     spotWatch: ackSurvived ? armingAck : null,
-    mints: refusedVerdict.mints,
+    activityPromise: promiseSurvived ? composed.activityPromise : null,
+    planOffer: offerSurvived ? composed.planOffer : null,
+    mints: enforced
+      ? survivingMints(refusedVerdict, enforced.read, enforced.judged, reply)
+      : refusedVerdict.mints,
     attempts,
+    enforced: enforcing,
   };
 }
 
@@ -2785,6 +2968,27 @@ async function disposeOfFailedTurn(
       reason: 'notice_unsent',
       log: { gmailDraftNoticeUnsent: true },
     };
+  }
+
+  // VIL-581 · the claim reader failed AFTER the coach ran and its tool writes landed. A
+  // deferral would re-drive the turn and repeat them, so this turn is never deferred:
+  // the drafts receipt, else the composed apology, else nothing — and the turn is
+  // claimed either way (the caller). The smoke alarm is not consulted: it answers only a
+  // coach that could not run, and this coach ran.
+  if (err instanceof ClaimReadFailed) {
+    const log = { claimRead: err.reason };
+    if (drafted.length > 0) {
+      const receipt = await writeConsentAsk(deps.consentAsk, {
+        kind: 'partial_failure',
+        draftCount: drafted.length,
+      });
+      return { outcome: 'agent_failed', reply: receipt, reason: 'drafts_receipt', log };
+    }
+    const apology = await deps.apology.compose();
+    if (apology.status === 'composed') {
+      return { outcome: 'agent_failed', reply: apology.reply, reason: 'apology_sent', log };
+    }
+    return { outcome: 'agent_failed', reply: null, reason: 'claim_read_failed', log };
   }
 
   if (classifyTurnFailure(err) === 'model_unreachable') {

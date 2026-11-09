@@ -567,6 +567,12 @@ describe('a diary answer through the real router', () => {
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
       claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },
+      claimEnforcer: {
+        enforces: () => false,
+        read: async () => {
+          throw new Error('the claim reader is not enforced here');
+        },
+      },
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
       searchWeekdays: async () => ({ status: 'abstain' as const, reason: 'not_configured' }),

@@ -261,8 +261,13 @@ export function privacyViolations(strings) {
 
 // --- fixture provenance and size (review items 6 and 2)
 
-/** Where a fixture came from. Only an invented one may have its text printed. */
-export const FIXTURE_PROVENANCES = ['invented', 'shadow_sample'];
+/**
+ * Where a fixture came from. Only `invented` is accepted (VIL-581 PR 3): a recorded
+ * fixture is written whole into the committed eval cache, so a real parent's body
+ * (`shadow_sample`) would land in this public repo. It stays refused until recordings
+ * can be stored somewhere uncommitted.
+ */
+export const FIXTURE_PROVENANCES = ['invented'];
 
 /** Ids of fixtures with no known provenance. */
 export function provenanceViolations(fixtures) {
