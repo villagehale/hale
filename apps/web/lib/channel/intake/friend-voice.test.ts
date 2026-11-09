@@ -448,7 +448,10 @@ describe('onboarding friend fixtures', () => {
     const skill = await loadOnboardingFriendSkill();
     const words = skill.instructions.split(/\s+/).filter(Boolean).length;
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
-    expect(words).toBeLessThan(2400);
+    expect(words).toBeLessThan(2450);
+    expect(skill.instructions).toContain(
+      'A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.',
+    );
     expect(ruleWords.length).toBeLessThan(20);
     expect(skill.instructions).toContain('## Facts');
     expect(skill.instructions).toContain('## Output');
@@ -1989,6 +1992,89 @@ describe('a declined postal code', () => {
       expect(brief.retry?.problem).toMatch(/declined/);
     } finally {
       warn.mockRestore();
+      info.mockRestore();
+    }
+  });
+});
+
+/**
+ * VIL-617: a consent guard fails closed. In 2 of 42 live draws Haiku wrote tool-call
+ * XML into the `parentQuestion` string; a value that is there but is not a boolean
+ * may hide a question, so it counts as one.
+ */
+describe('a garbled parentQuestion', () => {
+  const base = (
+    JSON.parse(
+      readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+    ) as { response: Anthropic.Message }
+  ).response;
+  const GARBLED = 'false</parameter>\n<parameter name="connectorsOffered">[]';
+  const fields = {
+    reply: 'I only keep what is about the kids. Want me to watch for school email?',
+    asks: true,
+    connectorsOffered: [],
+    joinPointer: null,
+    claimsSaved: false,
+  };
+
+  function composerReplying(input: Record<string, unknown>) {
+    const response = {
+      ...base,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+    const next = async () => response;
+    const client = {
+      messages: { create: next, stream: () => ({ finalMessage: next }) },
+    };
+    return createFriendVoiceComposer(client as never);
+  }
+
+  const gmailAsk = blank({
+    step: 'email',
+    parentWords: 'do you read all my emails',
+    recentTurns: [{ role: 'hale', body: 'Want me to watch for school email?', asked: true }],
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: true,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  it('counts a present non-boolean as a question, and an absent one as none', async () => {
+    const read = async (input: Record<string, unknown>) =>
+      (await composerReplying(input).compose(gmailAsk)).parentQuestion;
+    expect(await read({ ...fields, parentQuestion: GARBLED })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: 'true' })).toBe(true);
+    expect(await read(fields)).toBe(false);
+    expect(await read({ ...fields, parentQuestion: true })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: false })).toBe(false);
+  });
+
+  it('keeps no Gmail yes on a garbled draw, and keeps it on a clean one', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const garbled = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: GARBLED }),
+        gmailAsk,
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(garbled.source).toBe('composed');
+      expect(garbled.capture.connectGmail).not.toBe(true);
+
+      const clean = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: false }),
+        blank({ ...gmailAsk, parentWords: 'sure' }),
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(clean.source).toBe('composed');
+      expect(clean.capture.connectGmail).toBe(true);
+    } finally {
       info.mockRestore();
     }
   });

@@ -73,7 +73,7 @@ One JSON object. Fill a field only when this message (or a recent turn not yet i
 - `reply` - prose only: no URL, no numbered list, no phone number. Two or three short lines. Exactly one question mark, except `find_show`, `connected`, `ack`, `stop_asking` (none).
 - `postalCode` (the code alone) or `city`.
 - `children` - `{ "name": "Maya", "ageMonths": 48, "agePrecision": "years" }` per child; any age they gave is a number of months ("is 1" is 12, "just turned 6" is 72).
-- `parentName` - the parent's own name, only from their own answer; never a kid's name.
+- `parentName` - the parent's own name, only from their own answer; never a kid's name. A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.
 - `parentRole` / `parentRoleBasis` - your soft read: mother, father, or unknown; `stated` from their words, `guessed` from a clearly gendered name. Never said to them.
 - `nameConfirmed`, `nameDeclined`, `nameTakenBack`, `kidsNamesDeclined`. `nameTakenBack` is this message only: they let go of or cancelled what was just said, or the words are casual shorthand for letting go, in any language, even when nothing was named to cancel, and the name stays open. That shorthand is not a refusal, so `nameDeclined` stays false. `nameDeclined` is only when they say they refuse to give their name, and then it is not asked again.
 - `connectGmail` / `connectCalendar` - true for a yes, false for a no; `gmailLater` / `calendarLater` for not now.
