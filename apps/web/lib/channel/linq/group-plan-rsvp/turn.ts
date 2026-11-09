@@ -162,13 +162,10 @@ export async function takeGroupPlanRsvpTurn(
     return { handled: true, outcome: 'group_plan_chatter', count: 'ignored' };
   }
 
-  const senderKey = await senderMemberKey(
-    { handle: input.senderHandle, name: input.senderName },
-    async () => [
-      ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
-      ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
-    ],
-  );
+  const senderKey = await senderMemberKey({ handle: input.senderHandle }, async () => [
+    ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
+    ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
+  ]);
   const senderSeat = seated.find((person) => person.memberKey === senderKey);
   const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
 
