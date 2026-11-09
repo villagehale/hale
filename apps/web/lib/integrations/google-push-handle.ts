@@ -6,6 +6,7 @@ import {
   claimPushDebounce,
   loadCalendarChannel,
   loadGmailIntegrations,
+  releaseIdlePushDebounce,
   releasePushDebounce,
   takePushPending,
 } from './google-push-store';
@@ -41,6 +42,8 @@ export interface GooglePushHandleDeps {
   claimPushDebounce: (integrationId: string, now: Date) => Promise<'run' | 'coalesce'>;
   takePushPending: (integrationId: string, now: Date) => Promise<boolean>;
   releasePushDebounce: (integrationId: string, now: Date) => Promise<void>;
+  /** False while a push is still owed a sync; the window stays held. */
+  releaseIdlePushDebounce: (integrationId: string, now: Date) => Promise<boolean>;
   /** The existing incremental sync. Receives an integration id and nothing from the push body. */
   syncIntegration: (integrationId: string) => Promise<void>;
   verifyPubSubToken: (token: string) => Promise<PubSubVerifyResult>;
@@ -57,6 +60,8 @@ export function productionPushDeps(
     claimPushDebounce: (integrationId, now) => claimPushDebounce(database, integrationId, now),
     takePushPending: (integrationId, now) => takePushPending(database, integrationId, now),
     releasePushDebounce: (integrationId, now) => releasePushDebounce(database, integrationId, now),
+    releaseIdlePushDebounce: (integrationId, now) =>
+      releaseIdlePushDebounce(database, integrationId, now),
     syncIntegration,
     verifyPubSubToken: (token) => verifyProductionPubSubToken(token),
     mailboxKey: (email) => emailBlindIndex(email.toLowerCase()),
@@ -153,8 +158,18 @@ async function runDebouncedSync(
   if (claim === 'coalesce') return { status: 200, body: { skipped: 'debounced' } };
   try {
     await deps.syncIntegration(integrationId);
+    // The window is held only while a sync runs. Holding it past the end of the run
+    // left a push that landed seconds later coalesced with nothing in flight to take
+    // it, so it waited for the 15-minute poll.
     let trailing = 0;
-    while (trailing < MAX_TRAILING_SYNCS && (await deps.takePushPending(integrationId, now))) {
+    while (!(await deps.releaseIdlePushDebounce(integrationId, now))) {
+      if (trailing === MAX_TRAILING_SYNCS) {
+        await deps.releasePushDebounce(integrationId, now);
+        console.info({ integrationId, trailing }, 'google push: trailing cap, push still owed');
+        break;
+      }
+      // Nothing to take: the watch row went (a disconnect) while the sync ran.
+      if (!(await deps.takePushPending(integrationId, now))) break;
       trailing += 1;
       await deps.syncIntegration(integrationId);
     }
