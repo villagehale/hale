@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, names only Léa, and says the Riverton Fall 2026 swim lessons registration is coming up. It states plainly that Hale could not confirm the opening date on the page, which fits page_unconfirmed. It gives no date, time or relative day, carries the handed link, and makes no unsupported claims. The tone is friendly and natural. The one weakness is that the request to check the page is phrased as a question ('Pouvez-vous… ?') even though offer is false. It is a request rather than an offer of help, so it does not drop to 2, but it brushes against the no-question rule.",
+    "score": 4
+  }
+}

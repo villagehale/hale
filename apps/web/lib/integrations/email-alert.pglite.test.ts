@@ -376,6 +376,8 @@ describe('alertParentForEmail', () => {
     expect(rows[0]).toMatchObject({
       category: 'email_alert',
       direction: 'out',
+      // No inbound phone turn yet: the parent's door is SMS.
+      channel: 'sms',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
       status: 'suppressed_quiet_hours',
       // NEVER the key: the unique index is total over non-null keys, so a suppression
@@ -389,6 +391,26 @@ describe('alertParentForEmail', () => {
     const later = harness();
     await expect(alert(later)).resolves.toBe('sent');
     expect(later.transport.sent).toHaveLength(1);
+  });
+
+  it('a hold for a parent who texts on iMessage is recorded on iMessage, not SMS', async () => {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      templateKey: 'inbound',
+      providerChatId: 'chat-door',
+      status: 'delivered',
+    });
+
+    const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
+    await expect(alert(held)).resolves.toBe('gate_refused:quiet_hours');
+
+    const rows = await ledgerRows();
+    const hold = rows.find((r) => r.direction === 'out');
+    expect(hold).toMatchObject({ channel: 'imessage', status: 'suppressed_quiet_hours' });
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {
@@ -1536,8 +1558,8 @@ describe('coach transcript before messages.source exists', () => {
   let old: TestDb;
 
   beforeAll(async () => {
-    // 0208 is the next file after this name. The column is not added here.
-    old = await createTestDb('0207_family_sweep_marks.sql');
+    // 0212 is the next file after this name. The column is not added here.
+    old = await createTestDb('0210_watched_spots_any_page.sql');
   });
 
   afterAll(async () => {
@@ -1582,9 +1604,9 @@ describe('coach transcript before messages.source exists', () => {
     expect(JSON.stringify(after)).not.toContain('secret snippet');
   });
 
-  it('migration 0208 applies twice and leaves one jsonb source column', async () => {
-    await old.applyMigration('0208_message_source.sql');
-    await expect(old.applyMigration('0208_message_source.sql')).resolves.toBeUndefined();
+  it('migration 0212 applies twice and leaves one jsonb source column', async () => {
+    await old.applyMigration('0212_message_source.sql');
+    await expect(old.applyMigration('0212_message_source.sql')).resolves.toBeUndefined();
     const columns = await old.client.query<{ data_type: string }>(
       "SELECT data_type FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
     );

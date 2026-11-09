@@ -6,6 +6,7 @@ import {
   nameAskVoiceInput,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
+import type { OnboardingChecklist } from '~/lib/channel/intake/onboarding-turn';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import type { ParentCallNameAsk, ParentCallNameVoice } from './parent-call-name';
@@ -55,6 +56,15 @@ export async function composeParentCallNameAsk(
   return spoken.body;
 }
 
+/** The model input for a reply to the confirm ask of a held name. */
+export function nameReplyVoiceInput(
+  body: string,
+  heldName: string,
+  language: ReplyLanguage,
+): FriendVoiceInput {
+  return { ...base('name_reply', language, body), parentName: heldName };
+}
+
 /** Reads a reply to the confirm ask and writes its receipt. */
 export function parentCallNameVoice(
   composer: FriendVoiceComposer | undefined,
@@ -62,10 +72,10 @@ export function parentCallNameVoice(
 ): ParentCallNameVoice {
   return {
     async read(input) {
-      const spoken = await speakFriend(composer, {
-        ...base('name_reply', language, input.body),
-        parentName: input.heldName,
-      });
+      const spoken = await speakFriend(
+        composer,
+        nameReplyVoiceInput(input.body, input.heldName, language),
+      );
       const reply =
         spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
       return {
@@ -84,14 +94,21 @@ export function parentCallNameVoice(
  */
 export async function readModelParentName(
   composer: FriendVoiceComposer | undefined,
-  input: { parentWords: string; language: ReplyLanguage | null },
+  input: {
+    parentWords: string;
+    language: ReplyLanguage | null;
+    stored: OnboardingChecklist | null;
+  },
 ): Promise<{
   parentName: string | null;
   nameDeclined: boolean;
   nameTakenBack: boolean;
   reply: string | null;
 }> {
-  const spoken = await speakFriend(composer, nameAskVoiceInput(input.parentWords, input.language));
+  const spoken = await speakFriend(
+    composer,
+    nameAskVoiceInput(input.parentWords, input.language, input.stored),
+  );
   const reply = spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
   return {
     parentName: spoken.capture.parentName,

@@ -269,6 +269,8 @@ export const AUDIT_VERBS = [
   'proactive_nudge_skipped',
   // VIL-226 · the per-family proactive queue and its hourly decider.
   'proactive_nudge_queued',
+  // VIL-612 · another class's sweep handed its text to the decider.
+  'proactive_cadence_queued',
   'proactive_cadence_decision',
   'proactive_cadence_held',
   'proactive_cadence_sent',
@@ -554,6 +556,7 @@ export const AUDIT_VERBS = [
   'commitment_recorded',
   'commitment_fulfilled',
   'commitment_cancelled',
+  'commitment_deferred',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -1060,6 +1063,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
   proactive_nudge_queued: {
+    sentence: 'Hale set something aside to decide when to text you',
+    family: 'note',
+  },
+  proactive_cadence_queued: {
     sentence: 'Hale set something aside to decide when to text you',
     family: 'note',
   },
@@ -1997,6 +2004,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   commitment_fulfilled: { sentence: 'did something it said it would do', family: 'note' },
   commitment_cancelled: {
     sentence: 'stopped owing something it said it would do',
+    family: 'note',
+  },
+  // An activity watch that looked again and found nothing the parent has not already been
+  // told: nothing was sent, and the promise stays owed (commitments/ledger.ts).
+  commitment_deferred: {
+    sentence: 'looked again and had nothing new to tell you yet',
     family: 'note',
   },
   // ── interest passport (VIL-106) ─────────────────────────────────────────

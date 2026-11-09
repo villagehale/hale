@@ -22,12 +22,14 @@ describe('redactEventsForTeens (rule #1)', () => {
   it('passes non-teen and family-wide events through unchanged', () => {
     const events = [
       {
+        eventId: 'evt-1',
         childId: TOT,
         eventType: 'sleep.logged',
         payload: { hours: 11 },
         receivedAt: '2026-06-16T00:00:00.000Z',
       },
       {
+        eventId: 'evt-1',
         childId: null,
         eventType: 'calendar.synced',
         payload: { count: 3 },
@@ -41,6 +43,7 @@ describe('redactEventsForTeens (rule #1)', () => {
     const out = _internal.redactEventsForTeens(
       [
         {
+          eventId: 'evt-teen',
           childId: TEEN,
           eventType: 'message.received',
           payload: { body: 'my teen got dumped by their boyfriend' },
@@ -54,12 +57,14 @@ describe('redactEventsForTeens (rule #1)', () => {
     if (!event) throw new Error('expected one redacted event');
     expect(JSON.stringify(out)).not.toContain('boyfriend');
     expect(event.childId).toBeNull();
+    expect(event.eventId).toBeNull();
     // Coarse type survives — the model still knows the family has activity.
     expect(event.eventType).toBe('message.received');
   });
 
   it('redacts a family-wide event whose text names the teen, and keeps one that names nobody', () => {
     const named = {
+      eventId: 'evt-1',
       childId: null,
       eventType: 'message.received',
       payload: { body: 'Tamsin has a secret boyfriend' },
@@ -77,11 +82,15 @@ describe('redactEventsForTeens (rule #1)', () => {
     ['a newline before the name', { body: 'ok\nTamsin has a secret boyfriend' }],
     ['a tab before the name', { body: 'ok\tTamsin has a secret boyfriend' }],
     ['a control character before the name', { body: 'ok \u0007Tamsin has a secret boyfriend' }],
-    ['a name nested in an object', { message: { parts: { text: 'Tamsin has a secret boyfriend' } } }],
+    [
+      'a name nested in an object',
+      { message: { parts: { text: 'Tamsin has a secret boyfriend' } } },
+    ],
     ['a name nested in an array', { lines: ['ok', '\nTamsin has a secret boyfriend'] }],
     ['a name in an object key', { '\nTamsin': 'a secret boyfriend' }],
   ])('redacts a family-wide event with %s', (_label, payload) => {
     const event = {
+      eventId: 'evt-1',
       childId: null,
       eventType: 'message.received',
       payload,
@@ -94,6 +103,7 @@ describe('redactEventsForTeens (rule #1)', () => {
 
   it('keeps a multi-line, nested payload that names nobody', () => {
     const event = {
+      eventId: 'evt-1',
       childId: null,
       eventType: 'message.received',
       payload: { lines: ['ok\nthe toddler slept', { text: 'eleven\thours' }], n: 3 },

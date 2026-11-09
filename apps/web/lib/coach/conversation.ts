@@ -229,7 +229,7 @@ function noteSourceColumnAbsent(): void {
   );
 }
 
-/** Drizzle names every column on insert. `source` is 0208, so a real database that
+/** Drizzle names every column on insert. `source` is 0212, so a real database that
  * has not applied it must not mention the column. A fake database has no `execute`
  * and records the insert values instead; it is treated as having no source column. */
 async function messagesHaveSource(database: Db): Promise<boolean> {
@@ -285,7 +285,7 @@ async function readTranscriptRows(
  * (deleted_at stamped) are excluded so a removed turn never re-enters the agent's
  * context (rule #6 soft-delete: the row survives for audit, the read drops it).
  * A mailbox snippet, when stored, follows Hale's text as a `tool` turn. It is not
- * part of that text. A database that has not applied 0208 is read without `source`. */
+ * part of that text. A database that has not applied 0212 is read without `source`. */
 export async function loadTranscript(
   conversationId: string,
   database: Database,
@@ -298,7 +298,7 @@ export async function loadTranscript(
 export interface MessageScope {
   childId: string | null;
   topic: string | null;
-  /** What a proactive turn was about (messages.source, 0208). Omitted = null. */
+  /** What a proactive turn was about (messages.source, 0212). Omitted = null. */
   source?: schema.MessageSource | null;
 }
 
@@ -324,7 +324,7 @@ export async function appendMessage(
   };
   // Fakes record Drizzle inserts and have no execute. A real insert names every
   // column, including source, so it goes through SQL that omits the column until
-  // 0208 is present.
+  // 0212 is present.
   if (typeof database.execute !== 'function') {
     const rows = await database
       .insert(schema.messages)

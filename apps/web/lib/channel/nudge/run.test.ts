@@ -9,6 +9,8 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
@@ -163,6 +165,9 @@ function harness(
     parentCallName?: ParentCallNameState;
     /** The model could not write the name ask this run. */
     nameAskUnwritten?: boolean;
+    /** VIL-423 · the date check's reader factory. The default throws, so a read while
+     * REGISTRATION_DATE_CHECK is off is a failure rather than a silent page fetch. */
+    createDateReader?: NudgeRunDeps['createDateReader'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -274,6 +279,11 @@ function harness(
         alreadyAsked: false,
         googleGivenName: null,
       },
+    createDateReader:
+      options.createDateReader ??
+      (() => {
+        throw new Error('unexpected date read');
+      }),
   };
 
   return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
@@ -1398,5 +1408,97 @@ describe('runNudgeCron — empty Saturday', () => {
     expect(result.sent).toBe(0);
     expect(result.held.not_enrolled).toBe(1);
     expect(h.transport.bodies()).toEqual([]);
+  });
+});
+
+describe('VIL-423 · the send-time date check on a registration nudge', () => {
+  const SOURCE = 'https://registration.example.org/fall';
+  const window = () => win({ sourceUrl: SOURCE });
+  /** The stored opening, 10:30 Toronto on 4 Aug, as a page would state it. */
+  const STORED = { date: '2026-08-04', time: '10:30' };
+
+  function reading(status: 'verified' | 'unverified', date = STORED): LiveRegistrationReading {
+    const source = { sourceUrl: SOURCE, checkedAt: FRIDAY_10AM, reader: 'ai' as const };
+    return status === 'verified'
+      ? {
+          ...source,
+          status,
+          timeZone: TZ,
+          dates: [{ kind: 'general_open', ...date, evidence: ['the page'] }],
+          partialDates: [],
+        }
+      : { ...source, status, reason: 'unknown_time_zone', partialDates: [] };
+  }
+  function pageSays(answer: LiveRegistrationReading) {
+    const asked: string[] = [];
+    const reader: RegistrationReader = async (target) => {
+      asked.push(target.sourceUrl);
+      return answer;
+    };
+    return { asked, createDateReader: () => reader };
+  }
+
+  it('shadow: reads the page and sends the nudge as before, counting the disagreement', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'shadow');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const page = pageSays(reading('verified', { date: '2026-08-06', time: '10:30' }));
+    const h = harness({ windows: [window()], createDateReader: page.createDateReader });
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(page.asked).toEqual([SOURCE]);
+    expect(result.sent).toBe(1);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:registration:w-1:user-1']);
+    expect(result.dateCheck).toEqual({ agree: 0, disagree: 1, unread: 0 });
+  });
+
+  it('enforce: a page that agrees keeps the registration nudge', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      windows: [window()],
+      createDateReader: pageSays(reading('verified')).createDateReader,
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(1);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:registration:w-1:user-1']);
+    expect(result.dateCheck.agree).toBe(1);
+  });
+
+  it('enforce: a page that does not confirm the date sets the window aside for the next nudge', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    for (const answer of [
+      reading('unverified'),
+      reading('verified', { date: '2026-08-06', time: '10:30' }),
+    ]) {
+      const h = harness({
+        windows: [window()],
+        candidates: [candidate()],
+        weather: WET,
+        createDateReader: pageSays(answer).createDateReader,
+      });
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result.sent).toBe(1);
+      expect([...h.dedupeKeys].some((key) => key.includes(':registration:'))).toBe(false);
+      expect(h.transport.bodies()[0]).toContain('Library story time');
+    }
+  });
+
+  it('enforce: with nothing else worth saying, the family hears nothing', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      windows: [window()],
+      createDateReader: pageSays(reading('unverified')).createDateReader,
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.sent).toEqual([]);
+    expect(result.dateCheck.unread).toBe(1);
   });
 });

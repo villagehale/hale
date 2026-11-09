@@ -292,3 +292,76 @@ describe('family_sweep_marks', () => {
     ]);
   });
 });
+
+/** VIL-564 · what an activity watch already told the parent, found by suffix so it survives
+ * renumbering at merge. */
+describe('agent_commitments heard_facts', () => {
+  const HEARD_FILE = migrationFiles().find((f) => f.endsWith('_agent_commitments_heard_facts.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(HEARD_FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'agent_commitments' AND column_name = 'heard_facts'",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds one nullable text array', async () => {
+    expect(HEARD_FILE).toMatch(/^\d{4}_agent_commitments_heard_facts\.sql$/);
+    // Positive control: the table is there and the column is not, before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(HEARD_FILE as string);
+    await expect(db.applyMigration(HEARD_FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'heard_facts', is_nullable: 'YES', data_type: 'ARRAY' },
+    ]);
+  });
+});
+
+/** VIL-337 · a watch on a page outside the PerfectMind registry, found by suffix so it
+ * survives renumbering at merge. */
+describe('watched_spots any-page columns', () => {
+  const FILE = migrationFiles().find((f) => f.endsWith('_watched_spots_any_page.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'watched_spots' AND column_name IN ('session_anchor', 'page_digest') ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds two nullable text columns', async () => {
+    expect(FILE).toMatch(/^\d{4}_watched_spots_any_page\.sql$/);
+    // Positive control: the table is there and the columns are not, before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(FILE as string);
+    await expect(db.applyMigration(FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'page_digest', is_nullable: 'YES', data_type: 'text' },
+      { column_name: 'session_anchor', is_nullable: 'YES', data_type: 'text' },
+    ]);
+  });
+});

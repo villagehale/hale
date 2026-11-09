@@ -152,18 +152,18 @@ export function recMorningReturnLine(pendingAsk: string): string {
 }
 
 /**
- * Mid-signup there is no family row, so no stored zone yet. The zone is the one intake
- * derives for the parent from this same postal (intake/derive.ts); no postal, no zone.
+ * Mid-signup there is no family row, so the postal the parent texted is the whole place:
+ * no stored city or country, and the zone is the one intake derives for the parent from
+ * this same postal (intake/derive.ts). No postal, no place.
  */
-function intakeWhere(input: {
-  postal?: string | null;
-  city?: string | null;
-}): RecMorningWhere | null {
+function intakeWhere(input: { postal?: string | null }): RecMorningWhere | null {
   const postal = input.postal ?? null;
   const fsa = postal === null ? null : postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
   return resolveRecMorningWhere({
-    city: input.city ?? null,
+    city: null,
     postal,
+    country: null,
+    province: null,
     timeZone: fsa === null ? null : timezoneForIntakePostal('CA', fsa),
   });
 }
@@ -177,7 +177,6 @@ export function recMorningIntakeReply(input: {
   pendingAsk: string;
   now?: Date;
   postal?: string | null;
-  city?: string | null;
 }): string | null {
   const sms = recMorningReply(input.parentWords, input.now ?? new Date(), intakeWhere(input));
   if (sms === null) return null;
@@ -249,7 +248,6 @@ export async function writeRecMorningIntakeReply(
     pendingAsk: string;
     now?: Date;
     postal?: string | null;
-    city?: string | null;
     /** Stored ladder language, when intake has one. Null: the model follows parentWords. */
     language?: ReplyLanguage | null;
   },

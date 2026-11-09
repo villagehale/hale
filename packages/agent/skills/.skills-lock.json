@@ -3,6 +3,10 @@
     "file": "activity-deep.md",
     "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
   },
+  "activity-finder-day.md": {
+    "file": "activity-finder-day.md",
+    "sha256": "356e9446d1c90d97cc5372deb550daa0cebf85506e46280ad76a4a880c529d32"
+  },
   "activity-finder-events.md": {
     "file": "activity-finder-events.md",
     "sha256": "ed21d26ed46009fa0c26ee1a6fc4e868f046781e02a76f55e4216d9e8edd7a3e"
@@ -93,7 +97,7 @@
   },
   "coach-channel-group.md": {
     "file": "coach-channel-group.md",
-    "sha256": "7b632dd58ab45c06046b8f27c56ea195c8a521a9253fd0991166bd870122352e"
+    "sha256": "a306f8314a4dec889237a14c1d41ff9006bccf9f7397695167a20505f0d05155"
   },
   "coach-channel-shorten.md": {
     "file": "coach-channel-shorten.md",
@@ -103,9 +107,17 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-fact-source.md": {
+    "file": "coach-fact-source.md",
+    "sha256": "20e86b9157be89631cfc16276ad8e945042e0e8f1731627b7c1fbd8108b480f4"
+  },
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
+  },
+  "coach-local-day.md": {
+    "file": "coach-local-day.md",
+    "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
   },
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
@@ -145,7 +157,7 @@
   },
   "email-alert-notice.md": {
     "file": "email-alert-notice.md",
-    "sha256": "6a65176ee5e5fa835806d01ebffaf9080e6705949ef4d319b259f7405d3f5ec2"
+    "sha256": "ddc24c7f0be41323e5a9c21590e32a23c146b11cbace24896660bbb0e9900236"
   },
   "evening-request.md": {
     "file": "evening-request.md",
@@ -217,7 +229,7 @@
   },
   "group-conflict-alert.md": {
     "file": "group-conflict-alert.md",
-    "sha256": "7a2cfe7a208fbde4847195a07a8f30e7f00bbbad7444ecfc359bfc55543ce0ef"
+    "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
   },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
@@ -261,7 +273,7 @@
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",
-    "sha256": "da1f28103d4c633fc287b48cb06f115e95b26e8399e58146f334198d14cafd4c"
+    "sha256": "e0b47ae6c49c2af43675059f17b8d9deffa44f875e3df61fc2ea950fbd1d42c8"
   },
   "group-private-aside-read.md": {
     "file": "group-private-aside-read.md",
@@ -301,7 +313,7 @@
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
-    "sha256": "bb9d105f941e29a4737ada757d82644409689c4a9013b7a622d40874133ca3af"
+    "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
@@ -313,11 +325,11 @@
   },
   "intake-live-ground.md": {
     "file": "intake-live-ground.md",
-    "sha256": "c0c4b70e53ded0091008c52cab413d82dc5812325ed227299386c413f06ed8b7"
+    "sha256": "725055a2db1d1b3f1e7ee9276384194c8ce58d656b809e19407cc083de8647f9"
   },
   "intake-official-ground.md": {
     "file": "intake-official-ground.md",
-    "sha256": "b6d7a4653d427c12edbcb7f3db63fae4abafdd99b95f563ba982e40d72cccd61"
+    "sha256": "f87a740e2be873a3d580f86deb2b25d04949ba042ed8f8483280f3513c843b29"
   },
   "interest-passport-voice.md": {
     "file": "interest-passport-voice.md",
@@ -389,7 +401,7 @@
   },
   "proactive-decider.md": {
     "file": "proactive-decider.md",
-    "sha256": "2191b1285e4b290e343d1c03ef2cdfb6287fedf7a363f002926ec9e7ea1b4add"
+    "sha256": "247cbfd418d52a2d85c45eb223dd7f4ed8b8c484d47febc92984c5b3d5d7221e"
   },
   "proactive-writer.md": {
     "file": "proactive-writer.md",
@@ -399,6 +411,10 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "read-class-availability.md": {
+    "file": "read-class-availability.md",
+    "sha256": "972c8a7766aa8da30bf8dd30a77fe42f5deceeeebea82db99886f54a9a28fa0d"
+  },
   "read-email-coach.md": {
     "file": "read-email-coach.md",
     "sha256": "bc30ea5a6f6be0eb9c76b1759bbe6f5b15e2733711d329ce03389a7fe36fd4f3"
@@ -406,6 +422,10 @@
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
+  },
+  "registration-date-unconfirmed.md": {
+    "file": "registration-date-unconfirmed.md",
+    "sha256": "df670bbb95411f7858b8e3b608d81d3153d800eaa736c2aa0ee8e94315a8fe20"
   },
   "registration-evening.md": {
     "file": "registration-evening.md",
@@ -429,7 +449,7 @@
   },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "5036b4da06914c0739a941a8d32a8a581fb9964fecf044c057c967ab62555473"
+    "sha256": "32bf310ee83d6708bd5ead832ebb2a16c7c7d230b78df880207a98d31e75a47e"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
@@ -445,11 +465,11 @@
   },
   "said-line-convey-judge.md": {
     "file": "said-line-convey-judge.md",
-    "sha256": "5ee8ad5e65d7138488f2b786169bb2af046858bcd3f4591ad4929678f88db513"
+    "sha256": "845b46ec11a4728fb49c4b153cd051fba26e8015faa6a7316c50a62065eeba69"
   },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "6bd76029cfae6f5b53806179d3a5f3624c8ad0428d3873e7ef9057873de408ae"
+    "sha256": "2cc922ae1a7db57f1f1c0e7b4de8fbfdc9103d49a9a98c384f03c6b66e6f6570"
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",
@@ -470,6 +490,14 @@
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
     "sha256": "c14736437aa015313c1434cc73ffda77527fdb8955078fca1c4f8ac78c2d01a3"
+  },
+  "signup-plan-read.md": {
+    "file": "signup-plan-read.md",
+    "sha256": "e5753bb73887410aa6781c4a32d4fcd6dc5c7711b8edbc00b09f43da923dc428"
+  },
+  "signup-plan-reply.md": {
+    "file": "signup-plan-reply.md",
+    "sha256": "ee71e350446bfba4484c994565a6cddb7cf500d90832762463c972d39f495406"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

@@ -1,5 +1,6 @@
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import type { ClaimKind, StateClaim } from './claims';
+import type { Span } from './sentences';
 
 /**
  * VIL-293 · THE RECONCILIATION PRIMITIVE, half two — is the claim TRUE?
@@ -297,18 +298,27 @@ export function violationsFor(reasons: readonly RefusalReason[]): string[] {
 }
 
 /**
- * The body with every refused sentence cut out — the last honest move for a lane that
- * has already re-asked and cannot refuse to reply at all.
+ * Where each refused sentence sits in the body — what a lane that has already re-asked,
+ * and cannot refuse to reply at all, cuts out (`subtractSpans`).
  *
  * It is a SUBTRACTION and never a rewrite: the spans come from the extractor, so what
- * survives is verbatim what the model wrote minus the sentences nothing backs. An empty
- * result means the whole reply was unbacked, and the caller must treat that as a failed
- * turn rather than sending a blank text.
+ * survives is verbatim what the model wrote minus the sentences nothing backs. The
+ * verdict must be this body's: a sentence that is not in it is a caller bug and throws.
  */
-export function withoutRefusedClaims(body: string, verdict: ReconcileVerdict): string {
-  let survivor = body;
+export function refusedClaimSpans(body: string, verdict: ReconcileVerdict): Span[] {
+  const spans: Span[] = [];
+  let from = 0;
+  let previous: string | null = null;
   for (const resolution of verdict.refused) {
-    survivor = survivor.replace(resolution.claim.sentence, ' ');
+    const sentence = resolution.claim.sentence;
+    const start = body.indexOf(sentence, from);
+    // A joined sentence can carry several refused claims (VIL-575), and every copy of it
+    // carries the same ones, so the extras find no later copy: that sentence is cut already.
+    if (start < 0 && sentence === previous) continue;
+    if (start < 0) throw new RangeError('reconcile: a refused sentence is not in the body');
+    spans.push({ start, end: start + sentence.length });
+    from = start + sentence.length;
+    previous = sentence;
   }
-  return survivor.replace(/\s+/g, ' ').trim();
+  return spans;
 }

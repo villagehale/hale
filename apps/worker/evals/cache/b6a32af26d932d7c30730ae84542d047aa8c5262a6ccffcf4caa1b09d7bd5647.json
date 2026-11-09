@@ -1,0 +1,177 @@
+{
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "thinking": {
+      "type": "adaptive"
+    },
+    "output_config": {
+      "effort": "high"
+    },
+    "max_tokens": 4096,
+    "system": [
+      {
+        "type": "text",
+        "text": "# Reviewer system prompt\n\nYou are Hale's safety reviewer. The Drafter has proposed an action.\nYour job is to **find what is wrong with it** before it is committed\non the family's behalf.\n\n## How you make decisions\n\nYou **must** invoke verification tools. Reasoning from prose alone is\nnot sufficient. For every claim the Drafter makes that could be\nverified by a tool, call the tool. Examples:\n\n- Drafter says \"thursday at 10 is clear\" → call `check_calendar_conflict`\n- Drafter says \"this is on the vaccine schedule\" → call `check_vaccine_schedule`\n- Drafter says \"amount is $42.99\" → call `check_spending_cap`\n- Drafter says \"recipient is the pediatric office\" → call `check_recipient_allowlist`\n- Any action → `check_action_time_window`, `check_action_idempotency`,\n  `check_pii_leak`, `check_user_override`\n\nDefault to **flag_for_human** under any ambiguity. Default to **reject**\nif any tool returns red.\n\n## Output contract\n\n```\n{\n  \"verdict\": \"approve\" | \"reject\" | \"flag_for_human\",\n  \"tool_results\": [ { \"tool\": string, \"ok\": boolean, \"result\": object } ],\n  \"rationale\": string,                 // short\n  \"if_rejected_remediation_suggestion\"?: string\n}\n```\n\n## Approval criteria\n\nApprove **only** when:\n\n1. All invoked tools returned `ok: true`.\n2. The action is reversible (or the parent has explicitly granted\n   autonomy for non-reversible actions in this category).\n3. No verification tool returned an unexpected state (e.g. recipient\n   not on allowlist, sender not trusted, spending over cap).\n\n## Rejection criteria\n\nReject (vs flag-for-human) only when there is a clear policy violation:\n\n- Spending cap exceeded\n- Recipient on blocklist\n- Sender not on allowlist\n- Outside the family's time window\n- Duplicate of a recent action\n\nFor ambiguity (e.g. low classifier confidence carried through,\nunfamiliar recipient that isn't blocked) — **flag_for_human**.\n\n## What NOT to do\n\n- Never approve without tool results.\n- Never approve a medical or legal communication without explicit\n  per-action user approval, regardless of allowlist state.\n- Never silently rewrite the action — your job is verdict, not editing.\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "tools": [
+      {
+        "name": "check_pii_leak",
+        "description": "Verification check: check_pii_leak.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "check_recipient_allowlist",
+        "description": "Verification check: check_recipient_allowlist.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "check_sender_allowlist",
+        "description": "Verification check: check_sender_allowlist.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      {
+        "name": "check_action_idempotency",
+        "description": "Verification check: check_action_idempotency.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "familyId": {
+              "type": "string",
+              "description": "The draft action's family_id (a uuid)."
+            },
+            "actionHash": {
+              "type": "string",
+              "description": "The draft payload's action_hash — pass it verbatim; do not invent one."
+            },
+            "lookbackHours": {
+              "type": "number",
+              "description": "Optional dedup window; defaults to 24."
+            }
+          },
+          "required": [
+            "familyId",
+            "actionHash"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "submit_verdict",
+        "description": "Submit your final verdict. Call this ONLY after invoking the verification tools required for this action.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "reject",
+                "flag_for_human"
+              ]
+            },
+            "rationale": {
+              "type": "string"
+            },
+            "remediation": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "rationale"
+          ]
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"draft_action\":{\"id\":\"6889e85c-a3ed-49b2-abd6-1e84682fb6de\",\"action_type\":\"reply_to_email\",\"payload\":{\"subject\":\"Re: Photo day (maternelle) - nov 12\",\"body\":\"bonjour,\\n\\nthanks for the note. [PARENT: confirm attendance for photo day on nov 12 at 9:00 in the gymnase — yes/no]. [PARENT: sibling photo — yes/no].\\n\\nthanks!\",\"needs_parent_input\":[\"attendance confirmation (yes/no)\",\"sibling photo wanted (yes/no)\"]},\"recipient_visibility\":\"internal_only\",\"family_id\":\"aaaaaaa1-0000-4000-8000-000000000560\"},\"required_checks\":[\"check_pii_leak\",\"check_recipient_allowlist\",\"check_sender_allowlist\",\"check_action_idempotency\"]}"
+      }
+    ]
+  },
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgra2uxZtCNUX21uAeTUC",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSyQgKEAgTGAI4AUIIdGhpbmtpbmcSDOUXmE5cNM7r66sFERoMFe3rr2LtfZ0lTO7YIjCf43UXo6JTzYPHCHwFkl8lRP2rIwRaF2Ns/sWj+it+D/xyuIG31vcOot95cEmBKnwq5gd4Cjmm5Le4r/UJp/tcOie9TAL9JymLDqz7HHaoSDXjiDQCM/Kl7/pfva9RxUQK69SENJl2QJ5ljk0sb+2hYiAJcJP2NmoizLg0KQX/CYh1+ENrUes89o3iE/e+Srd8GdqdnpNcbFl/SBB10bVjWZE/I7qmliCLv7sbwTULhluMpZmvIzAjiabjY8gIHcJjHO878Z1UbcbkwsiuynHF3O11grgYNAm/Qn4/t9YSeO99akjhZyX3qL8Cjzmz4jA/x0sxU7PCEtiY6DlbTSeZImFkO1+zKN+853jPOpS0gWOW1KIz87leV/b1mW4avsWpCW10ERG1YEErGqW3iWVv33v0rsPWKN4px66SzzwxVS2WlfWirEtXAoI+KPLagcwL+QkvIid+CKrTXBsE9A5rh7D4AsPZjIujHsPasmLpJVcwB4TpkZxy7zQPgRg1/lDtS+NyxcpcbPyvkJs6iJhN1G4TdTWoz7o0T6U0Lr4IEig8FeqsL/SEINEHUiKg1CrBG0uehQFFJwfu9Abi+x1NkfFBI9XqJ1xjTeP8ka9ikeBimdaRGVOwUmNiFuiiEOs9Cl7G5vPG2nN4Oy9MTy+8W1ksoVoqoR/GKiLyM/VxwwNtb2NrVrEiYs2xWRFjiotqlSI/HT/NCMh0nI1uLuIY5me928b8B74DakBmon2gZmwgSbKzH9+HUvHOil/2B54K+xNrPdNy1ZlEavla09H44f+IWe9tSxJCYsivlWHCV3Ac2Ozq6vE7549uGKeMQNuof2tZ975bkhD9ZQw705T2c4E0R5JaauDLFzev+l5cz1O1jRfXTEqq9Kgwfst9OdO4BBr58qnzM0IZrDBCjk31GF8a3ee3bBERQJEndTUUCZC3Ktt4wXmWs50CkiHufInYKORqZt5Y+/pdzmE6/8yzw1L58osoop8k11fpYs/bfmmw0c0tEx/z7gjWvpBDpB017/JgHbRzFui4306R6naZpVJdYXLRb4ARNzpoTUXFLRLEpd1DgTiLYSw8v9f88n1Rbj/Mna7zaG9A61i9/nJNY3zzWEf9f6Ln2WireCyQcPot5FsJFlLrVsM7G9O7ulDp5XqAnhGSaXJ+RBUbq9mBtsYFmErMp4R1DDD1VOmth0saLA6Hmj9wFLmCF1+bjRA/+oTbEdkG8RmUDcWDxAbRWU+xxUQVvxZtZpA9QQ/ZkDdY/Pcf+g6aDcw5FVeo+OtKLFhxPiKSE1mFSNaDpvzzWI8ZvPBD0kHyI+MD3+QrMg4jLFf8RPYXyYr3Q6C6A7Q04mGwiX/+C/dGOatDpY8YvZdvWiQ8eSVNa7Jw5ySNqh+xSRnYYRj/DRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GuX9ktzpczrw7nyCriTG7W",
+        "name": "check_pii_leak",
+        "input": {
+          "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+          "action_id": "6889e85c-a3ed-49b2-abd6-1e84682fb6de",
+          "body": "bonjour,\n\nthanks for the note. [PARENT: confirm attendance for photo day on nov 12 at 9:00 in the gymnase — yes/no]. [PARENT: sibling photo — yes/no].\n\nthanks!"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UP942gp8MpCwLW98xkoMpe",
+        "name": "check_recipient_allowlist",
+        "input": {
+          "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+          "action_id": "6889e85c-a3ed-49b2-abd6-1e84682fb6de"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016wtk4AuF5gYQWfLvmpJcr5",
+        "name": "check_sender_allowlist",
+        "input": {
+          "family_id": "aaaaaaa1-0000-4000-8000-000000000560",
+          "action_id": "6889e85c-a3ed-49b2-abd6-1e84682fb6de"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 372,
+      "cache_creation_input_tokens": 1560,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1560,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 631,
+      "output_tokens_details": {
+        "thinking_tokens": 166
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    },
+    "diagnostics": null
+  }
+}

@@ -2,6 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { factsForContext } from '@hale/worker/memory-context';
 import { eq } from 'drizzle-orm';
+import { familyLocalNow } from '~/lib/channel/coach/local-now';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
@@ -23,6 +25,9 @@ export interface ActivityFamilyReader {
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
   familyFit?(database: Database, familyId: string, now?: Date): Promise<FamilyFit>;
+  /** Today on the family's own clock, `YYYY-MM-DD (Weekday)`, or null when the zone is
+   * unknown (VIL-435). */
+  today?(database: Database, familyId: string): Promise<string | null>;
 }
 
 /**
@@ -70,6 +75,7 @@ export interface BoundActivityReader {
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(familyId: string): Promise<string[]>;
   familyFit?(familyId: string): Promise<FamilyFit>;
+  today?(familyId: string): Promise<string | null>;
 }
 
 export function bindActivityReader(
@@ -83,11 +89,31 @@ export function bindActivityReader(
     ...(reader.familyFit
       ? { familyFit: (familyId: string) => reader.familyFit!(database, familyId) }
       : {}),
+    ...(reader.today ? { today: (familyId: string) => reader.today!(database, familyId) } : {}),
   };
 }
 
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
+    /**
+     * Today on the family's own clock (VIL-435), so a find for "today" is checked against
+     * the day it is where they live. A failed read is logged by fault class and leaves
+     * the day out; the find still runs.
+     */
+    today: async (database, familyId) => {
+      try {
+        const zone = await knownHouseholdTimezone(database, familyId);
+        if (!zone) return null;
+        const local = familyLocalNow(new Date(), zone);
+        return `${local.date} (${local.weekday})`;
+      } catch (err) {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'activity reader: family day unavailable',
+        );
+        return null;
+      }
+    },
     /**
      * Where the family is now, as a search may be told it (place.ts), or why it cannot
      * be. A postal area that covers two towns is not guessed: the find does not run.

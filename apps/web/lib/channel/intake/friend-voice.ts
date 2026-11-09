@@ -239,6 +239,11 @@ export interface FriendVoiceInput {
    * The model uses it as guidance. Code computes it from stored facts.
    */
   checklist?: OnboardingChecklist;
+  /**
+   * Checklist items code could not read for this family. They are true in
+   * `checklist`, so nothing asks for them, and the model sees them as unknown.
+   */
+  unread?: readonly OnboardingItem[];
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
@@ -718,6 +723,17 @@ export function lastInboundFact(
   };
 }
 
+/** An item code could not read is unknown to the model, never false. */
+function knownForModel(
+  checklist: OnboardingChecklist | null,
+  unread: readonly OnboardingItem[] | undefined,
+): Record<OnboardingItem, boolean | null> | null {
+  if (!checklist || !unread || unread.length === 0) return checklist;
+  return Object.fromEntries(
+    ONBOARDING_ORDER.map((item) => [item, unread.includes(item) ? null : checklist[item]]),
+  ) as Record<OnboardingItem, boolean | null>;
+}
+
 /** What the model is handed. No link, no family id, no phone. */
 export function friendVoiceContext(input: FriendVoiceInput): unknown {
   const checklist = input.checklist ?? null;
@@ -763,7 +779,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
     recentTurns: input.recentTurns,
     order: [...ONBOARDING_ORDER],
-    known: checklist,
+    known: knownForModel(checklist, input.unread),
     missing,
     answering: ASKS_NOTHING.has(input.step) ? null : (missing?.[0] ?? null),
     reading: readingForModel(input),
@@ -830,12 +846,21 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
 
 /**
  * The open name ask, as the name-capture reader hands it to the model. The ask
- * is the structured `answering` fact; no Hale turn is written here.
+ * is the structured `answering` fact; no Hale turn is written here. `stored` is
+ * the family's onboarding checklist; null when it cannot be read, and then every
+ * item but the name is unknown and nothing else is asked.
  */
 export function nameAskVoiceInput(
   parentWords: string,
   language: ReplyLanguage | null,
+  stored: OnboardingChecklist | null,
 ): FriendVoiceInput {
+  const unread = stored ? [] : ONBOARDING_ORDER.filter((item) => item !== 'name');
+  const checklist = stored
+    ? { ...stored, name: false }
+    : (Object.fromEntries(
+        ONBOARDING_ORDER.map((item) => [item, item !== 'name']),
+      ) as OnboardingChecklist);
   return {
     step: 'names',
     language,
@@ -852,16 +877,8 @@ export function nameAskVoiceInput(
     activity: null,
     day: null,
     parentName: null,
-    checklist: {
-      postal: true,
-      kids: true,
-      ages: true,
-      name: false,
-      gmail: false,
-      calendar: false,
-      schedule: false,
-      coparent: false,
-    },
+    checklist,
+    ...(unread.length > 0 ? { unread } : {}),
   };
 }
 
@@ -1497,11 +1514,24 @@ function trailerFacts(options: JudgeOptions): string[] {
   return options.trailer ? [options.trailer] : [];
 }
 
+/**
+ * `detail` is for the retry and may quote the draft. `kinds` is what a log may
+ * carry: fixed codes, never the draft's words.
+ */
+export type FriendJudgeRefusal = {
+  ok: false;
+  reason: FriendJudgeFailure;
+  detail?: string;
+  kinds?: readonly string[];
+  /** How many draft strings the judge matched. */
+  count?: number;
+};
+
 export function judgeFriendReply(
   body: string,
   input: FriendVoiceInput,
   options: JudgeOptions = {},
-): { ok: true } | { ok: false; reason: FriendJudgeFailure; detail?: string } {
+): { ok: true } | FriendJudgeRefusal {
   const trimmed = body.trim();
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
   const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
@@ -1529,7 +1559,7 @@ export function judgeFriendReply(
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
   if (replyAddressesByOtherName(trimmed, input)) {
-    return { ok: false, reason: 'identity', detail: 'unknown_name' };
+    return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
@@ -1545,23 +1575,32 @@ export function judgeFriendReply(
     /\b(?:free|cost|costs|price|pricing|pay|charge|gratuit|co[uû]te?)\b/i.test(input.parentWords) &&
     !/villagehale\.com|\b(?:the|our) (?:web)?site\b|\bsite web\b/i.test(trimmed)
   ) {
-    return { ok: false, reason: 'identity', detail: 'price' };
+    return { ok: false, reason: 'identity', detail: 'price', kinds: ['price'] };
   }
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
-  const invented = [
-    ...findInventedFacts(trimmed, slots),
-    ...mentionsOutsideSlots(trimmed, PRICE, slots),
-    ...weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)]),
-    ...priceTalk(trimmed, input),
-    ...quotesOutsideSlots(trimmed, slots),
-    ...namesOutsideSlots(trimmed, slots),
-    ...(PHONE.test(trimmed) ? ['phone number'] : []),
-    ...mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots),
-    ...(input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []),
+  const found: [kind: string, matched: string[]][] = [
+    ['fact', findInventedFacts(trimmed, slots)],
+    ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
+    ['weekday', weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)])],
+    ['price_talk', priceTalk(trimmed, input)],
+    ['quote', quotesOutsideSlots(trimmed, slots)],
+    ['name', namesOutsideSlots(trimmed, slots)],
+    ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
+    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
-  if (invented.length > 0) return { ok: false, reason: 'invented', detail: invented.join(',') };
+  const invented = found.flatMap(([, matched]) => matched);
+  if (invented.length > 0) {
+    return {
+      ok: false,
+      reason: 'invented',
+      detail: invented.join(','),
+      count: invented.length,
+      kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
+    };
+  }
   if (/https?:\/\//i.test(trimmed)) {
     const allowed = options.link && trimmed.includes(options.link);
     if (!allowed) return { ok: false, reason: 'invented' };
@@ -1600,13 +1639,23 @@ export function judgeFriendReply(
     const namesGmail = /\bgmail\b/i.test(outside);
     const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(outside);
     if (input.connector === 'gcal' && namesGmail) {
-      return { ok: false, reason: 'invented', detail: 'gmail on calendar wow' };
+      return {
+        ok: false,
+        reason: 'invented',
+        detail: 'gmail on calendar wow',
+        kinds: ['other_connector'],
+      };
     }
     if (input.connector === 'gmail' && namesCalendar) {
-      return { ok: false, reason: 'invented', detail: 'calendar on gmail wow' };
+      return {
+        ok: false,
+        reason: 'invented',
+        detail: 'calendar on gmail wow',
+        kinds: ['other_connector'],
+      };
     }
     const grounded = ahaGrounding(trimmed, input, named);
-    if (grounded) return { ok: false, reason: 'invented', detail: grounded };
+    if (grounded) return { ok: false, reason: 'invented', detail: grounded, kinds: ['aha'] };
   }
   return { ok: true };
 }
@@ -2124,11 +2173,12 @@ export async function speakFriend(
       }
       return reject(judged);
 
-      function reject(judged: { ok: false; reason: FriendJudgeFailure; detail?: string }) {
+      function reject(judged: FriendJudgeRefusal) {
         noteRefusal(
           {
             reason: judged.reason,
-            ...(judged.detail ? { detail: judged.detail } : {}),
+            ...(judged.kinds ? { kinds: judged.kinds } : {}),
+            ...(judged.count ? { count: judged.count } : {}),
             step: input.step,
             judgedAs: judgeInput.step,
             prompt,

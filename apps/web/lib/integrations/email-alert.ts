@@ -11,6 +11,7 @@ import {
   dedupeActive,
 } from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveSendRequest,
@@ -799,6 +800,7 @@ export async function alertParentForEmail(
     language: await ports.parentLanguage(parentUserId, now),
     recentNotices: await readRecentNotices(database, { familyId, parentUserId }),
     durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
+    receivedAt,
     timeZone: input.timeZone,
     now,
   });
@@ -829,10 +831,13 @@ export async function alertParentForEmail(
     //
     // The key stays NULL: the unique index is total over non-null dedupe keys, so a
     // suppression carrying it would block the send it is a record of NOT making.
+    // The channel is the parent's door: no transport ran, so the row names the pipe the
+    // text would have left on, never a hard-coded SMS.
+    const door = await resolveMessagingDoor(database, parentUserId);
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,
-      channel: 'sms',
+      channel: door.channel,
       direction: 'out',
       category: 'email_alert',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,

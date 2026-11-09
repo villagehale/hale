@@ -104,6 +104,11 @@ export interface ActivityQuery {
    * single-band query, so the payload this lane already sends does not grow a key.
    */
   stages?: readonly FamilyStage[];
+  /**
+   * Today where the family lives, `YYYY-MM-DD (Weekday)`, from their own zone (VIL-435).
+   * Absent when the zone is unknown, so the payload other callers send does not grow a key.
+   */
+  today?: string;
 }
 
 export type ActivityDeidResult =
@@ -158,6 +163,8 @@ export function deidentifyActivityQuery(input: {
   town: string | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
+  /** From the family's own clock, never the model (see {@link ActivityQuery.today}). */
+  today?: string | null;
 }): ActivityDeidResult {
   const subject = deidentifyActivitySubject(input.subject, input.householdNames);
   if (!subject.ok) return subject;
@@ -185,6 +192,7 @@ export function deidentifyActivityQuery(input: {
       window,
       town: input.town,
       stage: input.stage,
+      ...(input.today ? { today: input.today } : {}),
     },
   };
 }
