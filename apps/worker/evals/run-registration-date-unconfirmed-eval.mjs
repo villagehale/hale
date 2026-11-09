@@ -125,18 +125,26 @@ export const BROKEN = [
   },
 ];
 
-/** --broken, offline: the composer's own gate must refuse every planted draft. */
+/** --broken, offline: the composer's own gate must refuse every planted draft. The
+ * writer is handed no link, so any link it writes is refused, the handed page included. */
 function brokenOffline(compose) {
-  const facts = BY_ID['heads-up-offer-unconfirmed'];
   const refused = [
-    compose.dateUnconfirmedRefusals('   ', facts),
-    compose.dateUnconfirmedRefusals('Check the page before it opens.', facts),
-    compose.dateUnconfirmedRefusals(`Check ${LINK} or https://evil.example/phish`, facts),
+    compose.dateUnconfirmedRefusals('   '),
+    compose.dateUnconfirmedRefusals(`Check the page: ${LINK}`),
+    compose.dateUnconfirmedRefusals('Check https://rec.example.org.evil.com/x'),
+    compose.dateUnconfirmedRefusals('Check bit.ly/x before it opens.'),
   ];
   const kept = [
-    compose.dateUnconfirmedRefusals(`Couldn't confirm the date. Check: ${LINK}`, facts),
+    compose.dateUnconfirmedRefusals("Couldn't confirm the date at 7 p.m. Check the page below."),
   ];
   return refused.every((r) => r.length > 0) && kept.every((r) => r.length === 0);
+}
+
+/** The writer's request as production builds it: the facts without the link, which code
+ * appends after the draft. */
+function writerMessage(facts) {
+  const { link: _link, ...handed } = facts;
+  return JSON.stringify(handed);
 }
 
 // ── dry pricing ─────────────────────────────────────────────────────────────
@@ -187,7 +195,7 @@ async function main() {
     let usd = 0;
     let calls = 0;
     for (const f of FIXTURES) {
-      const msg = JSON.stringify(f.facts);
+      const msg = writerMessage(f.facts);
       usd +=
         attempts *
         worst(lane.model, tokensFor(skill.instructions) + tokensFor(msg) + 200, maxTokens);
@@ -225,7 +233,7 @@ async function main() {
         tag: `${SUITE}:${f.id}#${attempt}`,
         lane,
         system: skill.instructions,
-        userMessage: JSON.stringify(f.facts),
+        userMessage: writerMessage(f.facts),
         toolName: compose.DATE_UNCONFIRMED_TOOL.name,
         toolDescription: compose.DATE_UNCONFIRMED_TOOL.description,
         toolSchema: TEXT_SCHEMA,
@@ -235,8 +243,8 @@ async function main() {
         cost,
       });
       const draft = String(value?.text ?? '').trim();
-      const refusals = compose.dateUnconfirmedRefusals(draft, f.facts);
-      if (refusals.length === 0) text = draft;
+      const refusals = compose.dateUnconfirmedRefusals(draft);
+      if (refusals.length === 0) text = compose.dateUnconfirmedBody(draft, f.facts.link);
       else console.info(`     refused ${f.id}#${attempt}: ${refusals.join(',')}`);
     }
     if (text === null) {

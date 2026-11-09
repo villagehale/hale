@@ -99,7 +99,7 @@ function contextFor(fixture) {
     nowIso: NOW.toISOString(),
     standingQuestions: [],
     audience: 'group',
-    registrationWindows: [],
+    registrationWindows: fixture.registrationWindows ?? [],
     providerWatch: [{ provider: 'google_calendar', note: fixture.private.inbox }],
   };
 }
