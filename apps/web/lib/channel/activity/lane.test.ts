@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
 import {
@@ -79,6 +80,7 @@ interface Seen {
   tools?: Array<{ type?: string; max_uses?: number }>;
   toolChoice?: string;
   userMessage?: string;
+  system?: unknown;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -96,6 +98,7 @@ function makeClient(
           tools: req.tools,
           toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
           userMessage: req.messages?.[0]?.content,
+          system: req.system,
         });
         const pick = isCompose ? script.compose : script.ground;
         const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
@@ -120,6 +123,43 @@ describe('the payloads', () => {
     expect(groundUserMessage(QUERY)).toBe(
       '{"subject":"toddler gymnastics","town":"Halton Hills","stage":"toddler","window":"this fall"}',
     );
+  });
+
+  it('carries the family-local day when it is known, and no key when it is not (VIL-435)', () => {
+    expect(JSON.parse(groundUserMessage({ ...QUERY, today: '2026-10-12 (Monday)' }))).toEqual({
+      subject: 'toddler gymnastics',
+      town: 'Halton Hills',
+      stage: 'toddler',
+      window: 'this fall',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(groundUserMessage(QUERY)).not.toContain('today');
+  });
+
+  it('reads the day-check addendum only when the query carries the day (VIL-435)', async () => {
+    const addendum = (await loadCronSkill('activity-finder-day')).instructions;
+    const systems = async (query: ActivityQuery) => {
+      const seen: Seen[] = [];
+      await createActivityFinder(
+        makeClient(
+          { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+          seen,
+        ),
+      ).find(query);
+      return seen.map((s) =>
+        typeof s.system === 'string'
+          ? s.system
+          : (s.system as Array<{ text: string }>).map((block) => block.text).join(''),
+      );
+    };
+
+    const dated = await systems({ ...QUERY, today: '2026-10-12 (Monday)' });
+    const plain = await systems(QUERY);
+
+    expect(dated.length).toBeGreaterThan(0);
+    for (const system of dated) expect(system).toContain(addendum);
+    expect(plain.length).toBeGreaterThan(0);
+    for (const system of plain) expect(system).not.toContain(addendum);
   });
 
   it('omits a stage it does not have rather than sending a placeholder', () => {
