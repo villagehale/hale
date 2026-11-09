@@ -199,6 +199,7 @@ export async function applyDutyUndo(
     factValue: value,
     confidence: 1,
     inferredBy: 'coparent_duty_undo',
+    heard: { in: 'family' as const, userId: input.actorUserId },
     validFrom: input.now,
   };
   const audit = {

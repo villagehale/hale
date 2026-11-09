@@ -264,8 +264,9 @@ function fakeDb(args: {
     if (which === 24)
       return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
     // The requester's own section (export-requester.ts): their language settings, their
-    // 1:1 thread, their language changes, consent rows, connections and calendar mirrors;
-    // export.pglite.test.ts and export-household.pglite.test.ts cover the content.
+    // 1:1 thread, their language changes, consent rows, connections, calendar mirrors and
+    // private asides; export.pglite.test.ts, export-household.pglite.test.ts and
+    // group-private-aside.pglite.test.ts cover the content.
     if (which === 25) return { from: () => ({ where: requesterWhere }) };
     if (which === 26) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
@@ -274,6 +275,7 @@ function fakeDb(args: {
     if (which === 30) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
+    if (which === 31) return { from: () => ({ where: requesterOrderedWhere }) };
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -692,16 +694,17 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Twenty-six scoped selects (family, children, members, village saves, this parent's
+    // Twenty-seven scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
     // field consents, this household's same-activity opt-ins, the household calendar,
     // shared threads, seats and group lists, and the requester's own language settings,
-    // text thread, language changes, consents, connections and calendar mirrors) each recorded a
+    // text thread, language changes, consents, connections, calendar mirrors and private
+    // asides) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(26);
+    expect(spies.whereFamilyIds).toHaveLength(27);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 

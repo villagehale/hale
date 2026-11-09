@@ -1530,7 +1530,7 @@ const MEMORY_SLICE_FACT_LIMIT = 40;
 const MEMORY_SLICE_EPISODE_LIMIT = 20;
 
 export interface MemorySlice {
-  facts: schema.FamilyMemoryFact[];
+  facts: Omit<schema.FamilyMemoryFact, 'sourceAudience' | 'sourceUserId'>[];
   episodes: schema.FamilyMemoryEpisode[];
 }
 
@@ -1539,6 +1539,9 @@ export interface MemorySlice {
  * (`memory-context.ts`): live, unexpired, non-teen facts and live, non-teen episodes.
  * An empty family returns {facts:[],episodes:[]} — the callers skip gracefully rather
  * than null-masking.
+ *
+ * Read for every adult (VIL-599): a draft is the household's, so it carries nothing one
+ * adult said in their own 1:1, and no fact from a mailbox or calendar.
  */
 export async function getMemorySlice(
   familyId: string,
@@ -1546,8 +1549,16 @@ export async function getMemorySlice(
   now: Date = new Date(),
 ): Promise<MemorySlice> {
   const [facts, episodes] = await Promise.all([
-    factsForContext(database, familyId, { now, limit: MEMORY_SLICE_FACT_LIMIT }),
+    factsForContext(database, familyId, {
+      now,
+      reader: 'every_adult',
+      limit: MEMORY_SLICE_FACT_LIMIT,
+    }),
     episodesForContext(database, familyId, { now, limit: MEMORY_SLICE_EPISODE_LIMIT }),
   ]);
-  return { facts, episodes };
+  // Who said each fact steered the read; the draft has no use for it.
+  const rows = facts.map(
+    ({ seenIn: _seenIn, sourceAudience: _audience, sourceUserId: _speaker, ...row }) => row,
+  );
+  return { facts: rows, episodes };
 }

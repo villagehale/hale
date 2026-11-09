@@ -1,5 +1,4 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, type StructuredRequestArgs, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -17,13 +16,22 @@ import {
 
 const outputSchema = z.object({ text: z.string() });
 
+/** One forced-tool call for a draft. Injected so a test replays recorded drafts through
+ * the composer without a model; production sends it with {@link spotOpenCall}. */
+export type SpotOpenStructuredCall = (request: StructuredRequestArgs) => Promise<{ text: string }>;
+
+export function spotOpenCall(client: AgentClient): SpotOpenStructuredCall {
+  return async (request) =>
+    (await forceToolJson({ ...request, client, schema: outputSchema })).value;
+}
+
 /**
  * VIL-337 · the spot-opened text, written by the model from facts (copy.ts). Null is
  * nothing sent: a refused or failed draft, after the last attempt, has no fallback.
  * Logs carry the family, the attempt and refusal codes only — never the label or text.
  */
 export async function composeSpotOpen(
-  client: AgentClient,
+  call: SpotOpenStructuredCall,
   facts: SpotOpenFacts,
   familyId: string,
 ): Promise<string | null> {
@@ -39,18 +47,16 @@ export async function composeSpotOpen(
   }
   for (let attempt = 1; attempt <= SPOT_OPEN_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const { value } = await forceToolJson({
-        client,
+      const draft = await call({
         lane: pickLane(skill.meta.task),
         system: skill.instructions,
         userMessage: spotOpenUserMessage(facts),
         toolName: SPOT_OPEN_TOOL,
         toolDescription: SPOT_OPEN_TOOL_DESCRIPTION,
         inputJsonSchema: SPOT_OPEN_TOOL_SCHEMA,
-        schema: outputSchema,
         maxTokens: SPOT_OPEN_MAX_TOKENS,
       });
-      const text = value.text.trim();
+      const text = draft.text.trim();
       const refusals = spotOpenRefusals(text, facts);
       if (refusals.length === 0) return text;
       console.warn({ familyId, attempt, refusals }, 'watched spots: spot-open draft refused');

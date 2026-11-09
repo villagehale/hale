@@ -58,6 +58,7 @@ async function preference(
     factValue: { summary },
     confidence,
     inferredBy: 'chat_distiller',
+    heard: 'unrecorded',
     validFrom,
   });
 }
@@ -107,7 +108,7 @@ describe('loadPlanFacts', () => {
     await preference(familyId, null, 'weekends', 'Weekends are for skating.', 0.9, OCTOBER);
     await preference(familyId, null, 'mornings', 'Mornings are slow.');
 
-    const facts = await loadPlanFacts(db.database, familyId);
+    const facts = await loadPlanFacts(db.database, familyId, 'every_adult');
 
     expect(facts).toContain('Weekends are for skating.');
     expect(facts).toContain('Mornings are slow.');
@@ -121,7 +122,7 @@ describe('loadPlanFacts', () => {
     await preference(familyId, toddlerId, 'food', 'Mia refuses broccoli.');
     await preference(familyId, null, 'dinner', 'The house eats at six.');
 
-    const facts = await loadPlanFacts(db.database, familyId);
+    const facts = await loadPlanFacts(db.database, familyId, 'every_adult');
 
     expect(facts).toEqual(['The house eats at six.']);
   });
@@ -142,7 +143,7 @@ describe('loadPlanFacts', () => {
     await preferenceWithId(familyId, ID_LARGE, 'e', 'conf-tie-later', 0.9, OCTOBER);
     await preference(familyId, null, 'f', 'top', 1);
 
-    const facts = await loadPlanFacts(db.database, familyId);
+    const facts = await loadPlanFacts(db.database, familyId, 'every_adult');
 
     expect(facts).toEqual([
       // confidence alone
@@ -160,8 +161,8 @@ describe('loadPlanFacts', () => {
     const other = await seedFamily(db.database);
     await preference(other.familyId, null, 'dinner', 'The other house eats at five.');
 
-    expect(await loadPlanFacts(db.database, familyId)).toEqual([]);
-    expect(await loadPlanFacts(db.database, other.familyId)).toEqual([
+    expect(await loadPlanFacts(db.database, familyId, 'every_adult')).toEqual([]);
+    expect(await loadPlanFacts(db.database, other.familyId, 'every_adult')).toEqual([
       'The other house eats at five.',
     ]);
   });
@@ -178,11 +179,12 @@ describe('loadPlanFacts · the rows it reads', () => {
       factValue: { summary: 'Peanut allergy in the house.' },
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: SEPTEMBER,
     });
     await preference(familyId, null, 'dinner', 'The house eats at six.');
 
-    const facts = await loadPlanFacts(db.database, familyId);
+    const facts = await loadPlanFacts(db.database, familyId, 'every_adult');
 
     expect(facts).toEqual(['The house eats at six.']);
     const rows = await db.database
