@@ -3,6 +3,7 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { Moment } from './note-compose.js';
 
@@ -31,18 +32,11 @@ export interface DateUnconfirmedFacts {
 
 export type DateUnconfirmedInput = DateUnconfirmedFacts & { language: ReplyLanguage };
 
-/** A link with or without a scheme, on any ending of two or more letters (`bit.ly/x`,
- * `evil.app`). "a.m." and "e.g." never match: their endings are one letter. Read after
- * NFKC and with format characters dropped, so a full-width dot or a zero-width space
- * inside a host is still a host. VIL-613 replaces this with one shared check. */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.[a-z]{2,}\b/i;
-
 /** Structural refusals only: empty, or any link (the writer is handed none). */
 export function dateUnconfirmedRefusals(body: string): string[] {
   const text = body.trim();
   if (text === '') return ['empty'];
-  const normalised = text.normalize('NFKC').replace(/\p{Cf}/gu, '');
-  return LINK_SHAPE.test(normalised) ? ['link'] : [];
+  return hasLinkShape(text) ? ['link'] : [];
 }
 
 /** What goes on the wire: the writer's text, then the window's page on its own line. */

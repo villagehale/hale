@@ -1,4 +1,5 @@
 import { reactToLinqMessage } from '~/lib/channel/outbound-transport';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { LinqSendError, type LinqTapback } from './transport';
 
 /**
@@ -60,7 +61,7 @@ export function decideLinqTapback(input: {
   const inbound = normalizeTapbackPhrase(input.inboundBody);
   const outbound = normalizeTapbackPhrase(input.outboundBody);
   if (!LIGHT_INBOUND.has(inbound) || !THROWAWAY_OUTBOUND.has(outbound)) return null;
-  if (input.outboundBody.includes('?') || /https?:\/\//i.test(input.outboundBody)) return null;
+  if (input.outboundBody.includes('?') || hasLinkShape(input.outboundBody)) return null;
   if (inbound === 'thanks' || inbound === 'thank you' || inbound === 'ty') return { type: 'like' };
   return { type: 'emphasize' };
 }

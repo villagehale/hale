@@ -3,8 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
-import { LINK_SHAPE } from '~/lib/channel/spots/copy';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
@@ -256,7 +256,7 @@ export function normalizeClassAvailability(
     onPage(scheduleQuote) &&
     scheduleQuote.length <= SCHEDULE_MAX &&
     SCHEDULE_SHAPE.test(scheduleQuote) &&
-    !LINK_SHAPE.test(scheduleQuote)
+    !hasLinkShape(scheduleQuote)
       ? scheduleQuote
       : null;
 
