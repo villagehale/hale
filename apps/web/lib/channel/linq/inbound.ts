@@ -1128,7 +1128,6 @@ async function claimGroupFromTrigger(
   if (appearing) {
     await labelAppearingCoparent(deps.database, {
       familyId: mapped.familyId,
-      chatId: message.chatId,
       handle: appearing,
       via: 'second_handle',
     });
@@ -1613,7 +1612,6 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
       // VIL-582: an add carries none of the person's own words, so it is labelled only.
       const label = await labelAppearingCoparent(deps.database, {
         familyId,
-        chatId: signal.chatId,
         handle: signal.participantHandle,
         via: 'participant_added',
       });

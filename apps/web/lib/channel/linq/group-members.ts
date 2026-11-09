@@ -199,16 +199,7 @@ async function actorIsHouseholdParent(
   if (!existing || existing.familyId !== familyId) return { parent: false, userId: null };
   const role = await familyRoleOf(database, familyId, existing.userId);
   if (role && isParentRole(role)) return { parent: true, userId: existing.userId };
-  const hash = phoneBlindIndex(phone);
-  const seats = await liveSeats(database);
-  const seat = seats.find(
-    (row) =>
-      row.familyId === familyId &&
-      row.phoneE164Hash === hash &&
-      row.removedAt == null &&
-      (row.role === 'parent' || row.role === 'co_parent'),
-  );
-  return seat ? { parent: true, userId: seat.userId } : { parent: false, userId: null };
+  return { parent: false, userId: null };
 }
 
 async function sendOnce(
