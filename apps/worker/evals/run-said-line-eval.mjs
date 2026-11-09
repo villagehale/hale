@@ -50,10 +50,20 @@ import { SAID_LINE_FIXTURES as FIXTURE_ROWS } from './said-line-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const HEALTH_LINE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'health-line.ts');
+const MISDECODED_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'voice',
+  'misdecoded-utf8.ts',
+);
 
 /** Each health row's facts and required numbers, as production derives them for its place.
  * Expanded once here, so the filter, broken mode, the dry run and the judge all see them. */
 const { healthLineFacts } = await tsImport(HEALTH_LINE_SRC, import.meta.url);
+const { repairMisdecodedUtf8 } = await tsImport(MISDECODED_SRC, import.meta.url);
 const SAID_LINE_FIXTURES = FIXTURE_ROWS.map((row) => {
   if (row.purpose !== 'health') return row;
   const { healthPlace, ...fixture } = row;
@@ -251,12 +261,13 @@ function userMessage(f) {
   });
 }
 
-/** acceptSaidLine in said-line.ts: facts verbatim, no typed URL, each slot once, then
+/** acceptSaidLine in said-line.ts: a misread code page put back (the production
+ * function, imported), facts verbatim, no typed URL, each slot once, then
  * code fills the slots. Returns the filled text, or null. mustConvey is keys only
  * here. Meaning is the convey judge (VIL-530), which sends nothing on a miss and
  * does not rewrite. This replica must not grow a word list for it. */
 function acceptText(text, f) {
-  let body = (text ?? '').trim();
+  let body = repairMisdecodedUtf8((text ?? '').trim());
   if (body.length === 0) return null;
   if (!(f.mustInclude ?? []).every((fact) => body.includes(fact))) return null;
   if (!(f.mustConvey ?? []).every((key) => key in f.facts)) return null;

@@ -150,10 +150,11 @@ export const GROUP_CONFLICT_ALERT_FIXTURES = [
     polls: true,
     expect: {
       second: 'plan',
-      suggested: 'Sam',
+      sameKid: 'Maya',
+      suggested: null,
       busy: [],
       couldAsk: [],
-      poll: { takes: 'Maya swim pickup', choices: ['Barton', 'Sam'] },
+      poll: null,
     },
     expectPoll: false,
     watchFor:

@@ -261,6 +261,61 @@ describe('an audit failure rolls the ledger write back', () => {
 });
 
 /**
+ * A Postgres error carries the failing row's values in its message and detail, and a
+ * commitment row carries a parent-facing summary. The log keeps the SQLSTATE only.
+ */
+describe('a refused ledger write logs its code, never the Postgres error', () => {
+  const RAISE_EXCEPTION = 'P0001';
+
+  async function loggedWhileRefused(verb: string, write: () => Promise<unknown>) {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await refuseAuditVerb(verb);
+    try {
+      await write();
+      return logged.mock.calls;
+    } finally {
+      await allowAuditVerbs();
+      logged.mockRestore();
+    }
+  }
+
+  it('a refused record logs the code', async () => {
+    const calls = await loggedWhileRefused('commitment_recorded', recordFirstFind);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, familyId, kind: 'first_find' });
+  });
+
+  it('a refused close logs the code', async () => {
+    await recordFirstFind();
+    const calls = await loggedWhileRefused('commitment_cancelled', () =>
+      cancelCommitment(db.database, {
+        familyId,
+        kind: 'first_find',
+        reason: 'channel_revoked',
+        now: NOW,
+      }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, familyId, kind: 'first_find' });
+  });
+
+  it('a refused defer logs the code', async () => {
+    const recorded = await recordFirstFind();
+    const commitmentId = recorded.status === 'recorded' ? recorded.commitmentId : '';
+    const calls = await loggedWhileRefused('commitment_deferred', () =>
+      deferCommitment(db.database, {
+        commitmentId,
+        familyId,
+        dueAt: NOW,
+        reason: 'nothing_new',
+      }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, commitmentId });
+  });
+});
+
+/**
  * VIL-564 · an activity watch remembers what the parent was told, and a look that found
  * nothing new moves the watch to its next look without closing it.
  */

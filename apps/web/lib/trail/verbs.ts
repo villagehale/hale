@@ -269,6 +269,8 @@ export const AUDIT_VERBS = [
   'proactive_nudge_skipped',
   // VIL-226 · the per-family proactive queue and its hourly decider.
   'proactive_nudge_queued',
+  // VIL-612 · another class's sweep handed its text to the decider.
+  'proactive_cadence_queued',
   'proactive_cadence_decision',
   'proactive_cadence_held',
   'proactive_cadence_sent',
@@ -1061,6 +1063,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // ── proactive nudges + the watch offer ──────────────────────────────────
   proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
   proactive_nudge_queued: {
+    sentence: 'Hale set something aside to decide when to text you',
+    family: 'note',
+  },
+  proactive_cadence_queued: {
     sentence: 'Hale set something aside to decide when to text you',
     family: 'note',
   },

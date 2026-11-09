@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The first sentence says 'I'll consider that you want this introduction now', which contradicts the facts: the introduction is closed and saying yes does not reopen it. This misleads the parent about the outcome before the correction comes. It also adds 'I'm still searching', an ongoing-action claim the facts do not give; they only say Hale texts when it finds a good match. The closed, cannot-be-reopened part and the text-on-match part are correct, and the Arabic is natural.",
+    "score": 2
+  }
+}

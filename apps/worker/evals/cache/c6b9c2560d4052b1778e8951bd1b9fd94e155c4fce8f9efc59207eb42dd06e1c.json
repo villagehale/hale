@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both pickups, the day and the 3:00 time, and that Barton has both. It gives one ask: Sam takes Maya's swim pickup, which matches suggested.takes. The poll matches input.poll.choices with a neutral last option in English. Tone is casual. One small issue: it says Sam's calendar looks free, which is supported by the suggestion, so no invention. No sameKid conflict, no couldAsk misuse, no links or number requests.",
+    "score": 5
+  }
+}
