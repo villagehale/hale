@@ -39,6 +39,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -54,15 +55,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sent a parent who asked for',
-  'something to do. You are given the parent text, the facts Hale held (`localNow`: the',
-  'date, weekday and time where the family lives; `location`; `forecast`; and the `picks`',
-  "its live search returned, with each page's own `when`), the case `rubric`, and the",
-  'reply. Score 1-5 against the rubric, judging MEANING, never wording: any phrasing that',
-  'does what the rubric asks passes. A reply that names a program, time or price none of',
-  'the picks give is a fabrication and scores 1. Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('coach-local-day');
 
 function contextFor(fixture, localDay) {
   return {

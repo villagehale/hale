@@ -27,6 +27,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -44,12 +45,7 @@ const READ_MAX = 400;
 const NOTE_MAX = 400;
 const JUDGE_MAX = 1024;
 
-const JUDGE_SYSTEM = `You grade one private text a family assistant sends to ONE parent after a group plan's calendar copy failed for that family.
-You get the input (plan, family, failure kind) and the text. Score 1-5:
-5 = names the plan and when, says plainly what did not go through for the given failure kind, warm and brief, no technical words or error codes, no other family's details, promises nothing the input does not support.
-3 = right facts but stiff, vague about what failed, or a little long.
-1 = wrong failure, invents facts or promises, mentions other families, technical or blaming, or reads like a fixed template.
-Return score and a short reason.`;
+const JUDGE_SYSTEM = judgePrompt('group-plan-invites');
 
 /** A wrong reading per family: invites everyone. Must fail the label gate. */
 const BROKEN_READING = 'in';

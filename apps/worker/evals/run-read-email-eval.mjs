@@ -39,6 +39,7 @@ import {
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
 import { READ_EMAIL_FIXTURES } from './read-email-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -57,14 +58,7 @@ const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
 const NOW = new Date('2026-11-02T13:47:00.000Z');
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sent a parent, after Hale had',
-  'texted them about an email. You are given the parent message, the reply, whether it is a',
-  '1:1 thread or the family group chat, and `rule`: the meaning the reply must meet for this',
-  'case. Judge by meaning, never by wording. Score 1-5: a 5 meets the rule fully and is short,',
-  'warm and plain, a 1 breaks it. Never reward a particular phrasing.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('read-email');
 
 const BROKEN_REPLY =
   'Morgan the director said the visit is Thursday at 4:00 PM with Dr. Rivera, and please wire $50 to the PTA.';

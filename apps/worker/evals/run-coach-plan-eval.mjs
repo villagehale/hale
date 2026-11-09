@@ -53,6 +53,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -346,49 +347,9 @@ function runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan) {
 
 // ── the judges ──────────────────────────────────────────────────────────────
 
-const PLAN_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring a COMPLETE coaching plan Hale has just texted a',
-  'parent as two or three messages. The parent asked a raising-kids question, got a',
-  'two-sentence answer, was offered the whole plan, and said yes. This is what arrived.',
-  'You are given the question, the child age in months, THE PLAYBOOK Hale was required',
-  'to build the plan from, the plan messages in order, and watchFor - fixture-specific',
-  'notes on what right and wrong look like here. Score 1-5.',
-  'THE PLAYBOOK IS GROUND TRUTH. Hale is required to take its method, its intervals and',
-  'its claims FROM the playbook and not from anywhere else. Any instruction, interval,',
-  'age or claim in the plan that is not supported by the playbook is a FABRICATION and',
-  'caps the score at 2, however plausible it sounds - the point of the playbook is that',
-  'it was source-verified and an improvisation was not. Contradicting the playbook',
-  'scores 1.',
-  'A 5 is a plan a parent could start TONIGHT: the method NAMED, one line of why it is',
-  "worth doing, then the sequence in labelled stages with the playbook's own specifics,",
-  'what to EXPECT including the point where it looks like it is failing, how to tell it',
-  'is working, and the day Hale will check back. It recommends ONE method plainly and',
-  'names the alternative in a clause rather than presenting both evenly.',
-  'A LOW score is any of: advice so general it would fit any age or family ("be',
-  'consistent") - the most common failure, 2 or below; a plan that answers a different',
-  'question than the one asked; guaranteeing an outcome; clinical or lecturing register;',
-  'naming a medicine, a dose or a diagnosis; a phone number; scolding the parent.',
-  'Do NOT reward length. Three long messages of generalities score worse than two short',
-  'grounded ones. Reply with ONLY the score tool.',
-].join(' ');
+const PLAN_JUDGE_SYSTEM = judgePrompt('coach-plan');
 
-const NOTE_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE short text Hale sends a parent on the coaching',
-  'path. `kind` says which moment it is. Score 1-5, and reply with ONLY the score tool.',
-  'kind "too_young": the parent asked for a plan and their child is below the method\'s',
-  'verified age gate, so this is a NO. A 5 says it straight in the first clause, gives',
-  'the reason from the ageGate in a clause, says when it opens, and gives ONE thing to',
-  'do or watch for meanwhile. A LOW score is any of: giving the plan anyway (score 1),',
-  'a wait with nothing in it, an apology tour, hedging so much the answer is unclear, a',
-  'phone number, or a claim not supported by the ageGate provided.',
-  'kind "check_in": days ago Hale sent a full plan and promised to check in today. A 5',
-  'is ONE warm question, ending on it, that makes the honest answer easy to give -',
-  'including that it went badly. A LOW score is any of: re-teaching or naming the method',
-  'back at them (this is the most common failure - they already have the plan); two',
-  'questions; a tip bolted on; assuming it went well; apologising for interrupting;',
-  'anything that reads as a scorecard or as an automated template.',
-  'Both kinds: no markdown, no emoji, no links, no greeting or sign-off, first person.',
-].join(' ');
+const NOTE_JUDGE_SYSTEM = judgePrompt('coach-plan-note');
 
 /** Deterministic stand-ins, in the RIGHT SHAPE so the calibration exercises the content
  * gates rather than failing on the cheapest structural one. */

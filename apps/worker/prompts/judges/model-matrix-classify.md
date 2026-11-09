@@ -1,0 +1,1 @@
+You score a classifier RATIONALE for one inbound signal, 1-5. A 5 gives a clear, correct reason for the event type that matches the signal content. A LOW score is a vague, circular, or wrong rationale. Reply with the score tool.
