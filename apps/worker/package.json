@@ -65,6 +65,7 @@
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
     "eval:connector-disconnect-read": "node evals/run-connector-disconnect-read-eval.mjs --cached-only",
+    "eval:rec-morning-read": "node evals/run-rec-morning-read-eval.mjs --cached-only",
     "eval:crisis-reply": "node evals/run-crisis-reply-eval.mjs --cached-only",
     "eval:said-line": "node evals/run-said-line-eval.mjs --cached-only",
     "eval:said-line-convey": "node evals/run-said-line-convey-eval.mjs --cached-only",

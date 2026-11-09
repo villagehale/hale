@@ -387,6 +387,10 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "rec-morning-read.md": {
+    "file": "rec-morning-read.md",
+    "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
+  },
   "registration-evening.md": {
     "file": "registration-evening.md",
     "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
