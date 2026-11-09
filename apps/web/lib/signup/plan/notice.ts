@@ -9,7 +9,7 @@ import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { liveViewUrl } from '../browser-use/live-view';
-import { runBrowserUsePlanSignup } from '../browser-use/plan-engine';
+import { releasePlanRun, runBrowserUsePlanSignup } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
@@ -188,7 +188,12 @@ export function signupPlanDepsFromEnv(database: Database): PlanRunDeps {
   const built = browserUseSignupRunnerFromEnv();
   const engine = built.deps;
   return {
-    runner: engine ? { run: (input) => runBrowserUsePlanSignup(input, engine) } : null,
+    runner: engine
+      ? {
+          run: (input) => runBrowserUsePlanSignup(input, engine),
+          release: (resume) => releasePlanRun(resume, engine),
+        }
+      : null,
     notifyParent: createPlanNotifier(database, {
       writer: createPlanReplyWriter(() => resolveReplyClient(undefined)),
       transport: createOutboundTransport(),

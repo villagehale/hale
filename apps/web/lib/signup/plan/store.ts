@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hale/db';
+import { type AuthorizedSignupPlanResume, type Database, schema } from '@hale/db';
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
@@ -152,23 +152,60 @@ export interface ClaimedPlan {
   opensAt: Date;
   waiverAccepted: boolean;
   messageId: string;
+  /** Null on a plan's first sweep; where its run stood when a later sweep picks it up. */
+  resume: AuthorizedSignupPlanResume | null;
+}
+
+type OfferRow = typeof schema.authorizedSignupOffers.$inferSelect;
+
+function claimedPlan(row: OfferRow, resume: AuthorizedSignupPlanResume | null): ClaimedPlan {
+  if (
+    !row.planChoiceIds ||
+    row.planMaxPriceCents === null ||
+    !row.planOpensAt ||
+    !row.authorizingMessageId
+  ) {
+    throw new Error('a planned offer is missing its plan');
+  }
+  return {
+    offerId: row.id,
+    familyId: row.familyId,
+    childId: row.childId,
+    parentUserId: row.parentUserId,
+    activityKey: row.activityKey,
+    registrationUrl: row.registrationUrl,
+    sessions: row.sessions,
+    choiceIds: row.planChoiceIds,
+    maxPriceCents: row.planMaxPriceCents,
+    opensAt: row.planOpensAt,
+    waiverAccepted: row.planWaiverAccepted === true,
+    messageId: row.authorizingMessageId,
+    resume,
+  };
 }
 
 /**
  * Claims the earliest planned offer whose open is within `leadMs`, moving it from
  * `planned` to `submitting`. A family that already has a registration running is
  * skipped, so one family never holds two sessions at once; the 0206 unique index holds
- * that when two sweeps overlap, and the loser gets `contended`.
+ * that when two sweeps overlap, and the loser gets `contended`. The claim stores a first
+ * resume token and holds the plan for `leaseMs`, so a sweep the platform kills before
+ * its run exists still leaves a plan the next sweep can pick up.
  */
 export async function claimDuePlan(
   database: Database,
-  input: { now: Date; leadMs: number },
+  input: { now: Date; leadMs: number; leaseMs: number },
 ): Promise<ClaimedPlan | 'contended' | null> {
   const offers = schema.authorizedSignupOffers;
   const dueBy = new Date(input.now.getTime() + input.leadMs).toISOString();
   const claim = database
     .update(offers)
-    .set({ status: 'submitting', updatedAt: input.now })
+    .set({
+      status: 'submitting',
+      planResume: { phase: 'signup', runId: null, sessionId: null, browserId: null },
+      planLeaseUntil: new Date(input.now.getTime() + input.leaseMs),
+      updatedAt: input.now,
+    })
     .where(
       sql`${offers.id} = (
         select o.id from authorized_signup_offers o
@@ -192,29 +229,62 @@ export async function claimDuePlan(
     if (isOneSubmittingViolation(err)) return 'contended';
     throw err;
   }
-  if (!row) return null;
-  if (
-    !row.planChoiceIds ||
-    row.planMaxPriceCents === null ||
-    !row.planOpensAt ||
-    !row.authorizingMessageId
-  ) {
-    throw new Error('a planned offer is missing its plan');
-  }
-  return {
-    offerId: row.id,
-    familyId: row.familyId,
-    childId: row.childId,
-    parentUserId: row.parentUserId,
-    activityKey: row.activityKey,
-    registrationUrl: row.registrationUrl,
-    sessions: row.sessions,
-    choiceIds: row.planChoiceIds,
-    maxPriceCents: row.planMaxPriceCents,
-    opensAt: row.planOpensAt,
-    waiverAccepted: row.planWaiverAccepted === true,
-    messageId: row.authorizingMessageId,
-  };
+  return row ? claimedPlan(row, null) : null;
+}
+
+/**
+ * Claims the earliest plan whose run outlived an earlier sweep: still `submitting`, with a
+ * resume token, and no sweep holding it (it checkpointed, or its lease ran out because the
+ * platform killed it). Holds it for `leaseMs`.
+ */
+export async function claimResumablePlan(
+  database: Database,
+  input: { now: Date; leaseMs: number },
+): Promise<ClaimedPlan | null> {
+  const offers = schema.authorizedSignupOffers;
+  const now = input.now.toISOString();
+  const [row] = await database
+    .update(offers)
+    .set({ planLeaseUntil: new Date(input.now.getTime() + input.leaseMs), updatedAt: input.now })
+    .where(
+      sql`${offers.id} = (
+        select o.id from authorized_signup_offers o
+        where o.status = 'submitting'
+          and o.plan_resume is not null
+          and (o.plan_lease_until is null or o.plan_lease_until <= ${now}::timestamptz)
+        order by o.plan_opens_at
+        limit 1
+        for update skip locked
+      ) and ${offers.status} = 'submitting'
+        and (${offers.planLeaseUntil} is null or ${offers.planLeaseUntil} <= ${now}::timestamptz)`,
+    )
+    .returning();
+  if (!row?.planResume) return null;
+  return claimedPlan(row, row.planResume);
+}
+
+/**
+ * Stores where a running plan stands. `letGo` also ends this sweep's hold, so the next
+ * sweep picks the plan up at once.
+ */
+export async function savePlanResume(
+  database: Database,
+  input: { offerId: string; familyId: string; resume: AuthorizedSignupPlanResume; letGo: boolean },
+): Promise<void> {
+  const offers = schema.authorizedSignupOffers;
+  await database
+    .update(offers)
+    .set({
+      planResume: input.resume,
+      ...(input.letGo ? { planLeaseUntil: null } : {}),
+    })
+    .where(
+      and(
+        eq(offers.id, input.offerId),
+        eq(offers.familyId, input.familyId),
+        eq(offers.status, 'submitting'),
+      ),
+    );
 }
 
 async function isFamilyMember(

@@ -4,12 +4,23 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import type { BrowserUsePlanInput, BrowserUsePlanResult } from '../browser-use/plan-engine';
+import type {
+  BrowserUsePlanInput,
+  BrowserUsePlanResult,
+  PlanResumeToken,
+} from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
-import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from './run';
-import { approveSignupPlan, cancelSignupPlan } from './store';
+import {
+  PLAN_JOIN_LEAD_MS,
+  PLAN_LEASE_MS,
+  PLAN_MAX_LATE_MS,
+  type PlanOutcomeNotice,
+  type PlanRunDeps,
+  runDueSignupPlans,
+} from './run';
+import { approveSignupPlan, cancelSignupPlan, claimDuePlan, savePlanResume } from './store';
 
 // Invented hosts and details only. The Browser Use engine is its own tested unit
 // (plan-engine.test.ts); here a stand-in runner reports steps the way it does.
@@ -164,6 +175,7 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
       });
       return result;
     }),
+    release: vi.fn(async (_resume: PlanResumeToken) => null),
   };
   return { runner, inputs, caps };
 }
@@ -439,6 +451,7 @@ describe('carrying out plans at the open', () => {
         if (input.correlationId === family.offerId || input.correlationId === second.id) await held;
         return PAID;
       }),
+      release: vi.fn(async () => null),
     };
     const first = runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
     // A second sweep while the first family's registration is running claims nothing of theirs.
@@ -542,6 +555,7 @@ describe("a plan runs only while the parent's yes still stands", () => {
         }
         return inner.run(input);
       }),
+      release: inner.release,
     };
     const { deps: d, notices } = deps(runner);
     const result = await runDueSignupPlans(db.database, { now: NOW }, d);
@@ -552,6 +566,235 @@ describe("a plan runs only while the parent's yes still stands", () => {
       notice: 'withheld',
     });
     expect((await steps(family.offerId)).map((s) => s.step)).not.toContain('plan_payment');
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+});
+
+const MIN = 60_000;
+const QUEUED: PlanResumeToken = {
+  phase: 'signup',
+  runId: 'run-queue',
+  sessionId: 'bu-session-queue',
+  browserId: null,
+};
+
+/**
+ * A town queue longer than one sweep for `offerId`: the run is created (and its resume
+ * token written) on the first sweep, then checkpoints `sweeps` times before it finishes
+ * the way `engineLike` does. Every other plan finishes at once.
+ */
+function queueing(offerId: string, sweeps: number) {
+  const { runner: finish } = engineLike(PAID);
+  const resumes: (PlanResumeToken | null)[] = [];
+  let left = sweeps;
+  const runner = {
+    run: vi.fn(async (input: BrowserUsePlanInput) => {
+      if (input.correlationId !== offerId) return finish.run(input);
+      resumes.push(input.resume);
+      if (!input.resume) await input.onCheckpoint(QUEUED);
+      if (left > 0) {
+        left -= 1;
+        return {
+          outcome: 'checkpointed' as const,
+          resume: { ...QUEUED, browserId: 'browser-queue' },
+        };
+      }
+      return finish.run(input);
+    }),
+    release: vi.fn(async (_resume: PlanResumeToken) => '0.120000'),
+  };
+  return { runner, resumes };
+}
+
+async function secondPlan(
+  family: Awaited<ReturnType<typeof plannedFamily>>,
+  opensAt: Date,
+): Promise<string> {
+  const childId = await seedChild(db.database, family.familyId, 'Bo', 50, undefined, NOW);
+  const offer = await recordSignupOffer(db.database, {
+    familyId: family.familyId,
+    childId,
+    parentUserId: family.parentUserId,
+    activityKey: 'gym-preschool',
+    registrationUrl: AUTO_URL,
+    sessions: SESSIONS,
+    approvedPriceCents: null,
+    now: NOW,
+  });
+  if (!offer.ok) throw new Error(offer.reason);
+  messageSeq += 1;
+  expect(
+    await approveSignupPlan(db.database, {
+      offerId: offer.id,
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      messageId: `msg-plan-${messageSeq}`,
+      choiceIds: ['sun-1000'],
+      maxPriceCents: 10000,
+      opensAt,
+      waiverAccepted: false,
+      now: new Date(NOW.getTime() - 60 * MIN),
+    }),
+  ).toEqual({ ok: true });
+  return offer.id;
+}
+
+const at = (minutes: number) => new Date(NOW.getTime() + minutes * MIN);
+
+describe('a queue longer than one sweep', () => {
+  it('keeps the place in line: the plan checkpoints, and the next sweep finishes the same run', async () => {
+    const family = await plannedFamily();
+    const { runner, resumes } = queueing(family.offerId, 1);
+    const { deps: d, notices } = deps(runner);
+
+    const first = await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect(first.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'checkpointed',
+      phase: 'signup',
+    });
+    const held = await offerRow(family.offerId);
+    expect(held?.status).toBe('submitting');
+    expect(held?.planResume).toEqual({ ...QUEUED, browserId: 'browser-queue' });
+    expect(held?.planLeaseUntil).toBeNull();
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    expect(runner.release).not.toHaveBeenCalled();
+
+    const second = await runDueSignupPlans(db.database, { now: at(11) }, d);
+    expect(second.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'completed',
+      notice: 'sent',
+    });
+    expect(resumes).toEqual([null, { ...QUEUED, browserId: 'browser-queue' }]);
+    expect((await offerRow(family.offerId))?.status).toBe('completed');
+    expect(notices.filter((n) => n.offerId === family.offerId)).toHaveLength(1);
+    expect((await steps(family.offerId)).map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_checkpointed',
+      'plan_resumed',
+      'plan_checkout',
+      'plan_spending_cap',
+      'plan_payment',
+      'plan_finished',
+    ]);
+
+    // A finished plan is never picked up again.
+    await runDueSignupPlans(db.database, { now: at(22) }, d);
+    expect(resumes).toHaveLength(2);
+  });
+
+  it('one family, two children: the second waits its turn and nothing is submitted twice', async () => {
+    const family = await plannedFamily();
+    const later = await secondPlan(family, new Date(OPENS.getTime() + MIN));
+    const { runner, resumes } = queueing(family.offerId, 1);
+    const ran = (offerId: string) =>
+      runner.run.mock.calls.filter(([input]) => input.correlationId === offerId).length;
+    const ours = (result: Awaited<ReturnType<typeof runDueSignupPlans>>) =>
+      result.plans
+        .filter((p) => p.offerId === family.offerId || p.offerId === later)
+        .map((p) => [p.offerId === later ? 'second' : 'first', p.outcome]);
+
+    expect(ours(await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps))).toEqual([
+      ['first', 'checkpointed'],
+    ]);
+    expect(ours(await runDueSignupPlans(db.database, { now: at(11) }, deps(runner).deps))).toEqual([
+      ['first', 'completed'],
+    ]);
+    expect(ours(await runDueSignupPlans(db.database, { now: at(22) }, deps(runner).deps))).toEqual([
+      ['second', 'completed'],
+    ]);
+    await runDueSignupPlans(db.database, { now: at(33) }, deps(runner).deps);
+
+    expect(resumes).toHaveLength(2);
+    expect(ran(family.offerId)).toBe(2);
+    expect(ran(later)).toBe(1);
+    const payments = async (offerId: string) =>
+      (await steps(offerId)).filter((s) => s.step === 'plan_payment').length;
+    expect([await payments(family.offerId), await payments(later)]).toEqual([1, 1]);
+  });
+
+  it('a sweep the platform killed lets go of the plan only once its lease has passed', async () => {
+    // The earliest open is claimed first, so this one is claimed ahead of any other.
+    const family = await plannedFamily({ opensAt: at(1) });
+    // Claimed and its run created, then the sweep died before it could checkpoint.
+    const claimed = await claimDuePlan(db.database, {
+      now: NOW,
+      leadMs: PLAN_JOIN_LEAD_MS,
+      leaseMs: PLAN_LEASE_MS,
+    });
+    expect(claimed).toMatchObject({ offerId: family.offerId, resume: null });
+    await savePlanResume(db.database, {
+      offerId: family.offerId,
+      familyId: family.familyId,
+      resume: QUEUED,
+      letGo: false,
+    });
+    const { runner, resumes } = queueing(family.offerId, 0);
+
+    await runDueSignupPlans(db.database, { now: at(5) }, deps(runner).deps);
+    expect(resumes).toEqual([]);
+    expect((await offerRow(family.offerId))?.status).toBe('submitting');
+
+    const late = new Date(NOW.getTime() + PLAN_LEASE_MS + MIN);
+    const resumed = await runDueSignupPlans(db.database, { now: late }, deps(runner).deps);
+    expect(resumed.plans.find((p) => p.offerId === family.offerId)?.outcome).toBe('completed');
+    expect(resumes).toEqual([QUEUED]);
+  });
+
+  it('a queue still waiting past the opening window is let go, and the parent hears it', async () => {
+    const family = await plannedFamily();
+    const { runner } = queueing(family.offerId, 99);
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    expect((await offerRow(family.offerId))?.status).toBe('submitting');
+
+    const past = new Date(OPENS.getTime() + PLAN_MAX_LATE_MS + MIN);
+    const result = await runDueSignupPlans(db.database, { now: past }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'not_open',
+      detail: 'open_window_passed',
+      notice: 'sent',
+    });
+    expect(runner.run.mock.calls.filter(([i]) => i.correlationId === family.offerId)).toHaveLength(
+      1,
+    );
+    expect(runner.release).toHaveBeenCalledWith({ ...QUEUED, browserId: 'browser-queue' });
+    const row = await offerRow(family.offerId);
+    expect(row?.status).toBe('handed_back');
+    expect(row?.browserUseCostUsd).toBe('0.120000');
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'not_open',
+      detail: 'open_window_passed',
+    });
+    expect((await steps(family.offerId)).at(-1)).toMatchObject({
+      step: 'plan_finished',
+      detail: 'open_window_passed',
+      notice: 'sent',
+    });
+  });
+
+  it('a parent who opts out between sweeps: the run is let go and no one is texted', async () => {
+    const family = await plannedFamily();
+    const { runner } = queueing(family.offerId, 99);
+    const { deps: d, notices } = deps(runner);
+    await runDueSignupPlans(db.database, { now: NOW }, d);
+    await db.database
+      .update(schema.parentChannels)
+      .set({ revokedAt: at(5) })
+      .where(eq(schema.parentChannels.userId, family.parentUserId));
+
+    const result = await runDueSignupPlans(db.database, { now: at(11) }, d);
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect(runner.release).toHaveBeenCalledTimes(1);
     expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
   });

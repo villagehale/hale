@@ -28,6 +28,25 @@ export interface AuthorizedSignupSession {
 }
 
 /**
+ * VIL-558 · where a plan's Browser Use run stands when a sweep ends before the run does.
+ * Browser Use ids, the cart total and the choice rank only; never a person or a link.
+ * `paying` is written before the payment run is created, so a resume that finds it with
+ * no run id never creates a second one.
+ */
+export type AuthorizedSignupPlanResume =
+  | { phase: 'signup'; runId: string | null; sessionId: string | null; browserId: string | null }
+  | {
+      phase: 'paying';
+      runId: string | null;
+      sessionId: string;
+      browserId: string | null;
+      choiceIndex: number;
+      cartTotalCents: number;
+      holdExpiresAt: string | null;
+      costUsd: string | null;
+    };
+
+/**
  * VIL-375 — the activity a parent may authorize Hale to register, and nothing else.
  *
  * One pending row per family. The browser runner reads child and parent details
@@ -72,6 +91,10 @@ export const authorizedSignupOffers = pgTable(
     /** True only when the parent said Hale may tick the provider's activity waiver. */
     planWaiverAccepted: boolean('plan_waiver_accepted'),
     planApprovedAt: timestamp('plan_approved_at', { withTimezone: true }),
+    /** Set from the claim on: the plan's run resumes from here on a later sweep. */
+    planResume: jsonb('plan_resume').$type<AuthorizedSignupPlanResume>(),
+    /** A sweep is carrying the plan until then. Null once it checkpointed and let go. */
+    planLeaseUntil: timestamp('plan_lease_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

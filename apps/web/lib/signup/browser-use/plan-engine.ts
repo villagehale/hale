@@ -1,3 +1,4 @@
+import type { AuthorizedSignupPlanResume } from '@hale/db';
 import { BrowserUseApiError } from './client';
 import {
   ACTION_MODEL,
@@ -19,7 +20,7 @@ import {
   stopAndReadCost,
   sumCost,
   taskWithFacts,
-  waitForRun,
+  waitForRunUntil,
 } from './engine';
 import {
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
@@ -43,6 +44,19 @@ export const PLAN_SIGNUP_SKILL = 'browser-use-plan-signup';
 export const SAVED_CARD_PAYMENT_SKILL = 'browser-use-saved-card-payment';
 
 export type PlanEngineOutcome = BrowserUseEngineOutcome | 'not_open' | 'cancelled';
+
+/**
+ * Where a plan's run stands when a sweep ends before the run does. A town's queue can
+ * outlast one sweep; the run is left going, so the family keeps its place in line, and a
+ * later sweep picks it up from here.
+ */
+export type PlanResumeToken = AuthorizedSignupPlanResume;
+type PayingToken = Extract<PlanResumeToken, { phase: 'paying' }>;
+
+export interface BrowserUsePlanCheckpoint {
+  outcome: 'checkpointed';
+  resume: PlanResumeToken;
+}
 
 export type PlanEngineDetail =
   | BrowserUseEngineDetail
@@ -86,6 +100,15 @@ export interface BrowserUsePlanInput
   stillAuthorized: () => Promise<boolean>;
   /** Called once per step so the caller writes one audit row each (rule #6). */
   onStep: (step: PlanEngineStep) => Promise<void>;
+  /** Null on the first sweep; the stored token when a later sweep picks the run back up. */
+  resume: PlanResumeToken | null;
+  /** This sweep's end. A run still going then is checkpointed, never cancelled. */
+  waitUntil: Date;
+  /**
+   * Stores where the run stands: as soon as a run exists, and before a payment run is
+   * created, so a sweep the platform kills mid-run is resumed rather than run again.
+   */
+  onCheckpoint: (resume: PlanResumeToken) => Promise<void>;
 }
 
 export interface BrowserUsePlanResult extends Omit<BrowserUseSignupResult, 'outcome' | 'detail'> {
@@ -134,9 +157,13 @@ function planResult(
 export async function runBrowserUsePlanSignup(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
-): Promise<BrowserUsePlanResult> {
-  const tracker: BrowserTracker = { browserId: null, runId: null, sessionId: null };
-  let result: BrowserUsePlanResult;
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  const tracker: BrowserTracker = {
+    browserId: input.resume?.browserId ?? null,
+    runId: input.resume?.runId ?? null,
+    sessionId: input.resume?.sessionId ?? null,
+  };
+  let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
   try {
     result = await drivePlan(input, deps, tracker);
   } catch (error) {
@@ -152,50 +179,73 @@ export async function runBrowserUsePlanSignup(
       sessionCostUsd,
     });
   }
+  // The browser holds the family's place in line until a later sweep picks it up.
+  if (result.outcome === 'checkpointed') return result;
   return settleBrowser(deps, result, tracker);
+}
+
+/** Lets go of a checkpointed run: cancels it and stops its browser. Its cost so far, when read. */
+export async function releasePlanRun(
+  resume: PlanResumeToken,
+  deps: BrowserUseEngineDeps,
+): Promise<string | null> {
+  if (resume.runId) await deps.api.cancelRun(resume.runId).catch(() => undefined);
+  return stopAndReadCost(deps, { browserId: resume.browserId, sessionId: resume.sessionId });
 }
 
 async function drivePlan(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
-): Promise<BrowserUsePlanResult> {
-  let runId: string | null = null;
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  if (input.resume?.phase === 'paying') return resumePayment(input, deps, tracker, input.resume);
+  let runId: string | null = input.resume?.runId ?? null;
   try {
-    const profile = await ensureProfile(input, deps);
-    if (!profile.ok)
-      return planResult(failure('error', profile.detail), 'error', profile.detail, null);
+    if (!runId) {
+      const profile = await ensureProfile(input, deps);
+      if (!profile.ok)
+        return planResult(failure('error', profile.detail), 'error', profile.detail, null);
 
-    const run = await deps.api.createRun({
-      task: taskWithFacts(await deps.loadTask(PLAN_SIGNUP_SKILL), planFacts(input)),
-      outputSchema: BROWSER_USE_PLAN_OUTPUT_SCHEMA,
-      ...ACTION_MODEL,
-      browserSettings: {
-        profileId: profile.profileId,
-        record: false,
-        proxyCountryCode: input.proxyCountryCode ?? null,
-      },
-      keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
-      agentmail: false,
-      maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
-    });
-    runId = run.id;
-    tracker.runId = run.id;
-    tracker.sessionId = run.sessionId || null;
-
-    const waited = await waitForRun(deps, run.id, tracker);
-    if (waited.kind === 'timeout') {
-      return planResult(
-        failure('error', 'timeout', { runId, sessionId: run.sessionId }),
-        'error',
-        'timeout',
-        null,
-      );
+      const run = await deps.api.createRun({
+        task: taskWithFacts(await deps.loadTask(PLAN_SIGNUP_SKILL), planFacts(input)),
+        outputSchema: BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+        ...ACTION_MODEL,
+        browserSettings: {
+          profileId: profile.profileId,
+          record: false,
+          proxyCountryCode: input.proxyCountryCode ?? null,
+        },
+        keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
+        agentmail: false,
+        maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+      });
+      runId = run.id;
+      tracker.runId = run.id;
+      tracker.sessionId = run.sessionId || null;
+      await input.onCheckpoint({
+        phase: 'signup',
+        runId,
+        sessionId: tracker.sessionId,
+        browserId: null,
+      });
     }
-    const summary = await deps.api.getRun(run.id);
+
+    const waited = await waitForRunUntil(deps, runId, input.waitUntil.getTime(), tracker);
+    if (waited.kind === 'timeout') {
+      return {
+        outcome: 'checkpointed',
+        resume: {
+          phase: 'signup',
+          runId,
+          sessionId: tracker.sessionId ?? null,
+          browserId: tracker.browserId,
+        },
+      };
+    }
+    const summary = await deps.api.getRun(runId);
     const ids = {
       runId,
-      sessionId: summary.sessionId || run.sessionId,
+      sessionId: summary.sessionId || tracker.sessionId || null,
       costUsd: summary.totalCostUsd,
     };
     if (ids.sessionId) tracker.sessionId = ids.sessionId;
@@ -250,19 +300,19 @@ async function drivePlan(
       return stop('cancelled', 'authorization_lapsed', choiceIndex);
     }
     if (!ids.sessionId) return checkout;
-    const paid = await payWithSavedCard(input, deps, tracker, checkout, {
-      total,
+    return await payWithSavedCard(input, deps, tracker, checkout, {
       currency: output.cart_currency,
-      sessionId: ids.sessionId,
+      paying: {
+        phase: 'paying',
+        runId: null,
+        sessionId: ids.sessionId,
+        browserId: tracker.browserId,
+        choiceIndex,
+        cartTotalCents: total,
+        holdExpiresAt: checkout.holdExpiresAt?.toISOString() ?? null,
+        costUsd: checkout.costUsd,
+      },
     });
-    await input.onStep({
-      step: 'payment',
-      outcome: paid.outcome,
-      detail: paid.detail,
-      amountChargedCents: paid.amountChargedCents,
-      confirmed: paid.confirmationNumber !== null,
-    });
-    return paid;
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) {
@@ -280,53 +330,114 @@ async function drivePlan(
 /**
  * A follow-up run in the same browser places the order once with the card the
  * parent saved on their city account. No card value is sent: the run carries no
- * secret bindings, so it cannot type a card.
+ * secret bindings, so it cannot type a card. The `paying` checkpoint is stored before
+ * the run is created, so no later sweep ever creates a second one.
  */
 async function payWithSavedCard(
   input: BrowserUsePlanInput,
   deps: BrowserUseEngineDeps,
   tracker: BrowserTracker,
   checkout: BrowserUsePlanResult,
-  pay: { total: number; currency: string | null; sessionId: string },
-): Promise<BrowserUsePlanResult> {
-  let runId: string | null = null;
-  const handsOn = (
-    detail: PlanEngineDetail,
-    extra: Partial<BrowserUsePlanResult> = {},
-  ): BrowserUsePlanResult => ({
-    ...checkout,
-    outcome: 'needs_human',
-    detail,
-    runId: runId ?? checkout.runId,
-    ...extra,
-  });
+  pay: { currency: string | null; paying: PayingToken },
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  await input.onCheckpoint(pay.paying);
+  let run: { id: string };
   try {
-    const run = await deps.api.createRun({
+    run = await deps.api.createRun({
       task: taskWithFacts(await deps.loadTask(SAVED_CARD_PAYMENT_SKILL), {
-        amount_cents: pay.total,
+        amount_cents: pay.paying.cartTotalCents,
         currency: pay.currency,
         registration_url: input.registrationUrl,
         waiver_accepted_by_parent: input.waiverAccepted,
       }),
       outputSchema: BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
       ...ACTION_MODEL,
-      sessionId: pay.sessionId,
+      sessionId: pay.paying.sessionId,
       keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
       agentmail: false,
       maxCostUsd: PAYMENT_RUN_MAX_COST_USD,
     });
-    runId = run.id;
-    const waited = await waitForRun(deps, run.id, tracker);
+  } catch (error) {
+    if (error instanceof BrowserUseApiError) {
+      return reportPayment(input, { ...checkout, outcome: 'needs_human', detail: 'api_error' });
+    }
+    throw error;
+  }
+  const paying = { ...pay.paying, runId: run.id };
+  await input.onCheckpoint(paying);
+  return awaitPayment(input, deps, tracker, checkout, paying);
+}
+
+/** A later sweep picks up a payment. Without a stored run id it never pays again. */
+async function resumePayment(
+  input: BrowserUsePlanInput,
+  deps: BrowserUseEngineDeps,
+  tracker: BrowserTracker,
+  paying: PayingToken,
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  const checkout: BrowserUsePlanResult = {
+    ...planResult(
+      failure('needs_human', 'none', {
+        runId: paying.runId,
+        sessionId: paying.sessionId,
+        costUsd: paying.costUsd,
+      }),
+      'needs_human',
+      'none',
+      paying.choiceIndex,
+    ),
+    cartTotalCents: paying.cartTotalCents,
+    holdExpiresAt: paying.holdExpiresAt ? new Date(paying.holdExpiresAt) : null,
+  };
+  // A sweep died between storing `paying` and storing the run id: a payment run may exist.
+  if (!paying.runId) return reportPayment(input, { ...checkout, detail: 'unconfirmed' });
+  return awaitPayment(input, deps, tracker, checkout, { ...paying, runId: paying.runId });
+}
+
+async function reportPayment(
+  input: BrowserUsePlanInput,
+  result: BrowserUsePlanResult,
+): Promise<BrowserUsePlanResult> {
+  await input.onStep({
+    step: 'payment',
+    outcome: result.outcome,
+    detail: result.detail,
+    amountChargedCents: result.amountChargedCents,
+    confirmed: result.confirmationNumber !== null,
+  });
+  return result;
+}
+
+async function awaitPayment(
+  input: BrowserUsePlanInput,
+  deps: BrowserUseEngineDeps,
+  tracker: BrowserTracker,
+  checkout: BrowserUsePlanResult,
+  paying: PayingToken & { runId: string },
+): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
+  const runId = paying.runId;
+  const handsOn = (
+    detail: PlanEngineDetail,
+    extra: Partial<BrowserUsePlanResult> = {},
+  ): Promise<BrowserUsePlanResult> =>
+    reportPayment(input, { ...checkout, outcome: 'needs_human', detail, runId, ...extra });
+  try {
+    const waited = await waitForRunUntil(deps, runId, input.waitUntil.getTime(), tracker);
+    if (waited.kind === 'timeout') {
+      return {
+        outcome: 'checkpointed',
+        resume: { ...paying, browserId: tracker.browserId ?? paying.browserId },
+      };
+    }
     const liveViewUrl = waited.liveViewUrl ?? checkout.liveViewUrl;
-    if (waited.kind === 'timeout') return handsOn('timeout', { liveViewUrl });
-    const summary = await deps.api.getRun(run.id);
+    const summary = await deps.api.getRun(runId);
     const costUsd = sumCost(checkout.costUsd, summary.totalCostUsd);
     if (waited.status !== 'completed') return handsOn('run_failed', { liveViewUrl, costUsd });
     const output = parsePaymentOutput(summary.output);
     if (!output) return handsOn('unreadable_output', { liveViewUrl, costUsd });
     if (output.outcome === 'paid') {
       const charged = output.amount_charged_cents;
-      if (charged !== pay.total) {
+      if (charged !== paying.cartTotalCents) {
         return handsOn(charged === null ? 'charge_unverified' : 'charge_mismatch', {
           liveViewUrl,
           costUsd,
@@ -337,7 +448,7 @@ async function payWithSavedCard(
       if (!output.confirmation_number) {
         return handsOn('unconfirmed', { liveViewUrl, costUsd, amountChargedCents: charged });
       }
-      return {
+      return reportPayment(input, {
         ...checkout,
         outcome: 'completed',
         detail: 'none',
@@ -346,26 +457,26 @@ async function payWithSavedCard(
         holdExpiresAt: null,
         confirmationNumber: output.confirmation_number,
         amountChargedCents: charged,
-        runId: run.id,
+        runId,
         costUsd,
-      };
+      });
     }
     if (output.outcome === 'declined') {
-      return {
+      return reportPayment(input, {
         ...checkout,
         outcome: 'payment_not_approved',
         detail: 'card_declined',
         liveViewUrl,
-        runId: run.id,
+        runId,
         costUsd,
-      };
+      });
     }
     return handsOn(output.detail === 'none' ? 'page_error' : output.detail, {
       liveViewUrl,
       costUsd,
     });
   } catch (error) {
-    if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
+    await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) return handsOn('api_error');
     throw error;
   }
