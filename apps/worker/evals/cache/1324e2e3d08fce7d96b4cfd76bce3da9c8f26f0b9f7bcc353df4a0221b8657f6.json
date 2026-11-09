@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text never names Sam, so the first mustSay item is missing. It does state the folding chairs reminder, but dropping the named recipient fails a required item."
+  }
+}

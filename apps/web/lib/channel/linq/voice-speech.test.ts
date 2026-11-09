@@ -6,7 +6,9 @@ import {
   HALE_TRANSCRIBE_MODEL,
   HALE_TTS_MODEL,
   HALE_TTS_VOICE,
+  VOICE_MEMO_MAX_BYTES,
   VoiceSpeechError,
+  hearVoiceMemo,
   synthesizeHaleVoice,
   transcribeVoiceMemo,
 } from './voice-speech';
@@ -108,6 +110,90 @@ describe('transcribeVoiceMemo', () => {
       transcribeVoiceMemo({ url: 'https://media.test/a', mime: null }, await cleared(), gone),
     ).rejects.toMatchObject({ code: 'audio_unreachable' });
     expect(gone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('transcribeVoiceMemo · the size cap holds while reading', () => {
+  function streamed(chunks: number, chunkBytes: number) {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled >= chunks) return controller.close();
+        pulled += 1;
+        controller.enqueue(new Uint8Array(chunkBytes));
+      },
+    });
+    return { body, pulled: () => pulled };
+  }
+
+  it('a body with no Content-Length over the cap is too_large before it is all read', async () => {
+    const chunkBytes = 1_000_000;
+    const memo = streamed(VOICE_MEMO_MAX_BYTES / chunkBytes + 20, chunkBytes);
+    const f = vi.fn(async (url: string | URL | Request) =>
+      String(url).startsWith('https://media.test/')
+        ? new Response(memo.body)
+        : new Response(JSON.stringify({ text: 'x' })),
+    );
+    await expect(
+      transcribeVoiceMemo({ url: 'https://media.test/a', mime: null }, await cleared(), f),
+    ).rejects.toMatchObject({ code: 'too_large' });
+    expect(memo.pulled()).toBeLessThanOrEqual(VOICE_MEMO_MAX_BYTES / chunkBytes + 2);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('a false small Content-Length does not let a large body through', async () => {
+    const memo = streamed(12, 1_000_000);
+    const f = vi.fn(async (url: string | URL | Request) =>
+      String(url).startsWith('https://media.test/')
+        ? new Response(memo.body, { headers: { 'content-length': '10' } })
+        : new Response(JSON.stringify({ text: 'x' })),
+    );
+    await expect(
+      transcribeVoiceMemo({ url: 'https://media.test/a', mime: null }, await cleared(), f),
+    ).rejects.toMatchObject({ code: 'too_large' });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('a streamed body under the cap is transcribed (positive control)', async () => {
+    const memo = streamed(3, 1_000);
+    const f = vi.fn(async (url: string | URL | Request, _init?: RequestInit) =>
+      String(url).startsWith('https://media.test/')
+        ? new Response(memo.body)
+        : new Response(JSON.stringify({ text: 'heard' })),
+    );
+    await expect(
+      transcribeVoiceMemo({ url: 'https://media.test/a', mime: null }, await cleared(), f),
+    ).resolves.toBe('heard');
+    const sent = JSON.parse(String(f.mock.calls[1]?.[1]?.body));
+    expect(Buffer.from(sent.audio, 'base64').byteLength).toBe(3_000);
+  });
+});
+
+describe('hearVoiceMemo · only the parent in their own thread (VIL-495)', () => {
+  it('a group-turn memo is not heard and nothing is fetched', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify({ text: 'x' })));
+    await expect(
+      hearVoiceMemo({ url: 'https://media.test/a', mime: null }, 'group'),
+    ).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('a 1:1 memo reaches the transcriber (positive control)', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (url) =>
+        String(url).startsWith('https://media.test/')
+          ? new Response(new Uint8Array([1]))
+          : new Response(JSON.stringify({ text: 'on my way' })),
+      );
+    await expect(
+      hearVoiceMemo({ url: 'https://media.test/a', mime: null }, 'direct'),
+    ).resolves.toBe('on my way');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    fetchSpy.mockRestore();
   });
 });
 

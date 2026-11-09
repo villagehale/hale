@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
@@ -11,7 +12,11 @@ import {
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
+import {
+  type ChannelCoachPorts,
+  channelCoachRuntime,
+  productionChannelCoachPorts,
+} from './runtime';
 
 /**
  * The runtime, with every collaborator injected — the model included, because what is
@@ -316,6 +321,40 @@ describe('channelCoachRuntime', () => {
     expect(seen[1]).not.toHaveProperty('audience');
   });
 
+  it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
+    const seen: Array<{ tools: string[]; instructions: string }> = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push({
+          tools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const names = ['list_group_lists', 'add_to_group_list', 'check_off_group_list_items'];
+    const tone = await loadCronSkill('coach-group-lists');
+    try {
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', '');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', 'true');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      await channelCoachRuntime(p).respond(turn(), []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    for (const n of names) {
+      expect(seen[0]?.tools).not.toContain(n);
+      expect(seen[1]?.tools).toContain(n);
+      expect(seen[2]?.tools).not.toContain(n);
+    }
+    expect(seen[2]?.tools).toEqual(SKILL.meta.tools);
+    // Tone is the disk skill, appended only when the list verbs are offered.
+    expect(seen[0]?.instructions).not.toContain(tone.instructions);
+    expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
+    expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
@@ -501,6 +540,56 @@ describe('channelCoachRuntime', () => {
     expect(draftsFromFailure(err)).toEqual(['action-1', 'action-2']);
     // The original failure is not swallowed by the enrichment.
     expect((err as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it('VIL-447: a failed turn runs the undo its tools registered, and a good one does not', async () => {
+    const undone: string[] = [];
+    const failing = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('lists');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    await channelCoachRuntime(failing)
+      .respond(turn(), [])
+      .catch(() => undefined);
+    expect(undone).toEqual(['lists']);
+
+    const ok = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('should-not-run');
+        });
+        return [] as RegisteredTool[];
+      },
+    });
+    await channelCoachRuntime(ok).respond(turn(), []);
+    expect(undone).toEqual(['lists']);
+  });
+
+  it('VIL-447: an undo that throws never masks the turn failure', async () => {
+    const p = ports({
+      buildTools: (...args: unknown[]) => {
+        (args[8] as (u: () => Promise<void>) => void)(async () => {
+          throw new Error('db down');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    const err = await channelCoachRuntime(p)
+      .respond(turn(), [])
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/anthropic timeout/);
   });
 
   it('surfaces nothing when a turn fails before it drafted anything', async () => {
@@ -941,6 +1030,59 @@ describe('channelCoachRuntime · voice memos (VIL-495)', () => {
   });
 });
 
+describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', () => {
+  const MEMO = [
+    { kind: 'audio' as const, url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' },
+  ];
+
+  function lit() {
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'gateway_test_key_not_a_secret');
+    return vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (url) =>
+        String(url).startsWith('https://cdn.example/')
+          ? new Response(new Uint8Array([1, 2, 3]))
+          : new Response(JSON.stringify({ text: 'is swim still on' })),
+      );
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('the runtime tells the media port who the turn is for', async () => {
+    const audiences: unknown[] = [];
+    const p = ports({
+      readInboundMedia: async (_parts, audience) => {
+        audiences.push(audience);
+        return { blocks: [], unwatched: [{ kind: 'audio' }] };
+      },
+    });
+    for (const audience of ['group', 'direct'] as const) {
+      await channelCoachRuntime(p).respond({ ...turn(''), audience, inboundMedia: MEMO }, []);
+    }
+    expect(audiences).toEqual(['group', 'direct']);
+  });
+
+  it("a group member's memo is never sent to the transcriber", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'group');
+    expect(out?.unwatched).toEqual([{ kind: 'audio' }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("the parent's own 1:1 memo is heard (positive control)", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'direct');
+    expect(out?.unwatched).toEqual([{ kind: 'audio', heard: 'is swim still on' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('channelCoachRuntime · group leave (VIL-477)', () => {
   it('dark group turn: no leave verb, skill untouched', async () => {
     const seen: string[][] = [];
@@ -1092,6 +1234,62 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     expect(seen[0]?.tools).not.toContain('read_email');
     expect(seen[0]?.skillTools).toEqual([]);
     expect(seen[0]?.instructions).not.toContain('read_email');
+  });
+
+  /** VIL-615: the runtime applies the taint to the whole turn's tool set, so a write
+   * the model reaches for after reading the email never runs. */
+  function draftingTurn(order: 'read_first' | 'write_first') {
+    const e = emailReader(true);
+    const drafted: string[] = [];
+    const outcomes: string[] = [];
+    const propose: RegisteredTool = {
+      name: 'propose_calendar_add',
+      description: 'x',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => {
+        drafted.push('propose_calendar_add');
+        return { drafted: true };
+      },
+    };
+    const p = ports({
+      emailReader: e.reader,
+      buildTools: () => [propose],
+      runAgent: async (args) => {
+        const call = async (name: string, input: unknown) => {
+          const tool = args.tools.find((t) => t.name === name);
+          if (!tool) throw new Error(`no ${name}`);
+          await tool.handler(input as never, {} as never).then(
+            () => outcomes.push(`${name}:ran`),
+            (err: unknown) => outcomes.push(`${name}:${(err as { rail?: string }).rail}`),
+          );
+        };
+        const steps: [string, unknown][] = [
+          ['read_email', { gmailMessageId: 'gm-1' }],
+          ['propose_calendar_add', {}],
+        ];
+        for (const [name, input] of order === 'read_first' ? steps : steps.reverse())
+          await call(name, input);
+        return answering('Picture day is Friday.')(args);
+      },
+    });
+    return { p, drafted, outcomes };
+  }
+
+  it('a write after read_email returned text is refused for the rest of the turn', async () => {
+    const t = draftingTurn('read_first');
+    const result = await channelCoachRuntime(t.p).respond(turn('what did it say'), []);
+    expect(t.outcomes).toEqual(['read_email:ran', 'propose_calendar_add:untrusted_content']);
+    expect(t.drafted).toEqual([]);
+    expect(result.reply).toBe('Picture day is Friday.');
+  });
+
+  it('a write before the email was read still runs (positive control)', async () => {
+    const t = draftingTurn('write_first');
+    await channelCoachRuntime(t.p).respond(turn('add picture day, then what did it say'), []);
+    expect(t.outcomes).toEqual(['propose_calendar_add:ran', 'read_email:ran']);
+    expect(t.drafted).toEqual(['propose_calendar_add']);
   });
 
   it('a group turn never offers it, even when the parent has Gmail connected', async () => {

@@ -5,7 +5,15 @@ const join = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-ye
 const zh = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-zh');
 const fr = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-fr');
 
+const map = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'find-show-two-groups');
+
 describe('friendMarksMisses', () => {
+  it('passes a map with a kept bubble per group, and fails one with a group dropped', () => {
+    expect(friendMarksMisses(map, {}, { keptGroupBubbles: 2 })).toEqual([]);
+    expect(friendMarksMisses(map, {}, { keptGroupBubbles: 1 })).toEqual(['groupBubbles:1']);
+    expect(friendMarksMisses(map, {})).toEqual(['groupBubbles:0']);
+  });
+
   it('passes a co-parent yes that points below', () => {
     expect(
       friendMarksMisses(join, { asks: false, parentQuestion: false, joinPointer: 'below' }),

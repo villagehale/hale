@@ -105,6 +105,33 @@ export async function synthesizeHaleVoice(
 }
 
 /**
+ * The body, counted as it arrives: a missing or false Content-Length cannot make Hale
+ * hold more than `max` bytes, because the read stops the moment it passes `max`.
+ */
+async function readCapped(response: Response, max: number): Promise<Buffer> {
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        throw new VoiceSpeechError('too_large');
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof VoiceSpeechError) throw err;
+    throw new VoiceSpeechError('audio_unreachable');
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/**
  * Fetch a parent's voice memo from its https URL and transcribe it. Returns the words,
  * trimmed; an empty transcript is `no_speech`.
  */
@@ -128,9 +155,8 @@ export async function transcribeVoiceMemo(
   if (Number.isFinite(declared) && declared > VOICE_MEMO_MAX_BYTES) {
     throw new VoiceSpeechError('too_large');
   }
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const bytes = await readCapped(response, VOICE_MEMO_MAX_BYTES);
   if (bytes.byteLength === 0) throw new VoiceSpeechError('audio_empty');
-  if (bytes.byteLength > VOICE_MEMO_MAX_BYTES) throw new VoiceSpeechError('too_large');
   const headerMime = response.headers.get('content-type')?.split(';')[0]?.trim() || null;
   const mediaType = input.mime ?? headerMime ?? 'audio/mp4';
   const payload = await gatewayCall(
@@ -145,13 +171,20 @@ export async function transcribeVoiceMemo(
 }
 
 /**
- * The production ear for the coach (inbound-media.ts `HearVoiceMemo`). A parent's own
- * voice memo is their words, not Google content, so it clears as `parent_text`. Any
- * failure is logged by code and the memo reads as unheard; the turn goes on.
+ * The production ear for the coach (inbound-media.ts `HearVoiceMemo`). Only a 1:1 turn
+ * is heard: there the sender is the thread's parent, so the memo is their own words and
+ * clears as `parent_text`. In a group the sender may be any member, who has not agreed to
+ * a transcriber, so the memo stays unheard. Any failure is logged by code and the memo
+ * reads as unheard; the turn goes on.
  */
-export async function hearVoiceMemo(part: { url: string; mime: string | null }): Promise<
-  string | null
-> {
+export async function hearVoiceMemo(
+  part: { url: string; mime: string | null },
+  audience: 'direct' | 'group',
+): Promise<string | null> {
+  if (audience !== 'direct') {
+    console.info({ reason: 'group_turn' }, 'voice memo: not heard');
+    return null;
+  }
   const decision = await clearForNonAnthropic({ kind: 'parent_text' }, 'voice_memo_transcribe');
   if ('refused' in decision) return null;
   try {

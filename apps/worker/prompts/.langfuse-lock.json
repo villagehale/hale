@@ -134,6 +134,11 @@
     "version": null,
     "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
   },
+  "judges/group-lists": {
+    "name": "judges/group-lists",
+    "version": null,
+    "sha256": "b2c8a1d7dde629b691f3db0d951457593ad4750ec9eaa984d7c72215b35f9877"
+  },
   "judges/group-plan-calendar-report": {
     "name": "judges/group-plan-calendar-report",
     "version": null,
@@ -146,8 +151,8 @@
   },
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
-    "version": null,
-    "sha256": "65e7ce5abc3f224656218497b40b717cdf53b8015186e4a3876c0f8dd5be877b"
+    "version": 2,
+    "sha256": "7f7905488ee7842366e876ecce7f58f1e19e610a8df6dabf3bd9f1bfeb0426d7"
   },
   "judges/group-plan-rsvp-voice": {
     "name": "judges/group-plan-rsvp-voice",
@@ -177,7 +182,12 @@
   "judges/group-reminder": {
     "name": "judges/group-reminder",
     "version": null,
-    "sha256": "306546cbd236f3695b1b84c7e77a1fad7bec3b693d967c682a758a85a362e984"
+    "sha256": "db9f6cd8f875e6ed1df90f35030ab254e03b9c05a1acdbd0886f82f353fc671e"
+  },
+  "judges/group-reminder-address": {
+    "name": "judges/group-reminder-address",
+    "version": null,
+    "sha256": "e1601615dff302155d172ec2923a3dbad1a2add11144533dbc72f67959d877f3"
   },
   "judges/group-welcome-voice": {
     "name": "judges/group-welcome-voice",
