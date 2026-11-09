@@ -184,6 +184,93 @@ describe('a save that names a 13+ child writes no fact and no audit row', () => 
     ]);
   });
 
+  async function expectRefusedUnwritten(familyId: string, promise: Promise<unknown>) {
+    const err = await refusal(promise);
+    expect(err).toBeInstanceOf(GuardrailError);
+    expect(err).toMatchObject({ rail: 'child_content' });
+    expect((err as Error).message).toContain('names_teen');
+    expect(await storedFactKeys(familyId)).toEqual([]);
+    expect(await toolAudits(familyId)).toEqual([]);
+  }
+
+  it('save_memory: the teen is named only in correctsKey', async () => {
+    const { familyId } = await seed();
+    await expectRefusedUnwritten(
+      familyId,
+      invoke('save_memory', familyId, {
+        childId: null,
+        factType: 'routine',
+        factKey: 'curfew',
+        factValue: 'home by nine',
+        correctsKey: `${TEEN_NAME.toLowerCase()}_curfew`,
+        confidence: 0.9,
+        ...CLASS,
+      }),
+    );
+  });
+
+  it('save_child_fact: the teen is named only in correctsKey', async () => {
+    const { familyId, kid } = await seed();
+    await expectRefusedUnwritten(
+      familyId,
+      invoke('save_child_fact', familyId, {
+        childId: kid.id,
+        category: 'routines',
+        factKey: 'curfew',
+        summary: 'home by nine',
+        correctsKey: `${TEEN_NAME.toLowerCase()}_curfew`,
+        confidence: 0.9,
+        ...CLASS,
+      }),
+    );
+  });
+
+  it('save_memory: the teen is named deep inside an array in an object value', async () => {
+    const { familyId } = await seed();
+    await expectRefusedUnwritten(
+      familyId,
+      invoke('save_memory', familyId, {
+        childId: null,
+        factType: 'routine',
+        factKey: 'weekend',
+        factValue: { days: [['Saturday', { who: TEEN_NAME }]] },
+        confidence: 0.9,
+        ...CLASS,
+      }),
+    );
+  });
+
+  it('positive control: saves naming only the younger child are stored and audited', async () => {
+    const { familyId, kid } = await seed();
+    await expect(
+      invoke('save_memory', familyId, {
+        childId: null,
+        factType: 'routine',
+        factKey: 'nap',
+        factValue: { days: [['Saturday', { who: 'Pip' }]] },
+        correctsKey: 'pip_nap',
+        confidence: 0.9,
+        ...CLASS,
+      }),
+    ).resolves.toMatchObject({ saved: true });
+    await expect(
+      invoke('save_child_fact', familyId, {
+        childId: kid.id,
+        category: 'routines',
+        factKey: 'bedtime',
+        summary: 'Pip sleeps at seven',
+        correctsKey: 'pip_bedtime',
+        confidence: 0.9,
+        ...CLASS,
+      }),
+    ).resolves.toMatchObject({ saved: true });
+    expect(await storedFactKeys(familyId)).toEqual(['bedtime', 'nap']);
+    expect((await toolAudits(familyId)).map((row) => row.actionTaken).sort()).toEqual([
+      'tool:save_child_fact',
+      'tool:save_memory',
+    ]);
+  });
+
   it('save_memory filed under the 13+ child is refused on child_content before any write', async () => {
     const { familyId, teen } = await seed();
     const err = await refusal(

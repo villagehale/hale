@@ -288,8 +288,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
     // The input names a child, so the guarded invoker refuses a childId outside this
     // family or a 13+ child's before the handler runs (rule #1), as for save_child_fact.
     touchesChildContent: true,
-    childContentGate: (input, ctx) =>
-      teenNameGate(database, ctx.familyId, now, [input.factKey, input.factValue]),
+    childContentGate: (input, ctx) => teenNameGate(database, ctx.familyId, now, input),
     handler: async (input, ctx) => {
       // The 0.7 floor is a code-level invariant, not just a prompt rule: a fact
       // below it is dropped here, never written (mirrors the worker inferencer).
@@ -645,8 +644,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
     // hallucinated uuid, another family's, or a teen's) is refused rather than
     // persisted as a fact scoped to that child (rule #1/#5).
     touchesChildContent: true,
-    childContentGate: (input, ctx) =>
-      teenNameGate(database, ctx.familyId, now, [input.factKey, input.summary]),
+    childContentGate: (input, ctx) => teenNameGate(database, ctx.familyId, now, input),
     handler: async (input, ctx) => {
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
