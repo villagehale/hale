@@ -53,7 +53,6 @@ function localHourFromHm(hm: string): number {
   return hour;
 }
 
-export const SITTING_REMINDER_TIMEZONE = 'America/Toronto';
 export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS.end);
 
 const SITTING_STATES = [
@@ -97,7 +96,11 @@ export interface SittingSessionRow {
 
 /** The zone a session's postal place gives, or null when it has none (no place, or a city). */
 export function sittingSessionZone(firstTouch: FirstTouchPersisted | null): string | null {
-  const place = firstTouch?.place;
+  return placeZone(firstTouch?.place ?? null);
+}
+
+/** The zone a postal place gives. Null for no place or a city: no zone is guessed. */
+export function placeZone(place: FirstTouchPersisted['place'] | null): string | null {
   if (!place || place.kind !== 'postal') return null;
   return parseIntakePostal(place.postalCode ?? place.areaCoarse)?.timezone ?? null;
 }

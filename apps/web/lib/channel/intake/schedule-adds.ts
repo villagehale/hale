@@ -1,5 +1,4 @@
 import { type Database, schema } from '@hale/db';
-import { AHA_TIME_ZONE } from '~/lib/channel/connect/aha-read';
 import { createFamilyEvent } from '~/lib/loop/queries';
 import { zonedMidnight } from '~/lib/memory/period';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
@@ -21,10 +20,13 @@ import type { FirstTouchScheduled } from './session';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function startOf(add: ScheduleAdd, dayKey: string): { startsAt: Date; endsAt: Date | null } {
-  if (add.time)
-    return { startsAt: zonedLocalInstant(dayKey, add.time, AHA_TIME_ZONE), endsAt: null };
-  const midnight = zonedMidnight(dayKey, AHA_TIME_ZONE);
+function startOf(
+  add: ScheduleAdd,
+  dayKey: string,
+  timeZone: string,
+): { startsAt: Date; endsAt: Date | null } {
+  if (add.time) return { startsAt: zonedLocalInstant(dayKey, add.time, timeZone), endsAt: null };
+  const midnight = zonedMidnight(dayKey, timeZone);
   return { startsAt: midnight, endsAt: new Date(midnight.getTime() + DAY_MS) };
 }
 
@@ -44,6 +46,8 @@ export async function writeScheduleAdds(
     familyId: string;
     userId: string;
     sessionId: string;
+    /** The family's IANA zone: "Saturday 10:00" is their Saturday, on their clock. */
+    timeZone: string;
     adds: readonly ScheduleAdd[];
     lines: readonly string[];
     already: readonly FirstTouchScheduled[];
@@ -64,7 +68,7 @@ export async function writeScheduleAdds(
         : 1;
     for (let week = 0; week < weeks; week += 1) {
       const dayKey = addDaysToKey(add.date, week * 7);
-      const { startsAt, endsAt } = startOf(add, dayKey);
+      const { startsAt, endsAt } = startOf(add, dayKey, input.timeZone);
       const id = await createFamilyEvent(database, {
         familyId: input.familyId,
         childId: null,
