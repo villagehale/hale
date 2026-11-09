@@ -148,6 +148,8 @@ function readEmailFor(fixture, readEmail, calls) {
       fixture.source && request.gmailMessageId === fixture.source.gmailMessageId
         ? fixture.source
         : null,
+    // The named child in contextFor. The teen there has no name to match.
+    familyChildren: async () => [{ id: 'kid-1', name: 'Ava', ageInMonths: 50 }],
     gmailConnection: async () => (fixture.gmail ? { id: 'integration-1' } : null),
     accessToken: async () => 'fixture-token',
     fetchBody: async () => fixture.body ?? '',

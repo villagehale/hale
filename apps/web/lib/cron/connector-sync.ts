@@ -566,7 +566,7 @@ export function emailAlertPorts(
 
 /** This family's children with their ages — the sentinel's matching context (rule #1:
  * one family's children only). */
-async function loadFamilyChildRefs(
+export async function loadFamilyChildRefs(
   database: Database,
   familyId: string,
 ): Promise<FamilyChildRef[]> {
