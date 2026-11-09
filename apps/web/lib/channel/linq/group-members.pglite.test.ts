@@ -361,6 +361,46 @@ describe('linq group members', () => {
     expect(wire.texts).toEqual([]);
   });
 
+  it('a co-parent group seat with no family role is not a household parent; the family role is', async () => {
+    const { familyId } = await seedFamily(PARENT, 'Barton');
+    const wire = sender();
+    const legacy = '+14165550133';
+    const legacyUserId = await seedMember(familyId, legacy, null);
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: CHAT,
+      userId: legacyUserId,
+      phoneE164Encrypted: encryptString(legacy),
+      phoneE164Hash: phoneBlindIndex(legacy),
+      role: 'co_parent',
+    });
+    await seedMember(familyId, '+14165550144', 'grandparent');
+
+    const bySeat = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550144',
+      actorHandle: legacy,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(bySeat).toEqual({ outcome: 'group_member_refused', reason: 'actor' });
+    expect((await rowsFor(familyId, '+14165550144')).seats).toEqual([]);
+
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: legacyUserId, role: 'co_parent' });
+    const byRole = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550144',
+      actorHandle: legacy,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(byRole).toMatchObject({ outcome: 'group_member_seated', role: 'other_family' });
+  });
+
   it('unseats on removal', async () => {
     const { familyId } = await seedFamily(PARENT, 'Barton');
     await seedMember(familyId, '+14165550199', 'grandparent');

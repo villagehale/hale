@@ -622,6 +622,7 @@ describe('the watch a turn started', () => {
         fetchBody: async () => fullPage,
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
+        readClassAvailability: {} as never,
         onWatch: onWatch as never,
       }),
     ];
@@ -664,6 +665,7 @@ describe('the watch a turn started', () => {
       instant: false,
       lastState: 'full',
       sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
+      sessionAnchor: null,
     });
   });
 
