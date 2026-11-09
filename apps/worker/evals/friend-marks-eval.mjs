@@ -60,10 +60,14 @@ function inputFor(voice, fixture) {
     fixture.over.language ?? 'en',
     NAME_ASK_STORED,
   );
-  const retry = fixture.retry
-    ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
-    : {};
-  return { ...base, ...fixture.over, ...retry };
+  const input = { ...base, ...fixture.over };
+  if (!fixture.retry) return input;
+  // With askNote the retry is briefed as speakFriend briefs it: the problem, for this
+  // step, then what the message should ask. Older fixtures keep their recorded bytes.
+  const problem = fixture.retry.askNote
+    ? `${voice.retryProblem(fixture.retry.reason, undefined, input)} This message should ${voice.askInWords(input.step)}.`
+    : voice.retryProblem(fixture.retry.reason);
+  return { ...input, retry: { draft: fixture.retry.draft, problem } };
 }
 
 function estimateTokens(value) {
@@ -134,10 +138,7 @@ async function record() {
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(),
-      maxTokens:
-        fixture.prompt === 'short'
-          ? voice.ONBOARDING_REPLY_SHORT_MAX_TOKENS
-          : voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
@@ -156,7 +157,11 @@ async function record() {
           ) ?? []
         ).filter((bubble) => bubble.length > 0).length
       : 0;
-    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept });
+    // A reply code would send: the same judge speakFriend runs, for this step.
+    const judged = fixture.sendable
+      ? voice.judgeFriendReply(String(result.value?.reply ?? ''), input)
+      : null;
+    const misses = friendMarksMisses(fixture, result.value, { keptGroupBubbles: kept, judged });
     if (misses.length > 0) failed += 1;
     console.info(
       `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,

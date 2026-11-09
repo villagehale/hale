@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "No problem, you don't have to share it. Tell me about your kids instead: how many do you have?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "stopAsking": false
+  },
+  "latencyMs": 1477
+}
