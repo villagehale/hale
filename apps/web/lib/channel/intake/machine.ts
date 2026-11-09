@@ -21,6 +21,7 @@ import {
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -2232,6 +2233,8 @@ async function friendColdTurn(
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
+  // Their Saturday, on their clock: the zone signup wrote from their postal code.
+  const timeZone = await householdTimezone(database, familyId);
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
   let alreadyRecorded: {
@@ -2256,6 +2259,7 @@ async function friendColdTurn(
         listKind: 'none',
         parentName: session.firstTouch?.given?.parentName ?? null,
         now,
+        timeZone,
       }),
       { pageScope: familyId },
     );
@@ -2324,6 +2328,7 @@ async function friendColdTurn(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       now,
+      timeZone,
       scheduled: scheduledForModel(given, language),
       coparentJoin: join,
       checklist,
@@ -2403,6 +2408,7 @@ async function friendColdTurn(
           familyId,
           userId,
           sessionId: session.id,
+          timeZone,
           adds: spoken.capture.scheduleAdds,
           lines,
           already: given?.scheduled ?? [],
@@ -2962,6 +2968,7 @@ async function provision(
       parentRole: given?.parentRole ?? null,
       checklist,
       now,
+      timeZone: gathered.location.timezone,
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
