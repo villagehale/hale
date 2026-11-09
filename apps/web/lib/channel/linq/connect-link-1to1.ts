@@ -207,6 +207,7 @@ export async function sendHouseholdPrivateLine(
     ledgerUserId: userId,
     to,
     body: input.body,
+    recordBody: false,
     templateKey: input.templateKey,
     dedupeKey: input.dedupeKey,
     now: input.now,
