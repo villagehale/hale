@@ -22,6 +22,9 @@ import { asHandsetReads, hasLinkShape, linksOutside, wordsAsHandsetReads } from 
 const PHONE = /\+?\(?\d(?:[\s.()-]{0,3}\d){6,}/g;
 /** A word with a letter or digit on each side of an `@` (NFKC reads '＠' as '@'). */
 const EMAIL = /[\p{L}\p{N}._%+-]@[\p{L}\p{N}]/u;
+const PHONE_DIGITS = 7;
+const SPELLED_AT_OR_DOT =
+  /[([{<]\s*(?:at|dot)\s*[)\]}>]|\bat\s+[\p{L}\p{N}-]+\s+dot\s+[\p{L}\p{N}]/iu;
 
 export type ContactKind = 'link' | 'phone' | 'email';
 
@@ -48,6 +51,17 @@ export function contactsOutside(text: string, handed: readonly string[]): Contac
   const handedEmails = new Set(handed.flatMap(emailWords));
   if (emailWords(text).some((word) => !handedEmails.has(word))) found.push('email');
   return found;
+}
+
+/**
+ * Whether a third party's text may hold a contact written to get past the readers above:
+ * a phone split by any mark or spread across words (seven or more digits in all, of any
+ * script), or an address spelled out ("(at)", "[dot]", "name at host dot app"). It fails
+ * closed: a title with a date and a clock time in it reads as one, and loses its words.
+ */
+export function mayHideContact(text: string): boolean {
+  const digits = inShape(text).replace(/\D/g, '').length;
+  return digits >= PHONE_DIGITS || SPELLED_AT_OR_DOT.test(asHandsetReads(text));
 }
 
 /**

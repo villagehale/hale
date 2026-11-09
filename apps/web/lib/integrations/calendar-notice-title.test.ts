@@ -3,10 +3,30 @@ import { hasLinkShape } from '~/lib/format/link-shape';
 import { kidNoticeTitle } from './calendar-notice-title';
 
 describe('kidNoticeTitle: a calendar title is someone else’s words', () => {
-  it('strips the link and the phone a stranger put in the title', () => {
-    expect(kidNoticeTitle("Kids' soccer pickup moved, call 555-0199 or see evil.app/x")).toBe(
-      "Kids' soccer pickup moved, call or see",
+  it('strips the link a stranger put in the title', () => {
+    expect(kidNoticeTitle("Kids' soccer pickup moved, see evil.app/x")).toBe(
+      "Kids' soccer pickup moved, see",
     );
+  });
+
+  it.each([
+    ['a phone', "Kids' soccer pickup moved, call 555-0199"],
+    ['a phone split by slashes', 'Call 555/0199/1234'],
+    ['a phone split by underscores', '555_0199_123'],
+    ['a phone spread across words', 'Swim: ring 555 then 01 then 99'],
+    ['a phone in another script', 'Swim ٥٥٥٠١٩٩'],
+    ['an (at) and (dot) address', 'Swim, write name(at)evil(dot)app'],
+    ['a [dot] host', 'Swim, see evil [dot] app'],
+    ['a [at] address', 'Swim, write name [at] evil'],
+    ['a spelled-out address', 'Swim, write name at evil dot app'],
+  ])('drops the whole title when it holds %s', (_name, raw) => {
+    expect(kidNoticeTitle(raw)).toBe('');
+  });
+
+  it('keeps a title whose digits are a clock range, or whose "at" is a place (positive control)', () => {
+    expect(kidNoticeTitle('Swim lesson 4:30-5:15')).toBe('Swim lesson 4:30-5:15');
+    expect(kidNoticeTitle('Swim at the rec centre')).toBe('Swim at the rec centre');
+    expect(kidNoticeTitle('Polka dot party')).toBe('Polka dot party');
   });
 
   it('strips an email address and keeps the rest', () => {

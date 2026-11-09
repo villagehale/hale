@@ -193,23 +193,26 @@ function selfDeclined(item: Record<string, unknown>): boolean {
 /**
  * VIL-633 · Anyone can put an invite on a parent's calendar, and an unanswered one is
  * mirrored, so its title is a stranger's words until the parent says yes. The parent's own
- * event is one they organized or one with no one else on it. An attendee list with others
- * on it and no `self` row is someone else's event, never the parent's own.
+ * event is one they organized, or one with no organizer named and no one else on it. The
+ * attendee list a guest sees can be cut to just their own row (maxAttendees, or a sender
+ * who hides the guest list), so a lone `self` row proves nothing: what counts is that
+ * row's answer, and only 'accepted' is a yes.
  */
 function standingOf(item: Record<string, unknown>): CalendarStanding {
   const organizer = item.organizer as { self?: unknown } | null | undefined;
-  if (typeof organizer === 'object' && organizer !== null && organizer.self === true) {
-    return 'organizer';
-  }
+  const named = typeof organizer === 'object' && organizer !== null;
+  if (named && organizer.self === true) return 'organizer';
   const attendees = Array.isArray(item.attendees)
     ? item.attendees.filter(
         (row): row is { self?: unknown; responseStatus?: unknown } =>
           typeof row === 'object' && row !== null,
       )
     : [];
-  if (attendees.every((row) => row.self === true)) return 'own';
   const self = attendees.find((row) => row.self === true);
-  return self?.responseStatus === 'accepted' ? 'accepted' : 'invited';
+  if (self?.responseStatus === 'accepted') {
+    return named || attendees.some((row) => row.self !== true) ? 'accepted' : 'own';
+  }
+  return !named && attendees.length === 0 ? 'own' : 'invited';
 }
 
 function isBusyBlock(item: Record<string, unknown>, allDay: boolean): boolean {

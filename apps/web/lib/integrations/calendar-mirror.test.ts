@@ -73,6 +73,41 @@ describe('classifyCalendarMirrorItem', () => {
       'invited',
     ],
     [
+      "a stranger's invite with only the parent's row on it, unanswered",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'needsAction' }],
+      },
+      'invited',
+    ],
+    [
+      "a stranger's invite with only the parent's row on it, tentative",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'tentative' }],
+      },
+      'invited',
+    ],
+    [
+      "a stranger's event with no attendee list",
+      { organizer: { email: 'x@example.test' } },
+      'invited',
+    ],
+    [
+      "a stranger's invite with only the parent's row on it, accepted",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'accepted' }],
+      },
+      'accepted',
+    ],
+    [
+      'only the parent on it, unanswered, no organizer field',
+      { attendees: [{ self: true, responseStatus: 'needsAction' }] },
+      'invited',
+    ],
+    ['the parent organized it with no one else on it', { organizer: { self: true } }, 'organizer'],
+    [
       'other people on it and no answer from the parent at all',
       { organizer: { email: 'a@example.test' }, attendees: [{ email: 'a@example.test' }] },
       'invited',

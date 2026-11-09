@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Message correctly states the cancellation, names Ada's swim lesson, the day Sat Sep 19 and the 9:00 to 9:45 time, in English, with no invented reason or offers. It omits the 'call to confirm your spot' line, which is correct per watchFor, so the content is accurate and brief.",
-    "score": 5
-  }
-}
