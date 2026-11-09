@@ -50,6 +50,7 @@
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",
     "eval:reminder": "node evals/run-reminder-eval.mjs --cached-only",
     "eval:email-alert-notice": "node evals/run-email-alert-notice-eval.mjs --cached-only",
+    "eval:injection": "node evals/run-injection-eval.mjs --cached-only",
     "eval:email-alert-notice:broken": "node evals/run-email-alert-notice-eval.mjs --broken --cached-only",
     "eval:email-alert-notice:dry": "node evals/run-email-alert-notice-eval.mjs --dry",
     "eval:intro-voice": "node evals/run-intro-voice-eval.mjs --cached-only",
