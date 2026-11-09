@@ -33,11 +33,13 @@ function isAgentToolStep(actionTaken: string): boolean {
  */
 
 /**
- * The family's display timezone — the primary parent's `users.timezone` — so every
- * stored instant renders in the family's zone rather than the server's (Vercel =
- * UTC). Falls back to DEFAULT_TIMEZONE when there's no primary parent yet.
+ * The primary parent's `users.timezone`, or null when the family has no primary parent
+ * yet. A caller that acts on what day it is reads this, so no zone is never a guess.
  */
-export async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+export async function readStoredFamilyTimezone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
   const [row] = await database
     .select({ timezone: schema.users.timezone })
     .from(schema.familyMembers)
@@ -49,7 +51,16 @@ export async function readFamilyTimezone(database: Database, familyId: string): 
       ),
     )
     .limit(1);
-  return row?.timezone ?? DEFAULT_TIMEZONE;
+  return row?.timezone ?? null;
+}
+
+/**
+ * The family's display timezone — the primary parent's `users.timezone` — so every
+ * stored instant renders in the family's zone rather than the server's (Vercel =
+ * UTC). Falls back to DEFAULT_TIMEZONE when there's no primary parent yet.
+ */
+export async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+  return (await readStoredFamilyTimezone(database, familyId)) ?? DEFAULT_TIMEZONE;
 }
 
 /**

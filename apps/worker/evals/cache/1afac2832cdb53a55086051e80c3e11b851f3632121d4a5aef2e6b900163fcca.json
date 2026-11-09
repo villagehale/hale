@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The draft is a calendar event, not a family message, so it has no warm or conversational tone to assess. It is clear and factual, but it contains specifics (a 10:15 start time, a 'Riverdale Peds' location, and a doctor's name) that cannot be verified from the input, and the description merely repeats the title without adding helpful family-facing context.",
+    "score": 2
+  }
+}

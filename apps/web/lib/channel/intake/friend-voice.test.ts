@@ -1,18 +1,29 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadOnboardingFriendShortSkill, loadOnboardingFriendSkill } from '~/lib/cron/skill';
+import {
+  loadCronSkill,
+  loadOnboardingFriendShortSkill,
+  loadOnboardingFriendSkill,
+} from '~/lib/cron/skill';
 import {
   type FriendVoiceInput,
   assembleFriendBody,
+  createFriendVoiceComposer,
   friendVoiceContext,
+  friendVoiceSystem,
   friendWeekAction,
   judgeFriendReply,
   lastInboundFact,
   nameAskVoiceInput,
   parentReading,
-  repairedProse,
+  readGroupLeads,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
+
+const EASTERN = 'America/Toronto';
 
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
@@ -34,6 +45,57 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
 }
 
 describe('friend voice brief', () => {
+  it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {
+    const facts = (input: FriendVoiceInput) =>
+      (friendVoiceContext(input) as { facts: Record<string, unknown> }).facts;
+    expect(facts(blank({ step: 'ack', householdGroup: 'pending' })).householdGroup).toBe('pending');
+    expect(facts(blank({ step: 'ack', householdGroup: 'claimed' })).householdGroup).toBe('claimed');
+    expect(facts(blank({ step: 'coparent', householdGroup: 'unclaimed' })).householdGroup).toBe(
+      'unclaimed',
+    );
+    expect(facts(blank({ step: 'ack' }))).not.toHaveProperty('householdGroup');
+    expect(facts(blank({ step: 'ack', householdGroup: null }))).not.toHaveProperty(
+      'householdGroup',
+    );
+  });
+
+  it('appends the household-group skill only when the fact rides; other turns keep their bytes (VIL-566)', async () => {
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    const group = (await loadCronSkill('household-group')).instructions;
+    expect((await friendVoiceSystem({ step: 'ack' }, false)).system).toBe(base);
+    expect((await friendVoiceSystem({ step: 'ack', householdGroup: null }, false)).system).toBe(
+      base,
+    );
+    expect(
+      (await friendVoiceSystem({ step: 'ack', householdGroup: 'pending' }, false)).system,
+    ).toBe(`${base}\n\n${group}`);
+    const short = (await loadOnboardingFriendShortSkill()).instructions;
+    expect((await friendVoiceSystem({ step: 'ack', householdGroup: 'claimed' }, true)).system).toBe(
+      `${short}\n\n${group}`,
+    );
+  });
+
+  it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {
+    const stored = { language: 'fr', address: 'tu' as const };
+    const answering = friendVoiceContext(
+      blank({ step: 'coparent', ...stored, parentWords: 'No calendar for now, thanks' }),
+    ) as Record<string, unknown>;
+    expect(answering.languageHint).toBeNull();
+    expect(answering).not.toHaveProperty('address');
+
+    const own = friendVoiceContext(
+      blank({ step: 'connected', ...stored, parentWords: '' }),
+    ) as Record<string, unknown>;
+    expect(own.languageHint).toBe('fr');
+    expect(own.address).toBe('tu');
+
+    // A French group thread still says vous: that is the thread, not a guess at language.
+    const group = friendVoiceContext(
+      blank({ step: 'coparent', language: 'fr', address: 'vous', parentWords: 'oui' }),
+    ) as Record<string, unknown>;
+    expect(group.address).toBe('vous');
+  });
+
   it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {
     // 2:00 p.m. America/Toronto. Five hours earlier is 9:00 a.m., after quiet hours end.
     const now = new Date('2026-08-28T18:00:00.000Z');
@@ -43,7 +105,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(hoursOld, now),
+        lastInbound: lastInboundFact(hoursOld, now, EASTERN),
       }),
     );
     expect(brief).toMatchObject({
@@ -56,7 +118,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now),
+        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now, EASTERN),
       }),
     );
     expect(justNow).not.toHaveProperty('lastInbound');
@@ -69,7 +131,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(late, morning),
+        lastInbound: lastInboundFact(late, morning, EASTERN),
       }),
     );
     expect(pickedUp).toMatchObject({
@@ -80,7 +142,7 @@ describe('friend voice brief', () => {
 
 describe('the open name ask, as the name-capture reader hands it to the model', () => {
   it('carries no Hale turn code wrote, and answers the name ask as a structured fact', () => {
-    const input = nameAskVoiceInput('laisse tomber', 'fr');
+    const input = nameAskVoiceInput('laisse tomber', 'fr', null);
     expect(input.recentTurns).toEqual([]);
     const context = friendVoiceContext(input);
     expect(context).toMatchObject({ answering: 'name', recentTurns: [] });
@@ -88,8 +150,52 @@ describe('the open name ask, as the name-capture reader hands it to the model', 
   });
 
   it("uses the family's own language, and none when none is stored", () => {
-    expect(nameAskVoiceInput('laisse tomber', 'fr').language).toBe('fr');
-    expect(nameAskVoiceInput('undo', null).language).toBeNull();
+    expect(nameAskVoiceInput('laisse tomber', 'fr', null).language).toBe('fr');
+    expect(nameAskVoiceInput('undo', null, null).language).toBeNull();
+  });
+
+  it('logs the kinds and count the judge matched, never the matched draft strings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const problems: string[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(input) {
+            if (input.retry) problems.push(input.retry.problem);
+            return {
+              reply: 'No problem, see you at swim on Thursday. What should I call you instead?',
+              capture: { nameTakenBack: true },
+            };
+          },
+        },
+        nameAskVoiceInput('undo', 'en', null),
+        { page: async () => {} },
+      );
+      expect(spoken.source).toBe('unsent');
+      // Positive control: the judge matched the draft's words, and only the retry was told.
+      expect(problems.join(' ')).toContain('thursday,swim');
+      const logged = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([, message]) =>
+          message === 'onboarding-friend: attempt refused' ||
+          message === 'onboarding-friend: unusable reply',
+      );
+      expect(logged).toHaveLength(2);
+      for (const [fields] of logged) {
+        expect(fields).toMatchObject({
+          reason: 'invented',
+          kinds: ['weekday', 'activity'],
+          count: 2,
+        });
+        expect(fields).not.toHaveProperty('detail');
+        expect(JSON.stringify(fields)).not.toMatch(/thursday|swim/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+      info.mockRestore();
+    }
   });
 });
 
@@ -100,8 +206,9 @@ describe('a delayed undo during name capture', () => {
     lastInbound: lastInboundFact(
       new Date('2026-08-28T12:00:00.000Z'),
       new Date('2026-08-28T18:00:00.000Z'),
+      EASTERN,
     ),
-    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    recentTurns: [{ role: 'hale', body: 'What should I call you?', asked: true }],
     checklist: {
       postal: true,
       kids: true,
@@ -209,6 +316,7 @@ describe('a delayed undo during name capture', () => {
       ok: false,
       reason: 'identity',
       detail: 'unknown_name',
+      kinds: ['unknown_name'],
     });
   });
 
@@ -226,7 +334,12 @@ describe('a delayed undo during name capture', () => {
     const long = { ...asked, parentWords: 'actually scratch that for now', nameTakenBack: true };
     expect(
       judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 
   it('does not treat the message as a foreign name until the model marks a take-back', () => {
@@ -292,7 +405,12 @@ describe('a delayed undo during name capture', () => {
     expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
     expect(
       judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 });
 
@@ -330,7 +448,10 @@ describe('onboarding friend fixtures', () => {
     const skill = await loadOnboardingFriendSkill();
     const words = skill.instructions.split(/\s+/).filter(Boolean).length;
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
-    expect(words).toBeLessThan(2400);
+    expect(words).toBeLessThan(2450);
+    expect(skill.instructions).toContain(
+      'A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.',
+    );
     expect(ruleWords.length).toBeLessThan(20);
     expect(skill.instructions).toContain('## Facts');
     expect(skill.instructions).toContain('## Output');
@@ -504,6 +625,7 @@ describe('friend-voice judge', () => {
       parentWords: 'yes',
       findLines: ['Swim Kids 3 (ages 6-8) - Saturdays 11:00'],
       now: new Date('2026-10-05T14:00:00Z'),
+      timeZone: EASTERN,
     });
     for (const claim of [
       "Done, she's signed up for Swim Kids. Anything else?",
@@ -570,7 +692,13 @@ describe('friend-voice judge', () => {
       email: [],
       overlaps: [],
     };
-    const input = blank({ step: 'connected', connector: 'gcal', parentWords: '', synced });
+    const input = blank({
+      step: 'connected',
+      connector: 'gcal',
+      parentWords: '',
+      synced,
+      timeZone: EASTERN,
+    });
     expect(
       judgeFriendReply('Swim at the rec centre is on your calendar.', input, {
         ahaMention: 'Swim at the rec centre',
@@ -584,6 +712,49 @@ describe('friend-voice judge', () => {
     });
     expect(
       judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+  });
+
+  it("says a synced time and today on the family's own clock, not Toronto's", () => {
+    // 05:30Z on Nov 10 is 11:30 p.m. Nov 9 in Chicago and already Nov 10 in Toronto.
+    const now = new Date('2026-11-10T05:30:00.000Z');
+    const synced = {
+      provider: 'gcal' as const,
+      read: 'ok' as const,
+      calendar: [
+        {
+          title: 'Swim at the rec centre',
+          // 9:00 a.m. Chicago (CST, UTC-6); 10:00 a.m. in Toronto.
+          start: '2026-11-12T15:00:00.000Z',
+          end: '2026-11-12T16:00:00.000Z',
+          allDay: false,
+          location: null,
+          declined: false,
+        },
+      ],
+      email: [],
+      overlaps: [],
+    };
+    const input = blank({
+      step: 'connected',
+      connector: 'gcal',
+      parentWords: '',
+      synced,
+      now,
+      timeZone: 'America/Chicago',
+    });
+    expect(friendVoiceContext(input)).toMatchObject({
+      facts: { today: { date: '2026-11-09' }, synced: { calendar: [{ clock: '9:00' }] } },
+    });
+    expect(
+      judgeFriendReply('Swim at the rec centre is Thursday at 9:00.', input, {
+        ahaMention: 'Swim at the rec centre',
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Swim at the rec centre is Thursday at 10:00.', input, {
+        ahaMention: 'Swim at the rec centre',
+      }),
     ).toMatchObject({ ok: false, reason: 'invented' });
   });
 });
@@ -677,9 +848,8 @@ describe('speakFriend', () => {
     expect(opener.length).toBeGreaterThan(120);
     const line = 'Swim at the rec centre (ages 3-5) - Saturday morning at the community pool';
     const lines = Array.from({ length: 24 }, () => line);
-    const lead =
-      'A calm one for the younger kid, easy to get to and easy to leave when they have had enough of it for one morning and still want the rest of the day open with nothing else planned';
-    expect(lead.length).toBeGreaterThan(160);
+    const lead = `A calm one for the younger kid, every Saturday morning:\n${lines.join('\n')}`;
+    expect(lead.length).toBeGreaterThan(1200);
     const spoken = await speakFriend(
       {
         async compose() {
@@ -701,11 +871,168 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.fallback).toBeNull();
-    expect(spoken.bubbles[0]).toBe(opener);
-    expect(spoken.bubbles[1]).toContain(lead);
-    expect(spoken.body.length).toBeGreaterThan(1200);
+    expect(spoken.bubbles).toEqual([opener, lead]);
     expect(pages).toEqual([]);
     expect(spoken.body).not.toContain('?');
+  });
+
+  describe('find_show: every map bubble is one the model wrote (VIL-526)', () => {
+    const SWIM_LINE = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const STORY_LINE = 'Story time at the library (all ages) - Tuesday 10:30';
+    const OPENER = 'I looked near you for what fits a 4-year-old.';
+    const map = blank({
+      step: 'find_show',
+      parentWords: "she's 4",
+      placeLabel: 'M5V',
+      ageMonths: [48],
+      findLines: [SWIM_LINE, STORY_LINE],
+      findGroups: [
+        { category: 'swimming', lines: [SWIM_LINE] },
+        { category: 'parent_baby', lines: [STORY_LINE] },
+      ],
+    });
+    const SWIM_BUBBLE = 'Swim at the rec centre on Saturday at 10:00, made for ages 3-5.';
+    const STORY_BUBBLE = 'Story time at the library, Tuesday at 10:30, any age is welcome.';
+
+    async function speakWith(drafts: (prompt: string) => { reply: string; groupLeads?: unknown }) {
+      const prompts: string[] = [];
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            const prompt = options?.prompt ?? 'full';
+            prompts.push(prompt);
+            retries.push(given.retry?.problem);
+            return drafts(prompt) as never;
+          },
+        },
+        map,
+        { page: async () => {} },
+      );
+      return { spoken, prompts, retries };
+    }
+
+    it('sends the opener and each group bubble as the model wrote it, with no numbers added', async () => {
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [SWIM_BUBBLE, STORY_BUBBLE],
+      }));
+      expect(spoken.source).toBe('composed');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+      expect(spoken.body).not.toMatch(/^\d+\.\s/m);
+    });
+
+    it('keeps a group bubble with line breaks as one bubble', async () => {
+      const multiline = 'Two swims this week:\nSaturday at 10:00 at the rec centre\nages 3-5';
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [multiline, STORY_BUBBLE],
+      }));
+      expect(spoken.bubbles).toEqual([OPENER, multiline, STORY_BUBBLE]);
+    });
+
+    it('refuses a map the model wrote nothing for one group in, and sends the retry that writes every group', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: ['', STORY_BUBBLE] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+    });
+
+    it("sends no short map when every attempt borrows another group's time for one bubble", async () => {
+      const borrowed = 'Swim at the rec centre on Tuesday at 10:30, made for ages 3-5.';
+      const { spoken, prompts } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [borrowed, STORY_BUBBLE],
+      }));
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
+
+    it('asks again when no group bubble survives, and sends the retry that writes them', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: [] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+    });
+
+    it('sends nothing at all when neither attempt writes a group bubble', async () => {
+      const { spoken, prompts } = await speakWith(() => ({ reply: OPENER, groupLeads: null }));
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
+
+    it('reads a bubble with line breaks as one bubble, in every shape the model returns', () => {
+      const multiline = 'Two swims near you:\nSat 10:00\nSun 9:30';
+      expect(readGroupLeads([multiline, 'Story time Tue 10:30'])).toEqual([
+        multiline,
+        'Story time Tue 10:30',
+      ]);
+      expect(readGroupLeads('a\nb')).toEqual(['a\nb']);
+      expect(readGroupLeads({ swimming: { lead: multiline } })).toEqual([multiline]);
+      expect(readGroupLeads(JSON.stringify([multiline, 'Story']))).toEqual([multiline, 'Story']);
+      expect(readGroupLeads(null)).toBeNull();
+    });
+  });
+
+  describe('a stop that still asks', () => {
+    const later = blank({ step: 'calendar', parentWords: 'later' });
+    const CLOSE = 'No worries, I will leave it there.';
+
+    async function speakStop(first: string, second: string, asks?: boolean) {
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            retries.push(given.retry?.problem);
+            const retry = options?.prompt === 'short';
+            return {
+              reply: retry ? second : first,
+              ...(asks === undefined || retry ? {} : { asks }),
+              capture: { stopAsking: true },
+            } as never;
+          },
+        },
+        later,
+        { page: async () => {} },
+      );
+      return { spoken, retries };
+    }
+
+    it.each([
+      ['a question mark', 'No worries. Want it on your calendar as a weekly reminder?', undefined],
+      [
+        'a full-width question mark',
+        'No worries. Want it on your calendar as a weekly reminder\uFF1F',
+        undefined,
+      ],
+      ['only the asks mark', 'No worries, tell me when you want the calendar.', true],
+    ])(
+      'asks again when the stop holds %s, and sends the close that asks nothing',
+      async (_, draft, asks) => {
+        const { spoken, retries } = await speakStop(draft, CLOSE, asks);
+        expect(retries[1]).toMatch(/set stopAsking and still asked a question/);
+        expect(spoken.source).toBe('retry');
+        expect(spoken.body).toBe(CLOSE);
+        expect(spoken.capture.stopAsking).toBe(true);
+      },
+    );
+
+    it('sends nothing and keeps the session open when the retry still asks', async () => {
+      const draft = 'No worries. Want it on your calendar as a weekly reminder?';
+      const { spoken } = await speakStop(draft, draft);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '' });
+      expect(spoken.capture.stopAsking).toBe(false);
+    });
   });
 
   it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {
@@ -726,6 +1053,7 @@ describe('speakFriend', () => {
         'Family Storytime drop-in (ages 0-5) - Thursdays 10:30',
       ],
       now: new Date('2026-10-05T14:00:00Z'),
+      timeZone: EASTERN,
     });
     const seen: Array<{ prompt: string; children: unknown }> = [];
     const spoken = await speakFriend(
@@ -736,6 +1064,8 @@ describe('speakFriend', () => {
             return {
               reply:
                 "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
+              // Positive control for the save gate: a save this turn really records goes out.
+              claimsSaved: true,
               capture: {
                 scheduleAdds: [
                   { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
@@ -763,6 +1093,148 @@ describe('speakFriend', () => {
     expect(spoken.source).toBe('retry');
     expect(spoken.capture.scheduleAdds.map((add) => add.line)).toEqual([2, 3]);
     expect(spoken.body).toContain('11:00');
+  });
+
+  describe('a reply never says something was saved that this turn did not save (VIL-538)', () => {
+    const coparent = blank({
+      step: 'coparent',
+      parentWords:
+        "No calendar for now. Just save Mia's carpool, tomorrow Saturday 8am, and tell me what day and time you saved.",
+      now: new Date('2026-11-02T03:28:00Z'),
+      timeZone: EASTERN,
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+    const ASK = 'Would a group chat with the other parent help?';
+    const refusedDraft = {
+      reply: `Saved Mia's carpool for tomorrow, Saturday at 8. ${ASK}`,
+      capture: { scheduleAdds: [{ line: 1, cadence: 'once', date: '2026-11-07', time: '08:00' }] },
+      claimsSaved: true,
+    };
+
+    it('sends nothing when the retry after a refused add still says it was saved', async () => {
+      const pages: string[] = [];
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              if (options?.prompt === 'short') {
+                return { reply: `Your carpool request is saved. ${ASK}`, claimsSaved: true };
+              }
+              return refusedDraft;
+            },
+          },
+          coparent,
+          {
+            page: async (text) => {
+              pages.push(text);
+            },
+          },
+        );
+        expect(spoken.source).toBe('unsent');
+        expect(spoken.body).toBe('');
+        expect(pages).toEqual(['onboarding friend voice unsent step=coparent reason=unusable']);
+      } finally {
+        warn.mockRestore();
+        error.mockRestore();
+      }
+    });
+
+    it('sends the retry that says plainly nothing was saved', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              if (options?.prompt === 'short') {
+                return {
+                  reply: `I can't put the carpool on from here, so it isn't saved. ${ASK}`,
+                  claimsSaved: false,
+                };
+              }
+              return refusedDraft;
+            },
+          },
+          coparent,
+        );
+        expect(spoken.source).toBe('retry');
+        expect(spoken.body).toContain("isn't saved");
+        expect(spoken.capture.scheduleAdds).toEqual([]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
+
+    it('refuses a first draft that claims a save with no add at all, and retries', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const prompts: string[] = [];
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              prompts.push(options?.prompt ?? 'full');
+              if (options?.prompt === 'short') {
+                return { reply: `That one isn't on your calendar yet. ${ASK}`, claimsSaved: false };
+              }
+              return {
+                reply: `Bien noté, c'est enregistré pour samedi. ${ASK}`,
+                claimsSaved: true,
+              };
+            },
+          },
+          coparent,
+        );
+        expect(prompts).toEqual(['full', 'short']);
+        expect(spoken.source).toBe('retry');
+        expect(warn.mock.calls).toContainEqual([
+          expect.objectContaining({ reason: 'unbacked_save', step: 'coparent' }),
+          'onboarding-friend: attempt refused',
+        ]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
+
+    it('refuses a promise no onboarding row can back, the same as the send choke point', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const prompts: string[] = [];
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              prompts.push(options?.prompt ?? 'full');
+              if (options?.prompt === 'short') return { reply: ASK };
+              return { reply: `I'll send an invite to the other parent. ${ASK}` };
+            },
+          },
+          { ...coparent, parentWords: 'maybe' },
+        );
+        expect(prompts).toEqual(['full', 'short']);
+        expect(spoken.body).toBe(ASK);
+        expect(warn.mock.calls).toContainEqual([
+          expect.objectContaining({ reason: 'unbacked_claim', step: 'coparent' }),
+          'onboarding-friend: attempt refused',
+        ]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
   });
 
   it('sends nothing and pages when both attempts fail', async () => {
@@ -821,13 +1293,14 @@ describe('speakFriend', () => {
     expect(receipt.capture.connectCalendar).toBe(true);
     expect(receipt.body).not.toContain('?');
 
-    // Prose about Gmail under the calendar card sends the parent to the wrong link.
+    // The model lists Gmail among what this reply offers. The words are not the check.
     const pivot = await speakFriend(
       {
         async compose() {
           return {
             reply: 'Want me to watch Gmail for the dates too?',
             capture: { connectCalendar: true },
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -835,6 +1308,7 @@ describe('speakFriend', () => {
       { page: async () => undefined, linkFollows: true },
     );
     expect(pivot.source).toBe('unsent');
+    expect(pivot.body).toBe('');
   });
 
   it('sends nothing when both find_show openers fail, and still pages', async () => {
@@ -904,6 +1378,7 @@ describe('speakFriend', () => {
     const input = blank({
       step: 'connected',
       connector: 'gmail',
+      timeZone: EASTERN,
       synced: {
         provider: 'gmail',
         read: 'ok',
@@ -945,6 +1420,7 @@ describe('speakFriend', () => {
     const clash = blank({
       step: 'connected',
       connector: 'gcal',
+      timeZone: EASTERN,
       synced: {
         provider: 'gcal',
         read: 'ok',
@@ -1015,7 +1491,11 @@ describe('the co-parent step: their group, or a new one', () => {
     return speakFriend(
       {
         async compose() {
-          return { reply: 'Great, the number is below for whenever you want.', capture };
+          return {
+            reply: 'Great, the number is below for whenever you want.',
+            capture,
+            joinPointer: 'below' as const,
+          };
         },
       },
       coparentTurn(parentWords, withJoin),
@@ -1069,43 +1549,242 @@ describe('the co-parent step: their group, or a new one', () => {
   });
 });
 
-describe('repairedProse', () => {
-  it('folds offered choices into one question and leaves a clean draft alone', () => {
-    expect(
-      repairedProse(
-        'Which of these would help? Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?',
-        'schedule',
-      ),
-    ).toBe('Baby and Me storytime on Thursdays for Sebastian, or Swim Kids on Saturdays for Mia?');
-    expect(
-      repairedProse(
-        'For Sebastian, how about the storytime Thursdays? For Mia, the Swim Kids class Saturdays? Want reminders for either?',
-        'schedule',
-      ),
-    ).toBe(
-      'For Sebastian, how about the storytime Thursdays. For Mia, the Swim Kids class Saturdays. Want reminders for either?',
-    );
-    expect(repairedProse('Want reminders for the swim?', 'schedule')).toBe('');
-    expect(repairedProse('Do you have kids? If so, what are their names?', 'kids_names')).toBe('');
-    expect(
-      repairedProse(
-        `Village Hale Technologies Inc. made Hale, and villagehale.com has the details. ${'It texts you the kids things that fit. '.repeat(3)}What are your kids names?`,
-        'kids_names',
-      ),
-    ).toBe('');
+describe('model fields, not text matches', () => {
+  const checklist = {
+    postal: true,
+    kids: true,
+    ages: true,
+    name: true,
+    gmail: false,
+    calendar: false,
+    schedule: false,
+    coparent: false,
+  } as const;
+
+  it('reads a yes only when the previous reply said it asked, in any script', () => {
+    const gmail = blank({
+      step: 'email',
+      parentWords: 'oui',
+      checklist: { ...checklist, gmail: false },
+      recentTurns: [{ role: 'hale', body: '想连接邮箱吗？', asked: true }],
+    });
+    expect(parentReading(gmail)).toEqual({ kind: 'yes', item: 'gmail' });
+    const punctuation = blank({
+      ...gmail,
+      recentTurns: [{ role: 'hale', body: 'Want me to watch email?' }],
+    });
+    expect(parentReading(punctuation)).toBeNull();
+    const statement = blank({
+      ...gmail,
+      parentWords: "d'accord",
+      recentTurns: [{ role: 'hale', body: 'The number is ready whenever you are.', asked: true }],
+    });
+    expect(parentReading(statement)).toEqual({ kind: 'yes', item: 'gmail' });
   });
 
-  it('never folds in another step, never repairs a no-question step, and does not cut a long draft', () => {
-    expect(
-      repairedProse(
-        'Want the swim on your calendar? Would a group chat with the other parent help?',
-        'schedule',
-      ),
-    ).toBe('');
-    expect(repairedProse('Saw picture day. Want a reminder?', 'connected')).toBe('');
-    const long = `${'Gmail helps me catch registration confirmations and activity updates for the kids. '.repeat(2)}Google shares your whole inbox with me, and I keep only what is about the kids. Want to connect?`;
-    expect(repairedProse(long, 'email')).toBe('');
-    expect(long.length).toBeGreaterThan(220);
+  it('a question is not a yes when the model says so, including with no Latin question mark', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: '你会读我所有的邮件吗',
+      checklist: { ...checklist, gmail: true },
+    });
+    const asked = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Google shares the whole calendar, and I keep what is about the kids. Want to connect it?',
+            capture: { connectCalendar: true },
+            parentQuestion: true,
+            asks: true,
+          };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(asked.source).toBe('composed');
+    expect(asked.capture.connectCalendar).toBeNull();
+    expect(asked.asks).toBe(true);
+
+    const rhetorical = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: "Great, the link is right there. Tap it and I'll text you what I see.",
+            capture: { connectCalendar: true },
+            parentQuestion: false,
+          };
+        },
+      },
+      blank({ ...input, parentWords: 'yes?' }),
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(rhetorical.source).toBe('composed');
+    expect(rhetorical.capture.connectCalendar).toBe(true);
+  });
+
+  it('the other connector comes from what the model says the reply offers, in English and in Chinese', async () => {
+    const input = blank({
+      step: 'calendar',
+      parentWords: 'calendar',
+      checklist: { ...checklist, gmail: true },
+    });
+    const ask = 'The calendar card is the one to tap. Want gmail as well?';
+    const english = await speakFriend(
+      {
+        async compose() {
+          return { reply: ask, connectorsOffered: ['calendar'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(english.source).toBe('composed');
+    expect(english.body).toContain('gmail');
+
+    const chinese = await speakFriend(
+      {
+        async compose() {
+          return { reply: '也要连邮箱吗？', connectorsOffered: ['calendar', 'gmail'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(chinese.source).toBe('unsent');
+    expect(chinese.body).toBe('');
+
+    const chineseOk = await speakFriend(
+      {
+        async compose() {
+          return { reply: '也要连邮箱吗？', connectorsOffered: [] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(chineseOk.source).toBe('composed');
+    expect(chineseOk.body).toContain('邮箱');
+  });
+
+  it('an email ask that also offers the calendar is not sent under the Gmail link', async () => {
+    const input = blank({ step: 'email', parentWords: 'yes sure', checklist });
+    const reply = 'Tap the link to connect Gmail. Should I connect your calendar too?';
+    const offersBoth = await speakFriend(
+      {
+        async compose() {
+          return { reply, connectorsOffered: ['gmail', 'calendar'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(offersBoth.source).toBe('unsent');
+    expect(offersBoth.body).toBe('');
+
+    const ownOnly = await speakFriend(
+      {
+        async compose() {
+          return { reply, connectorsOffered: ['gmail'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(ownOnly.source).toBe('composed');
+  });
+
+  it('a co-parent yes points at the number only when joinPointer says so', async () => {
+    const input = blank({
+      step: 'coparent',
+      parentWords: 'oui',
+      checklist: { ...checklist, gmail: true, calendar: true, schedule: true, coparent: false },
+      coparentJoin: { line: '+1 555-555-0100', phrase: 'this is our year' },
+      recentTurns: [{ role: 'hale', body: 'On fait un groupe ?', asked: true }],
+    });
+    const pointed = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Le numéro est juste en dessous, pour quand tu veux.',
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(pointed.source).toBe('composed');
+    expect(pointed.body).toContain('en dessous');
+
+    const wordsOnly = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: 'Add the number below whenever you want.',
+            capture: { coparentGroup: true },
+          };
+        },
+      },
+      input,
+      { page: async () => undefined },
+    );
+    expect(wordsOnly.source).toBe('unsent');
+    expect(wordsOnly.body).toBe('');
+
+    const noEnglishCue = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply: '好，按你方便的时候用就行。',
+            capture: { coparentGroup: true },
+            joinPointer: 'below',
+          };
+        },
+      },
+      blank({ ...input, parentWords: '好' }),
+      { page: async () => undefined },
+    );
+    expect(noEnglishCue.source).toBe('composed');
+    expect(noEnglishCue.body).toContain('好');
+  });
+
+  it('does not rewrite a draft that asks twice, in English or Chinese', async () => {
+    const schedule = blank({
+      step: 'schedule',
+      parentWords: 'maybe',
+      findLines: ['Swim Kids on Saturdays'],
+      checklist: { ...checklist, gmail: true, calendar: true },
+    });
+    const english = await speakFriend(
+      {
+        async compose() {
+          return {
+            reply:
+              'Which of these would help? Baby and Me storytime on Thursdays, or Swim Kids on Saturdays?',
+          };
+        },
+      },
+      schedule,
+      { page: async () => undefined },
+    );
+    expect(english.source).toBe('unsent');
+    expect(english.body).toBe('');
+    expect(english.prose).toBe('');
+
+    const chinese = await speakFriend(
+      {
+        async compose() {
+          return { reply: '哪个适合？周六的游泳怎么样？' };
+        },
+      },
+      schedule,
+      { page: async () => undefined },
+    );
+    expect(chinese.source).toBe('unsent');
+    expect(chinese.body).toBe('');
   });
 });
 
@@ -1132,5 +1811,195 @@ describe('#868 question marks in any script', () => {
     expect(
       judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
     ).toEqual({ ok: true });
+  });
+});
+
+/**
+ * VIL-617: a parent who will not give the postal code. On Preview both attempts died
+ * with a StructuredOutputError and the log said only that. The recording is the live
+ * Haiku reply on the short retry, cut off at its old 600-token budget.
+ */
+describe('a declined postal code', () => {
+  const recorded = JSON.parse(
+    readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+  ) as { response: Anthropic.Message };
+  const WORDS = "I'd rather not give out my postal code";
+  const declined = blank({
+    step: 'place',
+    parentWords: WORDS,
+    recentTurns: [{ role: 'hale', body: 'What is your postal code or ZIP?', asked: true }],
+    checklist: {
+      postal: false,
+      kids: false,
+      ages: false,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  function toolReply(input: Record<string, unknown>): Anthropic.Message {
+    return {
+      ...recorded.response,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+  }
+
+  /** Replays the given responses in order, through either transport. */
+  function replaying(responses: Anthropic.Message[]) {
+    const sent: Array<{ max_tokens: number; messages: Array<{ content: string }> }> = [];
+    const next = async (request: unknown) => {
+      sent.push(request as (typeof sent)[number]);
+      const response = responses.shift();
+      if (!response) throw new Error('no recorded response left');
+      return response;
+    };
+    const client = {
+      messages: {
+        create: next,
+        stream: (request: unknown) => ({ finalMessage: () => next(request) }),
+      },
+    };
+    return { sent, composer: createFriendVoiceComposer(client as never) };
+  }
+
+  it('logs the structured outcome and stop reason of a cut-off reply, and none of their words', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { composer } = replaying([recorded.response, recorded.response]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('unsent');
+      const compose = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([fields]) => (fields as { err?: string } | undefined)?.err === 'StructuredOutputError',
+      );
+      expect(compose).toHaveLength(2);
+      for (const [fields] of compose) {
+        expect(fields).toMatchObject({ outcome: 'truncated', stopReason: 'max_tokens' });
+        expect(JSON.stringify(fields)).not.toMatch(/postal|rather not/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  it('gives the retry the room the first attempt had, and lets it carry on without the code', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const fields = {
+        asks: true,
+        parentQuestion: false,
+        connectorsOffered: [],
+        joinPointer: null,
+        claimsSaved: false,
+      };
+      const { sent, composer } = replaying([
+        // Two questions: the judge refuses it, so the short retry runs.
+        toolReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
+        toolReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
+      ]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('retry');
+      expect(sent).toHaveLength(2);
+      // The recorded retry was cut at 600 tokens; the retry gets the first attempt's room.
+      expect(sent[1]?.max_tokens).toBe(sent[0]?.max_tokens);
+      expect(sent[1]?.max_tokens).toBeGreaterThan(recorded.response.usage.output_tokens);
+      const brief = JSON.parse(sent[1]?.messages[0]?.content ?? '{}') as {
+        retry?: { problem: string };
+      };
+      // The retry is not told to ask again for the code they just turned down.
+      expect(brief.retry?.problem).toMatch(/declined/);
+    } finally {
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  });
+});
+
+/**
+ * VIL-617: a consent guard fails closed. In 2 of 42 live draws Haiku wrote tool-call
+ * XML into the `parentQuestion` string; a value that is there but is not a boolean
+ * may hide a question, so it counts as one.
+ */
+describe('a garbled parentQuestion', () => {
+  const base = (
+    JSON.parse(
+      readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+    ) as { response: Anthropic.Message }
+  ).response;
+  const GARBLED = 'false</parameter>\n<parameter name="connectorsOffered">[]';
+  const fields = {
+    reply: 'I only keep what is about the kids. Want me to watch for school email?',
+    asks: true,
+    connectorsOffered: [],
+    joinPointer: null,
+    claimsSaved: false,
+  };
+
+  function composerReplying(input: Record<string, unknown>) {
+    const response = {
+      ...base,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+    const next = async () => response;
+    const client = {
+      messages: { create: next, stream: () => ({ finalMessage: next }) },
+    };
+    return createFriendVoiceComposer(client as never);
+  }
+
+  const gmailAsk = blank({
+    step: 'email',
+    parentWords: 'do you read all my emails',
+    recentTurns: [{ role: 'hale', body: 'Want me to watch for school email?', asked: true }],
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: true,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  it('counts a present non-boolean as a question, and an absent one as none', async () => {
+    const read = async (input: Record<string, unknown>) =>
+      (await composerReplying(input).compose(gmailAsk)).parentQuestion;
+    expect(await read({ ...fields, parentQuestion: GARBLED })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: 'true' })).toBe(true);
+    expect(await read(fields)).toBe(false);
+    expect(await read({ ...fields, parentQuestion: true })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: false })).toBe(false);
+  });
+
+  it('keeps no Gmail yes on a garbled draw, and keeps it on a clean one', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const garbled = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: GARBLED }),
+        gmailAsk,
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(garbled.source).toBe('composed');
+      expect(garbled.capture.connectGmail).not.toBe(true);
+
+      const clean = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: false }),
+        blank({ ...gmailAsk, parentWords: 'sure' }),
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(clean.source).toBe('composed');
+      expect(clean.capture.connectGmail).toBe(true);
+    } finally {
+      info.mockRestore();
+    }
   });
 });

@@ -16,6 +16,7 @@ import {
   type TextConnectProvider,
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
@@ -456,6 +457,7 @@ async function ahaForTextConnect(
       provider: input.provider,
       accessToken: input.accessToken,
       now: input.now,
+      timeZone: await householdTimezone(database, input.familyId),
       hasTeen,
       googleFetch: (url, accessToken) =>
         googleJsonClient.request({ method: 'GET', url, accessToken }),

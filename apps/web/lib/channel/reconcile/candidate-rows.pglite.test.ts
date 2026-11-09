@@ -1,4 +1,5 @@
 import { type Municipality, schema } from '@hale/db';
+import { asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -147,6 +148,36 @@ describe('loadClaimShadowContext — ledger rows', () => {
     expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
   });
 
+  it('a commitment about a 13+ child is private; one about a younger child keeps its summary (Devin)', async () => {
+    const { familyId } = await seedA();
+    const [teen, toddler] = await db.database
+      .select({ id: schema.children.id })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(asc(schema.children.dateOfBirth));
+    const commit = (
+      commitmentKind: 'activity_followup' | 'registration_watch',
+      summary: string,
+      dueAt: Date,
+      subjectChildId: string | undefined,
+    ) =>
+      db.database.insert(schema.agentCommitments).values({
+        familyId,
+        commitmentKind,
+        summary,
+        dueAt,
+        createdFrom: 'msg-test',
+        subjectChildId,
+      });
+    await commit('activity_followup', 'Teen follow ZQXJ9', at(1), teen?.id);
+    await commit('registration_watch', 'Toddler follow', at(2), toddler?.id);
+
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const open = context.rows.filter((r) => r.source === 'open_commitment');
+    expect(open.map((r) => r.what)).toEqual(['A private item', 'Toddler follow']);
+    expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
+  });
+
   it('a live sequence is a program row, and registrationLaddered agrees with it', async () => {
     const { familyId, primary } = await seedA();
     const window = async (cycleLabel: string) => {
@@ -238,6 +269,14 @@ describe('loadClaimShadowContext — the zone is the recipient’s own', () => {
       .values({ familyId, userId: second, role: 'co_parent' });
     const context = await ready({ familyId, now: NOW, parentUserId: second });
     expect(context.timeZone).toBe('America/Phoenix');
+  });
+
+  it('a recipient who is not a member of this family is no_time_zone: an id cannot borrow a zone', async () => {
+    const { familyId } = await seedA();
+    const outsider = await user('America/Phoenix');
+    expect(
+      await loadClaimShadowContext(db.database, { familyId, now: NOW, parentUserId: outsider }),
+    ).toEqual({ status: 'skipped', reason: 'no_time_zone' });
   });
 
   it('an unknown recipient is no_time_zone, never a default zone', async () => {

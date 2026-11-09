@@ -1,12 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import {
-  AHA_TIME_ZONE,
-  type AhaSnapshot,
-  ahaClockLabel,
-  ahaWhenLabel,
-} from '~/lib/channel/connect/aha-read';
+import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   type ReplyLanguage,
@@ -17,6 +12,7 @@ import {
 } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -24,9 +20,10 @@ import {
 } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
   ONBOARDING_ORDER,
@@ -55,19 +52,21 @@ import {
  * (packages/agent/skills/onboarding-friend-short.md). A first attempt that
  * the retry recovers is not a page: the recovery is logged. If the retry
  * also fails, nothing goes out: the miss is logged, #ops is paged, and the
- * next inbound or the morning nudge tries again. That includes the map. A
- * numbered list of the lines code found is still a message Hale wrote, so
- * both openers failing sends nothing. Length is not a reason to refuse a
- * reply; the skill's "short" is tone, not a character cap.
+ * next inbound or the morning nudge tries again. That includes the map: the
+ * model writes each group bubble from that group's lines, a group it cannot
+ * write is not sent, and code never numbers or joins the lines itself.
+ * Length is not a reason to refuse a reply; the skill's "short" is tone, not
+ * a character cap.
  */
 
 /**
  * The reply plus the capture fields, as one forced tool call. The map turn
- * returns an opener, up to three leads and the kids; a cut-off at max_tokens
- * is a failed attempt, so the budget is well over what a good reply uses.
+ * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
+ * is a failed attempt, so the budget is well over what a good reply uses. The short
+ * retry has the same budget: its prompt is smaller, its answer is not. A reply that
+ * fills every optional field ran past 600 tokens live (VIL-617).
  */
 const MAX_TOKENS = 1000;
-const SHORT_MAX_TOKENS = 600;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -150,6 +149,11 @@ export type FriendFallback =
 export interface FriendTurn {
   role: 'parent' | 'hale';
   body: string;
+  /**
+   * The model set `asks` on the outbound that produced this turn. Absent on
+   * older rows: a question mark in `body` is not a substitute.
+   */
+  asked?: boolean;
 }
 
 /** One group on the activity map, as code found it. */
@@ -212,8 +216,14 @@ export interface FriendVoiceInput {
    * the connected step. The model chooses at most one. Code does not rank them.
    */
   synced?: AhaSnapshot | null;
-  /** The reference instant for today, used on the schedule step. */
+  /** The reference instant for today, used on the schedule step. Needs {@link timeZone}. */
   now?: Date;
+  /**
+   * The family's own IANA zone, from their place. Today, the dates the model may
+   * name, and every synced time are read in it. Required with `now` or synced items:
+   * without it they would be said on someone else's clock.
+   */
+  timeZone?: string;
   /** What is already on the calendar from this onboarding. */
   scheduled?: readonly FriendScheduled[];
   /** Hale's iMessage line and the group trigger phrase, when the co-parent ask is on iMessage. */
@@ -221,10 +231,20 @@ export interface FriendVoiceInput {
   /** Their answer on the co-parent step, for the closing receipt. */
   coparentGroup?: boolean | null;
   /**
+   * VIL-566 — the household group: claimed, pending (a yes and no group yet), or
+   * unclaimed (the ask is open and no group exists). Absent when not in play.
+   */
+  householdGroup?: HouseholdGroupFact | null;
+  /**
    * What is already stored, in onboarding order. Absent on older callers.
    * The model uses it as guidance. Code computes it from stored facts.
    */
   checklist?: OnboardingChecklist;
+  /**
+   * Checklist items code could not read for this family. They are true in
+   * `checklist`, so nothing asks for them, and the model sees them as unknown.
+   */
+  unread?: readonly OnboardingItem[];
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
@@ -237,12 +257,13 @@ export interface FriendVoiceInput {
 /**
  * Facts about the parent's last inbound, for a reply that is no longer instant.
  * `minutesAgo` is the wait. `overnight` means that text landed inside proactive
- * quiet hours. `yesterday` means its Toronto calendar day is already over.
+ * quiet hours. `yesterday` means its calendar day is already over. Both are read on
+ * the family's own clock, and are null when no zone is known: none is guessed.
  */
 export interface LastInboundFact {
   minutesAgo: number;
-  overnight: boolean;
-  yesterday: boolean;
+  overnight: boolean | null;
+  yesterday: boolean | null;
 }
 
 export interface FriendVoiceResult {
@@ -257,6 +278,8 @@ export interface FriendVoiceResult {
   step: FriendStep;
   /** Shape-checked fields from the model. Empty when nothing was stored. */
   capture: OnboardingCapture;
+  /** The model's `asks` on the reply that went out. False when nothing was sent. */
+  asks: boolean;
 }
 
 export interface FriendComposeOptions {
@@ -270,6 +293,53 @@ export interface FriendComposed {
   ahaMention?: string | null;
   /** On find_show: one short lead per group, same order as facts.findGroups. */
   groupLeads?: readonly string[] | null;
+  /** This reply asks the parent something. Omitted means the model did not say. */
+  asks?: boolean;
+  /** Their message is a question, not a yes to Gmail, the calendar, or the group. */
+  parentQuestion?: boolean;
+  /** Every connector this reply asks, offers, or agrees to connect. */
+  connectorsOffered?: readonly OfferedConnector[];
+  /** How a co-parent yes points at the number and phrase code places under the reply. */
+  joinPointer?: JoinPointer | null;
+  /** This reply tells the parent something was saved, added or set this turn. */
+  claimsSaved?: boolean;
+}
+
+export type OfferedConnector = 'gmail' | 'calendar';
+
+/** What the model says a co-parent yes does with the number code places under the reply. */
+export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
+
+const JOIN_POINTERS = new Set<JoinPointer>([
+  'below',
+  'wrong_owner',
+  'placeholder',
+  'hale_starts',
+  'missing',
+]);
+
+/** The connector a card on this step is not for. The link under the reply connects only its own. */
+const OTHER_CONNECTOR: Partial<Record<FriendStep, OfferedConnector>> = {
+  email: 'calendar',
+  calendar: 'gmail',
+};
+
+/** The four decisions the model makes instead of a text match. Omitted is "did not say". */
+function replyMarks(composed: FriendComposed): {
+  asks: boolean;
+  parentQuestion: boolean;
+  offered: readonly OfferedConnector[];
+  joinPointer: JoinPointer | null;
+  claimsSaved: boolean;
+} {
+  const pointer = composed.joinPointer;
+  return {
+    asks: composed.asks === true,
+    parentQuestion: composed.parentQuestion === true,
+    offered: composed.connectorsOffered ?? [],
+    joinPointer: pointer != null && JOIN_POINTERS.has(pointer) ? pointer : null,
+    claimsSaved: composed.claimsSaved === true,
+  };
 }
 
 export interface FriendVoiceComposer {
@@ -350,30 +420,31 @@ function leadText(value: unknown): string {
   return '';
 }
 
-/** A list the model wrote as JSON text inside a string, split back into its leads. */
+/** A list the model wrote as JSON text inside one string, read back as its elements. */
 function splitLeadString(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed.startsWith('[')) {
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.map(leadText);
+      if (Array.isArray(parsed)) return parsed.map((item) => leadText(item).trim());
     } catch {
-      // Not JSON after all; split it below.
+      // Not JSON after all: the string is one bubble.
     }
   }
-  return trimmed
-    .split(/"\s*,\s*"|\n+/u)
-    .map((part) => part.replace(/^[\s["]+|[\s\]"]+$/gu, '').trim());
+  return [trimmed];
 }
 
-function leadsFrom(value: unknown): string[] | null {
+/**
+ * The model's group bubbles, one per element. A bubble may hold line breaks
+ * (one line per program): those stay inside it and are never split into
+ * separate bubbles.
+ */
+export function readGroupLeads(value: unknown): string[] | null {
   if (value == null) return null;
   if (typeof value === 'string') return splitLeadString(value);
-  if (Array.isArray(value)) return value.flatMap((item) => splitLeadString(leadText(item)));
+  if (Array.isArray(value)) return value.map((item) => leadText(item).trim());
   if (typeof value === 'object') {
-    return Object.values(value as Record<string, unknown>).flatMap((item) =>
-      splitLeadString(leadText(item)),
-    );
+    return Object.values(value as Record<string, unknown>).map((item) => leadText(item).trim());
   }
   return null;
 }
@@ -383,12 +454,12 @@ const replySchema = z.object({
     .string()
     .nullish()
     .transform((value) => value ?? ''),
-  // Leads come back in more than one shape (a list, one string per line, the
-  // group objects they were written for); their words are the leads.
+  // Group bubbles come back in more than one shape (a list, a JSON list inside
+  // a string, the group objects they were written for); each element is one bubble.
   groupLeads: z
     .unknown()
     .optional()
-    .transform((value) => leadsFrom(value)),
+    .transform((value) => readGroupLeads(value)),
   // A malformed field reads as not given: a decision is never guessed from it.
   // Schedule adds stay strict, so a reply never confirms an add that was dropped.
   postalCode: z.string().nullable().optional().default(null).catch(null),
@@ -415,6 +486,22 @@ const replySchema = z.object({
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
+  asks: z.boolean().optional().default(false).catch(false),
+  // Fails closed: a value that is there but not a boolean may hide a question, and a
+  // question must never stand as a yes.
+  parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
+  claimsSaved: z.boolean().optional().default(false).catch(false),
+  connectorsOffered: z
+    .array(z.enum(['gmail', 'calendar']))
+    .optional()
+    .default([])
+    .catch([]),
+  joinPointer: z
+    .enum(['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'])
+    .nullable()
+    .optional()
+    .default(null)
+    .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
@@ -477,17 +564,26 @@ const replyJsonSchema = {
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    asks: { type: 'boolean' },
+    parentQuestion: { type: 'boolean' },
+    connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
+    joinPointer: {
+      type: ['string', 'null'],
+      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing', null],
+    },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
+    claimsSaved: { type: 'boolean' },
   },
-  required: ['reply'],
+  // Code reads these instead of the reply's words, so the model always says.
+  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
 export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
-  required: readonly ['reply'];
+  required: readonly string[];
 } {
   if (!linqGroupOnboardingV2Enabled()) {
     const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
@@ -566,11 +662,12 @@ const FLEX_QUESTION_STEPS = new Set<FriendStep>(['name_reply']);
 const LINK_STEPS = new Set<FriendStep>(['calendar', 'email']);
 
 export function turnsFromTranscript(
-  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  transcript: readonly { direction: 'in' | 'out'; body: string; asked?: boolean }[],
 ): FriendTurn[] {
   return transcript.slice(-8).map((entry) => ({
     role: entry.direction === 'in' ? 'parent' : 'hale',
     body: entry.body,
+    ...(entry.asked === true ? { asked: true } : {}),
   }));
 }
 
@@ -591,8 +688,12 @@ function dayLabel(dayKey: string, language: ReplyLanguage | null): string {
 }
 
 /** Today and the next three weeks, as the only dates the model may name. */
-export function upcomingDays(now: Date, language: ReplyLanguage | null): DayLabel[] {
-  const today = dayKeyIn(now, AHA_TIME_ZONE);
+export function upcomingDays(
+  now: Date,
+  timeZone: string,
+  language: ReplyLanguage | null,
+): DayLabel[] {
+  const today = dayKeyIn(now, timeZone);
   const days: DayLabel[] = [];
   for (let offset = 0; offset <= SCHEDULE_DAYS_AHEAD; offset += 1) {
     const date = addDaysToKey(today, offset);
@@ -612,12 +713,13 @@ const LAST_INBOUND_MARK_MINUTES = 60;
 export function lastInboundFact(
   inboundAt: Date,
   now: Date,
-  timeZone: string = AHA_TIME_ZONE,
+  timeZone: string | null,
 ): LastInboundFact | null {
   const elapsedMs = now.getTime() - inboundAt.getTime();
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
   const minutesAgo = Math.floor(elapsedMs / 60_000);
   if (minutesAgo < LAST_INBOUND_MARK_MINUTES) return null;
+  if (timeZone === null) return { minutesAgo, overnight: null, yesterday: null };
   return {
     minutesAgo,
     overnight: inProactiveQuietHours(inboundAt, timeZone),
@@ -625,11 +727,22 @@ export function lastInboundFact(
   };
 }
 
+/** An item code could not read is unknown to the model, never false. */
+function knownForModel(
+  checklist: OnboardingChecklist | null,
+  unread: readonly OnboardingItem[] | undefined,
+): Record<OnboardingItem, boolean | null> | null {
+  if (!checklist || !unread || unread.length === 0) return checklist;
+  return Object.fromEntries(
+    ONBOARDING_ORDER.map((item) => [item, unread.includes(item) ? null : checklist[item]]),
+  ) as Record<OnboardingItem, boolean | null>;
+}
+
 /** What the model is handed. No link, no family id, no phone. */
 export function friendVoiceContext(input: FriendVoiceInput): unknown {
   const checklist = input.checklist ?? null;
   const now = input.now ?? null;
-  const today = now ? dayKeyIn(now, AHA_TIME_ZONE) : null;
+  const today = now ? dayKeyIn(now, familyZone(input)) : null;
   const missing = checklist ? onboardingMissing(checklist) : null;
   // Lines carry their number, so an add points at the line the parent meant and
   // not at a zero-based array position.
@@ -647,12 +760,17 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
         return { category: group.category, lines };
       })
     : null;
+  // The parent's words decide the reply's language (#868). A stored tag is for a
+  // message Hale sends on its own; beside their words it only pulled the retry
+  // into French for an English parent (VIL-538).
+  const theirWords = input.parentWords.trim().length > 0;
+  const french = copyLanguage(input.language) === 'fr';
   return {
     step: input.step,
-    // A hint only when certain; the parent's words decide the reply's language (#868).
-    languageHint: certainLanguageHint(input.language),
+    languageHint: theirWords ? null : certainLanguageHint(input.language),
     // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
-    ...(copyLanguage(input.language) === 'fr' ? { address: input.address } : {}),
+    // A group's vous is the thread's, so it stays beside their words.
+    ...(french && (!theirWords || input.address === 'vous') ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.
@@ -665,7 +783,7 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
     recentTurns: input.recentTurns,
     order: [...ONBOARDING_ORDER],
-    known: checklist,
+    known: knownForModel(checklist, input.unread),
     missing,
     answering: ASKS_NOTHING.has(input.step) ? null : (missing?.[0] ?? null),
     reading: readingForModel(input),
@@ -686,7 +804,10 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       granted: input.granted ?? null,
       synced: syncedForModel(input),
       today: today ? { date: today, label: dayLabel(today, input.language) } : null,
-      upcomingDays: input.step === 'schedule' && now ? upcomingDays(now, input.language) : null,
+      upcomingDays:
+        input.step === 'schedule' && now
+          ? upcomingDays(now, familyZone(input), input.language)
+          : null,
       scheduled: input.scheduled ?? [],
       // Code puts the join data under the reply; the model only knows it is there.
       // Flag off is today's phrase. Flag on names the choice and never a phrase to text.
@@ -703,6 +824,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
             }
         : null,
       coparentGroup: input.coparentGroup ?? null,
+      // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
+      ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
       // Who runs Hale is for when they ask; otherwise the founder's name is
       // one more name the model could take for the parent's.
       identity: input.introduce || input.identityAsked ? HALE_IDENTITY : null,
@@ -727,12 +850,21 @@ function answeringItem(input: FriendVoiceInput): OnboardingItem | null {
 
 /**
  * The open name ask, as the name-capture reader hands it to the model. The ask
- * is the structured `answering` fact; no Hale turn is written here.
+ * is the structured `answering` fact; no Hale turn is written here. `stored` is
+ * the family's onboarding checklist; null when it cannot be read, and then every
+ * item but the name is unknown and nothing else is asked.
  */
 export function nameAskVoiceInput(
   parentWords: string,
   language: ReplyLanguage | null,
+  stored: OnboardingChecklist | null,
 ): FriendVoiceInput {
+  const unread = stored ? [] : ONBOARDING_ORDER.filter((item) => item !== 'name');
+  const checklist = stored
+    ? { ...stored, name: false }
+    : (Object.fromEntries(
+        ONBOARDING_ORDER.map((item) => [item, item !== 'name']),
+      ) as OnboardingChecklist);
   return {
     step: 'names',
     language,
@@ -749,16 +881,8 @@ export function nameAskVoiceInput(
     activity: null,
     day: null,
     parentName: null,
-    checklist: {
-      postal: true,
-      kids: true,
-      ages: true,
-      name: false,
-      gmail: false,
-      calendar: false,
-      schedule: false,
-      coparent: false,
-    },
+    checklist,
+    ...(unread.length > 0 ? { unread } : {}),
   };
 }
 
@@ -774,9 +898,10 @@ export function parentReading(
   const words = input.parentWords.trim();
   const item = answeringItem(input);
   if (!item) return null;
-  // A plain "ok" answers a question only when Hale's last text asked one.
+  // A plain "ok" answers only when the previous reply's model field said it asked.
+  // A question mark in that text, in any script, is not the signal.
   const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
-  if (!lastHale?.body.includes('?')) return null;
+  if (lastHale?.asked !== true) return null;
   if (item === 'name' && LONE_NAME.test(words)) {
     const name = words.replace(/[.!]+$/u, '');
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
@@ -818,11 +943,11 @@ function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): Onb
 }
 
 /**
- * A question is not a yes. "Do you read all my emails?" asks; it does not
- * agree to connect Gmail or to a group chat.
+ * A question is not a yes. The model says so with `parentQuestion`; a question
+ * mark in the parent's words, in any script, is not the signal.
  */
-function noYesInAQuestion(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
-  if (!input.parentWords.includes('?')) return capture;
+function noYesInAQuestion(capture: OnboardingCapture, parentQuestion: boolean): OnboardingCapture {
+  if (!parentQuestion) return capture;
   return {
     ...capture,
     connectGmail: capture.connectGmail === true ? null : capture.connectGmail,
@@ -862,6 +987,15 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   return { ...capture, coparentGroup: true };
 }
 
+/**
+ * The family's zone, for a dated fact. A dated fact with no zone would be said on
+ * someone else's clock: a caller bug, not a reply to write.
+ */
+function familyZone(input: FriendVoiceInput): string {
+  if (!input.timeZone) throw new Error('friend voice: dated facts need the family time zone');
+  return input.timeZone;
+}
+
 /** Labels the model may quote. Both languages are slots, so a French reply can name samedi. */
 function syncedForModel(input: FriendVoiceInput): unknown {
   const synced = input.synced;
@@ -870,8 +1004,8 @@ function syncedForModel(input: FriendVoiceInput): unknown {
     read: synced.read,
     calendar: synced.calendar.map((item) => ({
       title: item.title,
-      when: ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, input.language),
-      clock: item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE),
+      when: ahaWhenLabel(item.start, item.allDay, familyZone(input), input.language),
+      clock: item.allDay ? null : ahaClockLabel(item.start, familyZone(input)),
       location: item.location,
       declined: item.declined,
     })),
@@ -879,7 +1013,7 @@ function syncedForModel(input: FriendVoiceInput): unknown {
       subject: item.subject,
       fromName: item.fromName,
       when: item.receivedAt
-        ? ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, input.language)
+        ? ahaWhenLabel(item.receivedAt, false, familyZone(input), input.language)
         : null,
       snippet: item.snippet,
     })),
@@ -912,8 +1046,9 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   if (input.coparentJoin) slots.push(input.coparentJoin.line, input.coparentJoin.phrase);
   for (const item of input.scheduled ?? []) slots.push(item.title, item.when);
   if (input.now) {
-    for (const day of upcomingDays(input.now, 'en')) slots.push(day.label);
-    for (const day of upcomingDays(input.now, 'fr')) slots.push(day.label);
+    const zone = familyZone(input);
+    for (const day of upcomingDays(input.now, zone, 'en')) slots.push(day.label);
+    for (const day of upcomingDays(input.now, zone, 'fr')) slots.push(day.label);
   }
   for (const slot of syncedFactSlots(input)) slots.push(slot);
   slots.push(
@@ -932,11 +1067,11 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
  * the month, and the clock as "10:00", "10 am", "10am" and "10 h". The
  * judge is checking the fact, not the model's phrasing of it.
  */
-export function instantFactSlots(start: string, allDay: boolean): string[] {
+export function instantFactSlots(start: string, allDay: boolean, timeZone: string): string[] {
   const slots: string[] = [];
   const instant = allDay ? new Date(`${start}T12:00:00Z`) : new Date(start);
   if (Number.isNaN(instant.getTime())) return slots;
-  const zone = allDay ? 'UTC' : AHA_TIME_ZONE;
+  const zone = allDay ? 'UTC' : timeZone;
   for (const locale of ['en-CA', 'fr-CA']) {
     const parts = new Intl.DateTimeFormat(locale, {
       weekday: 'long',
@@ -974,7 +1109,7 @@ export function instantFactSlots(start: string, allDay: boolean): string[] {
       hour: 'numeric',
       minute: '2-digit',
       hour12: false,
-      timeZone: AHA_TIME_ZONE,
+      timeZone,
     }).formatToParts(instant);
     const hour24 = Number(parts.find((part) => part.type === 'hour')?.value ?? Number.NaN);
     const minute = parts.find((part) => part.type === 'minute')?.value ?? '';
@@ -1006,24 +1141,26 @@ function syncedFactSlots(input: FriendVoiceInput): string[] {
   if (!synced) return [];
   const slots: string[] = [];
   for (const item of synced.calendar) {
+    const zone = familyZone(input);
     slots.push(item.title);
     if (item.location) slots.push(item.location);
-    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'en'));
-    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'fr'));
-    const clock = item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE);
+    slots.push(ahaWhenLabel(item.start, item.allDay, zone, 'en'));
+    slots.push(ahaWhenLabel(item.start, item.allDay, zone, 'fr'));
+    const clock = item.allDay ? null : ahaClockLabel(item.start, zone);
     if (clock) slots.push(clock);
-    slots.push(...instantFactSlots(item.start, item.allDay));
+    slots.push(...instantFactSlots(item.start, item.allDay, zone));
   }
   for (const item of synced.email) {
     slots.push(item.subject);
     if (item.fromName) slots.push(item.fromName);
     if (item.snippet) slots.push(item.snippet);
     if (item.receivedAt) {
-      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'en'));
-      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'fr'));
-      const clock = ahaClockLabel(item.receivedAt, AHA_TIME_ZONE);
+      const zone = familyZone(input);
+      slots.push(ahaWhenLabel(item.receivedAt, false, zone, 'en'));
+      slots.push(ahaWhenLabel(item.receivedAt, false, zone, 'fr'));
+      const clock = ahaClockLabel(item.receivedAt, zone);
       if (clock) slots.push(clock);
-      slots.push(...instantFactSlots(item.receivedAt, false));
+      slots.push(...instantFactSlots(item.receivedAt, false, zone));
     }
   }
   return slots;
@@ -1069,10 +1206,10 @@ export function peelFriendAsk(prose: string): { lead: string; ask: string } {
 }
 
 /**
- * The activity map as bubbles: the model's opener, then one bubble per group
- * with the model's lead over the real numbered lines. Numbers run across the
- * whole map so a later "number 4" points at one line. A missing lead leaves
- * the lines on their own; a lead is never invented by code.
+ * The activity map as bubbles, every one written by the model: the opener,
+ * then the bubble it wrote for each group, in group order. A group with no
+ * lines has no bubble; speakFriend refuses a map short of any other group.
+ * Code adds no numbers and no lines.
  */
 export function assembleFindShowBubbles(
   opener: string,
@@ -1082,14 +1219,10 @@ export function assembleFindShowBubbles(
   const bubbles: string[] = [];
   const lead = opener.trim();
   if (lead.length > 0) bubbles.push(lead);
-  let from = 1;
   groups.forEach((group, index) => {
-    const lines = group.lines.map((line) => line.trim()).filter((line) => line.length > 0);
-    if (lines.length === 0) return;
-    const head = (leads?.[index] ?? '').trim();
-    const numbered = numberedFindLines(lines, from);
-    from += lines.length;
-    bubbles.push(head.length > 0 ? `${head}\n${numbered}` : numbered);
+    if (!group.lines.some((line) => line.trim().length > 0)) return;
+    const written = (leads?.[index] ?? '').trim();
+    if (written.length > 0) bubbles.push(written);
   });
   return bubbles;
 }
@@ -1381,11 +1514,24 @@ function trailerFacts(options: JudgeOptions): string[] {
   return options.trailer ? [options.trailer] : [];
 }
 
+/**
+ * `detail` is for the retry and may quote the draft. `kinds` is what a log may
+ * carry: fixed codes, never the draft's words.
+ */
+export type FriendJudgeRefusal = {
+  ok: false;
+  reason: FriendJudgeFailure;
+  detail?: string;
+  kinds?: readonly string[];
+  /** How many draft strings the judge matched. */
+  count?: number;
+};
+
 export function judgeFriendReply(
   body: string,
   input: FriendVoiceInput,
   options: JudgeOptions = {},
-): { ok: true } | { ok: false; reason: FriendJudgeFailure; detail?: string } {
+): { ok: true } | FriendJudgeRefusal {
   const trimmed = body.trim();
   if (trimmed.length === 0) return { ok: false, reason: 'empty' };
   const needed = ZERO_QUESTION_STEPS.has(input.step) ? 0 : 1;
@@ -1413,7 +1559,7 @@ export function judgeFriendReply(
   // Hale is Hale. A reply that answers "Barton" with "I'm Barton" has the roles backwards.
   if (speaksAsParent(trimmed, input.parentName)) return { ok: false, reason: 'identity' };
   if (replyAddressesByOtherName(trimmed, input)) {
-    return { ok: false, reason: 'identity', detail: 'unknown_name' };
+    return { ok: false, reason: 'identity', detail: 'unknown_name', kinds: ['unknown_name'] };
   }
   if (FALSE_PRIVACY.test(trimmed)) return { ok: false, reason: 'privacy' };
   if (BANNED_PHRASE.test(trimmed)) return { ok: false, reason: 'banned' };
@@ -1429,23 +1575,32 @@ export function judgeFriendReply(
     /\b(?:free|cost|costs|price|pricing|pay|charge|gratuit|co[uû]te?)\b/i.test(input.parentWords) &&
     !/villagehale\.com|\b(?:the|our) (?:web)?site\b|\bsite web\b/i.test(trimmed)
   ) {
-    return { ok: false, reason: 'identity', detail: 'price' };
+    return { ok: false, reason: 'identity', detail: 'price', kinds: ['price'] };
   }
 
   const slots = friendFactSlots(input, options.link);
   for (const fact of trailerFacts(options)) slots.push(fact);
-  const invented = [
-    ...findInventedFacts(trimmed, slots),
-    ...mentionsOutsideSlots(trimmed, PRICE, slots),
-    ...weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)]),
-    ...priceTalk(trimmed, input),
-    ...quotesOutsideSlots(trimmed, slots),
-    ...namesOutsideSlots(trimmed, slots),
-    ...(PHONE.test(trimmed) ? ['phone number'] : []),
-    ...mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots),
-    ...(input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []),
+  const found: [kind: string, matched: string[]][] = [
+    ['fact', findInventedFacts(trimmed, slots)],
+    ['price', mentionsOutsideSlots(trimmed, PRICE, slots)],
+    ['weekday', weekdaysOutsideSlots(trimmed, [...slots, ...weekdaysOfDates(slots, input.now)])],
+    ['price_talk', priceTalk(trimmed, input)],
+    ['quote', quotesOutsideSlots(trimmed, slots)],
+    ['name', namesOutsideSlots(trimmed, slots)],
+    ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
+    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
-  if (invented.length > 0) return { ok: false, reason: 'invented', detail: invented.join(',') };
+  const invented = found.flatMap(([, matched]) => matched);
+  if (invented.length > 0) {
+    return {
+      ok: false,
+      reason: 'invented',
+      detail: invented.join(','),
+      count: invented.length,
+      kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
+    };
+  }
   if (/https?:\/\//i.test(trimmed)) {
     const allowed = options.link && trimmed.includes(options.link);
     if (!allowed) return { ok: false, reason: 'invented' };
@@ -1459,33 +1614,6 @@ export function judgeFriendReply(
     const follows = options.linkFollows === true && LINK_STEPS.has(input.step);
     if (!attached && !follows && !above) return { ok: false, reason: 'link' };
   }
-  // A card is for one connector. Prose about the other one under its link
-  // sends the parent to the wrong place.
-  if (options.linkFollows || options.link) {
-    // Naming the other connector is fine ("so I can add them to your calendar");
-    // asking to connect it under this link is not.
-    const connects = (thing: string) =>
-      new RegExp(
-        `\\b(?:connect|link|hook up|sync|access)\\w*\\b[^.?!]{0,25}\\b(?:${thing})\\b|\\b(?:${thing})\\b[^.?!]{0,15}\\b(?:connect|link|access)\\w*`,
-        'i',
-      ).test(trimmed);
-    // The ask is for this connector: a question about the other one is the wrong ask.
-    const otherAsked = (thing: RegExp) =>
-      sentencesOf(trimmed).some((sentence) => sentence.includes('?') && thing.test(sentence));
-    if (input.step === 'calendar' && otherAsked(/\b(?:gmail|inbox|e-?mails?)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && otherAsked(/\b(?:calendars?|calendrier|agenda)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'calendar' && connects('gmail|inbox|e-?mail')) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && connects('calendar|calendrier|agenda')) {
-      return { ok: false, reason: 'link' };
-    }
-  }
-
   // Nothing is connected until they tap the link: the ask and the reply to a yes say so.
   if (LINK_STEPS.has(input.step) && CONNECTED_CLAIM.test(trimmed)) {
     return { ok: false, reason: 'premature' };
@@ -1511,13 +1639,23 @@ export function judgeFriendReply(
     const namesGmail = /\bgmail\b/i.test(outside);
     const namesCalendar = /\b(calendar|calendrier|agenda)\b/i.test(outside);
     if (input.connector === 'gcal' && namesGmail) {
-      return { ok: false, reason: 'invented', detail: 'gmail on calendar wow' };
+      return {
+        ok: false,
+        reason: 'invented',
+        detail: 'gmail on calendar wow',
+        kinds: ['other_connector'],
+      };
     }
     if (input.connector === 'gmail' && namesCalendar) {
-      return { ok: false, reason: 'invented', detail: 'calendar on gmail wow' };
+      return {
+        ok: false,
+        reason: 'invented',
+        detail: 'calendar on gmail wow',
+        kinds: ['other_connector'],
+      };
     }
     const grounded = ahaGrounding(trimmed, input, named);
-    if (grounded) return { ok: false, reason: 'invented', detail: grounded };
+    if (grounded) return { ok: false, reason: 'invented', detail: grounded, kinds: ['aha'] };
   }
   return { ok: true };
 }
@@ -1663,6 +1801,7 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
     fallback: reason,
     step,
     capture: acceptOnboardingCapture(null),
+    asks: false,
   };
 }
 
@@ -1764,7 +1903,7 @@ function unsentPage(step: FriendStep, reason: FriendFallback): string {
 function scheduleLimits(input: FriendVoiceInput): ScheduleLimits {
   return {
     findLineCount: input.findLines.length,
-    today: input.now ? dayKeyIn(input.now, AHA_TIME_ZONE) : null,
+    today: input.now ? dayKeyIn(input.now, familyZone(input)) : null,
     lines: input.findLines,
     children: input.children ?? [],
     scheduledLines: (input.scheduled ?? []).flatMap((row) => (row.line ? [row.line] : [])),
@@ -1806,6 +1945,7 @@ export async function speakFriend(
     source: FriendVoiceResult['source'],
     turnCapture: OnboardingCapture,
     step: FriendStep,
+    asks: boolean,
   ): FriendVoiceResult => {
     const capture = withPre(turnCapture);
     const body =
@@ -1820,6 +1960,7 @@ export async function speakFriend(
       fallback: null,
       step,
       capture,
+      asks,
     };
   };
 
@@ -1852,6 +1993,7 @@ export async function speakFriend(
         bubbles: string[];
         capture: OnboardingCapture;
         step: FriendStep;
+        asks: boolean;
       }
     | {
         fail: FriendFallback;
@@ -1878,6 +2020,7 @@ export async function speakFriend(
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
+      const marks = replyMarks(composed);
       const limits = scheduleLimits(input);
       // A message Hale sends on its own (a card, a receipt) answers nothing:
       // there are no parent words to read a yes or a fact from.
@@ -1890,7 +2033,7 @@ export async function speakFriend(
                   withReading(
                     noYesInAQuestion(
                       ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                      input,
+                      marks.parentQuestion,
                     ),
                     input,
                   ),
@@ -1901,7 +2044,7 @@ export async function speakFriend(
           : empty;
       const draft = composed.reply.trim();
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step };
+        return { prose: '', bubbles: [], capture, step: input.step, asks: marks.asks };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -1921,6 +2064,18 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('schedule') },
         };
       }
+      // The claim gate, onboarding's half (VIL-538): this lane sends straight to the
+      // transport, past the dispatch choke point. The only calendar write onboarding
+      // makes is this turn's accepted adds, so a reply that says something was saved
+      // is checked against them, in any language, by the model's own field.
+      if (marks.claimsSaved && capture.scheduleAdds.length === 0) {
+        noteRefusal({ reason: 'unbacked_save', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_save') },
+        };
+      }
       const judgeInput = {
         ...judgeInputFor(input, capture),
         nameTakenBack:
@@ -1928,40 +2083,34 @@ export async function speakFriend(
           capture.nameDeclined ||
           (capture.nameConfirmed === false && capture.parentName === null),
       };
+      // A stop closes intake and tidyProse would strip its question, so a stop
+      // that still asks goes back to the model rather than out with the ask cut.
+      if (capture.stopAsking && (marks.asks || draft.normalize('NFKC').includes('?'))) {
+        noteRefusal({ reason: 'stop_still_asking', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('stop_still_asking') },
+        };
+      }
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
-      const tidied = tidyProse(
+      const prose = tidyProse(
         composed.reply,
         input,
         judgeInput.step,
         yesToLink(input, capture) || capture.scheduleAdds.length > 0,
       );
-      // Flag off: the number and phrase ride below, so a sentence that ends
-      // "send this phrase: Hale" points at them and stops there. Flag on writes
-      // the choice itself and does not get that rewrite.
+      // Under a yes to the group, code adds the number and phrase. The model
+      // says whether the reply points at them. Words are not the signal.
       const v2 = linqGroupOnboardingV2Enabled();
-      const prose =
-        !v2 && input.coparentJoin != null && capture.coparentGroup === true
-          ? tidied.replace(/:\s*[^.?!:\n]{0,24}$/u, '.')
-          : tidied;
-      // Under a yes to the group, code adds the number and phrase: the reply says they are below.
       const joinBelow = !v2 && input.coparentJoin != null && capture.coparentGroup === true;
-      // The number below is Hale's, never the other parent's.
-      const wrongOwner =
-        /\b(?:her|his|their|(?:mom|mum|dad|mother|father)['’]?s) (?:number|phone)\b/i;
-      if (
-        joinBelow &&
-        (!/\bbelow\b|\bhere\b|\bnumber\b|ci-dessous|en dessous|plus bas|num[ée]ro/i.test(prose) ||
-          wrongOwner.test(prose) ||
-          // A placeholder where the number or phrase would go ("this number: Hale's number").
-          /\b(?:number|phrase)\s*:?\s+(?:hale['’]s|the) (?:number|phrase)\b/i.test(prose) ||
-          // They start the group; Hale does not.
-          /\bI(?:['’]ll| will) (?:set up|start|create|make)\b[^.?!]{0,15}\bgroup\b|\bI(?:['’]ll| will) set (?:that|it|this) up\b/i.test(
-            prose,
-          ))
-      ) {
-        noteRefusal({ reason: 'join_not_pointed', step: input.step, prompt }, 'unusable');
+      if (joinBelow && marks.joinPointer !== 'below') {
+        noteRefusal(
+          { reason: 'join_not_pointed', joinPointer: marks.joinPointer, step: input.step, prompt },
+          'unusable',
+        );
         return {
           fail: 'unusable',
           capture,
@@ -1985,12 +2134,30 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
+      // A card is for one connector. The model lists what the reply offers to connect.
+      const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
+      const other = OTHER_CONNECTOR[judgeInput.step];
+      if (linkInPlay && other && marks.offered.includes(other)) {
+        noteRefusal({ reason: 'other_connector', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('other_connector') },
+        };
+      }
       const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
-          const leads = tidyLeads(composed.groupLeads ?? null, groups);
+          const leads = findShowGroupBubbles(composed.groupLeads ?? null, groups, input);
+          // A map short of a group would go out as the whole map, and the
+          // missing group would no longer be owed. Every group with lines needs
+          // its own usable bubble, or nothing goes.
+          const short = groups.some(
+            (group, index) => group.lines.some((line) => line.trim().length > 0) && !leads?.[index],
+          );
+          if (!leads || short) return null;
           const bubbles = assembleFindShowBubbles(text, groups, leads);
-          return bubbles.length === 0 ? null : { bubbles, judgedText: bubbles.join('\n\n') };
+          return { bubbles, judgedText: bubbles.join('\n\n') };
         }
         if (text.length === 0) return null;
         return {
@@ -1998,32 +2165,45 @@ export async function speakFriend(
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
-      // A good draft with one fixable slip (a second question mark) is repaired
-      // by code and judged again rather than dropped. Length is not a reason.
+      // A draft that fails the judge is not rewritten. The model is asked once
+      // more; if that also fails, nothing is sent.
       const assembled = bubblesFor(prose);
+      if (!assembled && input.step === 'find_show') {
+        noteRefusal({ reason: 'no_group_bubble', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('no_group_bubble') },
+        };
+      }
       if (!assembled) return { fail: 'unusable', capture };
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-      const repaired = repairedProse(prose, judgeInput.step);
-      const again = repaired.length > 0 ? bubblesFor(repaired) : null;
-      if (
-        again &&
-        (judged.reason === 'question' || judged.reason === 'link') &&
-        judgeFriendReply(again.judgedText, judgeInput, judgeOptions).ok
-      ) {
-        console.error(
-          { repaired: judged.reason, step: input.step, prompt },
-          'onboarding-friend: draft repaired',
-        );
-        return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
+      // The promises no row can ever back, refused here as dispatch refuses them.
+      if (judged.ok && claimsNoLedgerCanBack(assembled.judgedText).length > 0) {
+        noteRefusal({ reason: 'unbacked_claim', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_claim') },
+        };
+      }
+      if (judged.ok) {
+        return {
+          prose,
+          bubbles: assembled.bubbles,
+          capture,
+          step: judgeInput.step,
+          asks: marks.asks,
+        };
       }
       return reject(judged);
 
-      function reject(judged: { ok: false; reason: FriendJudgeFailure; detail?: string }) {
+      function reject(judged: FriendJudgeRefusal) {
         noteRefusal(
           {
             reason: judged.reason,
-            ...(judged.detail ? { detail: judged.detail } : {}),
+            ...(judged.kinds ? { kinds: judged.kinds } : {}),
+            ...(judged.count ? { count: judged.count } : {}),
             step: input.step,
             judgedAs: judgeInput.step,
             prompt,
@@ -2043,6 +2223,9 @@ export async function speakFriend(
       noteRefusal(
         {
           err: err instanceof Error ? err.name : 'unknown',
+          ...(err instanceof StructuredOutputError
+            ? { outcome: err.outcome, stopReason: err.stopReason }
+            : {}),
           ...(err instanceof z.ZodError
             ? {
                 issues: err.issues
@@ -2077,6 +2260,7 @@ export async function speakFriend(
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
       first.step,
+      first.asks,
     );
   }
   if (firstPrompt === 'short') return failed(first.fail, first.capture);
@@ -2101,7 +2285,7 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+    return finish(second.prose, second.bubbles, 'retry', capture, second.step, second.asks);
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2132,18 +2316,36 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 }
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
-function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join',
+export function retryProblem(
+  reason:
+    | FriendJudgeFailure
+    | 'schedule'
+    | 'join'
+    | 'other_connector'
+    | 'unbacked_save'
+    | 'unbacked_claim'
+    | 'no_group_bubble'
+    | 'stop_still_asking',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'no_group_bubble':
+      return "A group bubble could not be sent: it was missing, or named a time, day, price, name or activity that is not in that group's own lines. Write one bubble per group in findGroups, from that group's lines only.";
+    case 'stop_still_asking':
+      return 'It set stopAsking and still asked a question. stopAsking ends the conversation, so that question would never be answered. If the parent asked Hale to stop, write a close that asks nothing; if not, set stopAsking false and ask.';
     case 'join':
       return linqGroupOnboardingV2Enabled()
-        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
-        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
+        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Set joinPointer to below when the reply points at them, wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
+    case 'other_connector':
+      return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
-      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
+      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map, so nothing was saved. Use the n of a map line that matches, for a child its ages suit. When no line matches, nothing is saved: do not say it was, and do not confirm a day or time for it.';
+    case 'unbacked_save':
+      return 'It says something was saved, added or set, and nothing was saved this turn. Do not say it was or confirm a day or time for it; say plainly it is not saved.';
+    case 'unbacked_claim':
+      return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? 'This message asks nothing. No question mark.'
@@ -2171,7 +2373,7 @@ function retryProblem(
   }
 }
 
-function askInWords(step: FriendStep | undefined): string {
+export function askInWords(step: FriendStep | undefined): string {
   switch (step) {
     case 'email':
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
@@ -2189,7 +2391,7 @@ function askInWords(step: FriendStep | undefined): string {
     case 'ages':
       return 'ask how old each kid is';
     case 'place':
-      return 'ask their postal code';
+      return 'ask their postal code or ZIP, or, when they just declined it, ask `next` instead';
     default:
       return 'ask the open item';
   }
@@ -2237,42 +2439,6 @@ function factsOnly(capture: OnboardingCapture): OnboardingCapture {
 }
 
 /** Sentences, split after . ! ? or at a line break. Each keeps its punctuation. */
-/** Opens a question: "Which of these…?", "Would you…?". */
-const QUESTION_OPENER =
-  /^(?:which|what|who|when|where|how|would|could|can|do|does|did|is|are|want|should|shall|will)\b/i;
-/** A question that only points at the options a later one names: "Which of these would help?" */
-const OPTIONS_OPENER =
-  /^(?:which|what)\b[^?]{0,40}\b(?:these|those|ones?|options?|activities|programs)\b[^?]{0,40}\?$/i;
-const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
-
-/**
- * Code's repair of a draft that broke one countable rule. Two or three
- * questions offering choices become one: an earlier question that only opens
- * ("Which of these would help?") is dropped, any other earlier one becomes a
- * statement. Empty when there is nothing safe to repair. Length is not repaired.
- */
-export function repairedProse(prose: string, step: FriendStep): string {
-  if (ZERO_QUESTION_STEPS.has(step)) return '';
-  let sentences = sentencesOf(prose);
-  const asks = sentences.filter((sentence) => sentence.includes('?'));
-  // Never fold in an ask that belongs to another step.
-  if (step !== 'coparent' && asks.some((sentence) => COPARENT_WORDS.test(sentence))) return '';
-  if (asks.length > 1) {
-    const last = sentences.lastIndexOf(asks[asks.length - 1] ?? '');
-    sentences = sentences.flatMap((sentence, index) => {
-      if (index === last || !sentence.includes('?')) return [sentence];
-      if (OPTIONS_OPENER.test(sentence)) return [];
-      // "Do you have kids? If so, …": the later question leans on it. No safe repair.
-      if (QUESTION_OPENER.test(sentence)) return ['\u0000'];
-      return [sentence.replace(/\?+/g, '.')];
-    });
-    if (sentences.includes('\u0000')) return '';
-  }
-  const repaired = sentences.join(' ');
-  if (repaired === prose.trim()) return '';
-  return repaired.includes('?') ? repaired : '';
-}
-
 function sentencesOf(text: string): string[] {
   // "Village Hale Technologies Inc. made Hale" is one sentence.
   return text
@@ -2324,36 +2490,78 @@ export function tidyProse(
     : reply.trim();
 }
 
-/** A lead is the model's words over a group. A copied line, a question or a letter is dropped. */
-function tidyLeads(
+/**
+ * What one group's bubble may say: that group's lines, plus what every bubble
+ * shares (the parent's words, the place, the kids' ages and names, the
+ * parent's name). Another group's lines are not in here.
+ */
+function groupBubbleSlots(group: FriendFindGroup, input: FriendVoiceInput): string[] {
+  const slots = [input.parentWords, input.agesLabel ?? '', input.placeLabel ?? ''];
+  for (const line of group.lines) slots.push(line, ...twelveHourTimes(line));
+  for (const months of input.ageMonths) slots.push(String(months));
+  for (const child of input.children ?? []) if (child.name) slots.push(child.name);
+  if (input.parentName) slots.push(input.parentName);
+  return slots.filter((slot) => slot.length > 0);
+}
+
+/** The facts in a group bubble that its own group's lines do not hold. */
+function groupBubbleInventions(
+  bubble: string,
+  group: FriendFindGroup,
+  input: FriendVoiceInput,
+): string[] {
+  const slots = groupBubbleSlots(group, input);
+  const prose = bubble.replace(/\bfeel free\b/gi, '');
+  return [
+    ...findInventedFacts(bubble, slots),
+    ...mentionsOutsideSlots(bubble, PRICE, slots),
+    ...weekdaysOutsideSlots(bubble, [...slots, ...weekdaysOfDates(slots, input.now)]),
+    ...(PRICE_WORD.test(prose) && !group.lines.some((line) => PRICE_WORD.test(line))
+      ? ['price']
+      : []),
+    ...quotesOutsideSlots(bubble, slots),
+    ...namesOutsideSlots(bubble, slots),
+    ...activitiesOutsideSlots(bubble, group.lines),
+  ];
+}
+
+/**
+ * The model's bubble for each group, checked against that group's own lines.
+ * A bubble that names a time, day, price, name or activity its group does not
+ * hold (storytime's hour in the swim bubble) is dropped, and code writes
+ * nothing in its place. Null when the model did not write one per group.
+ */
+export function findShowGroupBubbles(
   leads: readonly string[] | null,
   groups: readonly FriendFindGroup[],
+  input: FriendVoiceInput,
 ): string[] | null {
-  if (!leads) return null;
-  // One lead per group or none: a lead that sums up every group sits over the
-  // wrong lines. One string with a sentence per group is split back into leads.
-  let perGroup = leads;
-  if (leads.length === 1 && groups.length > 1) {
-    const parts = sentencesOf(leads[0] ?? '');
-    if (parts.length === groups.length) perGroup = parts;
-  }
-  if (perGroup.length !== groups.length) return null;
+  if (!leads || leads.length !== groups.length) return null;
   return groups.map((group, index) => {
-    const raw = (perGroup[index] ?? '').trim();
-    const lead = sentencesOf(raw)
-      .filter((sentence) => !sentence.includes('?'))
-      .join(' ');
-    // Ages, times and counts are the lines' to state: a lead that restates one can only get it wrong.
-    if (lead.length === 0 || /\d/u.test(lead)) return '';
-    // A lead names only what its own lines hold ("swim and Scouts" over two swims is wrong).
-    if (activitiesOutsideSlots(lead, group.lines).length > 0) return '';
-    const copied = group.lines.some((line) => {
-      const a = looseText(line);
-      const b = looseText(lead);
-      return a.includes(b) || b.includes(a);
-    });
-    return copied ? '' : lead;
+    const bubble = (leads[index] ?? '').trim();
+    if (bubble.length === 0) return '';
+    return groupBubbleInventions(bubble, group, input).length > 0 ? '' : bubble;
   });
+}
+
+/**
+ * The system text for one compose. The co-parent choice and the household-group
+ * addendum ride only on the turns that need them, so every other turn keeps its bytes.
+ */
+export async function friendVoiceSystem(
+  input: Pick<FriendVoiceInput, 'step' | 'householdGroup'>,
+  short: boolean,
+) {
+  const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
+  const choice =
+    linqGroupOnboardingV2Enabled() && input.step === 'coparent'
+      ? await loadCronSkill('group-onboarding-voice')
+      : null;
+  const group = input.householdGroup ? await loadCronSkill('household-group') : null;
+  const system = [skill, choice, group]
+    .flatMap((part) => (part ? [part.instructions] : []))
+    .join('\n\n');
+  return { skill, system };
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
@@ -2361,23 +2569,17 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
     async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
       const short = options?.prompt === 'short';
-      const skill = short
-        ? await loadOnboardingFriendShortSkill()
-        : await loadOnboardingFriendSkill();
-      const choice =
-        linqGroupOnboardingV2Enabled() && input.step === 'coparent'
-          ? await loadCronSkill('group-onboarding-voice')
-          : null;
+      const { skill, system } = await friendVoiceSystem(input, short);
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system: choice ? `${skill.instructions}\n\n${choice.instructions}` : skill.instructions,
+        system,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
-        maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
+        maxTokens: MAX_TOKENS,
         transport: llmTransport(),
       });
       return {
@@ -2406,6 +2608,11 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,
+        asks: value.asks,
+        parentQuestion: value.parentQuestion,
+        connectorsOffered: value.connectorsOffered,
+        joinPointer: value.joinPointer,
+        claimsSaved: value.claimsSaved,
       };
     },
   };

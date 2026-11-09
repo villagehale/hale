@@ -53,6 +53,7 @@ export type SpendAlert =
   | 'below_threshold'
   | 'paged'
   | 'deduped'
+  | 'page_not_configured'
   | 'page_not_delivered';
 
 /** First instant of the current calendar month, UTC. */
@@ -96,6 +97,8 @@ export async function checkMonthlySpend(
     ? 'deduped'
     : outcome.alerted
       ? 'paged'
-      : 'page_not_delivered';
+      : outcome.notConfigured
+        ? 'page_not_configured'
+        : 'page_not_delivered';
   return { totalUsd: summary.totalUsd, threshold, alert };
 }

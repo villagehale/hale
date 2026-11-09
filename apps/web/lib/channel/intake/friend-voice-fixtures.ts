@@ -22,9 +22,9 @@ export interface FriendFixtureTurn {
   title: string;
   input: FriendVoiceInput;
   link?: string;
-  /** Prose the model writes. Code appends the list and the link. */
+  /** Prose the model writes. On a year list code still numbers up to three lines under it; code appends the link. */
   prose: string;
-  /** find_show only: one short lead per group, in group order. */
+  /** find_show only: the bubble the model wrote for each group, in group order. */
   groupLeads?: readonly string[];
 }
 
@@ -93,7 +93,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'the map, grouped for their ages, no question',
         prose: 'Here is what is on near M5V for a 4-year-old and a 1-year-old.',
-        groupLeads: ['Weekends', 'Free drop-ins'],
+        groupLeads: [`Weekends\n${SWIM}`, `Free drop-ins\n${STORY}\n${EARLYON}`],
         input: input({
           step: 'find_show',
           parentWords: 'Maya is 4 and Leo is 1',
@@ -157,6 +157,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
           day: 'Saturdays 10am',
           findLines: [SWIM, STORY, EARLYON],
           now: new Date('2026-10-05T14:00:00.000Z'),
+          timeZone: 'America/Toronto',
         }),
       },
       {
@@ -210,7 +211,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'la carte, sans question',
         prose: 'Voici ce qui se passe près de H2X pour une enfant de 4 ans.',
-        groupLeads: ['La fin de semaine', 'Gratuit'],
+        groupLeads: [`La fin de semaine\n${NATATION}`, `Gratuit\n${CONTE}`],
         input: input({
           step: 'find_show',
           language: 'fr',
@@ -272,7 +273,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
       {
         title: 'straight to the map, no question',
         prose: 'Maya is 4 and Leo is 1, near M6J. Here is what is on.',
-        groupLeads: ['Weekends'],
+        groupLeads: [`Weekends\n${SWIM}`],
         input: input({
           step: 'find_show',
           introduce: true,

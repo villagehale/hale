@@ -15,6 +15,7 @@ import {
 import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/activity/deep-queue';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
+import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
@@ -38,11 +39,13 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { defaultClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
 import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
@@ -733,6 +736,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createReplyTransport({
       // SMS-shaped answers leave through the shared phone door (Linq by default).
       phone: createOutboundTransport(),
+      mentionFor: ({ chatId, body }) => resolveGroupMention({ database, chatId, text: body }),
     }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
@@ -780,6 +784,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
     dispatchDeepResearch: (payload) =>
@@ -824,6 +829,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     reconcileView: loadReconcileView,
     // VIL-581 · the claim reader in shadow; a no-op while CLAIM_READER_MODE is unset.
     claimShadow: defaultClaimShadow(),
+    claimEnforcer: defaultClaimEnforcer(),
     recordRegistrationWatch,
     armWatchedSpot,
     limiter: new PostgresRateLimiter(database),

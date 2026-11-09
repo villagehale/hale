@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in Chinese and reads warmly, but it fails on two counts. First, it promises \"我会帮你看看附近有没有可以认识的家庭\" (I'll look around for families you could meet), which is future searching action the facts don't give; the facts only say Hale texts when it finds a good match. Second, it leaves out the given fact that Hale texts them when it finds a good match. It also adds \"谢谢你\", which the facts don't call for. The shared-info and off-ramp facts are correct.",
+    "score": 2
+  }
+}

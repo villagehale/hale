@@ -732,6 +732,16 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'connector-drive-ask',
+    text: 'connect my google drive',
+    note: 'Hale offers no Drive connect link (#1011), and the connector_link handler logs connector_not_offered and lets a plain Drive ask fall through (#1056), so this exact text DOES reach the coach. The failure to prevent is the loop: telling the parent that texting "connect my Google Drive" sends a link, when that text is the one that just reached the coach with nothing sent. The reply says, in its own words, that Drive is not something Hale connects.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['drive'],
+      forbidden: ['connect my google drive', 'http', 'drive link'],
+    },
+  },
+  {
     id: 'registration-watch-asked',
     text: 'can you watch swim registration for Milo this fall?',
     // The one fixture whose family is not in Toronto: the window below is a real Halton
@@ -1213,6 +1223,26 @@ export const COACH_CHANNEL_FIXTURES = [
       // verb choice.
       voiceFloorWaived:
         'the coach cannot see or correct an email Hale sent on its own (open gap, PR #856)',
+    },
+  },
+  {
+    id: 'fact-seen-in-email',
+    text: 'is Ada still doing art on fridays?',
+    // VIL-429. The one fact here came from an email, not from the parent. The context
+    // carries it exactly as loadAgentContext does for the mailbox owner.
+    memoryFacts: [
+      {
+        childId: 'kid-ada',
+        factType: 'routine',
+        factKey: 'art_class_day',
+        factValue: 'art class Fridays at 4:30',
+        confidence: 0.9,
+        seenIn: { email: { from: 'Harbour Art Studio', on: '2026-07-28' } },
+      },
+    ],
+    note: 'VIL-429. Hale knows the Friday art class only from a Harbour Art Studio email of Jul 28. The answer leans on that fact, so it says, in its own words, that it saw it in that email and roughly when, and lets the parent correct it. It never quotes the email or claims anything about it beyond the sender and the day.',
+    expect: {
+      mustMention: ['harbour'],
     },
   },
 ];

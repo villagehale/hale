@@ -251,6 +251,11 @@ describe('claim-read fixtures: provenance and size (review items 6 and 2)', () =
     expect(provenanceViolations([bare])).toEqual([bare.id]);
   });
 
+  it('a real shadow sample is refused: the eval cache is committed and the repo is public', () => {
+    const sample = { ...CLAIM_READ_FIXTURES[0], provenance: 'shadow_sample' };
+    expect(provenanceViolations([sample])).toEqual([sample.id]);
+  });
+
   it('every fixture is inside every bound the production request applies', () => {
     expect(BOUNDS).toEqual({ body: 8_000, inbound: 2_000, what: 160, host: 253 });
     expect(boundViolations(CLAIM_READ_FIXTURES, BOUNDS)).toEqual([]);

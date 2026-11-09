@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "routine development/check-up guidance question about an 18-month-old, not a reported symptom or a request to find a doctor",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2123
+}

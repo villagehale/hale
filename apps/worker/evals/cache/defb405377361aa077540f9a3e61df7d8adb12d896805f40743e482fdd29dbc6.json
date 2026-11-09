@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "Yes to Saturday, but no price named and no session price stated",
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverAccepted": false,
+    "question": "What is the most you're willing to pay for the Saturday 9:00 swim session?"
+  },
+  "latencyMs": 1482
+}

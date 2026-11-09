@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "No problem, I'll drop it. If you'd rather I call you something, just tell me whenever you like.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "fr"
+  },
+  "latencyMs": 1424
+}

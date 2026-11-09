@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "Spokane",
+    "region": "Washington",
+    "granularity": "neighbourhood"
+  },
+  "latencyMs": 1047
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Send the co-parent departure news now, since it is never held; drop the Saturday market nudge because Saturday is an all-day family visit and no free window fits it.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: PD Day (kept as the event's name), tomorrow, start 9:30 in the morning (AM clear), end noon (12:00 PM), and venue 'Northside community centre'. No address was given in the facts, so none is missing. 930 minutes from 6:00 PM Sunday to 9:30 AM Monday matches 'tomorrow morning'. It is presented as something to be at, not a free day. Nothing invented, no link, no changed or overlaps fields apply, and bold is none, which is fine.",
+    "score": 5
+  }
+}

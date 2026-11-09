@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?', which is a direct question asking the parent to reply, and it duplicates the shell question, so the parent is asked twice. The message also contains no other ask beyond that, but the explicit question with a question mark is an ask that must be marked down heavily.",
+    "score": 1
+  }
+}

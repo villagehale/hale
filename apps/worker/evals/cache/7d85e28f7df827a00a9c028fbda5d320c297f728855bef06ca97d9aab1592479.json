@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow, Léa's swim lesson 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo's music class 10 to 10:45 at Brightside Music, 7 Oak Ave, with nothing invented. AM/PM is implied morning by 'tomorrow' and times are naturally morning; no wrong details. The text says plainly that the two overlap, but it gives no next step to settle the clash (such as who takes which child, since they are different children), so by the clash rule it scores at most 3. No bold, which is fine.",
+    "score": 3
+  }
+}

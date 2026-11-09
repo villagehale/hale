@@ -19,6 +19,17 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
+  type CapabilityNotes,
+  type OwedCorrection,
+  loadOwedCorrections,
+} from '~/lib/channel/capabilities/ledger';
+import { type DeferredCapability, darkCapabilities } from '~/lib/channel/capabilities/registry';
+import {
+  augmentCoachSkillForCapabilities,
+  noteCapabilityCorrectionTool,
+  noteCapabilityDeclinedTool,
+} from '~/lib/channel/capabilities/tools';
+import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
@@ -27,8 +38,21 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
-import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
+import {
+  linqExperiencesEnabled,
+  linqGroupLeaveEnabled,
+  linqVoiceMemosEnabled,
+} from '~/lib/channel/linq/config';
 import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
+import { hearVoiceMemo } from '~/lib/channel/linq/voice-speech';
+import { groupSharedListsEnabled } from '~/lib/channel/lists/flag';
+import {
+  appendGroupListsReply,
+  augmentCoachSkillForGroupLists,
+  createGroupListJournal,
+  undoGroupListWrites,
+} from '~/lib/channel/lists/tools';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -39,7 +63,12 @@ import {
   ChannelTurnFailed,
   type ChannelTurnResult,
 } from '~/lib/channel/router/coach-runtime';
-import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { augmentCoachSkillForStopWatching } from '~/lib/channel/spots/stop-tool';
+import {
+  type SpotWatchIntent,
+  loadParentLiveWatches,
+  releaseWatchByParent,
+} from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import {
   type AgentContext,
@@ -53,6 +82,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { createLiveClassAvailabilityReader } from '~/lib/registration/class-availability';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
   activityReviewsSurfaceEnabled,
@@ -77,6 +107,8 @@ import {
   augmentCoachSkillForExperienceCards,
   shareExperienceCardTool,
 } from './experience-card-tool';
+import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
@@ -90,6 +122,22 @@ import {
 } from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
+  type ForecastDay,
+  augmentCoachSkillForLocalDay,
+  loadCoachForecast,
+  loadCoachTimeZone,
+  localDayContext,
+} from './local-day';
+import { familyLocalNow } from './local-now';
+import {
+  type CoachEmailReader,
+  READ_EMAIL_SKILL,
+  augmentCoachSkillForReadEmail,
+  productionCoachEmailReader,
+  readEmailTool,
+  taintTurnOnEmailRead,
+} from './read-email-tool';
+import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
@@ -102,6 +150,7 @@ import {
   channelScheduleReader,
   createTurnOfferLedger,
 } from './tools';
+import { augmentCoachSkillForVoiceMemos, replyAsVoiceMemoTool } from './voice-memo-tool';
 
 /**
  * VIL-221 · C2 — the coach, over SMS.
@@ -127,8 +176,9 @@ import {
  * answer in the parent's history before it existed. Nothing in {@link ChannelCoachPorts}
  * can write to that table, which is the structural half of the promise.
  *
- * A failed turn THROWS. The router owns the honesty template ("nothing was changed"),
- * and it can only use it if a failure looks like one — see route.ts runAgentTurn.
+ * A failed turn THROWS. The router owns what a parent hears next (route.ts
+ * disposeOfFailedTurn): a model writes it from facts, or nothing is sent. That
+ * path only runs when a failure looks like one.
  */
 
 /** The whole turn's model budget. Six steps is enough for lookup_week → resolve → two
@@ -205,6 +255,15 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
+   * Optional: absent or null, the turn carries only the UTC instant, as before. */
+  loadTimeZone?(familyId: string): Promise<string | null>;
+  /** Their coarse area's outlook, today onward (VIL-435). Optional: absent or empty
+   * leaves the key out. */
+  loadForecast?(familyId: string): Promise<ForecastDay[]>;
+  /** VIL-303 · this parent's earlier noes that are true now. Optional: absent or empty
+   * leaves the key, the addendum and the correction verb out. */
+  loadOwedCorrections?(familyId: string, parentUserId: string): Promise<OwedCorrection[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -221,6 +280,8 @@ export interface ChannelCoachPorts {
      * nearby count read the same list. */
     offered: TurnOfferLedger,
     onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    /** VIL-447: a tool registers how to undo a write it made; a failed turn runs them. */
+    onUndo?: (undo: () => Promise<void>) => void,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -243,6 +304,12 @@ export interface ChannelCoachPorts {
    */
   experienceCardsEnabled?(): boolean;
   /**
+   * VIL-495 — whether Linq voice memos are lit (`LINQ_VOICE_MEMOS_ENABLED`). Absent or
+   * false: the voice verb is not registered and the skill is untouched, so a dark turn's
+   * prompt bytes and cache prefix are exactly main's. Never offered on a group turn.
+   */
+  voiceMemosEnabled?(): boolean;
+  /**
    * VIL-477 — whether Hale may leave a group on a member's explicit ask
    * (`LINQ_GROUP_LEAVE_ENABLED`). Absent or false: the verb is not registered and the
    * skill is untouched. Only ever offered on a group turn.
@@ -250,6 +317,12 @@ export interface ChannelCoachPorts {
   groupLeaveEnabled?(): boolean;
   /** VIL-477 — the leave guard, run before the reply so a decline is told to the model. */
   groupLeaveCheck?(chatId: string): Promise<GroupLeaveEligibility>;
+  /**
+   * VIL-433 — the parent's own Gmail, read only for an email an alert in this thread named.
+   * Offered on a 1:1 turn whose parent has it connected; never on a group turn. Absent, or
+   * not connected: no verb and the skill is untouched.
+   */
+  emailReader?: CoachEmailReader;
   /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
@@ -261,10 +334,21 @@ export interface ChannelCoachPorts {
    */
   client(): AgentClient;
   /**
+   * VIL-524. On a nearby-find turn, after the model writes, this decides whether
+   * the whole reply is internal reasoning. Production always sets it. Absent is
+   * named `not_configured` and the draft is sent, so a scripted coach is not
+   * silenced. A wired judge that withholds or fails sends nothing. The judge
+   * does not rewrite parent text.
+   */
+  judgeFindReply?(draft: string): Promise<FindReplyGate>;
+  /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
    */
-  readInboundMedia?(parts: readonly InboundMediaPart[]): Promise<ReadInboundMedia>;
+  readInboundMedia?(
+    parts: readonly InboundMediaPart[],
+    audience: ChannelTurn['audience'],
+  ): Promise<ReadInboundMedia>;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
   now(): Date;
@@ -309,16 +393,36 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       let experienceCard: ExperienceCardIntent | null = null;
       // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
       let groupLeave: GroupLeaveIntent | null = null;
+      // VIL-495: the model chose to say this reply as a voice memo.
+      let voiceChosen = false;
+      // VIL-447: writes a failed turn must take back (shared-list adds and check-offs), so
+      // the router's "nothing was changed" is true. Run newest first; an undo that fails
+      // is logged by fault class and never masks the turn's own failure.
+      const undos: Array<() => Promise<void>> = [];
+      const undoAll = async () => {
+        for (const undo of undos.splice(0).reverse()) {
+          await undo().catch((err: unknown) =>
+            console.error(
+              { fault: err instanceof Error ? err.name : typeof err },
+              'coach: turn write undo failed',
+            ),
+          );
+        }
+      };
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(turn.parentUserId, turn.familyId),
-        ports.loadTranscript(turn.conversationId),
-        ports.loadChildren(turn.familyId),
-        ports.loadRegistrationWindows(turn.familyId, now),
-      ]);
+      const [loadedSkill, transcript, children, registrationWindows, timeZone, forecast] =
+        await Promise.all([
+          ports.loadSkill(turn.parentUserId, turn.familyId),
+          ports.loadTranscript(turn.conversationId),
+          ports.loadChildren(turn.familyId),
+          ports.loadRegistrationWindows(turn.familyId, now),
+          ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
+          ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
+        ]);
+      const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
       const providerWatch = ports.loadProviderWatch
         ? await ports.loadProviderWatch(turn.familyId, now)
         : [];
@@ -326,8 +430,19 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const voiceLit = turn.audience !== 'group' && (ports.voiceMemosEnabled?.() ?? false);
+      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
+      const emailLit =
+        emailReader !== undefined &&
+        (await emailReader.connected(turn.familyId, turn.parentUserId));
       const groupedSkill =
-        turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+        turn.audience === 'group'
+          ? // VIL-447: the shared-list verbs exist only in a group, and only with the flag on.
+            augmentCoachSkillForGroupLists(
+              await appendGroupCoachSkill(loadedSkill),
+              groupSharedListsEnabled(),
+            )
+          : loadedSkill;
       // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
       // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
       const nearbyFind = await loadCronSkill('coach-nearby-find');
@@ -335,15 +450,29 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...groupedSkill,
         instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
       };
+      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
+      // itself stays byte-identical, so coach-channel and group-privacy
+      // recordings stay keyed on the prompt they already have.
+      const findTurn = nearbyFindTurn(turn.body, transcript);
+      const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      const composedSkill = augmentCoachSkillForReadEmail(
+        augmentCoachSkillForFindPrivate(
+          augmentCoachSkillForGroupLeave(
+            augmentCoachSkillForVoiceMemos(
+              augmentCoachSkillForExperienceCards(
+                baseSkill,
+                cardsLit ? await loadCronSkill('experience-card-coach') : null,
+              ),
+              voiceLit ? await loadCronSkill('coach-voice-memo') : null,
+            ),
+            leaveLit,
+          ),
+          findPrivate,
         ),
-        leaveLit,
+        emailLit ? await loadCronSkill(READ_EMAIL_SKILL) : null,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -362,7 +491,44 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         focusedChildId: null,
         transcript,
         sourceNote: null,
+        readerUserId: turn.parentUserId,
       });
+      // VIL-566: the household-group addendum rides only when the fact does, so every
+      // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
+      // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.
+      const householdSkill = familyContext.householdGroup
+        ? await appendHouseholdGroupSkill(composedSkill)
+        : composedSkill;
+      const sourcedSkill =
+        turn.audience !== 'group' && familyContext.memoryFacts.some((fact) => fact.seenIn)
+          ? await appendFactSourceSkill(householdSkill)
+          : householdSkill;
+      // VIL-435: the local-day addendum rides only when a day fact does.
+      const dayedSkill = augmentCoachSkillForLocalDay(
+        sourcedSkill,
+        Object.keys(localDay).length > 0 ? await loadCronSkill('coach-local-day') : null,
+      );
+      // VIL-303: a 1:1 turn may say a deferred capability is not real yet while one is
+      // dark, and carries a correction while this parent is owed one. A group turn does
+      // neither: the no and its correction belong to the parent who heard the no.
+      const darkNow = turn.audience === 'group' ? [] : darkCapabilities(turn.familyId);
+      const owedCorrections =
+        turn.audience === 'group' || !ports.loadOwedCorrections
+          ? []
+          : await ports.loadOwedCorrections(turn.familyId, turn.parentUserId);
+      const skill = augmentCoachSkillForCapabilities(dayedSkill, {
+        declined: darkNow.length > 0,
+        correction:
+          owedCorrections.length > 0 ? await loadCronSkill('coach-capability-correction') : null,
+      });
+      const declined: DeferredCapability[] = [];
+      const corrected: DeferredCapability[] = [];
+      // VIL-447: list reply tone rides last, and only on a group turn with the flag on.
+      // Dark and 1:1 turns keep the skill bytes they already had.
+      const coachSkill =
+        turn.audience === 'group' && groupSharedListsEnabled()
+          ? await appendGroupListsReply(skill)
+          : skill;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -384,6 +550,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // TODAY WHERE THE FAMILY LIVES, AND ITS WEATHER (VIL-435). Facts for the model to
+        // reason over (a holiday there? a day for indoors?), never a filter and never
+        // copy. Each key is absent when unknown.
+        ...localDay,
         // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
         // FACT about state, handed to the model the same way the family's schedule is —
         // so a turn that is plainly an answer to one of them can be treated as one, and a
@@ -403,6 +573,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // What the watch last read on this family's providers. Absent when empty, so
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
+        // VIL-303: absent unless this parent is owed a correction, for the same reason.
+        ...(owedCorrections.length > 0 ? { capabilityCorrections: owedCorrections } : {}),
       };
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {
@@ -422,195 +594,292 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           metadata: { familyId: turn.familyId },
         },
         async (trace) => {
-          const startedAt = Date.now();
-          // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
-          // reused set would spend this text's budget on the last one's.
-          const builtTools = ports.buildTools(
-            turn,
-            (actionId) => draftedActionIds.push(actionId),
-            (offer) => {
-              planOffer = offer;
-            },
-            (share) => {
-              referral = share;
-            },
-            (promise) => {
-              activityPromise = promise;
-            },
-            (watch) => {
-              spotWatch = watch;
-            },
-            offeredThisTurn,
-            (notice) => {
-              if (gmailNotice?.status === 'unsent') return;
-              gmailNotice = notice;
-            },
-          );
-          // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
-          // are busy-only, on every group turn.
-          const tools = [
-            ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
-            ...(cardsLit
-              ? [
-                  shareExperienceCardTool({
-                    links: turnLinks,
-                    onCard: (card) => {
-                      experienceCard = card;
-                    },
-                  }),
-                ]
-              : []),
-            ...(leaveLit
-              ? [
-                  leaveGroupChatTool({
-                    memberWords: turn.body,
-                    onLeave: (intent) => {
-                      groupLeave = intent;
-                    },
-                    ...(ports.groupLeaveCheck
-                      ? {
-                          check: async () => {
-                            const chatId = turn.groupChatId;
-                            if (!chatId)
-                              return { ok: false as const, reason: 'not_group' as const };
-                            const g = await ports.groupLeaveCheck!(chatId);
-                            if (g.status === 'eligible') return { ok: true as const };
-                            if (g.status === 'failed')
-                              return { ok: false as const, reason: 'unavailable' as const };
-                            return {
-                              ok: false as const,
-                              reason:
-                                g.reason === 'no_explicit_ask'
-                                  ? ('unavailable' as const)
-                                  : g.reason,
-                            };
-                          },
-                        }
-                      : {}),
-                  }),
-                ]
-              : []),
-          ];
-          // A tool that throws, a provider that times out, a step that runs long: the
-          // loop can break anywhere, and by then the drafts it made are already rows.
-          // Re-thrown rather than handled — the router owns what a parent is told.
-          const result = await ports
-            .runAgent({
-              skill,
-              context: turnContext,
-              tools,
-              client: ports.client(),
-              maxSteps: MAX_STEPS,
-              maxTokens: MAX_TOKENS,
-              toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-              guardDeps: ports.guardDeps,
-              ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
-            })
-            .catch((err: unknown) => {
-              throw failed(
-                err instanceof Error ? err.message : 'channel coach: agent loop failed',
-                err,
-              );
+          try {
+            const startedAt = Date.now();
+            // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
+            // reused set would spend this text's budget on the last one's.
+            const builtTools = ports.buildTools(
+              turn,
+              (actionId) => draftedActionIds.push(actionId),
+              (offer) => {
+                planOffer = offer;
+              },
+              (share) => {
+                referral = share;
+              },
+              (promise) => {
+                activityPromise = promise;
+              },
+              (watch) => {
+                spotWatch = watch;
+              },
+              offeredThisTurn,
+              (notice) => {
+                if (gmailNotice?.status === 'unsent') return;
+                gmailNotice = notice;
+              },
+              (undo) => {
+                undos.push(undo);
+              },
+            );
+            // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
+            // are busy-only, on every group turn. VIL-615: once read_email returns text,
+            // only reads run for the rest of the turn.
+            const { tools, emailRead } = taintTurnOnEmailRead([
+              ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+              ...(cardsLit
+                ? [
+                    shareExperienceCardTool({
+                      links: turnLinks,
+                      onCard: (card) => {
+                        experienceCard = card;
+                      },
+                    }),
+                  ]
+                : []),
+              ...(voiceLit
+                ? [
+                    replyAsVoiceMemoTool({
+                      onChoose: () => {
+                        voiceChosen = true;
+                      },
+                    }),
+                  ]
+                : []),
+              ...(leaveLit
+                ? [
+                    leaveGroupChatTool({
+                      memberWords: turn.body,
+                      onLeave: (intent) => {
+                        groupLeave = intent;
+                      },
+                      ...(ports.groupLeaveCheck
+                        ? {
+                            check: async () => {
+                              const chatId = turn.groupChatId;
+                              if (!chatId)
+                                return { ok: false as const, reason: 'not_group' as const };
+                              const g = await ports.groupLeaveCheck!(chatId);
+                              if (g.status === 'eligible') return { ok: true as const };
+                              if (g.status === 'failed')
+                                return { ok: false as const, reason: 'unavailable' as const };
+                              return {
+                                ok: false as const,
+                                reason:
+                                  g.reason === 'no_explicit_ask'
+                                    ? ('unavailable' as const)
+                                    : g.reason,
+                              };
+                            },
+                          }
+                        : {}),
+                    }),
+                  ]
+                : []),
+              ...(darkNow.length > 0
+                ? [
+                    noteCapabilityDeclinedTool({
+                      dark: darkNow,
+                      onDeclined: (capability) => declined.push(capability),
+                    }),
+                  ]
+                : []),
+              ...(owedCorrections.length > 0
+                ? [
+                    noteCapabilityCorrectionTool({
+                      owed: owedCorrections.map((owed) => owed.capability),
+                      onCorrected: (capability) => corrected.push(capability),
+                    }),
+                  ]
+                : []),
+              ...(emailLit && emailReader
+                ? [
+                    readEmailTool((gmailMessageId) =>
+                      emailReader.read({
+                        familyId: turn.familyId,
+                        parentUserId: turn.parentUserId,
+                        conversationId: turn.conversationId,
+                        gmailMessageId,
+                      }),
+                    ),
+                  ]
+                : []),
+            ]);
+            // A tool that throws, a provider that times out, a step that runs long: the
+            // loop can break anywhere, and by then the drafts it made are already rows.
+            // Re-thrown rather than handled — the router owns what a parent is told.
+            const result = await ports
+              .runAgent({
+                skill: coachSkill,
+                context: turnContext,
+                tools,
+                client: ports.client(),
+                maxSteps: MAX_STEPS,
+                maxTokens: MAX_TOKENS,
+                toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
+                guardDeps: ports.guardDeps,
+                ...(media.blocks.length > 0 ? { attachments: media.blocks } : {}),
+              })
+              .catch((err: unknown) => {
+                throw failed(
+                  err instanceof Error ? err.message : 'channel coach: agent loop failed',
+                  err,
+                );
+              });
+
+            const modelUsed = pickModel(coachSkill.meta.task);
+            trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
+              model: modelUsed,
+              usage: result.usage,
             });
 
-          const modelUsed = pickModel(skill.meta.task);
-          trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
-            model: modelUsed,
-            usage: result.usage,
-          });
+            const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
+              familyId: turn.familyId,
+              agentName: CHANNEL_AGENT_NAME,
+              status,
+              latencyMs: Date.now() - startedAt,
+              promptTokens: result.usage.promptTokens,
+              completionTokens: result.usage.completionTokens,
+              costUsd: agentRunCostUsd(modelUsed, result.usage),
+              promptCacheHit: result.usage.cacheReadTokens > 0,
+              cacheReadTokens: result.usage.cacheReadTokens,
+              cacheWriteTokens: result.usage.cacheCreationTokens,
+              langfuseTraceId: trace.traceId,
+            });
 
-          const record = (status: 'completed' | 'failed'): ChannelRunRecord => ({
-            familyId: turn.familyId,
-            agentName: CHANNEL_AGENT_NAME,
-            status,
-            latencyMs: Date.now() - startedAt,
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            costUsd: agentRunCostUsd(modelUsed, result.usage),
-            promptCacheHit: result.usage.cacheReadTokens > 0,
-            cacheReadTokens: result.usage.cacheReadTokens,
-            cacheWriteTokens: result.usage.cacheCreationTokens,
-            langfuseTraceId: trace.traceId,
-          });
+            if (gmailNotice?.status === 'unsent') {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                'channel coach: gmail draft notice was not sent',
+                new GmailDraftNoticeUnsent(),
+              );
+            }
 
-          if (gmailNotice?.status === 'unsent') {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              'channel coach: gmail draft notice was not sent',
-              new GmailDraftNoticeUnsent(),
-            );
-          }
+            if (result.answer === null && gmailNotice?.status !== 'ready') {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                result.hitMaxSteps
+                  ? 'channel coach: agent hit maxSteps without an answer'
+                  : result.truncated
+                    ? // The ceiling failed, not the model and not the context — a
+                      // distinct event from "said nothing for its own reasons", and the
+                      // only one of the three a lane-config change can fix (rule #11).
+                      `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
+                    : 'channel coach: agent returned no answer',
+              );
+            }
 
-          if (result.answer === null && gmailNotice?.status !== 'ready') {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              result.hitMaxSteps
-                ? 'channel coach: agent hit maxSteps without an answer'
-                : result.truncated
-                  ? // The ceiling failed, not the model and not the context — a
-                    // distinct event from "said nothing for its own reasons", and the
-                    // only one of the three a lane-config change can fix (rule #11).
-                    `channel coach: agent truncated before speaking (${result.truncatedRetries} re-ask)`
-                  : 'channel coach: agent returned no answer',
-            );
-          }
-
-          const share = referral as ReferralShare | null;
-          const offer = planOffer as PlanOffer | null;
-          // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
-          // A count is the least important thing in any message that also carries one of
-          // those — and a turn that offered nothing has nothing to count about.
-          const nearby =
-            offer === null && share === null
-              ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
-              : null;
-          const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-          const spoken =
-            gmailNotice !== null && gmailNotice.status === 'ready'
-              ? gmailNotice.text
-              : result.answer;
-          if (!spoken) {
-            await ports.recordRun(record('failed'));
-            throw failed(
-              'channel coach: gmail draft notice was not sent',
-              new GmailDraftNoticeUnsent(),
-            );
-          }
-          // VIL-434: the model's answer goes out whole. Length is the model's judgment
-          // (the skill, or a rewrite the model chooses). Code does not cut it, and it
-          // does not call a shorten pass because a sentence ran past two segments.
-          const reply = toSmsReply(spoken, {
-            children,
-            now,
-            ...(noticeReady
-              ? {}
-              : {
-                  planOffer: offer?.sentence,
-                  referral: share ? referralBlock(share) : undefined,
-                  activityLinks: turnLinks(),
-                  nearby: nearby ?? undefined,
-                }),
-          });
-          await ports.recordRun(record('completed'));
-          const card = experienceCard as ExperienceCardIntent | null;
-          return {
-            reply,
-            planOffer,
-            activityPromise,
-            spotWatch,
-            // The title passes the same age-derived teen floor as the answer (rule #1).
-            experienceCard:
-              card && !noticeReady
-                ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+            const share = referral as ReferralShare | null;
+            const offer = planOffer as PlanOffer | null;
+            // PRECEDENCE: a promise or a link wins, and the count is not even looked up.
+            // A count is the least important thing in any message that also carries one of
+            // those — and a turn that offered nothing has nothing to count about.
+            const nearby =
+              offer === null && share === null
+                ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
+                : null;
+            const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
+            const spoken =
+              gmailNotice !== null && gmailNotice.status === 'ready'
+                ? gmailNotice.text
+                : result.answer;
+            if (!spoken) {
+              await ports.recordRun(record('failed'));
+              throw failed(
+                'channel coach: gmail draft notice was not sent',
+                new GmailDraftNoticeUnsent(),
+              );
+            }
+            // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
+            // turn whose tools handed over a find (any language). It does not edit the
+            // draft. withhold, or a judge that failed, sends nothing.
+            // A runtime built without the port (scripted journey coaches) names that
+            // and sends the draft: production always wires the judge.
+            const handedOverFind =
+              offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
+            if (!noticeReady && (findTurn || handedOverFind)) {
+              if (!ports.judgeFindReply) {
+                console.error(
+                  { reason: 'not_configured' },
+                  'channel coach: find-reasoning judge absent - draft sent unjudged',
+                );
+              } else {
+                const gate = await ports.judgeFindReply(spoken);
+                if (gate.verdict !== 'send') {
+                  console.error(
+                    {
+                      reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                    },
+                    'channel coach: find reply withheld - nothing sent',
+                  );
+                  await ports.recordRun(record('failed'));
+                  // A failed turn, not a deliberate silence (Devin #983): the router's
+                  // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                  // The withheld draft itself is never sent.
+                  throw failed(
+                    gate.verdict === 'withhold'
+                      ? 'channel coach: find reply withheld (find_reasoning)'
+                      : `channel coach: find reply judge failed (${gate.reason})`,
+                  );
+                }
+              }
+            }
+            // VIL-434: the model's answer goes out whole. Length is the model's judgment
+            // (the skill, or a rewrite the model chooses). Code does not cut it, and it
+            // does not call a shorten pass because a sentence ran past two segments.
+            const reply = toSmsReply(spoken, {
+              children,
+              now,
+              ...(noticeReady
+                ? {}
+                : {
+                    planOffer: offer?.sentence,
+                    referral: share ? referralBlock(share) : undefined,
+                    activityLinks: turnLinks(),
+                    nearby: nearby ?? undefined,
+                  }),
+            });
+            await ports.recordRun(record('completed'));
+            const card = experienceCard as ExperienceCardIntent | null;
+            const capabilityNotes: CapabilityNotes | null =
+              declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
+            return {
+              reply,
+              planOffer,
+              activityPromise,
+              spotWatch,
+              capabilityNotes,
+              // The title passes the same age-derived teen floor as the answer (rule #1).
+              experienceCard:
+                card && !noticeReady
+                  ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                  : null,
+              groupLeave: groupLeave
+                ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
                 : null,
-            groupLeave: groupLeave
-              ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
-              : null,
-          };
+              // A Gmail draft notice is a receipt to read, so it stays text.
+              voiceMemo: voiceChosen && !noticeReady,
+              draftedActionIds,
+              emailRead: emailRead(),
+            };
+          } catch (err) {
+            await undoAll();
+            throw err;
+          }
         },
       );
     },
   };
+}
+
+async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
+  const group = await loadCronSkill('household-group');
+  return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
+}
+
+async function appendFactSourceSkill(skill: Skill): Promise<Skill> {
+  const addendum = await loadCronSkill('coach-fact-source');
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
@@ -643,28 +912,48 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
     experienceCardsEnabled: linqExperiencesEnabled,
+    voiceMemosEnabled: linqVoiceMemosEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
+    emailReader: productionCoachEmailReader(database),
     loadSkill: async (parentUserId, familyId) =>
-      augmentCoachSkillForSignupOffer(
-        augmentCoachSkillForProviderWatch(
-          augmentCoachSkillForAutonomySwitchOff(
-            await augmentCoachSkillForGoogleDrafts(
-              await loadCronSkill('coach-channel-sms'),
-              parentUserId,
+      augmentCoachSkillForStopWatching(
+        augmentCoachSkillForSignupOffer(
+          augmentCoachSkillForProviderWatch(
+            augmentCoachSkillForAutonomySwitchOff(
+              await augmentCoachSkillForGoogleDrafts(
+                await loadCronSkill('coach-channel-sms'),
+                parentUserId,
+              ),
+              await familyHasAutonomyGrant(familyId, database),
             ),
-            await familyHasAutonomyGrant(familyId, database),
+            browserUseWatchEnabled(),
           ),
-          browserUseWatchEnabled(),
+          signupOfferToolEnabled(),
         ),
-        signupOfferToolEnabled(),
+        (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
-    loadContext: (input) => loadAgentContext(input, database),
+    loadContext: async (input) => {
+      const context = await loadAgentContext(input, database);
+      const householdGroup = await loadHouseholdGroupFact(database, input.familyId);
+      return householdGroup ? { ...context, householdGroup } : context;
+    },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
+    loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
+    loadForecast: (familyId) => loadCoachForecast(database, familyId),
+    loadOwedCorrections: (familyId, parentUserId) =>
+      loadOwedCorrections(database, { familyId, parentUserId }).catch((err: unknown) => {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'coach: owed capability corrections unavailable',
+        );
+        return [];
+      }),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
@@ -680,7 +969,27 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      onUndo,
+    ) => {
+      const listJournal = createGroupListJournal();
+      const listsLit = turn.audience === 'group' && groupSharedListsEnabled();
+      if (listsLit && onUndo) {
+        onUndo(() =>
+          undoGroupListWrites(
+            { database, actorUserId: turn.parentUserId, now: turn.now },
+            listJournal,
+          ),
+        );
+      }
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
@@ -721,6 +1030,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
           reader: bindActivityReader(database, productionActivityFamilyReader()),
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
+          readClassAvailability: createLiveClassAvailabilityReader(
+            anthropicClient(),
+            MINT_FETCH_TIMEOUT_MS,
+          ),
         },
         onDraft,
         onOffer,
@@ -729,6 +1042,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onWatch,
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
+        spotRelease: {
+          liveWatches: (scope) => loadParentLiveWatches(database, scope),
+          release: (input) => releaseWatchByParent(database, { ...input, now: turn.now }),
+        },
         autonomySwitchOff: {
           parentWords: turn.body,
           revoke: (input) =>
@@ -744,6 +1061,16 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               now: turn.now,
               timeZone: () => channelScheduleReader(database, turn.now).timeZone(turn.familyId),
               offeredThisTurn: offered.read,
+            }
+          : null,
+        groupLists: listsLit
+          ? {
+              database,
+              familyId: turn.familyId,
+              conversationId: turn.conversationId,
+              actorUserId: turn.parentUserId,
+              now: turn.now,
+              journal: listJournal,
             }
           : null,
         providerWatch: browserUseWatchEnabled()
@@ -798,7 +1125,15 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       });
     },
     now: () => new Date(),
-    readInboundMedia,
+    // VIL-495: a voice memo is heard only while the flag is lit, and only on a 1:1 turn.
+    readInboundMedia: (parts, audience) =>
+      readInboundMedia(
+        parts,
+        fetch,
+        audience === 'direct' && linqVoiceMemosEnabled()
+          ? (part) => hearVoiceMemo(part, audience)
+          : undefined,
+      ),
   };
 }
 
@@ -815,7 +1150,7 @@ async function mediaForTurn(
     );
     return { blocks: [], unwatched: parts.map((part) => ({ kind: part.kind })) };
   }
-  return ports.readInboundMedia(parts);
+  return ports.readInboundMedia(parts, turn.audience);
 }
 
 async function loadReplyChildren(database: Database, familyId: string): Promise<ReplyChild[]> {

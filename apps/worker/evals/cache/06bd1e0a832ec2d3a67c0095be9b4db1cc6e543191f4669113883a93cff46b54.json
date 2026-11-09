@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states a suggestion and reasoning but asks the parent for nothing: no question, no request to reply or confirm, no offer awaiting a yes. The question-free phrasing 'could be a good one' is a passing suggestion, not an ask.",
+    "score": 5
+  }
+}

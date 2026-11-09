@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "No worries, we can leave that for now. What should I call you when you want to pick it up again?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1318
+}

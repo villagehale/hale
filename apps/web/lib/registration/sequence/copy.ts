@@ -1,10 +1,9 @@
 import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
-import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotPortal } from '~/lib/channel/spots/url';
-import { formatWhenPhrase } from '~/lib/format/datetime';
 import { dayKeyIn } from '~/lib/plan/spine';
+import type { DateUnconfirmedFacts } from './date-unconfirmed-compose.js';
+import type { Moment, RegistrationNoteFacts } from './note-compose.js';
 import {
   type ApplicableClock,
   type CoursePage,
@@ -13,60 +12,25 @@ import {
   courseSignInUrl,
   priceClause,
 } from './prepare.js';
-import type { SequenceLeg, SequenceOptIn } from './schedule.js';
+import {
+  GO_LEAD_MINUTES,
+  HEADS_UP_LEAD_DAYS,
+  READINESS_LEAD_DAYS,
+  type SequenceLeg,
+  type SequenceOptIn,
+  WAITLIST_FINAL_LEAD_HOURS,
+} from './schedule.js';
 import type { FitNote, Shortlist } from './shortlist.js';
 
 /**
- * VIL-242 · M7 — every sentence the sequence can send, rendered deterministically.
+ * VIL-242 · M7 — the facts every registration message is written from. NO SENTENCE IS
+ * BUILT HERE (VIL-484, VIL-488, VIL-543): the model writes every text from these facts,
+ * and a text that cannot be written sends nothing. The heads-up, evening and morning-of
+ * texts have their own composers; everything else goes through note-compose.ts.
  *
- * NO MODEL RUNS IN THIS FILE, and unlike M4's nudge that is not a fallback path — it is
- * the whole design. Two reasons, and the second is the one that settles it:
- *
- *   1. There is nothing here for a model to add. Every leg is a time, a link and a list
- *      of names; the warmth a composer buys on a weekend suggestion is worth very little
- *      on "your registration opens in 15 minutes".
- *   2. These messages arrive at 6:15 a.m. through a QUIET-HOURS EXEMPTION the parent
- *      granted by approving a shortlist. A message with that privilege has to be one a
- *      human reviewed once and can predict forever. A generated sentence with a
- *      quiet-hours bypass is a sentence nobody approved waking a household for.
- *
- * Plain ASCII throughout: one typographic dash or curly apostrophe flips the whole SMS
- * to UCS-2 and halves the budget (see sms-segments.ts). The `asciiSpaces` wrapper exists
- * because Intl renders "6:30 a.m." with a NARROW NO-BREAK SPACE, which is not GSM-7.
- *
- * VIL-338 · THE PREPARED BRANCHES ARE FIXED TEMPLATES, NOT A CLAUSE BUDGET. Where a
- * course is bound, three legs compose from THAT tick's reading of the portal's own
- * page, and every one of them is a whole sentence chosen by a verdict rather than a
- * frame that drops adjectives until it fits. A composer that trims by length has an
- * output no test can enumerate, which on the one message that arrives fifteen minutes
- * before a registration opens is the same as having no test at all. So: one template
- * per verdict, every one of them measured in copy.test.ts against the LONGEST registry
- * host and prepare.ts's own PRINTABLE_STRING_CAPS, with the full CASL form.
- *
- * VIL-338 · THE THIRTEEN OTHER MUNICIPALITIES SEE NOTHING. Every branch below is
- * reached through `portal !== null`, and the non-portal sentences are the ones that
- * shipped, character for character — including "6:30 a.m.." in the go leg, a
- * pre-existing double period that is deliberately NOT fixed here because "byte
- * identical" is the property that makes this ticket safe to merge dark.
- *
- * VIL-484 · THE EVENING BATTLE PLAN IS NOT RENDERED HERE. The sentences that
- * named an open are facts (`battlePlanDecision`) for evening-compose.ts. The
- * model writes the whole text. A draft that cannot be written sends nothing.
- * That includes the page already open and a morning moved to another day: both
- * are situations in the facts, with no sentence built here.
+ * The `asciiSpaces` wrapper exists because Intl renders "6:30 a.m." with a NARROW
+ * NO-BREAK SPACE, which is not GSM-7.
  */
-
-/**
- * Three segments on a portal leg, measured against the FULL CASL form.
- *
- * It is a deliberate budget change on a class that is capped for message COUNT and not
- * for segments: roughly one extra segment on three legs per registration window per
- * portal family. What it buys is the portal's own 288-character sign-in-and-return
- * link, which is the difference between a parent tapping once at 6:29 a.m. and a parent
- * hunting for a login. The thirteen municipalities with no readable portal keep
- * MAX_NUDGE_SEGMENTS.
- */
-export const MAX_PORTAL_SEGMENTS = 3;
 
 /** THIS tick's reading of the bound course, and the link it was read from. */
 export interface PrepCopyInput {
@@ -110,23 +74,13 @@ export interface LegCopyInput {
 export type CheckInReplyRender =
   | { outcome: 'registered' }
   | { outcome: 'waitlisted'; position: number | null; deadlineAt: Date | null }
-  | { outcome: 'missed' }
-  /** Nothing readable came back — the single gentle re-ask. */
-  | { outcome: null };
+  | { outcome: 'missed' };
 
 export interface CheckInReplyInput {
   shortlist: Shortlist;
   timeZone: string;
   now: Date;
   reply: CheckInReplyRender;
-}
-
-/** The three answers the reply parser can actually read, quoted verbatim so a parent
- * who copies one back is guaranteed a match. */
-const ANSWER_MENU = 'Reply "got in", "waitlisted #12" or "missed it".';
-
-function when(instant: Date, timeZone: string, now: Date): string {
-  return asciiSpaces(formatWhenPhrase(instant, timeZone, now));
 }
 
 /** Just the time of day, for a leg whose sentence already carries the day. */
@@ -193,46 +147,6 @@ function dateOnly(instant: Date, timeZone: string): string {
   );
 }
 
-/** Anything a handset would turn into a tappable link. Substring rather than parsed:
- * the question is not "is this a URL" but "will a phone make one of it". */
-const LINK_SHAPED = /https?:\/\//i;
-
-/**
- * The sentences this ladder may never say, and the reason each one is here: every one
- * of them claims Hale did something on the parent's account. Hale has no account, no
- * session and no credential anywhere in this feature, so each of these is a false
- * statement about the product's own behaviour — the class of lie a parent would only
- * discover at 6:31 a.m. with the seat gone.
- */
-const FORBIDDEN_CLAIM = /filled in|staged|held for you|ready to go/i;
-
-/**
- * The other half: sentences that state the parent's setup as a FACT rather than as
- * something the parent told Hale. Hale never logs in and never checks, so the only
- * honest form of this claim carries its own source — which is what `readinessClause`
- * exists to make structural, and this is the belt on it.
- */
-const UNATTRIBUTED_READINESS = /your account is set|you(?:'re| are) (?:all )?ready|all set/i;
-
-const READINESS_TOLD = 'You told me the setup is done.';
-const READINESS_UNTOLD_EVENING =
-  'You have not told me the setup is done - tonight is the time. Want me to know when it is?';
-
-/**
- * The ONE sentence any leg may say about the parent's portal setup.
- *
- * Attribution is structural rather than reviewed: there are exactly three outputs, and
- * all three begin with what the PARENT did or did not say. Hale never verifies an
- * account, a child row, an address or a saved card — it cannot without logging in, and
- * it never will — so "your account is set" is not a shorter way of saying this, it is a
- * different and false claim. Null and false are the same sentence deliberately: silence
- * is not a no, but neither of them is a yes, and the copy owes the parent the same
- * nudge either way.
- */
-export function readinessClause(ready: boolean | null): string {
-  return ready === true ? READINESS_TOLD : READINESS_UNTOLD_EVENING;
-}
-
 /**
  * Whether this leg's body carries the readiness ask. Exported so the copy and the
  * open-question ledger cannot drift: the question is open only while its ask is Hale's
@@ -242,8 +156,7 @@ export function readinessClause(ready: boolean | null): string {
  * KNOWN IMPRECISION, bounded on purpose, and it has TWO causes rather than one. A
  * battle plan that degraded to a failure sentence (the course gone, the page closed,
  * the clock moved to another day) has no room for the ask and prints none; and a battle
- * plan for a parent who already answered YES prints `READINESS_TOLD`, which carries no
- * imperative either. Both still return true for that leg's key, which is why the source
+ * plan for a parent who already answered YES carries no imperative either. Both still return true for that leg's key, which is why the source
  * that reads this predicate must ALSO require `readiness_ready IS DISTINCT FROM true`
  * and the last-word rule — dropping either of those on the strength of this function
  * alone would open a question against a text that asked nothing. What the overstatement
@@ -253,61 +166,6 @@ export function readinessClause(ready: boolean | null): string {
  */
 export function printsReadinessAsk(leg: SequenceLeg, portal: SpotPortal | null): boolean {
   return portal !== null && (leg === 'readiness' || leg === 'battle_plan');
-}
-
-export interface PreparedCopyContext {
-  /** The one link this body carries, or null where it carries none. */
-  url: string | null;
-  /** Every page-derived string this body prints AS ITSELF. */
-  printed: readonly string[];
-  /** The tokens THIS tick's read proved. `printed` must be a subset. */
-  backed: readonly string[];
-  /** Retained so callers can still name a form. The footer is no longer appended
-   * (founder decision, 2026-10-01), so a proactive body and a solicited reply are
-   * measured as the same string. */
-  optOut: OptOutForm | null;
-}
-
-/** Removes one literal occurrence, so a check runs on what is left over after the
- * pieces the body is allowed to carry are accounted for. */
-function without(text: string, literal: string | null): string {
-  if (literal === null || literal === '') return text;
-  const at = text.indexOf(literal);
-  return at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + literal.length)}`;
-}
-
-/**
- * Everything wrong with a prepared body, named. Exported because the composers run it
- * on themselves and copy.test.ts runs it on their output: a gate only the composer can
- * reach is a gate nobody can test (VIL-337's spotOpenViolations, same reasoning).
- *
- * The two families it catches are different in kind and the composers treat them so. An
- * unbacked value or a forbidden claim is a LIE, and the composer falls back to the
- * variant of the same leg that prints no page value at all. A fourth segment is a COST,
- * and a body that is honest and long still beats no message on the morning the feature
- * exists for — so nothing here ever throws inside a leg.
- */
-export function preparedCopyViolations(body: string, ctx: PreparedCopyContext): string[] {
-  const violations: string[] = [];
-
-  if (ctx.url === null) {
-    if (LINK_SHAPED.test(body)) violations.push('unexpected_link');
-  } else if (!body.includes(ctx.url)) {
-    violations.push('url_missing');
-  }
-  if (ctx.printed.some((value) => !ctx.backed.includes(value))) violations.push('unbacked_value');
-
-  // The link's own query string carries a `?`, so it is subtracted before the rule runs:
-  // the question is whether HALE asked something, and every ask in this ladder is an
-  // One question is the ask. A second is two answers Hale cannot tell apart.
-  // The link's own query string is subtracted first, so its `?` is not Hale's.
-  const questions = (without(body, ctx.url).match(/\?/g) ?? []).length;
-  if (questions > 1) violations.push('asks_a_question');
-  if (FORBIDDEN_CLAIM.test(body)) violations.push('forbidden_claim');
-  if (UNATTRIBUTED_READINESS.test(body)) violations.push('unattributed_readiness');
-  const wire = ctx.optOut === null ? body : withOptOut(body, ctx.optOut);
-  if (smsSegments(wire) > MAX_PORTAL_SEGMENTS) violations.push('too_many_segments');
-  return violations;
 }
 
 /** A page string Hale may print, or null. The reader has already dropped anything the
@@ -354,22 +212,6 @@ export function headsUpFacts(input: LegCopyInput): HeadsUpFacts {
     ageApproximate: shortlist.ageApproximate,
     next: headsUpPromisesPlan(input.optIn) ? 'plan_promised' : 'offer',
   };
-}
-
-/**
- * The checklist, three days out. ONE ask (D14), and every item on it is the
- * municipality's own published prerequisite restated — an account, the child added with
- * their birthday, a complete address, a saved card. It claims nothing about Hale, and
- * it is the only leg whose whole purpose is a question, so the ask is the last thing in
- * it and it is imperative rather than interrogative.
- *
- * It carries the news the heads-up would have carried at this hour, because the leg was
- * CARVED OUT of that interval: a family matched three days before the open must still
- * learn what opens, when, and for whom.
- */
-function readiness(input: LegCopyInput, portal: SpotPortal): string {
-  const who = whoPhrase(input.shortlist.fitNotes);
-  return `${windowPhrase(input.shortlist)} opens ${when(input.anchor, input.timeZone, input.now)} for ${who}. Before then, on ${portal.portalLabel}: ${portal.accountLabel}, ${who} added with their birthday(s), your address complete, and a card saved. Want me to know when that is done?`;
 }
 
 export type EveningSituation =
@@ -643,76 +485,100 @@ export function morningFacts(input: LegCopyInput): MorningFacts {
   }
 }
 
-function checkIn(input: LegCopyInput): string {
-  return `How did ${windowPhrase(input.shortlist)} go? ${ANSWER_MENU}`;
+function moment(instant: Date, timeZone: string): Moment {
+  return { date: writtenDate(instant, timeZone), time: timeOfDay(instant, timeZone) };
 }
 
 /**
- * The waitlist guards. Both say WHERE the clock came from, because it came from two
- * places a parent should be able to separate: the response window is the
- * municipality's published rule, and the start is the parent's own message. Hale never
- * sees the offer email, so claiming to know when the offer landed would be a guess
- * dressed as a deadline.
+ * VIL-543 · facts for the three legs that are not the heads-up, the evening or the
+ * morning-of text: the readiness checklist, the check-in and the two waitlist guards.
+ * The model writes the whole text (note-compose.ts). There is no code sentence.
+ *
+ * The readiness checklist carries the news the heads-up would have carried at this
+ * hour, because the leg was CARVED OUT of that interval. Its waitlist guards say where
+ * the clock came from: the municipality's published window, started by the parent's own
+ * message. Hale never sees the offer email.
  */
-function waitlistGuard(input: LegCopyInput, leg: 'waitlist_half' | 'waitlist_final'): string {
-  const hours = input.shortlist.waitlistResponseHours;
-  const deadline = input.waitlist?.deadlineAt ?? null;
-  const town = townLabel(input.shortlist.windowRef.municipality);
-  if (hours === null || deadline === null) {
-    // The scheduler never emits a guard without a clock; this keeps the renderer total
-    // rather than throwing inside a send path.
-    return `Checking in on your ${town} waitlist spot - watch your email for an offer.`;
-  }
-  const until = `${when(deadline, input.timeZone, input.now)}`;
-  if (leg === 'waitlist_final') {
-    return `About 2h left to answer a ${town} waitlist offer: ${hours}h from your message runs out ${until}. Check your email and portal.`;
-  }
-  return `Halfway on the ${town} waitlist clock. Their window is ${hours}h from your message, so it runs out ${until}.`;
-}
-
-/** One leg's SMS body, without the opt-out — the sender appends that exactly once. */
-export function renderSequenceLeg(leg: SequenceLeg, input: LegCopyInput): string {
+export function legNoteFacts(
+  leg: 'readiness' | 'check_in' | 'waitlist_half' | 'waitlist_final',
+  input: LegCopyInput,
+): RegistrationNoteFacts {
+  const now = moment(input.now, input.timeZone);
+  const { shortlist } = input;
   switch (leg) {
-    case 'heads_up':
-      throw new Error('registration sequence: the heads-up text is composed from facts');
-    case 'readiness':
-      // `dueLeg` never routes a portal-less sequence here. The runner composes the
-      // heads-up from facts for that case before it would reach this renderer.
+    case 'readiness': {
+      // `dueLeg` never routes a portal-less sequence here; the runner composes the
+      // heads-up from facts for that case.
       if (input.portal == null) {
-        throw new Error('registration sequence: the heads-up text is composed from facts');
+        throw new Error('registration sequence: a portal-less readiness leg is the heads-up');
       }
-      return readiness(input, input.portal);
-    case 'battle_plan': {
-      throw new Error('registration sequence: the evening text is composed from facts');
+      return {
+        kind: 'readiness_checklist',
+        now,
+        window: windowPhrase(shortlist),
+        who: whoPhrase(shortlist.fitNotes),
+        opensOn: writtenDate(input.anchor, input.timeZone),
+        opensAt: timeOfDay(input.anchor, input.timeZone),
+        portal: input.portal.portalLabel,
+        account: input.portal.accountLabel,
+      };
     }
-    case 'go':
-      throw new Error('registration sequence: the morning-of text is composed from facts');
     case 'check_in':
-      return checkIn(input);
+      return { kind: 'check_in_ask', now, window: windowPhrase(shortlist) };
     case 'waitlist_half':
-    case 'waitlist_final':
-      return waitlistGuard(input, leg);
+    case 'waitlist_final': {
+      const deadline = input.waitlist?.deadlineAt ?? null;
+      const clock = {
+        town: townLabel(shortlist.windowRef.municipality),
+        responseHours: shortlist.waitlistResponseHours,
+        deadline: deadline === null ? null : moment(deadline, input.timeZone),
+      };
+      return leg === 'waitlist_half'
+        ? { kind: 'waitlist_halfway', now, ...clock }
+        : { kind: 'waitlist_final', now, ...clock, hoursLeft: WAITLIST_FINAL_LEAD_HOURS };
+    }
   }
 }
 
-/** Hale's answer to what the parent reported. Solicited, so no opt-out line. */
-export function renderCheckInReply(input: CheckInReplyInput): string {
+/**
+ * VIL-423 · facts for a dated leg whose stored opening the page did not corroborate.
+ * No date and no leg timing are handed: "the evening before" would state the
+ * unconfirmed day as surely as the date itself.
+ */
+export function dateUnconfirmedFacts(
+  leg: SequenceLeg,
+  input: LegCopyInput,
+  why: DateUnconfirmedFacts['why'],
+): DateUnconfirmedFacts {
+  return {
+    now: moment(input.now, input.timeZone),
+    window: windowPhrase(input.shortlist),
+    who: whoPhrase(input.shortlist.fitNotes),
+    why,
+    offer: leg === 'heads_up' && !headsUpPromisesPlan(input.optIn),
+  };
+}
+
+/** Facts for Hale's answer to what the parent reported. Solicited. */
+export function checkInOutcomeFacts(input: CheckInReplyInput): RegistrationNoteFacts {
   const { shortlist, reply } = input;
+  const now = moment(input.now, input.timeZone);
   const town = townLabel(shortlist.windowRef.municipality);
   if (reply.outcome === 'registered') {
-    return `That's a spot - you're in for ${town} ${shortlist.windowRef.cycleLabel}.`;
+    return { kind: 'outcome_registered', now, window: windowPhrase(shortlist) };
   }
-  if (reply.outcome === 'missed') {
-    return `Sorry - that one filled. I'll flag the next ${town} window early.`;
-  }
-  if (reply.outcome === null) {
-    return `Sorry, I didn't catch that. ${ANSWER_MENU}`;
-  }
-  const spot = reply.position === null ? 'Waitlisted' : `Waitlisted #${reply.position}`;
-  if (shortlist.waitlistResponseHours === null || reply.deadlineAt === null) {
-    return `${spot}, noted. ${town} has no published response window, so I can't set a clock - watch your email closely.`;
-  }
-  return `${spot}, noted. ${town} gives ${shortlist.waitlistResponseHours}h to answer an offer, so I'll nudge you before ${when(reply.deadlineAt, input.timeZone, input.now)}.`;
+  if (reply.outcome === 'missed') return { kind: 'outcome_missed', now, town };
+  return {
+    kind: 'outcome_waitlisted',
+    now,
+    town,
+    position: reply.position,
+    responseHours: shortlist.waitlistResponseHours,
+    deadline:
+      shortlist.waitlistResponseHours === null || reply.deadlineAt === null
+        ? null
+        : moment(reply.deadlineAt, input.timeZone),
+  };
 }
 
 export interface CourseBindAckInput {
@@ -734,132 +600,43 @@ export interface CourseBindAckInput {
 }
 
 /**
- * The answer to a parent who just sent a course link — the one moment in this feature
- * where Hale states precisely what it read, and it has room because it is SOLICITED: no
- * CASL line, no proactive gate, no leg slot, no dedupe key.
- *
- * Every clause is present or absent BY FACT, never by phrasing: a value the bytes did
- * not back is not printed, a price the page does not name as a clean pair or a single
- * row is omitted entirely, and the M1 disagreement is named only when there is one. It
- * asks nothing — it is the answer to a question the parent asked by pasting.
- *
- * THE ONE LENGTH RULE, and it is a fixed pair rather than a budget: at prepare.ts's
- * caps a page could publish a 60-character name, a 40-character band and two
- * 16-character figures, which is a fourth segment. Past three segments the two clauses
- * a parent can read off the page for themselves — the price and the barcode — come out
- * together, and what survives is what they cannot get any other way: what it is, when
- * it opens, that Hale's own dates disagreed, and the two things it cannot pre-do.
- *
- * THE TRIMMED FORM IS RETURNED UNGATED, and that is the decision rather than an
- * oversight: it is the last form there is, and re-gating it would only leave the
- * function with nothing to return. Every clause left in it scales with nothing except
- * the number of children, so a five-child household at every cap with both warnings
- * measures a FOURTH segment (pinned in copy.test.ts). On a solicited reply that carries
- * no CASL footer and no dedupe key that is a cost, not a lie — the module's own
- * distinction — and every other rule the gate enforces still holds on it.
+ * Facts for the answer to a parent who just sent a course link: what Hale read off the
+ * page. A value the bytes did not back is null, never printed. The M1 row's instant is
+ * handed only where it disagrees with the page, so the parent is told in both dates.
  */
-export function renderCourseBindAck(input: CourseBindAckInput): string {
-  const full = bindAck(input, true);
-  return preparedCopyViolations(full, bindAckContext(input, true)).length === 0
-    ? full
-    : bindAck(input, false);
-}
-
-/** The page values a given form of the ack prints, so the gate checks the body Hale
- * actually composed rather than a list somebody kept in step by hand. */
-function bindAckValues(input: CourseBindAckInput, decorated: boolean): string[] {
-  const { facts, backed } = input.page;
-  const values = [
-    printable(facts.EventName, backed),
-    printable(facts.StartDay, backed),
-    printable(facts.StartTime, backed),
-    input.page.age.fit === 'unknown' ? null : printable(facts.AgeRestrictions, backed),
-  ];
-  if (decorated) {
-    values.push(printable(facts.CourseId, backed));
-    for (const row of facts.Prices ?? []) values.push(printable(row.DisplayAmount, backed));
-  }
-  return values.filter((value): value is string => value !== null);
-}
-
-function bindAckContext(input: CourseBindAckInput, decorated: boolean): PreparedCopyContext {
-  return {
-    // A solicited ack carries no link: the parent just sent one, and a second link in
-    // the reply is a link nobody asked for.
-    url: null,
-    printed: bindAckValues(input, decorated),
-    backed: input.page.backed,
-    optOut: null,
-  };
-}
-
-function bindAck(input: CourseBindAckInput, decorated: boolean): string {
-  const { page, portal, timeZone, now } = input;
+export function courseBoundFacts(input: CourseBindAckInput): RegistrationNoteFacts {
+  const { page, timeZone } = input;
   const { facts, backed } = page;
-  const name = printable(facts.EventName, backed);
-  const day = printable(facts.StartDay, backed);
-  const time = printable(facts.StartTime, backed);
-  const schedule = day !== null && time !== null ? `, ${day} ${time}` : '';
-  const parts: string[] = [
-    `${input.replaced ? 'Swapped. ' : ''}${portal.portalLabel}: ${name ?? 'that course'}${schedule}.`,
-  ];
-
-  const band = printable(facts.AgeRestrictions, backed);
-  const fit = fitPhrase(page, input.fitNotes);
-  if (band !== null && fit !== null) parts.push(`Ages ${band} - ${fit}.`);
-
-  if (decorated) {
-    const price = priceClause(facts.Prices);
-    if (price !== null) parts.push(`${price}.`);
-    // The human barcode Markham's phone-registration line asks for, days early and with
-    // room to write it down. No phone number is printed: registration_windows holds none.
-    const barcode = printable(facts.CourseId, backed);
-    if (barcode !== null) parts.push(`Course ${barcode}.`);
-  }
-
   const residents = page.clocks.residents;
-  const alsoResidents =
-    residents !== null && input.clock.name === 'public date'
-      ? `, residents ${dateOnly(residents, timeZone)}`
-      : '';
-  parts.push(
-    `Opens ${when(input.clock.at, timeZone, now)} - the ${input.clock.name}${alsoResidents}.`,
-  );
-
-  // The M1 row is a hand-read of a municipal info page and the course page is the
-  // software that will open the door. Where they disagree the parent is told, in both
-  // dates — a silent correction is the one thing a hand-verified dataset may not get.
   const drift = Math.abs(input.clock.at.getTime() - input.opensForFamilyAt.getTime()) / 60_000;
-  if (drift > WINDOW_DRIFT_TOLERANCE_MINUTES) {
-    parts.push(
-      `My ${townLabel(input.municipality)} dates said ${when(input.opensForFamilyAt, timeZone, now)} I am going by the page.`,
-    );
-  }
-
-  // The two things the checklist cannot ask for, because the parent cannot pre-do them:
-  // a questionnaire Hale has never seen and holds no source for, and a prerequisite
-  // level the portal will check at checkout.
-  const form = facts.RegFormId != null;
-  const prerequisite = facts.PrerequisiteEvents === true;
-  if (form || prerequisite) {
-    const listed = form
-      ? `a form I cannot see${prerequisite ? ' and a prerequisite level' : ''}`
-      : 'a prerequisite level';
-    parts.push(`It lists ${listed} - leave time.`);
-  }
-  return parts.join(' ');
-}
-
-/** How the page's band sits against the birthdays Hale holds, in the ack's words, or
- * nothing where the three instants disagreed or the DOB was derived. */
-function fitPhrase(page: CoursePage, fitNotes: readonly FitNote[]): string | null {
-  const who = whoPhrase(fitNotes);
-  const many = fitNotes.length > 1;
-  const held = many ? 'the birthdays I hold' : 'the birthday I hold';
-  if (page.age.fit === 'in_band') return `${who} ${many ? 'fit' : 'fits'} on ${held}`;
-  if (page.age.fit === 'outside_band')
-    return `${who} ${many ? 'are' : 'is'} outside that on ${held}`;
-  return null;
+  const fit = page.age.fit;
+  return {
+    kind: 'course_bound',
+    now: moment(input.now, timeZone),
+    replaced: input.replaced,
+    portal: input.portal.portalLabel,
+    course: {
+      name: printable(facts.EventName, backed),
+      day: printable(facts.StartDay, backed),
+      time: printable(facts.StartTime, backed),
+    },
+    ageBand: fit === 'unknown' ? null : printable(facts.AgeRestrictions, backed),
+    ageFit: fit === 'in_band' ? 'fits' : fit === 'outside_band' ? 'outside' : null,
+    who: whoPhrase(input.fitNotes),
+    price: priceClause(facts.Prices),
+    courseCode: printable(facts.CourseId, backed),
+    opensOn: writtenDate(input.clock.at, timeZone),
+    opensAt: timeOfDay(input.clock.at, timeZone),
+    clockName: input.clock.name,
+    residentsOn:
+      residents !== null && input.clock.name === 'public date'
+        ? dateOnly(residents, timeZone)
+        : null,
+    haleHad:
+      drift > WINDOW_DRIFT_TOLERANCE_MINUTES ? moment(input.opensForFamilyAt, timeZone) : null,
+    regForm: facts.RegFormId != null,
+    prerequisite: facts.PrerequisiteEvents === true,
+  };
 }
 
 export interface ReadinessAckInput {
@@ -867,99 +644,64 @@ export interface ReadinessAckInput {
   /** What the parent just said. */
   ready: boolean;
   fitNotes: readonly FitNote[];
+  timeZone: string;
+  now: Date;
 }
 
 /**
- * The answer to a bare YES or NO on the checklist. Solicited, so no opt-out line.
- *
- * The NO deliberately does NOT re-ask. Under the last-word rule the question is open
- * only while the ask is Hale's most recent outbound message, so an ack that asked again
- * would hold the question open across days of unrelated conversation and claim a "yes"
- * that answered something else. The battle plan re-asks, once, the evening before.
+ * Facts for the answer to a bare YES or NO on the checklist. The skill does not re-ask
+ * on a NO: under the last-word rule an ack that asked again would hold the question
+ * open across days of unrelated conversation. The battle plan re-asks.
  */
-export function renderReadinessAck(input: ReadinessAckInput): string {
-  if (input.ready) {
-    return `You told me the setup on ${input.portal.portalLabel} is done.`;
-  }
-  return `No problem. The four: ${input.portal.accountLabel}, ${whoPhrase(input.fitNotes)} added with their birthday(s), address complete, a card saved. I will ask again the evening before.`;
+export function readinessAnswerFacts(input: ReadinessAckInput): RegistrationNoteFacts {
+  return {
+    kind: 'readiness_answer',
+    now: moment(input.now, input.timeZone),
+    ready: input.ready,
+    portal: input.portal.portalLabel,
+    account: input.portal.accountLabel,
+    who: whoPhrase(input.fitNotes),
+  };
 }
 
 /**
- * THE SECOND PARENT'S YES, to a card the household has already approved.
- *
- * The heads-up ends "Want me to run the morning with you?" and now reaches both
- * numbers, so one of the two answers arrives at an approvals queue the other parent has
- * already emptied. Before this sentence existed that turn fell through to the coach,
- * whose thread still ended in that ask and which knows nothing about the partner's
- * approval — the one shape of turn where a model is most likely to invent a
- * confirmation (audit 2026-09-17 r1).
- *
- * It states the household's state and asks nothing: the ladder is already running, and
- * a second consent for one registration morning is not a thing to collect. Tense-free
- * on purpose, because the same sentence has to be true whether the plan leg has gone
- * out yet or not.
+ * Facts for the shortlist as the parent sees it in their approvals queue. The approval
+ * unlocks the quiet-hours-exempt legs, so the facts enumerate the texts it causes: four
+ * where Hale reads the town's portal and the readiness leg fires, three everywhere else.
  */
-export const SHORTLIST_ALREADY_APPROVED_ACK =
-  "That is already a yes - I have this one, and I'll run the morning with you.";
-
-const CONSENT_THREE_TEXTS =
-  'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.';
-
-const CONSENT_FOUR_TEXTS =
-  'Approving this asks me to text you a week ahead, a checklist a few days out, the evening before, and 15 minutes before it opens. I never register for you.';
-
-/**
- * The shortlist as the parent sees it in their approvals queue. Longer than an SMS
- * because it is read on a screen and it is the thing being consented to — the approval
- * is what unlocks the two quiet-hours-exempt legs, so it has to state plainly what it
- * will cause.
- */
-export function renderShortlistRationale(
+export function approvalCardFacts(
   shortlist: Shortlist,
   timeZone: string,
   now: Date,
   portal: SpotPortal | null,
-): string {
-  const lines = [
-    `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, timeZone, now)}.`,
-    `Register here: ${shortlist.sourceUrl}`,
-  ];
-  if (shortlist.isResidentWindow && shortlist.residentPriorityDays !== null) {
-    lines.push(
-      `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} day${shortlist.residentPriorityDays === 1 ? '' : 's'} ahead of the general open.`,
-    );
-  }
-  // An unpublished band is a fact about the WINDOW, not about each child, so it is
-  // one line naming everyone rather than the same sentence repeated per child. Saying
-  // "inside the published age band" here would assert a band the municipality never
-  // printed — Burlington publishes none on any of its rows.
-  if (shortlist.fitNotes.every((note) => note.fit === 'band_unknown')) {
-    lines.push(
-      `${townLabel(shortlist.windowRef.municipality)} does not publish an age band for this one, so check it fits ${whoPhrase(shortlist.fitNotes)}.`,
-    );
-  } else {
-    for (const note of shortlist.fitNotes) {
-      const who = note.name ?? 'Your teen';
-      lines.push(
-        note.fit === 'in_band'
-          ? `${who} is inside the published age band.`
-          : `${who} is just outside the published age band, within the margin on an approximate birthday.`,
-      );
-    }
-  }
-  // THE SENTENCE THE APPROVAL CONSENTS TO, and it enumerates the messages — so a
-  // household whose town has a readable portal is told about the checklist BEFORE it
-  // arrives, and the thirteen others read the sentence that shipped, byte for byte.
-  // "I never register for you" is verbatim on both, and stays that way: it is asserted
-  // in the toddler journey and mirrored in the capability table's CANNOT row.
-  lines.push(portal == null ? CONSENT_THREE_TEXTS : CONSENT_FOUR_TEXTS);
-  if (portal != null) {
-    // The one place a parent learns how to bind a course, and it belongs here rather
-    // than in an SMS leg: this is read on a screen, where a longer sentence fits, and
-    // no leg may carry a second reply-able ask (D14).
-    lines.push(
-      'If you send me the link to the course page once you have picked one, the morning text will carry it.',
-    );
-  }
-  return lines.join('\n');
+): RegistrationNoteFacts {
+  const opens = shortlist.opensForFamilyAt;
+  // An unpublished band is a fact about the WINDOW, not about each child.
+  const unpublished = shortlist.fitNotes.every((note) => note.fit === 'band_unknown');
+  return {
+    kind: 'approval_card',
+    now: moment(now, timeZone),
+    window: windowPhrase(shortlist),
+    opensOn: writtenDate(opens, timeZone),
+    opensAt: timeOfDay(opens, timeZone),
+    link: shortlist.sourceUrl,
+    residentsFirstDays: shortlist.isResidentWindow ? shortlist.residentPriorityDays : null,
+    who: whoPhrase(shortlist.fitNotes),
+    ageBand: unpublished
+      ? { published: false }
+      : {
+          published: true,
+          children: shortlist.fitNotes.map((note) => ({
+            who: note.name ?? 'your teen',
+            fit: note.fit === 'in_band' ? 'in_band' : 'near_band',
+          })),
+        },
+    texts: [
+      { text: 'week_ahead', daysBefore: HEADS_UP_LEAD_DAYS },
+      ...(portal == null ? [] : [{ text: 'checklist' as const, daysBefore: READINESS_LEAD_DAYS }]),
+      { text: 'evening_before' },
+      { text: 'just_before_open', minutesBefore: GO_LEAD_MINUTES },
+    ],
+    courseLinkTip: portal != null,
+  };
 }

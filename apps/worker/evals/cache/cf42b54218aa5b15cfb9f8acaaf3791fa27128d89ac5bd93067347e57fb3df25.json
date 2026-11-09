@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "是的，Google会把整个收件箱都分享给我，所以我能看到全部邮件。不过我只保留和孩子有关的内容，比如学校通知、活动和日程，其他的不会用。我从不发邮件，随时都可以断开连接。要不要连接Gmail？上面有链接。",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": ["gmail"],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1642
+}

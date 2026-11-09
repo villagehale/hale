@@ -31,6 +31,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 } {
   const words = input.parentWords.trim();
   const capture: OnboardingCapture = {
@@ -145,7 +147,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   const name = capture.parentName ?? input.parentName;
 
   if (input.step === 'find_show') {
-    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+    return {
+      reply: 'Here is what is on near you for their ages.',
+      capture,
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+    };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
@@ -205,7 +211,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: true };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */

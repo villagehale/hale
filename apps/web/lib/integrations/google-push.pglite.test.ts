@@ -5,13 +5,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { GOOGLE_PUSH_SYNC_ENABLED_ENV } from './google-push-flag';
-import { type GooglePushHandleDeps, handleGooglePushNotification } from './google-push-handle';
+import {
+  type GooglePushHandleDeps,
+  handleGooglePushNotification,
+  productionPushDeps,
+} from './google-push-handle';
 import {
   GOOGLE_PUSH_DEBOUNCE_MS,
   claimPushDebounce,
+  deletePushWatch,
   loadCalendarChannel,
   loadGmailIntegrations,
   loadPushWatch,
+  releaseIdlePushDebounce,
   releasePushDebounce,
   savePushWatch,
   takePushPending,
@@ -73,6 +79,8 @@ function storeDeps(
     takePushPending: (integrationId, now) => takePushPending(db.database, integrationId, now),
     releasePushDebounce: (integrationId, now) =>
       releasePushDebounce(db.database, integrationId, now),
+    releaseIdlePushDebounce: (integrationId, now) =>
+      releaseIdlePushDebounce(db.database, integrationId, now),
     syncIntegration: async (integrationId) => {
       synced.push(integrationId);
     },
@@ -134,7 +142,7 @@ describe('google push subscriptions', () => {
     expect(synced).toEqual([integrationId]);
   });
 
-  it('debounces a burst for one integration and runs again after the window', async () => {
+  it('a push seconds after the last sync finished syncs again, not at the next poll', async () => {
     await savePushWatch(db.database, integrationId, {
       provider: 'gcal',
       channelId: 'chan-2',
@@ -145,7 +153,9 @@ describe('google push subscriptions', () => {
       expiration: new Date(NOW.getTime() + 86_400_000),
     });
     const synced: string[] = [];
-    const deps = storeDeps(synced, async () => ({ status: 'verified' }));
+    const deps = productionPushDeps(db.database, async (id) => {
+      synced.push(id);
+    });
     const push = (now: Date) =>
       handleGooglePushNotification({
         provider: 'gcal',
@@ -160,11 +170,123 @@ describe('google push subscriptions', () => {
         deps,
       });
     expect((await push(NOW)).body.status).toBe('synced');
-    expect((await push(new Date(NOW.getTime() + 1000))).body.skipped).toBe('debounced');
-    expect((await push(new Date(NOW.getTime() + GOOGLE_PUSH_DEBOUNCE_MS + 1))).body.status).toBe(
-      'synced',
-    );
+    // Two edits 4 s apart, the first sync already done: the second edit is its own sync.
+    expect((await push(new Date(NOW.getTime() + 4000))).body.status).toBe('synced');
     expect(synced).toEqual([integrationId, integrationId]);
+  });
+
+  it('a push during an in-flight sync is coalesced into one trailing sync', async () => {
+    await savePushWatch(db.database, integrationId, {
+      provider: 'gcal',
+      channelId: 'chan-burst',
+      resourceId: 'res-burst',
+      tokenHash: hashChannelToken(TOKEN),
+      mailboxKey: null,
+      topicName: null,
+      expiration: new Date(NOW.getTime() + 86_400_000),
+    });
+    const synced: string[] = [];
+    const during: string[] = [];
+    const deps = storeDeps(synced, async () => ({ status: 'verified' }));
+    const push = (now: Date) =>
+      handleGooglePushNotification({
+        provider: 'gcal',
+        headers: headers({
+          'x-goog-channel-id': 'chan-burst',
+          'x-goog-channel-token': TOKEN,
+          'x-goog-resource-id': 'res-burst',
+        }),
+        rawBody: '',
+        now,
+        env: ON,
+        deps,
+      });
+    deps.syncIntegration = async (id) => {
+      synced.push(id);
+      if (synced.length === 1) {
+        const second = await push(new Date(NOW.getTime() + 1000));
+        during.push(second.body.skipped ?? second.body.status ?? 'none');
+      }
+    };
+    expect((await push(NOW)).body.status).toBe('synced');
+    expect(during).toEqual(['debounced']);
+    expect(synced).toEqual([integrationId, integrationId]);
+    // The window is released once the run is done: the next push runs at once.
+    expect((await push(new Date(NOW.getTime() + 2000))).body.status).toBe('synced');
+    expect(synced).toHaveLength(3);
+  });
+
+  it('a run that crashed mid-sync holds the window only until it lapses', async () => {
+    await savePushWatch(db.database, integrationId, {
+      provider: 'gcal',
+      channelId: 'chan-lapse',
+      resourceId: 'res-lapse',
+      tokenHash: hashChannelToken(TOKEN),
+      mailboxKey: null,
+      topicName: null,
+      expiration: new Date(NOW.getTime() + 86_400_000),
+    });
+    expect(await claimPushDebounce(db.database, integrationId, NOW)).toBe('run');
+    expect(
+      await claimPushDebounce(db.database, integrationId, new Date(NOW.getTime() + 1000)),
+    ).toBe('coalesce');
+    expect(
+      await claimPushDebounce(
+        db.database,
+        integrationId,
+        new Date(NOW.getTime() + GOOGLE_PUSH_DEBOUNCE_MS + 1),
+      ),
+    ).toBe('run');
+  });
+
+  it('the window is not released while a push is still owed', async () => {
+    await savePushWatch(db.database, integrationId, {
+      provider: 'gcal',
+      channelId: 'chan-owed',
+      resourceId: 'res-owed',
+      tokenHash: hashChannelToken(TOKEN),
+      mailboxKey: null,
+      topicName: null,
+      expiration: new Date(NOW.getTime() + 86_400_000),
+    });
+    expect(await claimPushDebounce(db.database, integrationId, NOW)).toBe('run');
+    expect(await claimPushDebounce(db.database, integrationId, NOW)).toBe('coalesce');
+    expect(await releaseIdlePushDebounce(db.database, integrationId, NOW)).toBe(false);
+    expect(await takePushPending(db.database, integrationId, NOW)).toBe(true);
+    expect(await releaseIdlePushDebounce(db.database, integrationId, NOW)).toBe(true);
+    expect(await claimPushDebounce(db.database, integrationId, NOW)).toBe('run');
+  });
+
+  it('a watch a disconnect removed mid-sync ends the run after one sync', async () => {
+    await savePushWatch(db.database, integrationId, {
+      provider: 'gcal',
+      channelId: 'chan-gone',
+      resourceId: 'res-gone',
+      tokenHash: hashChannelToken(TOKEN),
+      mailboxKey: null,
+      topicName: null,
+      expiration: new Date(NOW.getTime() + 86_400_000),
+    });
+    const synced: string[] = [];
+    const deps = storeDeps(synced, async () => ({ status: 'verified' }));
+    deps.syncIntegration = async (id) => {
+      synced.push(id);
+      await deletePushWatch(db.database, id);
+    };
+    const result = await handleGooglePushNotification({
+      provider: 'gcal',
+      headers: headers({
+        'x-goog-channel-id': 'chan-gone',
+        'x-goog-channel-token': TOKEN,
+        'x-goog-resource-id': 'res-gone',
+      }),
+      rawBody: '',
+      now: NOW,
+      env: ON,
+      deps,
+    });
+    expect(result.body.status).toBe('synced');
+    expect(synced).toEqual([integrationId]);
   });
 
   it('flag off does not sync and does not move the debounce window', async () => {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states nothing was attempted or reserved, confirmed is false and it says no spot is held, gives the registration link exactly, uses vous for the group in French, no personal details, no retry promise, no login failure claim.",
+    "score": 5
+  }
+}

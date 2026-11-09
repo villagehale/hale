@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import type { RegistrationWindow } from '@hale/db';
 import { ZodError } from 'zod';
 import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from '~/lib/channel/spots/url';
@@ -16,9 +17,13 @@ import {
   registrationAnchor,
 } from './live-reading';
 import { resolveFamilyOpen } from './match-registration-windows';
-import { type RegistrationPageFetch, registrationPageUrl } from './page';
+import {
+  type RegistrationPageFetch,
+  createRegistrationPageBytesFetch,
+  registrationPageUrl,
+} from './page';
 import { type RegistrationPdfRead, registrationPdfText } from './pdf';
-import type { CycleIdentity, ExtractedWindow } from './verify-window';
+import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
 
 /**
  * VIL-423 — read a registration page live, when a date is needed, and return only what
@@ -28,10 +33,9 @@ import type { CycleIdentity, ExtractedWindow } from './verify-window';
 
 export type RegistrationTarget = CycleIdentity & { sourceUrl: string };
 
-/** Both ports are required: whoever wires the reader chooses the fetch and the model
- * client budget, so there is no unnamed default to fall back on. `fetchBody` is typed as
- * the hardened fetcher (`createRegistrationPageBytesFetch`: DNS pinned, redirects never
- * followed, every outcome named), so a plain `fetch` cannot be wired in. */
+/** The seam tests drive. `fetchBody` is typed as the hardened fetcher's named outcomes,
+ * but a shape is not a guard: production builds its reader only through
+ * {@link createLiveRegistrationReader}, which constructs that fetcher itself. */
 export interface RegistrationReaderPorts {
   fetchBody(url: string): Promise<RegistrationPageFetch>;
   extract(cycle: CycleIdentity, pageText: string): Promise<ExtractedWindow>;
@@ -175,6 +179,16 @@ export function createRegistrationReader(ports: RegistrationReaderPorts): Regist
       return reading;
     });
   };
+}
+
+/** The one production reader. The fetch port is the DNS-pinned fetcher that never
+ * follows a redirect, built here so no caller can hand in another; the URL check inside
+ * the reader is then never the only SSRF guard. The model client is the caller's. */
+export function createLiveRegistrationReader(client: AgentClient): RegistrationReader {
+  return createRegistrationReader({
+    fetchBody: createRegistrationPageBytesFetch(),
+    extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
+  });
 }
 
 /** What a catalog window asks the reader. A district row names its district in the

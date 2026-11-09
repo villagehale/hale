@@ -20,6 +20,7 @@ import {
   totalUsd,
 } from './lib/harness.mjs';
 import { SHARED_GROUP_VOICE_FIXTURES } from './shared-group-voice-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -58,13 +59,7 @@ function estimateWorstCase() {
   return { fixtures: SHARED_GROUP_VOICE_FIXTURES.length, expected, worst };
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE message Hale posts in a multi-family group chat.',
-  'Score 1-5 on MEANING, not wording. A 5 gets the facts across in its own words.',
-  'LOW if it invents availability, quotes a private calendar or inbox, tells anyone to',
-  'reply with a keyword, uses a fixed template, or leaks a name that was not in the input.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('shared-group-voice');
 
 const BROKEN = 'TODO-Design: reply YES at https://example.com — Zephyrina is free Saturday!!';
 

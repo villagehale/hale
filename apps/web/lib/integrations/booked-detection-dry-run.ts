@@ -99,6 +99,7 @@ export async function runBookedDetectionDryRun(
       title: extraction.event.title,
       titleIsFallback: false,
       location: extraction.event.location,
+      address: extraction.event.address ?? null,
       now: Number.isNaN(now.getTime()) ? new Date() : now,
     });
     verdicts.push({

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Sure, we can do Gmail first. Hale reads everything in your inbox, since Google shares all of it, but it only keeps and uses what's about the kids, and it never changes or deletes anything. You can disconnect any time. Want me to connect your Gmail now?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "gmailLater": false
+  },
+  "latencyMs": 1589
+}

@@ -1,18 +1,22 @@
+import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import {
   CRISIS_UNANSWERED_AUDIT_ACTION,
   CRISIS_UNANSWERED_PAGE_ROUTE,
+  crisisReplyState,
 } from '~/lib/monitoring/failure-page';
+import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { recordedModel } from '~/lib/testing/recorded-model';
 import { trailVerb } from '~/lib/trail/verbs';
 import {
   FakeAnswerComposer,
@@ -35,6 +39,8 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+15555550123';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const WEBHOOK = 'https://hooks.example.test/ops';
+/** The crisis writer's French reply, recorded from real Claude (shared with the late path). */
+const LATE_CRISIS_RECORDING = join(__dirname, '__recordings__', 'late-crisis-reply.json');
 
 function deps(transport: FakeTransport): IntakeDeps {
   return {
@@ -104,6 +110,45 @@ describe('a crisis with no reply pages #ops through the default pager', () => {
     expect(claims).toHaveLength(1);
     expect(claims[0]?.identifier).toMatch(/^[0-9a-f]{32}:emergency:intake_crisis:no_writer:0$/);
     expect(claims[0]?.count).toBe(1);
+  }, 30_000);
+
+  it('an answer-path crisis reply that left is marked answered: a held copy is never answered again', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Wren Family');
+    await db.database.insert(schema.smsIntakeSessions).values({
+      phoneHash: phoneBlindIndex(PHONE),
+      phoneEncrypted: encryptString(PHONE),
+      state: 'awaiting_ladder',
+      dataEncrypted: encryptString(
+        JSON.stringify({
+          collected: { children: [], postalCode: null },
+          transcript: [{ direction: 'in', body: 'bonjour', at: NOW.toISOString() }],
+          ladderNext: 'turtle',
+          ladderLanguage: 'fr',
+        }),
+      ),
+      createdAt: NOW,
+      familyId,
+      userId: parentUserId,
+    });
+    const transport = new FakeTransport();
+    const turn = deps(transport);
+    turn.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'fr' }),
+    };
+    turn.answerComposer = new FakeAnswerComposer({ status: 'mental_crisis' });
+    const recorded = recordedModel(LATE_CRISIS_RECORDING, () =>
+      budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    );
+    turn.saidLine = createSaidLineWriter(recorded.client);
+    const inbound = transport.inbound(PHONE, "je n'en peux plus");
+
+    await handleInboundSms(db.database, inbound, turn);
+
+    expect(recorded.misses).toEqual([]);
+    // Positive control: the crisis reply went out, and nothing paged.
+    expect(transport.bodies()).toHaveLength(1);
+    expect(posted).toEqual([]);
+    expect(await crisisReplyState(db.database, inbound.providerId, NOW)).toBe('answered');
   }, 30_000);
 
   it("a reply that fails twice for a family pages and writes the family's audit row", async () => {

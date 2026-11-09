@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says registration for the handed window is coming up and that Hale couldn't confirm the opening date from the page. It asks the parent to check the page, includes the handed link, and asks no question, which is correct since offer is false. It states no date, names no child and makes no extra claims. One small gap: why is page_unreadable, but \"couldn't confirm\" doesn't say plainly that Hale couldn't open or read the page. It still doesn't misstate anything and reads naturally in English.",
+    "score": 4
+  }
+}

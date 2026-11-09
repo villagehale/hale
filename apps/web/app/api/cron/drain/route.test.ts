@@ -16,6 +16,7 @@ const runFirstReplyRecoveryCronMock = vi.fn();
 const providerPreflightMock = vi.fn();
 const runGroupReminderTickMock = vi.fn();
 const recoverHeldOptOutReadsMock = vi.fn();
+const recheckHeldRemindersMock = vi.fn();
 
 vi.mock('~/lib/cron/drain', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/cron/drain')>()),
@@ -34,6 +35,10 @@ vi.mock('~/lib/channel/intake/opt-out-recovery', async (importActual) => ({
 vi.mock('~/lib/monitoring/provider-health', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/monitoring/provider-health')>()),
   providerPreflight: (...args: unknown[]) => providerPreflightMock(...args),
+}));
+// The route reads nothing else from it, and the real module's graph is a slow cold import.
+vi.mock('~/lib/loop/reminders/run', () => ({
+  recheckHeldReminders: (...args: unknown[]) => recheckHeldRemindersMock(...args),
 }));
 vi.mock('~/lib/loop/reminders/group/fire', async (importActual) => ({
   ...(await importActual<typeof import('~/lib/loop/reminders/group/fire')>()),
@@ -84,6 +89,7 @@ describe('GET /api/cron/drain', () => {
       lost: 0,
       retrying: 0,
     });
+    recheckHeldRemindersMock.mockReset().mockResolvedValue({ held: 0 });
     afterCallbacks.length = 0;
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -167,9 +173,43 @@ describe('GET /api/cron/drain', () => {
       socialSignup: { skipped: 'flag_off' },
       firstReply: expect.any(Object),
       groupReminders: { skipped: 'flag_off' },
+      heldReminders: { held: 0 },
       optOutRecovery: OPT_OUT_RECOVERY_RESULT,
     });
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
+  });
+
+  it('VIL-586: asks again for held T-1h reminders every scheduled minute, before the queues', async () => {
+    const order: string[] = [];
+    const summary = { held: 1, skipped: 'provider_down', failure: 'transient' };
+    recheckHeldRemindersMock.mockImplementation(async () => {
+      order.push('held_reminders');
+      return summary;
+    });
+    runDrainCronMock.mockImplementation(async () => {
+      order.push('queues');
+      return { processed: 0, failed: 0, dropped: 0 };
+    });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(await response.json()).toMatchObject({ heldReminders: summary });
+    expect(order).toEqual(['held_reminders', 'queues']);
+  });
+
+  it('names a failed held-reminder leg and still drains', async () => {
+    recheckHeldRemindersMock.mockRejectedValue(new Error('leg blew up'));
+    runDrainCronMock.mockResolvedValue({ processed: 1, failed: 0, dropped: 0 });
+    const { GET } = await import('./route');
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      processed: 1,
+      heldReminders: { skipped: 'tick_failed' },
+    });
   });
 
   it('sends due group reminders every scheduled minute once all three flags are on', async () => {
@@ -232,7 +272,12 @@ describe('GET /api/cron/drain', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const held = {
       proceed: false,
-      abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+      abort: {
+        failure: 'billing',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     };
     providerPreflightMock.mockResolvedValue(held);
     const { GET } = await import('./route');
@@ -292,7 +337,12 @@ describe('GET /api/cron/drain', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key-not-a-secret');
     const held = {
       proceed: false,
-      abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+      abort: {
+        failure: 'billing',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     };
     providerPreflightMock.mockResolvedValue(held);
     const { GET } = await import('./route');
@@ -345,8 +395,12 @@ describe('GET /api/cron/drain', () => {
 
     const response = await GET(request());
 
-    expect(await response.json()).toMatchObject({ optOutRecovery: { skipped: 'preview' } });
+    expect(await response.json()).toMatchObject({
+      optOutRecovery: { skipped: 'preview' },
+      heldReminders: { skipped: 'preview' },
+    });
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();
+    expect(recheckHeldRemindersMock).not.toHaveBeenCalled();
   });
 
   it('leaves the first-reply leg out of a kicked run', async () => {
@@ -357,5 +411,6 @@ describe('GET /api/cron/drain', () => {
     expect(runFirstReplyRecoveryCronMock).not.toHaveBeenCalled();
     expect(runGroupReminderTickMock).not.toHaveBeenCalled();
     expect(recoverHeldOptOutReadsMock).not.toHaveBeenCalled();
+    expect(recheckHeldRemindersMock).not.toHaveBeenCalled();
   });
 });

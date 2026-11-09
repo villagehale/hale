@@ -64,7 +64,7 @@ function channelTools(): RegisteredTool[] {
     // — and a verb that is not registered is a declaration this test never sees.
     activity: {
       reader: {
-        municipality: async () => null,
+        place: async () => ({ status: 'unknown', reason: 'no_postal' }),
         stage: async () => null,
         householdNames: async () => [],
       },
@@ -74,6 +74,7 @@ function channelTools(): RegisteredTool[] {
       fetchBody: async () => ({ ok: false, reason: 'not_configured' }) as never,
       reader: { householdNames: async () => [] },
       watchConsentGranted: async () => false,
+      readClassAvailability: async () => ({ status: 'unknown', reason: 'extract_failed' }),
     },
     onDraft: () => {},
     onOffer: () => {},

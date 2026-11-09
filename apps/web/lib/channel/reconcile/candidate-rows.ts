@@ -19,11 +19,12 @@ import { loadReconcileView } from './view';
  *
  * EVERY LABEL GOES THROUGH claimRowLabel. A calendar title is read only into its
  * `calendar` source, which redacts a 13+ child's or a sensitive row to "A private
- * calendar item" (isPrivateEvent). No location, no row id and no URL is carried; a
+ * calendar item" (isPrivateEvent); a 13+ child's commitment is "A private item". No location, no row id and no URL is carried; a
  * watched page contributes its host only.
  *
- * THE ZONE IS THE RECIPIENT'S OWN `users.timezone`. A missing user row (or, with no
- * recipient named, no primary parent) is `no_time_zone`, never a default zone.
+ * THE ZONE IS THE RECIPIENT'S OWN `users.timezone`, read through this family's
+ * membership. A recipient who is not a member (or, with no recipient named, no primary
+ * parent) is `no_time_zone`, never a default zone.
  */
 
 export type ClaimShadowContext =
@@ -45,13 +46,14 @@ export async function loadClaimShadowContext(
   const { familyId, now } = input;
   const timeZone = await recipientTimeZone(database, familyId, input.parentUserId);
   if (timeZone === null) return { status: 'skipped', reason: 'no_time_zone' };
-  const [language, view, events, commitments, spots, sequences] = await Promise.all([
+  const [language, view, events, commitments, spots, sequences, birthDates] = await Promise.all([
     familySpeechLanguage(database, familyId),
     input.view ?? loadReconcileView(database, { familyId, now }),
     calendarRows(database, familyId, now),
     loadOpenCommitments(database, familyId, now),
     watchedPageRows(database, familyId),
     liveSequenceRows(database, familyId),
+    childBirthDates(database, familyId),
   ]);
   const rows: ClaimCandidateRow[] = [
     ...events,
@@ -71,7 +73,16 @@ export async function loadClaimShadowContext(
               familyId,
               source: 'open_commitment',
               kind: c.kind,
-              what: claimRowLabel({ from: 'commitment', summary: c.summary }, now),
+              what: claimRowLabel(
+                {
+                  from: 'commitment',
+                  summary: c.summary,
+                  childId: c.subjectChildId,
+                  childDateOfBirth:
+                    c.subjectChildId === null ? null : (birthDates.get(c.subjectChildId) ?? null),
+                },
+                now,
+              ),
             },
           ]
         : [],
@@ -146,12 +157,19 @@ async function recipientTimeZone(
   parentUserId: string | null,
 ): Promise<string | null> {
   if (parentUserId !== null) {
-    const [user] = await database
+    // Joined on this family, so an id from another household cannot lend its zone.
+    const [member] = await database
       .select({ timezone: schema.users.timezone })
-      .from(schema.users)
-      .where(eq(schema.users.id, parentUserId))
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, familyId),
+          eq(schema.familyMembers.userId, parentUserId),
+        ),
+      )
       .limit(1);
-    return user?.timezone ?? null;
+    return member?.timezone ?? null;
   }
   const [primary] = await database
     .select({ timezone: schema.users.timezone })
@@ -208,6 +226,15 @@ async function calendarRows(
     ),
     startsAt: row.startsAt,
   }));
+}
+
+/** This family's children by id, for the age gate on a commitment's subject child. */
+async function childBirthDates(database: Database, familyId: string) {
+  const rows = await database
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return new Map(rows.map((row) => [row.id, row.dateOfBirth]));
 }
 
 /** The live predicate of spots/store.ts (`watched_spots_live_uniq`). */

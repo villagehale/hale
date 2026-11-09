@@ -4,6 +4,7 @@ import { sweepRosterRetention } from '~/lib/channel/linq/roster-retention';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { erasureGoogleLogLine, runDeletionSweep, sweepMessageRetention } from '~/lib/rights/delete';
+import { sweepRecordRetention } from '~/lib/rights/record-retention';
 import { remoteProfileDeleterFromEnv } from '~/lib/signup/browser-use/runner';
 import { sweepExpiredProviderSessions } from '~/lib/signup/browser-use/vault';
 
@@ -32,6 +33,10 @@ export const runtime = 'nodejs';
  * privacy promise is a year, and a promise that stops when a flag flips is not
  * a promise. The step logs counts only.
  *
+ * NOR ARE THE RECORDS WITH NO CLOCK OF THEIR OWN (`sweepRecordRetention`): the words of
+ * an episode a parent removed go thirty days after the removal, and a proactive candidate
+ * row goes after a year. Counts only.
+ *
  * PROVIDER SIGNUP SESSIONS ARE NOT FLAG-GATED EITHER. A captured provider login
  * (cookies, never a password) lives at most 48 hours; past that the row and its
  * Browser Use profile are deleted here. Without BROWSER_USE_API_KEY a row that
@@ -47,6 +52,7 @@ export const GET = cronRoute('delete-sweep', async () => {
   const summary = await runDeletionSweep(db());
   const checkInNotesPurged = await purgeExpiredCheckInNotes(db());
   const messageRetention = await sweepMessageRetention(db());
+  const recordRetention = await sweepRecordRetention(db());
   const groupRosterRetention = await sweepRosterRetention(db());
   const providerSessions = await sweepExpiredProviderSessions(
     db(),
@@ -78,6 +84,13 @@ export const GET = cronRoute('delete-sweep', async () => {
     console.info(messageRetention, 'cron/delete-sweep: removed message content past 12 months');
   }
   if (
+    recordRetention.removedEpisodesBlanked > 0 ||
+    recordRetention.proactiveCandidatesDeleted > 0
+  ) {
+    // Counts only (rule #1).
+    console.info(recordRetention, 'cron/delete-sweep: removed records past their window');
+  }
+  if (
     groupRosterRetention.outcome === 'swept' &&
     (groupRosterRetention.familylessRostersDeleted > 0 || groupRosterRetention.numbersReleased > 0)
   ) {
@@ -102,6 +115,7 @@ export const GET = cronRoute('delete-sweep', async () => {
       google,
       checkInNotesPurged,
       messageRetention,
+      recordRetention,
       groupRosterRetention,
       providerSessions,
     },
