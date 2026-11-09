@@ -19,6 +19,331 @@
     "version": 1,
     "sha256": "eb64fcfeb6198713d6b34eb61cb3e31dbaff0e2ec423a6062cbdcb4a06f5a8d2"
   },
+  "judges/activity-deep": {
+    "name": "judges/activity-deep",
+    "version": null,
+    "sha256": "7e1d36962c39ecd73bf99276951d1599c24aa596b5d49ee976e8dd26b8c4908d"
+  },
+  "judges/activity-finder": {
+    "name": "judges/activity-finder",
+    "version": null,
+    "sha256": "d6953a5a0cc5b69b8bf04edc7f75c8d6394cf14c29dc6e67db4c383e6f0bc3d2"
+  },
+  "judges/activity-finder-travel": {
+    "name": "judges/activity-finder-travel",
+    "version": null,
+    "sha256": "1d04f713745120f6d7beaf137a7a75585b4a306ff494afea11b82bb59e41880b"
+  },
+  "judges/add-them-yourself": {
+    "name": "judges/add-them-yourself",
+    "version": null,
+    "sha256": "0498ec9cb77c2d095990f9d5311b47747d803463ace28eaef6abf8a65c40ce4f"
+  },
+  "judges/agent-discovery": {
+    "name": "judges/agent-discovery",
+    "version": null,
+    "sha256": "46010b9df59514de4a1fd1120713e1fb92330ef7f4ca57c2299dd08169c78749"
+  },
+  "judges/autonomy-notice": {
+    "name": "judges/autonomy-notice",
+    "version": null,
+    "sha256": "e2937c18bbaf27379e2351decaa5ce6fd7518f4cbd2765250626a068a6b7adc6"
+  },
+  "judges/calendar-cancel-voice": {
+    "name": "judges/calendar-cancel-voice",
+    "version": null,
+    "sha256": "113ed7f9513fd66db3768768ebe9caa8ce0ce5beb5e3777fd430ee1915da70d1"
+  },
+  "judges/calendar-invite-voice": {
+    "name": "judges/calendar-invite-voice",
+    "version": null,
+    "sha256": "f1eb94c2038186bee935497dfd777a9291c17c2d0e42bdc85bb3702f682a2f89"
+  },
+  "judges/calendar-write-notice": {
+    "name": "judges/calendar-write-notice",
+    "version": null,
+    "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
+  },
+  "judges/carpool": {
+    "name": "judges/carpool",
+    "version": null,
+    "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
+  },
+  "judges/coach-channel": {
+    "name": "judges/coach-channel",
+    "version": null,
+    "sha256": "9845bab7eb83d47115786551f380d402045724a37160efcd772156579716a512"
+  },
+  "judges/coach-clash": {
+    "name": "judges/coach-clash",
+    "version": null,
+    "sha256": "27f6ea878596f2a38ea420a2698f91051e809f1277110c1c15a7ad9662abe922"
+  },
+  "judges/coach-local-day": {
+    "name": "judges/coach-local-day",
+    "version": null,
+    "sha256": "4b7d6e513ac83b4727bb361d675a14a62cb1eb4e935291c068434a5d3f7b763f"
+  },
+  "judges/coach-plan": {
+    "name": "judges/coach-plan",
+    "version": null,
+    "sha256": "a20922a6898c15263bbb291dadcf7a41a7277591d48f167372cff206ec4d3403"
+  },
+  "judges/coach-plan-note": {
+    "name": "judges/coach-plan-note",
+    "version": null,
+    "sha256": "da8049cfc09c90ecab0993bc41cc1806ce46de5b725173e5caa2948d93b5fbc9"
+  },
+  "judges/crisis-reply": {
+    "name": "judges/crisis-reply",
+    "version": null,
+    "sha256": "ee4369916b2c099ff6886939b058627be95162d93ecf5e2b738bda12f91ae7a2"
+  },
+  "judges/drafter": {
+    "name": "judges/drafter",
+    "version": null,
+    "sha256": "7690d76dcb7fd27c5dab553ccfb8e8646c4946ccf1d10247da5ef00068cc3603"
+  },
+  "judges/email-alert-notice": {
+    "name": "judges/email-alert-notice",
+    "version": null,
+    "sha256": "ea2bd6875bf855b551fb13e5b76e6784a6e711eeeb58308c41d480b14501083e"
+  },
+  "judges/event-notes": {
+    "name": "judges/event-notes",
+    "version": null,
+    "sha256": "a63cdda5d5ec0b6739f281a46a0d7ab44d8ae511cc0df0aebc6336b4304a87e7"
+  },
+  "judges/flood-line": {
+    "name": "judges/flood-line",
+    "version": null,
+    "sha256": "91820b1306dade7d533d338ca694130ac43a594e5513945068b4749c7ccedf19"
+  },
+  "judges/followup-voice": {
+    "name": "judges/followup-voice",
+    "version": null,
+    "sha256": "9b97acde7a073332efb646666ab42e7580b2674de39b1265fe9d9498f4561f56"
+  },
+  "judges/general-answer": {
+    "name": "judges/general-answer",
+    "version": null,
+    "sha256": "de9b35614cd32a113c9e238d4092ffe1050a346a54fa98a43b5337a8af6784ec"
+  },
+  "judges/group-conflict-alert": {
+    "name": "judges/group-conflict-alert",
+    "version": null,
+    "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
+  },
+  "judges/group-plan-calendar-report": {
+    "name": "judges/group-plan-calendar-report",
+    "version": null,
+    "sha256": "00dd51e52689385277ae90abcf9c343b6c89a2ee36b78b4976f1df563cd40daa"
+  },
+  "judges/group-plan-invites": {
+    "name": "judges/group-plan-invites",
+    "version": null,
+    "sha256": "b1457d0a4fe5b63f2bcc0519a156ed6b5cfc08bc29b91ad80ccc4632fe80bfff"
+  },
+  "judges/group-plan-rsvp-read": {
+    "name": "judges/group-plan-rsvp-read",
+    "version": 2,
+    "sha256": "7f7905488ee7842366e876ecce7f58f1e19e610a8df6dabf3bd9f1bfeb0426d7"
+  },
+  "judges/group-plan-rsvp-voice": {
+    "name": "judges/group-plan-rsvp-voice",
+    "version": null,
+    "sha256": "2abc0c1f52920dc02f578852ca83470ed33593cc302319453e27062bdaf3339f"
+  },
+  "judges/group-poll-read": {
+    "name": "judges/group-poll-read",
+    "version": null,
+    "sha256": "cf8fc236862e8026f03af985bccc24a3ae29c8ff52debfbaaa9c574024bfde78"
+  },
+  "judges/group-poll-voice": {
+    "name": "judges/group-poll-voice",
+    "version": null,
+    "sha256": "94e2a5d9e031a39a195a975a26430cc79cf5ad29a42767e76a253ec7900c4f1d"
+  },
+  "judges/group-privacy": {
+    "name": "judges/group-privacy",
+    "version": null,
+    "sha256": "881df70f431c1dd985a763922bccbc2d1c4e2b6a781e4781efef89642fcd39d1"
+  },
+  "judges/group-private-aside": {
+    "name": "judges/group-private-aside",
+    "version": null,
+    "sha256": "4c5a2e59d569b954d1eec6d7bd8d7de09cb3b9913624ea614dc3a2ee4d380d25"
+  },
+  "judges/group-reminder": {
+    "name": "judges/group-reminder",
+    "version": null,
+    "sha256": "306546cbd236f3695b1b84c7e77a1fad7bec3b693d967c682a758a85a362e984"
+  },
+  "judges/group-welcome-voice": {
+    "name": "judges/group-welcome-voice",
+    "version": null,
+    "sha256": "06a5f02394e7653f8eeaa92dff0db0ec5c978743a5d00e27417aa854f0153ec3"
+  },
+  "judges/holding-line": {
+    "name": "judges/holding-line",
+    "version": null,
+    "sha256": "6ffb5c2779c3d4b3f677cd2e609c1cb2809cf2800fc9db07d2c426da20d11b32"
+  },
+  "judges/household-group": {
+    "name": "judges/household-group",
+    "version": null,
+    "sha256": "fd0bc7b2d02addaafb99c2cfd4dd6f8814cead2a26caf31397c33066e3fddb10"
+  },
+  "judges/identity-ask": {
+    "name": "judges/identity-ask",
+    "version": null,
+    "sha256": "c1a16db3dedbfacf926051a0cc0b1a62799e3601e05f132421317922dd3a18f7"
+  },
+  "judges/intake-answer": {
+    "name": "judges/intake-answer",
+    "version": null,
+    "sha256": "17386d8de026d76fe7d8730e95081a081976a4b960d872ef85239a9d80055800"
+  },
+  "judges/intro-group-voice": {
+    "name": "judges/intro-group-voice",
+    "version": null,
+    "sha256": "069bce9f3525fae37456248aad4316609f7d0a8eb22755668a39e9a29b33b85a"
+  },
+  "judges/intro-voice": {
+    "name": "judges/intro-voice",
+    "version": null,
+    "sha256": "8daa4855a7e4e1b9f3c6fe2d3c3df32620ca5514abfdbead4d4b4c5bb9e411da"
+  },
+  "judges/kid-relevance": {
+    "name": "judges/kid-relevance",
+    "version": null,
+    "sha256": "56ea5732dc885267a97abf0af90f43e1f5683935c99138bb6b7ebf66c78962cc"
+  },
+  "judges/linq-sticker": {
+    "name": "judges/linq-sticker",
+    "version": null,
+    "sha256": "08f433c53b55bd05a7dabfc4fdf73b24aaa5be5ae0357c6a2d54adc23e700cfd"
+  },
+  "judges/medical-symptom": {
+    "name": "judges/medical-symptom",
+    "version": null,
+    "sha256": "0ff87af90ca268de4bdf3b14c8ed2b043cc0648ba05b3f2f48e976022ff18538"
+  },
+  "judges/model-matrix-classify": {
+    "name": "judges/model-matrix-classify",
+    "version": null,
+    "sha256": "299eb38e734779c1fb924e80421ae44eb2dd446cf5ec537fad1de275d18427bb"
+  },
+  "judges/model-matrix-draft": {
+    "name": "judges/model-matrix-draft",
+    "version": null,
+    "sha256": "8cabf8c6580566977750cc8031e0499fcce2f9209d73e3e8b0ab768f1e28c4f7"
+  },
+  "judges/nudge": {
+    "name": "judges/nudge",
+    "version": null,
+    "sha256": "98e205db6f34639f0efa443be62146885e551ce1a789aeb7c7a5879c8ef69bf6"
+  },
+  "judges/nudge-ask": {
+    "name": "judges/nudge-ask",
+    "version": null,
+    "sha256": "d69dc1963baf19b20603b6269bdd2c9ff7568913edbc7d9af01e025854885cf0"
+  },
+  "judges/opt-out-read": {
+    "name": "judges/opt-out-read",
+    "version": null,
+    "sha256": "eea20cecf916965c460369e661b5b1bae0bf6dff1cd3341a65d20b2d2e758bdc"
+  },
+  "judges/proactive-writer": {
+    "name": "judges/proactive-writer",
+    "version": null,
+    "sha256": "1e02206515ca8ec155f6fb3f45f1d0618449f7a6fec1cb747c240aa8db6dcb90"
+  },
+  "judges/radar": {
+    "name": "judges/radar",
+    "version": null,
+    "sha256": "81eca4fa4950a53ff67aed6e20fa09f9fe821b9115c9d6b05a0222706adabd4e"
+  },
+  "judges/radar-ask": {
+    "name": "judges/radar-ask",
+    "version": null,
+    "sha256": "8b4a0182618f280ba44e1eb4b94db363b5a92ebc5ba9a4422ba5ce2240a80d80"
+  },
+  "judges/radar-attribution": {
+    "name": "judges/radar-attribution",
+    "version": null,
+    "sha256": "a580b7dc2b0b4a92f695e0104924027cc6786b4fdb719241a86a5780519b5f17"
+  },
+  "judges/read-email": {
+    "name": "judges/read-email",
+    "version": null,
+    "sha256": "6f7f12cc100d100859304557c5c48bda85221247a4c5b9a527378e5b29da1691"
+  },
+  "judges/reference-texts": {
+    "name": "judges/reference-texts",
+    "version": null,
+    "sha256": "e036c093b2e1e85e38a14c15ad912adc7b62ec350333a92a2d2e36174091a63c"
+  },
+  "judges/registration-date-unconfirmed": {
+    "name": "judges/registration-date-unconfirmed",
+    "version": null,
+    "sha256": "5b560fefbf87e39e86e9638548ccde89b66c816a046c85dee2a87aeac824c410"
+  },
+  "judges/registration-note": {
+    "name": "judges/registration-note",
+    "version": null,
+    "sha256": "1a44b18c816dc0c4c6bb46ba649971b098b87dbf47259dcf1c40fe9b20882027"
+  },
+  "judges/reminder": {
+    "name": "judges/reminder",
+    "version": null,
+    "sha256": "22035465abc6157abae02123f0ff06d482501e7dd99d676a3b48c636855b4745"
+  },
+  "judges/said-line": {
+    "name": "judges/said-line",
+    "version": null,
+    "sha256": "9fbd622e31b7491cdce4a3d1cafacf5fbf6ef00bf9dca3b9c86d44c8746a1590"
+  },
+  "judges/shared-group-voice": {
+    "name": "judges/shared-group-voice",
+    "version": null,
+    "sha256": "8b49b8aba78c5f6779145d4526b66278b9f0dc3792e974dfebd85f10f7a3d064"
+  },
+  "judges/signup-outcome-reply": {
+    "name": "judges/signup-outcome-reply",
+    "version": null,
+    "sha256": "d6c0df95739eba59a1f8899f351a87e5bb807dda48712697180c0a2bbfc3fb15"
+  },
+  "judges/signup-plan-reply": {
+    "name": "judges/signup-plan-reply",
+    "version": null,
+    "sha256": "586fa48cbcace921151bc456fdc6fc3416055aec8672e24d76dd052e3a54594b"
+  },
+  "judges/spot-open-voice": {
+    "name": "judges/spot-open-voice",
+    "version": null,
+    "sha256": "4a3b34320a8ef39b7646c26a0a9c118daee3c5f2489605319b91c7688f229e0b"
+  },
+  "judges/turn-apology": {
+    "name": "judges/turn-apology",
+    "version": null,
+    "sha256": "4645c39dbc01092e2fb0cce35ad4da4a0cfc15fdac83d900118205ce28f3dfdf"
+  },
+  "judges/vil484-compose": {
+    "name": "judges/vil484-compose",
+    "version": null,
+    "sha256": "d63412dda8db865f9b64e8d90f88b9827ae2599febad198f5c0491314683f24f"
+  },
+  "judges/weekday-care-ask": {
+    "name": "judges/weekday-care-ask",
+    "version": null,
+    "sha256": "fcdb41ca538967ea59c3f742f9e1f99d8710ccf556b1322995b02b89e97cf4fa"
+  },
+  "judges/weekday-care-reply": {
+    "name": "judges/weekday-care-reply",
+    "version": null,
+    "sha256": "7b6d2e6fd52c60d61639cb2f45e4d94c07250836561531c386fba9dcc161d11f"
+  },
   "memory-inferencer": {
     "name": "memory-inferencer",
     "version": 1,
