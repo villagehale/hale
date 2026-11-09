@@ -47,7 +47,7 @@ import {
 } from '~/lib/channel/linq/contact-card';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
-import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
@@ -856,8 +856,14 @@ async function sendAndRecord(
     return { transcript, channelMessageId: null };
   }
   await quietStopTyping(deps);
-  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
-  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
+  // VIL-573 · on iMessage a link goes once, after the text, as its own bubble.
+  const lifted =
+    ctx.session.familyId && ctx.session.userId && ctx.pipe.channel === 'imessage' && ctx.pipe.chatId
+      ? liftPreviewLink(body)
+      : null;
+  const text = lifted ? lifted.text : body;
+  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(text) : text;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
   await finishCardWithinReplyBudget(
@@ -879,27 +885,28 @@ async function sendAndRecord(
       ctx.now,
       templateKey,
     );
+    let threaded = wireBody;
+    if (lifted) {
+      const link = await sendLinkOnce({
+        transport: deps.transport,
+        to: ctx.phoneE164,
+        channel,
+        chatId,
+        url: lifted.url,
+        database,
+        familyId: ctx.session.familyId,
+        parentUserId: ctx.session.userId,
+        now: ctx.now,
+      });
+      if (link.status !== 'not_sent') threaded = `${wireBody}\n${lifted.url}`;
+    }
     // What the parent reads back, and what the coach re-reads next turn. The body as
     // SENT: intake appends no CASL footer, so the wire and the thread are one string.
     await deps.threadMessage(database, {
       familyId: ctx.session.familyId,
       parentUserId: ctx.session.userId,
-      body: wireBody,
+      body: threaded,
     });
-    if (channel === 'imessage' && chatId && !sent.linkOmitted) {
-      const preview = linkPreviewUrl(wireBody);
-      if (preview) {
-        await sendLinqLinkPreview({
-          channel: 'imessage',
-          chatId,
-          url: preview,
-          database,
-          familyId: ctx.session.familyId,
-          parentUserId: ctx.session.userId,
-          now: ctx.now,
-        });
-      }
-    }
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };

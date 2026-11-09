@@ -47,6 +47,20 @@ const MAYA: IntakeCollected = {
 
 import { scriptedTurn } from './scripted-friend-voice.fixture';
 
+/**
+ * A connector card as the parent sees it: the prose, then its link once as its own
+ * text (VIL-573). Throws when the last text is not a lone link after link-free prose.
+ */
+function lastCard(transport: FakeTransport): string {
+  const bodies = transport.bodies();
+  const prose = bodies.at(-2) ?? '';
+  const link = bodies.at(-1) ?? '';
+  if (!/^https:\/\/\S+$/.test(link) || /https?:\/\//.test(prose)) {
+    throw new Error('expected card prose, then its link as its own text');
+  }
+  return `${prose}\n${link}`;
+}
+
 function harness(
   options: {
     extractions?: IntakeCollected[];
@@ -434,7 +448,7 @@ describe('friend voice onboarding', () => {
     // Step 5: Gmail, its own turn, link in the card.
     const named = await handleInboundSms(fake.db, inbound(transport, 'Dana'), timed);
     expect(named.status).toBe('first_touch');
-    const gmail = transport.bodies().at(-1) ?? '';
+    const gmail = lastCard(transport);
     expect(gmail).toContain('Dana, want me to watch school and camp email for the dates?');
     expect(gmail).toContain('/connect?t=');
     expect(gmail).toContain('to=gmail');
@@ -456,7 +470,7 @@ describe('friend voice onboarding', () => {
 
     // Step 7: the calendar, only after they answered Gmail.
     await handleInboundSms(fake.db, inbound(transport, 'ok'), timed);
-    const calendar = transport.bodies().at(-1) ?? '';
+    const calendar = lastCard(transport);
     expect(calendar).toContain('Dana, want me to check your calendar?');
     expect(calendar).toContain('to=gcal');
     expect(calendar).not.toMatch(/email/i);
@@ -679,8 +693,8 @@ describe('friend voice onboarding', () => {
       deps,
     );
     expect(done.status).toBe('provisioned');
-    const body = transport.bodies().at(-1) ?? '';
-    expect(transport.bodies()).toHaveLength(3);
+    const body = lastCard(transport);
+    expect(transport.bodies()).toHaveLength(4);
     expect(body).toContain('The price is on villagehale.com.');
     expect(body).toMatch(/email/i);
     expect(body).toContain('/connect?t=');
@@ -723,7 +737,7 @@ describe('friend voice onboarding', () => {
     expect(name.trim().endsWith('What should I call you?')).toBe(true);
 
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    const gmail = transport.bodies().at(-1) ?? '';
+    const gmail = lastCard(transport);
     expect(gmail).toMatch(/email/i);
     expect(gmail).toContain('/connect?t=');
 
@@ -745,7 +759,7 @@ describe('friend voice onboarding', () => {
 
     // The next text, with Gmail answered, is the calendar's own turn with its link.
     await handleInboundSms(fake.db, inbound(transport, 'ok'), deps);
-    const calendar = transport.bodies().at(-1) ?? '';
+    const calendar = lastCard(transport);
     expect(calendar).toMatch(/calendar/i);
     expect(calendar).not.toMatch(/gmail|email/i);
     expect(calendar).toContain('/connect?t=');
@@ -918,7 +932,7 @@ describe('friend voice onboarding', () => {
     const kids = fake.rows(schema.children);
     expect(kids.map((row) => row.name)).toEqual(['Maya']);
     await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    expect(transport.bodies().at(-1)).toContain(
+    expect(lastCard(transport)).toContain(
       'Dana, want me to watch school and camp email for the dates?',
     );
   });
@@ -1091,12 +1105,12 @@ describe('friend voice onboarding', () => {
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     const declined = await loadOpenSession(fake.db, PHONE);
     expect(declined?.firstTouch?.given?.nameDeclined).toBe(true);
-    expect(transport.bodies().at(-1)).toMatch(/email/i);
+    expect(lastCard(transport)).toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'later'), deps);
     const later = await loadOpenSession(fake.db, PHONE);
     expect(later?.firstTouch?.given?.gmailLater).toBe(true);
-    expect(transport.bodies().at(-1)).toMatch(/calendar/i);
-    expect(transport.bodies().at(-1)).not.toMatch(/email/i);
+    expect(lastCard(transport)).toMatch(/calendar/i);
+    expect(lastCard(transport)).not.toMatch(/email/i);
     await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
     expect(transport.bodies().at(-1)).toBe(
       'Want the first one on your calendar as a weekly reminder?',
@@ -1148,8 +1162,8 @@ describe('friend voice onboarding', () => {
     const before = transport.bodies().length;
     const resumed = await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
     expect(resumed).toEqual({ status: 'first_touch', step: 'find_sent' });
-    expect(transport.bodies().length).toBe(before + 1);
-    expect(transport.bodies().at(-1)).toContain('Dana, want me to watch school and camp email');
+    expect(transport.bodies().length).toBe(before + 2);
+    expect(lastCard(transport)).toContain('Dana, want me to watch school and camp email');
     expect(fake.rows(schema.users).find((row) => row.name === 'Dana')).toBeDefined();
   });
   it('writes HELP from the model when friend voice is on', async () => {
