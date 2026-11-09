@@ -37,6 +37,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'crisis_unanswered',
   // That Hale re-read one parent's held text to see whether they asked it to stop.
   'opt_out_hold_read',
+  // That an operator cleared a hold on one adult's number.
+  'opt_out_hold_cleared',
   // Which language one parent texts Hale in.
   'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
@@ -47,6 +49,7 @@ const NOT_IN_FAMILY_EXPORT = [
 const OWN_ROWS_IN_EXPORT = [
   'crisis_unanswered',
   'opt_out_hold_read',
+  'opt_out_hold_cleared',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {

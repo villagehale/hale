@@ -26,7 +26,7 @@ import type { AbortedWindow, ProviderPreflightResult } from '~/lib/monitoring/pr
 import { INTAKE_CONTENT_REDACTED } from '~/lib/rights/message-retention';
 import { crisisRegionForPlace } from './derive';
 import { type Inbound, handleStop, writeChannelMessage } from './machine';
-import { releaseHeldMessage } from './opt-out-hold';
+import { MESSAGE_HOLD, placeHold, releaseHeldMessage } from './opt-out-hold';
 import type { OptOutReader, OptOutReading } from './opt-out-reader';
 import {
   type IntakeSession,
@@ -105,6 +105,9 @@ export const HELD_READ_OUTCOMES = [
   'recovery_failed',
   'no_channel',
   'claimed_elsewhere',
+  /** A collision hold, or a kind this code does not know: never read, never released by a
+   * pass. Kept (fail closed) until an operator clears it. */
+  'held_for_operator',
 ] as const;
 
 export type HeldReadOutcome = (typeof HELD_READ_OUTCOMES)[number];
@@ -118,6 +121,7 @@ const KEPT: ReadonlySet<HeldReadOutcome> = new Set([
   'not_yet_recorded',
   'unrecorded',
   'claimed_elsewhere',
+  'held_for_operator',
   'crisis_unanswered',
   'crisis_reply_in_flight',
 ]);
@@ -267,6 +271,7 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
+  if (row.kind !== MESSAGE_HOLD) return 'held_for_operator';
   // A reply to this text was sent: nothing is read, and nothing is sent again. One still
   // leaving is waited for; one that never left is not a reply.
   const reply = await crisisReplyState(database, row.providerMessageId, now);
@@ -981,17 +986,16 @@ async function repointLegacyHold(
   // read is gone, so holding them again would re-read it every tick. Once nothing is
   // left to place, the row goes after one last pass (a repeat read at most once).
   if (ids.length > 0 && (row.repointedAt === null || unplaceable === 0)) {
-    await database
-      .insert(schema.optOutHeldMessages)
-      .values(
-        ids.map((providerMessageId) => ({
-          providerMessageId,
-          phoneHash: row.phoneHash,
-          heldAt: row.heldAt,
-          nextReadAt: now,
-        })),
-      )
-      .onConflictDoNothing();
+    // One at a time through the shared writer: an id another number holds becomes this
+    // number's collision hold, never a silent no-op that lets the legacy row go.
+    for (const providerMessageId of ids) {
+      await placeHold(database, {
+        providerMessageId,
+        phoneHash: row.phoneHash,
+        heldAt: row.heldAt,
+        nextReadAt: now,
+      });
+    }
     result.repointed += ids.length;
   }
   if (unplaceable > 0) {

@@ -1088,6 +1088,7 @@ describe('recoverHeldOptOutReads', () => {
       heldAt: ago(20),
       nextReadAt: ago(20),
       readAttempts: 0,
+      kind: 'message',
       crisisLanguage: null,
       crisisSituation: null,
       crisisWho: null,
@@ -1297,10 +1298,84 @@ describe('recoverHeldOptOutReads', () => {
     expect(first.outcomes.read_not_stop).toBe(1);
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(false);
     // The second number's colliding text can never be placed, so no later text releases it.
-    expect(first.outcomes.unrecorded).toBe(1);
-    expect(second.outcomes.unrecorded).toBe(1);
+    expect(first.outcomes.held_for_operator).toBe(1);
+    expect(second.outcomes.held_for_operator).toBe(1);
     expect(r.texts).toEqual(['see you soon']);
     expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_B))).toBe(true);
+  }, 30_000);
+
+  it('k: a collision hold, or one of a kind this code does not know, outlives every pass for an operator', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await holdSender(db.database, {
+      phoneHash: phoneBlindIndex(PHONE_A),
+      providerMessageId: 'pm-shared',
+      now: ago(60),
+    });
+    expect(
+      await holdSender(db.database, {
+        phoneHash: phoneBlindIndex(PHONE_B),
+        providerMessageId: 'pm-shared',
+        now: ago(60),
+      }),
+    ).toBe('held_id_collision');
+    await db.database.insert(schema.optOutHeldMessages).values({
+      providerMessageId: 'pm-mystery',
+      phoneHash: phoneBlindIndex(PHONE_C),
+      heldAt: ago(60),
+      nextReadAt: ago(60),
+      kind: 'from_a_later_release',
+    });
+    const r = reader();
+
+    const first = await recoverHeldOptOutReads(db.database, deps(r.reader, new FakeTransport()));
+    const later = await recoverHeldOptOutReads(
+      db.database,
+      deps(r.reader, new FakeTransport(), { now: new Date(NOW.getTime() + 2 * 24 * 60 * MINUTE) }),
+    );
+
+    // Positive control: nothing can text any of the three numbers, and the message hold
+    // goes for that reason in the same pass.
+    expect(first.outcomes.no_channel).toBe(1);
+    expect(await heldRow('pm-shared')).toBeNull();
+    expect(first.outcomes.held_for_operator).toBe(2);
+    expect(later.outcomes.held_for_operator).toBe(2);
+    expect(later.outcomes.no_channel).toBe(0);
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_B))).toBe(true);
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_C))).toBe(true);
+    expect(r.texts).toEqual([]);
+  }, 30_000);
+
+  it('l: a legacy text whose id another number holds keeps the legacy number held', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await parent(PHONE_A);
+    const b = await parent(PHONE_B);
+    const heldAt = ago(60);
+    await holdSender(db.database, {
+      phoneHash: phoneBlindIndex(PHONE_A),
+      providerMessageId: 'pm-shared',
+      now: heldAt,
+    });
+    await db.database
+      .insert(schema.optOutReadHolds)
+      .values({ phoneHash: phoneBlindIndex(PHONE_B), heldAt });
+    await inboundRow(b, 'pm-shared', 'stop texting me', new Date(heldAt.getTime() + MINUTE));
+
+    const result = await recoverHeldOptOutReads(
+      db.database,
+      deps(reader().reader, new FakeTransport()),
+    );
+
+    // The id was placed, so the legacy row goes: the number is held by a row of its own.
+    expect(await db.database.select().from(schema.optOutReadHolds)).toEqual([]);
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_B))).toBe(true);
+    const own = await db.database
+      .select({ kind: schema.optOutHeldMessages.kind })
+      .from(schema.optOutHeldMessages)
+      .where(eq(schema.optOutHeldMessages.phoneHash, phoneBlindIndex(PHONE_B)));
+    expect(own).toEqual([{ kind: 'id_collision' }]);
+    expect(result.outcomes.held_for_operator).toBe(1);
+    // Positive control: the first number's own hold is untouched by the second's re-point.
+    expect(await isSenderHeld(db.database, phoneBlindIndex(PHONE_A))).toBe(true);
   }, 30_000);
 
   it('l: a legacy hold is re-pointed at every inbound since it was written', async () => {
@@ -2260,6 +2335,7 @@ describe('recoverHeldOptOutReads', () => {
         recovery_failed: 0,
         no_channel: 0,
         claimed_elsewhere: 0,
+        held_for_operator: 0,
       },
       deferred: 0,
       halted: null,
