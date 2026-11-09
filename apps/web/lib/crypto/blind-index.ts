@@ -28,6 +28,11 @@ const EMAIL_BLIND_INDEX_INFO = 'hale-email-blind-index-v1';
 const GOOGLE_ACCOUNT_BLIND_INDEX_INFO = 'hale-google-account-blind-index-v1';
 /** The kid-relevance cache key. Its own label: it hashes calendar and mail text. */
 const KID_RELEVANCE_INPUT_INFO = 'hale-kid-relevance-input-v1';
+/** A Linq chat id. Its own label: chat ids are a provider's identifiers, not a person's. */
+const LINQ_CHAT_BLIND_INDEX_INFO = 'hale-linq-chat-blind-index-v1';
+/** What an email-alert claim was about (an instant, an event ref or a message id). Its own
+ * label: an instant is low-entropy, so an unkeyed digest of it is a lookup table. */
+const EMAIL_ALERT_ANCHOR_INFO = 'hale-email-alert-anchor-v1';
 
 function loadKeyMaterial(): Buffer {
   const raw = process.env.APP_ENCRYPTION_KEY;
@@ -87,4 +92,25 @@ export function googleAccountBlindIndex(sub: string): string {
  */
 export function kidRelevanceInputIndex(input: string): string {
   return createHmac('sha256', blindIndexKey(KID_RELEVANCE_INPUT_INFO)).update(input).digest('hex');
+}
+
+/**
+ * Equality key for a Linq chat id, so an immutable audit row can say which chat a draft
+ * was asked in without holding the provider's id (VIL-525).
+ */
+export function linqChatBlindIndex(chatId: string): string {
+  return createHmac('sha256', blindIndexKey(LINQ_CHAT_BLIND_INDEX_INFO))
+    .update(chatId)
+    .digest('hex');
+}
+
+/**
+ * Equality key for what an email-alert occasion claim was about, scoped by the caller to
+ * the connection and thread. Keyed because the inputs are guessable: a stored unkeyed digest
+ * of an instant could be reversed by hashing every quarter hour of a year. A rotated key
+ * changes every anchor, so after a rotation the next email about an instant finds no
+ * earlier claim by anchor and falls back to the bare occasion key.
+ */
+export function emailAlertAnchorIndex(anchor: string): string {
+  return createHmac('sha256', blindIndexKey(EMAIL_ALERT_ANCHOR_INFO)).update(anchor).digest('hex');
 }

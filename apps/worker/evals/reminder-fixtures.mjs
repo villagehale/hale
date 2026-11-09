@@ -370,4 +370,24 @@ export const REMINDER_FIXTURES = [
     watchFor:
       "Fake family, in French. Swim tomorrow 17 h to 17 h 45; the VENUE CHANGED from Mold-Masters SportsPlex, 221 Guelph St to Piscine Centennial, 5 Lake Rd. CHANGED FACT: the text must give the new venue name and address and make clear it changed. BOLD CHECK: bold on the new venue is right; no bold at all scores at most 3; bold on anything else scores at most 3.",
   },
+  // VIL-550 · the hourly tick sends a T-1h anywhere from 0 to 60 minutes out; this one goes
+  // out 18 minutes before the start, the reported case.
+  {
+    id: 'en-near-term-18-min',
+    args: args({
+      timeZone: 'America/Chicago',
+      offset: '-PT1H',
+      now: '2026-10-26T15:12:00Z',
+      events: [
+        ev({
+          title: 'Toddler gym',
+          startsAt: '2026-10-26T15:30:00Z',
+          endsAt: '2026-10-26T16:15:00Z',
+          location: 'Birchwood Rec Centre, 14 Alder Ave',
+        }),
+      ],
+    }),
+    watchFor:
+      "Fake family. Toddler gym today 10:30 to 11:15 AM at Birchwood Rec Centre, 14 Alder Ave. It is 10:12 AM now, so it starts in 18 minutes. Any relative time must match that; 'in about an hour' is a wrong time.",
+  },
 ];

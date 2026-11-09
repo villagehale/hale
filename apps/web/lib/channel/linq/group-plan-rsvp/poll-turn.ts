@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
+import type { GroupHoldReason } from '../group-audience';
 import { type GroupPollVoiceKind, groupPollLineInput } from './poll-facts';
 import type { GroupPollRecord, NativeCardOption } from './poll-store';
 import {
@@ -9,6 +10,7 @@ import {
   tallyGroupPoll,
 } from './poll-tally';
 import type { GroupPlanRsvpReading, GroupPollReadView } from './reading';
+import { GroupPlanRsvpHeld } from './send';
 import type { ExpectedPerson, GroupPlanRsvpStore } from './store';
 import {
   type GroupPlanRsvpComposer,
@@ -43,7 +45,12 @@ export function isGroupPollCardKind(pollKind: string | null): boolean {
   return pollKind === GROUP_POLL_KIND || pollKind === GROUP_STUCK_POLL_KIND;
 }
 
-export type GroupPollCardSkip = 'polls_off' | 'not_configured' | 'refused' | 'no_card_port';
+export type GroupPollCardSkip =
+  | 'polls_off'
+  | 'not_configured'
+  | 'refused'
+  | 'no_card_port'
+  | GroupHoldReason;
 
 export interface GroupPollCardPort {
   /** Whether a native card can go out at all (LINQ_POLLS). Read before the line is written. */
@@ -68,7 +75,7 @@ export type GroupPollTurnResult = {
     | 'group_poll_unread'
     | 'group_poll_line_unsent';
   count: 'ignored' | 'intake';
-  notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
+  notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
   card?: 'sent' | { skipped: GroupPollCardSkip };
   pollTally?: GroupPollTally;
 };
@@ -126,7 +133,10 @@ async function speakPoll(
   },
 ): Promise<
   | { status: 'sent' }
-  | { status: 'unsent'; notice: { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' } }
+  | {
+      status: 'unsent';
+      notice: { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
+    }
 > {
   const spoken = await composeGroupPlanRsvpLine(
     groupPollLineInput({
@@ -148,8 +158,12 @@ async function speakPoll(
   try {
     await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'poll' });
   } catch (err) {
-    console.error({ err: err instanceof Error ? err.name : 'unknown' }, 'group poll: send failed');
-    return { status: 'unsent', notice: { skipped: 'not_sent' } };
+    const held = err instanceof GroupPlanRsvpHeld ? err.reason : null;
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', reason: held ?? undefined },
+      'group poll: send failed',
+    );
+    return { status: 'unsent', notice: { skipped: held ?? 'not_sent' } };
   }
   return { status: 'sent' };
 }

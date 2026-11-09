@@ -107,7 +107,6 @@ async function runIntakeRadar(): Promise<Intake> {
       weather: fakeWeather([]),
       client: null,
       now: () => INTAKE_AT,
-      timeZone: TZ,
     }),
     // Nothing to seed and nowhere to place it: this family's whole point is that
     // geography has nothing for them yet.

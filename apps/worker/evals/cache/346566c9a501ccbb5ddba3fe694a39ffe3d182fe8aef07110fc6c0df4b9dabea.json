@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "to": "nurse@riverdale-peds.ca",
+      "subject": "Re: Follow-up question",
+      "body": "hi, thanks for checking in on mira. her cough since the weekend: [update here]. i'll leave the visit for now."
+    },
+    "confidence": 0.3,
+    "rationale": "No info on whether the cough improved or whether the parent wants a visit, so the draft leaves the update for the parent to fill in and books nothing.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  },
+  "latencyMs": 4273
+}

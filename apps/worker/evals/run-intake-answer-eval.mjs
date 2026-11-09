@@ -37,6 +37,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
+import { healthRoutingFailures } from './health-line-gates.mjs';
 import { INTAKE_ANSWER_FIXTURES, WATCH_OFFER_ASK } from './intake-answer-fixtures.mjs';
 import {
   JUDGE_MIN,
@@ -62,10 +63,19 @@ const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'intake-answer
 
 // ── the composer's request shape, replicated from answer.ts ─────────────────
 
+/** Mirrors `ASK_KINDS`. */
+const ASK_KINDS = ['answer_here', 'program_dates', 'current_source', 'cheer_up'];
+
 /** Mirrors `answerJsonSchema`. */
 const ANSWER_TOOL_SCHEMA = {
   type: 'object',
   properties: {
+    askKind: {
+      type: 'string',
+      enum: ASK_KINDS,
+      description:
+        'What the parent is asking for, decided before writing anything. For anything but answer_here, leave answer and returnLine empty.',
+    },
     answer: {
       type: 'string',
       description:
@@ -76,7 +86,7 @@ const ANSWER_TOOL_SCHEMA = {
       description: "Hale's own pending question again, in different words, ending in '?'.",
     },
   },
-  required: ['answer', 'returnLine'],
+  required: ['askKind', 'answer', 'returnLine'],
 };
 
 /** Mirrors `intakeAnswerContext`. */
@@ -95,7 +105,6 @@ const MAX_TOKENS = 300;
 
 // ── the composer's gates, replicated from answer.ts ─────────────────────────
 
-const MAX_REPLY_CHARS = 300;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const APP_POINTER =
   /\b((?:the|your|their|our) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
@@ -136,7 +145,6 @@ function flatten(text) {
 function gateFailures(answer, returnLine, fixture) {
   const failures = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) failures.push('over_char_cap');
   if (LINK_SHAPE.test(joined)) failures.push('carries_link');
   if (answer.includes('?')) failures.push('answer_carries_question');
   if (!returnLine.endsWith('?')) failures.push('return_asks_nothing');
@@ -192,6 +200,7 @@ const JUDGE_SYSTEM = [
 // return_repeats_the_ask + the cost fixture's forbidden pattern + the judge, and its
 // non-empty body fails every mustDecline fixture. Every layer bites.
 const BROKEN = {
+  askKind: 'answer_here',
   answer:
     "Great question! I'll keep an eye on all of that for you — it's just $9 a month, and you can see everything in the app. Sound good?",
   returnLine: WATCH_OFFER_ASK,
@@ -251,7 +260,7 @@ async function main() {
             toolName: 'reply',
             toolSchema: ANSWER_TOOL_SCHEMA,
             toolDescription:
-              "Return the answer to the parent's question and the line back to Hale's.",
+              "Return what kind of ask this is, the answer to the parent's question and the line back to Hale's.",
             maxTokens: MAX_TOKENS,
             cachedOnly,
             getClient,
@@ -262,6 +271,24 @@ async function main() {
     const answer = flatten(raw.answer);
     const returnLine = flatten(raw.returnLine);
     const failures = [];
+
+    // THE READ (VIL-555): which path the composer takes, in any language. A misread is
+    // a wrong path whatever the words, so it is graded on every fixture.
+    const expectKind = fixture.expectKind ?? 'answer_here';
+    if (raw.askKind !== expectKind) failures.push(`misread:${raw.askKind}`);
+    if (fixture.routeOnly) {
+      if (expectKind === 'answer_here' && answer === '') failures.push('question_unanswered');
+      results.push({ fixture, answer, returnLine, failures });
+      continue;
+    }
+
+    if (fixture.mustReachSafety) {
+      // The machine replaces this pair with the health writer's line, so only the
+      // routing is graded: no gates, no judge.
+      failures.push(...healthRoutingFailures(`${answer} ${returnLine}`));
+      results.push({ fixture, answer, returnLine, failures });
+      continue;
+    }
 
     if (fixture.mustDecline) {
       // Nothing else is graded: a declined turn has no body to hold to a budget, and
@@ -297,7 +324,13 @@ async function main() {
 
   // The variation gate runs over the RETURN LINES, which is where this corpus converges:
   // eight fixtures, and seven of them are getting back to the same consent question.
-  const answered = results.filter((r) => !r.fixture.mustDecline && r.answer !== '');
+  const answered = results.filter(
+    (r) =>
+      !r.fixture.mustDecline &&
+      !r.fixture.mustReachSafety &&
+      !r.fixture.routeOnly &&
+      r.answer !== '',
+  );
   const variation = variationGate({
     items: answered.map((r) => ({ id: r.fixture.id, text: r.returnLine })),
     samples,
@@ -322,19 +355,14 @@ async function main() {
   }
 
   const unanswered = results.filter((r) => r.failures.includes('question_unanswered'));
+  const misread = results.filter((r) => r.failures.some((f) => f.startsWith('misread:')));
   const overAnswered = results.filter((r) => r.failures.includes('answered_a_non_question'));
   const claimedWork = results.filter((r) => r.failures.includes('claimed_work'));
   const claimedHuman = results.filter((r) => r.failures.includes('claimed_to_be_human'));
   const reAsks = results.filter((r) => r.failures.includes('return_repeats_the_ask'));
   const unsendable = results.filter((r) =>
     r.failures.some((f) =>
-      [
-        'over_char_cap',
-        'not_gsm7',
-        'carries_link',
-        'answer_carries_question',
-        'return_asks_nothing',
-      ].includes(f),
+      ['not_gsm7', 'carries_link', 'answer_carries_question', 'return_asks_nothing'].includes(f),
     ),
   );
   const inventions = results.filter((r) =>
@@ -346,6 +374,9 @@ async function main() {
   console.log('\n--- corpus metrics ---');
   console.log(
     `UNANSWERED QUESTIONS:    ${unanswered.length}  (0 required - this is the bug the stage exists to end)`,
+  );
+  console.log(
+    `misread asks:            ${misread.length}  (0 required - the path is the model's read, in any language)`,
   );
   console.log(`answered non-questions:  ${overAnswered.length}  (0 required)`);
   console.log(

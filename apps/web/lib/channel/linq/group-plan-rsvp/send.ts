@@ -2,8 +2,10 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { sendLinqChatMessage } from '~/lib/channel/outbound-transport';
+import { type GroupHoldReason, groupAudienceAllows } from '../group-audience';
+import type { ListChatHandles } from '../roster';
 import { primaryParentId } from '../roster-ask';
-import { LinqSendError } from '../transport';
+import { LinqSendError, listLinqParticipantHandles } from '../transport';
 
 /**
  * VIL-442 — one ledgered send into a claimed group for a plan tally or follow-up,
@@ -11,6 +13,11 @@ import { LinqSendError } from '../transport';
  *
  * Claims the channel_messages row before Linq hears the line. A refusal marks
  * that same row failed. The covering family's primary parent owns the row.
+ *
+ * Before the claim, the family-chat floor reads who is in the chat now: a tally, a
+ * follow-up and a poll line are `event_logistics`. A refused verdict claims nothing,
+ * sends nothing and throws {@link GroupPlanRsvpHeld} with the floor's reason, so every
+ * caller (which already treats a throw as "nothing landed") can name it.
  */
 export const GROUP_PLAN_RSVP_TEMPLATE = 'linq:group_plan_rsvp';
 export const GROUP_PLAN_RSVP_FOLLOWUP_TEMPLATE = 'linq:group_plan_rsvp_followup';
@@ -18,6 +25,13 @@ export const GROUP_POLL_TEMPLATE = 'linq:group_poll';
 export const GROUP_PLAN_CALENDAR_ASK_TEMPLATE = 'linq:group_plan_calendar_ask';
 export const GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE = 'linq:group_plan_calendar_written';
 export const GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE = 'linq:group_plan_calendar_removed';
+
+export class GroupPlanRsvpHeld extends Error {
+  constructor(readonly reason: GroupHoldReason) {
+    super(`group plan rsvp: the family group may not hear it (${reason})`);
+    this.name = 'GroupPlanRsvpHeld';
+  }
+}
 
 export async function sendGroupPlanRsvpLine(
   database: Database,
@@ -32,6 +46,7 @@ export async function sendGroupPlanRsvpLine(
       | typeof GROUP_PLAN_CALENDAR_WRITTEN_TEMPLATE
       | typeof GROUP_PLAN_CALENDAR_REMOVED_TEMPLATE;
     now: Date;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<{ providerMessageId: string }> {
   const [family] = await database
@@ -50,6 +65,19 @@ export async function sendGroupPlanRsvpLine(
       'group plan rsvp: send not ledgered',
     );
     throw new Error('group plan rsvp: no primary parent');
+  }
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    'event_logistics',
+    input.listChatHandles ?? listLinqParticipantHandles,
+  );
+  if (!audience.allowed) {
+    console.info(
+      { familyId: family.id, outcome: 'group_plan_rsvp_held', reason: audience.reason },
+      'group plan rsvp: the family group may not hear it, nothing sent',
+    );
+    throw new GroupPlanRsvpHeld(audience.reason);
   }
   const [claimed] = await database
     .insert(schema.channelMessages)

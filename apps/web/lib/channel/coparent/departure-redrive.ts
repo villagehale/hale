@@ -63,6 +63,8 @@ export interface DepartureNoticeRedriveResult {
   due: number;
   deferred: number;
   sent: number;
+  /** Live cadence: handed to the decider this run, or already in its queue (VIL-612). */
+  queued: number;
   alreadySent: number;
   heldAgain: number;
   refused: number;
@@ -78,6 +80,7 @@ export function emptyDepartureRedriveResult(): DepartureNoticeRedriveResult {
     due: 0,
     deferred: 0,
     sent: 0,
+    queued: 0,
     alreadySent: 0,
     heldAgain: 0,
     refused: 0,
@@ -173,6 +176,7 @@ export async function runDepartureNoticeRedrive(
   for (const departure of due.slice(0, MAX_REDRIVE_PER_RUN)) {
     const outcome = await tellStayingParent(database, { ...departure, now }, deps.ports);
     if (outcome === 'sent') result.sent += 1;
+    else if (outcome === 'queued' || outcome === 'already_queued') result.queued += 1;
     else if (outcome === 'already_sent') result.alreadySent += 1;
     else if (outcome === 'dark') result.dark += 1;
     else if (outcome === 'no_staying_parent') result.noStayingParent += 1;

@@ -32,6 +32,11 @@ import {
   parseDeadLetterIdentifier,
   parseHelloIdentifier,
 } from '~/lib/monitoring/failure-page';
+import {
+  type InboundQueueSnapshot,
+  inboundQueueIsStalled,
+  loadInboundQueueStall,
+} from '~/lib/monitoring/inbound-queue-stall';
 import { LINQ_CHAT_ID_LIMIT, countDbChatIds } from '~/lib/monitoring/linq-capacity';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
 import { PROVIDER_INCIDENT_ROUTE, providerIncidentKind } from '~/lib/monitoring/provider-health';
@@ -66,6 +71,10 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  * the database, where `hale-prod-qa` resolves them.
  *
  * The Linq line is the database's chat-id count (VIL-407), not a live list of Linq.
+ *
+ * The inbound-queue line is the pg-boss table at post time (VIL-535): jobs still
+ * active past their expiry, unfinished jobs, and the age of the oldest. Slack
+ * only. It does not email, and it does not text a parent.
  */
 
 export const OPS_DAILY_ROUTE = 'ops:daily';
@@ -199,6 +208,8 @@ export interface OpsDailyReport {
   };
   /** Distinct chat ids the database has recorded, canary excluded. Not the live Linq total. */
   linqChatIds: number;
+  /** The inbound pg-boss queue at the moment of the post. Counts only. */
+  queue: InboundQueueSnapshot;
 }
 
 export type OpsDailyOutcome = 'posted' | 'already_posted' | 'failed' | 'skipped_not_configured';
@@ -605,7 +616,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
   // family in the trailing week. W4 resolves the same set itself.
   const metricsExcluded = [...(await resolveMetricsExclusions(database))];
   const weekStart = new Date(window.end.getTime() - TRAILING_WEEK_MS);
-  const [w4Cohorts, funnel, debt, medical, radar, linqChatIds, week] = await Promise.all([
+  const [w4Cohorts, funnel, debt, medical, radar, linqChatIds, week, queue] = await Promise.all([
     aggregateW4Retention(database, window.end),
     aggregateFunnelScoreboard(database, weekStart, window.end, metricsExcluded),
     aggregateCommitmentDebt(database, window.end, metricsExcluded),
@@ -613,6 +624,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     aggregateRadarVerification(database, weekStart, window.end),
     countDbChatIds(database),
     loadWeek(database, { start: weekStart, end: window.end }, metricsExcluded),
+    loadInboundQueueStall(database),
   ]);
   const graded = w4Cohorts.filter((row) => row.weekN === RETENTION_GRADED_WEEK);
 
@@ -652,6 +664,7 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
     reverify: { ran: radar.sweptThisWeek, outcomes: radar.outcomes },
     week,
     linqChatIds,
+    queue,
   };
 }
 
@@ -714,6 +727,15 @@ function unmetLine(rows: OpsDailyReport['week']['unmetIntents']): string {
   return `Unmet intents (7d): ${tally(shown)}${more > 0 ? ` (+${more} more)` : ''}`;
 }
 
+function queueLine(queue: InboundQueueSnapshot): string {
+  if (!queue.readable) return 'Inbound queue: unreadable';
+  if (queue.expiredActive === 0 && queue.unfinished === 0) return 'Inbound queue: clear';
+  const body = `expired-active ${queue.expiredActive} | unfinished ${queue.unfinished} | oldest ${seconds(queue.oldestSeconds)}`;
+  return inboundQueueIsStalled(queue)
+    ? `Inbound queue: stalled | ${body}`
+    : `Inbound queue: ${body}`;
+}
+
 function papercutLine(p: OpsDailyReport['week']['papercuts']): string {
   return `Papercuts (7d): unmet ${p.unmet_intent} | medical fallback ${p.medical_fallback} | reply fallback ${p.reply_fallback} | voice fallback ${p.voice_failure} | turn failures ${p.turn_failure}`;
 }
@@ -751,6 +773,7 @@ export function composeOpsDailyPost(report: OpsDailyReport): string {
     unmetLine(report.week.unmetIntents),
     papercutLine(report.week.papercuts),
     `Linq chat IDs (DB): ${report.linqChatIds} of ${LINQ_CHAT_ID_LIMIT}`,
+    queueLine(report.queue),
   ].join('\n');
 }
 

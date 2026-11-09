@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 'Swim class jeudi à 10 h', which names the event as Swim class, on Thursday, at 10 o'clock ('10 h' is the hour, with no minute named). By the rules, an hour named with no minute means minute zero, so the text states 10:00 on Thursday. The actual start is Thursday July 23, 2026 at 10:30 AM, minute 30. The text's time of 10:00 differs from the real minute of 30, so it does not match.",
+    "match": false
+  },
+  "latencyMs": 2013
+}

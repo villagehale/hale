@@ -363,7 +363,10 @@ describe('propose_calendar_add', () => {
   });
 
   it('does not draft again when that add is already waiting', async () => {
-    const h = harness([scheduleEvent()], new Set(), [], async () => 'action-waiting');
+    const h = harness([scheduleEvent()], new Set(), [], async () => ({
+      outcome: 'already_pending',
+      id: 'action-waiting',
+    }));
 
     const result = await h.call('propose_calendar_add', {
       title: 'Trunk or Treat',

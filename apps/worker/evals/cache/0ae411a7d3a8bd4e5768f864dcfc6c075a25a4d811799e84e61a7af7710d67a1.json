@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?' which is a direct ask of the parent, duplicating the shell question and so asking twice. Otherwise it only reports findings, but that closing question is a clear ask that must be removed.",
+    "score": 1
+  }
+}

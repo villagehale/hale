@@ -32,7 +32,7 @@ const REVIEWER_VERDICT_VERBS = [
   'action.reviewed.flag_for_human',
 ] as const;
 
-const HUMAN_APPROVAL_VERB = 'action.approved_by_human';
+export const HUMAN_APPROVAL_VERB = 'action.approved_by_human';
 
 export interface ActionAuditFacts {
   /** The reviewer's own sentence, or null when it recorded none. */

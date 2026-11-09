@@ -6,6 +6,7 @@ import { groupMemberByPhone } from '~/lib/channel/linq/group-membership';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
 import { groupTurnReadContext } from '~/lib/channel/linq/group-turn-reader';
 import type { LinqInboundText } from '~/lib/channel/linq/payload';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
 import { familyLanguage, primaryParentId } from '~/lib/channel/linq/roster-ask';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
@@ -73,6 +74,7 @@ export interface GroupReminderTurnPorts {
   /** Null: no model is configured. Nothing is sent and nothing is armed. */
   voice: GroupReminderVoice | null;
   send?: GroupLineSend;
+  listChatHandles?: ListChatHandles;
   /** The door's own record of this inbound and its audit. Null: it was already recorded. */
   recordInbound(
     message: LinqInboundText,
@@ -300,7 +302,13 @@ export async function takeGroupReminderTurn(
     dedupeKey: `${GROUP_REMINDER_CONFIRM_TEMPLATE}:${message.messageId}`,
     now,
     send: ports.send,
+    listChatHandles: ports.listChatHandles,
   });
+  if (posted.outcome === 'held' && posted.reason === 'participants_unverified') {
+    // Who is in the chat could not be read: no answer about the audience, so nothing is
+    // cancelled and Linq's redelivery runs the turn again.
+    return releaseForRetry(database, { pendingIds, recorded, familyId, why: posted.reason });
+  }
   if (posted.outcome === 'held') {
     await cancelReminders(database, {
       ids: pendingIds,

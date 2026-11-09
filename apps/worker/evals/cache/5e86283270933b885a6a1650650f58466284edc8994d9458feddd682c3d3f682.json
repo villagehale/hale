@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores the actual event in the facts (Natation, tomorrow 5:00-5:45 PM at Piscine Centennial, 5 Lake Rd) and instead invents a different event, \"Jour de congé at 3:00\", that is not in the facts. The swim's start, end, venue name and address are all missing, and the venue change from Mold-Masters SportsPlex is never mentioned. It also invents a claim that tomorrow is a day off and implies breathing room when there is a timed event. The text is partly in English (\"Mon, Oct 26\", \"Tomorrow's a day off\") rather than French. Bold is none, which is fine in itself but the changed-fact requirement fails entirely.",
+    "score": 1
+  }
+}

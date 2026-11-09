@@ -6,6 +6,7 @@ import {
   flushGroupDecisionSyncs,
   queueGroupActivityDecision,
 } from '~/lib/channel/linq/family-outbound';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { DUTY_BURDEN_FACT_KEY, burdenMayLeave, defaultOwnerOffer, noteDutyBurden } from './burden';
@@ -20,6 +21,37 @@ const PERSONAL = 'chat-one-to-one';
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const START = new Date('2026-09-29T19:00:00.000Z');
 const DAY = new Date('2026-09-24T15:00:00.000Z');
+const KEY = Buffer.alloc(32, 4).toString('base64');
+const PARENT_PHONE = '+15555550151';
+
+/**
+ * The family holds GROUP, its confirmed roster is the one parent, and the live GET
+ * (through the global fetch: the decision queue has no fetch seam) lists only them.
+ */
+async function claimGroupOfOne(familyId: string): Promise<void> {
+  vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  await db.database
+    .update(schema.families)
+    .set({ linqGroupChatId: GROUP })
+    .where(eq(schema.families.id, familyId));
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: GROUP, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values({
+    rosterId: roster?.id as string,
+    chatId: GROUP,
+    phoneE164Hash: phoneBlindIndex(PARENT_PHONE),
+    status: 'known_parent',
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({ chat: { id: GROUP, is_group: true, handles: [{ handle: PARENT_PHONE }] } }),
+    ),
+  );
+}
 
 function scriptedDutyLines(activities: readonly string[]): AgentClient {
   let index = 0;
@@ -52,7 +84,7 @@ afterAll(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  await db.exec('truncate table families, users cascade');
+  await db.exec('truncate table families, users, linq_group_rosters cascade');
 });
 
 async function secondParent(familyId: string, name: string): Promise<string> {
@@ -241,10 +273,7 @@ describe('duty group sync', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const family = await seedFamily(db.database, 'Sync');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: GROUP })
-      .where(eq(schema.families.id, family.familyId));
+    await claimGroupOfOne(family.familyId);
     await db.database
       .update(schema.users)
       .set({ name: 'Barton' })
@@ -307,10 +336,7 @@ describe('duty group sync', () => {
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const family = await seedFamily(db.database, 'Quiet');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: GROUP })
-      .where(eq(schema.families.id, family.familyId));
+    await claimGroupOfOne(family.familyId);
     await db.database
       .update(schema.users)
       .set({ name: 'Barton' })

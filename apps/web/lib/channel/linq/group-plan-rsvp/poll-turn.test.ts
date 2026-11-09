@@ -25,10 +25,10 @@ import { fakeGroupPlanRsvpComposer } from './voice-fake';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const CHAT = 'chat-saturday';
-const PRIYA = '+14165550101';
-const SAM = '+14165550102';
-const MAYA = '+14165550103';
-const NOT_HALE = '+14165550199';
+const PRIYA = '+15555550101';
+const SAM = '+15555550102';
+const MAYA = '+15555550103';
+const NOT_HALE = '+15555550199';
 const NOW = new Date('2026-10-28T16:00:00.000Z');
 
 beforeAll(() => {

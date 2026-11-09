@@ -16,8 +16,8 @@ export const maxDuration = 60;
 /**
  * GET /api/cron/intake-sitting-reminder — VIL-324.
  *
- * Hourly Vercel Cron (the minute-8 slot): the next-morning Still here, only in the
- * Toronto morning hour. The same-day first reply (VIL-332) is no longer here: a parent
+ * Hourly Vercel Cron (the minute-8 slot): the next-morning Still here, in each
+ * session's own morning hour (its postal code's zone). The same-day first reply (VIL-332) is no longer here: a parent
  * who heard nothing cannot wait for the hour, so the every-minute drain owns it
  * (app/api/cron/drain/route.ts).
  *

@@ -4,6 +4,7 @@ import {
   linqGroupPlanRsvpEnabled,
   linqGroupPollsEnabled,
 } from '../config';
+import type { GroupHoldReason } from '../group-audience';
 import type { LinqTapback } from '../transport';
 import type {
   CalendarConsentReader,
@@ -31,6 +32,7 @@ import {
   isGroupPollIntent,
   sharedGroupPlanRsvpReader,
 } from './reading';
+import { GroupPlanRsvpHeld } from './send';
 import type { GroupPlanRsvpStore } from './store';
 import { type PlanTally, isMeaningfulTallyChange } from './tally';
 import {
@@ -71,7 +73,7 @@ export type GroupPlanRsvpTurnOutcome =
         | 'group_plan_calendar_asked'
         | 'group_plan_calendar_unwritten';
       count: 'ignored' | 'intake';
-      notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' };
+      notice?: 'sent' | { skipped: GroupPlanRsvpVoiceSkip | 'not_sent' | GroupHoldReason };
       tally?: PlanTally;
       calendar?: CalendarEffect;
       card?: 'sent' | { skipped: GroupPollCardSkip };
@@ -421,7 +423,10 @@ export async function takeGroupPlanRsvpTurn(
     await deps.send({ chatId: input.chatId, text: spoken.line, kind: 'plan' });
   } catch (err) {
     console.error(
-      { err: err instanceof Error ? err.name : 'unknown' },
+      {
+        err: err instanceof Error ? err.name : 'unknown',
+        reason: err instanceof GroupPlanRsvpHeld ? err.reason : undefined,
+      },
       'group plan rsvp: send failed',
     );
     const calendar = await finishCalendar();
@@ -429,7 +434,7 @@ export async function takeGroupPlanRsvpTurn(
       handled: true,
       outcome: 'group_plan_line_unsent',
       count: 'ignored',
-      notice: { skipped: 'not_sent' },
+      notice: { skipped: err instanceof GroupPlanRsvpHeld ? err.reason : 'not_sent' },
       tally: after,
       ...(calendar ? { calendar } : {}),
     };

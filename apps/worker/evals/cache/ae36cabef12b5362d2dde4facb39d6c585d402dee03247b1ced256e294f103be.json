@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "No worries, I'll leave the name for now. What would you like the kids' things to come in? Gmail, or your calendar, or both?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "gmail",
+      "calendar"
+    ],
+    "joinPointer": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1368
+}

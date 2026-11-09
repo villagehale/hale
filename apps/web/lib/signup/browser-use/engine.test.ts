@@ -170,6 +170,38 @@ describe('browser use signup engine', () => {
     }
   });
 
+  it('refuses a live view on any other host: no link goes back and the browser is stopped', async () => {
+    const spoofed = {
+      ...eventsReady,
+      events: eventsReady.events.map((event) =>
+        event.type === 'browser.ready'
+          ? { ...event, data: { ...event.data, live_view_url: 'https://live.example.test/s/x' } }
+          : event,
+      ),
+    };
+    const { deps, requests } = setup({
+      ...happyRoutes(),
+      [`GET ${RUN}/events`]: { body: spoofed },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const result = await runBrowserUseSignup(input(), deps);
+      expect(result).toMatchObject({ outcome: 'error', detail: 'no_live_view', liveViewUrl: null });
+      expect(JSON.stringify(result)).not.toContain('live.example.test');
+      expect(warn).toHaveBeenCalledWith(
+        { refused: 'live_view_host' },
+        expect.stringContaining('live view'),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('live.example.test');
+      const runBrowser = eventsReady.events[1]?.data.browser_session_id;
+      expect(
+        requests.some((r) => r.method === 'PATCH' && r.path === `/api/v4/browsers/${runBrowser}`),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('sends only the granted fields, no secrets, no payment link, and keeps the cart alive', async () => {
     const { deps, requests } = setup(happyRoutes());
     await runBrowserUseSignup(input(), deps);
@@ -370,6 +402,13 @@ describe('browser use run settings, browser stop and session cost', () => {
     });
     const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
     expect(seed?.body).toMatchObject({ proxyCountryCode: null });
+  });
+
+  it('turns the CAPTCHA solver off on every browser Hale creates', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    await runBrowserUseSignup(input(), deps);
+    const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
+    expect(seed?.body).toMatchObject({ solveCaptchas: false });
   });
 
   it('turns the proxy back on only for a provider that asks for it', async () => {

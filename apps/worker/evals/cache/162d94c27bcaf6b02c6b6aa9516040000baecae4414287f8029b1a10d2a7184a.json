@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English although French was requested (wrong language). It omits the end time (4:00 PM), the venue name (Georgetown library) and the street address (9 Church St), and gives the start as '3:00' with no AM/PM. It recasts the event title \"Jour de congé\" as a statement about the day ('Tomorrow's a day off') and adds the invented inference that the family has 'a bit of breathing room', which is exactly the day-is-free claim forbidden when a timed event exists.",
+    "score": 1
+  }
+}

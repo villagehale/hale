@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Swim class is named as the event, with day (today), start 10:00 AM, and end 11:00 AM all correct. 'About three hours from now' matches minutesUntilStart of 180. No location was given and none invented; no link or bold used; nothing invented.",
+    "score": 5
+  }
+}
