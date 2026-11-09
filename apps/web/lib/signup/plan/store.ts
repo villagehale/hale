@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -285,6 +285,60 @@ export async function cancelSignupPlan(
     after: { step: 'plan_cancelled' },
   });
   return 'cancelled';
+}
+
+/** A family's offer the day-before conversation can still act on, before its open. */
+export interface ConversablePlan {
+  offerId: string;
+  childId: string;
+  status: 'pending' | 'planned';
+  registrationUrl: string;
+  sessions: SignupSession[];
+  approvedPriceCents: number | null;
+  opensAt: Date;
+  plan: { choiceIds: string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
+}
+
+/**
+ * The offer with a known open still ahead: a `pending` offer the coach recorded with its
+ * open time, or a `planned` one the parent may still take back. The earliest open first.
+ */
+export async function loadConversablePlan(
+  database: Database,
+  input: { familyId: string; now: Date },
+): Promise<ConversablePlan | null> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select()
+    .from(offers)
+    .where(
+      and(
+        eq(offers.familyId, input.familyId),
+        inArray(offers.status, ['pending', 'planned']),
+        gt(offers.planOpensAt, input.now),
+      ),
+    )
+    .orderBy(offers.planOpensAt)
+    .limit(1);
+  if (!row?.planOpensAt || (row.status !== 'pending' && row.status !== 'planned')) return null;
+  const planned =
+    row.status === 'planned' && row.planChoiceIds && row.planMaxPriceCents !== null
+      ? {
+          choiceIds: row.planChoiceIds,
+          maxPriceCents: row.planMaxPriceCents,
+          waiverAccepted: row.planWaiverAccepted === true,
+        }
+      : null;
+  return {
+    offerId: row.id,
+    childId: row.childId,
+    status: row.status,
+    registrationUrl: row.registrationUrl,
+    sessions: row.sessions,
+    approvedPriceCents: row.approvedPriceCents,
+    opensAt: row.planOpensAt,
+    plan: planned,
+  };
 }
 
 /** The consent row the approving message wrote. Read-only: a run never writes consent. */

@@ -416,6 +416,16 @@ jobs:
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
 
+      # VIL-558: the day-before registration plan read (exact) and its replies (judge).
+      - name: Signup plan read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-read
+
+      - name: Signup plan reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply
+
+      - name: Signup plan reply calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
+
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read
 

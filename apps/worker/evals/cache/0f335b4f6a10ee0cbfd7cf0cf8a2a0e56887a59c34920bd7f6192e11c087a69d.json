@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states no payment was made, the child has no spot yet, and the cart may have expired; it uses tu and does not claim a spot. However, the offer/approval-only two-places note does not apply to run_finished, and the text mentions the link follows, which is allowed. Price stated as 98 $ matches cart total and max 90 $ matches facts. Minor issue: the French phrasing 'ce qui dépasse' is fine; no promise of retrying. Scores high.",
+    "score": 5
+  }
+}
