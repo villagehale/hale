@@ -1,16 +1,21 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { considerCarpoolTurn, runCarpoolReminders } from './carpool';
 import { applyCarpoolReading } from './carpool-apply';
 import { fakeCarpoolComposer } from './carpool-voice';
+import type { ListChatHandles } from './roster';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const NOW = new Date('2026-10-08T16:00:00.000Z');
 const FRIDAY_EVE = new Date('2026-10-09T22:00:00.000Z');
 const CHAT = 'chat-carpool-preview';
 const PICKUP = '2026-10-10T12:00:00.000Z';
+const MOM = '+15555550131';
+const DAD = '+15555550132';
+const FRIEND = '+15555550133';
 
 let db: TestDb;
 
@@ -26,15 +31,49 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
 });
 
 afterEach(async () => {
   vi.unstubAllEnvs();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec(
-    'truncate table linq_group_carpools, audit_log, channel_messages, families, users cascade',
+    'truncate table linq_group_carpools, audit_log, channel_messages, families, users, linq_group_rosters cascade',
   );
 });
+
+type MemberSeed = Pick<
+  typeof schema.linqGroupRosterMembers.$inferInsert,
+  'status' | 'confirmedRole'
+> & { phone: string };
+
+async function seedRoster(
+  familyId: string,
+  status: schema.LinqGroupRosterStatus,
+  members: MemberSeed[],
+): Promise<void> {
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: CHAT, familyId, source: 'added_to_existing', status })
+    .returning({ id: schema.linqGroupRosters.id });
+  for (const { phone, ...member } of members) {
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster?.id as string,
+      chatId: CHAT,
+      phoneE164Hash: phoneBlindIndex(phone),
+      ...member,
+    });
+  }
+}
+
+const PARENTS: MemberSeed[] = [
+  { phone: MOM, status: 'known_parent' },
+  { phone: DAD, status: 'confirmed', confirmedRole: 'co_parent' },
+];
+
+function present(...handles: string[]): ListChatHandles {
+  return async () => ({ status: 'ok', handles, isGroup: true });
+}
 
 async function seed() {
   const [family] = await db.database
@@ -94,8 +133,43 @@ describe('considerCarpoolTurn', () => {
     expect(door.texts).toEqual([]);
   });
 
+  it('does not post the driver ask while someone in the group has not said who they are', async () => {
+    const { familyId, userId } = await seed();
+    await seedRoster(familyId, 'roles_proposed', [
+      { phone: MOM, status: 'known_parent' },
+      { phone: FRIEND, status: 'asked' },
+    ]);
+    const door = send();
+    const asked = await considerCarpoolTurn(db.database, {
+      chatId: CHAT,
+      familyId,
+      senderHandle: MOM,
+      senderUserId: userId,
+      senderName: 'Maya',
+      text: 'Soccer Saturday 8 at the rec, who can drive?',
+      now: NOW,
+      send: door.send,
+      voice: fakeCarpoolComposer(),
+      listChatHandles: present(MOM, FRIEND),
+      reader: {
+        read: async () => ({
+          intent: 'plan_needs_driver',
+          driverName: null,
+          eventLabel: 'soccer',
+          pickupAtIso: PICKUP,
+          pickupPlace: 'the rec',
+          kids: 'Noah',
+          confidence: 'high',
+        }),
+      },
+    });
+    expect(asked).toMatchObject({ handled: true, notice: 'not_sent' });
+    expect(door.texts).toEqual([]);
+  });
+
   it('records a driver and asks once when the group still needs one', async () => {
     const { familyId, userId } = await seed();
+    await seedRoster(familyId, 'confirmed', PARENTS);
     const door = send();
     const voice = fakeCarpoolComposer();
     const asked = await considerCarpoolTurn(db.database, {
@@ -108,6 +182,7 @@ describe('considerCarpoolTurn', () => {
       now: NOW,
       send: door.send,
       voice,
+      listChatHandles: present(MOM, DAD),
       reader: {
         read: async () => ({
           intent: 'plan_needs_driver',
@@ -284,6 +359,7 @@ async function insertAssigned(familyId: string, userId: string, chatId = CHAT) {
 describe('runCarpoolReminders', () => {
   it('reminds the group and the Hale-customer driver', async () => {
     const { familyId, userId } = await seed();
+    await seedRoster(familyId, 'confirmed', PARENTS);
     const voice = fakeCarpoolComposer();
     const door = send();
     await insertAssigned(familyId, userId);
@@ -297,6 +373,7 @@ describe('runCarpoolReminders', () => {
       now: FRIDAY_EVE,
       send: door.send,
       voice,
+      listChatHandles: present(MOM, DAD),
       sendDriver: async ({ text }) => {
         driverSends.push(text);
         return { sent: true, providerMessageId: 'driver-1' };

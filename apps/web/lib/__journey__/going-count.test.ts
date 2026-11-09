@@ -90,6 +90,7 @@ const FAMILY_TIMEZONE = 'America/Toronto';
 const RECEIPT_ONE = {
   envelope: {
     messageId: 'gmail-rc-88214',
+    labelIds: ['INBOX'],
     subject: 'Registration Confirmation #RC-88214 — Leo Tremblay',
     from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
     snippet:
@@ -102,6 +103,7 @@ const RECEIPT_ONE = {
 const RECEIPT_TWO = {
   envelope: {
     messageId: 'gmail-rc-88251',
+    labelIds: ['INBOX'],
     subject: 'Registration Confirmation #RC-88251 — Nora Okafor',
     from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
     snippet:
@@ -247,7 +249,14 @@ async function receiptArrives(
       parentUserId: who.parentUserId,
       integrationId: who.integrationId,
       seeding: false,
-      envelopes: [{ ...receipt.envelope, messageId: over.messageId ?? receipt.envelope.messageId }],
+      envelopes: [
+        {
+          ...receipt.envelope,
+          messageId: over.messageId ?? receipt.envelope.messageId,
+          // One thread per message: the repeat receipt below is a separate email.
+          threadId: `t-${over.messageId ?? receipt.envelope.messageId}`,
+        },
+      ],
       now: RECEIPT_AT,
     },
     alertPorts(who, transport, receipt.body, writer),

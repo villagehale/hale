@@ -1,6 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { createMomentReply } from './moment-reply';
+import { createMomentReply, momentUnwritten } from './moment-reply';
 
 function clientReturning(reply: string | Error, times = 1): () => AgentClient {
   let calls = 0;
@@ -72,5 +72,20 @@ describe('moment reply', () => {
       'could_not_answer',
     );
     expect(empty).toEqual({ status: 'unwritten', reason: 'unsendable' });
+  });
+});
+
+describe('an unwritten reason read back from a verdict', () => {
+  it('reads text outside the named reasons as a write that failed after both attempts', () => {
+    expect(momentUnwritten('upstream_gone')).toEqual({ reason: 'write_failed', writes: 2 });
+    expect(momentUnwritten('')).toEqual({ reason: 'write_failed', writes: 2 });
+  });
+
+  it('keeps a named reason, with no writes when the call could not start', () => {
+    expect(momentUnwritten('client_unavailable')).toEqual({
+      reason: 'client_unavailable',
+      writes: 0,
+    });
+    expect(momentUnwritten('model_failed')).toEqual({ reason: 'model_failed', writes: 2 });
   });
 });

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CONNECTOR_PROVIDERS,
   CONNECTOR_SCOPES,
-  type ConnectorProvider,
+  type ConsentConnector,
   buildGoogleAuthUrl,
   connectorClientSource,
   connectorRedirectUri,
@@ -41,23 +42,38 @@ describe('buildGoogleAuthUrl', () => {
   });
 
   it('scopes the consent to exactly the connector being connected (read-only)', () => {
-    const scopeOf = (provider: ConnectorProvider) =>
+    const scopeOf = (provider: ConsentConnector) =>
       new URL(buildGoogleAuthUrl({ provider, state: 'x', redirectUri: REDIRECT })).searchParams.get(
         'scope',
       );
     expect(scopeOf('gcal')).toBe(
-      'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
+    );
+    expect(scopeOf('gcal')?.split(' ')).not.toContain(
+      'https://www.googleapis.com/auth/calendar.readonly',
     );
     expect(scopeOf('gmail')).toBe(
       'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.profile',
-    );
-    expect(scopeOf('gdrive')).toBe(
-      'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
     );
     // Every connector scope is read-only — connectors never mutate the user's Google data.
     for (const scopes of Object.values(CONNECTOR_SCOPES)) {
       for (const s of scopes) expect(s).toMatch(/\.readonly$/);
     }
+  });
+
+  it('has no Drive consent: the only restricted scope Hale can ask for is gmail.readonly', () => {
+    expect(Object.keys(CONNECTOR_SCOPES).sort()).toEqual(['gcal', 'gmail']);
+    const everyRequestable = Object.values(CONNECTOR_SCOPES).flat();
+    expect(everyRequestable).not.toContain('https://www.googleapis.com/auth/drive.readonly');
+    expect(everyRequestable.filter((s) => s.includes('/auth/drive'))).toEqual([]);
+    expect(everyRequestable).toContain('https://www.googleapis.com/auth/gmail.readonly');
+    // @ts-expect-error Drive is not a consent connector, so no Drive consent URL compiles.
+    const drive: ConsentConnector = 'gdrive';
+    expect(drive).toBe('gdrive');
+  });
+
+  it('still names Drive as a stored connector, so sweeps, disconnect and erasure reach any Drive row', () => {
+    expect([...CONNECTOR_PROVIDERS].sort()).toEqual(['gcal', 'gdrive', 'gmail']);
   });
 
   it('throws when the Google client is not configured', () => {

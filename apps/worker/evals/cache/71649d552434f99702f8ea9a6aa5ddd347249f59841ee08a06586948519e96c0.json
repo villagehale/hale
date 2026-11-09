@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "what stop does the 52 bus leave from for the library?",
+    "language": "en",
+    "confirmation": ""
+  },
+  "latencyMs": 1467
+}

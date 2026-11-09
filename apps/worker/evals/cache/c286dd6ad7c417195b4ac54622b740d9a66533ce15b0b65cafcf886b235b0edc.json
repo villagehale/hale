@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "Trail",
+    "region": "British Columbia",
+    "granularity": "locality"
+  },
+  "latencyMs": 1062
+}

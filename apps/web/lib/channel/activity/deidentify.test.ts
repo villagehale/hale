@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_QUERY_FIELD_CHARS,
   deidentifyActivityQuery,
+  deidentifyActivitySubject,
   refusalSentence,
-  townFor,
 } from './deidentify';
 
 /**
@@ -18,7 +18,7 @@ import {
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  municipality: 'halton_hills' as const,
+  town: 'Halton Hills',
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -207,65 +207,28 @@ describe('the shape of what may be sent', () => {
     ).toEqual({ ok: false, refusal: 'subject_too_long' });
   });
 
-  it('carries a town only when the postal code named one', () => {
-    expect(
-      deidentifyActivityQuery({ ...base, municipality: null, subject: 'story time' }),
-    ).toMatchObject({ ok: true, query: { town: null } });
-  });
-
-  it('turns a municipality id into the words a search engine reads', () => {
-    expect(townFor('halton_hills')).toBe('Halton Hills');
-    expect(townFor('richmond_hill')).toBe('Richmond Hill');
-    expect(townFor('toronto')).toBe('Toronto');
-    // The search query must not name a town by a spelling the radar never uses.
-    expect(townFor('whitchurch_stouffville')).toBe('Stouffville');
-  });
-
-  it('keeps the home town when the parent did not name another place', () => {
-    expect(deidentifyActivityQuery({ ...base, subject: 'story time' })).toMatchObject({
-      ok: true,
-      query: { town: 'Halton Hills' },
-    });
-    expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: '   ' })).toMatchObject({
-      ok: true,
-      query: { town: 'Halton Hills' },
-    });
-  });
-
-  it('searches the town the parent named instead of the home geocode', () => {
-    expect(
-      deidentifyActivityQuery({ ...base, subject: 'trick or treat', area: 'Oakville' }),
-    ).toMatchObject({ ok: true, query: { town: 'Oakville', subject: 'trick or treat' } });
-  });
-
-  it('refuses a street or postal code as the place and does not fall back to home', () => {
-    for (const area of ['L7G 4A1', '42 Wallace St', 'Oakville L6H']) {
-      const result = deidentifyActivityQuery({ ...base, subject: 'story time', area });
-      expect(result).toEqual({ ok: false, refusal: 'area_unusable' });
-    }
-    expect(refusalSentence('area_unusable')).not.toMatch(/Wallace|L7G|L6H/);
-  });
-
-  it('refuses an unnumbered street and still accepts a town, including St. Catharines', () => {
-    for (const area of ['Wallace St', 'Bayview Drive', 'Main Street', 'Kingston Rd']) {
-      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toEqual({
-        ok: false,
-        refusal: 'area_unusable',
-      });
-    }
-    for (const area of ['Oakville', 'Kingston', 'St. Catharines']) {
-      expect(deidentifyActivityQuery({ ...base, subject: 'story time', area })).toMatchObject({
-        ok: true,
-        query: { town: area },
-      });
-    }
-  });
-
-  it('refuses a place that names someone in the household', () => {
-    expect(deidentifyActivityQuery({ ...base, subject: 'story time', area: 'Noah' })).toEqual({
+  it('refuses a search with no place, and carries the town it was given', () => {
+    expect(deidentifyActivityQuery({ ...base, town: null, subject: 'story time' })).toEqual({
       ok: false,
-      refusal: 'area_names_a_person',
+      refusal: 'no_place',
     });
-    expect(refusalSentence('area_names_a_person')).not.toContain('Noah');
+    expect(
+      deidentifyActivityQuery({
+        ...base,
+        town: 'Seattle, Washington, United States',
+        subject: 'story time',
+      }),
+    ).toMatchObject({ ok: true, query: { town: 'Seattle, Washington, United States' } });
+  });
+
+  it('gates a stored subject alone, with the same refusals', () => {
+    expect(deidentifyActivitySubject('toddler gymnastics', HOUSEHOLD)).toEqual({
+      ok: true,
+      value: 'toddler gymnastics',
+    });
+    expect(deidentifyActivitySubject('gymnastics for Noah', HOUSEHOLD)).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });
   });
 });

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "मुझे और मैसेज मत भेजिए",
+    "language": "hi",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "ठीक है, मैं अब आपको और मैसेज नहीं भेजूंगा। अगर आप दोबारा बात करना चाहें, तो अपने शब्दों में बस लिख दीजिए।"
+  },
+  "latencyMs": 5005
+}

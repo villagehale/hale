@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message mixes English titles into a French message, invents a link and a 'Reply 1 or 2' instruction that asks for a keyword-style reply, and does not say nobody looks free on the calendars or ask Julien or Mamie plainly; it also asks the group twice (reply a number or vote a link). Facts about the two items and times are correct, but several rule breaks.",
+    "score": 2
+  }
+}

@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
+import { senderLabel } from './sender-label';
+
+export { senderLabel } from './sender-label';
 
 /**
  * The email-alert text. ONE model call decides, from facts, whether the email is about this
@@ -37,6 +40,8 @@ export interface EmailAlertNoticeFacts {
   children: Array<{ name: string; ageYears: number }>;
   email: {
     sender: string | null;
+    /** The day the email arrived ("Thursday, September 17, 2026"), in the family's zone. */
+    arrivedOn: string | null;
     subject: string | null;
     kind: NoticeKind;
     title: string;
@@ -108,18 +113,6 @@ function momentOf(at: Date, timeZone: string): NoticeMoment {
   };
 }
 
-/**
- * Who it is from, as a parent would name them: the display name if the header carries
- * one, otherwise the bare domain. NEVER the full address — a display name that is itself
- * an address falls through to the domain, because reading it is reading the mailbox out.
- */
-export function senderLabel(from: string): string {
-  const display = /^\s*"?([^"<]*?)"?\s*<[^>]*>\s*$/.exec(from)?.[1]?.trim();
-  if (display !== undefined && display !== '' && !display.includes('@')) return display;
-  const address = /<([^>]*)>/.exec(from)?.[1] ?? from;
-  return address.split('@')[1]?.trim() ?? '';
-}
-
 export function emailAlertNoticeFacts(input: {
   from: string;
   subject: string;
@@ -135,6 +128,8 @@ export function emailAlertNoticeFacts(input: {
   durationMinutes: number | null;
   /** `readRecentNotices`: what this parent was already sent here, newest first. */
   recentNotices: readonly string[];
+  /** Gmail's own arrival time for the message (`internalDate`). */
+  receivedAt: Date;
   timeZone: string;
   now: Date;
 }): EmailAlertNoticeFacts {
@@ -156,6 +151,7 @@ export function emailAlertNoticeFacts(input: {
           })),
     email: {
       sender: hidden ? null : senderLabel(input.from) || null,
+      arrivedOn: hidden ? null : momentOf(input.receivedAt, timeZone).date,
       subject: hidden ? null : input.subject.trim() || null,
       kind: input.kind,
       title: extraction.event.title.trim(),

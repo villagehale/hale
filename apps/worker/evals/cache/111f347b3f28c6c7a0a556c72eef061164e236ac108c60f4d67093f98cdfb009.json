@@ -1,0 +1,20 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Tiny Gym, Cartwheels Gym Centre",
+        "age_fit": "walking to 3.5 yrs, with a parent",
+        "when": "Sundays 9:30-10:15 AM, September 14 to October 26 (no class Oct 12)",
+        "when_quote": "Fall block: September 14 - October 26 (no class Oct 12)\nTiny Gym | Sun | 9:30-10:15 AM",
+        "price": "$124.00 per block, HST included (the page calls it a 10-week block)",
+        "price_quote": "FEES (per 10-week block, HST included)\nTiny Gym ................. $124.00",
+        "registration": "Fall registration opened Tuesday, July 22 at 7:00 a.m. and stays open while spaces last",
+        "registration_quote": "Fall registration opened Tuesday, July 22 at 7:00 a.m. and remains open while spaces last.",
+        "registration_source": "https://cartwheelsgymcentre.example/register",
+        "source_name": "Cartwheels Gym Centre",
+        "source_url": "https://cartwheelsgymcentre.example/programs"
+      }
+    ]
+  },
+  "latencyMs": 23523
+}

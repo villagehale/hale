@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { DeleteAccountButton } from './delete-account-button';
+import { DeleteAccountButton, DeleteConfirm } from './delete-account-button';
 
 /**
  * VIL-355 · the ASK has to be the one the route will answer.
@@ -44,5 +44,41 @@ describe('DeleteAccountButton — the ask matches the seat', () => {
     const html = render('scoped');
     expect(html).toContain('belongs to its parents');
     expect(html).not.toContain('<button');
+  });
+});
+
+/**
+ * The confirm step, rendered on its own because a static render cannot click the ask.
+ * It carries the full explanation the card leaves out, and both of its controls are
+ * real buttons in the caller's classes: the portal resets `button`, so the old `link`
+ * class read as plain text there.
+ */
+describe('DeleteConfirm — the step after the ask', () => {
+  const confirm = (leaving: boolean) =>
+    renderToStaticMarkup(
+      createElement(DeleteConfirm, {
+        leaving,
+        state: 'confirming',
+        buttonClassName: 'ask-class',
+        cancelClassName: 'cancel-class',
+        onConfirm: () => {},
+        onCancel: () => {},
+      }),
+    );
+
+  it('explains the family erasure and offers a real cancel button', () => {
+    const html = confirm(false);
+    expect(html).toContain('your kids’ profiles');
+    expect(html).toContain('privacy@villagehale.com');
+    expect(html).toMatch(/<button[^>]*class="ask-class"[^>]*>yes, delete my account<\/button>/);
+    expect(html).toMatch(/<button[^>]*class="cancel-class"[^>]*>keep my account<\/button>/);
+    expect(html).not.toContain('class="link"');
+  });
+
+  it('keeps the co-parent’s own words for leaving', () => {
+    const html = confirm(true);
+    expect(html).toContain('right away');
+    expect(html).toMatch(/<button[^>]*class="cancel-class"[^>]*>stay in this family<\/button>/);
+    expect(html).not.toContain('your kids’ profiles');
   });
 });

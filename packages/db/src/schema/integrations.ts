@@ -27,6 +27,15 @@ export const integrations = pgTable(
     /** Why the last sync failed, as a short PII-free class ('google_400',
      * 'no_refresh_token'). Never a line of the provider response. Cleared on success. */
     lastErrorCode: text('last_error_code'),
+    /** After a disconnect, the ONE token Google's revoke still needs, encrypted, until
+     * Google answers (VIL-156). Only the revoke reads it; it grants no access. */
+    googleRevokePendingEncrypted: text('google_revoke_pending_encrypted'),
+    /** When that token was set aside: it is deleted seven days on, answered or not. */
+    googleRevokePendingSince: timestamp('google_revoke_pending_since', { withTimezone: true }),
+    /** Blind index of the Google account that granted this row, written by the connect
+     * callback only. Its own column because every sync replaces providerMetadata. Null
+     * when unread: cross-household decisions then fall back to the Hale user (VIL-156). */
+    googleAccountKey: text('google_account_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

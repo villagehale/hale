@@ -7,8 +7,8 @@ import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/chann
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
-import { renderCourseBindAck, renderReadinessAck } from './copy.js';
-import { printsReadinessAsk } from './copy.js';
+import { courseBoundFacts, printsReadinessAsk, readinessAnswerFacts } from './copy.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
@@ -152,6 +152,8 @@ export async function loadPreparingSequence(
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: this binds a pasted link to a catalog window and rewrites
+    // `course_url`, which on a link-owned watch (VIL-423) is the watch's own identity.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -338,8 +340,10 @@ export const COURSE_BIND_REFUSALS = [
 export type CourseBindRefusal = (typeof COURSE_BIND_REFUSALS)[number];
 
 export type CourseBindOutcome =
-  | { status: 'bound'; reply: string }
-  | { status: 'already_bound'; reply: string }
+  /** `reply` is null when the ack could not be written: the bind still landed, and
+   * nothing is sent. */
+  | { status: 'bound'; reply: string | null }
+  | { status: 'already_bound'; reply: string | null }
   | { status: 'refused'; reason: CourseBindRefusal; reply: string }
   /**
    * The one outcome that is about HALE rather than about the link, which is why it is
@@ -445,17 +449,21 @@ export async function handleCourseBind(
     now,
   });
 
-  const reply = renderCourseBindAck({
-    portal: sequence.portal,
-    page: verdict,
-    clock,
-    replaced,
-    municipality: sequence.municipality,
-    opensForFamilyAt: sequence.opensForFamilyAt,
-    fitNotes: sequence.fitNotes,
-    timeZone: sequence.timeZone,
-    now,
-  });
+  const reply = await deps.writeNote(
+    database,
+    sequence.familyId,
+    courseBoundFacts({
+      portal: sequence.portal,
+      page: verdict,
+      clock,
+      replaced,
+      municipality: sequence.municipality,
+      opensForFamilyAt: sequence.opensForFamilyAt,
+      fitNotes: sequence.fitNotes,
+      timeZone: sequence.timeZone,
+      now,
+    }),
+  );
   return written === 'bound' ? { status: 'bound', reply } : { status: 'already_bound', reply };
 }
 
@@ -554,7 +562,8 @@ export interface ReadinessAnswerInput {
 
 export type ReadinessOutcome = {
   status: 'readiness_recorded' | 'already_answered';
-  reply: string;
+  /** Null when the ack could not be written: the answer is still recorded. */
+  reply: string | null;
 };
 
 export async function handleReadinessAnswer(
@@ -572,11 +581,17 @@ export async function handleReadinessAnswer(
     confidence: input.confidence,
     now: input.now,
   });
-  const reply = renderReadinessAck({
-    portal: input.sequence.portal,
-    ready: input.ready,
-    fitNotes: input.sequence.fitNotes,
-  });
+  const reply = await deps.writeNote(
+    database,
+    input.sequence.familyId,
+    readinessAnswerFacts({
+      portal: input.sequence.portal,
+      ready: input.ready,
+      fitNotes: input.sequence.fitNotes,
+      timeZone: input.sequence.timeZone,
+      now: input.now,
+    }),
+  );
   return {
     status: written === 'recorded' ? 'readiness_recorded' : 'already_answered',
     reply,
@@ -726,12 +741,13 @@ export async function approvedShortlistAskedOf(
   const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       window: schema.registrationWindows,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never sent a heads-up yet
+    // (VIL-423, run.ts `linkWatchFate`), so no YES can be answering one.
     .innerJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
@@ -751,7 +767,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.window.id, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }
@@ -914,6 +930,8 @@ export interface PrepareReplyDeps {
     database: Database,
     input: ReadinessWrite,
   ): Promise<'recorded' | 'already_answered'>;
+  /** VIL-543 · every ack is written by the model from facts. Null sends nothing. */
+  writeNote: RegistrationNoteWriter;
 }
 
 export function defaultPrepareReplyDeps(): PrepareReplyDeps {
@@ -925,5 +943,6 @@ export function defaultPrepareReplyDeps(): PrepareReplyDeps {
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,
     recordReadinessState,
+    writeNote: registrationNoteWriter(),
   };
 }

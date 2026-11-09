@@ -1,7 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
-import type { ChannelDraftPort } from '~/lib/channel/coach/draft';
+import { and, eq, or, sql } from 'drizzle-orm';
+import {
+  CHANNEL_AUDIT_ACTION,
+  type ChannelDraftPort,
+  calendarDraftApprovalSurfaces,
+  stampChatKey,
+} from '~/lib/channel/coach/draft';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 
 /**
  * VIL-443 (T17) — which placements are a group's plan.
@@ -40,6 +46,7 @@ export function groupPlanDraftPort(
   if (turn.audience !== 'group') return inner;
   return {
     pendingIdentical: inner.pendingIdentical?.bind(inner),
+    approvalWaitsIn: inner.approvalWaitsIn?.bind(inner),
     async draft(input) {
       const result = await inner.draft(input);
       if (input.actionType !== 'calendar_add') return result;
@@ -96,14 +103,18 @@ export function productionRecordGroupPlanOrigin(database: Database): RecordGroup
       actionTaken: 'group_plan.drafted',
       targetTable: 'actions',
       targetId: actionId,
-      after: { chatId },
+      // The row is immutable and exported, so the chat is named by its keyed index.
+      after: { chatKey: linqChatBlindIndex(chatId) },
     });
     return 'recorded';
   };
 }
 
-/** The family group chat a group turn drafted this action in, or null when none did. */
-export async function groupPlanChatId(
+/**
+ * The chat key of the household group a group turn drafted this action in, or null when
+ * none did. A stamp written before the key carries the raw chat id, which is keyed here.
+ */
+export async function groupPlanChatKey(
   database: Database,
   familyId: string,
   actionId: string,
@@ -120,15 +131,26 @@ export async function groupPlanChatId(
       ),
     )
     .limit(1);
-  const chatId = (row?.after as { chatId?: unknown } | null | undefined)?.chatId;
-  return typeof chatId === 'string' ? chatId : null;
+  return stampChatKey(row?.after);
 }
 
-/** Every action a turn in this family group chat drafted (`group_plan.drafted`). */
+/**
+ * The drafts this household group chat answers (VIL-525): those asked in it while it was
+ * the household group. A draft asked in a shared or unclaimed chat is never listed here;
+ * it waits on the family's private threads.
+ */
 export async function groupPlanActionIds(
   database: Database,
   input: { familyId: string; chatId: string },
 ): Promise<ReadonlySet<string>> {
+  // A chat that is no longer the household group answers none of them, even though
+  // they were the household group's question when they were asked (VIL-595).
+  const [family] = await database
+    .select({ chatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, input.familyId));
+  if (family?.chatId !== input.chatId) return new Set();
+  const chatKey = linqChatBlindIndex(input.chatId);
   const rows = await database
     .select({ targetId: schema.auditLog.targetId })
     .from(schema.auditLog)
@@ -136,9 +158,39 @@ export async function groupPlanActionIds(
       and(
         eq(schema.auditLog.familyId, input.familyId),
         eq(schema.auditLog.targetTable, 'actions'),
-        eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
-        sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+        or(
+          and(
+            eq(schema.auditLog.actionTaken, CHANNEL_AUDIT_ACTION),
+            sql`${schema.auditLog.after}->'origin'->>'chatKey' = ${chatKey}`,
+          ),
+          and(
+            eq(schema.auditLog.actionTaken, 'group_plan.drafted'),
+            or(
+              sql`${schema.auditLog.after}->>'chatKey' = ${chatKey}`,
+              sql`${schema.auditLog.after}->>'chatId' = ${input.chatId}`,
+            ),
+          ),
+        ),
       ),
     );
-  return new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])));
+  const ids = [...new Set(rows.flatMap((row) => (row.targetId ? [row.targetId] : [])))];
+  // The query finds every draft asked in this chat; only those on its household-group
+  // surface are its own. A shared chat's draft is on the private surface.
+  const surfaces = await calendarDraftApprovalSurfaces(database, input.familyId, ids);
+  return new Set(
+    ids.filter((id) => {
+      const surface = surfaces.get(id);
+      return surface?.surface === 'household_group' && surface.chatKey === chatKey;
+    }),
+  );
+}
+
+/** Which of these actions a household group answers, in any such chat (VIL-525). */
+export async function groupDraftedActionIds(
+  database: Database,
+  familyId: string,
+  actionIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const surfaces = await calendarDraftApprovalSurfaces(database, familyId, actionIds);
+  return new Set(actionIds.filter((id) => surfaces.get(id)?.surface === 'household_group'));
 }

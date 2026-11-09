@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import { defaultProviderHealthDeps } from '~/lib/monitoring/provider-health';
 import { checkRunFailureSpike } from '~/lib/monitoring/run-failure-spike';
 import { checkMonthlySpend } from '~/lib/monitoring/spend';
 
@@ -11,8 +12,8 @@ export const runtime = 'nodejs';
  * GET /api/cron/spend-alert — the hourly agent_runs watch. Two checks, one table, one
  * cadence:
  *
- *  - SPEND: sums this month's cost_usd and alerts when it crosses
- *    ANTHROPIC_SPEND_ALERT_USD, so a runaway agent loop is caught early rather than on
+ *  - SPEND: sums this month's cost_usd and pages #ops once when it reaches
+ *    ANTHROPIC_SPEND_ALERT_USD (unset → `threshold_not_configured`, no page), so a runaway agent loop is caught early rather than on
  *    the bill.
  *  - FAILURES (VIL-255): the backstop the pre-flight cannot be — if most of the runs
  *    that finished in the hour just closed FAILED, the founder is paged. A bad deploy
@@ -25,7 +26,7 @@ export const runtime = 'nodejs';
  */
 export const GET = cronRoute('spend-alert', async () => {
   const database = db();
-  const spend = await checkMonthlySpend(database);
+  const spend = await checkMonthlySpend(database, defaultProviderHealthDeps());
   const runs = await checkRunFailureSpike(database);
   return NextResponse.json({ ok: true, ...spend, runs }, { status: 200 });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The three picks are real, specific Seattle venues: the Seattle YMCA, Ballard Pool and Meadowbrook Pool. Each is sourced from the operator's own site, not an aggregator, and each fits the preschool stage. The message leads with the YMCA by name and attributes its facts ('their site says', 'lists') rather than claiming to have confirmed them. It is plain text with no link and no question. Under no_page_read it correctly says 'I could not get into their pages today' rather than 'not posted yet'. With watch true, the first-person 'I'll keep watching and text you' is backed by a real continuation. No days, times or prices are invented. One small gap keeps this from a 5: the YMCA pick has a null price and no class day or time, but the message never says so for the YMCA. It names the gap only for the Parks pools, so it partly writes around the missing YMCA detail.",
+    "score": 4
+  }
+}

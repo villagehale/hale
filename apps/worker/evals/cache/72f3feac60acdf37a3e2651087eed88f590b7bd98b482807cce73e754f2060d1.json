@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: tomorrow, start 15 h and end 16 h (both given), venue 'Georgetown library' and address '9 Church St' all present. However, the text says 'il y a un jour de congé' — this turns the event title 'Jour de congé' from the name of an event into a plain description of what tomorrow is (a day off), changing the title's meaning from an event name at the venue to a claim about the day. This is exactly the prod bug the watchFor describes. No bold, which is fine.",
+    "score": 2
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states payment was not approved, nothing paid, spot not confirmed; carries the live_browser link exactly with the ~5 minute window; no personal details; no booked/held claims; no retry promise; English and direct audience match. Minor nit: 'the spot isn't confirmed yet' is fine, and no hint of a held spot.",
+    "score": 5
+  }
+}

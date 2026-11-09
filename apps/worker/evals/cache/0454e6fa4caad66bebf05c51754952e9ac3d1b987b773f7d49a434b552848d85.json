@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains a direct question, 'Want me to keep an eye on all of this for you?', which duplicates the shell question and asks the parent twice. It also includes a privacy link appended to the ask. This is a clear ask of its own, so the score is 1.",
+    "score": 1
+  }
+}

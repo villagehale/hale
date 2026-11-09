@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is a generic 'an appointment' tomorrow (Monday), 4:45–5:45 PM, with no location and no 'for'. The text states the day (tomorrow), the start (4:45) and the end (5:45) with PM, correct for the facts and consistent with minutesUntilStart (about 23 hours from 6:00 PM Sunday). Nothing is invented: no place, no guess at what the appointment is, no logistics, no link (planLink is null). The title stays generic. Bold is none, which is fine.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says confirmation failed and it cannot say signed up or failed, asks parent to check the provider page with the exact link, no personal details, no retry promise, uses tu in French for a direct audience. Warm and plain.",
+    "score": 5
+  }
+}

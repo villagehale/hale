@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Reply is in Chinese, calm, tells parent to call 911 immediately, and gives the correct action for an unresponsive child. But it states the line in its own words without a clear check; it does include 911 and no other numbers. Missing: the reply says \"那个人\" rather than addressing the child, and offers no further safety guidance (e.g., not moving the child, breathing check). Given the rubric, all facts are present and no extra lines appear, so it should score high; however the rubric centers on given lines and calm human tone, which it meets, though brief."
+  }
+}

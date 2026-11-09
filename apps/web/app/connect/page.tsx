@@ -14,7 +14,7 @@ import {
   withHaleSuffix,
 } from '~/lib/channel/connect/connect-page-copy';
 import { haleTextsHref } from '~/lib/channel/connect/hale-texts-href';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { asTextConnectProvider, asTextLinkTarget } from '~/lib/channel/connect/text-connect';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +61,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
  * the token usable until Google consent succeeds.
  *
  * `to` is read through the allowlist. An unrecognised value is not an error —
- * the next step is Settings, so the button is a plain Continue, not Google's.
+ * the next step is the family page, so the button is a plain Continue, not Google's.
  *
  * `preview` forces a design state only when NODE_ENV is development. Vercel
  * preview and `next start` are production and ignore it.
@@ -85,7 +85,7 @@ export default async function ConnectPage({ searchParams }: PageProps) {
 
   return (
     <ConnectStage>
-      <ChannelLinkRedeem token={t} provider={asTextConnectProvider(to)} smsHref={smsHref} />
+      <ChannelLinkRedeem token={t} to={asTextLinkTarget(to)} smsHref={smsHref} />
     </ConnectStage>
   );
 }

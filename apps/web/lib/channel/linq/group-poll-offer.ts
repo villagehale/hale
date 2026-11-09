@@ -116,7 +116,7 @@ export function pollOfferFromAnswer(answer: PollOfferAnswer): GroupPollOfferDeci
 }
 
 export type StuckPollOfferResult =
-  | Extract<LinqPollOffer, { status: 'sent' } | { status: 'prompted' }>
+  | Extract<LinqPollOffer, { status: 'sent' } | { status: 'prompted' } | { status: 'held' }>
   | { status: 'held'; reason: 'quiet_hours' }
   | {
       status: 'skipped';

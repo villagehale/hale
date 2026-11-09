@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Good, I'm glad it would help. Whenever you're ready, you can start a group text with the other parent and send the number and phrase that appear below, and I'll be in it for the kids' plans and reminders, with nothing private shared. Would you like to set that up now, or later?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1553
+}

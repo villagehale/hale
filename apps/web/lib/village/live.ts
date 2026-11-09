@@ -1,4 +1,4 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
@@ -7,10 +7,14 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { readActivityPlace } from '~/lib/channel/activity/place';
+import {
+  type NamedAreaReader,
+  resolveNamedArea,
+  sharedNamedAreaReader,
+} from '~/lib/channel/named-area';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { activityClient } from '~/lib/pipeline/client';
-import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
-import { resolveActiveAreaCoarse } from './areas';
 
 /**
  * VIL-452 · the Finder's link field is `url`; receipts and dedupe read `sourceUrl`.
@@ -148,8 +152,9 @@ export async function findFamilyActivities(
   options: {
     subject?: string;
     window?: string;
-    /** A town, city, or area the parent named. Distinct from the home FSA geocode. */
+    /** A town, city, or area the parent named, searched instead of home (VIL-523). */
     area?: string;
+    areaReader?: NamedAreaReader;
     now?: Date;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
@@ -159,12 +164,12 @@ export async function findFamilyActivities(
   reason: string | null;
 }> {
   const now = options.now ?? new Date();
-  const [children, area, parents] = await Promise.all([
+  const [children, place, parents] = await Promise.all([
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId)),
-    resolveActiveAreaCoarse(database, familyId),
+    readActivityPlace(database, familyId),
     database
       .select({ name: schema.users.name })
       .from(schema.familyMembers)
@@ -173,25 +178,29 @@ export async function findFamilyActivities(
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
-  const namedPlace = options.area?.replace(/\s+/g, ' ').trim() ?? '';
-  const towns = area
-    ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
-    : [];
-  // Home is the default. A place the parent named is searched even when the home FSA
-  // names no single town — and a bad place is a refusal, not a search of home.
-  if (namedPlace === '' && towns.length !== 1) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
+  const householdNames = [...children, ...parents].flatMap(({ name }) =>
+    name ? [name, name.trim().split(/\s+/)[0]!] : [],
+  );
+  let town = place.status === 'known' ? place.town : null;
+  if (options.area !== undefined) {
+    // A named place that cannot be searched is a refusal, never a search of home.
+    const named = await resolveNamedArea({
+      reader: options.areaReader ?? sharedNamedAreaReader(),
+      text: options.area,
+      householdNames,
+    });
+    if (!named.ok) return { picks: [], reason: named.refusal };
+    town = named.label;
+  }
   const query = deidentifyActivityQuery({
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
-    municipality: towns.length === 1 ? (towns[0]! as Municipality) : null,
+    town,
     stage: deriveStage(youngest.dateOfBirth, now),
-    householdNames: [...children, ...parents].flatMap(({ name }) =>
-      name ? [name, name.trim().split(/\s+/)[0]!] : [],
-    ),
-    area: namedPlace === '' ? null : namedPlace,
+    householdNames,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.

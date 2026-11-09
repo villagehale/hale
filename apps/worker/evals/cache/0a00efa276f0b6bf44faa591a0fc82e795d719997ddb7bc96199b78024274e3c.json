@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with 'Reply YES and I'll book it for you,' which is an explicit request for the parent to respond and a waiting offer. It also includes 'Reply STOP to opt out', an opt-out boilerplate that is not an ask about the activity. The explicit reply request is a clear ask, so the score is 1.",
+    "score": 1
+  }
+}

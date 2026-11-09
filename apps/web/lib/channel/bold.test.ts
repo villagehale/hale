@@ -66,7 +66,12 @@ describe('VIL-474 · the reminder leg on the wire', () => {
     expect(rendered.bold).toBe('4:30');
     await channel(transport).send({
       userId: 'u1',
-      rendered: { kind: 'sms', text: 'Swim moved to 4:30 today.', bold: '4:30' },
+      rendered: {
+        kind: 'sms',
+        text: 'Swim moved to 4:30 today.',
+        modelWritten: false,
+        bold: '4:30',
+      },
     });
     expect(sent[0]?.body).toBe('Swim moved to 4:30 today.');
     expect(sent[0]?.decorations).toEqual([{ range: [14, 18], style: 'bold' }]);
@@ -81,10 +86,18 @@ describe('VIL-474 · the reminder leg on the wire', () => {
       },
     };
     const sms = channel(transport);
-    await sms.send({ userId: 'u1', rendered: { kind: 'sms', text: 'Swim is at 4:30.' } });
     await sms.send({
       userId: 'u1',
-      rendered: { kind: 'sms', text: 'Swim is at 4:30.', bold: 'not in the text' },
+      rendered: { kind: 'sms', text: 'Swim is at 4:30.', modelWritten: false },
+    });
+    await sms.send({
+      userId: 'u1',
+      rendered: {
+        kind: 'sms',
+        text: 'Swim is at 4:30.',
+        modelWritten: false,
+        bold: 'not in the text',
+      },
     });
     for (const m of sent) {
       expect(m.body).toBe('Swim is at 4:30.');

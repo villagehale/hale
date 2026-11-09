@@ -1,8 +1,16 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
-import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
+import {
+  type ActivityFinder,
+  type ActivityPick,
+  createActivityFinder,
+} from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
+import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
+import type { NamedAreaReader } from '~/lib/channel/named-area';
+import { activityClient } from '~/lib/pipeline/client';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -162,11 +170,12 @@ export function searchVillageTool(
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
   finder?: ActivityFinder,
+  areaReader?: NamedAreaReader,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
-      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that is not a town, city, or area comes back as `liveRead` `area_unusable` or `area_names_a_person` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
     inputSchema: z.object({
       query: z.string().optional(),
       window: z.string().optional(),
@@ -174,19 +183,52 @@ export function searchVillageTool(
     }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
-    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Oakville' }],
+    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
       const now = new Date();
+      // The finder `findFamilyActivities` calls is the radar read. The same finder
+      // is the one live search VIL-522 may spend afterwards, and only then — a
+      // short radar tops up once, a radar that already has two suitable finds
+      // does not search again. Intake and the nudge keep the single read.
+      const resolved = finder ?? createActivityFinder(activityClient);
+      let searched: ActivityQuery | null = null;
+      const radarRead: ActivityFinder = {
+        async find(query) {
+          searched = query;
+          return resolved.find(query);
+        },
+      };
       const found = await findFamilyActivities(database, ctx.familyId, {
         subject: input.query,
         window: input.window,
         area: input.area,
-        finder,
+        areaReader,
+        finder: radarRead,
         now,
       });
-      const offerable: OfferableEntry[] = found.picks.map((pick) => ({
+      const query = searched;
+      const picks =
+        found.reason === null && query
+          ? (
+              await topUpShortRadar({
+                radar: found.picks,
+                liveSearch: async () => {
+                  const extra = await resolved.find(query);
+                  if (!extra.found) {
+                    console.info(
+                      { reason: extra.reason },
+                      'coach find: live top-up came back empty',
+                    );
+                    return [];
+                  }
+                  return extra.picks;
+                },
+              })
+            ).picks
+          : found.picks;
+      const offerable: OfferableEntry[] = picks.map((pick) => ({
         pick,
         candidate: {
           title: pick.name,

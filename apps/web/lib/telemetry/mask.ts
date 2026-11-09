@@ -14,9 +14,9 @@
  *     content fields (raw_content / rawContent / body / subject / content / text /
  *     answer / message) are replaced with a category placeholder; the event
  *     category and a length hint are kept so the trace stays diagnosable.
- *   - Emails, phone numbers, Canadian postal codes, and precise street addresses,
- *     scrubbed by pattern from the WHOLE string unconditionally (so they're gone
- *     even when they appear in a non-teen payload's free text).
+ *   - Emails, phone numbers, postal codes and ZIPs, and precise street addresses,
+ *     scrubbed by pattern unconditionally (so they're gone even when they appear in
+ *     a non-teen payload's free text).
  *
  * What MAY be sent (HIPAA-grade, intentionally NOT masked):
  *   - Non-teen content (newborn/toddler/child) — the product's core signal.
@@ -26,6 +26,8 @@
  * (string, non-JSON, object-as-string) returns a string; it never throws (a mask
  * that throws would drop the whole export batch — see the Langfuse masking docs).
  */
+
+import { CANADIAN_POSTAL, redactInShape, scrubPlaceTokens } from '~/lib/channel/place-token';
 
 const TEEN_CONTENT_PLACEHOLDER = '[REDACTED_TEEN_CONTENT]';
 const EMAIL_PLACEHOLDER = '[REDACTED_EMAIL]';
@@ -53,8 +55,6 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
  * or ()) OR a bare 10/11-digit run. Rule #1 defaults to most restrictive, so a
  * bare 10-digit number is redacted even though it could in theory be another id. */
 const PHONE_RE = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b|\b1?\d{10}\b/g;
-/** Canadian postal code A1A 1A1 (optional space). */
-const POSTAL_RE = /\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b/g;
 /** A precise street address: number + street name + street-type suffix. */
 const ADDRESS_RE =
   /\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,3}\s+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Place|Pl|Way|Crescent|Cres|Terrace|Terr)\b\.?/gi;
@@ -63,8 +63,34 @@ function scrubPii(text: string): string {
   return text
     .replace(EMAIL_RE, EMAIL_PLACEHOLDER)
     .replace(ADDRESS_RE, ADDRESS_PLACEHOLDER)
-    .replace(POSTAL_RE, POSTAL_PLACEHOLDER)
     .replace(PHONE_RE, PHONE_PLACEHOLDER);
+}
+
+/**
+ * A postal code or a ZIP, by the matcher every search shares (place-token.ts), after the
+ * other patterns so a five-digit house number goes with its street.
+ */
+function scrubText(text: string): string {
+  return scrubPlaceTokens(scrubPii(text), POSTAL_PLACEHOLDER);
+}
+
+/**
+ * {@link scrubText} on each STRING of a payload, keys included. Not over the stringified whole: a bare
+ * five digits is a ZIP to the place matcher, and a JSON number (a token count, a latency)
+ * is not a place.
+ */
+function scrubPlaceLeaves(value: unknown): unknown {
+  if (typeof value === 'string') return scrubText(value);
+  if (Array.isArray(value)) return value.map(scrubPlaceLeaves);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        scrubText(key),
+        scrubPlaceLeaves(child),
+      ]),
+    );
+  }
+  return value;
 }
 
 /** True when a parsed payload (or any nested object) is flagged as teen content. */
@@ -114,11 +140,16 @@ export function haleMask({ data }: { data: unknown }): string {
     parsed = JSON.parse(asString);
   } catch {
     // Not JSON (plain prose, e.g. an answer string) — scrub PII patterns only.
-    return scrubPii(asString);
+    return scrubText(asString);
   }
 
   const teenRedacted = carriesTeenMarker(parsed) ? redactTeenContent(parsed) : parsed;
-  return scrubPii(JSON.stringify(teenRedacted));
+  // A Canadian code needs letters, so this backstop over the whole output cannot hit a JSON number.
+  return redactInShape(
+    scrubPii(JSON.stringify(scrubPlaceLeaves(teenRedacted))),
+    CANADIAN_POSTAL,
+    POSTAL_PLACEHOLDER,
+  );
 }
 
 function safeStringify(value: unknown): string {

@@ -88,11 +88,23 @@ export type EnsureWatchOutcome =
   | 'topic_not_configured'
   | 'watch_failed'
   | 'mailbox_unreadable'
-  | 'stop_failed';
+  | 'stop_failed'
+  /** A disconnect ended the integration while the watch was being opened: nothing was
+   * saved, and the channel just opened was asked to stop. */
+  | 'integration_ended';
+
+/** `stop` only on `integration_ended`: what Google said to stopping the channel just opened. */
+export interface EnsureWatchResult {
+  outcome: EnsureWatchOutcome;
+  stop?: 'stopped' | 'stop_failed' | 'no_channel';
+}
 
 export interface EnsureWatchDeps {
   loadWatch: (integrationId: string) => Promise<StoredPushWatch | null>;
-  saveWatch: (integrationId: string, watch: SavedPushWatch) => Promise<void>;
+  saveWatch: (
+    integrationId: string,
+    watch: SavedPushWatch,
+  ) => Promise<'saved' | 'integration_ended'>;
   google: GoogleJsonClient;
   newChannelId: () => string;
   newToken: () => string;
@@ -124,7 +136,7 @@ export async function ensureGooglePushWatch(input: {
   now: Date;
   env?: PushEnv;
   deps: EnsureWatchDeps;
-}): Promise<{ outcome: EnsureWatchOutcome }> {
+}): Promise<EnsureWatchResult> {
   const env = input.env ?? process.env;
   if (!googlePushSyncEnabled(env)) return { outcome: 'flag_off' };
   if (input.provider === 'gdrive') return { outcome: 'not_push_provider' };
@@ -155,7 +167,7 @@ async function renewGmailWatch(
   accessToken: string,
   hadWatch: boolean,
   deps: EnsureWatchDeps,
-): Promise<{ outcome: EnsureWatchOutcome }> {
+): Promise<EnsureWatchResult> {
   if (!deps.topicName) return { outcome: 'topic_not_configured' };
   const profile = await deps.google.request({
     method: 'GET',
@@ -179,7 +191,7 @@ async function renewGmailWatch(
   const body = (await watched.json()) as { expiration?: unknown };
   const expiration = expirationDate(body.expiration);
   if (!expiration) return { outcome: 'watch_failed' };
-  await deps.saveWatch(integrationId, {
+  const saved = await deps.saveWatch(integrationId, {
     provider: 'gmail',
     channelId: null,
     resourceId: null,
@@ -188,6 +200,15 @@ async function renewGmailWatch(
     topicName: deps.topicName,
     expiration,
   });
+  if (saved === 'integration_ended') {
+    return stopOrphanedChannel(integrationId, {
+      provider: 'gmail',
+      accessToken,
+      channelId: null,
+      resourceId: null,
+      google: deps.google,
+    });
+  }
   return { outcome: hadWatch ? 'renewed' : 'opened' };
 }
 
@@ -197,7 +218,7 @@ async function renewCalendarWatch(
   now: Date,
   existing: StoredPushWatch | null,
   deps: EnsureWatchDeps,
-): Promise<{ outcome: EnsureWatchOutcome }> {
+): Promise<EnsureWatchResult> {
   if (!deps.calendarAddress) return { outcome: 'watch_failed' };
   const channelId = deps.newChannelId();
   const token = deps.newToken();
@@ -219,7 +240,7 @@ async function renewCalendarWatch(
   const expiration =
     expirationDate(body.expiration) ?? new Date(now.getTime() + CALENDAR_WATCH_TTL_MS);
   if (!resourceId) return { outcome: 'watch_failed' };
-  await deps.saveWatch(integrationId, {
+  const saved = await deps.saveWatch(integrationId, {
     provider: 'gcal',
     channelId,
     resourceId,
@@ -228,6 +249,15 @@ async function renewCalendarWatch(
     topicName: null,
     expiration,
   });
+  if (saved === 'integration_ended') {
+    return stopOrphanedChannel(integrationId, {
+      provider: 'gcal',
+      accessToken,
+      channelId: channelId,
+      resourceId: resourceId,
+      google: deps.google,
+    });
+  }
   if (existing?.channelId && existing.resourceId && existing.channelId !== channelId) {
     const stopped = await deps.google.request({
       method: 'POST',
@@ -238,6 +268,30 @@ async function renewCalendarWatch(
     if (!stopped.ok) return { outcome: 'stop_failed' };
   }
   return { outcome: existing ? 'renewed' : 'opened' };
+}
+
+/**
+ * The channel a renewal opened for an integration a disconnect ended meanwhile. Stopped
+ * at once rather than left to lapse at expiry; the outcome is `integration_ended` either
+ * way, and a stop Google refused is logged by name.
+ */
+async function stopOrphanedChannel(
+  integrationId: string,
+  input: Parameters<typeof stopGooglePushChannel>[0],
+): Promise<EnsureWatchResult> {
+  let stop: NonNullable<EnsureWatchResult['stop']>;
+  try {
+    stop = (await stopGooglePushChannel(input)).outcome;
+  } catch {
+    stop = 'stop_failed';
+  }
+  if (stop !== 'stopped') {
+    console.error(
+      { integrationId, provider: input.provider, stop },
+      'google push: orphaned channel not stopped',
+    );
+  }
+  return { outcome: 'integration_ended', stop };
 }
 
 /** Best-effort stop. A failure is named; the caller still revokes the local row. */

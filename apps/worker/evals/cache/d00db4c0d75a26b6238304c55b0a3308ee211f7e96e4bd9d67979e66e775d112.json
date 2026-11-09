@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the session is full, carries the provider link exactly, and makes no claim of signup or held spot. However, it names and lists personal details (Lena Ferreira and an email) even though no pack was given, which violates the privacy rule, and the wording 'have ... ready' is a next-step instruction not in the facts.",
+    "score": 2
+  }
+}

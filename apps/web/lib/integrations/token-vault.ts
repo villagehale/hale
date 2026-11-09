@@ -64,3 +64,37 @@ export function tokenCustody(): TokenCustody {
 export function decryptTokens(blob: string): OAuthTokens {
   return JSON.parse(decryptString(blob)) as OAuthTokens;
 }
+
+/**
+ * The one token a disconnect keeps until Google confirms its revoke (VIL-156). A refresh
+ * token is preferred, because revoking it ends the grant; an access token is kept only
+ * when the row held no refresh token.
+ */
+export interface RevokePendingToken {
+  kind: 'refresh' | 'access';
+  token: string;
+}
+
+export function encryptRevokePending(pending: RevokePendingToken): string {
+  return encryptString(JSON.stringify(pending));
+}
+
+/**
+ * Throws if the blob does not decrypt. Null when it decrypts to something that is not a
+ * usable token, so nothing is ever POSTed to Google as `undefined`.
+ */
+export function decryptRevokePending(blob: string): RevokePendingToken | null {
+  const value = JSON.parse(decryptString(blob)) as Partial<RevokePendingToken> | null;
+  if (!value || (value.kind !== 'refresh' && value.kind !== 'access')) return null;
+  if (typeof value.token !== 'string' || value.token.length === 0) return null;
+  return { kind: value.kind, token: value.token };
+}
+
+export interface RevokePendingCustody extends Omit<TokenCustody, 'store'> {
+  store: 'integrations.google_revoke_pending_encrypted';
+}
+
+/** WHERE that one token waits, beside {@link tokenCustody} for the same reason. */
+export function revokePendingCustody(): RevokePendingCustody {
+  return { ...tokenCustody(), store: 'integrations.google_revoke_pending_encrypted' };
+}

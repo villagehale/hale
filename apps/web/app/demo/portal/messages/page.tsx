@@ -11,7 +11,7 @@ export default function DemoMessagesPage() {
         title="Messages"
         lede="Everything you and Hale have said, and everything Hale did."
       />
-      <MessagesBoard items={[]} approvals={[]} />
+      <MessagesBoard items={[]} approvals={[]} canExport />
     </>
   );
 }

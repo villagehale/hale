@@ -87,6 +87,76 @@ export function parseSignupOutput(raw: unknown): BrowserUseSignupOutput | null {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * VIL-558 · the answer a day-before-plan run returns (`browser-use-plan-signup`). The
+ * run waits through the open's queue, so there is no `rush`; `not_open` means the
+ * registration still had not opened when the run had to stop.
+ */
+export const BROWSER_USE_PLAN_OUTCOMES = [
+  'reached_checkout',
+  'not_open',
+  'waitlist',
+  'sold_out',
+  'needs_login',
+  'needs_human',
+  'error',
+] as const;
+
+const planOutput = z.object({
+  outcome: z.enum(BROWSER_USE_PLAN_OUTCOMES),
+  detail: z.enum(BROWSER_USE_SIGNUP_DETAILS),
+  choice_index: z.number().int().nonnegative().nullable(),
+  checkout_url: z.string().nullable(),
+  cart_total_cents: z.number().int().nonnegative().nullable(),
+  cart_currency: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z]{3}$/)
+    .nullable()
+    .catch(null),
+  hold_minutes: z.number().int().positive().nullable(),
+  saved_card_on_file: z.boolean(),
+  security_code_required: z.boolean(),
+  payment_details_entered: z.boolean(),
+});
+
+export type BrowserUsePlanOutput = z.infer<typeof planOutput>;
+
+export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'outcome',
+    'detail',
+    'choice_index',
+    'checkout_url',
+    'cart_total_cents',
+    'cart_currency',
+    'hold_minutes',
+    'saved_card_on_file',
+    'security_code_required',
+    'payment_details_entered',
+  ],
+  properties: {
+    outcome: { type: 'string', enum: [...BROWSER_USE_PLAN_OUTCOMES] },
+    detail: { type: 'string', enum: [...BROWSER_USE_SIGNUP_DETAILS] },
+    choice_index: { type: ['integer', 'null'], minimum: 0 },
+    checkout_url: { type: ['string', 'null'] },
+    cart_total_cents: { type: ['integer', 'null'], minimum: 0 },
+    cart_currency: { type: ['string', 'null'] },
+    hold_minutes: { type: ['integer', 'null'], minimum: 1 },
+    saved_card_on_file: { type: 'boolean' },
+    security_code_required: { type: 'boolean' },
+    payment_details_entered: { type: 'boolean' },
+  },
+};
+
+export function parsePlanOutput(raw: unknown): BrowserUsePlanOutput | null {
+  const parsed = planOutput.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 export const BROWSER_USE_PAYMENT_OUTCOMES = ['paid', 'declined', 'needs_human', 'error'] as const;
 
 export const BROWSER_USE_PAYMENT_DETAILS = [

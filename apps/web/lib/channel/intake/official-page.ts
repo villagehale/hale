@@ -1,3 +1,5 @@
+import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import type { ExtractedChild } from './extract';
 
@@ -5,7 +7,8 @@ import type { ExtractedChild } from './extract';
  * VIL-326 — official-page intake answers.
  *
  * Rec-morning pins (544 / 548 / 555) still win when they match. This module is
- * everything else that is a real rec / camp / registration question: search
+ * everything else that is a real rec / camp / registration question (the
+ * `program_dates` read of the intake-answer model, VIL-555, in any language): search
  * official pages, or say the date is not posted yet. Never invent a clock, and
  * never fall back to the pending ask alone.
  */
@@ -14,28 +17,6 @@ const INTAKE_MAX_REPLY_CHARS = 300;
 
 const DATE_OR_CLOCK =
   /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\b|\b\d{1,2}:\d{2}\b/i;
-
-function fold(body: string): string {
-  return body.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-/**
- * A rec / camp / registration clock question — the ones that miss the city pins
- * and used to invent a time or return empty. Not a Hale-itself question, not a
- * hedge, not names/ages/postal, not adult-learn (checked earlier).
- */
-export function isOfficialPageAsk(body: string): boolean {
-  const text = fold(body);
-  if (text === '') return false;
-  const aboutPrograms =
-    /\b(rec|recreation|swim|skate|aquatics?|camps?|registration|waitlists?|winter-?break|lessons?)\b/.test(
-      text,
-    );
-  const askingWhen =
-    /\b(when|what (day|date|time)|opens?|opening|posted|hours?|deadline|dates?)\b/.test(text) ||
-    (/\?/.test(text) && /\b(registration|register|sign[- ]?up)\b/.test(text));
-  return aboutPrograms && askingWhen;
-}
 
 export function notesGroundADate(notes: string): boolean {
   return DATE_OR_CLOCK.test(notes);
@@ -91,30 +72,25 @@ export function officialPageReplyFromNotes(notes: string, pendingAsk: string): s
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the rec
- * question with household names and postal codes stripped. Dates stay — they
- * are the thing being looked up.
+ * question with household names, postal codes and ZIPs stripped. Dates stay — they
+ * are the thing being looked up. A child name the scrub cannot remove is a
+ * refusal, and the caller does not search.
  */
 export function deidentifyOfficialQuery(
   parentWords: string,
   children: readonly ExtractedChild[],
-): string {
-  let query = parentWords.replace(/\s+/g, ' ').trim();
-  for (const child of children) {
-    if (child.name) {
-      query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
-    }
-  }
-  query = query
-    .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
-    .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
+): ChildNameScrub {
+  const names = children.flatMap((child) => (child.name ? [child.name] : []));
+  const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
+  if (!scrub.ok) return scrub;
+  const withoutContacts = scrub.text
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
+    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
+  const query = scrubPlaceTokens(withoutContacts, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (query === '') return 'municipal recreation registration dates official page';
-  return query;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return {
+    ok: true,
+    text: query === '' ? 'municipal recreation registration dates official page' : query,
+  };
 }

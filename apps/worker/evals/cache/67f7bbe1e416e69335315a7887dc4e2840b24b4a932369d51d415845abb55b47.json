@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Care is right, but provider \"حضانة النور\" is invented: no place was named, so it should be null. Reason repeats the invented name too."
+  }
+}

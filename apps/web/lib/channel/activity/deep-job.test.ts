@@ -40,6 +40,7 @@ const OPEN: DueCommitment = {
   summary: 'A promise to come back with what I find on Cartwheels Gym Centre fall schedule',
   createdFrom: 'msg-9',
   subjectChildId: null,
+  heardFacts: null,
   dueAt: new Date('2026-08-25T18:00:00.000Z'),
 };
 
@@ -172,7 +173,7 @@ function harness(
       language: 'en-CA',
     }),
     reader: {
-      municipality: async () => 'halton_hills',
+      place: async () => ({ status: 'known', town: 'Halton Hills' }),
       stage: async () => 'toddler',
       householdNames: async () => ['Noah'],
     },

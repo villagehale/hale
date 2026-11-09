@@ -1,9 +1,10 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
-import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
+import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
+import { zonedNaiveInstant } from '~/lib/registration/sequence/prepare';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
 import { type SpotReading, readSpot } from './availability';
 import { watchedSpotsEnabled } from './flag';
@@ -19,7 +20,7 @@ import { SPOT_PORTAL_HOSTS, type SpotUrlRefusal, sanitizeSpotUrl } from './url';
  * handler decides, and the intent rides out of the turn to the router.
  *
  * EVERY REFUSAL IS A SENTENCE THE MODEL READS MID-TURN, never a boolean. A watch is a
- * standing promise to text a household for sixty days, and the four ways it can be
+ * standing promise to text a household until the class starts, and the four ways it can be
  * wrong are four different true things to say — "they never agreed to be texted", "that
  * is not a page I can read", "that class is not full, here is the link", "give me a
  * label without a name in it". A tool that answered `{ watching: false }` would let the
@@ -184,18 +185,13 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       const link = sanitizeSpotUrl(input.url);
       if (!link.ok) throw new Error(urlRefusal(link.reason));
 
-      // THE LABEL IS THE ONE FREE-TEXT FIELD THAT SURVIVES THIS TURN. It is stored for
-      // sixty days and printed inside a text Hale sends unprompted, so it crosses the
+      // THE LABEL IS THE ONE FREE-TEXT FIELD THAT SURVIVES THIS TURN. It is stored until
+      // the class starts and printed inside a text Hale sends unprompted, so it crosses the
       // same gate as a search subject — and then two more, because that gate is allowed
       // to REWRITE and this field may not be rewritten.
       const householdNames = await args.reader.householdNames(ctx.familyId);
       const collapsed = input.label.replace(/\s+/g, ' ').trim();
-      const gated = deidentifyActivityQuery({
-        subject: input.label,
-        municipality: null,
-        stage: null,
-        householdNames,
-      });
+      const gated = deidentifyActivitySubject(input.label, householdNames);
       if (!gated.ok) {
         throw new Error(
           gated.refusal === 'names_a_person' ? LABEL_REFUSAL.names_a_person : LABEL_REFUSAL.empty,
@@ -204,7 +200,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // `scrubResidualPii` REWRITES ages ("3 years" → "[redacted]") and gateFreeText
       // returns the rewrite as ok. Storing it would text a parent about their
       // "[redacted]" class; refusing hands the model a sentence it can act on.
-      if (gated.query.subject !== collapsed) throw new Error(LABEL_REFUSAL.rewritten);
+      if (gated.value !== collapsed) throw new Error(LABEL_REFUSAL.rewritten);
       // The opening text carries this label and may hold no '?' outside the URL — a
       // proactive text that asks a question is one the parent cannot answer (copy.ts).
       if (collapsed.includes('?')) throw new Error(LABEL_REFUSAL.question);
@@ -244,6 +240,11 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
         // Never 'open': `readingRefusal` returned null, so this read was full or
         // waitlist_full and the row starts from the state the page actually served.
         lastState: reading.state as 'full' | 'waitlist_full',
+        // Read in the portal's own registry zone, never the family's or a default one.
+        sessionStartsAt: zonedNaiveInstant(
+          'model' in reading ? reading.model.StartDateValue : null,
+          SPOT_PORTAL_HOSTS[link.host]!.timeZone,
+        ),
       });
       return { watching: true as const };
     },

@@ -11,6 +11,7 @@ import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { travelBriefDedupeKey } from '~/lib/travel/sweep';
 import type { WriterResult } from './compose';
 import type { DecideResult, DeciderDecision } from './decide';
 import { type CandidateDraft, handOffProactive } from './queue';
@@ -2748,5 +2749,93 @@ describe('runProactiveReview', () => {
         reason: null,
       });
     });
+  });
+});
+
+describe('classes the decider sends for their own sweeps', () => {
+  async function seedTrip(startsOn: string, endsOn: string, messageId: string) {
+    const [trip] = await db.database
+      .insert(schema.familyTrips)
+      .values({
+        familyId,
+        parentUserId,
+        integrationId: '99999999-9999-4999-8999-999999999999',
+        messageId,
+        destinationCity: 'Springfield',
+        destinationRegion: null,
+        startsOn,
+        endsOn,
+        childEvidence: 'named_traveller',
+      })
+      .returning({ id: schema.familyTrips.id });
+    return trip?.id as string;
+  }
+
+  async function trip(id: string) {
+    const [row] = await db.database
+      .select()
+      .from(schema.familyTrips)
+      .where(eq(schema.familyTrips.id, id));
+    return row;
+  }
+
+  it('closes the briefed trip and the one it overlaps, under the sweep verb', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const flight = await seedTrip('2026-10-14', '2026-10-17', 'gmail-flight');
+    const hotel = await seedTrip('2026-10-15', '2026-10-18', 'gmail-hotel');
+    const later = await seedTrip('2026-11-20', '2026-11-22', 'gmail-later');
+    const id = await enqueue(travelBriefDedupeKey(flight), {
+      kind: 'travel_brief',
+      category: 'travel_brief',
+      templateKey: 'travel:brief',
+      what: 'Springfield next week: the science museum and the zoo',
+      why: 'travel_brief',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+
+    const summary = await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(summary).toMatchObject({ mode: 'live', sent: 1 });
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [ledger] = await db.database
+      .select({ id: schema.channelMessages.id, dedupeKey: schema.channelMessages.dedupeKey })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.familyId, familyId));
+    expect(ledger?.dedupeKey).toBe(travelBriefDedupeKey(flight));
+    expect(await trip(flight)).toMatchObject({
+      closedReason: 'sent',
+      briefChannelMessageId: ledger?.id,
+    });
+    expect(await trip(hotel)).toMatchObject({
+      closedReason: 'merged',
+      briefChannelMessageId: ledger?.id,
+    });
+    // The control: a trip the brief does not overlap stays open.
+    expect((await trip(later))?.closedAt).toBeNull();
+    const [sent] = await audits('travel_brief_sent');
+    expect(sent).toMatchObject({ targetTable: 'channel_messages', targetId: ledger?.id });
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+    expect(await audits('proactive_cadence_sent')).toEqual([]);
+  });
+
+  it('audits a departure notice under the sweep verb', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const id = await enqueue(`co_parent_departed:${familyId}:gone`, {
+      kind: 'co_parent_departed',
+      category: 'co_parent_departed',
+      templateKey: 'co_parent:departed',
+      what: 'Your co-parent left the household on Hale.',
+      why: 'co_parent_departed',
+      sourceUrl: null,
+    });
+    const h = harness(sendAll);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(await candidate(id)).toMatchObject({ status: 'sent' });
+    const [sent] = await audits('co_parent_departure_notice_sent');
+    expect(sent?.after).toMatchObject({ itemIds: [id], mode: 'live' });
+    expect(await audits('proactive_cadence_sent')).toEqual([]);
   });
 });

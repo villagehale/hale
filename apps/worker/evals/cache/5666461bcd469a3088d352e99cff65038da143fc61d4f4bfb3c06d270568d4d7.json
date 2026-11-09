@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?', which is a direct question asking the parent to reply, duplicating the shell question. It also includes a privacy link in parentheses, a second ask-like element. Since the shell question is the one allowed ask, the message itself asks something, making it a clear violation.",
+    "score": 1
+  }
+}
