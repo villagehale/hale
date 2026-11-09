@@ -342,7 +342,7 @@ const NAIVE_LOCAL = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?$/;
  * is refused for the reason `2026-02-30` is — it rolls into the next day, and a clock
  * that is off by a day is the one failure this whole module exists to prevent.
  */
-function zonedNaiveInstant(naive: string | null | undefined, timeZone: string): Date | null {
+export function zonedNaiveInstant(naive: string | null | undefined, timeZone: string): Date | null {
   if (typeof naive !== 'string') return null;
   if (!NAIVE_LOCAL.test(naive)) return null;
   const dayKey = naive.slice(0, 10);

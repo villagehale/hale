@@ -40,7 +40,7 @@ function guardDeps(): GuardDeps {
 
 function reader(overrides: Partial<BoundActivityReader> = {}): BoundActivityReader {
   return {
-    municipality: async () => 'halton_hills',
+    place: async () => ({ status: 'known', town: 'Halton Hills' }),
     stage: async () => 'toddler',
     householdNames: async () => ['Noah'],
     ...overrides,

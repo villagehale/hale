@@ -7,7 +7,6 @@ import { type FakeDb, makeFakeDb } from './fakes';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import {
   SITTING_REMINDER_HOUR_LOCAL,
-  SITTING_REMINDER_TIMEZONE,
   type SittingReminderDeps,
   defaultSittingReminderDeps,
   findNudgeEligible,
@@ -140,7 +139,6 @@ function voiceDeps(transport: FakeTransport): SittingReminderDeps {
 
 describe('sitting reminder', () => {
   it('uses the existing quiet-hours morning window — not an invented 9:00', () => {
-    expect(SITTING_REMINDER_TIMEZONE).toBe('America/Toronto');
     expect(PROACTIVE_QUIET_HOURS.end).toBe('08:00');
     expect(SITTING_REMINDER_HOUR_LOCAL).toBe(8);
     expect(SITTING_REMINDER_HOUR_LOCAL).not.toBe(9);

@@ -205,7 +205,12 @@ describe('first-reply recovery reads the transcript, not the state', () => {
     const late = new Date('2026-08-29T03:30:00.000Z');
     /** 8:00 a.m. the next morning — quiet hours have just ended, and the text is 8.5h old. */
     const morning = new Date('2026-08-29T12:00:00.000Z');
-    const { id, phone } = await seed({ createdAt: late, updatedAt: late });
+    // An Eastern-zone place: its night is read on its own clock.
+    const { id, phone } = await seed({
+      createdAt: late,
+      updatedAt: late,
+      place: { city: '', areaCoarse: 'K2P', postalCode: 'K2P' },
+    });
     const transport = new FakeTransport();
     const voice = composer();
 

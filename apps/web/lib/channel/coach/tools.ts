@@ -13,6 +13,7 @@ import {
 } from '~/lib/channel/mid-activity/said-tool';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import { type SpotReleasePorts, stopWatchingTool } from '~/lib/channel/spots/stop-tool';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
@@ -282,6 +283,8 @@ export interface ChannelCoachToolArgs {
   onGmailNotice?: (box: GmailDraftNoticeBox) => void;
   /** The switch-off verb's ports. Absent in a test that is not exercising it. */
   autonomySwitchOff?: AutonomySwitchOffPorts;
+  /** The stop-watching verb's ports. Absent in a test that is not exercising it. */
+  spotRelease?: SpotReleasePorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
   now: Date;
@@ -811,6 +814,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   }
   // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
+  // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
+  if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
