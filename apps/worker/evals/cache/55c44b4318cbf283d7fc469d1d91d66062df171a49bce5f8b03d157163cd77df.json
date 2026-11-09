@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The travel_brief is family news that should go out before the trip. It's Thursday 6 PM local, outside quiet hours, the last send got a reply, and the item isn't expired, so the busy home calendar doesn't matter.",
+    "action": "send_now",
+    "item_ids": [
+      "trip"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
