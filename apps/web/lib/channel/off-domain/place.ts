@@ -468,10 +468,15 @@ export async function readPlaceRow(database: Database, familyId: string, now: Da
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
   // The parent said where they live after the record was last written (VIL-519): that is
-  // where they are now. It is read by these same rules, as a city with no postal area, so a
-  // name the tables do not hold is not guessed and the find does not run.
-  const corrected = placeText((await recordCorrections(database, familyId, now)).place?.factValue);
-  if (corrected) {
+  // where they are now, but only when what they said IS a place name in the table for the
+  // family's country, sent in the table's spelling. Any other text is the parent's own words
+  // (a street, a child's name): it stays out of every place read and rides only in the
+  // teen-filtered memory facts, and the stored record stands.
+  const corrected = await tableCityNamed(
+    family.country,
+    placeText((await recordCorrections(database, familyId, now)).place?.factValue),
+  );
+  if (corrected !== null) {
     return {
       country: family.country,
       province: null,
@@ -481,6 +486,14 @@ export async function readPlaceRow(database: Database, familyId: string, now: Da
     };
   }
   return active ? { ...active, country: family.country, areaCoarse: null } : family;
+}
+
+async function tableCityNamed(country: string | null, text: string | null): Promise<string | null> {
+  const postalCountry = country === null ? undefined : postalCountryOf(country);
+  if (postalCountry === undefined || text === null) return null;
+  const asSaid = folded(text);
+  const table = await TABLES[postalCountry]();
+  return table.cities.find((city) => folded(city) === asSaid) ?? null;
 }
 
 function placeText(value: unknown): string | null {

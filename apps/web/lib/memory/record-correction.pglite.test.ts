@@ -4,6 +4,7 @@ import { factsForContext } from '@hale/worker/memory-context';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { productionActivityFamilyReader } from '~/lib/channel/activity/reader';
+import { readFamilyPlace } from '~/lib/channel/off-domain/place';
 import { loadAgentContext } from '~/lib/coach/context';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { writeFact } from './facts';
@@ -173,7 +174,7 @@ describe('a parent correction of age or home wins over the older record (VIL-519
     });
   });
 
-  it('a home in words the place tables do not hold is not searched: the find has no town to guess', async () => {
+  it('a home in words the place tables do not hold is not the city: the record stays and the words ride as a fact', async () => {
     const { familyId } = await family();
     await marked(
       familyId,
@@ -183,9 +184,79 @@ describe('a parent correction of age or home wins over the older record (VIL-519
       3,
     );
 
-    expect((await coach(familyId)).location.city).toBe('moved across the country');
-    const place = await reader.place(db.database, familyId);
-    expect(place.status).toBe('unknown');
+    const ctx = await coach(familyId);
+    expect(ctx.location.city).toBe('Saskatoon');
+    expect(ctx.memoryFacts.map((f) => f.factKey)).toContain('home');
+    expect(await reader.place(db.database, familyId)).toEqual({
+      status: 'known',
+      town: 'Saskatoon, Saskatchewan, Canada',
+    });
+
+    // A table name, in any case, is the place, in the table's spelling.
+    await marked(familyId, null, 'home_now', { text: '  REGINA ', record: 'place' }, 1);
+    expect((await coach(familyId)).location.city).toBe('Regina');
+    expect(await readFamilyPlace(db.database, familyId)).toEqual({
+      status: 'known',
+      city: 'Regina',
+      country: 'Canada',
+    });
+  });
+
+  it('a home correction naming a street and a teen never reaches the coach, the find or the search as the city', async () => {
+    const { familyId } = await family();
+    await child(familyId, 14 * 12 + 2);
+    await marked(
+      familyId,
+      null,
+      'home',
+      { text: 'Quillon and I moved in with her grandma on 12 Elm Street', record: 'place' },
+      2,
+    );
+
+    const ctx = await coach(familyId);
+    expect(ctx.location.city).toBe('Saskatoon');
+    expect(JSON.stringify(ctx)).not.toContain('Elm Street');
+    expect(await reader.place(db.database, familyId)).toEqual({
+      status: 'known',
+      town: 'Saskatoon, Saskatchewan, Canada',
+    });
+    expect(await readFamilyPlace(db.database, familyId)).toEqual({
+      status: 'known',
+      city: 'Saskatoon',
+      country: 'Canada',
+    });
+  });
+
+  it('a family-wide age correction is never credited to an only child who is 13 or older', async () => {
+    const teenFamily = await family();
+    await child(teenFamily.familyId, 14 * 12 + 2);
+    await marked(
+      teenFamily.familyId,
+      null,
+      'age',
+      { text: 'just turned fifteen', record: 'age' },
+      2,
+      'parent_message',
+    );
+    const teenFacts = await factsForContext(db.database, teenFamily.familyId, {
+      now: NOW,
+      limit: 20,
+    });
+    expect(teenFacts.map((row) => row.factKey)).not.toContain('age');
+
+    // Positive control: the same correction for an only child of nine rides.
+    const younger = await family();
+    await child(younger.familyId, 9 * 12);
+    await marked(
+      younger.familyId,
+      null,
+      'age',
+      { text: 'just turned ten', record: 'age' },
+      2,
+      'parent_message',
+    );
+    const facts = await factsForContext(db.database, younger.familyId, { now: NOW, limit: 20 });
+    expect(facts.map((row) => row.factKey)).toContain('age');
   });
 
   it("a child's age the parent gave after the date of birth was written is the coach's and the find's age", async () => {

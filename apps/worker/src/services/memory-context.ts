@@ -106,8 +106,10 @@ export const AGE_RECORD_ACTION = 'child_updated';
  * The parent's newest word on where they live and on each child's age, when they said it
  * AFTER the record was last written (VIL-519). That record is the postal code and the
  * date of birth. A chat correction does not rewrite it yet (VIL-599), so until then the
- * correction is read in its place: the coach's location, the find's town and the find's
- * ages all follow it, and {@link factsForContext} lets it through.
+ * correction is read in its place: the coach's location and the find's town follow a home
+ * that is a place name the postal tables hold (off-domain/place.ts), the coach's and the
+ * find's ages follow an age, and {@link factsForContext} lets it through. A 13+ child's
+ * age is never corrected here, the family-wide only-child credit included.
  *
  * "Last written" is the record row's creation or its newest audited edit (rule #6 makes
  * the audit log the history of every edit). A remembered copy from before that is the old
@@ -204,6 +206,8 @@ async function correctionsFor(
       continue;
     }
     const childId = row.childId ?? onlyChild;
+    // The row's own child is teen-filtered in the query; the only-child credit is not.
+    if (childId && teens.ids.includes(childId)) continue;
     const written = childId ? childWritten.get(childId) : undefined;
     if (childId && written && !age.has(childId) && row.validFrom > written) age.set(childId, row);
   }
