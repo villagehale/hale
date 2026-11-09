@@ -38,7 +38,9 @@ const RUN_AFTER_DOT = /[\p{L}\p{M}\p{N}]+/uy;
 const LETTERS_ONLY = /^[\p{L}\p{M}]{2,}$/u;
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
-function asHandsetReads(text: string): string {
+/** A gate that splits or filters a draft splits this reading, never the raw text, so it
+ * decides from the same words {@link hasLinkShape} reads. */
+export function asHandsetReads(text: string): string {
   return text
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')

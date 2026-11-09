@@ -610,6 +610,27 @@ describe('friend-voice judge', () => {
     });
   });
 
+  it('reads a link once: a full-width colon or slash in a scheme is still a link', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    for (const reply of [
+      'Done. https：//evil.app it is.',
+      'Done. hxxps：//evil.app/x it is.',
+      'Done. https:／／evil.app it is.',
+      'Done. https：／／evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, yes), reply).toMatchObject({ ok: false, reason: 'invented' });
+    }
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(
+      judgeFriendReply(`${prose}\n${link}\nhttps：//evil.app/x`, calendar, { link }),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+  });
+
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({

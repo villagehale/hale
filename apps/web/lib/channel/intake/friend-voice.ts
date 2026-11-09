@@ -18,7 +18,7 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
-import { hasLinkBeyond, linksOutside } from '~/lib/format/link-shape';
+import { linksOutside } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -1586,8 +1586,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    // A scheme link is held to the handed link below.
-    ['domain', linksOutside(trimmed, slots).filter((word) => !word.includes('://'))],
+    ['domain', linksOutside(trimmed, slots)],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1599,13 +1598,6 @@ export function judgeFriendReply(
       count: invented.length,
       kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
     };
-  }
-  const schemeLinks = trimmed
-    .split(/\s+/)
-    .filter((word) => word.includes('://'))
-    .join(' ');
-  if (schemeLinks !== '' && hasLinkBeyond(schemeLinks, options.link ? [options.link] : [])) {
-    return { ok: false, reason: 'invented' };
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is
