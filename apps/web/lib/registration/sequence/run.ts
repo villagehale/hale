@@ -46,17 +46,18 @@ import { loadClaimedWindowIds } from './claims.js';
 import {
   type EveningFacts,
   type MorningFacts,
+  approvalCardFacts,
   battlePlanDecision,
   headsUpFacts,
   headsUpPromisesPlan,
+  legNoteFacts,
   morningFacts,
-  renderSequenceLeg,
-  renderShortlistRationale,
   windowPhrase,
 } from './copy.js';
 import { composeRegistrationEvening } from './evening-compose.js';
 import { composeRegistrationHeadsUp } from './heads-up-compose.js';
 import { composeRegistrationMorning } from './morning-compose.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -328,6 +329,9 @@ export interface SequenceRunDeps {
   composeMorning: typeof composeRegistrationMorning;
   /** VIL-488 · the heads-up text, written from facts. Null means nothing is sent. */
   composeHeadsUp: typeof composeRegistrationHeadsUp;
+  /** VIL-543 · the approval card and every other leg, written from facts. Null means
+   * nothing is sent (and no card is drafted). */
+  writeNote: RegistrationNoteWriter;
   /** The wall clock the already-open retry reads its deadline against. Defaults to
    * real time; tests pin it. */
   clock?: () => Date;
@@ -528,6 +532,32 @@ async function proposeForFamily(
     });
     if (sequenceId === null) return false;
 
+    // VIL-543 · the card is written from facts. THE SAME REGISTRY LOOKUP THE LEGS RUN
+    // ON (`dueLeg`), so the card enumerates exactly the texts this household will
+    // receive: four where Hale has learned to read the town's portal and the readiness
+    // leg therefore fires, three everywhere else. A card that cannot be written is no
+    // card: the claim is released and the next tick tries again.
+    const rationale = await deps.writeNote(
+      database,
+      family.familyId,
+      approvalCardFacts(
+        shortlist,
+        family.timeZone,
+        now,
+        portalForMunicipality(match.window.municipality),
+      ),
+    );
+    if (rationale === null) {
+      // Nothing was drafted and nothing reaches the family, so this is a named log line
+      // rather than a trail row a retrying tick would repeat.
+      await deps.releaseClaim(database, sequenceId);
+      console.error(
+        { familyId: family.familyId, outcome: 'registration_shortlist_unwritten' },
+        'registration sequence: the approval card could not be written, no card drafted',
+      );
+      return false;
+    }
+
     try {
       const actionId = await deps.draftShortlist(database, {
         familyId: family.familyId,
@@ -536,17 +566,7 @@ async function proposeForFamily(
         // shortlist may cover two siblings at once.
         childId: null,
         intentKind: 'registration_shortlist',
-        // THE SAME REGISTRY LOOKUP THE LEGS RUN ON (`dueLeg`, `renderSequenceLeg`), so
-        // the card enumerates exactly the texts this household will receive: four where
-        // Hale has learned to read the town's portal and the readiness leg therefore
-        // fires, three everywhere else. The sentence a parent consents to and the legs
-        // they then get have to move together.
-        rationale: renderShortlistRationale(
-          shortlist,
-          family.timeZone,
-          now,
-          portalForMunicipality(match.window.municipality),
-        ),
+        rationale,
         // The card's own copy. Without these the approvals surface showed the generic
         // "Note in your daily digest" over the raw payload keys, so the municipality,
         // the date, the link and the "I never register for you" line — the things the
@@ -994,7 +1014,21 @@ async function runLegForSequence(
     }
     body = written;
   } else {
-    body = renderSequenceLeg(leg, legInput);
+    // VIL-543 · the readiness checklist, the check-in and the waitlist guards are
+    // written from facts too; there is no code sentence.
+    const written = await deps.writeNote(database, sequence.familyId, legNoteFacts(leg, legInput));
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_leg_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: { leg, windowId: sequence.window.id, outcome: 'registration_leg_unwritten' },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
   }
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
@@ -1666,6 +1700,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     composeEvening: composeRegistrationEvening,
     composeMorning: composeRegistrationMorning,
     composeHeadsUp: composeRegistrationHeadsUp,
+    writeNote: registrationNoteWriter(),
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)

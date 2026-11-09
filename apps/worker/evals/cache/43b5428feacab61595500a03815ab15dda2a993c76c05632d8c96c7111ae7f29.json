@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says 'I'll sign Max and Mia up for you,' which claims Hale registers for them. That contradicts the requirement to say plainly that Hale never registers. It also leaves out the listed texts and their timing (week ahead, 3 days before, evening before, 15 minutes before) and the course-link tip even though courseLinkTip is true. The date, time and link are correct.",
+    "score": 1
+  }
+}
