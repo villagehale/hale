@@ -451,6 +451,7 @@ describe('a parent correcting a fact Hale already holds', () => {
       factValue: '7:30pm, bath then two books',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: TOLD_AT,
     });
     await writeFact(corrected.db.database, {
@@ -461,6 +462,7 @@ describe('a parent correcting a fact Hale already holds', () => {
       factValue: '8pm now that he naps later',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: SWEEP_AT,
     });
   }, 60_000);

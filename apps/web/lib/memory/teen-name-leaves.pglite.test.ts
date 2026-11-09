@@ -104,7 +104,11 @@ describe('a multi-line fact naming a 13+ child', () => {
       .insert(schema.familyMemoryFacts)
       .values([fact('saturday_plan', MULTILINE_TEEN), fact('sunday_plan', MULTILINE_PLAIN)]);
 
-    const facts = await factsForContext(db.database, familyId, { now: NOW, limit: 10 });
+    const facts = await factsForContext(db.database, familyId, {
+      now: NOW,
+      reader: 'every_adult',
+      limit: 10,
+    });
     expect(facts.map((row) => row.factKey)).toEqual(['sunday_plan']);
   });
 

@@ -386,6 +386,14 @@ describe('family memory in the right-to-access copy', () => {
     await db.database.insert(schema.familyMemoryFacts).values([
       { familyId, factType: 'logistic', factKey: 'pickup', factValue: 'pickup at three' },
       { familyId, factType: 'preference', factKey: 'b_private', factValue: 'B private feeling' },
+      {
+        familyId,
+        factType: 'logistic',
+        factKey: 'dropoff',
+        factValue: 'dropoff at eight',
+        sourceAudience: 'one_to_one',
+        sourceUserId: parentB,
+      },
     ]);
 
     const doc = await assembleFamilyExport(db.database, familyId, {
@@ -403,11 +411,15 @@ describe('family memory in the right-to-access copy', () => {
       ['a find for A', ['price:money:a find for A'], null],
       [null, null, 'another_adult'],
     ]);
+    // A logistic is shared by R7 only when the row says where it was said: B's 1:1
+    // dropoff reaches A; an unrecorded pickup is held back like any unrecorded fact.
     expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
-      ['pickup', 'pickup at three', null],
       [null, null, 'source_not_recorded'],
+      [null, null, 'source_not_recorded'],
+      ['dropoff', 'dropoff at eight', null],
     ]);
     expect(JSON.stringify(doc.memory)).not.toContain('B private');
+    expect(JSON.stringify(doc.memory)).not.toContain('pickup at three');
   });
 
   it('withholds unattributed memory once a co-parent has left the household', async () => {
@@ -440,6 +452,14 @@ describe('family memory in the right-to-access copy', () => {
       await db.database.insert(schema.familyMemoryFacts).values([
         { familyId, factType: 'logistic', factKey: 'pickup', factValue: 'pickup at three' },
         { familyId, factType: 'preference', factKey: 'b_private', factValue: 'B private feeling' },
+        {
+          familyId,
+          factType: 'logistic',
+          factKey: 'dropoff',
+          factValue: 'dropoff at eight',
+          sourceAudience: 'family',
+          sourceUserId: parentA,
+        },
       ]);
       return assembleFamilyExport(db.database, familyId, {
         actorUserId: parentA,
@@ -452,8 +472,9 @@ describe('family memory in the right-to-access copy', () => {
       const doc = await departed(trace);
       expect(doc.members.coParent).toBeNull();
       expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
-        ['pickup', 'pickup at three', null],
         [null, null, 'source_not_recorded'],
+        [null, null, 'source_not_recorded'],
+        ['dropoff', 'dropoff at eight', null],
       ]);
       expect(JSON.stringify(doc.memory)).not.toContain('B private');
     }
