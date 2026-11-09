@@ -463,6 +463,10 @@
     "file": "spoken-line.md",
     "sha256": "88ee93d9afa259b40535eb2770985cc793e71b872b0c34ccc740e2b8752fb28c"
   },
+  "spot-open-voice.md": {
+    "file": "spot-open-voice.md",
+    "sha256": "6fc4f5aef16b9feaedbe5655f99da5283f3930186940dc5db8a05f20a4b6ceae"
+  },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
     "sha256": "ce3f8ff46de970ba2df1937720f9ed57bd65aacea13c70dc33726f603de5cbb4"

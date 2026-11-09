@@ -11,13 +11,16 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
-import { renderSpotOpen } from './copy';
+import { composeSpotOpen } from './compose';
+import { type SpotOpenFacts, spotOpenBody, spotOpenFacts } from './copy';
 import { resettleSpotWatchPromise } from './promise';
 import {
   type LiveWatchedSpot,
@@ -68,9 +71,10 @@ import { sanitizeSpotUrl } from './url';
  * count; the run returns, the heartbeat stamps (cron/auth.ts stamps on COMPLETION), and
  * the founder is not paged for somebody else's flaky portal.
  *
- * NO MODEL RUNS ON THIS PATH — not the reader (availability.ts is a brace scan and a
- * Zod parse) and not the composer (copy.ts is a template with an evidence gate). The
- * cron route deliberately constructs no Anthropic client.
+ * ONE MODEL CALL, AND ONLY TO WRITE. The reader is a brace scan and a Zod parse
+ * (availability.ts); the model is handed facts already checked against this tick's bytes
+ * and writes the text (copy.ts, compose.ts). It never sees the course url, which code
+ * appends after its text.
  */
 
 // The dark-launch gate lives in ./flag so the arming verb reads the SAME definition
@@ -263,6 +267,11 @@ export interface WatchedSpotsSweepDeps {
   /** The parent's own thread — `channel_messages` carries no body (rule #1), so a send
    * that skips this is a sentence the coach can never see the parent answering. */
   threadMessage: typeof threadProactiveMessage;
+  /** The parent's language, which the writer composes in. */
+  loadLanguage(database: Database, familyId: string): Promise<string>;
+  /** THE WRITER: the model's whole text from this tick's facts, or null when no draft
+   * cleared the refusals (compose.ts). Null is nothing sent, counted as `unwritten`. */
+  writeSpotOpen(facts: SpotOpenFacts, familyId: string): Promise<string | null>;
   random(): number;
   sleep(ms: number): Promise<void>;
   /** The wall clock the run's own budget is measured on, injected apart from `now`:
@@ -290,6 +299,15 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
       await database.insert(schema.auditLog).values(row);
     },
     threadMessage: threadProactiveMessage,
+    loadLanguage: familyLanguage,
+    writeSpotOpen: async (facts, familyId) => {
+      const client = voiceClient();
+      if (client === null) {
+        console.error({ familyId, outcome: 'no_client' }, 'watched spots: no writer, nothing sent');
+        return null;
+      }
+      return composeSpotOpen(client, facts, familyId);
+    },
     random: Math.random,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     clockMs: () => Date.now(),
@@ -312,6 +330,7 @@ type SpotFate =
   | { kind: 'closed_before_send' }
   | { kind: 'held'; reason: DeliveryHoldReason }
   | { kind: 'refused' }
+  | { kind: 'unwritten' }
   | { kind: 'sent' }
   | { kind: 'failed' };
 
@@ -341,8 +360,11 @@ export interface WatchedSpotsSweepSummary {
   /** A text out with no terminal receipt yet — still live, and not re-read this tick. */
   awaitingReceipt: number;
   /** The wire body claimed a row the family's ledger does not hold (VIL-293). Its own
-   * count: nothing broke, and a non-zero here means the TEMPLATE is asserting something. */
+   * count: nothing broke, and a non-zero here means the WRITER is asserting something. */
   refused: number;
+  /** The writer produced no draft that cleared its refusals. Nothing was sent and no
+   * attempt was spent: the observation stays held and the next tick asks again. */
+  unwritten: number;
   failed: number;
   held: Record<DeliveryHoldReason, number>;
   released: Record<WatchedSpotReleaseReason, number>;
@@ -369,6 +391,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     closedBeforeSend: 0,
     awaitingReceipt: 0,
     refused: 0,
+    unwritten: 0,
     failed: 0,
     held: {
       not_enrolled: 0,
@@ -423,6 +446,9 @@ function tally(summary: WatchedSpotsSweepSummary, fate: SpotFate): void {
       return;
     case 'refused':
       summary.refused += 1;
+      return;
+    case 'unwritten':
+      summary.unwritten += 1;
       return;
     case 'sent':
       summary.sent += 1;
@@ -862,14 +888,22 @@ async function sendSpotOpen(
     return { kind: 'held', reason: verdict.reason };
   }
 
-  const body = renderSpotOpen({
+  const prepared = spotOpenFacts({
     kind,
     portalLabel: link.portalLabel,
     label: spot.label,
-    url: link.url,
     model: reading.model,
     evidence: reading.evidence,
+    language: await deps.loadLanguage(database, spot.familyId),
   });
+  if (!prepared.ok) {
+    // `supportsKind` just said this reading backs the opening, so bytes that cannot back
+    // its facts are a contradiction inside one page, not a state to send around.
+    throw new Error(`spot-open facts refused: ${prepared.reasons.join(', ')}`);
+  }
+  const text = await deps.writeSpotOpen(prepared.facts, spot.familyId);
+  if (text === null) return { kind: 'unwritten' };
+  const body = spotOpenBody(text, link.url);
 
   const to = await deps.resolveSendablePhone(database, spot.parentUserId);
   if (!to) {

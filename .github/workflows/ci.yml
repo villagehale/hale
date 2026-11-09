@@ -326,6 +326,9 @@ jobs:
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 
+      - name: Spot-opened text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:spot-open-voice
+
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
       # wired here BEFORE the pass that calls it exists.

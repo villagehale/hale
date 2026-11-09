@@ -62,6 +62,10 @@ const bookMe4ModelSchema = z
      * its parenthetical rather than the reader dropping the page. */
     StartDay: z.string().nullish(),
     StartTime: z.string().nullish(),
+    /** The first class as a naive local datetime ("2026-09-21T17:00:00"), which ends the
+     * watch. Lenient: a value this cannot read costs the watch its session-start expiry,
+     * never the reading. */
+    StartDateValue: z.string().nullish().catch(null),
   })
   .passthrough();
 
