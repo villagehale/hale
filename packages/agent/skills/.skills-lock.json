@@ -327,6 +327,10 @@
     "file": "linq-sticker.md",
     "sha256": "058703a76f47c7021790ae4e2c8248b065c00937a439943af13f35df4121602d"
   },
+  "medical-answer.md": {
+    "file": "medical-answer.md",
+    "sha256": "42c9056d114af9f096468fb555c325359c42d220365cae592abdc4d864feceb9"
+  },
   "medical-escalation.md": {
     "file": "medical-escalation.md",
     "sha256": "ecc1c81c4aacbd45cbe1250e1b0df9e38d2683a9484833d12acaca72d4316dfb"
@@ -449,7 +453,7 @@
   },
   "spoken-line.md": {
     "file": "spoken-line.md",
-    "sha256": "16065eec4737680502364a3b8ba6e392572db4d339fea1b373538cde18d9de7b"
+    "sha256": "88ee93d9afa259b40535eb2770985cc793e71b872b0c34ccc740e2b8752fb28c"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

@@ -75,3 +75,13 @@ export function healthLineFacts(place: HealthPlace | null): HealthLineFacts {
     mustInclude: [emergency],
   };
 }
+
+/**
+ * Every three-digit line (211 to 911) a reply names, as digits, in order. "8-1-1" and
+ * "9 1 1" are how BC and US texts often spell them, so a separator between the digits is
+ * read through; a digit run or a phone number (647-555-0811, 555-811-0199) is not one.
+ * Every required number a {@link HealthLineFacts} carries is one of these.
+ */
+export function healthNumbersIn(body: string): string[] {
+  return [...body.matchAll(/(?<![\d-])([2-9])[-. ]?1[-. ]?1(?![-. ]?\d)/g)].map((m) => `${m[1]}11`);
+}

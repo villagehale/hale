@@ -347,6 +347,7 @@ function render(
       return 'Google Drive';
     case 'provider_access': {
       const body = facts.body ?? '';
+      if (facts.verified_paths !== 'ontario') return pick(language, UNPLACEABLE_EN, UNPLACEABLE_FR);
       if (asksAboutEyeCare(body)) return EYE;
       if (PRIMARY_CARE.test(body)) return pick(language, PROVIDER_EN, PROVIDER_FR);
       return pick(language, UNPLACEABLE_EN, UNPLACEABLE_FR);

@@ -428,6 +428,7 @@ function liveLane(moment: 'written' | 'unwritten'): {
     },
     today: async () => '2026-10-20',
     place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+    healthPlace: async () => null,
     pendingAsk: async () => ({ status: 'none' }),
     medical: {
       answer: async () => {

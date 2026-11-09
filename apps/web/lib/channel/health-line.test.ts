@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type HealthPlace, healthLineFacts } from './health-line';
+import { type HealthPlace, healthLineFacts, healthNumbersIn } from './health-line';
 
 // D1 (VIL-589): 911 everywhere Hale serves; a regional number only where an official
 // source names it. Today that is Ontario's Health811 alone. Everyone else is told
@@ -85,5 +85,22 @@ describe('healthLineFacts', () => {
     expect(healthLineFacts({ country: 'US', provinceOrState: 'Ontario' }).basis).toBe(
       'united_states',
     );
+  });
+});
+
+describe('healthNumbersIn', () => {
+  it('reads a three-digit health or emergency line however it is spaced', () => {
+    expect(healthNumbersIn('Call 811 any time, or 911 now.')).toEqual(['811', '911']);
+    expect(healthNumbersIn('HealthLink BC at 8-1-1, or 9 1 1 in an emergency')).toEqual([
+      '811',
+      '911',
+    ]);
+    expect(healthNumbersIn('立即拨打911')).toEqual(['911']);
+  });
+
+  it('does not read a number out of a phone number, a time, or a longer run', () => {
+    expect(healthNumbersIn('647-555-0811, 555-811-0199, swim at 9:11, room 1911')).toEqual([]);
+    // Positive control: the same text with the line on its own is read.
+    expect(healthNumbersIn('647-555-0199, or call 811')).toEqual(['811']);
   });
 });
