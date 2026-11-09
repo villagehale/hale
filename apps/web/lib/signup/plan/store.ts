@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { isParentHeld } from '~/lib/channel/intake/opt-out-hold';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { redactSignupAudit } from '../audit';
@@ -20,6 +20,7 @@ export const MAX_PLAN_CHOICES = 5;
 
 export type ApprovePlanRefusal =
   | 'no_offer'
+  | 'not_offer_parent'
   | 'choices'
   | 'max_price'
   | 'opens_at'
@@ -61,6 +62,9 @@ export async function approveSignupPlan(
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   const offer = await loadPendingOffer(database, input.familyId);
   if (!offer || offer.id !== input.offerId) return { ok: false, reason: 'no_offer' };
+  // The run types this parent's details and pays with their city account's saved card, and
+  // re-checks their standing before paying. Only their own yes can consent to that.
+  if (offer.parentUserId !== input.parentUserId) return { ok: false, reason: 'not_offer_parent' };
   const ids = [...new Set(input.choiceIds)];
   const choices = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
   if (
@@ -287,10 +291,73 @@ export async function cancelSignupPlan(
   return 'cancelled';
 }
 
-/** The consent row the approving message wrote. Read-only: a run never writes consent. */
+/** A family's offer the day-before conversation can still act on, before its open. */
+export interface ConversablePlan {
+  offerId: string;
+  childId: string;
+  status: 'pending' | 'planned';
+  registrationUrl: string;
+  sessions: SignupSession[];
+  approvedPriceCents: number | null;
+  opensAt: Date;
+  plan: { choiceIds: string[]; maxPriceCents: number; waiverAccepted: boolean } | null;
+}
+
+/**
+ * The offer with a known open still ahead: a `pending` offer the coach recorded with its
+ * open time, or a `planned` one the parent may still take back. The earliest open first.
+ */
+export async function loadConversablePlan(
+  database: Database,
+  input: { familyId: string; now: Date },
+): Promise<ConversablePlan | null> {
+  const offers = schema.authorizedSignupOffers;
+  const [row] = await database
+    .select()
+    .from(offers)
+    .where(
+      and(
+        eq(offers.familyId, input.familyId),
+        inArray(offers.status, ['pending', 'planned']),
+        gt(offers.planOpensAt, input.now),
+      ),
+    )
+    .orderBy(offers.planOpensAt)
+    .limit(1);
+  if (!row?.planOpensAt || (row.status !== 'pending' && row.status !== 'planned')) return null;
+  const planned =
+    row.status === 'planned' && row.planChoiceIds && row.planMaxPriceCents !== null
+      ? {
+          choiceIds: row.planChoiceIds,
+          maxPriceCents: row.planMaxPriceCents,
+          waiverAccepted: row.planWaiverAccepted === true,
+        }
+      : null;
+  return {
+    offerId: row.id,
+    childId: row.childId,
+    status: row.status,
+    registrationUrl: row.registrationUrl,
+    sessions: row.sessions,
+    approvedPriceCents: row.approvedPriceCents,
+    opensAt: row.planOpensAt,
+    plan: planned,
+  };
+}
+
+/**
+ * The consent row the plan's own parent wrote from the approving message. Read-only: a run
+ * never writes consent.
+ */
 export async function loadPlanConsent(
   database: Database,
-  input: { familyId: string; messageId: string; activityKey: string; providerHost: string },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    messageId: string;
+    activityKey: string;
+    providerHost: string;
+  },
 ): Promise<ShareableSignupField[] | null> {
   const consents = schema.authorizedSignupConsents;
   const [row] = await database
@@ -299,6 +366,7 @@ export async function loadPlanConsent(
     .where(
       and(
         eq(consents.familyId, input.familyId),
+        eq(consents.parentUserId, input.parentUserId),
         eq(consents.messageId, input.messageId),
         eq(consents.activityKey, input.activityKey),
         eq(consents.providerHost, signupProviderHost(input.providerHost)),

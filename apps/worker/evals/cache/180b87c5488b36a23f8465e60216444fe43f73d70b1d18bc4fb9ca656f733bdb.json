@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the handed window, says registration is coming up, and gives no opening date, weekday, time or relative day. It asks the parent to check the page and includes the handed link. It refers to \"your teen\" without naming a child, is in English, and asks no question, which is correct since offer is false. The page_unreadable reason is roughly covered by \"couldn't confirm the opening date from the registration page.\" That wording fits page_unconfirmed better; page_unreadable would more precisely be \"couldn't open/read the page.\" This is acceptable but slightly imprecise, and the tone is fine.",
+    "score": 4
+  }
+}

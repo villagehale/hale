@@ -102,9 +102,10 @@ export function spotOpenFacts(
   };
 }
 
-/** A link with or without a scheme. Clock words such as "a.m." never match: no TLD here
- * is one letter. */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|gov|us)\b/i;
+/** A link with or without a scheme, on any TLD: a phone links "bit.ly/x" as readily as
+ * "riverton.ca", so the shape is any dotted host rather than a list of TLDs. Clock words
+ * such as "a.m." never match: no TLD is one letter. */
+export const LINK_SHAPE = /https?:\/\/|www\.|[\p{L}\p{N}_-]\.\p{L}{2,}/iu;
 
 /** Every number a draft may print, as numbers, so "05:00 PM" backs a written "5". */
 function backedNumbers(facts: SpotOpenFacts): Set<number> {

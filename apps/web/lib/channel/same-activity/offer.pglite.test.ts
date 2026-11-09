@@ -129,7 +129,7 @@ describe('same-activity offer', () => {
     const b = await seedFamily(db.database, 'Family B');
     const bookedOnly = await seedFamily(db.database, 'Booked Only');
     await db.database.execute(
-      sql`update users set name = 'Sam Lee', locale = 'fr-CA' where id = ${b.parentUserId}`,
+      sql`update users set name = 'Sam Lee', proactive_language = 'fr-CA' where id = ${b.parentUserId}`,
     );
 
     const first = await answerSameActivity(db.database, {

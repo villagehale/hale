@@ -602,6 +602,10 @@ async function runToddlerJourney(): Promise<Journey> {
       googleGivenName: null,
     }),
     composeNameAsk: async () => null,
+    // REGISTRATION_DATE_CHECK is unset here, so no registration page is read.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -761,6 +765,11 @@ async function runToddlerJourney(): Promise<Journey> {
       notes.push(facts);
       return `Hale note: ${facts.kind}`;
     },
+    // REGISTRATION_DATE_CHECK is unset here, so no page is read and no dateless text is written.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
+    composeDateUnconfirmed: async () => null,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);

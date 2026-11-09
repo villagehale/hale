@@ -46,6 +46,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -54,6 +55,7 @@ import { dayKeyOf } from '~/lib/format/datetime';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -988,11 +990,37 @@ function keptCadence(
   return cadencePreference(author, heard.direction);
 }
 
+/** Each class's own sent verb, so the trail reads a decider send as its sweep's. */
+const SEND_VERB: Partial<Record<ProactiveSendKind, string>> = {
+  nudge: 'proactive_nudge_sent',
+  evening_check_in: 'evening_check_in_sent',
+  co_parent_departed: 'co_parent_departure_notice_sent',
+  travel_brief: 'travel_brief_sent',
+};
+
 /** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
 function sendAuditVerb(items: readonly QueuedItem[]): string {
-  if (items.every((item) => item.kind === 'nudge')) return 'proactive_nudge_sent';
-  if (items.every((item) => item.kind === 'evening_check_in')) return 'evening_check_in_sent';
-  return 'proactive_cadence_sent';
+  const kinds = new Set(items.map((item) => item.kind));
+  const [only] = kinds;
+  return (kinds.size === 1 && only !== undefined && SEND_VERB[only]) || 'proactive_cadence_sent';
+}
+
+/**
+ * What a class's own sweep does after its text leaves, done here for a decider send:
+ * a travel brief closes its trip and the trips it overlaps (travel/sweep.ts).
+ */
+async function afterClassSend(
+  database: Database,
+  items: readonly QueuedItem[],
+  channelMessageId: string,
+  now: Date,
+): Promise<void> {
+  for (const item of items) {
+    if (item.kind !== 'travel_brief') continue;
+    const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
+    if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
+    await closeBriefedTrip(database, { tripId, channelMessageId, now });
+  }
 }
 
 async function sendChosen(
@@ -1089,13 +1117,19 @@ async function sendChosen(
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [...distinct.keys()].sort().join('\n\n');
+    // VIL-572 · a parent's own copy is written in that parent's proactive language. The
+    // household's one group copy stays in the family's.
+    const language =
+      target.channel === 'group'
+        ? (input.language ?? null)
+        : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
+    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}`;
     let written = writtenFor.get(setKey);
     if (!written) {
       written = await deps.compose({
         items: [...distinct.values()],
         client: deps.client,
-        language: input.language ?? null,
+        language,
       });
       writtenFor.set(setKey, written);
     }
@@ -1137,7 +1171,7 @@ async function sendChosen(
     const covered = copy.items;
     const coveredIds = covered.map((item) => item.id);
     const labels = [...new Set(covered.map((item) => item.why))];
-    // The sweep's own verb for a nudge, so the trail reads a decider send the same way.
+    // The sweep's own verb, so the trail reads a decider send the same way.
     const messageId = await finalizeProactiveSend(database, finalizer, {
       familyId,
       recipientUserId: copy.parentUserId,
@@ -1158,6 +1192,7 @@ async function sendChosen(
       },
     });
     if (firstMessageId === null) firstMessageId = messageId;
+    await afterClassSend(database, covered, messageId, now);
     if (covered.some((item) => item.kind === 'evening_check_in')) {
       // The ask clock starts when the text leaves, not when it was queued. A review
       // that holds tonight does not count as an ask.

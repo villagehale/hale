@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (Swim class), the correct day (today), the correct start and end (10:00 a.m. to 11:00 a.m.), and a relative time (about 3 hours) that matches minutesUntilStart of 180. No venue or address was given, so none is missing, and nothing was invented. No bold, which is fine.",
+    "score": 5
+  }
+}

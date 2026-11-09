@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Thursday 6 PM local is the pre-weekend evening send; Saturday is open and fits the library session, it is not yet worthless, and the parent is engaged with no unanswered streak or cadence preference.",
+    "action": "send_now",
+    "item_ids": [
+      "sat-find"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

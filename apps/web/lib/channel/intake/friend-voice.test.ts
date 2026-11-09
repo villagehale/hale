@@ -14,6 +14,7 @@ import {
   lastInboundFact,
   nameAskVoiceInput,
   parentReading,
+  readGroupLeads,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
@@ -137,7 +138,7 @@ describe('friend voice brief', () => {
 
 describe('the open name ask, as the name-capture reader hands it to the model', () => {
   it('carries no Hale turn code wrote, and answers the name ask as a structured fact', () => {
-    const input = nameAskVoiceInput('laisse tomber', 'fr');
+    const input = nameAskVoiceInput('laisse tomber', 'fr', null);
     expect(input.recentTurns).toEqual([]);
     const context = friendVoiceContext(input);
     expect(context).toMatchObject({ answering: 'name', recentTurns: [] });
@@ -145,8 +146,52 @@ describe('the open name ask, as the name-capture reader hands it to the model', 
   });
 
   it("uses the family's own language, and none when none is stored", () => {
-    expect(nameAskVoiceInput('laisse tomber', 'fr').language).toBe('fr');
-    expect(nameAskVoiceInput('undo', null).language).toBeNull();
+    expect(nameAskVoiceInput('laisse tomber', 'fr', null).language).toBe('fr');
+    expect(nameAskVoiceInput('undo', null, null).language).toBeNull();
+  });
+
+  it('logs the kinds and count the judge matched, never the matched draft strings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const problems: string[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(input) {
+            if (input.retry) problems.push(input.retry.problem);
+            return {
+              reply: 'No problem, see you at swim on Thursday. What should I call you instead?',
+              capture: { nameTakenBack: true },
+            };
+          },
+        },
+        nameAskVoiceInput('undo', 'en', null),
+        { page: async () => {} },
+      );
+      expect(spoken.source).toBe('unsent');
+      // Positive control: the judge matched the draft's words, and only the retry was told.
+      expect(problems.join(' ')).toContain('thursday,swim');
+      const logged = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([, message]) =>
+          message === 'onboarding-friend: attempt refused' ||
+          message === 'onboarding-friend: unusable reply',
+      );
+      expect(logged).toHaveLength(2);
+      for (const [fields] of logged) {
+        expect(fields).toMatchObject({
+          reason: 'invented',
+          kinds: ['weekday', 'activity'],
+          count: 2,
+        });
+        expect(fields).not.toHaveProperty('detail');
+        expect(JSON.stringify(fields)).not.toMatch(/thursday|swim/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+      info.mockRestore();
+    }
   });
 });
 
@@ -267,6 +312,7 @@ describe('a delayed undo during name capture', () => {
       ok: false,
       reason: 'identity',
       detail: 'unknown_name',
+      kinds: ['unknown_name'],
     });
   });
 
@@ -284,7 +330,12 @@ describe('a delayed undo during name capture', () => {
     const long = { ...asked, parentWords: 'actually scratch that for now', nameTakenBack: true };
     expect(
       judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 
   it('does not treat the message as a foreign name until the model marks a take-back', () => {
@@ -350,7 +401,12 @@ describe('a delayed undo during name capture', () => {
     expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
     expect(
       judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 });
 
@@ -785,9 +841,8 @@ describe('speakFriend', () => {
     expect(opener.length).toBeGreaterThan(120);
     const line = 'Swim at the rec centre (ages 3-5) - Saturday morning at the community pool';
     const lines = Array.from({ length: 24 }, () => line);
-    const lead =
-      'A calm one for the younger kid, easy to get to and easy to leave when they have had enough of it for one morning and still want the rest of the day open with nothing else planned';
-    expect(lead.length).toBeGreaterThan(160);
+    const lead = `A calm one for the younger kid, every Saturday morning:\n${lines.join('\n')}`;
+    expect(lead.length).toBeGreaterThan(1200);
     const spoken = await speakFriend(
       {
         async compose() {
@@ -809,11 +864,168 @@ describe('speakFriend', () => {
     );
     expect(spoken.source).toBe('composed');
     expect(spoken.fallback).toBeNull();
-    expect(spoken.bubbles[0]).toBe(opener);
-    expect(spoken.bubbles[1]).toContain(lead);
-    expect(spoken.body.length).toBeGreaterThan(1200);
+    expect(spoken.bubbles).toEqual([opener, lead]);
     expect(pages).toEqual([]);
     expect(spoken.body).not.toContain('?');
+  });
+
+  describe('find_show: every map bubble is one the model wrote (VIL-526)', () => {
+    const SWIM_LINE = 'Swim at the rec centre (ages 3-5) - Saturday 10:00';
+    const STORY_LINE = 'Story time at the library (all ages) - Tuesday 10:30';
+    const OPENER = 'I looked near you for what fits a 4-year-old.';
+    const map = blank({
+      step: 'find_show',
+      parentWords: "she's 4",
+      placeLabel: 'M5V',
+      ageMonths: [48],
+      findLines: [SWIM_LINE, STORY_LINE],
+      findGroups: [
+        { category: 'swimming', lines: [SWIM_LINE] },
+        { category: 'parent_baby', lines: [STORY_LINE] },
+      ],
+    });
+    const SWIM_BUBBLE = 'Swim at the rec centre on Saturday at 10:00, made for ages 3-5.';
+    const STORY_BUBBLE = 'Story time at the library, Tuesday at 10:30, any age is welcome.';
+
+    async function speakWith(drafts: (prompt: string) => { reply: string; groupLeads?: unknown }) {
+      const prompts: string[] = [];
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            const prompt = options?.prompt ?? 'full';
+            prompts.push(prompt);
+            retries.push(given.retry?.problem);
+            return drafts(prompt) as never;
+          },
+        },
+        map,
+        { page: async () => {} },
+      );
+      return { spoken, prompts, retries };
+    }
+
+    it('sends the opener and each group bubble as the model wrote it, with no numbers added', async () => {
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [SWIM_BUBBLE, STORY_BUBBLE],
+      }));
+      expect(spoken.source).toBe('composed');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+      expect(spoken.body).not.toMatch(/^\d+\.\s/m);
+    });
+
+    it('keeps a group bubble with line breaks as one bubble', async () => {
+      const multiline = 'Two swims this week:\nSaturday at 10:00 at the rec centre\nages 3-5';
+      const { spoken } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [multiline, STORY_BUBBLE],
+      }));
+      expect(spoken.bubbles).toEqual([OPENER, multiline, STORY_BUBBLE]);
+    });
+
+    it('refuses a map the model wrote nothing for one group in, and sends the retry that writes every group', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: ['', STORY_BUBBLE] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+    });
+
+    it("sends no short map when every attempt borrows another group's time for one bubble", async () => {
+      const borrowed = 'Swim at the rec centre on Tuesday at 10:30, made for ages 3-5.';
+      const { spoken, prompts } = await speakWith(() => ({
+        reply: OPENER,
+        groupLeads: [borrowed, STORY_BUBBLE],
+      }));
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
+
+    it('asks again when no group bubble survives, and sends the retry that writes them', async () => {
+      const { spoken, prompts, retries } = await speakWith((prompt) =>
+        prompt === 'short'
+          ? { reply: OPENER, groupLeads: [SWIM_BUBBLE, STORY_BUBBLE] }
+          : { reply: OPENER, groupLeads: [] },
+      );
+      expect(prompts).toEqual(['full', 'short']);
+      expect(retries[1]).toMatch(/one bubble per group/);
+      expect(spoken.source).toBe('retry');
+      expect(spoken.bubbles).toEqual([OPENER, SWIM_BUBBLE, STORY_BUBBLE]);
+    });
+
+    it('sends nothing at all when neither attempt writes a group bubble', async () => {
+      const { spoken, prompts } = await speakWith(() => ({ reply: OPENER, groupLeads: null }));
+      expect(prompts).toEqual(['full', 'short']);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
+
+    it('reads a bubble with line breaks as one bubble, in every shape the model returns', () => {
+      const multiline = 'Two swims near you:\nSat 10:00\nSun 9:30';
+      expect(readGroupLeads([multiline, 'Story time Tue 10:30'])).toEqual([
+        multiline,
+        'Story time Tue 10:30',
+      ]);
+      expect(readGroupLeads('a\nb')).toEqual(['a\nb']);
+      expect(readGroupLeads({ swimming: { lead: multiline } })).toEqual([multiline]);
+      expect(readGroupLeads(JSON.stringify([multiline, 'Story']))).toEqual([multiline, 'Story']);
+      expect(readGroupLeads(null)).toBeNull();
+    });
+  });
+
+  describe('a stop that still asks', () => {
+    const later = blank({ step: 'calendar', parentWords: 'later' });
+    const CLOSE = 'No worries, I will leave it there.';
+
+    async function speakStop(first: string, second: string, asks?: boolean) {
+      const retries: (string | undefined)[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(given, options) {
+            retries.push(given.retry?.problem);
+            const retry = options?.prompt === 'short';
+            return {
+              reply: retry ? second : first,
+              ...(asks === undefined || retry ? {} : { asks }),
+              capture: { stopAsking: true },
+            } as never;
+          },
+        },
+        later,
+        { page: async () => {} },
+      );
+      return { spoken, retries };
+    }
+
+    it.each([
+      ['a question mark', 'No worries. Want it on your calendar as a weekly reminder?', undefined],
+      [
+        'a full-width question mark',
+        'No worries. Want it on your calendar as a weekly reminder\uFF1F',
+        undefined,
+      ],
+      ['only the asks mark', 'No worries, tell me when you want the calendar.', true],
+    ])(
+      'asks again when the stop holds %s, and sends the close that asks nothing',
+      async (_, draft, asks) => {
+        const { spoken, retries } = await speakStop(draft, CLOSE, asks);
+        expect(retries[1]).toMatch(/set stopAsking and still asked a question/);
+        expect(spoken.source).toBe('retry');
+        expect(spoken.body).toBe(CLOSE);
+        expect(spoken.capture.stopAsking).toBe(true);
+      },
+    );
+
+    it('sends nothing and keeps the session open when the retry still asks', async () => {
+      const draft = 'No worries. Want it on your calendar as a weekly reminder?';
+      const { spoken } = await speakStop(draft, draft);
+      expect(spoken).toMatchObject({ source: 'unsent', body: '' });
+      expect(spoken.capture.stopAsking).toBe(false);
+    });
   });
 
   it('never sends a reply that confirmed an add code refused; the retry with real adds goes out', async () => {

@@ -34,7 +34,8 @@ Write `text` for this family only:
 
 - If they asked about their own private things, answer it from `private`, plainly.
 - If their own commitment actually overlaps a group time, give them the reason
-  privately and let them choose what to tell the group.
+  privately. They tell the group themselves: you cannot post to the group from
+  this text, so never offer to tell, say or pass on anything to the group for them.
 
 Rules:
 

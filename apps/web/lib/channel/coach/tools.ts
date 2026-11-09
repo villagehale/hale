@@ -1,5 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -26,7 +27,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
-import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import type { ChannelDraftInput, ChannelDraftPort, GroupApprovalPlace } from './draft';
 import {
   type GmailDraftNoticeBox,
   type GmailDraftToolPorts,
@@ -189,6 +190,9 @@ export interface ChannelCoachToolArgs {
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
+  /** VIL-447 shared-list verbs (channel/lists/tools.ts). Wired only on a group turn while
+   * GROUP_SHARED_LISTS_ENABLED is on; absent leaves the tool set unchanged. */
+  groupLists?: GroupListToolPorts | null;
   /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
    * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
@@ -448,6 +452,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
+  /** Where a group turn's yes is given (VIL-595); nothing on a 1:1 turn's result. */
+  async function approvalPlace(
+    actionType: ChannelDraftInput['actionType'],
+  ): Promise<{ approvalWaitsIn?: GroupApprovalPlace }> {
+    const place = await draftPort.approvalWaitsIn?.({ familyId, actionType });
+    return place ? { approvalWaitsIn: place } : {};
+  }
+
   /** The one place a draft is minted, so the turn's ledger cannot miss one. */
   async function mint(input: ChannelDraftInput): Promise<string> {
     const { actionId } = await draftPort.draft(input);
@@ -590,6 +602,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_move')),
       };
     },
   });
@@ -624,7 +637,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId };
+      return { drafted: true as const, actionId, ...(await approvalPlace('calendar_cancel')) };
     },
   });
 
@@ -684,6 +697,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
           actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
+          ...(await approvalPlace('calendar_add')),
         };
       }
       claimDraftBudget();
@@ -715,7 +729,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_add')),
+      };
     },
   });
 
@@ -817,6 +836,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
   if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
+  if (args.groupLists) tools.push(...groupListTools(args.groupLists));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
   return tools;

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "names the child, toddler swim class, sender is the pool, cancellation with old date and time known, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Bummer, Riverside Pool emailed Tuesday that Robin's parent and tot swim class this Saturday at 9 AM is cancelled. No new time in the email.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "self-harm/suicide disclosure about a teenager, reported state",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 831
+}

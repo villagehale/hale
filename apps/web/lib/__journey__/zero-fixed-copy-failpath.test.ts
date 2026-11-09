@@ -131,7 +131,13 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
       recMorningReply(
         body,
         new Date(),
-        resolveRecMorningWhere({ city: null, postal, timeZone: 'America/Toronto' }),
+        resolveRecMorningWhere({
+          city: null,
+          postal,
+          country: null,
+          province: null,
+          timeZone: 'America/Toronto',
+        }),
       ),
     ).not.toBeNull();
     const family = { primaryLanguage: null, city: null, postalCode: postal, areaCoarse: null };

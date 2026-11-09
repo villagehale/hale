@@ -65,27 +65,46 @@ function agrees(
   return left === "" || right === "" || left === right;
 }
 
+const CLOCK = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/gi;
+const RANGE_JOIN = /^\s*(?:-|–|—|to|until|till)\s*$/i;
+
 /**
- * The session start a `when` publishes, in minutes after midnight, or null
- * when it names no clock time. "Sat 10am", "Saturday 10:00 AM" and
- * "Saturday 10:00" all read 600; "2pm" and "14:00" read 840.
+ * The start times a `when` publishes, in minutes after midnight. The end of a
+ * range ("10:00 AM - 11:00 AM") is not a start; a bare number ("Nov 7") is
+ * not a time. "registration opens Monday 10am; Sat 2pm" publishes two.
+ */
+function publishedStarts(when: string | null | undefined): number[] {
+  if (!when?.trim()) return [];
+  const starts: number[] = [];
+  let previousEnd = -1;
+  for (const match of when.matchAll(CLOCK)) {
+    const [text, h, m, ampm] = match;
+    const at = match.index;
+    const endsRange =
+      previousEnd >= 0 && RANGE_JOIN.test(when.slice(previousEnd, at));
+    previousEnd = at + text.length;
+    if (endsRange || (!m && !ampm)) continue;
+    let hour = Number(h);
+    const minute = m ? Number(m) : 0;
+    if (hour > 23 || minute > 59) continue;
+    if (ampm) {
+      if (hour < 1 || hour > 12) continue;
+      const pm = ampm.toLowerCase().startsWith("p");
+      hour = (hour % 12) + (pm ? 12 : 0);
+    }
+    starts.push(hour * 60 + minute);
+  }
+  return starts;
+}
+
+/**
+ * The one session start a `when` publishes, in minutes after midnight, or
+ * null when it names none or more than one. "Sat 10am", "Saturday 10:00 AM"
+ * and "Saturday 10:00" all read 600; "2pm" and "14:00" read 840.
  */
 export function sessionStart(when: string | null | undefined): number | null {
-  if (!when?.trim()) return null;
-  const match =
-    /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?(?![\d:])/i.exec(when);
-  if (!match) return null;
-  const [, h, m, ampm] = match;
-  if (!m && !ampm) return null; // a bare number ("Nov 7") is not a time
-  let hour = Number(h);
-  const minute = m ? Number(m) : 0;
-  if (hour > 23 || minute > 59) return null;
-  if (ampm) {
-    if (hour < 1 || hour > 12) return null;
-    const pm = ampm.toLowerCase().startsWith("p");
-    hour = (hour % 12) + (pm ? 12 : 0);
-  }
-  return hour * 60 + minute;
+  const starts = publishedStarts(when);
+  return starts.length === 1 ? (starts[0] as number) : null;
 }
 
 const WEEKDAYS: Array<[number, RegExp]> = [
@@ -140,6 +159,10 @@ function sameFind(a: ActivityPick, b: ActivityPick): boolean {
     const daysB = publishedWeekdays(b.when);
     if (daysA && daysB && daysA !== daysB) return false;
   }
+  // A `when` with two start times ("registration opens Monday 10am; Sat 2pm")
+  // has no single session start to compare, so only the same text merges it.
+  if (publishedStarts(a.when).length > 1 || publishedStarts(b.when).length > 1)
+    return agrees(a.when, b.when);
   const startA = sessionStart(a.when);
   const startB = sessionStart(b.when);
   if (startA !== null && startB !== null) return startA === startB;

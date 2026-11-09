@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrcV3v1QzcoLNfWpMwBg",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjQsKEAgTGAI4AUIIdGhpbmtpbmcSDMw8fd9sJpxBEPBQgxoMkJIqD4iGQDs6prynIjDiqZPiIuOUGeSC+6XxVUZYYCVbgr3Kf9HCZb+4i2ZsyjES0y9jLdpDODixTqmaIM8qqgqhD14xC/BnmtE7kSS/jnMkNe58ujG1eF81GlsjScbNYzAa7ezv191rlh82hlcEcS7IDrdRcIAeLk6GsqOtHKSbj16fXNuucp0rO99w549BxtbyYXGUfMHxJ/HlIuPxO169f1oPpbw6R8Bzv1L495PI5CXko6HkXqLx0DpaKu//zrAl9+SgstMZGxzBtyh6v3+cts/FmDCHjadaIL/PS8oAxA1JbQCZFflG+M926BrhwZWcxra3ynj2yAfwj70J1AW4KCwgRCfsSQlJKHh9cKFBgOsHoT2MlPw2FFd0diJcETkhNZZmdLNIIzcJpBF+ddBBifaMSEzSnGQLBnXgx8P/guG3Q7KBiqcB+jUTqpaUuHeeDAH4el8rFwKjaKp7rH0diQ66zlzx7K1b8CGcGZwKpvPfd34iQFBkzrK53s3kVduo9EHmSO1s99hSJaIyvZE3q2h+g/wXwhnREzRXxJD0AZY7lWSVhRqS5O8Ij8vA41/ABZGbHlusvk/vHrwZ7Wm2ZDkPde+T4o5OaCPAVh1XMwAhY1w016/MlgHrSMsmbMXdkxyogBzPXEcr+EVqDcu8Tq7mylGokOQGnDnWdMXu+FHhjmjmIQ4C171ENQMxiYGNabl5SDYvZLy4d/ixCgJmiY2e+P+u1W9XyxYtToQ1KFYO9U5KgBBM/pfDxT/9ze453S0sfv7cXbab92LLlQXUoyreCDItwChjTAR4jvJVWPlfWox71fcJETVVR+oGQi1uoHnLjG0DDjA586fzgR22zcXbOalZPZ2RRq50UVfJUCcKvCEfYQwk1l4lFyH5Vh0wiOeSEL+83oUE+AImkOH0ZwQEKVP9l8E4nwocTHMcG8T5VHJ+ZrwoA+iRJ8pXKVi8DoRg5riKOyYov5zmn9zNBcuM5GMxZgyBO/pNIMVBAXwZwyNS0NMIxeGGgxKfs7bMJDp70USavE+cMD1JgydYlCA2iDhsZ2pDFi4QKRvdlYvXVMQVLWpu+2fsWKuVcTE2UaDVxn90MX8GozYRF/N8/xqxW9qWTq7wghEwhio95XFBXxkbpPZ2sfQ3ApKXr5R2qCWaMKtLYINfp39ZsHt0EAigcOXvkpf0nzEW7VOhkvZm+jO4aPiSX73/Ji5p+2dba310qtU2TLSS5VvtPhE2T7MCgY49Bv7/3ls8o8Uakt4PkbKhSbOEkD9g96NNQlWiYOprICPtvKbZpnGJJb651NjdN8k+fDE/lmzP499Mmscf8KSEZXo1nL9iFNLTk6iSx4zolz/gnpztKhA3FjYYwJs1WhD6aUWrh0DRAp+S1aBSWd3+L8fwFYxgdlTQnfribaQwE3DdAEilGsGVrR6TzHlrEI2vZBG1w15H3FWq/wCLQDC7NsAGce48LVDceuhPM3XdncpOyFljxi0ke0v86M1MD5f4v9x5ZIZ9cEI4pMNfujPxsxffX1VjLNanzi+F3a5a3OYrNt+4lGIUkRrIaojkO1sSNVxV+LiPYnx8w9oU97MGL1N5jj/3btDnM1syXT2WmrmiwN4DQXNXaN+uam6rt4byArItzuL2HzcNcRwSimvk1W8Spp5j48J3vP2YWkONbDypcBPr/uW6qQ+reyWwKm/hiaa8tj2zn4lnxDCSSABqaYXFmIkpZbw1w/02p9pNf2Z5fourmCshL2Z8Tjz9g8sqBKayuN+xp1w4dI7UUQAVXnM7i6BVbVizdrAEOczKbWk7Oyxg1NwDtpB41mM5cINv9qOXO9aLWENxCtfaUDTr1SjPcBgB"
+      },
+      {
+        "type": "text",
+        "text": "I don't have anything from Priya on the school thing, so I can't say what she told me."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18744,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 308,
+      "output_tokens_details": {
+        "thinking_tokens": 280
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

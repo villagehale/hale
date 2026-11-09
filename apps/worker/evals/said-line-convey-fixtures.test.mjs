@@ -39,6 +39,15 @@ describe('said-line convey fixtures (VIL-530)', () => {
     expect(unrelated?.draft.includes(FACT)).toBe(false);
   });
 
+  it('pairs the unrelated-word omit with a send that has the same word and the meaning (VIL-610)', () => {
+    const byId = (id) => SAID_LINE_CONVEY_FIXTURES.find((fixture) => fixture.id === id);
+    const omit = byId('intro-off-en-unrelated-closed');
+    const control = byId('intro-off-en-unrelated-closed-conveys');
+    expect(control?.expect).toBe('send');
+    expect(control?.draft.startsWith(omit?.draft.split('.')[0])).toBe(true);
+    expect(byId('intro-off-es-unrelated-closed')?.expect).toBe('omit');
+  });
+
   it('grades those expects with the cached real judge, not a scripted verdict', () => {
     const runner = readFileSync(
       new URL('./run-said-line-convey-eval.mjs', import.meta.url),

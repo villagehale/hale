@@ -2,13 +2,33 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  coachEmailReader,
+  productionCoachEmailReaderDeps,
+} from '~/lib/channel/coach/read-email-tool';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
+import { threadProactiveMessage } from '~/lib/channel/thread';
+import {
+  appendMessage,
+  createConversation,
+  loadTranscript,
+  loadTranscriptWithAttachments,
+  resolveNoteConversation,
+} from '~/lib/coach/conversation';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import * as passportCopy from '~/lib/passport/copy';
 import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/lib/sentinel';
 import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import {
+  type TestDb,
+  createTestDb,
+  seedChild,
+  seedFamily,
+  seedIntegration,
+} from '~/lib/testing/pglite';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
@@ -23,6 +43,7 @@ import {
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, sessionKey } from './going';
+import { CONNECTOR_SCOPES } from './google-oauth';
 
 /**
  * The join between the sentinel and the outbound chokepoint, against the REAL DDL.
@@ -107,7 +128,12 @@ const TRIAGED_OUT: SentinelClassification = {
 interface Harness {
   ports: EmailAlertPorts;
   transport: FakeTransport;
-  threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  threaded: Array<{
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    source?: schema.MessageSource | null;
+  }>;
   classifyCalls: number;
   /** The writer port: what it was told, and what it answered. */
   writer: ScriptedNoticeWriter;
@@ -263,6 +289,12 @@ describe('alertParentForEmail', () => {
     expect(h.writer.seen).toHaveLength(1);
     expect(h.transport.sent[0]?.body).toBe('Saturday swim is off this week.');
     expect(h.threaded[0]?.body).toBe('Saturday swim is off this week.');
+    expect(h.threaded[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      snippet: ENVELOPE.snippet,
+    });
   });
 
   it('hands the writer the EXTRACTION, never the snippet', async () => {
@@ -344,6 +376,8 @@ describe('alertParentForEmail', () => {
     expect(rows[0]).toMatchObject({
       category: 'email_alert',
       direction: 'out',
+      // No inbound phone turn yet: the parent's door is SMS.
+      channel: 'sms',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
       status: 'suppressed_quiet_hours',
       // NEVER the key: the unique index is total over non-null keys, so a suppression
@@ -357,6 +391,26 @@ describe('alertParentForEmail', () => {
     const later = harness();
     await expect(alert(later)).resolves.toBe('sent');
     expect(later.transport.sent).toHaveLength(1);
+  });
+
+  it('a hold for a parent who texts on iMessage is recorded on iMessage, not SMS', async () => {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      templateKey: 'inbound',
+      providerChatId: 'chat-door',
+      status: 'delivered',
+    });
+
+    const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
+    await expect(alert(held)).resolves.toBe('gate_refused:quiet_hours');
+
+    const rows = await ledgerRows();
+    const hold = rows.find((r) => r.direction === 'out');
+    expect(hold).toMatchObject({ channel: 'imessage', status: 'suppressed_quiet_hours' });
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {
@@ -860,6 +914,13 @@ describe('nothing is sent unless the writer says it is about the kids', () => {
         title: 'a message about school',
       },
     });
+    expect(h.threaded[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      snippet: null,
+    });
+    expect(h.transport.sent[0]?.body).not.toContain(ENVELOPE.snippet);
   });
 });
 
@@ -1295,4 +1356,260 @@ describe('the going count in the alert path', () => {
       othersGoing: h.writer.seen[0]?.otherHaleFamiliesGoing ?? null,
     };
   }
+});
+
+describe('the notice is the whole text, and the thread keeps the email for the coach', () => {
+  const WRITTEN = 'Saturday swim is off this week.';
+
+  it('stores the snippet on the row and shows it only in the model transcript', async () => {
+    const h = harness({ notice: { send: true, text: WRITTEN } });
+    h.ports.threadMessage = threadProactiveMessage;
+    await expect(alert(h)).resolves.toBe('sent');
+
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.transport.sent[0]?.body).not.toContain(ENVELOPE.snippet);
+
+    const conversationId = await resolveNoteConversation(
+      family.familyId,
+      channelSmsNoteKey(family.parentUserId),
+      db.database,
+    );
+    expect(conversationId).toBeTruthy();
+    const stored = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId as string));
+    expect(stored).toEqual([
+      {
+        content: WRITTEN,
+        source: {
+          kind: 'gmail',
+          eventId: null,
+          gmailMessageId: 'm1',
+          snippet: ENVELOPE.snippet,
+        },
+      },
+    ]);
+    const transcript = await loadTranscript(conversationId as string, db.database);
+    expect(transcript.map((turn) => turn.role)).toEqual(['assistant', 'tool']);
+    expect(transcript[0]?.content).toBe(WRITTEN);
+    expect(transcript[0]?.content).not.toContain(ENVELOPE.snippet);
+    expect(transcript[1]?.content).toContain(ENVELOPE.snippet);
+    expect(transcript[1]?.content).toContain('"trust":"external"');
+
+    const trail = JSON.stringify(await auditRows());
+    expect(trail).not.toContain(ENVELOPE.snippet);
+    expect(trail).not.toContain(ENVELOPE.subject);
+  });
+
+  // The age floor, not the model's teen flag: a confident logistics read of a 13+ child's
+  // email has teenContent false and teenAttributed true, and is still a teen's email.
+  it.each([
+    { teenAttributed: false, snippet: ENVELOPE.snippet, read: true },
+    { teenAttributed: true, snippet: null, read: false },
+  ])(
+    'teenAttributed $teenAttributed with teenContent false: snippet $snippet, read_email read $read',
+    async ({ teenAttributed, snippet, read }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const integrationId = await seedIntegration(
+        db.database,
+        family.familyId,
+        family.parentUserId,
+        'gmail',
+      );
+      await db.database
+        .update(schema.integrations)
+        .set({ scopes: [...CONNECTOR_SCOPES.gmail] })
+        .where(eq(schema.integrations.id, integrationId));
+      const h = harness({
+        notice: { send: true, text: WRITTEN },
+        classification: classified({ kind: 'new_event', teenContent: false, teenAttributed }),
+      });
+      h.ports.threadMessage = threadProactiveMessage;
+      await expect(alert(h)).resolves.toBe('sent');
+
+      const conversationId = (await resolveNoteConversation(
+        family.familyId,
+        channelSmsNoteKey(family.parentUserId),
+        db.database,
+      )) as string;
+      const stored = await db.database
+        .select({ source: schema.messages.source })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, conversationId));
+      expect(stored).toEqual([
+        { source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet } },
+      ]);
+
+      const fetched: string[] = [];
+      const reader = coachEmailReader({
+        ...productionCoachEmailReaderDeps(db.database),
+        accessToken: async () => 'token-1',
+        fetchBody: async (id) => {
+          fetched.push(id);
+          return 'the email body';
+        },
+      });
+      const result = await reader.read({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        conversationId,
+        gmailMessageId: 'm1',
+      });
+      expect(result).toEqual(
+        read
+          ? { read: true, body: 'the email body', truncated: false }
+          : { read: false, reason: 'private' },
+      );
+      expect(fetched).toEqual(read ? ['m1'] : []);
+    },
+  );
+
+  it('a 13+ child keeps the snippet off the row and off the model transcript', async () => {
+    const h = harness({
+      notice: { send: true, text: 'Something about school was rescheduled.' },
+      classification: classified({
+        kind: 'new_event',
+        title: 'a message about school',
+        teenContent: true,
+      }),
+    });
+    h.ports.threadMessage = threadProactiveMessage;
+    await expect(alert(h)).resolves.toBe('sent');
+
+    const conversationId = await resolveNoteConversation(
+      family.familyId,
+      channelSmsNoteKey(family.parentUserId),
+      db.database,
+    );
+    const stored = await db.database
+      .select({ content: schema.messages.content, source: schema.messages.source })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId as string));
+    expect(stored[0]?.content).toBe('Something about school was rescheduled.');
+    expect(stored[0]?.source).toEqual({
+      kind: 'gmail',
+      eventId: null,
+      gmailMessageId: 'm1',
+      snippet: null,
+    });
+    const transcript = await loadTranscript(conversationId as string, db.database);
+    expect(transcript).toEqual([
+      { role: 'assistant', content: 'Something about school was rescheduled.' },
+    ]);
+    expect(JSON.stringify(transcript)).not.toContain(ENVELOPE.snippet);
+  });
+
+  it('flag on: no passport sentence is composed or joined, and the stamp is unasked', async () => {
+    vi.stubEnv('INTEREST_PASSPORT_ENABLED', 'true');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    const line = vi.spyOn(passportCopy, 'composePassportLine');
+    const integrationId = await seedIntegration(
+      db.database,
+      family.familyId,
+      family.parentUserId,
+      'gmail',
+    );
+    const childId = await seedChild(db.database, family.familyId, 'Mia', 40, undefined, NOW);
+    const h = harness({
+      notice: { send: true, text: WRITTEN },
+      classification: classified({
+        kind: 'booking_confirmation',
+        title: 'Little Dragons Karate',
+        childRef: childId,
+        originalTime: null,
+        newTime: null,
+      }),
+    });
+    const result = await alertParentForEmail(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId,
+        messageId: 'm-karate',
+        threadId: 't-m-karate',
+        labelIds: ['INBOX'],
+        envelope: {
+          subject: 'Registration confirmed: Little Dragons Karate, Fall session, 12 weeks',
+          from: 'Little Dragons <hello@dragons.example>',
+          snippet: 'You are registered for Little Dragons Karate.',
+          receivedAt: '2026-09-17T14:00:00.000Z',
+        },
+        timeZone: 'America/Toronto',
+        now: NOW,
+      },
+      h.ports,
+    );
+    expect(result.alert).toBe('sent');
+    expect(line).not.toHaveBeenCalled();
+    expect(h.transport.sent[0]?.body).toBe(WRITTEN);
+    expect(h.threaded[0]?.body).toBe(WRITTEN);
+    const rows = await db.database
+      .select({ askedAt: schema.kidInterests.askedAt })
+      .from(schema.kidInterests)
+      .where(eq(schema.kidInterests.familyId, family.familyId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.askedAt).toBeNull();
+  });
+});
+
+describe('coach transcript before messages.source exists', () => {
+  let old: TestDb;
+
+  beforeAll(async () => {
+    // 0212 is the next file after this name. The column is not added here.
+    old = await createTestDb('0210_watched_spots_any_page.sql');
+  });
+
+  afterAll(async () => {
+    await old.close();
+  });
+
+  it('reads and appends a coach turn when the source column is absent', async () => {
+    const columns = await old.client.query<{ column_name: string }>(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([]);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { familyId, parentUserId } = await seedFamily(old.database);
+    const conversationId = await createConversation(familyId, old.database);
+    await appendMessage(conversationId, 'user', 'What did it say', old.database);
+    await appendMessage(conversationId, 'assistant', 'Saturday swim is off.', old.database);
+
+    const transcript = await loadTranscript(conversationId, old.database);
+    expect(transcript).toEqual([
+      { role: 'user', content: 'What did it say' },
+      { role: 'assistant', content: 'Saturday swim is off.' },
+    ]);
+    const withFiles = await loadTranscriptWithAttachments(conversationId, old.database);
+    expect(withFiles).toEqual(transcript);
+
+    const threaded = await threadProactiveMessage(old.database, {
+      familyId,
+      parentUserId,
+      body: 'Notice only.',
+      source: {
+        kind: 'gmail',
+        eventId: null,
+        gmailMessageId: 'm-old',
+        snippet: 'secret snippet from the mailbox',
+      },
+    });
+    expect(JSON.stringify(error.mock.calls)).toContain('messages_source_unavailable');
+
+    const after = await loadTranscript(threaded, old.database);
+    expect(after).toEqual([{ role: 'assistant', content: 'Notice only.' }]);
+    expect(JSON.stringify(after)).not.toContain('secret snippet');
+  });
+
+  it('migration 0212 applies twice and leaves one jsonb source column', async () => {
+    await old.applyMigration('0212_message_source.sql');
+    await expect(old.applyMigration('0212_message_source.sql')).resolves.toBeUndefined();
+    const columns = await old.client.query<{ data_type: string }>(
+      "SELECT data_type FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([{ data_type: 'jsonb' }]);
+  });
 });

@@ -10,7 +10,8 @@ import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import { groundCurrentSource, liveLookupReplyFromNotes } from './live-lookup';
+import { groundUserMessage } from './ground-message';
+import { groundCurrentSource, groundPlaceOf, liveLookupReplyFromNotes } from './live-lookup';
 import {
   deidentifyOfficialQuery,
   notesGroundADate,
@@ -178,6 +179,11 @@ export interface IntakeAnswerInput {
    * line is written in the language of `parentWords`, not English.
    */
   language?: ReplyLanguage | null;
+  /**
+   * The first Canadian or US code the session holds (VIL-592). The searches are told its
+   * country and province or state, never the code; the answer model is told nothing.
+   */
+  regionToken?: string | null;
 }
 
 export interface IntakeAnswerComposer {
@@ -343,12 +349,13 @@ async function groundOfficialPages(
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
   if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
+    const place = await groundPlaceOf(input.regionToken ?? null);
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
-      messages: [{ role: 'user', content: query.text }],
+      messages: [{ role: 'user', content: groundUserMessage(query.text, place) }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
@@ -379,7 +386,12 @@ async function answerFromCurrentSource(
   client: AgentClient,
   input: IntakeAnswerInput,
 ): Promise<IntakeAnswerOutcome> {
-  const ground = await groundCurrentSource(client, input.parentWords, input.children);
+  const ground = await groundCurrentSource(
+    client,
+    input.parentWords,
+    input.children,
+    input.regionToken ?? null,
+  );
   if (ground.status === 'ungrounded') {
     console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
     return { status: 'unavailable', reason: 'no_source' };

@@ -7,7 +7,11 @@ import type { SavedPushWatch, StoredPushWatch } from './google-push-watch';
  * notifications arriving together cannot both win the right to sync.
  */
 
-/** Collapses a burst of pushes for one connection into one sync, plus one trailing. */
+/**
+ * How long a claimed sync holds the window. Pushes inside it while the sync is in
+ * flight collapse into one trailing sync. A run that finishes releases the window at
+ * once (releaseIdlePushDebounce); this bound only frees one that died mid-sync.
+ */
 export const GOOGLE_PUSH_DEBOUNCE_MS = 15_000;
 
 const SWEEPABLE = ['active', 'error'] as const;
@@ -207,6 +211,29 @@ export async function takePushPending(
     )
     .returning({ integrationId: schema.googlePushSubscriptions.integrationId });
   return taken.length > 0;
+}
+
+/**
+ * A finished run gives the window back, unless a push landed after its last check and
+ * is still owed a sync (false). One statement, so a push cannot land between the check
+ * and the release and be left waiting for the poll.
+ */
+export async function releaseIdlePushDebounce(
+  database: Database,
+  integrationId: string,
+  now: Date,
+): Promise<boolean> {
+  const released = await database
+    .update(schema.googlePushSubscriptions)
+    .set({ debounceUntil: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.googlePushSubscriptions.integrationId, integrationId),
+        eq(schema.googlePushSubscriptions.pending, false),
+      ),
+    )
+    .returning({ integrationId: schema.googlePushSubscriptions.integrationId });
+  return released.length > 0;
 }
 
 /** A failed sync gives the next push the window back, so Google's retry is not dropped. */

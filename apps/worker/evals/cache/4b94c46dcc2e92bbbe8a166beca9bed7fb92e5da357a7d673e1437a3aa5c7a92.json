@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asks for indoor weekend activities for a toddler, which is finding something for the family to do despite mentioning weather",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2596
+}

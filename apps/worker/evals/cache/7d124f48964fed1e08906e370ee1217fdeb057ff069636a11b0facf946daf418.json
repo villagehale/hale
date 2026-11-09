@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The text never addresses Dan by name, which mustSay requires, and it does not say who asked for the reminder, Priya. The task itself is stated correctly, but two mustSay items are missing."
+  }
+}

@@ -11,6 +11,7 @@ import { episodesForContext, factsForContext } from '@hale/worker/memory-context
 import { and, eq } from 'drizzle-orm';
 import type { HouseholdGroupFact } from '../channel/intake/household-group';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
+import { labelDay, loadFactSources, readerTimeZone } from '../memory/source-label';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -90,6 +91,12 @@ export interface MemoryFactContext {
   factKey: string;
   factValue: unknown;
   confidence: number;
+  /**
+   * VIL-429 · where Hale saw a fact it took from Gmail or Calendar: the email's sender
+   * and the day it arrived, or the event's title and its day (`YYYY-MM-DD`). Present
+   * only on such a fact, so every other context keeps its bytes.
+   */
+  seenIn?: { email: { from: string; on: string } } | { calendar: { title: string; on: string } };
 }
 
 export interface MemoryEpisodeContext {
@@ -144,7 +151,8 @@ function compactTranscript(transcript: readonly TranscriptMessage[]): {
   for (let i = older.length - 1; i >= 0; i -= 1) {
     const turn = older[i];
     if (!turn) continue;
-    const speaker = turn.role === 'assistant' ? 'Hale' : 'Parent';
+    const speaker =
+      turn.role === 'assistant' ? 'Hale' : turn.role === 'user' ? 'Parent' : 'External';
     const excerpt = `${speaker}: "${clip(turn.content, COMPACTED_EXCERPT_CHARS)}"`;
     if (excerpt.length + EXCERPT_SEPARATOR.length > budget) break;
     budget -= excerpt.length + EXCERPT_SEPARATOR.length;
@@ -244,6 +252,11 @@ export interface LoadAgentContextInput {
   transcript: TranscriptMessage[];
   /** The Hale note this reply grounds on (redacted app view), or null. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * The parent this context is read for. A fact from a mailbox says where it came from
+   * only to the adult whose mailbox it was; absent, no mailbox is theirs.
+   */
+  readerUserId?: string;
 }
 
 /**
@@ -343,6 +356,17 @@ export async function loadAgentContext(
     scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
   });
 
+  const [sources, readerZone] = await Promise.all([
+    loadFactSources(database, {
+      familyId: input.familyId,
+      readerUserId: input.readerUserId ?? null,
+      inGroup: false,
+      now,
+      sourceEventIds: factRows.map((row) => row.sourceEventId),
+    }),
+    readerTimeZone(database, input.readerUserId),
+  ]);
+
   const memoryBrief = briefWithActiveWorkstreams(
     await assembleMemoryBrief(database, input.familyId, now),
     await activeWorkstreamBlock(database, input.familyId, now),
@@ -355,13 +379,30 @@ export async function loadAgentContext(
     children,
     focusedChild,
     stages,
-    memoryFacts: factRows.map((r) => ({
-      childId: r.childId,
-      factType: r.factType,
-      factKey: r.factKey,
-      factValue: r.factValue,
-      confidence: r.confidence,
-    })),
+    memoryFacts: factRows.flatMap((r): MemoryFactContext[] => {
+      const fact = {
+        childId: r.childId,
+        factType: r.factType,
+        factKey: r.factKey,
+        factValue: r.factValue,
+        confidence: r.confidence,
+      };
+      const source = r.sourceEventId ? sources.get(r.sourceEventId) : undefined;
+      if (!source?.connector) return [fact];
+      // A connector fact this reader may not hear the source of is left out, so no reply
+      // can use it without saying where it came from.
+      if (!source.label) return [];
+      const on = labelDay(source.label.on, readerZone);
+      return [
+        {
+          ...fact,
+          seenIn:
+            source.label.kind === 'email'
+              ? { email: { from: source.label.from, on } }
+              : { calendar: { title: source.label.title, on } },
+        },
+      ];
+    }),
     memoryBrief,
     recentEpisodes: episodeRows.map((r) => ({
       childId: r.childId,

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "EarlyON Drop-Ins, Blackburn Hamlet, Global Child Care Services",
+        "age_fit": "infants, toddlers and preschoolers not yet in school or child care",
+        "when": "Tuesday and Thursday mornings, 9 a.m. (their site does not show a Nov 10 closure, but that date could not be confirmed)",
+        "price": "Free",
+        "source_name": "Global Child Care Services"
+      },
+      {
+        "name": "CHEO Play and Learn, Western Ottawa Community Resource Centre (2 MacNeil Court)",
+        "age_fit": "EarlyON programs for children birth to 6 years old, with a parent or caregiver",
+        "when": "Tuesdays (their page gives no start time)",
+        "source_name": "Western Ottawa Community Resource Centre"
+      }
+    ]
+  },
+  "latencyMs": 5582
+}

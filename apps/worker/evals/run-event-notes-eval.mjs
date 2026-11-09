@@ -32,6 +32,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -64,20 +65,7 @@ const userMessage = (f) => JSON.stringify({ title: f.title, description: f.descr
 
 // ── the judge: MEANING only ─────────────────────────────────────────────────
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE structured reading of a calendar event description.',
-  'The reader had to return only the parking and what-to-bring facts the description STATES',
-  "for THIS event, in the description's own language, or an empty string for a fact that is",
-  'not stated. You are given the title, the description, the reading, and `expect`: a prose',
-  'note of what the description states (null means not stated) and any trap. Judge by',
-  'MEANING, not wording: any phrasing that carries the same facts is correct. Score 1-5.',
-  'A 5 has every stated fact with no detail a parent needs lost, nothing invented or inferred,',
-  'an empty field where nothing is stated, the source language kept, and no names, phone',
-  'numbers, prices unrelated to parking, or other content. A LOW score is any of: an invented',
-  'or inferred fact (including what is usual for this kind of event); a fact from a different',
-  'event; a stated fact missing or cut short; translated into another language; extra',
-  'unrelated content. Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('event-notes');
 
 function judgeInput(fixture, reading) {
   return {

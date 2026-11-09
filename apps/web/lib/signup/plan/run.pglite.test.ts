@@ -260,6 +260,37 @@ describe('approving a day-before plan', () => {
   });
 });
 
+describe("the plan runs only on its own parent's consent", () => {
+  it('a consent row written by another parent does not carry the plan: consent_missing', async () => {
+    const family = await plannedFamily();
+    const [user] = await db.database
+      .insert(schema.users)
+      .values({ email: `co-${family.familyId}@example.test`, name: 'Co Parent' })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('no co-parent');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: family.familyId, userId: user.id, role: 'co_parent' });
+    await db.database
+      .update(schema.authorizedSignupConsents)
+      .set({ parentUserId: user.id })
+      .where(eq(schema.authorizedSignupConsents.familyId, family.familyId));
+    const { runner, inputs } = engineLike(PAID);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'consent_missing',
+    });
+    expect(inputs.map((i) => i.correlationId)).not.toContain(family.offerId);
+
+    // Positive control: the same plan on its own parent's consent runs.
+    const own = await plannedFamily();
+    const armed = await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(armed.plans.find((p) => p.offerId === own.offerId)?.outcome).toBe('completed');
+  });
+});
+
 describe('carrying out plans at the open', () => {
   it('does nothing with the kill switch off: the plan stays planned', async () => {
     const family = await plannedFamily();

@@ -2,19 +2,12 @@
 // Kept in its own module so tests can import it without running the eval's main().
 
 /**
- * Cached-only expected-fail list (VIL-608,
- * https://linear.app/villagehale/issue/VIL-608). The first full recording on main fails these
- * four, and the judge is right on each: three mark the parent's gender in French or Spanish
- * (the skill already forbids it), and health-unknown-en reads like a policy notice. The fix
- * belongs in the writer. Remove each id once it passes; a listed case that passes turns the
- * check red so the list can never go stale. Live runs ignore this list.
+ * Cached-only expected-fail list. Empty since VIL-608
+ * (https://linear.app/villagehale/issue/VIL-608) re-recorded the four cases it held. A case
+ * goes on only with its ticket, and comes off once it passes; a listed case that passes
+ * turns the check red so the list can never go stale. Live runs ignore this list.
  */
-export const EXPECTED_FAIL = Object.freeze([
-  'identity-fr',
-  'intro-no-es',
-  'intro-soft-close-es-no-tag',
-  'health-unknown-en',
-]);
+export const EXPECTED_FAIL = Object.freeze([]);
 
 /**
  * Every run case must pass except the ones on `expectedFail`, which must still fail. A listed
