@@ -2,14 +2,19 @@
 // Kept in its own module so tests can import it without running the eval's main().
 
 /**
- * Cached-only expected-fail list (VIL-467,
- * https://linear.app/villagehale/issue/VIL-467/coach-skill-batch-writer-register-gender-fixes-must-pass-before-launch).
- * Sloane's design call on #919: intro-no-open-fr assumes the parent's gender ("ouvert") and
- * reads stiff. The judge is right; the fix belongs in the writer (coach-skill batch), which must
- * make it pass before launch. The batch removes the id here once it passes; a listed case that
- * passes turns the check red so the list can never go stale. Live runs ignore this list.
+ * Cached-only expected-fail list (VIL-608,
+ * https://linear.app/villagehale/issue/VIL-608). The first full recording on main fails these
+ * four, and the judge is right on each: three mark the parent's gender in French or Spanish
+ * (the skill already forbids it), and health-unknown-en reads like a policy notice. The fix
+ * belongs in the writer. Remove each id once it passes; a listed case that passes turns the
+ * check red so the list can never go stale. Live runs ignore this list.
  */
-export const EXPECTED_FAIL = Object.freeze(['intro-no-open-fr']);
+export const EXPECTED_FAIL = Object.freeze([
+  'identity-fr',
+  'intro-no-es',
+  'intro-soft-close-es-no-tag',
+  'health-unknown-en',
+]);
 
 /**
  * Every run case must pass except the ones on `expectedFail`, which must still fail. A listed
@@ -27,12 +32,12 @@ export function expectedFailGate(results, expectedFail, knownIds = results.map((
   const unknown = expectedFail.filter((id) => !known.has(id));
   const lines = [];
   if (expectedFailed.length > 0)
-    lines.push(`expected-fail (VIL-467, still failing as listed): ${expectedFailed.join(', ')}`);
+    lines.push(`expected-fail (VIL-608, still failing as listed): ${expectedFailed.join(', ')}`);
   if (unexpectedFail.length > 0)
     lines.push(`FAIL unexpected failures: ${unexpectedFail.join(', ')}`);
   if (unexpectedPass.length > 0)
     lines.push(
-      `FAIL expected-fail case now passes, remove it from EXPECTED_FAIL (VIL-467): ${unexpectedPass.join(', ')}`,
+      `FAIL expected-fail case now passes, remove it from EXPECTED_FAIL (VIL-608): ${unexpectedPass.join(', ')}`,
     );
   if (unknown.length > 0)
     lines.push(`FAIL EXPECTED_FAIL lists unknown case ids: ${unknown.join(', ')}`);

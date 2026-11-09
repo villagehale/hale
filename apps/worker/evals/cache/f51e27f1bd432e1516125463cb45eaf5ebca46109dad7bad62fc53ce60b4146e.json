@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi — thanks for holding the Tuesday June 23 5:30 PM opening for Mira's 18-month visit. we'd like to take it. please go ahead and book it. thanks!"
+    },
+    "confidence": 0.55,
+    "rationale": "No parent yes in the input, so this is a ready-to-send acceptance for the parent to review and approve, not an autonomous confirmation.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": true
+  },
+  "latencyMs": 4298
+}
