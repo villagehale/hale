@@ -135,6 +135,9 @@ export async function recordCommitment(
     /** WHICH OTHER HOUSEHOLD the promise is about, for the one kind whose subject is not
      * the family it is owed to (see the column's own note). Null for every other kind. */
     subjectFamilyId?: string | null;
+    /** The schedule facts the message that carried this promise already told the parent
+     * (the column's own note). Only an activity watch writes it; null for every other kind. */
+    heardFacts?: readonly string[] | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -158,6 +161,7 @@ export async function recordCommitment(
           topic: input.topic ?? null,
           subjectChildId: input.subjectChildId ?? null,
           subjectFamilyId: input.subjectFamilyId ?? null,
+          heardFacts: input.heardFacts ? [...input.heardFacts] : null,
           dueAt: input.dueAt,
           createdFrom: channelMessageId,
         })
@@ -252,6 +256,60 @@ export async function cancelCommitment(
     { cancelledAt: input.now, cancelledReason: input.reason },
     { actionTaken: 'commitment_cancelled', after: { kind: input.kind, reason: input.reason } },
   );
+}
+
+/**
+ * Move one open promise's due time — it is still owed, and not yet.
+ *
+ * The one production caller is the activity sweep's `nothing_new` outcome (VIL-564): the
+ * research ran, it found nothing the parent has not already been told, so nothing is sent
+ * and the watch is pushed to its next look. Neither kept (no message made good on it) nor
+ * voided (Hale still owes the answer), so it is the one ledger write that is not a
+ * closure — and it still writes its audit row in the same transaction (rule #6).
+ *
+ * Scoped by id AND the open predicate, so a promise closed between the read and this
+ * write is never reopened onto a new clock.
+ */
+export async function deferCommitment(
+  database: Database,
+  input: { commitmentId: string; familyId: string; dueAt: Date; reason: 'nothing_new' },
+): Promise<{ status: 'deferred' } | { status: 'none_open' } | { status: 'not_deferred' }> {
+  try {
+    const moved = await database.transaction(async (tx) => {
+      const rows = await tx
+        .update(schema.agentCommitments)
+        .set({ dueAt: input.dueAt })
+        .where(
+          and(
+            eq(schema.agentCommitments.id, input.commitmentId),
+            eq(schema.agentCommitments.familyId, input.familyId),
+            openPredicate(),
+          ),
+        )
+        .returning({
+          id: schema.agentCommitments.id,
+          kind: schema.agentCommitments.commitmentKind,
+        });
+      const [row] = rows;
+      if (!row) return false;
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'commitment_deferred',
+        targetTable: 'agent_commitments',
+        targetId: row.id,
+        after: { kind: row.kind, dueAt: input.dueAt, reason: input.reason },
+      });
+      return true;
+    });
+    return moved ? { status: 'deferred' } : { status: 'none_open' };
+  } catch (err) {
+    console.error(
+      { err, commitmentId: input.commitmentId },
+      'commitments: defer failed - promise left due, the next tick looks again',
+    );
+    return { status: 'not_deferred' };
+  }
 }
 
 /** The one closing write. Scoped by the open predicate, so a promise already kept or
@@ -379,6 +437,7 @@ export async function loadOpenCommitmentById(
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      heardFacts: schema.agentCommitments.heardFacts,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)
@@ -404,6 +463,9 @@ export interface DueCommitment {
    * search on this child's stage, so a household promise and a promise about the
    * three-year-old are two different searches. Null for a household one. */
   subjectChildId: string | null;
+  /** What the parent has already been told on this subject — set on an activity watch,
+   * null on every promise no follow-up has answered yet (the column's own note). */
+  heardFacts: string[] | null;
   dueAt: Date;
 }
 
@@ -428,6 +490,7 @@ export async function loadDueCommitments(
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      heardFacts: schema.agentCommitments.heardFacts,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

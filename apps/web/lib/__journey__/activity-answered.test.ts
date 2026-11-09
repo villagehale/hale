@@ -5,6 +5,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
+import { ACTIVITY_WATCH_DUE_HOURS } from '~/lib/channel/activity/commitment';
 import { type DeepResearcher, createDeepResearcher } from '~/lib/channel/activity/deep';
 import { createFollowUpComposer } from '~/lib/channel/activity/followup-note';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
@@ -610,6 +611,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
         cancelledAt: schema.agentCommitments.cancelledAt,
         cancelledReason: schema.agentCommitments.cancelledReason,
         createdFrom: schema.agentCommitments.createdFrom,
+        heardFacts: schema.agentCommitments.heardFacts,
       })
       .from(schema.agentCommitments)
       .where(
@@ -881,6 +883,46 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
     expect(empty).toMatch(/fall/i);
     expect(empty).not.toMatch(/\$\d|\b(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\b/i);
     expect((await promiseRows())[0]?.fulfilledAt).not.toBeNull();
+  });
+
+  it('VIL-564 - the look a week later that still finds nothing sends nothing and keeps watching', async () => {
+    await turnTwoPromises();
+    await runActivityFollowUpSweep(
+      database,
+      sweepDeps(new FakeTransport(), webPort([[]]).client),
+      SWEEP_AT,
+    );
+    const isOpen = (row: { fulfilledAt: Date | null; cancelledAt: Date | null }) =>
+      row.fulfilledAt === null && row.cancelledAt === null;
+    const [watch] = (await promiseRows()).filter(isOpen);
+    // The empty-handed text told the parent no day, no time and no price.
+    expect(watch?.heardFacts).toEqual([]);
+    const weekLater = watch?.dueAt as Date;
+
+    const transport = new FakeTransport();
+    const result = await runActivityFollowUpSweep(
+      database,
+      sweepDeps(transport, webPort([[]]).client),
+      weekLater,
+    );
+
+    expect(result).toMatchObject({ due: 1, sent: 0, nothingNew: 1, failed: 0 });
+    expect(transport.bodies()).toEqual([]);
+    // The same watch, still owed, on its next look — not kept, not voided, not re-minted.
+    const stillOpen = (await promiseRows()).filter(isOpen);
+    expect(stillOpen.map((row) => [row.id, row.dueAt.getTime()])).toEqual([
+      [watch?.id, weekLater.getTime() + ACTIVITY_WATCH_DUE_HOURS * 3_600_000],
+    ]);
+    const deferrals = await database
+      .select({ targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, familyId),
+          eq(schema.auditLog.actionTaken, 'commitment_deferred'),
+        ),
+      );
+    expect(deferrals).toEqual([{ targetId: watch?.id }]);
   });
 
   /**
