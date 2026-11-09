@@ -16,6 +16,7 @@ import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { scopeFamilies } from '~/lib/preview/family-scope';
 import { linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
@@ -543,8 +544,10 @@ export async function flushGroupDecisionSyncs(
     })
     .from(schema.groupDecisionSync)
     .where(isNull(schema.groupDecisionSync.flushedAt));
-  const due = waiting.filter(
-    (row) => row.flushedAt === null && row.flushAfter.getTime() <= input.now.getTime(),
+  const due = scopeFamilies(
+    waiting.filter(
+      (row) => row.flushedAt === null && row.flushAfter.getTime() <= input.now.getTime(),
+    ),
   );
   const byFamily = new Map<string, typeof due>();
   for (const row of due) {

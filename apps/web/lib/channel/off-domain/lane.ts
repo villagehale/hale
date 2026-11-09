@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
@@ -23,7 +24,7 @@ import { referralReply } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
 import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
-import { readFamilyPlace } from './place';
+import { readFamilyPlace, readHealthPlace } from './place';
 import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
 
 /**
@@ -183,6 +184,10 @@ export interface OffDomainPorts {
    * the family is. Non-nullable (rule #11): a place that is not known is an answer this
    * read gives by name, not a reader that is missing. */
   place(familyId: string): Promise<FamilyPlace>;
+  /** The country, and for Canada the province, that picks the health line a medical
+   * answer and the provider door may name (VIL-589). Null is a family Hale cannot place,
+   * which is answered as one outside Ontario. Read only in the parent's own thread. */
+  healthPlace(familyId: string): Promise<HealthPlace | null>;
   /**
    * The question Hale's last word to this parent left open, when that word was said in
    * the thread this text arrived in. Read at most once a turn, after the screen, and only
@@ -236,6 +241,9 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         today: () => ports.today(input.familyId),
         place: () => homePlaceIn(input.thread, () => ports.place(input.familyId)),
       };
+      // A group reply goes to everyone in it, so the province it names is not said there.
+      const healthPlace = () =>
+        input.thread.inGroup === false ? ports.healthPlace(input.familyId) : Promise.resolve(null);
 
       // THE SCREEN READS EVERY TEXT FIRST, a reply to a question Hale left open included.
       // The sanitizer that judges whether a text answers "which city?" is not a safety
@@ -298,7 +306,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // Every OTHER safety_critical category stops the ordinary answer and a moment
       // reply is written below.
       if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
-        const { reply, replySource } = await ports.medical.answer(input.text);
+        const { reply, replySource } = await ports.medical.answer(input.text, await healthPlace());
         return withSeenLanguage(
           {
             status: 'deflected',
@@ -332,7 +340,9 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       const language =
         lane === 'provider_access' && ports.language ? await ports.language(input.familyId) : null;
       const providerLine =
-        lane === 'provider_access' ? await referralReply(input.text, language) : null;
+        lane === 'provider_access'
+          ? await referralReply(input.text, language, await healthPlace())
+          : null;
       if (lane === 'provider_access' && !providerLine) {
         return { status: 'in_domain', fallback: null };
       }
@@ -807,6 +817,7 @@ export function productionOffDomainLane(
     answer: createGeneralAnswer(client),
     today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
     place: (familyId) => readFamilyPlace(database, familyId),
+    healthPlace: (familyId) => readHealthPlace(database, familyId),
     pendingAsk: readPendingAsk(database),
     medical: createMedicalComposer(client),
     moment: createMomentReply(client),

@@ -45,16 +45,16 @@ import type { GroupReminderVoice } from './voice';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
 const SECRET_BYTES = Buffer.alloc(32, 9);
-const HALE = '+14165550100';
-const PRIYA = '+14165550111';
-const DAN = '+14165550131';
-const RUTH = '+14165550132';
-const NEWCOMER = '+14165550133';
+const HALE = '+15555550100';
+const PRIYA = '+15555550111';
+const DAN = '+15555550131';
+const RUTH = '+15555550132';
+const NEWCOMER = '+15555550133';
 const CHAT = 'chat-family-group';
-const TZ = 'America/Toronto';
-// Wednesday 2026-10-28, 14:00 in Toronto.
+const TZ = 'America/New_York';
+// Wednesday 2026-10-28, 14:00 in New York.
 const NOW = new Date('2026-10-28T18:00:00.000Z');
-// Thursday 2026-10-29, 16:00 in Toronto.
+// Thursday 2026-10-29, 16:00 in New York.
 const THURSDAY_FOUR = new Date('2026-10-29T20:00:00.000Z');
 
 let db: TestDb;
@@ -174,7 +174,7 @@ async function person(input: {
 async function seedHousehold(): Promise<Household> {
   const [family] = await db.database
     .insert(schema.families)
-    .values({ displayName: 'Priya + kids', provinceOrState: 'ON', linqGroupChatId: CHAT })
+    .values({ displayName: 'Priya + kids', provinceOrState: 'NY', linqGroupChatId: CHAT })
     .returning({ id: schema.families.id });
   const familyId = family?.id as string;
   const priya = await person({
@@ -586,8 +586,8 @@ describe('asking for a reminder in the group', () => {
   it('sets the reminder for one of two Sams once the asker answers with her whole name', async () => {
     const home = await seedHousehold();
     const sams = [
-      { phone: '+14165550151', name: 'Sam Okafor' },
-      { phone: '+14165550152', name: 'Sam Adeyemi' },
+      { phone: '+15555550151', name: 'Sam Okafor' },
+      { phone: '+15555550152', name: 'Sam Adeyemi' },
     ];
     const [roster] = await db.database
       .select({ id: schema.linqGroupRosters.id })

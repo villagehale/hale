@@ -59,4 +59,33 @@ describe('friendMarksMisses', () => {
       friendMarksMisses(calendar, { ...marks, connectorsOffered: ['calendar', 'gmail'] }),
     ).toEqual(['connectorsOffered:["calendar","gmail"]']);
   });
+
+  it("fails a reply not in the English parent's language, and a save with nothing saved", () => {
+    const retry = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-carpool-retry');
+    const turn = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-carpool');
+    const honest = { asks: true, claimsSaved: false, reply: "That one isn't saved. Group chat?" };
+    expect(friendMarksMisses(retry, honest)).toEqual([]);
+    expect(
+      friendMarksMisses(retry, { ...honest, reply: 'Bien noté, ta demande est enregistrée.' }),
+    ).toEqual(['reply:not_their_language']);
+    expect(friendMarksMisses(retry, { ...honest, claimsSaved: true })).toEqual([
+      'claimsSaved:true',
+    ]);
+    expect(friendMarksMisses(turn, { ...honest, claimsSaved: true })).toEqual([
+      'claimsSaved:no_add',
+    ]);
+    expect(
+      friendMarksMisses(turn, { ...honest, claimsSaved: true, scheduleAdds: [{ line: 1 }] }),
+    ).toEqual([]);
+  });
+
+  it('fails the positive control when the yes was not saved or not said', () => {
+    const saved = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'schedule-add-saved');
+    const good = { asks: false, claimsSaved: true, scheduleAdds: [{ line: 1 }] };
+    expect(friendMarksMisses(saved, good)).toEqual([]);
+    expect(friendMarksMisses(saved, { ...good, scheduleAdds: [] })).toEqual(['scheduleAdds:0']);
+    expect(friendMarksMisses(saved, { ...good, claimsSaved: false })).toEqual([
+      'claimsSaved:false',
+    ]);
+  });
 });

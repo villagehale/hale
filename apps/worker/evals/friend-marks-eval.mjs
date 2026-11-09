@@ -38,6 +38,14 @@ const HARD_CAP_USD = 2;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'onboarding-friend.md');
+// The one retry (VIL-538): the French reply and the false "saved" were both its draft.
+const SHORT_SKILL_PATH = join(
+  REPO_ROOT,
+  'packages',
+  'agent',
+  'skills',
+  'onboarding-friend-short.md',
+);
 const VOICE_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'intake', 'friend-voice.ts');
 
 process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'false';
@@ -47,7 +55,10 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 function inputFor(voice, fixture) {
   const base = voice.nameAskVoiceInput(fixture.over.parentWords, fixture.over.language ?? 'en');
-  return { ...base, ...fixture.over };
+  const retry = fixture.retry
+    ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
+    : {};
+  return { ...base, ...fixture.over, ...retry };
 }
 
 function estimateTokens(value) {
@@ -65,18 +76,19 @@ async function loadSubject() {
   const agent = await importTs(AGENT_SRC);
   const voice = await importTs(VOICE_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const shortSkill = await agent.loadSkill(SHORT_SKILL_PATH);
   const lane = agent.pickLane(skill.meta.task);
-  return { voice, skill, lane };
+  return { voice, skill, shortSkill, lane };
 }
 
 async function estimate() {
-  const { skill, voice, lane } = await loadSubject();
+  const { skill, shortSkill, voice, lane } = await loadSubject();
   const price = PRICE[lane.model];
   if (!price) throw new Error(`no list price for ${lane.model}`);
   let usd = 0;
   for (const fixture of FRIEND_MARKS_FIXTURES) {
     const input =
-      estimateTokens(skill.instructions) +
+      estimateTokens((fixture.prompt === 'short' ? shortSkill : skill).instructions) +
       estimateTokens(JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture)))) +
       estimateTokens(voice.onboardingReplyToolSchema());
     usd += (input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output;
@@ -105,19 +117,22 @@ async function record() {
   const getClient = lazyAnthropic('friend-marks');
   const cost = makeCost();
   const cachedOnly = process.argv.includes('--cached-only');
-  const { skill, voice, lane } = await loadSubject();
+  const { skill, shortSkill, voice, lane } = await loadSubject();
 
   let failed = 0;
   for (const fixture of FRIEND_MARKS_FIXTURES) {
     const result = await cachedToolCall({
       tag: `friend-marks:${fixture.id}`,
       lane,
-      system: skill.instructions,
+      system: (fixture.prompt === 'short' ? shortSkill : skill).instructions,
       userMessage: JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture))),
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
       toolSchema: voice.onboardingReplyToolSchema(),
-      maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
+      maxTokens:
+        fixture.prompt === 'short'
+          ? voice.ONBOARDING_REPLY_SHORT_MAX_TOKENS
+          : voice.ONBOARDING_REPLY_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
@@ -129,8 +144,10 @@ async function record() {
     const misses = friendMarksMisses(fixture, result.value);
     if (misses.length > 0) failed += 1;
     console.info(
-      `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(18)} ${misses.join(' ')}`,
+      `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
     );
+    if (fixture.printReply)
+      console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
   }
 
   console.info(

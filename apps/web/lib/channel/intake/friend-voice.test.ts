@@ -33,6 +33,27 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
 }
 
 describe('friend voice brief', () => {
+  it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {
+    const stored = { language: 'fr', address: 'tu' as const };
+    const answering = friendVoiceContext(
+      blank({ step: 'coparent', ...stored, parentWords: 'No calendar for now, thanks' }),
+    ) as Record<string, unknown>;
+    expect(answering.languageHint).toBeNull();
+    expect(answering).not.toHaveProperty('address');
+
+    const own = friendVoiceContext(
+      blank({ step: 'connected', ...stored, parentWords: '' }),
+    ) as Record<string, unknown>;
+    expect(own.languageHint).toBe('fr');
+    expect(own.address).toBe('tu');
+
+    // A French group thread still says vous: that is the thread, not a guess at language.
+    const group = friendVoiceContext(
+      blank({ step: 'coparent', language: 'fr', address: 'vous', parentWords: 'oui' }),
+    ) as Record<string, unknown>;
+    expect(group.address).toBe('vous');
+  });
+
   it('gives the elapsed time for a several-hours-old text and does not flag a two-minute one', () => {
     // 2:00 p.m. America/Toronto. Five hours earlier is 9:00 a.m., after quiet hours end.
     const now = new Date('2026-08-28T18:00:00.000Z');
@@ -735,6 +756,8 @@ describe('speakFriend', () => {
             return {
               reply:
                 "Both are on as reminders: Mia's Swim Kids Saturdays at 11:00 weekly, Seb's storytime Thursday at 10:30. Anything else from the list?",
+              // Positive control for the save gate: a save this turn really records goes out.
+              claimsSaved: true,
               capture: {
                 scheduleAdds: [
                   { line: 2, cadence: 'weekly', date: '2026-10-10', time: '11:00' },
@@ -762,6 +785,147 @@ describe('speakFriend', () => {
     expect(spoken.source).toBe('retry');
     expect(spoken.capture.scheduleAdds.map((add) => add.line)).toEqual([2, 3]);
     expect(spoken.body).toContain('11:00');
+  });
+
+  describe('a reply never says something was saved that this turn did not save (VIL-538)', () => {
+    const coparent = blank({
+      step: 'coparent',
+      parentWords:
+        "No calendar for now. Just save Mia's carpool, tomorrow Saturday 8am, and tell me what day and time you saved.",
+      now: new Date('2026-11-02T03:28:00Z'),
+      checklist: {
+        postal: true,
+        kids: true,
+        ages: true,
+        name: true,
+        gmail: true,
+        calendar: true,
+        schedule: true,
+        coparent: false,
+      },
+    });
+    const ASK = 'Would a group chat with the other parent help?';
+    const refusedDraft = {
+      reply: `Saved Mia's carpool for tomorrow, Saturday at 8. ${ASK}`,
+      capture: { scheduleAdds: [{ line: 1, cadence: 'once', date: '2026-11-07', time: '08:00' }] },
+      claimsSaved: true,
+    };
+
+    it('sends nothing when the retry after a refused add still says it was saved', async () => {
+      const pages: string[] = [];
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              if (options?.prompt === 'short') {
+                return { reply: `Your carpool request is saved. ${ASK}`, claimsSaved: true };
+              }
+              return refusedDraft;
+            },
+          },
+          coparent,
+          {
+            page: async (text) => {
+              pages.push(text);
+            },
+          },
+        );
+        expect(spoken.source).toBe('unsent');
+        expect(spoken.body).toBe('');
+        expect(pages).toEqual(['onboarding friend voice unsent step=coparent reason=unusable']);
+      } finally {
+        warn.mockRestore();
+        error.mockRestore();
+      }
+    });
+
+    it('sends the retry that says plainly nothing was saved', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              if (options?.prompt === 'short') {
+                return {
+                  reply: `I can't put the carpool on from here, so it isn't saved. ${ASK}`,
+                  claimsSaved: false,
+                };
+              }
+              return refusedDraft;
+            },
+          },
+          coparent,
+        );
+        expect(spoken.source).toBe('retry');
+        expect(spoken.body).toContain("isn't saved");
+        expect(spoken.capture.scheduleAdds).toEqual([]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
+
+    it('refuses a first draft that claims a save with no add at all, and retries', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const prompts: string[] = [];
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              prompts.push(options?.prompt ?? 'full');
+              if (options?.prompt === 'short') {
+                return { reply: `That one isn't on your calendar yet. ${ASK}`, claimsSaved: false };
+              }
+              return {
+                reply: `Bien noté, c'est enregistré pour samedi. ${ASK}`,
+                claimsSaved: true,
+              };
+            },
+          },
+          coparent,
+        );
+        expect(prompts).toEqual(['full', 'short']);
+        expect(spoken.source).toBe('retry');
+        expect(warn.mock.calls).toContainEqual([
+          expect.objectContaining({ reason: 'unbacked_save', step: 'coparent' }),
+          'onboarding-friend: attempt refused',
+        ]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
+
+    it('refuses a promise no onboarding row can back, the same as the send choke point', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      try {
+        const prompts: string[] = [];
+        const spoken = await speakFriend(
+          {
+            async compose(_input, options) {
+              prompts.push(options?.prompt ?? 'full');
+              if (options?.prompt === 'short') return { reply: ASK };
+              return { reply: `I'll send an invite to the other parent. ${ASK}` };
+            },
+          },
+          { ...coparent, parentWords: 'maybe' },
+        );
+        expect(prompts).toEqual(['full', 'short']);
+        expect(spoken.body).toBe(ASK);
+        expect(warn.mock.calls).toContainEqual([
+          expect.objectContaining({ reason: 'unbacked_claim', step: 'coparent' }),
+          'onboarding-friend: attempt refused',
+        ]);
+      } finally {
+        warn.mockRestore();
+        info.mockRestore();
+      }
+    });
   });
 
   it('sends nothing and pages when both attempts fail', async () => {

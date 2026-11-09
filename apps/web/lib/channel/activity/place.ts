@@ -1,10 +1,6 @@
 import type { Database } from '@hale/db';
 import type { PlaceUnknown } from '~/lib/channel/off-domain/answer';
-import {
-  matchPostalToken,
-  readFamilyPlaceRow,
-  searchPlaceOf,
-} from '~/lib/channel/off-domain/place';
+import { matchPostalToken, readPlaceRow, searchPlaceOf } from '~/lib/channel/off-domain/place';
 import { townLabel } from '~/lib/channel/town-label';
 import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
@@ -61,5 +57,5 @@ export async function readActivityPlace(
   database: Database,
   familyId: string,
 ): Promise<ActivityPlace> {
-  return activityPlaceOf(await readFamilyPlaceRow(database, familyId));
+  return activityPlaceOf(await readPlaceRow(database, familyId));
 }

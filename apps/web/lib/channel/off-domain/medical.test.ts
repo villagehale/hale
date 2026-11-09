@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import { isStage } from '~/lib/testing/structured-reply';
 import {
   createMedicalComposer,
@@ -103,6 +104,19 @@ const OK_SANITIZE = {
   red_flag: 'not_emergency',
 };
 const MOMENT_FALLBACK = 'moment wrote the child-health reply';
+
+/** Where the family is. Every older case here was written for Ontario's two numbers. */
+const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
+const TEXAS: HealthPlace = { country: 'US', provinceOrState: null };
+const BC: HealthPlace = { country: 'CA', provinceOrState: 'British Columbia' };
+
+/** What a US or out-of-Ontario family's answer reads like: 911 and their own doctor. */
+const DOCTOR_COMPOSE = {
+  answer:
+    'A fever this high for a few days at this age is most often a viral illness, and fluids, rest and comfort usually carry them through it.',
+  triage:
+    "Call your child's doctor's after-hours line to talk it through. Go to the ER or call 911 now if she has trouble breathing, will not wake, or her lips look blue.",
+};
 
 const OK_COMPOSE = {
   answer:
@@ -353,7 +367,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
           compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE[language] }),
           escalation: escalationResult('yes'),
         }),
-      ).answer('raw message');
+      ).answer('raw message', ONTARIO);
 
       expect(out.replySource).toBe('web_grounded');
       expect(out.reply).toContain(answer);
@@ -377,7 +391,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
           compose: composeResult({ answer, triage: NOT_URGENT_TRIAGE[language] }),
           escalation: escalationResult('no'),
         }),
-      ).answer('raw message');
+      ).answer('raw message', ONTARIO);
 
       expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
       const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -395,7 +409,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         compose: composeResult(OK_COMPOSE),
         escalation: escalationResult('unsure'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -412,7 +426,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         compose: composeResult(OK_COMPOSE),
         escalation: escalationResult('the parent said her daughter is wheezing'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const details = log.mock.calls.map((c) => (c[0] as { detail?: string })?.detail);
@@ -439,7 +453,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     const log = quiet();
     await createMedicalComposer(
       makeClient({ sanitize: sanitizeResult(RED_FLAG_SANITIZE), ...script }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(log.mock.calls.map((c) => c[0])).toEqual([
       { reason, attempt: 1, detail: undefined },
@@ -461,7 +475,9 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
     if (reason === 'skill_unavailable')
       skillLoad.error = new Error('echo: her daughter is wheezing');
     try {
-      await expect(createMedicalComposer(client).answer('raw message')).rejects.toMatchObject({
+      await expect(
+        createMedicalComposer(client).answer('raw message', ONTARIO),
+      ).rejects.toMatchObject({
         name: 'MedicalUnresolvable',
         reason: 'compose_failed',
       });
@@ -486,7 +502,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         compose: composeResult(OK_COMPOSE),
         escalation: new Error('overloaded'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -507,7 +523,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         },
         seen,
       ),
-    ).answer('raw message from Emma');
+    ).answer('raw message from Emma', ONTARIO);
 
     const judged = seen.filter((s) => s.toolChoice === 'escalation');
     expect(judged).toHaveLength(1);
@@ -534,7 +550,7 @@ describe('the escalation is an AI judgment of the composed answer, in any langua
         },
         calm,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
     expect(calm.filter((s) => s.toolChoice === 'escalation')).toHaveLength(0);
   });
 });
@@ -564,7 +580,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
         compose: composeResult(SOFT_BODY),
         escalation: escalationResult('no'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -581,7 +597,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
         compose: composeResult(SOFT_BODY),
         escalation: escalationResult('no'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
@@ -598,7 +614,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
           compose: composeResult(SOFT_BODY),
           escalation: escalationResult('no'),
         }),
-      ).answer('raw message');
+      ).answer('raw message', ONTARIO);
       expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     }
     log.mockRestore();
@@ -616,7 +632,7 @@ describe('the red flag is judged from meaning, and unsure is a red flag', () => 
         ground: groundResult(2),
         compose: composeResult(SOFT_BODY),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('811');
@@ -631,7 +647,7 @@ describe('the happy path', () => {
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('811');
@@ -657,7 +673,7 @@ describe('the happy path', () => {
         },
         seen,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(
       seen.filter((call) => call.toolChoice === 'medical_answer').map((call) => call.maxTokens),
@@ -687,7 +703,7 @@ describe('de-identification before search', () => {
         },
         seen,
       ),
-    ).answer(raw);
+    ).answer(raw, ONTARIO);
 
     // Sanitize is the ONE call that sees the raw message (positive control), on its own skill.
     expect(seen[0]?.toolChoice).toBe('sanitize');
@@ -726,7 +742,7 @@ describe('de-identification before search', () => {
         },
         seen,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     const ground = seen.find(
       (s) => Array.isArray(s.tools) && s.tools[0]?.type === 'web_search_20250305',
@@ -762,7 +778,7 @@ describe('the clinical query must come back in English', () => {
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(french).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
@@ -777,7 +793,7 @@ describe('the clinical query must come back in English', () => {
           ground: groundResult(2),
           compose: composeResult(OK_COMPOSE),
         }),
-      ).answer('raw message'),
+      ).answer('raw message', ONTARIO),
     ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     quietZh.mockRestore();
   });
@@ -796,7 +812,7 @@ describe('the clinical query must come back in English', () => {
             ground: groundResult(2),
             compose: composeResult(OK_COMPOSE),
           }),
-        ).answer('raw message'),
+        ).answer('raw message', ONTARIO),
       ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     }
     log.mockRestore();
@@ -816,7 +832,7 @@ describe('the clinical query must come back in English', () => {
           ground: groundResult(2),
           compose: composeResult(OK_COMPOSE),
         }),
-      ).answer('raw message'),
+      ).answer('raw message', ONTARIO),
     ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
@@ -834,7 +850,7 @@ describe('the clinical query must come back in English', () => {
         compose: composeResult(OK_COMPOSE),
         escalation: escalationResult('yes'),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('911');
@@ -861,7 +877,7 @@ describe('the parent language reaches compose and nothing else', () => {
         },
         seen,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     const compose = seen.find((s) => s.toolChoice === 'medical_answer');
     expect(compose?.userMessage).toContain('"language":"fr"');
@@ -889,7 +905,7 @@ describe('the parent language reaches compose and nothing else', () => {
           },
           seen,
         ),
-      ).answer('raw message');
+      ).answer('raw message', ONTARIO);
       expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
         `"language":"${code}"`,
       );
@@ -907,7 +923,7 @@ describe('the parent language reaches compose and nothing else', () => {
         },
         seen,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
     const schema = seen.find((s) => s.toolChoice === 'sanitize')?.schema;
     expect(Object.keys(schema?.properties ?? {})[0]).toBe('language');
     expect(schema?.required).toContain('language');
@@ -927,7 +943,7 @@ describe('the parent language reaches compose and nothing else', () => {
         },
         seen,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
     expect(seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
       '"language":"en"',
     );
@@ -942,7 +958,7 @@ describe('the parent language reaches compose and nothing else', () => {
         },
         garbled,
       ),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
     expect(garbled.find((s) => s.toolChoice === 'medical_answer')?.userMessage).toContain(
       '"language":"en"',
     );
@@ -966,7 +982,7 @@ describe('the parent language reaches compose and nothing else', () => {
           },
           seen,
         ),
-      ).answer('raw message');
+      ).answer('raw message', ONTARIO);
       const sent = seen.find((s) => s.toolChoice === 'medical_answer')?.userMessage;
       return JSON.parse(sent ?? '{}').language;
     };
@@ -992,7 +1008,7 @@ describe('retry, then fall closed', () => {
         },
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('811');
@@ -1010,7 +1026,7 @@ describe('retry, then fall closed', () => {
         },
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     // Both attempts named and logged, never silent (rule #11).
@@ -1021,12 +1037,12 @@ describe('retry, then fall closed', () => {
 
   it('names the miss when there is no client and the moment reply cannot be written', async () => {
     const log = quiet();
-    await expect(createMedicalComposer(throwingClient).answer('raw message')).rejects.toMatchObject(
-      {
-        name: 'MedicalUnresolvable',
-        reason: 'compose_failed',
-      },
-    );
+    await expect(
+      createMedicalComposer(throwingClient).answer('raw message', ONTARIO),
+    ).rejects.toMatchObject({
+      name: 'MedicalUnresolvable',
+      reason: 'compose_failed',
+    });
     expect(log.mock.calls.map((c) => c[0])).toContainEqual({
       reason: 'client_unavailable',
       moment: 'child_health',
@@ -1050,7 +1066,7 @@ describe('grounding is required', () => {
           ground: groundResult(0),
           compose: composeResult(OK_COMPOSE),
         }),
-      ).answer('raw message'),
+      ).answer('raw message', ONTARIO),
     ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     const reasons = log.mock.calls.map((c) => (c[0] as { reason?: string })?.reason);
     expect(reasons).toContain('not_grounded');
@@ -1066,7 +1082,7 @@ describe('grounding is required', () => {
             ground: groundResult(1),
             compose: composeResult(OK_COMPOSE),
           }),
-        ).answer('raw message')
+        ).answer('raw message', ONTARIO)
       ).replySource,
     ).toBe('web_grounded');
   });
@@ -1086,7 +1102,7 @@ describe('triage is required', () => {
           ground: groundResult(2),
           compose: composeResult(noTriage),
         }),
-      ).answer('raw message'),
+      ).answer('raw message', ONTARIO),
     ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
@@ -1098,7 +1114,7 @@ describe('triage is required', () => {
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toMatch(/\b(?:811|911)\b/);
   });
@@ -1124,7 +1140,7 @@ describe('the body must be sendable', () => {
             '有疑问随时拨打811找护士。如果出现呼吸困难、叫不醒或嘴唇发紫，请立即拨打911或去急诊。',
         }),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('811');
@@ -1143,7 +1159,7 @@ describe('the body must be sendable', () => {
             'Appelez le 811 pour parler à une infirmière. Composez le 911 ou allez aux urgences si elle respire mal ou ne se réveille pas.',
         }),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
     expect(out.reply).toContain('fièvre');
@@ -1167,7 +1183,7 @@ describe('the body must be sendable', () => {
           triage: '有疑问可拨打811，紧急情况请拨打911。',
         }),
       }),
-    ).answer('raw message');
+    ).answer('raw message', ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     // Closed by the SEGMENT gate, not for missing triage: the triage names both numbers.
@@ -1216,7 +1232,7 @@ describe('the body must be sendable', () => {
         },
         seen,
       ),
-    ).answer(parent);
+    ).answer(parent, ONTARIO);
 
     expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     expect(seen.at(-1)?.userMessage).toContain(parent);
@@ -1243,7 +1259,7 @@ describe('the body must be sendable', () => {
         ground: groundResult(2),
         compose: composeResult(sendable),
       }),
-    ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi');
+    ).answer('Ma fille de deux mois fait de la fievre, je dois faire quoi', ONTARIO);
 
     expect(out.replySource).toBe('web_grounded');
   });
@@ -1261,7 +1277,7 @@ describe('the body must be sendable', () => {
           ground: groundResult(2),
           compose: composeResult(long),
         }),
-      ).answer('raw message'),
+      ).answer('raw message', ONTARIO),
     ).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
     log.mockRestore();
   });
@@ -1275,7 +1291,7 @@ describe('the body must be sendable', () => {
             ground: groundResult(2),
             compose: composeResult(OK_COMPOSE),
           }),
-        ).answer('raw message')
+        ).answer('raw message', ONTARIO)
       ).replySource,
     ).toBe('web_grounded');
   });
@@ -1293,7 +1309,7 @@ describe('never logs the parent raw message (rule #1)', () => {
         },
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer(secret);
+    ).answer(secret, ONTARIO);
 
     const logged = JSON.stringify(log.mock.calls);
     expect(logged).not.toContain('Kai');
@@ -1315,10 +1331,123 @@ describe('never logs the parent raw message (rule #1)', () => {
         ground: groundResult(2),
         compose: composeResult(OK_COMPOSE),
       }),
-    ).answer(secret);
+    ).answer(secret, ONTARIO);
 
     expect(JSON.stringify(log.mock.calls)).not.toContain('Kai');
     expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
+    log.mockRestore();
+  });
+});
+
+/**
+ * VIL-589: the triage names the help where the family is. 811 is Ontario's nurse line
+ * and the US call-before-you-dig line, so it is required in Ontario and refused elsewhere.
+ */
+describe('the health line is the one for where the family is', () => {
+  const okClient = (compose: unknown, seen: Seen[] = []) =>
+    makeClient(
+      {
+        sanitize: sanitizeResult(OK_SANITIZE),
+        ground: groundResult(2),
+        compose: composeResult(compose),
+      },
+      seen,
+    );
+  const composeFacts = (seen: Seen[]) =>
+    JSON.parse(seen.find((call) => call.toolChoice === 'medical_answer')?.userMessage ?? '{}');
+
+  it('tells the compose a Texas family has 911 and their doctor, and refuses an answer that says 811', async () => {
+    const log = quiet();
+    const seen: Seen[] = [];
+    const out = await createMedicalComposer(okClient(OK_COMPOSE, seen)).answer(
+      'raw message',
+      TEXAS,
+    );
+
+    expect(composeFacts(seen)).toMatchObject({
+      health_line: "your child's doctor's after-hours line",
+      emergency: '911',
+    });
+    expect(out).toEqual({ reply: MOMENT_FALLBACK, replySource: 'fixed' });
+    expect(log.mock.calls.map((c) => c[0])).toContainEqual({
+      reason: 'wrong_number',
+      attempt: 1,
+      detail: '811',
+    });
+    log.mockRestore();
+  });
+
+  it('positive control: the Texas answer that names 911 and their doctor ships', async () => {
+    const out = await createMedicalComposer(okClient(DOCTOR_COMPOSE)).answer('raw message', TEXAS);
+    expect(out.replySource).toBe('web_grounded');
+    expect(out.reply).toContain('911');
+    expect(out.reply).not.toMatch(/\b811\b/);
+  });
+
+  it('refuses 8-1-1 for a BC family until a row for BC is verified', async () => {
+    const log = quiet();
+    const spelled = { ...OK_COMPOSE, triage: OK_COMPOSE.triage.replace('811', '8-1-1') };
+    expect(await createMedicalComposer(okClient(spelled)).answer('raw message', BC)).toEqual({
+      reply: MOMENT_FALLBACK,
+      replySource: 'fixed',
+    });
+    log.mockRestore();
+  });
+
+  it('a Texas answer that names only their doctor has no triage: 911 is the one number it needs', async () => {
+    const log = quiet();
+    const doctorOnly = {
+      ...DOCTOR_COMPOSE,
+      triage: "Call your child's doctor's after-hours line, or go to the ER if she gets worse.",
+    };
+    expect(await createMedicalComposer(okClient(doctorOnly)).answer('raw message', TEXAS)).toEqual({
+      reply: MOMENT_FALLBACK,
+      replySource: 'fixed',
+    });
+    expect(log.mock.calls.map((c) => (c[0] as { reason?: string }).reason)).toEqual([
+      'missing_triage',
+      'missing_triage',
+    ]);
+    log.mockRestore();
+  });
+
+  it('Ontario is unchanged: Health811 is in the facts and the 811 and 911 answer ships', async () => {
+    const seen: Seen[] = [];
+    const out = await createMedicalComposer(okClient(OK_COMPOSE, seen)).answer(
+      'raw message',
+      ONTARIO,
+    );
+    expect(composeFacts(seen)).toMatchObject({
+      health_line: 'Health811 (Ontario), call 811, any time',
+      emergency: '911',
+    });
+    expect(out.replySource).toBe('web_grounded');
+  });
+
+  it('an unplaced family is answered like the US one', async () => {
+    const out = await createMedicalComposer(okClient(DOCTOR_COMPOSE)).answer('raw message', null);
+    expect(out.replySource).toBe('web_grounded');
+  });
+
+  it('hands the moment writer the coarse place when the answer cannot be written', async () => {
+    const log = quiet();
+    const seen: Seen[] = [];
+    await createMedicalComposer(
+      makeClient(
+        {
+          sanitize: sanitizeResult(OK_SANITIZE),
+          ground: groundResult(0),
+          compose: composeResult(OK_COMPOSE),
+        },
+        seen,
+      ),
+    ).answer('raw message', TEXAS);
+    const moment = seen.find((call) => call.toolChoice === 'moment_reply');
+    expect(JSON.parse(moment?.userMessage ?? '{}')).toMatchObject({
+      moment: 'child_health',
+      country: 'United States',
+      provinceOrState: null,
+    });
     log.mockRestore();
   });
 });
