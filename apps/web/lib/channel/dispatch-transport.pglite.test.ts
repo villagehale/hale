@@ -5,6 +5,7 @@ import { createSmsChannel } from '~/lib/channel/adapters/phone-sms';
 import { dispatchLoopMessage } from '~/lib/channel/dispatch';
 import { fakeRenderer } from '~/lib/channel/fakes';
 import type { ChannelTransport, OutboundMessage } from '~/lib/channel/intake/transport';
+import type { TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -80,13 +81,20 @@ function namingTransport(named: 'imessage' | null): ChannelTransport & { sent: O
   };
 }
 
-async function sendOne(transport: ChannelTransport) {
+/** Two texts in one message, the shape the reminder template renders. */
+const twoTextRenderer: TemplateRenderer = {
+  render() {
+    return { kind: 'sms', text: 'first\n\nsecond', texts: ['first', 'second'], modelWritten: true };
+  },
+};
+
+async function sendOne(transport: ChannelTransport, renderer: TemplateRenderer = fakeRenderer) {
   const { familyId, parentUserId } = await seedParent();
   const ports = buildDispatchPorts(db.database, {
     channels: {
       sms: createSmsChannel({ resolveTarget: async () => PHONE, configured: true, transport }),
     },
-    renderer: fakeRenderer,
+    renderer,
     now: () => NOON,
   });
   const msg: LoopMessage = {
@@ -134,5 +142,35 @@ describe('the loop ledger records the transport actually used', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ channel: 'sms', status: 'queued', providerMessageId: 'sms-1' });
     expect(audits.map((a) => (a.after as { channel: string }).channel)).toEqual(['sms']);
+  });
+
+  it('a multi-text send ledgers every text as imessage, with its chat', async () => {
+    const transport = namingTransport('imessage');
+    const { rows, audits } = await sendOne(transport, twoTextRenderer);
+
+    expect(transport.sent).toHaveLength(2);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        channel: 'imessage',
+        status: 'sent',
+        providerMessageId: 'linq-1',
+        providerChatId: 'chat-1',
+      });
+    }
+    expect(audits.map((a) => (a.after as { channel: string }).channel)).toEqual([
+      'imessage',
+      'imessage',
+    ]);
+  });
+
+  it('a multi-text send on a transport that names no pipe stays SMS (positive control)', async () => {
+    const { rows, audits } = await sendOne(namingTransport(null), twoTextRenderer);
+
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row).toMatchObject({ channel: 'sms', status: 'queued', providerMessageId: 'sms-1' });
+    }
+    expect(audits.map((a) => (a.after as { channel: string }).channel)).toEqual(['sms', 'sms']);
   });
 });
