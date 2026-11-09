@@ -13,6 +13,7 @@ import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import type { IntakeAnswerOutcome } from './answer';
 import type { IntakeCollected } from './extract';
 import {
   FakeAnswerComposer,
@@ -1744,5 +1745,68 @@ describe("ladder: a safety outcome names the health line for the family's region
       closed: false,
       held: 'writer_absent',
     });
+  });
+});
+
+describe('ladder: the line owed after an unanswered ask is the one the composer named', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f003';
+  const USER = '00000000-0000-4000-8000-00000000a003';
+
+  function ladder(outcome: IntakeAnswerOutcome): {
+    fake: FakeDb;
+    transport: FakeTransport;
+    deps: IntakeDeps;
+    calls: SaidLineInput[];
+  } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: null },
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'fr' }),
+    };
+    deps.answerComposer = new FakeAnswerComposer(outcome);
+    const calls: SaidLineInput[] = [];
+    // A fake at the said-line port, not the model: it says which line it was asked for.
+    deps.saidLine = {
+      async write(input) {
+        calls.push(input);
+        return `line:${input.purpose}`;
+      },
+    };
+    return { fake, transport, deps, calls };
+  }
+
+  // No English keyword in any of these: the composer's read names the line, not the words.
+  it.each([
+    ['not_posted', 'Quand ouvrent les inscriptions à la natation?'],
+    ['no_source', '¿Cómo hago para que duerma la siesta?'],
+    ['cheer_up', '今天好累，给我打打气吧'],
+  ] as const)('a %s reason gets the %s line', async (reason, words) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({ status: 'unavailable', reason });
+    await handleInboundSms(fake.db, inbound(transport, words), deps);
+    expect(calls.map((c) => c.purpose)).toEqual([reason]);
+    expect(transport.bodies()).toEqual([`line:${reason}`]);
+  });
+
+  it('a composer outage owes no line: the words alone never pick one', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({
+      status: 'unavailable',
+      reason: 'model_failed',
+    });
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'When does swim registration open near me?'),
+      deps,
+    );
+    expect(
+      calls.filter((c) => ['not_posted', 'no_source', 'cheer_up'].includes(c.purpose)),
+    ).toEqual([]);
   });
 });

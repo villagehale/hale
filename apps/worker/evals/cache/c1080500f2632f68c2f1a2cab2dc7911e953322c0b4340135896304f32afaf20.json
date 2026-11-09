@@ -1,0 +1,8 @@
+{
+  "value": {
+    "askKind": "answer_here",
+    "answer": "I'm Hale, an AI that helps families keep track of kids' rec programs, like registration dates and what's on nearby. You haven't signed up for anything yet, and nothing has been agreed to.",
+    "returnLine": "Would you be up for sharing your kids' names and ages, along with your postal code, so I can see what fits?"
+  },
+  "latencyMs": 1450
+}
