@@ -343,7 +343,8 @@ describe('channelCoachRuntime', () => {
       expect(seen[1]?.tools).toContain(n);
       expect(seen[2]?.tools).not.toContain(n);
     }
-    expect(seen[2]?.tools).toEqual(SKILL.meta.tools);
+    // A 1:1 turn adds only the VIL-303 decline verb, which rides while a capability is dark.
+    expect(seen[2]?.tools).toEqual([...SKILL.meta.tools, 'note_capability_declined']);
     // Tone is the disk skill, appended only when the list verbs are offered.
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
