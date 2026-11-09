@@ -32,6 +32,7 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
+import { type RecordField, recordFieldOf, withRecordField } from './record-field';
 import {
   type FactSource,
   type FactSourceLabel,
@@ -730,6 +731,7 @@ async function correctFamilyFact(
       childId: schema.familyMemoryFacts.childId,
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
+      factValue: schema.familyMemoryFacts.factValue,
       inferredBy: schema.familyMemoryFacts.inferredBy,
     })
     .from(schema.familyMemoryFacts)
@@ -742,13 +744,21 @@ async function correctFamilyFact(
     );
 
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
+  // A correction of the child's age or the family's home keeps that mark: said now, after
+  // the record was written, it is what every prompt reads in the record's place
+  // (recordCorrections). Without the mark it would be one more memory beside the old record.
   const subjects: Array<{
     childId: string | null;
     factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
+    record: RecordField | null;
   }> =
     live.length > 0
-      ? live.map((row) => ({ childId: row.childId, factType: row.factType }))
-      : [{ childId: null, factType: factTypeFor(input.factKey) }];
+      ? live.map((row) => ({
+          childId: row.childId,
+          factType: row.factType,
+          record: recordFieldOf(row.factValue),
+        }))
+      : [{ childId: null, factType: factTypeFor(input.factKey), record: null }];
 
   await database.transaction(async (tx) => {
     let superseded = 0;
@@ -759,7 +769,7 @@ async function correctFamilyFact(
         childId: subject.childId,
         factType: subject.factType,
         factKey: input.factKey,
-        factValue: input.value,
+        factValue: withRecordField(input.value, subject.record),
         confidence: 1,
         inferredBy: 'ask-hale',
         validFrom: input.now,

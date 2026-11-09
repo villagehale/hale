@@ -1,6 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { type FactSource, factsForContext } from '@hale/worker/memory-context';
+import {
+  type FactSource,
+  correctedAgeMonths,
+  factsForContext,
+  recordCorrections,
+} from '@hale/worker/memory-context';
 import { eq } from 'drizzle-orm';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
@@ -187,8 +192,9 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
 
     familyFit: async (database, familyId, now = new Date()) => {
       const self = productionActivityFamilyReader();
-      const [place, childRows] = await Promise.all([
+      const [place, corrections, childRows] = await Promise.all([
         self.place(database, familyId),
+        recordCorrections(database, familyId, now),
         database
           .select({
             id: schema.children.id,
@@ -198,7 +204,15 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
           .from(schema.children)
           .where(eq(schema.children.familyId, familyId)),
       ]);
-      const children = childRows.map((row) => toFitChild(row, now));
+      // The parent's age correction stands in for the date of birth's age, as in the coach
+      // (VIL-519). The stage stays the date of birth's: the teen gate reads nothing else.
+      const children = childRows.map((row) => {
+        const child = toFitChild(row, now);
+        const fact = corrections.age.get(row.id);
+        if (!fact || child.ageYears === null) return child;
+        const months = correctedAgeMonths(fact, now);
+        return { ...child, ageYears: months === null ? null : Math.floor(months / 12) };
+      });
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );

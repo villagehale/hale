@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { recordCorrections } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
 import type { HealthPlace } from '../health-line';
 import type { FamilyPlace, PlaceUnknown } from './answer';
@@ -444,7 +445,7 @@ export async function healthPlaceOf(family: {
 
 /** The columns {@link placeOf} and {@link healthPlaceOf} read: the active saved area's,
  * with the family's country, or the home row's when there is no active area. */
-export async function readPlaceRow(database: Database, familyId: string) {
+export async function readPlaceRow(database: Database, familyId: string, now: Date = new Date()) {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,
@@ -466,7 +467,31 @@ export async function readPlaceRow(database: Database, familyId: string) {
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
+  // The parent said where they live after the record was last written (VIL-519): that is
+  // where they are now. It is read by these same rules, as a city with no postal area, so a
+  // name the tables do not hold is not guessed and the find does not run.
+  const corrected = placeText((await recordCorrections(database, familyId, now)).place?.factValue);
+  if (corrected) {
+    return {
+      country: family.country,
+      province: null,
+      city: corrected,
+      postalCode: null,
+      areaCoarse: null,
+    };
+  }
   return active ? { ...active, country: family.country, areaCoarse: null } : family;
+}
+
+function placeText(value: unknown): string | null {
+  if (typeof value === 'string') return value.trim() || null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  for (const key of ['city', 'text', 'summary', 'value']) {
+    const field = fields[key];
+    if (typeof field === 'string' && field.trim()) return field.trim();
+  }
+  return null;
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   isNull,
+  max,
   ne,
   notInArray,
   or,
@@ -33,8 +34,10 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
  *   - a fact older than its source's window ({@link FACT_FRESH_DAYS}, VIL-519). Past
  *     the window it is not true enough to reason from, so it never eats the limit either;
  *   - a fact extraction marked as the child's age or the family's home
- *     ({@link RECORD_FIELDS}): the date of birth and the postal code are the record, and
- *     a remembered copy of either is the old one;
+ *     ({@link RECORD_FIELDS}) that is older than that record: a remembered copy of the
+ *     date of birth or the postal code is the old one. What the parent said AFTER the
+ *     record was last written is their correction, and it rides
+ *     ({@link recordCorrections});
  *   - a namespaced key other than a receipt (`recipient:…`, `action_override:…`): an
  *     address a tool reads by key, never a belief to reason from. A receipt
  *     (`health_checkpoint:…`) stays: it is what lets Hale answer "did we book it?" a
@@ -88,6 +91,141 @@ export const FACT_SOURCE_RANK: Readonly<Record<FactSource, number>> = {
 export const RECORD_FIELDS = ['age', 'place'] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The sources that are the parent's own word: what they texted, or what the nightly
+ * inferencer saved from what they said or confirmed. */
+const PARENT_WORD_SOURCES: readonly FactSource[] = ['parent_message', 'inferred'];
+
+/** Audit verbs that rewrite where the family lives (settings edit, saved-area switch). */
+export const PLACE_RECORD_ACTIONS = ['family_location_updated', 'village_area_activated'] as const;
+
+/** Audit verb that rewrites a child's row, the date of birth included (settings edit). */
+export const AGE_RECORD_ACTION = 'child_updated';
+
+/**
+ * The parent's newest word on where they live and on each child's age, when they said it
+ * AFTER the record was last written (VIL-519). That record is the postal code and the
+ * date of birth. A chat correction does not rewrite it yet (VIL-599), so until then the
+ * correction is read in its place: the coach's location, the find's town and the find's
+ * ages all follow it, and {@link factsForContext} lets it through.
+ *
+ * "Last written" is the record row's creation or its newest audited edit (rule #6 makes
+ * the audit log the history of every edit). A remembered copy from before that is the old
+ * one and stays out.
+ */
+export interface RecordCorrections {
+  place: schema.FamilyMemoryFact | null;
+  /** By child id. A family-wide age fact counts only when the family has one child. */
+  age: ReadonlyMap<string, schema.FamilyMemoryFact>;
+}
+
+export async function recordCorrections(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<RecordCorrections> {
+  const teens = await teenRoster(database, familyId, now);
+  return correctionsFor(database, familyId, now, teens);
+}
+
+async function correctionsFor(
+  database: Database,
+  familyId: string,
+  now: Date,
+  teens: TeenRoster,
+): Promise<RecordCorrections> {
+  const facts = schema.familyMemoryFacts;
+  const marked = await database
+    .select()
+    .from(facts)
+    .where(
+      and(
+        eq(facts.familyId, familyId),
+        isNull(facts.validUntil),
+        gte(facts.confidence, MEMORY_CONFIDENCE_FLOOR),
+        or(isNull(facts.expiresAt), gt(facts.expiresAt, now)),
+        freshAt(now),
+        inArray(facts.memorySource, [...PARENT_WORD_SOURCES]),
+        sql`${facts.factValue} ->> 'record' in (${sql.join(
+          RECORD_FIELDS.map((field) => sql`${field}`),
+          sql`, `,
+        )})`,
+        notTeen(facts.childId, teens.ids),
+      ),
+    )
+    .orderBy(desc(facts.validFrom), facts.id);
+  const none: RecordCorrections = { place: null, age: new Map() };
+  if (marked.length === 0) return none;
+
+  const audit = schema.auditLog;
+  const [family, children, placeEdits, childEdits] = await Promise.all([
+    database
+      .select({ createdAt: schema.families.createdAt })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1),
+    database
+      .select({ id: schema.children.id, createdAt: schema.children.createdAt })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId)),
+    database
+      .select({ at: max(audit.occurredAt) })
+      .from(audit)
+      .where(
+        and(eq(audit.familyId, familyId), inArray(audit.actionTaken, [...PLACE_RECORD_ACTIONS])),
+      ),
+    database
+      .select({ childId: audit.targetId, at: max(audit.occurredAt) })
+      .from(audit)
+      .where(
+        and(
+          eq(audit.familyId, familyId),
+          eq(audit.actionTaken, AGE_RECORD_ACTION),
+          eq(audit.targetTable, 'children'),
+        ),
+      )
+      .groupBy(audit.targetId),
+  ]);
+  const familyCreated = family[0]?.createdAt;
+  if (!familyCreated) return none;
+  const placeWritten = latest(familyCreated, placeEdits[0]?.at ?? null);
+  const childEdit = new Map(childEdits.map((row) => [row.childId, row.at]));
+  const childWritten = new Map(
+    children.map((child) => [child.id, latest(child.createdAt, childEdit.get(child.id) ?? null)]),
+  );
+  const onlyChild = children.length === 1 ? children[0]?.id : undefined;
+
+  let place: schema.FamilyMemoryFact | null = null;
+  const age = new Map<string, schema.FamilyMemoryFact>();
+  for (const row of marked) {
+    const record = (row.factValue as { record?: unknown }).record;
+    if (record === 'place') {
+      if (!place && row.validFrom > placeWritten) place = row;
+      continue;
+    }
+    const childId = row.childId ?? onlyChild;
+    const written = childId ? childWritten.get(childId) : undefined;
+    if (childId && written && !age.has(childId) && row.validFrom > written) age.set(childId, row);
+  }
+  return { place, age };
+}
+
+const MONTH_MS = (365.25 / 12) * DAY_MS;
+
+/**
+ * A corrected age at `now`: the months the parent gave, plus the whole months since they
+ * said it. Null when the correction is in words ("she turned five") rather than a number:
+ * the fact still rides, and the model reads it in place of the date of birth.
+ */
+export function correctedAgeMonths(fact: schema.FamilyMemoryFact, now: Date): number | null {
+  const months = (fact.factValue as { ageMonths?: unknown } | null)?.ageMonths;
+  if (typeof months !== 'number' || !Number.isFinite(months) || months < 0) return null;
+  return Math.floor(months + Math.max(0, now.getTime() - fact.validFrom.getTime()) / MONTH_MS);
+}
+
+function latest(a: Date, b: Date | null): Date {
+  return b && b > a ? b : a;
+}
 
 export interface FactsForContextOptions {
   now: Date;
@@ -198,6 +336,11 @@ export async function factsForContext(
   options: FactsForContextOptions,
 ): Promise<schema.FamilyMemoryFact[]> {
   const teens = await teenRoster(database, familyId, options.now);
+  const corrections = await correctionsFor(database, familyId, options.now, teens);
+  const correctionIds = [
+    ...(corrections.place ? [corrections.place.id] : []),
+    ...[...corrections.age.values()].map((row) => row.id),
+  ];
   const facts = schema.familyMemoryFacts;
   const scope = options.scope;
   const rows = await database
@@ -214,7 +357,9 @@ export async function factsForContext(
         ),
         or(isNull(facts.expiresAt), gt(facts.expiresAt, options.now)),
         freshAt(options.now),
-        notRecordCopy(),
+        correctionIds.length > 0
+          ? or(notRecordCopy(), inArray(facts.id, correctionIds))
+          : notRecordCopy(),
         notTeen(facts.childId, teens.ids),
         scope === 'family' ? isNull(facts.childId) : undefined,
         scope && scope !== 'family'
