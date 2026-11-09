@@ -1,9 +1,9 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import type { CalendarInviteSender } from '@hale/worker/executor';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeChannel } from '~/lib/channel/fakes';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { Channel, ChannelKind } from '~/lib/channel/types';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { CALENDAR_INVITE_SMS_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite/sms';
@@ -12,6 +12,13 @@ import type {
   CalendarCancelOutcome,
   CalendarCancelRequest,
 } from '~/lib/loop/voice/calendar-cancel-voice';
+import {
+  type CalendarInviteTimeJudge,
+  type CalendarInviteVoice,
+  type CalendarInviteVoiceOutcome,
+  type CalendarInviteVoiceRequest,
+  createCalendarInviteVoice,
+} from '~/lib/loop/voice/calendar-invite-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import {
   CANCEL_RETRY_MAX_ATTEMPTS,
@@ -42,15 +49,25 @@ vi.mock('~/lib/db', () => ({ db: () => routeDb.current }));
  * cannot be emailed says so in words the executor writes down, and never by omission.
  */
 
-const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in Toronto — outside quiet hours
+const NOON = new Date('2026-07-22T16:00:00.000Z'); // 12:00 in New York — outside quiet hours
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const PHONE = '+16475550123';
+const PHONE = '+12025550123';
 
 let db: TestDb;
 let sms: ReturnType<typeof fakeChannel>;
 /** What the cancellation composer was handed, and what it answers. */
 let cancelCalls: CalendarCancelRequest[];
 let cancelOutcome: CalendarCancelOutcome;
+/** What the tap-to-add composer was handed. `scripted` fills a line from those facts. */
+let inviteCalls: CalendarInviteVoiceRequest[];
+let inviteOutcome: CalendarInviteVoiceOutcome | { status: 'scripted' };
+/** When set, the scripted line leads with the url so a retry can put the link in part 0. */
+let linkFirst: boolean;
+
+/** A stand-in for the model: the facts, in words this test owns. Not a fixed product line. */
+function scriptedInviteBody(request: CalendarInviteVoiceRequest): string {
+  return `${request.summary}, ${request.when}. I put it on the week - open this to add it to your phone: ${request.url}`;
+}
 
 function channels(): Partial<Record<ChannelKind, Channel>> {
   return { sms };
@@ -60,6 +77,21 @@ function sender() {
   return createCalendarInviteSender(db.database, {
     channels: channels(),
     renderer: loopTemplateRenderer,
+    inviteVoice: {
+      compose: async (request) => {
+        inviteCalls.push(request);
+        if (linkFirst) {
+          return {
+            status: 'composed',
+            body: `${request.url} ${request.summary}, ${request.when}. ${'week '.repeat(40)}`,
+          };
+        }
+        if (inviteOutcome.status === 'scripted') {
+          return { status: 'composed', body: scriptedInviteBody(request) };
+        }
+        return inviteOutcome;
+      },
+    },
     cancelVoice: {
       compose: async (request) => {
         cancelCalls.push(request);
@@ -126,8 +158,15 @@ async function ledger(familyId: string, templateKey: string) {
     );
 }
 
-function sentText(index = 0): string {
-  const call = sms.calls[index];
+/** Every part of what was sent, in order. A long invite is split at send. */
+function sentTranscript(): string {
+  return sms.calls
+    .map((call) => (call.rendered.kind === 'sms' ? call.rendered.text : ''))
+    .join(' ');
+}
+
+function lastText(): string {
+  const call = sms.calls.at(-1);
   if (!call || call.rendered.kind !== 'sms') throw new Error('no text was sent');
   return call.rendered.text;
 }
@@ -159,12 +198,15 @@ async function fetchIcs(url: string): Promise<Response> {
 beforeEach(async () => {
   db = await createTestDb();
   routeDb.current = db.database;
-  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1' });
+  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1', transport: 'sms' });
   cancelCalls = [];
   cancelOutcome = {
     status: 'composed',
     body: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
   };
+  inviteCalls = [];
+  inviteOutcome = { status: 'scripted' };
+  linkFirst = false;
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('DATABASE_URL', 'postgres://pglite');
@@ -192,10 +234,10 @@ describe('the tap-to-add link a text-only family gets', () => {
     await clearEmail(seeded.parentUserId);
     await enrollSms(seeded.familyId, seeded.parentUserId);
     // Timezone comes from the postal code at signup now (VIL-413); this family's is
-    // Toronto, which is what the composed "10:30 AM" below is read in.
+    // New York, which is what the composed "10:30 AM" below is read in.
     await db.database
       .update(schema.users)
-      .set({ timezone: 'America/Toronto' })
+      .set({ timezone: 'America/New_York' })
       .where(eq(schema.users.id, seeded.parentUserId));
     return seeded;
   }
@@ -210,9 +252,13 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sentText()).toContain('Swim class');
-    expect(sentText()).toContain('Tap to put it on your phone');
-    expect(sentText()).toContain('https://app.villagehale.com/api/ics/event/');
+    const body = sentTranscript();
+    expect(inviteCalls).toHaveLength(1);
+    expect(inviteCalls[0]?.language).toBe('en');
+    expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
+    expect(body).toContain('Swim class');
+    expect(body).toContain('https://app.villagehale.com/api/ics/event/');
+    expect(body.startsWith('Added -')).toBe(false);
   });
 
   it('serves THAT event as a calendar file through the real route', async () => {
@@ -220,7 +266,7 @@ describe('the tap-to-add link a text-only family gets', () => {
     const familyEventId = await seedPlacement(familyId);
 
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
-    const res = await fetchIcs(linkIn(sentText()));
+    const res = await fetchIcs(linkIn(sentTranscript()));
 
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/calendar; charset=utf-8');
@@ -241,10 +287,11 @@ describe('the tap-to-add link a text-only family gets', () => {
     });
 
     const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
-    expect(rows).toHaveLength(1);
-    // Born 'queued': the provider took it, the delivery receipt has not landed yet.
-    expect(rows[0]).toMatchObject({ status: 'queued', channel: 'sms' });
-    expect(rows[0]?.body).toBeNull();
+    // One row per part when the line is split at send. Born 'queued'.
+    expect(rows.length).toBe(sms.calls.length);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.status === 'queued' && row.channel === 'sms')).toBe(true);
+    expect(rows.some((row) => row.body?.includes('/api/ics/event/'))).toBe(true);
   });
 
   /**
@@ -285,7 +332,10 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(sentText()).toContain('Tap to put it on your phone');
+    const body = sentTranscript();
+    expect(inviteCalls).toHaveLength(1);
+    expect(body).toBe(scriptedInviteBody(inviteCalls[0] as CalendarInviteVoiceRequest));
+    expect(body.startsWith('Added -')).toBe(false);
   });
 
   /** What an approved calendar_cancel leaves behind: the row soft-deleted. */
@@ -333,10 +383,131 @@ describe('the tap-to-add link a text-only family gets', () => {
       status: 'reported',
       parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
     });
-    expect(cancelCalls).toEqual([{ summary: 'Swim class', when: 'Thu, Jul 23 at 10:30 AM' }]);
-    expect(sentText(1)).toBe(
+    expect(cancelCalls).toEqual([
+      {
+        summary: 'Swim class',
+        when: 'Thu, Jul 23 at 10:30 AM',
+        startsAt: new Date('2026-07-23T14:30:00.000Z'),
+        timeZone: 'America/New_York',
+      },
+    ]);
+    expect(lastText()).toBe(
       'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
     );
+  });
+
+  it('VIL-515 · sends nothing and names compose_deferred when the invite composer defers', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    inviteOutcome = { status: 'deferred', reason: 'model_failed' };
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [
+        { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'model_failed' },
+      ],
+    });
+    expect(sms.calls).toHaveLength(0);
+    expect(inviteCalls).toHaveLength(1);
+
+    // A later re-drive whose compose succeeds sends the model's words: the deferral
+    // minted no dedupe row, so nothing blocks it.
+    inviteOutcome = { status: 'scripted' };
+    const retried = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    expect(retried).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sms.calls.length).toBeGreaterThan(0);
+    expect(sentTranscript().startsWith('Added -')).toBe(false);
+  });
+
+  /**
+   * The Preview's forced defer, run here instead: the REAL composer, renderer and
+   * dispatch, and a fake sms channel. Two ports are fakes. The writer's client returns
+   * this test's own words or fails. What a real model writes is pinned by the cached
+   * writer eval (apps/worker/evals/run-calendar-invite-voice-eval.mjs), and the time judge
+   * by its own (run-calendar-invite-time-eval.mjs), rule #8. Each reason comes from the
+   * composer's code.
+   */
+  describe('VIL-515 · a deferred compose sends nothing through the real composer', () => {
+    function writer(fail: boolean): AgentClient {
+      const create = async (body: { messages: { content: string }[] }) => {
+        if (fail) throw new Error('writer unavailable');
+        const facts = JSON.parse(body.messages[0]?.content ?? '{}');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ text: `${facts.summary}, ${facts.when}. ${facts.linkSlot}` }),
+            },
+          ],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      };
+      return { messages: { create } } as unknown as AgentClient;
+    }
+
+    function realVoiceSender(voice: CalendarInviteVoice) {
+      return createCalendarInviteSender(db.database, {
+        channels: channels(),
+        renderer: loopTemplateRenderer,
+        inviteVoice: voice,
+        cancelVoice: { compose: async () => cancelOutcome },
+        now: () => NOON,
+      });
+    }
+
+    const judge = (answer: boolean | null): CalendarInviteTimeJudge => ({
+      matches: async () => answer,
+    });
+
+    it.each([
+      { reason: 'model_failed', writerFails: true, judged: true },
+      { reason: 'time_unjudged', writerFails: false, judged: null },
+      { reason: 'gate_exhausted', writerFails: false, judged: false },
+    ] as const)('$reason: nothing is sent and the reason is named', async (c) => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const voice = createCalendarInviteVoice(() => writer(c.writerFails), judge(c.judged));
+
+      const report = await realVoiceSender(voice).send({
+        familyId,
+        familyEventId,
+        method: 'REQUEST',
+      });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: c.reason }],
+      });
+      expect(sms.calls).toHaveLength(0);
+      expect(await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY)).toEqual([]);
+    });
+
+    it('positive control: the same wiring sends the filled line when the judge agrees', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const voice = createCalendarInviteVoice(() => writer(false), judge(true));
+
+      const report = await realVoiceSender(voice).send({
+        familyId,
+        familyEventId,
+        method: 'REQUEST',
+      });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+      });
+      expect(sentTranscript()).toMatch(
+        /^Swim class, Thu, Jul 23 at 10:30 AM\. https:\/\/app\.villagehale\.com\/api\/ics\/event\/\S+$/,
+      );
+      expect(await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY)).toHaveLength(1);
+    });
   });
 
   it('sends nothing and names compose_deferred when the composer defers (no fixed fallback)', async () => {
@@ -520,7 +691,7 @@ describe('the tap-to-add link a text-only family gets', () => {
   async function textingCoParent(familyId: string): Promise<string> {
     const [user] = await db.database
       .insert(schema.users)
-      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/Toronto' })
+      .values({ email: `co-${familyId}@example.test`, name: 'Sam', timezone: 'America/New_York' })
       .returning({ id: schema.users.id });
     const userId = user?.id as string;
     await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'co_parent' });
@@ -685,18 +856,186 @@ describe('the tap-to-add link a text-only family gets', () => {
     expect(sms.calls).toHaveLength(0);
   });
 
+  it('a failed receipt does not hand the same retry key out again', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    const base = `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}`;
+    await db.database.insert(schema.channelMessages).values([
+      {
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${base}:sms:0`,
+        status: 'failed',
+        body: 'Swim class tomorrow',
+        sentAt: NOON,
+      },
+      {
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${base}:r1:sms:0`,
+        status: 'sent',
+        body: 'Swim class tomorrow',
+        sentAt: NOON,
+      },
+    ]);
+    linkFirst = true;
+
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
+    expect(rows.some((row) => row.dedupeKey?.includes(':r2:'))).toBe(true);
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+  });
+
+  it('a linkless first part does not block a retry that puts the link first', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms:0`,
+      status: 'sent',
+      body: 'Swim class tomorrow',
+      sentAt: NOON,
+    });
+    linkFirst = true;
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+  });
+
+  it('a null-body invite from before bodies were stored still gets a cancellation', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms`,
+      status: 'sent',
+      sentAt: NOON,
+    });
+    await db.database
+      .update(schema.familyEvents)
+      .set({ deletedAt: NOON })
+      .where(eq(schema.familyEvents.id, familyEventId));
+
+    const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, outcome: 'sent' }],
+    });
+    expect(cancelCalls).toHaveLength(1);
+  });
+
+  it('a first part that has no link does not count as the invite', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms:0`,
+      status: 'sent',
+      body: 'Swim class tomorrow',
+      sentAt: NOON,
+    });
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toMatchObject({
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+  });
+
+  it('a sent revision 1 does not suppress revision 10', async () => {
+    const { familyId, parentUserId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'approval',
+      templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+      dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:1:${parentUserId}:sms`,
+      status: 'sent',
+      sentAt: NOON,
+    });
+    // Sequence is the count of audit rows on the event. Ten rows make this send revision 10.
+    await db.database.insert(schema.auditLog).values(
+      Array.from({ length: 10 }, () => ({
+        familyId,
+        actor: 'system' as const,
+        actionTaken: 'action.calendar_moved',
+        targetTable: 'family_events',
+        targetId: familyEventId,
+        occurredAt: NOON,
+      })),
+    );
+
+    const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toEqual({
+      status: 'reported',
+      parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+    });
+    expect(sms.calls.length).toBeGreaterThan(0);
+    expect(inviteCalls).toHaveLength(1);
+  });
+
   it('re-driving the same placement texts nothing twice', async () => {
     const { familyId } = await textOnlyFamily();
     const familyEventId = await seedPlacement(familyId);
     const invites = sender();
 
     await invites.send({ familyId, familyEventId, method: 'REQUEST' });
+    const before = sms.calls.length;
     const second = await invites.send({ familyId, familyEventId, method: 'REQUEST' });
 
     expect(second).toMatchObject({
       parents: [expect.objectContaining({ channel: 'sms', outcome: 'already_sent' })],
     });
-    expect(sms.calls).toHaveLength(1);
+    expect(sms.calls).toHaveLength(before);
+  });
+
+  it('hands the family language to the invite voice', async () => {
+    const { familyId } = await textOnlyFamily();
+    await db.database
+      .update(schema.families)
+      .set({ primaryLanguage: 'fr' })
+      .where(eq(schema.families.id, familyId));
+
+    await sender().send({
+      familyId,
+      familyEventId: await seedPlacement(familyId),
+      method: 'REQUEST',
+    });
+
+    expect(inviteCalls[0]?.language).toBe('fr');
   });
 
   it('will not serve family A an event of family B, signed with A\u2019s own feed secret', async () => {
@@ -719,7 +1058,7 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     // Positive control: family B's own link resolves, so the 404 below is the signature
     // and not a broken fixture.
-    expect((await fetchIcs(linkIn(sentText(1)))).status).toBe(200);
+    expect((await fetchIcs(linkIn(sentTranscript()))).status).toBe(200);
     expect((await fetchIcs(forged)).status).toBe(404);
   });
 
@@ -733,18 +1072,13 @@ describe('the tap-to-add link a text-only family gets', () => {
 
     await sender().send({ familyId, familyEventId, method: 'REQUEST' });
 
-    expect(sentText()).not.toContain('Maya');
-    expect(sentText()).not.toContain('therapy');
-    expect(sentText()).toContain('an appointment');
+    const body = sentTranscript();
+    expect(body).not.toContain('Maya');
+    expect(body).not.toContain('therapy');
+    expect(body).toContain('an appointment');
   });
 
-  /**
-   * The budget, measured on a REAL token: a uuid, a dot, and a 43-character base64url
-   * HMAC is 80 characters of link before a word is written. Two segments is the
-   * ceiling every deterministic Hale text is held to, and a third would be a 50% bill
-   * increase on every placement a texting family approves.
-   */
-  it('fits two GSM-7 segments with the real link inside it', async () => {
+  it('sends the real link whole, splitting a long line instead of dropping it', async () => {
     const { familyId } = await textOnlyFamily();
 
     await sender().send({
@@ -753,25 +1087,15 @@ describe('the tap-to-add link a text-only family gets', () => {
       method: 'REQUEST',
     });
 
-    const body = sentText();
-    expect(linkIn(body)).toHaveLength(
-      'https://app.villagehale.com/api/ics/event/'.length + 36 + 1 + 43,
-    );
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 2,
-    });
+    const body = sentTranscript();
+    const link = linkIn(body);
+    expect(link).toHaveLength('https://app.villagehale.com/api/ics/event/'.length + 36 + 1 + 43);
+    expect(
+      sms.calls.some((call) => call.rendered.kind === 'sms' && call.rendered.text.includes(link)),
+    ).toBe(true);
   });
 
-  /**
-   * The same budget at the dial that NAMES the child — the branch the childless fixture
-   * above can never reach. `eventDescriptor` attributes a title to its child with an EM
-   * DASH ("Maya — Swim class"), one character outside GSM-7, and a single one of those
-   * re-encodes the entire body as UCS-2: 67 units per part instead of 153, so the same
-   * text bills four segments instead of two. The file scan in sms-copy-encoding.test.ts
-   * cannot see it, because the character arrives at runtime from a family_events row.
-   */
-  it('still fits two GSM-7 segments at the dial that names the child', async () => {
+  it('keeps the em dash in a named child\u2019s summary', async () => {
     const { familyId, parentUserId } = await textOnlyFamily();
     await db.database
       .insert(schema.loopPrefs)
@@ -787,12 +1111,108 @@ describe('the tap-to-add link a text-only family gets', () => {
       method: 'REQUEST',
     });
 
-    const body = sentText();
-    // Folded, not dropped: the parent turned names ON, so the name still arrives.
-    expect(body).toContain('Maya - Preschool swim lessons - Level 2 (Saturdays)');
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 2,
+    expect(sentTranscript()).toContain('Maya \u2014 Preschool swim lessons - Level 2 (Saturdays)');
+  });
+
+  async function setZone(userId: string, timezone: string): Promise<void> {
+    await db.database.update(schema.users).set({ timezone }).where(eq(schema.users.id, userId));
+  }
+
+  describe('VIL-588 · a parent zone Intl cannot read defers that parent, and the sender returns', () => {
+    for (const zone of ['Not/A_Zone', '']) {
+      it(`invite, zone ${JSON.stringify(zone)}: that parent is time_unjudged, the co-parent gets the link`, async () => {
+        const { familyId, parentUserId } = await textOnlyFamily();
+        const sam = await textingCoParent(familyId);
+        await setZone(parentUserId, zone);
+        const familyEventId = await seedPlacement(familyId);
+
+        const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+        expect(report).toEqual({
+          status: 'reported',
+          parents: [
+            { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'time_unjudged' },
+            { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+          ],
+        });
+        expect(inviteCalls.map((call) => call.timeZone)).toEqual(['America/New_York']);
+        // A long scripted line goes out in parts: every part is the co-parent's.
+        expect(new Set(sms.calls.map((call) => call.userId))).toEqual(new Set([sam]));
+      });
+
+      it(`cancel, zone ${JSON.stringify(zone)}: that parent is time_unjudged, the co-parent is told`, async () => {
+        const { familyId, parentUserId } = await textOnlyFamily();
+        const sam = await textingCoParent(familyId);
+        const familyEventId = await seedPlacement(familyId);
+        await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+        await setZone(parentUserId, zone);
+        await softDelete(familyEventId);
+        const sentBefore = sms.calls.length;
+
+        const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+        expect(report).toEqual({
+          status: 'reported',
+          parents: [
+            { parentUserId, channel: 'sms', outcome: 'compose_deferred', reason: 'time_unjudged' },
+            { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+          ],
+        });
+        expect(cancelCalls.map((call) => call.timeZone)).toEqual(['America/New_York']);
+        expect(sms.calls.slice(sentBefore).map((call) => call.userId)).toEqual([sam]);
+      });
+    }
+
+    it('positive control: both parents in a real zone are both texted the link and the cancel', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const sam = await textingCoParent(familyId);
+      const familyEventId = await seedPlacement(familyId);
+
+      const invite = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+      await softDelete(familyEventId);
+      const cancel = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+      const both = {
+        status: 'reported',
+        parents: [
+          { parentUserId, channel: 'sms', outcome: 'sent' },
+          { parentUserId: sam, channel: 'sms', outcome: 'sent' },
+        ],
+      };
+      expect(invite).toEqual(both);
+      expect(cancel).toEqual(both);
     });
+  });
+
+  it('VIL-588 · the cancel message carries only what its renderer sends: the start and the line', async () => {
+    const { familyId } = await textOnlyFamily();
+    const familyEventId = await seedPlacement(familyId);
+    await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+    await softDelete(familyEventId);
+    const payloads: Record<string, unknown>[] = [];
+    const recording = createCalendarInviteSender(db.database, {
+      channels: channels(),
+      renderer: {
+        render(message, channel, nameLevel) {
+          payloads.push(message.payload);
+          return loopTemplateRenderer.render(message, channel, nameLevel);
+        },
+      },
+      inviteVoice: { compose: async () => ({ status: 'deferred', reason: 'model_failed' }) },
+      cancelVoice: { compose: async () => cancelOutcome },
+      now: () => NOON,
+    });
+
+    await recording.send({ familyId, familyEventId, method: 'CANCEL' });
+
+    expect(payloads).toEqual([
+      {
+        when: 'Thu, Jul 23 at 10:30 AM',
+        line: 'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+      },
+    ]);
+    expect(lastText()).toBe(
+      'Swim class on Thu, Jul 23 at 10:30 AM is cancelled - you can take it off your calendar.',
+    );
   });
 });

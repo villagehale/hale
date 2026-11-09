@@ -42,6 +42,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // The mirror's kid gate hashes each input with a keyed blind index (VIL-548).
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   family = await seedFamily(db.database);
   CONNECTION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
@@ -214,6 +216,25 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       .where(eq(schema.familyEvents.familyId, family.familyId));
   }
 
+  /** The parent's own word that an event is the kids'. Read with no model and no key, so
+   * these cases reach a real mirror write without a network. */
+  async function seedParentKidVerdict(eventId: string): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.kidRelevanceVerdicts)
+      .values({
+        familyId: family.familyId,
+        source: 'google_calendar',
+        integrationId: CONNECTION,
+        itemKey: eventId,
+        inputHash: 'a-parent-row-ignores-the-hash',
+        verdict: 'kid',
+        decidedBy: 'parent',
+      })
+      .returning({ id: schema.kidRelevanceVerdicts.id });
+    if (!row) throw new Error('verdict seed returned no row');
+    return row.id;
+  }
+
   it('writes no family_events and reports the window held while the mirror lane is off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -231,6 +252,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: true,
       heldReason: 'lane_off',
     });
@@ -241,8 +265,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
     );
   });
 
-  it('mirrors the window as before when the lane is exactly true', async () => {
+  it('with no model key and nothing stored, mirrors nothing and names it unjudgedNoJudge (VIL-548)', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
 
     const counts = await mirrorPort()({
       connection: connection({ provider: 'gcal' }),
@@ -251,9 +276,30 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       now: NOW,
     });
 
-    expect(counts).toMatchObject({ mirrored: 1, held: false });
+    expect(counts).toMatchObject({ mirrored: 0, unjudgedNoJudge: 1, held: false });
+    await expect(familyEventRows()).resolves.toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: CONNECTION },
+      'calendar mirror: no kid judge client, stored verdicts only',
+    );
+  });
+
+  it("with no model key, mirrors an event the parent said is the kids', linked to that verdict (VIL-548)", async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const verdictId = await seedParentKidVerdict('ev-swim');
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toMatchObject({ mirrored: 1, unjudgedNoJudge: 0, held: false });
     const rows = await familyEventRows();
     expect(rows.map((row) => [row.source, row.googleEventId])).toEqual([['parent', 'ev-swim']]);
+    expect(rows[0]?.kidVerdictId).toBe(verdictId);
   });
 
   it('names a connection with no parent user as held for no_parent_user', async () => {
@@ -290,7 +336,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
 
   it("places an all-day occasion on the family's own local midnight", async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     await setParentTimezone('America/Vancouver');
+    await seedParentKidVerdict('ev-fair');
 
     await mirrorPort()({
       connection: connection({ provider: 'gcal' }),
@@ -322,6 +370,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: true,
       heldReason: 'no_timezone',
     });
@@ -334,6 +385,8 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
 
   it('leaves mirrors already written in place when the lane goes off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await seedParentKidVerdict('ev-swim');
     const conn = connection({ provider: 'gcal' });
     await mirrorPort()({ connection: conn, items: [swim()], trustWindow: true, now: NOW });
 

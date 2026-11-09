@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is in English, names Swim class with the correct day and time, notes it was logged, and says tapping the link adds it to their calendar. No extra details or promises. Minor issue: 'pop it in your phone's calendar' is fine as it refers to the link action, not a pre-existing entry.",
+    "score": 5
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "Arrêtez de m'écrire s'il vous plaît",
+    "language": "fr",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": "D'accord, Hale ne vous enverra plus de messages. Si vous voulez reprendre, écrivez-le simplement dans vos propres mots."
+  },
+  "latencyMs": 1250
+}

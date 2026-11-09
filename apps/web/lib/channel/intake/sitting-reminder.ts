@@ -2,10 +2,14 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
+import { parseIntakePostal } from '~/lib/channel/intake/derive';
 import { type FriendVoiceComposer, speakFriend } from '~/lib/channel/intake/friend-voice';
+import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
+  type FirstTouchPersisted,
   type IntakeSession,
   appendTranscript,
+  decodeIntakeForRecovery,
   loadOpenSession,
   saveSession,
 } from '~/lib/channel/intake/session';
@@ -28,12 +32,14 @@ import { dayKeyIn } from '~/lib/plan/spine';
  * when details are incomplete, cap 1. This is a later, scheduled text for a
  * session that never came back.
  *
- * Clock (Advisor + GTM lock): the NEXT America/Toronto calendar morning, at the
+ * Clock (VIL-562): the NEXT calendar morning in the session's own zone, at the
  * existing proactive morning window (`PROACTIVE_QUIET_HOURS.end` = 08:00). Not
  * 24 hours later to the minute — an 8:25pm / 9:28pm first-hello must not get a
- * 10pm next-night ping. Not an invented 9:00. Not a family-local hour — these
- * rows are still intakes and have no family timezone. The hourly cron matches
- * the whole morning hour so a tick a minute late still lands.
+ * 10pm next-night ping. Not an invented 9:00. The zone is the one the parent's
+ * postal code gives (the same parse provisioning writes into users.timezone); a
+ * session with no postal place has no zone and is held, never sent on someone
+ * else's clock. The hourly cron matches each zone's whole morning hour so a tick
+ * a minute late still lands.
  *
  * Send path is createOutboundTransport (Linq). No second text stack. No family
  * is minted. No family metrics.
@@ -47,21 +53,14 @@ function localHourFromHm(hm: string): number {
   return hour;
 }
 
-export const SITTING_REMINDER_TIMEZONE = 'America/Toronto';
 export const SITTING_REMINDER_HOUR_LOCAL = localHourFromHm(PROACTIVE_QUIET_HOURS.end);
 
-/**
- * GTM lock 2026-08-28 — tonight's founder pair already got a text (Claude may
- * have hit the carrier raw, formerly Twilio; Hale's ledger is empty). Do not send Still here to these
- * two. Claim the reminder so a later tick stays quiet. Everyone else still sitting
- * gets the locked line at 8:00 America/Toronto.
- */
-export const FOUNDER_PAIR_SESSION_IDS: ReadonlySet<string> = new Set([
-  '605b0577-cd64-4a6b-91c7-821ca6ceca00',
-  '69310ee5-528d-4824-a2aa-27a853df4612',
-]);
-
-const MAX_SITTING_REMINDERS_PER_RUN = 50;
+const SITTING_STATES = [
+  'awaiting_details',
+  'awaiting_place',
+  'awaiting_ages',
+  'awaiting_cold_start',
+] as const;
 
 export interface SittingReminderDeps {
   /** The outbound text leg — REQUIRED (rule #11). The real adapter is Linq. */
@@ -77,6 +76,11 @@ export interface SittingReminderResult {
   sent: number;
   skipped: number;
   failed: number;
+  /** VIL-553 · rows not claimed because the number has an unread opt-out read. Still owed. */
+  optOutHeld?: number;
+  /** VIL-562 · owed rows with no postal place, so no zone to find their morning in. Not
+   * claimed, still owed. */
+  zoneUnknown?: number;
 }
 
 export interface SittingSessionRow {
@@ -86,38 +90,58 @@ export interface SittingSessionRow {
   firstReplyRecoveredAt: Date | null;
   familyId: string | null;
   createdAt: Date;
+  /** The session's own zone (sittingSessionZone). */
+  timeZone: string;
 }
 
-/** Whether `now` sits in the locked Toronto morning hour (quiet-hours end). */
-export function isSittingReminderSlot(now: Date): boolean {
-  return (
-    Math.floor(localParts(now, SITTING_REMINDER_TIMEZONE).minutes / 60) ===
-    SITTING_REMINDER_HOUR_LOCAL
-  );
+/** The zone a session's postal place gives, or null when it has none (no place, or a city). */
+export function sittingSessionZone(firstTouch: FirstTouchPersisted | null): string | null {
+  return placeZone(firstTouch?.place ?? null);
 }
 
-/** Whether `now` is a later America/Toronto calendar day than first-hello. */
-export function isNextTorontoMorning(createdAt: Date, now: Date): boolean {
-  return dayKeyIn(now, SITTING_REMINDER_TIMEZONE) > dayKeyIn(createdAt, SITTING_REMINDER_TIMEZONE);
+/** The zone a postal place gives. Null for no place or a city: no zone is guessed. */
+export function placeZone(place: FirstTouchPersisted['place'] | null): string | null {
+  if (!place || place.kind !== 'postal') return null;
+  return parseIntakePostal(place.postalCode ?? place.areaCoarse)?.timezone ?? null;
+}
+
+/** Whether `now` sits in the morning hour (quiet-hours end) in `timeZone`. */
+export function isSittingReminderSlot(now: Date, timeZone: string): boolean {
+  return Math.floor(localParts(now, timeZone).minutes / 60) === SITTING_REMINDER_HOUR_LOCAL;
+}
+
+/** Whether `now` is a later calendar day in `timeZone` than `createdAt`. */
+export function isNextLocalMorning(createdAt: Date, now: Date, timeZone: string): boolean {
+  return dayKeyIn(now, timeZone) > dayKeyIn(createdAt, timeZone);
+}
+
+/** The state, claim and family checks alone, with no clock: owed a nudge on some morning. */
+function sittingNudgeOwed(row: Omit<SittingSessionRow, 'timeZone'>): boolean {
+  if (row.closedAt !== null || row.sittingReminderSentAt !== null) return false;
+  if (row.state === 'awaiting_cold_start') return row.familyId !== null;
+  return (SITTING_STATES as readonly string[]).includes(row.state) && row.familyId === null;
 }
 
 /**
  * Pure gate. Sitting sessions stay intakes: a provisioned family, a closed row,
  * STOP, a completed flow, or an already-claimed reminder all refuse. The clock
- * is the existing Toronto morning window the calendar morning after first-hello.
+ * is the session's own morning window the calendar morning after first-hello.
  */
 export function sittingSessionEligible(row: SittingSessionRow, now: Date): boolean {
   if (row.state !== 'awaiting_details') return false;
   if (row.closedAt !== null) return false;
   if (row.sittingReminderSentAt !== null) return false;
   if (row.familyId !== null) return false;
-  if (!isSittingReminderSlot(now)) return false;
+  if (!isSittingReminderSlot(now, row.timeZone)) return false;
   // VIL-332: a same-run recovery first-hello must not also get Still here.
   // Clock the reminder from the first-hello that actually left, when we know it.
-  if (row.firstReplyRecoveredAt && !isNextTorontoMorning(row.firstReplyRecoveredAt, now)) {
+  if (
+    row.firstReplyRecoveredAt &&
+    !isNextLocalMorning(row.firstReplyRecoveredAt, now, row.timeZone)
+  ) {
     return false;
   }
-  return isNextTorontoMorning(row.createdAt, now);
+  return isNextLocalMorning(row.createdAt, now, row.timeZone);
 }
 
 /**
@@ -130,8 +154,8 @@ export function firstTouchNudgeEligible(row: SittingSessionRow, now: Date): bool
   if (row.closedAt !== null) return false;
   if (row.sittingReminderSentAt !== null) return false;
   if (row.familyId !== null) return false;
-  if (!isSittingReminderSlot(now)) return false;
-  return isNextTorontoMorning(row.createdAt, now);
+  if (!isSittingReminderSlot(now, row.timeZone)) return false;
+  return isNextLocalMorning(row.createdAt, now, row.timeZone);
 }
 
 /**
@@ -143,8 +167,8 @@ export function findNudgeEligible(row: SittingSessionRow, now: Date): boolean {
   if (row.closedAt !== null) return false;
   if (row.sittingReminderSentAt !== null) return false;
   if (row.familyId === null) return false;
-  if (!isSittingReminderSlot(now)) return false;
-  return isNextTorontoMorning(row.createdAt, now);
+  if (!isSittingReminderSlot(now, row.timeZone)) return false;
+  return isNextLocalMorning(row.createdAt, now, row.timeZone);
 }
 
 export function defaultSittingReminderDeps(): SittingReminderDeps {
@@ -157,23 +181,44 @@ export async function runSittingReminderCron(
   now: Date = new Date(),
 ): Promise<SittingReminderResult> {
   const result: SittingReminderResult = { evaluated: 0, sent: 0, skipped: 0, failed: 0 };
-  if (!isSittingReminderSlot(now)) return result;
+  let zoneUnknown = 0;
 
-  const candidates = await loadSittingCandidates(database, [
-    'awaiting_details',
-    'awaiting_place',
-    'awaiting_ages',
-    'awaiting_cold_start',
-  ]);
-  for (const row of candidates.slice(0, MAX_SITTING_REMINDERS_PER_RUN)) {
-    if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
-      await claimSittingReminder(database, row.id, now, row.state);
+  // Every candidate, every run: each row's slot is its own zone's morning, so no row can
+  // be hidden behind others that are out of slot. The route's maxDuration bounds the work.
+  const candidates = await loadSittingCandidates(database, SITTING_STATES);
+  for (const candidate of candidates) {
+    if (!sittingNudgeOwed(candidate)) {
       result.skipped += 1;
       continue;
     }
+    // Decoded only once the row is owed. The blob is read without decrypting the phone.
+    // An unreadable blob (GCM refuses a tampered or wrong-key one) fails this row loudly
+    // and leaves it unclaimed; it must not stop every later row's morning.
+    let firstTouch: FirstTouchPersisted | null;
+    try {
+      firstTouch = decodeIntakeForRecovery(candidate.dataEncrypted).firstTouch;
+    } catch {
+      result.failed += 1;
+      console.error(
+        { code: 'session_unreadable' },
+        'sitting reminder: session unreadable, not sent',
+      );
+      continue;
+    }
+    const timeZone = sittingSessionZone(firstTouch);
+    if (timeZone === null) {
+      zoneUnknown += 1;
+      continue;
+    }
+    const row = { ...candidate, timeZone };
     const nudge = firstTouchNudgeEligible(row, now) || findNudgeEligible(row, now);
     if (!nudge && !sittingSessionEligible(row, now)) {
       result.skipped += 1;
+      continue;
+    }
+    if (await isSenderHeld(database, row.phoneHash)) {
+      result.optOutHeld = (result.optOutHeld ?? 0) + 1;
+      console.info({ skipped: 'opt_out_unread' }, 'sitting reminder: number held - not claimed');
       continue;
     }
     result.evaluated += 1;
@@ -222,12 +267,18 @@ export async function runSittingReminderCron(
       console.error({ code: refusal?.code ?? 'unknown' }, 'sitting reminder send failed');
     }
   }
+  if (zoneUnknown > 0) {
+    result.zoneUnknown = zoneUnknown;
+    console.info({ zoneUnknown }, 'sitting reminder: held, no zone for the session');
+  }
   return result;
 }
 
-interface SittingCandidate extends SittingSessionRow {
+interface SittingCandidate extends Omit<SittingSessionRow, 'timeZone'> {
   id: string;
+  phoneHash: string;
   phoneEncrypted: string;
+  dataEncrypted: string;
 }
 
 async function loadSittingCandidates(
@@ -237,7 +288,9 @@ async function loadSittingCandidates(
   return database
     .select({
       id: schema.smsIntakeSessions.id,
+      phoneHash: schema.smsIntakeSessions.phoneHash,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
+      dataEncrypted: schema.smsIntakeSessions.dataEncrypted,
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,
       sittingReminderSentAt: schema.smsIntakeSessions.sittingReminderSentAt,

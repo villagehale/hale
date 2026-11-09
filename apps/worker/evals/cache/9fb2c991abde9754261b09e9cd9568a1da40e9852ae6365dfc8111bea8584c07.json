@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis désolé que tu traverses ça, ça a l'air vraiment lourd. Si tu penses à te faire du mal, tu peux appeler ou texter le 988 à tout moment : au Canada c'est la 9-8-8 Suicide Crisis Helpline (en français ou en anglais), aux États-Unis c'est la 988 Suicide & Crisis Lifeline. Si tu es en danger immédiat, appelle le 911. Tu n'es pas seul, et je reste là si tu veux me parler de ce qui se passe."
+  },
+  "latencyMs": 5177
+}

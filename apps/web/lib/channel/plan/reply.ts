@@ -6,7 +6,8 @@ import {
   deriveStage,
   playbookFor,
 } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { factsForContext } from '@hale/worker/memory-context';
+import { and, eq } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
@@ -467,35 +468,25 @@ export async function loadPlanChild(
 /**
  * A few things Hale already knows about this household, as plain sentences.
  *
- * Child-scoped facts are excluded at the QUERY, not filtered after: this stage writes
- * for the house, and the cheapest way to keep a 13-year-old's detail out of a composed
- * plan is never to load it (rule #1). `child_id IS NULL` is strictly narrower than a
- * teen filter and needs no age read, so there is no third private copy of
- * `teenChildIdsForFamily` here.
+ * Family-wide facts only, excluded at the QUERY: this stage writes for the house, and
+ * the cheapest way to keep a 13-year-old's detail out of a composed plan is never to
+ * load it (rule #1).
  *
- * Only what is still true: without `valid_until IS NULL` a plan speaks from beliefs a
- * later write already contradicted, and retiring a fact would have no effect here.
- * The ORDER BY is the coach's (`lib/coach/context.ts`) so the handful that survives
- * `MAX_PLAN_FACTS` is the handful Hale is already reasoning from, not an arbitrary five.
+ * Only what is still true, through the shared prompt read every agent uses
+ * (`@hale/worker/memory-context`), so the handful that survives `MAX_PLAN_FACTS` is
+ * the handful Hale is already reasoning from, not an arbitrary five.
  */
-export async function loadPlanFacts(database: Database, familyId: string): Promise<string[]> {
-  const rows = await database
-    .select({ factValue: schema.familyMemoryFacts.factValue })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, familyId),
-        eq(schema.familyMemoryFacts.factType, 'preference'),
-        isNull(schema.familyMemoryFacts.validUntil),
-        isNull(schema.familyMemoryFacts.childId),
-      ),
-    )
-    .orderBy(
-      desc(schema.familyMemoryFacts.confidence),
-      desc(schema.familyMemoryFacts.validFrom),
-      schema.familyMemoryFacts.id,
-    )
-    .limit(MAX_PLAN_FACTS);
+export async function loadPlanFacts(
+  database: Database,
+  familyId: string,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const rows = await factsForContext(database, familyId, {
+    now,
+    limit: MAX_PLAN_FACTS,
+    scope: 'family',
+    factTypes: ['preference'],
+  });
   return rows
     .map((row) => {
       const value = row.factValue as { summary?: unknown } | null;

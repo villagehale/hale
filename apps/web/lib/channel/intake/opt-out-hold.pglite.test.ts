@@ -1,20 +1,41 @@
+import { schema } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { type OutboundGatePorts, assertProactiveSendAllowed } from '~/lib/channel/outbound-gate';
 import { createTestDb } from '~/lib/testing/pglite';
-import { holdSender, isSenderHeld, releaseSender } from './opt-out-hold';
+import { holdSender, isSenderHeld, releaseHeldMessage } from './opt-out-hold';
 
 describe('#868 failed-read hold', () => {
   // PGlite's first boot under the full CI suite has crossed the 5s test timeout.
-  it('holds a sender until a read succeeds', async () => {
+  it('VIL-553: holds a number while any of its unread messages stands', async () => {
     const db = (await createTestDb()).database;
     const now = new Date('2026-10-14T20:00:00Z');
     expect(await isSenderHeld(db, 'hash-a')).toBe(false);
-    await holdSender(db, 'hash-a', now);
-    await holdSender(db, 'hash-a', now);
+    expect(await holdSender(db, { phoneHash: 'hash-a', providerMessageId: 'pm-1', now })).toBe(
+      'held',
+    );
+    expect(await holdSender(db, { phoneHash: 'hash-a', providerMessageId: 'pm-1', now })).toBe(
+      'already_held',
+    );
+    await holdSender(db, { phoneHash: 'hash-a', providerMessageId: 'pm-2', now });
     expect(await isSenderHeld(db, 'hash-a')).toBe(true);
     expect(await isSenderHeld(db, 'hash-b')).toBe(false);
-    await releaseSender(db, 'hash-a');
+
+    expect(await releaseHeldMessage(db, 'pm-1')).toBe('released');
+    expect(await isSenderHeld(db, 'hash-a')).toBe(true);
+    expect(await releaseHeldMessage(db, 'pm-x')).toBe('not_held');
+    expect(await releaseHeldMessage(db, 'pm-2')).toBe('released');
     expect(await isSenderHeld(db, 'hash-a')).toBe(false);
+    expect(await isSenderHeld(db, 'hash-b')).toBe(false);
+  }, 30_000);
+
+  it('a row written before VIL-553 still holds its number', async () => {
+    const db = (await createTestDb()).database;
+    const now = new Date('2026-10-14T20:00:00Z');
+    await db.insert(schema.optOutReadHolds).values({ phoneHash: 'hash-c', heldAt: now });
+    await holdSender(db, { phoneHash: 'hash-c', providerMessageId: 'pm-3', now });
+    await releaseHeldMessage(db, 'pm-3');
+    expect(await isSenderHeld(db, 'hash-c')).toBe(true);
+    expect(await isSenderHeld(db, 'hash-d')).toBe(false);
   }, 30_000);
 
   it('the outbound gate holds every proactive kind, urgent or not, while held', async () => {

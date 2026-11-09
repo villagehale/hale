@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the given facts. The events are Library story time (11:00-11:45 AM, Georgetown library, 9 Church St) and Soccer (5:30-6:30 PM, Riverside Field, 22 Park Rd), but the text mentions only an invented 'Jour de congé at 3:00'. Both real events are missing, along with their starts, ends, venue names and addresses. It invents an event and a day off, and says the family has 'breathing room' when two timed events exist. It is also in English rather than the requested Chinese.",
+    "score": 1
+  }
+}

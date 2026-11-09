@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The co_parent_departed item is family news the staying parent hasn't been told, so it is sent now regardless of the unanswered streak or empty free windows, and it is Thursday 6 PM local, outside quiet hours.",
+    "action": "send_now",
+    "item_ids": [
+      "departed"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}

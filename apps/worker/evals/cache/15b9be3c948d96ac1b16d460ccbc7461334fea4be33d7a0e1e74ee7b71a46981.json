@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. Story time: tomorrow morning 11:00-11:45, Georgetown library, 9 Church St. Soccer: tomorrow, 5:30-6:30 PM (下午, correct; 傍晚 'evening' is a natural description of 5:30 PM and not wrong), Riverside Field, 22 Park Rd. Titles keep their meaning (图书馆讲故事时间 = Library story time; 足球 = Soccer). The only link is planLink, exactly. No invented end times, travel details, or inferences. Bold is none, which is fine. Written in Chinese.",
+    "score": 5
+  }
+}

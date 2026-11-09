@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
@@ -293,6 +294,14 @@ async function enrolVerifiedChannel(
     if (!channelId) {
       throw new Error('enrolVerifiedChannel: channel insert returned no row');
     }
+
+    // See supersedeOpenInviteOnEnrollment: an invite left open on this number would
+    // outrank the channel just written.
+    await supersedeOpenInviteOnEnrollment(tx as unknown as Database, {
+      phoneE164,
+      via: 'web_otp',
+      now,
+    });
 
     await tx.insert(schema.auditLog).values({
       familyId,

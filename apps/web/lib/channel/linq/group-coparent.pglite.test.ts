@@ -7,7 +7,9 @@ import type { SaidLineInput } from '~/lib/channel/voice/said-line';
 import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { loadOpenInviteByPhone } from '~/lib/channel/caregiver/invites';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import {
   LINQ_GROUP_TRIGGER_PHRASE,
   claimHouseholdLinqGroup,
@@ -226,6 +228,17 @@ async function noteCoparent(
   });
 }
 
+/** VIL-582: the household parent's recorded 1:1 yes for this number as a co-parent. */
+async function grantCoparent(seeded: { familyId: string; parentUserId: string }) {
+  return recordSeatGrant(db.database, {
+    familyId: seeded.familyId,
+    parentUserId: seeded.parentUserId,
+    phoneE164: COPARENT_PHONE,
+    role: 'co_parent',
+    now: NOW,
+  });
+}
+
 async function familyCount(): Promise<number> {
   const rows = await db.database.select({ id: schema.families.id }).from(schema.families);
   return rows.length;
@@ -346,9 +359,36 @@ describe('group co-parent seating', () => {
     expect(members.some((row) => row.role === 'co_parent')).toBe(false);
   });
 
-  it('seats the noted number on the same family and asks only for a name', async () => {
+  it('does not seat the noted number without a parent grant', async () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    const wire = linqFetch();
+    const effect = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-seat', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+    expect(effect).toEqual({ type: 'none' });
+    expect(wire.texts()).toEqual([]);
+    expect(
+      await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(COPARENT_PHONE))),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+  });
+
+  it('seats a granted co-parent on the same family and asks only for a name', async () => {
+    const seeded = await seedHousehold();
+    await grantCoparent(seeded);
     await db.database
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
@@ -563,7 +603,7 @@ describe('group co-parent seating', () => {
     expect(await childNames()).toEqual(['Maya']);
   });
 
-  it('seats a real phone in a claimed group with no live note, and not another family', async () => {
+  it('seats a real phone in a claimed group only with a grant, and not another family', async () => {
     const seeded = await seedHousehold();
     await noteCoparent(seeded, new Date(NOW.getTime() - 1000));
     await db.database
@@ -571,17 +611,34 @@ describe('group co-parent seating', () => {
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, seeded.familyId));
     const wire = linqFetch();
-    const expired = await considerGroupCoparent(
+    const ungranted = await considerGroupCoparent(
       db.database,
       inbound({ messageId: 'm-expired', senderHandle: COPARENT_PHONE, text: 'hi' }),
       { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
     );
-    expect(expired).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
+    expect(ungranted).toEqual({ type: 'none' });
+    expect(wire.groupTexts()).toEqual([]);
+    expect(
+      (
+        await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers)
+      ).map((row) => row.role),
+    ).toEqual(['primary_parent']);
+
+    // The lapsed note closes on read; then the parent records the grant 1:1.
+    expect(await loadOpenInviteByPhone(db.database, COPARENT_PHONE, NOW)).toBeNull();
+    const grantId = await grantCoparent(seeded);
+    const granted = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-granted', senderHandle: COPARENT_PHONE, text: 'hi' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+    expect(granted).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
     expect(wire.groupTexts()).toEqual([await groupWelcome('en')]);
     const [invite] = await db.database
       .select({ state: schema.caregiverInvites.state })
-      .from(schema.caregiverInvites);
-    expect(invite?.state).toBe('identity_noted');
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, grantId));
+    expect(invite?.state).toBe('accepted');
 
     await db.exec('truncate table families, users cascade');
     const home = await seedHousehold();
@@ -713,7 +770,7 @@ describe('group co-parent seating', () => {
 
   it('does not fall back to Twilio when a group receipt or connect card is refused', async () => {
     const seeded = await seedHousehold();
-    await noteCoparent(seeded);
+    await grantCoparent(seeded);
     await db.database
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
@@ -848,6 +905,22 @@ describe('group co-parent seating', () => {
       providerChatId: GROUP,
       step: 'done',
     });
+    // The poll passes the family-chat floor: a confirmed roster, and the live list is it.
+    const [roster] = await db.database
+      .insert(schema.linqGroupRosters)
+      .values({
+        chatId: GROUP,
+        familyId: seeded.familyId,
+        source: 'added_to_existing',
+        status: 'confirmed',
+      })
+      .returning({ id: schema.linqGroupRosters.id });
+    await db.database.insert(schema.linqGroupRosterMembers).values({
+      rosterId: roster?.id as string,
+      chatId: GROUP,
+      phoneE164Hash: phoneBlindIndex(PARENT_PHONE),
+      status: 'known_parent',
+    });
 
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -894,6 +967,11 @@ function pollAwareFetch(): {
   const urls: string[] = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
     urls.push(String(url));
+    if ((init?.method ?? 'GET') === 'GET') {
+      return Response.json({
+        chat: { id: GROUP, is_group: true, handles: [{ handle: PARENT_PHONE }] },
+      });
+    }
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     const message = body?.message as { parts?: { type?: string; value?: string }[] } | undefined;
     for (const part of message?.parts ?? []) {
@@ -927,3 +1005,148 @@ function pollAwareFetch(): {
     urls: () => urls,
   };
 }
+
+/**
+ * VIL-582 security P2: the grant is read before the seat's transaction, so the seat
+ * re-reads it inside, with the invite row locked. A grant that ended in between rolls
+ * the seat back.
+ */
+describe('a co-parent seat whose grant ends between the read and the seat', () => {
+  /** The same database, with `before` run once, as the first transaction opens. */
+  function interleaved(before: () => Promise<void>): TestDb['database'] {
+    const target = db.database;
+    let fired = false;
+    return new Proxy(target, {
+      get(object, property) {
+        if (property === 'transaction') {
+          return async (...args: Parameters<typeof target.transaction>) => {
+            if (!fired) {
+              fired = true;
+              await before();
+            }
+            return object.transaction(...args);
+          };
+        }
+        const value = Reflect.get(object, property, object);
+        return typeof value === 'function' ? value.bind(object) : value;
+      },
+    });
+  }
+
+  async function grantedInClaimedGroup() {
+    const seeded = await seedHousehold();
+    const inviteId = await grantCoparent(seeded);
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, seeded.familyId));
+    return { ...seeded, inviteId };
+  }
+
+  it('seats nobody when the invite closes in between', async () => {
+    const { inviteId } = await grantedInClaimedGroup();
+    const closing = interleaved(async () => {
+      await db.database
+        .update(schema.caregiverInvites)
+        .set({ state: 'declined', closedAt: NOW })
+        .where(eq(schema.caregiverInvites.id, inviteId));
+    });
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      closing,
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(
+      await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(COPARENT_PHONE))),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+    expect(wire.groupTexts()).toEqual([]);
+  });
+
+  it("seats nobody when the open grant's inviter stops being a parent in between", async () => {
+    const { parentUserId, inviteId } = await grantedInClaimedGroup();
+    const leaving = interleaved(async () => {
+      await db.database
+        .delete(schema.familyMembers)
+        .where(eq(schema.familyMembers.userId, parentUserId));
+    });
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      leaving,
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(await db.database.select().from(schema.familyMembers)).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(COPARENT_PHONE))),
+    ).toEqual([]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+    const [invite] = await db.database
+      .select({ state: schema.caregiverInvites.state })
+      .from(schema.caregiverInvites)
+      .where(eq(schema.caregiverInvites.id, inviteId));
+    expect(invite?.state).toBe('awaiting_caregiver_reply');
+    expect(wire.groupTexts()).toEqual([]);
+  });
+
+  it('seats through the same interleaving when nothing changes the grant', async () => {
+    await grantedInClaimedGroup();
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      interleaved(async () => {}),
+      inbound({ messageId: 'm-race', senderHandle: COPARENT_PHONE, text: 'hi there' }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toMatchObject({ type: 'done', outcome: 'group_coparent_seated' });
+  });
+
+  it('seats nobody from a message with no words, even with the grant held', async () => {
+    await grantedInClaimedGroup();
+    const wire = linqFetch();
+
+    const effect = await considerGroupCoparent(
+      db.database,
+      inbound({ messageId: 'm-photo', senderHandle: COPARENT_PHONE, text: '', mediaCount: 1 }),
+      { now: NOW, fetch: wire.fetch, recordInbound, saidLine },
+    );
+
+    expect(effect).toEqual({ type: 'none' });
+    expect(
+      await db.database.select({ role: schema.familyMembers.role }).from(schema.familyMembers),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+    ).toEqual([]);
+  });
+});

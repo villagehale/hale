@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text asks a question even though offer is false (\"Want me to keep trying and text you tomorrow?\"). It also never asks the parent to check the page, and it doesn't mention \"your teen\". It does correctly say registration is coming up, explains plainly that the page couldn't be opened, includes the handed link, and states no opening date. \"Tomorrow\" refers to the follow-up text, not the opening.",
+    "score": 2
+  }
+}

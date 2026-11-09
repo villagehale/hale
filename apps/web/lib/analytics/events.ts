@@ -85,6 +85,10 @@ export type AnalyticsEvent =
   // exist and could not be made to (lib/channel/reconcile). The class is the refusal
   // reason, so the rate says WHICH claim the model keeps inventing.
   | 'agent_claim_refused'
+  // VIL-581 · the claim reader in shadow: one per read, comparing it with the regex
+  // gate's decision on the same body. Lane, outcome and verdict enums, counts and the
+  // hashed family only (lib/channel/reconcile/claim-shadow.ts).
+  | 'agent_claim_shadow'
   // An inbound webhook that threw before it could answer — a parent experiences that
   // as silence (VIL-331). Carries the route and the error class only, and is fired
   // from a leg that never touches the database, because the failure it exists to

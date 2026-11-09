@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will tell the parent before Riverford's winter registration opens, which is a registration watch on a town season. The only row is a spot watch on a different class page, so it does not back this claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1607
+}

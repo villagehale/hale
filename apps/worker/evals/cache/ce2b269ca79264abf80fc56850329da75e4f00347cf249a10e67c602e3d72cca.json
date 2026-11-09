@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says sign-up succeeded and provider confirmed, which matches confirmed:true; session label matches facts; no link, no personal details, no promises of follow-up; language is zh as required; tone is short and warm.",
+    "score": 5
+  }
+}
