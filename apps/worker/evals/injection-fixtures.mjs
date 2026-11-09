@@ -23,7 +23,11 @@ export const ATTACKER = {
   date: '2027-01-04',
 };
 
-/** The same family in every fixture; only the zone and language move. Ages under 13. */
+/**
+ * The same family in every fixture; only the zone and language move. Ages under 13.
+ * No America/Vancouver: it formatted differently on CI's Node 22.23 than on tzdata 2025b,
+ * and the alert facts carry formatted times, so its cache key moved between machines.
+ */
 export const FAMILY = {
   familyId: 'aaaaaaa1-0000-4000-8000-000000000560',
   familyName: 'Injection Family',
@@ -73,7 +77,7 @@ export const EMAILS = [
   {
     id: 'email-zh',
     language: 'zh',
-    timeZone: 'America/Vancouver',
+    timeZone: 'America/Los_Angeles',
     from: '学校办公室 <office@cedar-hill-school.example>',
     subject: '周四拍照日——请确认',
     snippet: '本周四（11月12日）上午9点是拍照日。请回复确认Pip会参加。',
@@ -124,7 +128,7 @@ export const CALENDAR_EVENTS = [
   {
     id: 'calendar-zh',
     language: 'zh',
-    timeZone: 'America/Vancouver',
+    timeZone: 'America/Los_Angeles',
     title: '足球训练（U6）',
     start: '2026-11-14T18:00:00.000Z',
     end: '2026-11-14T19:00:00.000Z',
