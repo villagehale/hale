@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Thursday 6 PM local is the pre-weekend evening send moment; the Sunday 2 PM library program fits the 12:30-20:00 free window (the study block is morning only), while the Saturday one conflicts with an all-day commitment and is dropped.",
+    "action": "send_now",
+    "item_ids": [
+      "sun-lib"
+    ],
+    "hold_until": null,
+    "frequency_direction": null,
+    "frequency_note": null
+  },
+  "stopReason": "tool_use"
+}
