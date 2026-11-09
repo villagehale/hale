@@ -25,7 +25,6 @@ const NOT_A_GATE: Readonly<Record<string, number>> = {
   'social/forward.ts': 1,
   // Sets the code-appended link aside before another check reads the prose.
   'channel/activity/followup-note.ts': 1,
-  'channel/connect/aha-read.ts': 1,
   'channel/intake/connector-offer.ts': 1,
   'channel/intake/friend-voice.ts': 2,
   'channel/intake/live-lookup.ts': 1,
