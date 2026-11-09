@@ -117,6 +117,7 @@ describe('capability table ↔ the coach that has to honour it', () => {
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
@@ -124,7 +125,12 @@ describe('capability table ↔ the coach that has to honour it', () => {
       // Production wires the watch verb's three ports too (see productionChannelCoach),
       // and the frontmatter names it — a parity set built without them would report a
       // skill listing a tool nobody registers, which is a mid-turn throw in prod.
-      spots: { fetchBody: {} as never, reader: {} as never, watchConsentGranted: {} as never },
+      spots: {
+        fetchBody: {} as never,
+        reader: {} as never,
+        watchConsentGranted: {} as never,
+        readClassAvailability: {} as never,
+      },
       onOffer: () => {},
       onShare: () => {},
       onPromise: () => {},

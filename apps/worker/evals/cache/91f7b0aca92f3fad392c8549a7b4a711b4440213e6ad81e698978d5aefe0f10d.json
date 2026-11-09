@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every given fact is present and correct: Toddler gym, today, start 10:30 this morning (AM correct), end 11:15, venue name Birchwood Rec Centre and address 14 Alder Ave. The relative time 'in about 18 minutes' matches minutesUntilStart (18). No invented end, travel, or departure detail; no changed or overlap issues; bold is none, which is fine. English throughout, and no link was added.",
+    "score": 5
+  }
+}

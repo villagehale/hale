@@ -2,7 +2,14 @@ import { schema } from '@hale/db';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { cancelCommitment, fulfillCommitment, recordCommitment } from './ledger';
+import {
+  cancelCommitment,
+  deferCommitment,
+  fulfillCommitment,
+  loadDueCommitments,
+  loadOpenCommitmentById,
+  recordCommitment,
+} from './ledger';
 
 /**
  * Hard rule #6 over the open-loops ledger: every promise Hale mints, keeps or voids
@@ -250,5 +257,148 @@ describe('an audit failure rolls the ledger write back', () => {
       await allowAuditVerbs();
       logged.mockRestore();
     }
+  });
+});
+
+/**
+ * A Postgres error carries the failing row's values in its message and detail, and a
+ * commitment row carries a parent-facing summary. The log keeps the SQLSTATE only.
+ */
+describe('a refused ledger write logs its code, never the Postgres error', () => {
+  const RAISE_EXCEPTION = 'P0001';
+
+  async function loggedWhileRefused(verb: string, write: () => Promise<unknown>) {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await refuseAuditVerb(verb);
+    try {
+      await write();
+      return logged.mock.calls;
+    } finally {
+      await allowAuditVerbs();
+      logged.mockRestore();
+    }
+  }
+
+  it('a refused record logs the code', async () => {
+    const calls = await loggedWhileRefused('commitment_recorded', recordFirstFind);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, familyId, kind: 'first_find' });
+  });
+
+  it('a refused close logs the code', async () => {
+    await recordFirstFind();
+    const calls = await loggedWhileRefused('commitment_cancelled', () =>
+      cancelCommitment(db.database, {
+        familyId,
+        kind: 'first_find',
+        reason: 'channel_revoked',
+        now: NOW,
+      }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, familyId, kind: 'first_find' });
+  });
+
+  it('a refused defer logs the code', async () => {
+    const recorded = await recordFirstFind();
+    const commitmentId = recorded.status === 'recorded' ? recorded.commitmentId : '';
+    const calls = await loggedWhileRefused('commitment_deferred', () =>
+      deferCommitment(db.database, {
+        commitmentId,
+        familyId,
+        dueAt: NOW,
+        reason: 'nothing_new',
+      }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual({ code: RAISE_EXCEPTION, commitmentId });
+  });
+});
+
+/**
+ * VIL-564 · an activity watch remembers what the parent was told, and a look that found
+ * nothing new moves the watch to its next look without closing it.
+ */
+describe('an activity watch that found nothing new', () => {
+  const HEARD = ['when:day:sat', 'when:time:9:15'];
+  const LATER = new Date('2026-08-21T14:00:00.000Z');
+
+  async function recordWatch(heardFacts?: readonly string[]) {
+    const recorded = await recordCommitment(db.database, {
+      familyId,
+      kind: 'activity_followup',
+      summary: 'A promise to come back with what I find on toddler gym',
+      topic: 'toddler gym',
+      ...(heardFacts ? { heardFacts } : {}),
+      dueAt: DUE,
+      channelMessageId: SENT_MESSAGE,
+    });
+    return recorded.status === 'recorded' ? recorded.commitmentId : '';
+  }
+
+  it('hands the sweep the heard facts, and null for a promise nobody has answered', async () => {
+    const watchId = await recordWatch(HEARD);
+    const due = await loadDueCommitments(db.database, 'activity_followup', DUE, 10);
+    expect(due.map((row) => [row.id, row.heardFacts])).toEqual([[watchId, HEARD]]);
+    expect((await loadOpenCommitmentById(db.database, watchId))?.heardFacts).toEqual(HEARD);
+
+    // Positive control: the coach's own promise carries no heard facts at all.
+    await cancelCommitment(db.database, {
+      familyId,
+      kind: 'activity_followup',
+      reason: 'activity_promise_superseded',
+      now: NOW,
+    });
+    const promiseId = await recordWatch();
+    expect((await loadOpenCommitmentById(db.database, promiseId))?.heardFacts).toBeNull();
+  });
+
+  it('moves the due time, keeps the promise open, and writes one audit row', async () => {
+    const watchId = await recordWatch(HEARD);
+
+    expect(
+      await deferCommitment(db.database, {
+        commitmentId: watchId,
+        familyId,
+        dueAt: LATER,
+        reason: 'nothing_new',
+      }),
+    ).toEqual({ status: 'deferred' });
+
+    expect(await loadDueCommitments(db.database, 'activity_followup', DUE, 10)).toEqual([]);
+    const open = await loadOpenCommitmentById(db.database, watchId);
+    expect(open?.dueAt).toEqual(LATER);
+    expect(open?.heardFacts).toEqual(HEARD);
+    const rows = await commitmentAudits();
+    expect(rows.map((row) => [row.actionTaken, row.targetId, row.after])).toEqual([
+      ['commitment_recorded', watchId, { kind: 'activity_followup', dueAt: DUE.toISOString() }],
+      [
+        'commitment_deferred',
+        watchId,
+        { kind: 'activity_followup', dueAt: LATER.toISOString(), reason: 'nothing_new' },
+      ],
+    ]);
+  });
+
+  it('never re-opens a promise that was closed in between', async () => {
+    const watchId = await recordWatch(HEARD);
+    await fulfillCommitment(db.database, {
+      familyId,
+      kind: 'activity_followup',
+      channelMessageId: KEEPING_MESSAGE,
+      now: NOW,
+    });
+
+    expect(
+      await deferCommitment(db.database, {
+        commitmentId: watchId,
+        familyId,
+        dueAt: LATER,
+        reason: 'nothing_new',
+      }),
+    ).toEqual({ status: 'none_open' });
+    expect((await commitmentAudits()).map((row) => row.actionTaken)).not.toContain(
+      'commitment_deferred',
+    );
   });
 });

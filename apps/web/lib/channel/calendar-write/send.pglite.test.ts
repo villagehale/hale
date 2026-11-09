@@ -35,7 +35,7 @@ afterEach(async () => {
   await db.exec('truncate table families, users cascade');
 });
 
-async function seed() {
+async function seed(timezone = 'America/Toronto') {
   n += 1;
   const phone = `+1416555${8100 + n}`;
   const [family] = await db.database
@@ -48,7 +48,7 @@ async function seed() {
     .values({
       externalAuthId: `sms:cwn-${n}`,
       name: 'Ana',
-      timezone: 'America/Toronto',
+      timezone,
       locale: 'en',
     })
     .returning({ id: schema.users.id });
@@ -149,9 +149,32 @@ describe('VIL-454 production notice ports, real database', () => {
         op,
         actorUserId: s.parentUserId,
       });
-      expect(loaded?.event.title).toEqual(expect.any(String));
-      expect(loaded?.event.where).toBeNull();
+      expect(loaded).toMatchObject({ event: { title: expect.any(String), where: null } });
       expect(await snapshot(s.familyEventId)).toEqual(before);
+    });
+  }
+
+  it("states the start in the parent's own zone, a US zone included", async () => {
+    const s = await seed('America/Los_Angeles');
+    const loaded = await productionCalendarWriteNoticePorts(db.database).loadEvent({
+      familyId: s.familyId,
+      familyEventId: s.familyEventId,
+      op: 'create',
+      actorUserId: s.parentUserId,
+    });
+    expect(typeof loaded === 'string' ? loaded : loaded.event.when).toBe('Sat, Sep 19 at 7:00 AM');
+  });
+
+  for (const timezone of ['Not/A_Zone', '']) {
+    it(`a zone Intl cannot read (${JSON.stringify(timezone)}) is named, not thrown`, async () => {
+      const s = await seed(timezone);
+      const loaded = await productionCalendarWriteNoticePorts(db.database).loadEvent({
+        familyId: s.familyId,
+        familyEventId: s.familyEventId,
+        op: 'create',
+        actorUserId: s.parentUserId,
+      });
+      expect(loaded).toBe('zone_unreadable');
     });
   }
 });

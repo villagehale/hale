@@ -19,7 +19,7 @@ import {
   asksTheParent,
 } from './followup-note';
 import type { EmptySearch } from './lane';
-import { statesAFigure, statesNoCost } from './quote-match';
+import { factKeys, statesAFigure, statesNoCost } from './quote-match';
 import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from './venue-pages';
 
 /**
@@ -123,13 +123,55 @@ function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
   return statesAFigure(field);
 }
 
+/**
+ * WHAT A FOLLOW-UP TELLS THE PARENT, as facts rather than as prose.
+ *
+ * Every day, clock time, date, amount and number in the `when`, `price` and `registration`
+ * of the picks the text carries — keyed by the field it came from, because a date the
+ * parent was given as a start date and the same date given as the day registration opens
+ * are two different things to know. Free counts as a price fact for the reason
+ * {@link carriesFact} gives. Held options are left out: they never reached the text.
+ *
+ * NO VENUE NAME. The same venue comes back from two research runs as "Westside Pool" and
+ * "Westside Community Pool", and a key that read those as two facts would turn every
+ * rephrasing into news — the repeat this exists to stop (VIL-564).
+ */
+export function followUpFacts(picks: readonly FollowUpPick[]): string[] {
+  const facts = new Set<string>();
+  for (const pick of picks) {
+    const fields = { when: pick.when, price: pick.price, registration: pick.registration ?? null };
+    for (const [name, value] of Object.entries(fields)) {
+      if (value === null || value.trim() === '') continue;
+      for (const key of factKeys(value)) facts.add(`${name}:${key}`);
+      if (name === 'price' && statesNoCost(value)) facts.add('price:free');
+    }
+  }
+  return [...facts].sort();
+}
+
+/**
+ * DID THIS RESEARCH TURN UP SOMETHING THE PARENT HAS NOT HEARD?
+ *
+ * A watch exists because the last follow-up still owed the parent a day or a price. The
+ * next look is worth a text only if it found one: a time, a price, a date, an opening.
+ * Without this the sweep re-sent "I couldn't pin down the days, I'll keep watching" a
+ * week apart under a fresh promise each time (2026-10-20 and 2026-10-28).
+ */
+export function learnedSomethingNew(
+  picks: readonly FollowUpPick[],
+  heard: readonly string[],
+): boolean {
+  const known = new Set(heard);
+  return followUpFacts(picks).some((fact) => !known.has(fact));
+}
+
 /** Who the promise is owed to, and the thread it was made in. */
 export interface FollowUpRecipient {
   parentUserId: string;
   /** The conversation the promise was made in, so the answer lands where the question was
    * asked. Null when the carrying message was not threaded. */
   conversationId: string | null;
-  /** `users.locale` for this parent, unchanged. The follow-up is written in this language. */
+  /** The parent's one proactive language (`parentLanguage`). The follow-up is written in it. */
   language: string;
 }
 
@@ -165,6 +207,9 @@ export interface FollowUpDelivery {
       promise: ActivityPromise;
       channelMessageId: string | null;
       dueInHours: number;
+      /** Everything the parent has now been told on this subject: what they had heard
+       * before this message, and what this message said. */
+      heardFacts: readonly string[];
       now: Date;
     },
   ): Promise<ActivityPromiseRecordOutcome>;
@@ -195,6 +240,9 @@ export interface FollowUpDeliveryInput {
   evidence: FollowUpEvidence;
   /** An empty shallow search's area and research (lane.ts `EmptySearch`), if any. */
   searched?: EmptySearch;
+  /** What the parent had already been told on this subject before this message — the
+   * watch row's `heardFacts`, or null when no follow-up has answered this promise yet. */
+  heardFacts: readonly string[] | null;
 }
 
 /** What became of one delivery. Named rather than void, and never folded: `deferred` is
@@ -411,6 +459,7 @@ export async function deliverFollowUp(
     promise: { subject: input.subject, childId: input.subjectChildId },
     channelMessageId,
     dueInHours: ACTIVITY_WATCH_DUE_HOURS,
+    heardFacts: [...new Set([...(input.heardFacts ?? []), ...followUpFacts(input.picks)])].sort(),
     now,
   });
   if (recorded.status === 'recorded') return { ...sent, watchRecorded: true };

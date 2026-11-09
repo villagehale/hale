@@ -718,11 +718,10 @@ describe('VIL-588 · symbols are label characters, and a bare IPv4 address is a 
 });
 
 describe('VIL-588 · six digits are short of a phone number', () => {
-  it('a 6-digit run is sent; one more digit is held', async () => {
-    const v = await verdicts('202 555', NOV_23);
-    expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);
-    expect([v.inviteText, v.cancelText]).toEqual([false, false]);
-    expect(await verdicts('202 5550', NOV_23)).toEqual(HELD);
+  it("in a writer's text a 6-digit run is no destination; one more digit is a phone", () => {
+    const november = { year: 2026, month: 11, day: 23 };
+    expect(textDestination('Swim class 202 555', november)).toBeNull();
+    expect(textDestination('Swim class 202 5550', november)).toBe('phone');
   });
 });
 
@@ -782,7 +781,48 @@ describe('VIL-588 · a title carrying an SMS short code is held', () => {
     );
   });
 
-  for (const words of ['Swim class 2026', 'Room 1204', '2026-11-23', '202 555', 'Level 3 2026']) {
+  const SPLIT_SHORT_CODES: readonly string[] = [
+    'Text JOIN to 555-01',
+    'Text JOIN to 555 01',
+    'Text 555.010',
+    'Text 55/501',
+    'Text (555) 01',
+    'Text 5 5 5 0 1',
+    'Text 555\u2013010',
+    'Text \uFF15\uFF15 \uFF15\uFF10\uFF11',
+    'Text 555\u2726 01',
+    '202 555',
+    'Text 1234 5',
+    'Text 2031 55',
+  ];
+  for (const words of SPLIT_SHORT_CODES) {
+    it(`a short code split by a separator is still held: ${words}`, async () => {
+      const v = await verdicts(words, NOV_23);
+      expect([v.inviteTitle, v.cancelTitle]).toEqual([HELD.inviteTitle, HELD.cancelTitle]);
+    });
+  }
+
+  it('a date with a two-digit year is a fact only on the start day', async () => {
+    const own = await verdicts('11/23/26', NOV_23);
+    expect([own.inviteTitle.status, own.cancelTitle.status]).toEqual(['composed', 'composed']);
+    const other = await verdicts('11/24/26', NOV_23);
+    expect([other.inviteTitle, other.cancelTitle]).toEqual([HELD.inviteTitle, HELD.cancelTitle]);
+  });
+
+  for (const words of [
+    'Swim class 2026',
+    'Room 1204',
+    '2026-11-23',
+    'Level 3 2026',
+    'Nov 23 2026',
+    'Grade 10 2026',
+    'Ages 3-5 2026',
+    'Week 2 2027',
+    'Fall 2026-27',
+    'Fall 2026/27',
+    '11/23/26',
+    '23.11.26',
+  ]) {
     it(`positive control, sent for a Nov 23 2026 event: ${words}`, async () => {
       const v = await verdicts(words, NOV_23);
       expect([v.inviteTitle.status, v.cancelTitle.status]).toEqual(['composed', 'composed']);

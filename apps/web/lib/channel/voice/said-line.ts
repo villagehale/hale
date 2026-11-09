@@ -22,6 +22,7 @@ import {
   crisisReplyViolation,
   replyLocale,
 } from './crisis-check';
+import { repairMisdecodedUtf8 } from './misdecoded-utf8';
 import { type ConveyFact, judgeSaidLineConvey } from './said-line-convey';
 
 export {
@@ -152,10 +153,11 @@ export function saidLineUserMessage(input: SaidLineInput): string {
 /**
  * Structural checks only: non-empty, every required fact verbatim, each link slot
  * exactly once, and no URL typed by the model at all. Then code fills the slots
- * with the exact URLs, so a link can never be mistyped (#868).
+ * with the exact URLs, so a link can never be mistyped (#868). A write that came back
+ * as its UTF-8 read through a single-byte code page is put back first (VIL-608).
  */
 export function acceptSaidLine(text: string, input: SaidLineInput): string | null {
-  let body = text.trim();
+  let body = repairMisdecodedUtf8(text.trim());
   if (body.length === 0) return null;
   const required = input.mustInclude ?? [];
   if (!required.every((fact) => body.includes(fact))) return null;

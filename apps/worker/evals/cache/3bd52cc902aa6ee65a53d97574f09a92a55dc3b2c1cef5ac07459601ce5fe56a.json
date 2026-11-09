@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the event \"PD Day\" as the title, gives the correct day (tomorrow, Monday), includes no clock time for the all-day event, and states no consequence or invented detail (no closure, no who it affects). There is no location, planLink, change, or overlap to cover. Bold is none, which is fine.",
+    "score": 5
+  }
+}

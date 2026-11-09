@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "sleep-transition guidance question, not a symptom report",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 865
+}

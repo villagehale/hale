@@ -77,6 +77,17 @@ describe('checkMonthlySpend', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('names a missing Slack webhook as page_not_configured, not a refused page (Devin)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', '');
+    await seedRuns([{ costUsd: '50.000000', startedAt: THIS_MONTH }]);
+
+    const result = await checkMonthlySpend(testDb.database, defaultProviderHealthDeps(), NOW);
+
+    expect(result).toEqual({ totalUsd: 50, threshold: 50, alert: 'page_not_configured' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('does not page below the threshold', async () => {
     await seedRuns([
       { costUsd: '30.000000', startedAt: THIS_MONTH },

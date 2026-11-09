@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitsHouseholdAges } from './pick-fit';
+import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
 
 const TODDLER_EXACT = { ageMonths: 18, dobPrecision: 'exact' as const };
 const TODDLER_DERIVED = { ageMonths: 18, dobPrecision: 'derived' as const };
@@ -41,11 +41,8 @@ describe('fitsHouseholdAges', () => {
 });
 
 describe('fitsHouseholdAges on labels the band does not wholly read', () => {
-  it('keeps a grade label, which is not an age in years', () => {
-    // A 7-year-old is in grade 1-3; the label is school years, not ages 1-3.
-    expect(
-      fitsHouseholdAges({ ageFit: 'Grades 1-3' }, [{ ageMonths: 84, dobPrecision: 'exact' }]),
-    ).toBe(true);
+  it('keeps a grade label that also states ages, since it reads two ways', () => {
+    expect(fitsHouseholdAges({ ageFit: 'Ages 6-9 (Grades 1-3)' }, [TODDLER_EXACT])).toBe(true);
   });
 
   it('keeps a label that carries a second age statement in another unit', () => {
@@ -83,5 +80,79 @@ describe('fitsHouseholdAges at the edges of the rule', () => {
     const unknown = [{ ageMonths: null, dobPrecision: 'derived' as const }];
     expect(fitsHouseholdAges({ ageFit: '2-5 years' }, unknown)).toBe(false);
     expect(fitsHouseholdAges({ ageFit: 'All ages' }, unknown)).toBe(true);
+  });
+});
+
+describe('fitsHouseholdAges on school grades', () => {
+  it('reads a grade band as school ages, not ages in years', () => {
+    // A 7-year-old is in grade 1-3; the label is school years, not ages 1-3.
+    expect(
+      fitsHouseholdAges({ ageFit: 'Grades 1-3' }, [{ ageMonths: 84, dobPrecision: 'exact' }]),
+    ).toBe(true);
+    expect(fitsHouseholdAges({ ageFit: 'Grades 1-3' }, [TODDLER_EXACT])).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'Grades 1-3' }, [TODDLER_DERIVED])).toBe(false);
+  });
+
+  it('reads kindergarten as the youngest school year', () => {
+    const fourYearOld = { ageMonths: 48, dobPrecision: 'exact' as const };
+    expect(fitsHouseholdAges({ ageFit: 'Kindergarten' }, [fourYearOld])).toBe(true);
+    expect(fitsHouseholdAges({ ageFit: 'Kindergarten' }, [TODDLER_DERIVED])).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'Grades K-5' }, [fourYearOld])).toBe(true);
+    expect(fitsHouseholdAges({ ageFit: 'Grades K-5' }, [TODDLER_EXACT])).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'JK to Grade 2' }, [TODDLER_EXACT])).toBe(false);
+  });
+
+  it('reads a single grade, an ordinal grade and an open-ended grade', () => {
+    const sevenYearOld = [{ ageMonths: 84, dobPrecision: 'exact' as const }];
+    expect(fitsHouseholdAges({ ageFit: 'Grade 2' }, sevenYearOld)).toBe(true);
+    expect(fitsHouseholdAges({ ageFit: 'Grade 2' }, [TODDLER_EXACT])).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: '1st-3rd grade' }, sevenYearOld)).toBe(true);
+    expect(fitsHouseholdAges({ ageFit: '1st-3rd grade' }, [TODDLER_EXACT])).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'Grades 9-12' }, sevenYearOld)).toBe(false);
+    expect(fitsHouseholdAges({ ageFit: 'Grade 6 and up' }, sevenYearOld)).toBe(false);
+    expect(
+      fitsHouseholdAges({ ageFit: 'Grade 6 and up' }, [{ ageMonths: 168, dobPrecision: 'exact' }]),
+    ).toBe(true);
+  });
+});
+
+describe('onlyDatedBefore', () => {
+  const TODAY = '2026-11-08';
+  const when = (text: string | null, eventDate?: string) =>
+    onlyDatedBefore({ when: text, ...(eventDate ? { eventDate } : {}) }, TODAY);
+
+  it('drops a find whose only dates are behind today', () => {
+    expect(when('Saturday, March 8, 2026')).toBe(true);
+    expect(when('Jan 10 - Mar 14, 2026, Saturdays 10am')).toBe(true);
+    expect(when('March 2026')).toBe(true);
+    expect(when('Fall 2025')).toBe(true);
+    expect(when('8 March 2026')).toBe(true);
+    expect(when('2026-03-08')).toBe(true);
+    expect(when(null, '2026-03-08')).toBe(true);
+  });
+
+  it('keeps a find dated today or later (control)', () => {
+    expect(when('Saturday, November 8, 2026')).toBe(false);
+    expect(when('Dec 5, 2026')).toBe(false);
+    expect(when('Mar 8, 2026 and Jan 9, 2027')).toBe(false);
+    expect(when('Winter 2027')).toBe(false);
+    expect(when(null, '2026-11-08')).toBe(false);
+  });
+
+  it('keeps a find with no year to read, and one with no date at all', () => {
+    expect(when('Saturdays 9:15am, fall session from Sept 13')).toBe(false);
+    expect(when('March 8')).toBe(false);
+    expect(when('Tuesdays')).toBe(false);
+    expect(when(null)).toBe(false);
+  });
+
+  it('keeps an open-ended start, which may still be running', () => {
+    expect(when('Saturdays, starting Sept 13, 2025')).toBe(false);
+    expect(when('from Jan 10 to Mar 14, 2026')).toBe(true);
+  });
+
+  it('reads a school year by its second year', () => {
+    expect(onlyDatedBefore({ when: '2026-27 season' }, '2027-01-15')).toBe(false);
+    expect(onlyDatedBefore({ when: '2024-25 season' }, TODAY)).toBe(true);
   });
 });

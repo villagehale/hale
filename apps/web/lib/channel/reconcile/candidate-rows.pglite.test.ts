@@ -1,4 +1,5 @@
 import { type Municipality, schema } from '@hale/db';
+import { asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -144,6 +145,36 @@ describe('loadClaimShadowContext — ledger rows', () => {
       ['activity_followup', 'Follow X'],
       ['registration_watch', 'Watch Y'],
     ]);
+    expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
+  });
+
+  it('a commitment about a 13+ child is private; one about a younger child keeps its summary (Devin)', async () => {
+    const { familyId } = await seedA();
+    const [teen, toddler] = await db.database
+      .select({ id: schema.children.id })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(asc(schema.children.dateOfBirth));
+    const commit = (
+      commitmentKind: 'activity_followup' | 'registration_watch',
+      summary: string,
+      dueAt: Date,
+      subjectChildId: string | undefined,
+    ) =>
+      db.database.insert(schema.agentCommitments).values({
+        familyId,
+        commitmentKind,
+        summary,
+        dueAt,
+        createdFrom: 'msg-test',
+        subjectChildId,
+      });
+    await commit('activity_followup', 'Teen follow ZQXJ9', at(1), teen?.id);
+    await commit('registration_watch', 'Toddler follow', at(2), toddler?.id);
+
+    const context = await ready({ familyId, now: NOW, parentUserId: null });
+    const open = context.rows.filter((r) => r.source === 'open_commitment');
+    expect(open.map((r) => r.what)).toEqual(['A private item', 'Toddler follow']);
     expect(JSON.stringify(context.rows)).not.toContain('ZQXJ');
   });
 

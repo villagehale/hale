@@ -19,6 +19,8 @@ export async function recordSignupOffer(
     registrationUrl: string;
     sessions: SignupSession[];
     approvedPriceCents: number | null;
+    /** VIL-558 · when registration opens, for an offer Hale can carry out as a plan. */
+    planOpensAt?: Date | null;
     now: Date;
   },
 ): Promise<RecordOfferResult> {
@@ -54,6 +56,7 @@ export async function recordSignupOffer(
       registrationUrl: input.registrationUrl,
       sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
+      planOpensAt: input.planOpensAt ?? null,
       status: 'pending',
       createdAt: input.now,
       updatedAt: input.now,
@@ -72,6 +75,7 @@ export async function loadPendingOffer(
       id: schema.authorizedSignupOffers.id,
       familyId: schema.authorizedSignupOffers.familyId,
       childId: schema.authorizedSignupOffers.childId,
+      parentUserId: schema.authorizedSignupOffers.parentUserId,
       activityKey: schema.authorizedSignupOffers.activityKey,
       registrationUrl: schema.authorizedSignupOffers.registrationUrl,
       sessions: schema.authorizedSignupOffers.sessions,
@@ -91,6 +95,7 @@ export async function loadPendingOffer(
     id: row.id,
     familyId: row.familyId,
     childId: row.childId,
+    parentUserId: row.parentUserId,
     activityKey: row.activityKey,
     registrationUrl: row.registrationUrl,
     sessions: row.sessions,

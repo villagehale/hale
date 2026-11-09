@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "drop_pickup",
+    "pickupRefs": [
+      "p2"
+    ],
+    "confidence": "high"
+  },
+  "latencyMs": 1321
+}

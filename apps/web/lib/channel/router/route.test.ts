@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,8 +14,12 @@ vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
 }));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
+import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
@@ -54,7 +58,7 @@ import {
   type IntroReplySituation,
   type VillageIntroReplyDeps,
 } from '~/lib/village/intros/reply';
-import type { ApologyOutcome, TurnApology } from './apology';
+import { type ApologyOutcome, type TurnApology, createTurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
 import type {
   DisambiguationOption,
@@ -493,6 +497,7 @@ function harness(
     calendarOffers?: ChannelRouterDeps['calendarOffers'];
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
+    recordCapabilityNotes?: ChannelRouterDeps['recordCapabilityNotes'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
     claimShadow?: ChannelRouterDeps['claimShadow'];
     claimEnforcer?: ChannelRouterDeps['claimEnforcer'];
@@ -510,6 +515,7 @@ function harness(
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
     floodLine?: FloodLineComposer;
+    consentAsk?: ChannelRouterDeps['consentAsk'];
     crisisPager?: CrisisPager;
   } = {},
 ): Harness {
@@ -543,6 +549,9 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
+      recordCapabilityNotes:
+        options.recordCapabilityNotes ??
+        (async () => ({ status: 'recorded' as const, declined: 0, corrected: 0 })),
       recordActivityPromise:
         options.recordActivityPromise ??
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
@@ -554,7 +563,7 @@ function harness(
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
-      consentAsk: askWriter(),
+      consentAsk: options.consentAsk ?? askWriter(),
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
@@ -718,6 +727,35 @@ describe('threading', () => {
     expect(out[0]?.body).toBeNull();
     expect(messageRows(h.fake).some((r) => r.content === 'Mia has swim at 4')).toBe(true);
   });
+
+  // VIL-616: the nightly memory writer skips a row marked `read_email`, so a name or
+  // number the coach repeated from an email is never learned.
+  it.each([
+    { emailRead: true, source: { kind: 'read_email' } },
+    { emailRead: false, source: undefined },
+  ])(
+    'a reply written after reading an email ($emailRead) marks its thread row',
+    async ({ emailRead, source }) => {
+      const coach: ChannelCoachRuntime = {
+        async respond() {
+          return {
+            reply: 'The trip is Friday.',
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            emailRead,
+          };
+        },
+      };
+      const h = harness({ coach });
+      await routeChannelMessage(h.deps, job());
+
+      const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
+      expect(assistant.map((r) => [r.content, r.source])).toEqual([
+        ['The trip is Friday.', source],
+      ]);
+    },
+  );
 });
 
 // ── the order ────────────────────────────────────────────────────────────────
@@ -841,36 +879,41 @@ describe('VIL-333 identity challenge', () => {
 });
 
 describe('the language the inbound screen read', () => {
-  async function parentAt(fake: FakeDb, locale: string) {
+  async function parentAt(fake: FakeDb) {
     await fake.db.insert(schema.users).values({
       id: PARENT,
       email: 'parent-locale@example.test',
-      locale,
+      proactiveLanguage: null,
+      languageStreakTag: null,
+      languageStreakCount: 0,
     });
   }
 
-  const localeUpdates = (fake: FakeDb) =>
-    fake.writes.filter((write) => write.op === 'update' && write.table === schema.users);
+  const languageChanges = (fake: FakeDb) =>
+    fake
+      .rows(schema.auditLog)
+      .filter((row) => row.actionTaken === 'parent_language_changed')
+      .map((row) => row.after);
 
-  it('stores zh when an in-domain verdict carries it, and does not write the same tag again', async () => {
+  it('one Chinese text does not change the language Hale writes to the parent in', async () => {
     const h = harness({
       offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh' }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
     await routeChannelMessage(h.deps, job());
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ id: PARENT, locale: 'zh' });
-    expect(localeUpdates(h.fake)).toHaveLength(1);
 
-    await routeChannelMessage(h.deps, nthJob(2));
-    expect(localeUpdates(h.fake)).toHaveLength(1);
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({
+      id: PARENT,
+      proactiveLanguage: null,
+      languageStreakTag: 'zh',
+      languageStreakCount: 1,
+    });
+    expect(languageChanges(h.fake)).toEqual([]);
   });
 
-  it('stores ar from a deflection, and the coach is not woken', async () => {
-    const coach = fakeCoach();
+  it('three in a row, on either door, do', async () => {
     const h = harness({
-      coach,
       offDomain: fakeLane({
         status: 'deflected',
         lane: 'off_domain_general',
@@ -883,44 +926,36 @@ describe('the language the inbound screen read', () => {
         pendingAsk: null,
       }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
-    const result = await routeChannelMessage(h.deps, job());
+    for (const n of [1, 2, 3]) await routeChannelMessage(h.deps, nthJob(n));
 
-    expect(result.status).toBe('deflected');
-    expect(coach.calls).toBe(0);
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ proactiveLanguage: 'ar' });
+    expect(languageChanges(h.fake)).toEqual([{ language: 'ar', why: 'sustained' }]);
   });
 
-  it('leaves the stored locale alone when the verdict has no tag or a blank one', async () => {
-    const untouched = harness({ offDomain: fakeLane({ status: 'in_domain', fallback: null }) });
-    await parentAt(untouched.fake, 'en-CA');
-    await routeChannelMessage(untouched.deps, job());
-    expect(localeUpdates(untouched.fake)).toEqual([]);
-    expect(untouched.fake.rows(schema.users)[0]).toMatchObject({ locale: 'en-CA' });
-
-    const blank = harness({
-      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: '   ' }),
-    });
-    await blank.fake.db.insert(schema.users).values({
-      id: PARENT,
-      email: 'blank-locale@example.test',
-      locale: 'ar',
-    });
-    await routeChannelMessage(blank.deps, job());
-    expect(localeUpdates(blank.fake)).toEqual([]);
-    expect(blank.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
-  });
-
-  it('stores zh-Hant exactly', async () => {
+  it('an explicit ask changes it on the one text', async () => {
     const h = harness({
-      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh-Hant' }),
+      offDomain: fakeLane({
+        status: 'in_domain',
+        fallback: null,
+        language: 'en',
+        languageRequest: 'fr',
+      }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
     await routeChannelMessage(h.deps, job());
 
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh-Hant' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ proactiveLanguage: 'fr' });
+    expect(languageChanges(h.fake)).toEqual([{ language: 'fr', why: 'asked' }]);
+  });
+
+  it('leaves everything alone when the verdict has no tag', async () => {
+    const h = harness({ offDomain: fakeLane({ status: 'in_domain', fallback: null }) });
+    await parentAt(h.fake);
+    await routeChannelMessage(h.deps, job());
+    expect(h.fake.writes.filter((w) => w.op === 'update' && w.table === schema.users)).toEqual([]);
   });
 });
 
@@ -1133,6 +1168,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -1226,6 +1262,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -1890,11 +1927,9 @@ describe('failure honesty', () => {
     }
 
     /**
-     * The one templated line left on this path, and deliberately: it is a RECEIPT for
-     * rows that exist, not an apology. It carries a count and the YES/NO grammar that
-     * resolves against those rows, which is the same reason approvedReceipt and
-     * whichOneReply are templates the coach never touches — a model that miscounts here
-     * points a parent's "yes" at the wrong action.
+     * The parent sees whatever the consent writer returns from the count. This
+     * harness writer is a double, so the assertion is that the router sends that
+     * return value and does not also apologize. Production writes with the model.
      */
     it('names the drafts that are waiting instead of claiming nothing changed', async () => {
       const apology = fakeApology();
@@ -1931,6 +1966,209 @@ describe('failure honesty', () => {
       expect(h.transport.bodies()).toEqual([APOLOGY]);
       expect(apology.calls).toBe(1);
     });
+  });
+});
+
+/**
+ * VIL-524. A withheld or unjudged find draft throws into this same path. The
+ * parent hears a model written from facts (the situation, or a draft count),
+ * and a writer that cannot write sends nothing. The withheld draft is not a
+ * fact on that request.
+ */
+describe('a withheld find on the failed-turn path (VIL-524)', () => {
+  const FIND_TOKEN = 'storytime-9f3a';
+  const WITHHELD_DRAFT = `All three finds share one page. EarlyON at the library, ref ${FIND_TOKEN}.`;
+  const parentBody = `what's on this weekend near ${FIND_TOKEN}`;
+  const APOLOGY_BODY = 'Hale dropped that one and nothing changed.';
+  const RECEIPT_BODY = 'Holding the drafts until you say which.';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function quiet() {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  }
+
+  function findCoach(input: {
+    gate: FindReplyGate;
+    draftIds?: readonly string[];
+  }): ChannelCoachRuntime {
+    const skill: Skill = {
+      meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
+      instructions: 'be terse',
+    };
+    return channelCoachRuntime({
+      loadSkill: async () => skill,
+      loadTranscript: async () => [],
+      loadContext: async (ctx) =>
+        ({
+          question: ctx.question,
+          transcript: ctx.transcript,
+          memoryFacts: [],
+          location: { city: null, province: null, country: 'Canada' },
+        }) as never,
+      loadChildren: async () => [],
+      loadRegistrationWindows: async () => [],
+      buildTools: (_turn, onDraft) => {
+        for (const id of input.draftIds ?? []) onDraft(id);
+        return [] as RegisteredTool[];
+      },
+      nearbySaid: async () => null,
+      guardDeps: { async writeAudit() {} },
+      client: () => ({ messages: {} }) as AgentClient,
+      judgeFindReply: async () => input.gate,
+      runAgent: async () => ({
+        answer: WITHHELD_DRAFT,
+        steps: 1,
+        hitMaxSteps: false,
+        truncatedRetries: 0,
+        truncated: false,
+        usage: {
+          promptTokens: 10,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          completionTokens: 5,
+        },
+      }),
+      recordRun: async () => {},
+      now: () => NOW,
+    });
+  }
+
+  interface Captured {
+    system?: unknown;
+    messages?: Array<{ role: string; content: string }>;
+  }
+
+  function recordingClient(payload: Record<string, string>, seen: Captured[]): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          async create(request: Captured) {
+            seen.push({ system: request.system, messages: request.messages });
+            return {
+              content: [{ type: 'text', text: JSON.stringify(payload) }],
+              usage: { input_tokens: 10, output_tokens: 5 },
+              stop_reason: 'end_turn',
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function failingClient(): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          create: async () => {
+            throw new Error('writer down');
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function userFacts(seen: Captured[]): unknown[] {
+    return seen.map((call) => JSON.parse(call.messages?.[0]?.content ?? 'null'));
+  }
+
+  /** The whole request the writer sent, system and user. Facts, not the reply. */
+  function assertNoFindFacts(seen: Captured[]) {
+    const raw = JSON.stringify(seen);
+    expect(raw).not.toContain(FIND_TOKEN);
+    expect(raw).not.toContain(WITHHELD_DRAFT);
+    expect(raw).not.toContain('find_reasoning');
+    expect(raw).not.toContain('judge_failed');
+  }
+
+  const gates: FindReplyGate[] = [
+    { verdict: 'withhold' },
+    { verdict: 'unjudged', reason: 'judge_failed' },
+  ];
+
+  it.each(gates)('apology writer input is only the situation (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const asks: unknown[] = [];
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate }),
+      apology: createTurnApology(recordingClient({ apology: APOLOGY_BODY }, seen)),
+      consentAsk: {
+        write: async (ask) => {
+          asks.push(ask);
+          return RECEIPT_BODY;
+        },
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([APOLOGY_BODY]);
+    expect(asks).toEqual([]);
+    expect(userFacts(seen)).toEqual([{ situation: 'turn_failed_nothing_changed' }]);
+    assertNoFindFacts(seen);
+  });
+
+  it.each(gates)('drafts receipt writer input is only the count (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate,
+        draftIds: [`draft-${FIND_TOKEN}-1`, `draft-${FIND_TOKEN}-2`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(recordingClient({ text: RECEIPT_BODY }, seen)),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([RECEIPT_BODY]);
+    expect(apology.calls).toBe(0);
+    expect(userFacts(seen)).toEqual([{ kind: 'partial_failure', draftCount: 2 }]);
+    assertNoFindFacts(seen);
+  });
+
+  it('sends nothing when the apology writer fails', async () => {
+    quiet();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate: { verdict: 'withhold' } }),
+      apology: createTurnApology(failingClient()),
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+  });
+
+  it('sends nothing when the drafts receipt writer fails', async () => {
+    quiet();
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate: { verdict: 'unjudged', reason: 'judge_failed' },
+        draftIds: [`draft-${FIND_TOKEN}`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(failingClient()),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(apology.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('unwritten');
   });
 });
 
@@ -2689,6 +2927,9 @@ describe('the shipped chain, end to end', () => {
         recorded.push({ outcome: input.outcome, position: input.position });
       },
       recordReask: async () => {},
+      // The composer seam (VIL-543): the note's kind stands in for the model's text.
+      writeNote: async (_db: unknown, _familyId: string, facts: { kind: string }) =>
+        `note:${facts.kind}`,
     };
     return {
       recorded,
@@ -2715,9 +2956,8 @@ describe('the shipped chain, end to end', () => {
     expect(result.handler).toBe('registration');
     expect(coach.calls).toBe(0);
     expect(chain.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
-    // The parent is told the clock started — M7's copy, not the stub's boundary line.
-    expect(h.transport.bodies()).toHaveLength(1);
-    expect(h.transport.bodies()[0]!.length).toBeGreaterThan(0);
+    // The parent is told the clock started — the written note, not the stub's boundary line.
+    expect(h.transport.bodies()).toEqual(['note:outcome_waitlisted']);
   });
 
   it('answers "done" from the health handler, not the registration re-ask', async () => {
@@ -3589,6 +3829,8 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     label: 'Tuesday preschool swim',
     instant: false,
     lastState: 'full' as const,
+    sessionStartsAt: null,
+    sessionAnchor: null,
   };
 
   it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {
@@ -3765,6 +4007,28 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     expect(result.status).toBe('agent_replied');
   });
 
+  it('(c2) a claim naming "St. Mary\'s" is cut whole, never leaving "at St." (VIL-575)', async () => {
+    const named = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    const coach = scriptedCoach([{ reply: named }, { reply: named }]);
+    const h = harness({ coach });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4.']);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('(c3) a cut that would leave a dangling clause fails the turn (VIL-575)', async () => {
+    const dangling = "Here's where things stand:\nYour well-baby visit is booked.";
+    const coach = scriptedCoach([{ reply: dangling }, { reply: dangling }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Never "Here's where things stand:" on its own: the turn's failure path answers.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+    expect(JSON.stringify(h.logs)).toContain('"reason":"cut_fragment"');
+  });
+
   it('(d) a booking claim with nothing on the calendar never reaches the wire', async () => {
     const coach = scriptedCoach([
       { reply: 'Your well-baby visit is booked.' },
@@ -3775,6 +4039,16 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
 
     // Nothing survived the cut, so the turn is a FAILURE with an apology — not a blank
     // text, and not the claim.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+  });
+
+  it('(d1) a booking claim ending "Sat." is not hidden by the question after it (VIL-575)', async () => {
+    const asked = 'Your well-baby visit is booked for Sat. Want me to add a reminder?';
+    const coach = scriptedCoach([{ reply: asked }, { reply: asked }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
     expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
     expect(result.status).toBe('agent_failed');
   });
@@ -5039,6 +5313,104 @@ describe('turn deadline (VIL-400)', () => {
 });
 
 // ── a slow answer: the typing bubble stays up and one holding line goes first ──
+
+// ── VIL-495 · the model chose voice: the same reply goes as a memo, or as text ──
+
+describe('a reply the model chose to say as a voice memo (VIL-495)', () => {
+  const IM_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-voice',
+    replyToMessageId: null,
+  };
+  const SPOKEN = 'So glad swim went well. Same time next week?';
+
+  function voiceCoach(chose: boolean): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: SPOKEN,
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          voiceMemo: chose,
+        };
+      },
+    };
+  }
+
+  function voiceHarness(chose: boolean, outcome: VoiceReplyOutcome) {
+    const h = harness({ coach: voiceCoach(chose), context: { reply: IM_ROUTE } });
+    const calls: Array<{ input: unknown; familyId: string }> = [];
+    h.deps.sendVoiceReply = async (input, familyId) => {
+      calls.push({ input, familyId });
+      return outcome;
+    };
+    return { h, calls };
+  }
+
+  it('sent as a memo: no text goes out, and the ledger, audit and thread record it', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.sent).toEqual([]);
+    expect(calls).toEqual([
+      {
+        input: {
+          text: SPOKEN,
+          modelChoseVoice: true,
+          isGroup: false,
+          textOnly: false,
+          chatId: 'chat-voice',
+          address: PHONE,
+        },
+        familyId: FAMILY,
+      },
+    ]);
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({ channel: 'imessage', providerMessageId: 'vm-1', body: null }),
+    ]);
+    expect(auditRows(h.fake)).toContainEqual(
+      expect.objectContaining({ actionTaken: 'sms_reply_sent', after: { form: 'voice_memo' } }),
+    );
+    expect(messageRows(h.fake)).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: SPOKEN }),
+    );
+  });
+
+  it('a memo that cannot go sends the same reply as text, once', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'capability' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+    expect(auditRows(h.fake)).not.toContainEqual(
+      expect.objectContaining({ after: { form: 'voice_memo' } }),
+    );
+  });
+
+  it('a group chat is told it is a group, and gets the text', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'not_one_to_one' });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(calls[0]?.input).toMatchObject({ isGroup: true });
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+
+  it('the model did not choose voice: the voice send is never asked', async () => {
+    const { h, calls } = voiceHarness(false, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toEqual([]);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+});
 
 describe('a slow answer gets one holding line first', () => {
   const IMESSAGE_ROUTE: ReplyRoute = {
@@ -6742,6 +7114,7 @@ describe('a live crisis reply is marked answered only once it is sent', () => {
       moment: { write: async () => ({ status: 'written', reply: 'a written crisis reply' }) },
       today: async () => '2026-10-20',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -6893,5 +7266,66 @@ describe('a live crisis reply is marked answered only once it is sent', () => {
     expect(outcome).toBe('routed');
     expect(h.transport.bodies()).toEqual(['a written crisis reply']);
     expect(await marks('pm-route-sent')).toEqual([1]);
+  });
+});
+
+/**
+ * VIL-303 · the no a reply gave about a deferred capability, or the earlier no it
+ * corrected, is written against the message that carried it, and only once it was sent.
+ */
+describe('capability notes ride out with the reply', () => {
+  const NOTES = { declined: ['spot_watch' as const], corrected: ['sign_up' as const] };
+
+  function notingCoach(reply: string): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply,
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          capabilityNotes: NOTES,
+        };
+      },
+    };
+  }
+
+  it('records the notes against the sent message', async () => {
+    const noted: unknown[] = [];
+    const h = harness({
+      coach: notingCoach('Watching a full class is not something I can do yet.'),
+      recordCapabilityNotes: async (_db, input) => {
+        noted.push(input);
+        return { status: 'recorded' as const, declined: 1, corrected: 1 };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(noted).toEqual([
+      expect.objectContaining({
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        notes: NOTES,
+        channelMessageId: ledgerRows(h.fake).find((row) => row.direction === 'out')?.id,
+      }),
+    ]);
+  });
+
+  it('records nothing when the reply is empty and nothing is sent', async () => {
+    const noted: unknown[] = [];
+    const h = harness({
+      coach: notingCoach(''),
+      recordCapabilityNotes: async (_db, input) => {
+        noted.push(input);
+        return { status: 'recorded' as const, declined: 1, corrected: 1 };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(0);
+    expect(noted).toEqual([]);
   });
 });

@@ -60,6 +60,19 @@ export const SAID_LINE_CONVEY_FIXTURES = [
     draft: 'The pool is closed today. Intros are off for you.',
     expect: 'omit',
   },
+  // VIL-610: the same unrelated word with the meaning present must still send, and the
+  // unrelated word in another language must still omit.
+  {
+    id: 'intro-off-en-unrelated-closed-conveys',
+    draft:
+      'The pool is closed today. Intros are off for you, and the ones that were waiting are closed too.',
+    expect: 'send',
+  },
+  {
+    id: 'intro-off-es-unrelated-closed',
+    draft: 'La piscina está cerrada hoy. Las presentaciones están apagadas para ti.',
+    expect: 'omit',
+  },
   // VIL-156: a disconnect reply must say both services are off and what Google
   // confirmed. A draft naming only the calendar would tell a parent their Gmail is still
   // connected when it is not.

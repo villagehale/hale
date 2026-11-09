@@ -117,12 +117,21 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_COPARENT` | `off` | In-group co-parent seating stops. Any other value, including empty, leaves it on. |
 | `LINQ_GROUP_MEMBERS_ENABLED` | empty | Extra household seats stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`; a `chat.created` answers `chat.created`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
+| `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them only when `VERCEL_ENV` is `preview`. Production stays dark. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
+
+## Rotating APP_ENCRYPTION_KEY
+
+There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.
+
+- Encrypted values (phone numbers, signup vaults, invites) no longer decrypt.
+- Every blind index changes: phone, email, Google account, Linq chat and email-alert keys. A parent's texts no longer match their number until it is re-indexed.
+- A calendar add drafted in a household group is keyed by its chat (`chatKey`). After a rotation no chat matches it, so it is listed nowhere and cannot be approved. It fails closed: nothing is placed. The parent asks again and a new draft is made.
 
 ## On call
 

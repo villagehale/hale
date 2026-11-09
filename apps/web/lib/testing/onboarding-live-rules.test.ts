@@ -31,7 +31,7 @@ function clean(): LiveReplay {
         inbound: 'Seb is 1, Mia is 6',
         bubbles: [
           'Here is what is on.',
-          `Worth a look.\n1. ${LINES[0]}\n2. ${LINES[1]}`,
+          `Worth a look.\n${LINES.join('\n')}`,
           'What should I call you?',
         ],
         ms: 30,

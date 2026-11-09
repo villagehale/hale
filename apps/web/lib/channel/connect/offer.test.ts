@@ -51,6 +51,23 @@ describe('offerConnectorLink', () => {
     await db.close();
   });
 
+  // VIL-617: a link minted on a Preview deploy lands on that deploy's app host when its
+  // APP_URL names one, not on production. The default host is pinned by the test below.
+  it('builds the link on the app host APP_URL names', async () => {
+    vi.stubEnv('APP_URL', 'https://hale-preview.example.test');
+    const outcome = await offerConnectorLink(db.database, {
+      familyId,
+      parentUserId,
+      provider: 'gmail',
+      now: NOW,
+    });
+
+    if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
+    expect(outcome.url).toMatch(
+      /^https:\/\/hale-preview\.example\.test\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/,
+    );
+  });
+
   it('mints a link for a verified parent, with the audit row beside it (rule #6)', async () => {
     const outcome = await offerConnectorLink(db.database, {
       familyId,
@@ -141,7 +158,8 @@ describe('offerConnectorLink', () => {
     );
 
     expect(outcome).toEqual({ calendar: 'sent', gmail: 'sent' });
-    const [calendarBody, gmailBody] = transport.bodies();
+    // Each card is its prose, then its link as its own text.
+    const [, calendarBody, , gmailBody] = transport.bodies();
     const calendarToken = calendarBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     const gmailToken = gmailBody?.match(/[?&]t=([A-Za-z0-9_-]+)/)?.[1];
     if (!calendarToken || !gmailToken) throw new Error('expected a token in each card');
@@ -441,6 +459,7 @@ describe('connectorLinkHandler', () => {
           providerChatId: chatId,
           status: 'delivered',
           body: 'connect my google calendar',
+          inGroup: chatId === GROUP,
           sentAt: at,
           createdAt: at,
         })
@@ -477,8 +496,8 @@ describe('connectorLinkHandler', () => {
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, familyId));
-    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
-    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'), false);
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
     const wire: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -499,7 +518,7 @@ describe('connectorLinkHandler', () => {
     vi.unstubAllGlobals();
   });
 
-  async function inboundIn(chatId: string, at: Date): Promise<string> {
+  async function inboundIn(chatId: string, at: Date, inGroup: boolean): Promise<string> {
     const [row] = await db.database
       .insert(schema.channelMessages)
       .values({
@@ -512,6 +531,7 @@ describe('connectorLinkHandler', () => {
         providerChatId: chatId,
         status: 'delivered',
         body: 'give me a fresh one',
+        inGroup,
         sentAt: at,
         createdAt: at,
       })
@@ -527,8 +547,8 @@ describe('connectorLinkHandler', () => {
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, familyId));
-    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
-    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'), false);
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
     const conversationId = await threadOffer(
       'Calendar: https://app.villagehale.com/connect?t=old-gcal&to=gcal Gmail: https://app.villagehale.com/connect?t=old-gmail&to=gmail',
     );
@@ -566,7 +586,7 @@ describe('connectorLinkHandler', () => {
       .update(schema.families)
       .set({ linqGroupChatId: GROUP })
       .where(eq(schema.families.id, familyId));
-    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'), true);
     const wire: string[] = [];
     vi.stubGlobal(
       'fetch',

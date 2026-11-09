@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and turn_off_autonomy has turned off both send_email and reply_to_email this turn. The reply confirms in one plain sentence, in the parent's own language, that Hale will ask before every email and only send once they agree. Nothing extra is added or invented.",
+    "score": 5
+  }
+}

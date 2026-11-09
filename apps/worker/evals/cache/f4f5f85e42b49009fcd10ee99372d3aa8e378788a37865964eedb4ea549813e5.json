@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "sender is a personal name, title is just the subject line, no child named, no date, time or place; cannot tell what the occasion is or what changed",
+    "about_the_kids": "unsure",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

@@ -2,8 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
 import { isUuid } from '~/lib/channel/mid-activity/claim';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { redactSignupAudit } from './audit';
 import { authorizeSignup } from './authorize';
 import {
@@ -47,6 +47,7 @@ import {
   createSignupOutcomeWriter,
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
+import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
@@ -76,6 +77,9 @@ export interface SignupRunDeps {
   consentReader?: SignupConsentReader;
   /** Writes the parent's reply from the structured outcome. Undefined uses the reply model. */
   outcomeWriter?: SignupOutcomeWriter;
+  /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
+  planReader?: PlanTurnDeps['planReader'];
+  planWriter?: PlanTurnDeps['planWriter'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -167,6 +171,12 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
+  const planTurn = await runPlanTurn(database, input, {
+    planReader: deps.planReader,
+    planWriter: deps.planWriter,
+    declineSeat: deps.declineSeat,
+  });
+  if (planTurn) return planTurn;
 
   // No pending offer: nothing to consent to, and the message is someone else's.
   const offer = await loadPendingOffer(database, input.familyId);
@@ -1127,10 +1137,9 @@ async function replyFor(
               }
             : null,
           question: facts.question ?? null,
-          language: await readNoticeLanguage(database, {
+          language: await readParentLanguage(database, {
             familyId: input.familyId,
             parentUserId: input.parentUserId,
-            now: input.now,
           }),
         });
   await writeAudit(database, input, facts.offerId, {

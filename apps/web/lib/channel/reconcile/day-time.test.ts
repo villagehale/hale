@@ -42,6 +42,15 @@ describe('dayTimeConflict', () => {
     expect(dayTimeConflict('周二9点的游泳课已经约好了。', TUE_9, TZ, 'zh')).toBe(false);
   });
 
+  it('zh: minutes after 点 are read, so 9点30分 and 9点半 are 9:30, not 9:00 (Devin)', () => {
+    const TUE_930 = new Date('2026-11-03T16:30:00Z');
+    for (const sentence of ['周二9点30分的游泳课已经约好了。', '周二9点半的游泳课已经约好了。']) {
+      expect([sentence, dayTimeConflict(sentence, TUE_930, TZ, 'zh')]).toEqual([sentence, false]);
+      expect([sentence, dayTimeConflict(sentence, TUE_9, TZ, 'zh')]).toEqual([sentence, true]);
+    }
+    expect(dayTimeConflict('周二9点05分的游泳课已经约好了。', TUE_9, TZ, 'zh')).toBe(true);
+  });
+
   it('short English forms are not read, so "Sam" and "sat" never match', () => {
     expect(dayTimeConflict('Sam sat down and swim is booked.', TUE_9, TZ, 'en')).toBe(false);
     // Positive control: the long form of the same day is read.

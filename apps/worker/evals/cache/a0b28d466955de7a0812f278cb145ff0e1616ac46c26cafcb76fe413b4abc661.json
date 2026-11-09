@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says payment step reached, not paid or booked, gives the exact link and 12-minute window, no personal details, no retry promise, and does not claim a held spot. Language is zh with direct audience using 你, appropriate for a friend tone. Minor issue: '还没有付款,所以现在还没有报上名' is accurate; no violations found.",
+    "score": 5
+  }
+}

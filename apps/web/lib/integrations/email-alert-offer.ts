@@ -362,6 +362,7 @@ async function supersedeUnapprovedCalendarAdds(
         eq(schema.actions.actionType, 'calendar_add'),
       ),
     )
+    .orderBy(desc(schema.actions.draftedAt))
     .limit(20);
   // A private YES retires only private-surface drafts: a household group's draft is that
   // group's question, answered in the group (VIL-525).
