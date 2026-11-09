@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "On arrête le soccer en mars, tu peux me rappeler l'inscription au printemps?",
+    "language": "fr",
+    "situation": "none",
+    "who": "unknown",
+    "confirmation": ""
+  },
+  "latencyMs": 1741
+}

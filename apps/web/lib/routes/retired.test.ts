@@ -32,8 +32,13 @@ describe('isRetiredPath', () => {
     }
   });
 
+  it('retires the Week page, /plan, and anything underneath it', () => {
+    expect(isRetiredPath('/plan')).toBe(true);
+    expect(isRetiredPath('/plan/anything')).toBe(true);
+  });
+
   it('leaves the surfaces that DO earn their place alone', () => {
-    for (const live of ['/trail', '/settings', '/family', '/plan', '/home']) {
+    for (const live of ['/trail', '/settings', '/settings/plan', '/family', '/home']) {
       expect(isRetiredPath(live), live).toBe(false);
     }
   });
@@ -60,7 +65,8 @@ describe('isRetiredPath', () => {
     expect(isRetiredPath('/savedsearches')).toBe(false);
   });
 
-  it('lands every retired surface somewhere that is not itself retired', () => {
+  it('lands every retired surface on the family page, which is not itself retired', () => {
+    expect(RETIRED_TARGET).toBe('/family');
     expect(isRetiredPath(RETIRED_TARGET)).toBe(false);
   });
 });
@@ -96,7 +102,7 @@ describe('the page stubs are gone; next.config serves the 308', () => {
     expect(existsSync(pagePath(rel))).toBe(false);
   });
 
-  it('forwards each surface, and anything under it, permanently to /home', async () => {
+  it('forwards each surface, and anything under it, permanently to the family page', async () => {
     if (typeof nextConfig.redirects !== 'function')
       throw new Error('next.config has no redirects()');
     const rules = await nextConfig.redirects();

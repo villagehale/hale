@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
-import { cityRecLine } from '~/lib/channel/rec-morning';
+import { TORONTO_FOLLOW, cityRecLine } from '~/lib/channel/rec-morning';
 import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
@@ -541,9 +541,24 @@ describe('the village intro lane and the lanes behind it', () => {
 });
 
 describe('recMorningHandler', () => {
+  /** The families row both reads in this handler select from: language, then stored place.
+   * No primary parent row, so the family's zone is the read's own fallback. */
+  function familyRow(row: { primaryLanguage: string | null; city: string | null }): Database {
+    const found = { ...row, postalCode: null, areaCoarse: null };
+    return {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [found] }),
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      }),
+    } as unknown as Database;
+  }
+  const TORONTO_FAMILY = familyRow({ primaryLanguage: null, city: 'Toronto' });
+
   it("answers a Toronto swim clock question with the dataset's Toronto dates", async () => {
     const verdict = await recMorningHandler().handle(
-      DB,
+      TORONTO_FAMILY,
       turn('When does Toronto swim registration open?'),
     );
     expect(verdict.claimed).toBe(true);
@@ -560,7 +575,10 @@ describe('recMorningHandler', () => {
   });
 
   it("answers a named Markham rec ask with Markham's own cycle, not Toronto", async () => {
-    const verdict = await recMorningHandler().handle(DB, turn('Markham fall rec dates?'));
+    const verdict = await recMorningHandler().handle(
+      TORONTO_FAMILY,
+      turn('Markham fall rec dates?'),
+    );
     expect(verdict.claimed).toBe(true);
     if (!verdict.claimed || verdict.reply === null) return;
     expect(verdict.reply).toBe(cityRecLine('markham', TURN_NOW));
@@ -578,15 +596,7 @@ describe('recMorningHandler', () => {
         return request.facts?.answer ?? null;
       },
     });
-    const database = {
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: async () => [{ primaryLanguage: 'zh' }],
-          }),
-        }),
-      }),
-    } as unknown as Database;
+    const database = familyRow({ primaryLanguage: 'zh', city: 'Toronto' });
     try {
       const verdict = await recMorningHandler().handle(
         database,
@@ -600,15 +610,138 @@ describe('recMorningHandler', () => {
   });
 
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {
-    expect((await recMorningHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn('waitlisted #3'))).claimed).toBe(
+      false,
+    );
     expect(
       (
         await recMorningHandler().handle(
-          DB,
+          TORONTO_FAMILY,
           turn('can you watch swim registration for Milo this fall?'),
         )
       ).claimed,
     ).toBe(false);
+  });
+});
+
+/**
+ * VIL-591. The rec-morning facts are GTA facts, so the family's own stored place decides
+ * whether this lane may answer at all - never the words of the text. Real Postgres, so the
+ * stored-place read is the production one.
+ */
+describe('recMorningHandler · only a family whose place is in the GTA', () => {
+  let placeDb: TestDb;
+
+  beforeAll(async () => {
+    placeDb = await createTestDb();
+  }, 120_000);
+
+  afterAll(async () => {
+    await placeDb.close();
+  });
+
+  async function familyAt(place: {
+    countryCode: string;
+    city: string | null;
+    postalCode: string | null;
+  }): Promise<string> {
+    const [row] = await placeDb.database
+      .insert(schema.families)
+      .values({ displayName: 'Rivera household', ...place })
+      .returning({ id: schema.families.id });
+    if (!row) throw new Error('family not inserted');
+    return row.id;
+  }
+
+  async function handleFor(familyId: string, body: string, now: Date = TURN_NOW) {
+    return recMorningHandler().handle(placeDb.database, { ...turn(body), familyId, now });
+  }
+
+  async function primaryParentIn(familyId: string, timezone: string): Promise<void> {
+    const [user] = await placeDb.database
+      .insert(schema.users)
+      .values({ name: 'Sam', timezone })
+      .returning({ id: schema.users.id });
+    if (!user) throw new Error('user not inserted');
+    await placeDb.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'primary_parent' });
+  }
+
+  /** Hand-derived: the Y opened fall swim Thursday Aug 27 2026 at 9:00 a.m. */
+  const YMCA_OPEN_FACT =
+    'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
+
+  it("leaves the Y's opening morning to the coach once that day has passed", async () => {
+    const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(toronto, 'America/Toronto');
+    const ask = 'when does ymca swim open';
+    expect(await handleFor(toronto, ask, new Date('2026-11-04T14:00:00.000Z'))).toEqual({
+      claimed: false,
+    });
+    // Positive control: a week before that morning, the lane answers with the fact.
+    expect(await handleFor(toronto, ask, new Date('2026-08-20T14:00:00.000Z'))).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+  });
+
+  it("reads that day in the zone the family's parent has on file", async () => {
+    // 02:00Z on Aug 28 is still Aug 27 in Eastern time, and already Aug 28 in UTC.
+    const lateOnTheDay = new Date('2026-08-28T02:00:00.000Z');
+    const eastern = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(eastern, 'America/Toronto');
+    const utc = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    await primaryParentIn(utc, 'UTC');
+    expect(await handleFor(eastern, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: true,
+      outcome: 'rec_morning',
+      reply: YMCA_OPEN_FACT,
+    });
+    expect(await handleFor(utc, 'when does ymca swim open', lateOnTheDay)).toEqual({
+      claimed: false,
+    });
+  });
+
+  it('leaves a Markham family texting "waitlist" to the coach', async () => {
+    const markham = await familyAt({ countryCode: 'CA', city: 'Markham', postalCode: null });
+    expect(await handleFor(markham, 'waitlist')).toEqual({ claimed: false });
+    // Positive control: the same family's rec ask is still this lane's.
+    expect((await handleFor(markham, 'Markham fall rec dates?')).claimed).toBe(true);
+  });
+
+  it('leaves a Texas family texting "waitlist" to the coach', async () => {
+    const texas = await familyAt({ countryCode: 'US', city: 'Austin', postalCode: '78701' });
+    expect(await handleFor(texas, 'waitlist')).toEqual({ claimed: false });
+  });
+
+  it('leaves a Texas family texting "YMCA swim" to the coach', async () => {
+    const texas = await familyAt({ countryCode: 'US', city: 'Austin', postalCode: '78701' });
+    expect(await handleFor(texas, 'YMCA swim')).toEqual({ claimed: false });
+  });
+
+  it('leaves a US family whose town shares a GTA name to the coach', async () => {
+    const georgia = await familyAt({
+      countryCode: 'US',
+      city: 'Richmond Hill',
+      postalCode: '31324',
+    });
+    expect(await handleFor(georgia, 'YMCA swim')).toEqual({ claimed: false });
+  });
+
+  it('leaves a Vancouver family asking about the parents login to the coach', async () => {
+    const vancouver = await familyAt({ countryCode: 'CA', city: 'Vancouver', postalCode: 'V6B' });
+    expect(await handleFor(vancouver, 'both parents need the login')).toEqual({
+      claimed: false,
+    });
+  });
+
+  it('still answers a family with a Toronto FSA texting "waitlist" (positive control)', async () => {
+    const toronto = await familyAt({ countryCode: 'CA', city: null, postalCode: 'M5V' });
+    const verdict = await handleFor(toronto, 'waitlist');
+    // The scripted writer restates the facts it was handed: the Toronto waitlist mechanics.
+    expect(verdict).toEqual({ claimed: true, outcome: 'rec_morning', reply: TORONTO_FOLLOW });
   });
 });
 

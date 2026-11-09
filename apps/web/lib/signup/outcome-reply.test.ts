@@ -12,6 +12,9 @@ const BASE: SignupOutcomeFacts = {
   confirmed: false,
   sessionLabel: 'Tue 4:30',
   link: 'https://example.test/register',
+  linkIs: 'registration_page',
+  holdMinutes: null,
+  audience: 'direct',
   prefilled: ['child_first_name'],
   rush: null,
   question: null,
@@ -78,13 +81,13 @@ describe('signup outcome reply (mocked model)', () => {
 
   it('writes the assisted handoff from the pack and the page', async () => {
     const sample =
-      'This one needs you: https://www.toronto.ca/register — for Tue 4:30 have parent_first_name Test Parent ready.';
+      'This one needs you: https://register.example-rec.test/activity/42 — for Tue 4:30 have parent_first_name Test Parent ready.';
     const { client, requests } = mockModel([sample]);
     const text = await createSignupOutcomeWriter(() => client).write({
       ...BASE,
       outcome: 'assisted_handoff',
       reason: 'assisted_handoff',
-      link: 'https://www.toronto.ca/register',
+      link: 'https://register.example-rec.test/activity/42',
       prefilled: [],
       pack: [{ slot: 'parent_first_name', value: 'Test Parent' }],
     });
@@ -104,5 +107,26 @@ describe('signup outcome reply (mocked model)', () => {
     expect(signupOutcomeViolations('Done: https://x.test', { ...BASE, link: '' })).toContain(
       'contains a link',
     );
+  });
+
+  it('leaves length to the model: a long draft that carries the link can send', () => {
+    const long = `${'Here is what to have ready for the form. '.repeat(14)}${BASE.link}`;
+    expect(long.length).toBeGreaterThan(480);
+    expect(signupOutcomeViolations(long, BASE)).toEqual([]);
+  });
+
+  it('holds a live-browser draft to the live link, not the registration page', () => {
+    const live: SignupOutcomeFacts = {
+      ...BASE,
+      outcome: 'reached_checkout',
+      reason: null,
+      link: 'https://live.browser-use.com/s/fixture-live-view-token',
+      linkIs: 'live_browser',
+      holdMinutes: 10,
+    };
+    const violations = signupOutcomeViolations(`Finish it here: ${BASE.link}`, live);
+    expect(violations).toContain('missing the hand-off link');
+    expect(violations).toContain('contains another link');
+    expect(signupOutcomeViolations(`Finish it here: ${live.link}`, live)).toEqual([]);
   });
 });

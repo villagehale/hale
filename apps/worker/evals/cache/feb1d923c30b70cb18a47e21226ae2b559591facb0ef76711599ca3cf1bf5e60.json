@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mentions none of the three given events (Montessori tour 10-11 AM, Toddler Storytime 1:30-2 PM, Swim 5-5:45 PM) and omits all their venues, addresses and end times. It invents an event \"Jour de congé at 3:00\" that is not in the facts, with no AM/PM, and in French mixed into English. It also claims tomorrow is a day off with \"breathing room\", falsely implying the family has nothing to be at when there are three timed events.",
+    "score": 1
+  }
+}

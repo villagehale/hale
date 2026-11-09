@@ -6,6 +6,7 @@ import type { TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
+import type { AuditVerb } from '~/lib/trail/verbs';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -26,6 +27,16 @@ import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
  * The export does include internal audit verbs History hides. The 7-day unsent
  * mark is an audit row the parent is owed a copy of, and it is not a History line.
  */
+
+/** Rows about one adult that a family-wide copy, which every parent seat gets, never carries. */
+const NOT_IN_FAMILY_EXPORT = [
+  // A crisis flag can endanger the parent who texted if another adult in the home reads it.
+  'crisis_unanswered',
+  // That Hale re-read one parent's held text to see whether they asked it to stop.
+  'opt_out_hold_read',
+  // That one adult connected their Google account again, possibly in another household.
+  'integration_google_revoke_cancelled',
+] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
   /** ISO instant the export was assembled — the "copy taken at" stamp. */
@@ -70,15 +81,22 @@ export interface FamilyExportDocument {
    * for, so only the HOST leaves — the parent already has the link, because they sent
    * it. No price, no child, no message id. Present-and-empty for a family with none: a
    * copy that simply omits a section leaves a parent unable to tell "Hale holds none of
-   * this" from "Hale did not look".
+   * this" from "Hale did not look". A watch on a link the parent sent (VIL-423) has no
+   * catalog window behind it, so its municipality and cycleLabel are null. The page's
+   * last reading and any pending change are page-derived, not family facts: only
+   * whether a change is pending leaves.
    */
   registrationPreparation: {
-    municipality: string;
-    cycleLabel: string;
+    municipality: string | null;
+    cycleLabel: string | null;
     courseHost: string | null;
     courseOpensAt: string | null;
     /** What the parent TOLD Hale about their portal setup. Null is unanswered. */
     readinessReady: boolean | null;
+    lastReadAt: string | null;
+    nextCheckAt: string | null;
+    pausedAt: string | null;
+    hasPendingChange: boolean;
     /** When this ROW last changed — not when the link was pasted, which is a dated line
      * in the trail below. Later reads refresh the anchor on the same row. */
     updatedAt: string;
@@ -276,7 +294,10 @@ export async function assembleFamilyExport(
   const loadTrail =
     deps.loadTrail ??
     ((trailDb: Database, trailFamilyId: string) =>
-      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, { includeInternal: true }));
+      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
+        includeInternal: true,
+        exclude: NOT_IN_FAMILY_EXPORT,
+      }));
   const now = deps.now ?? new Date();
 
   const [familyRow] = await database
@@ -397,10 +418,14 @@ export async function assembleFamilyExport(
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
+      lastReadAt: schema.registrationSequences.lastReadAt,
+      nextCheckAt: schema.registrationSequences.nextCheckAt,
+      pausedAt: schema.registrationSequences.pausedAt,
+      pendingChange: schema.registrationSequences.pendingChange,
       updatedAt: schema.registrationSequences.updatedAt,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
+    .leftJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
     )
@@ -416,6 +441,10 @@ export async function assembleFamilyExport(
       courseHost: hostOf(row.courseUrl),
       courseOpensAt: row.courseOpensAt?.toISOString() ?? null,
       readinessReady: row.readinessReady,
+      lastReadAt: row.lastReadAt?.toISOString() ?? null,
+      nextCheckAt: row.nextCheckAt?.toISOString() ?? null,
+      pausedAt: row.pausedAt?.toISOString() ?? null,
+      hasPendingChange: row.pendingChange !== null,
       updatedAt: row.updatedAt.toISOString(),
     }));
 

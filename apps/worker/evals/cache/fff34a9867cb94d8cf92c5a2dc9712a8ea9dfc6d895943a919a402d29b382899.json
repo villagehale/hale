@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "none",
+    "verbatim": "my kid is dying to try hockey this winter",
+    "language": "en",
+    "situation": "none",
+    "confirmation": ""
+  },
+  "latencyMs": 1366
+}

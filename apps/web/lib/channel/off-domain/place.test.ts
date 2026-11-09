@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported } from '~/lib/family/location-input';
-import { coarsenPlace, placeOf } from './place';
+import { coarsenPlace, placeOf, provinceOfPostal } from './place';
 import ca from './postal-cities/ca.json';
 import coarsen from './postal-cities/coarsen.json';
 import us from './postal-cities/us.json';
@@ -627,5 +627,24 @@ describe('a sensitive search is not told a place under 10,000 people', () => {
     const read = await readPlace(row);
     expect(read).toEqual({ status: 'known', ...place });
     expect(await coarsenPlace(read, true)).toEqual(read);
+  });
+});
+
+/**
+ * The province a Canadian postal token is in, by the table's own name (VIL-589): the
+ * one grain the health line needs. A US or other code has none here.
+ */
+describe('provinceOfPostal', () => {
+  it.each([
+    ['K7L 3N6', 'Ontario'],
+    ['P3A', 'Ontario'],
+    ['V6B', 'British Columbia'],
+    ['H2X', 'Quebec'],
+  ])('%s is in %s', async (token, province) => {
+    expect(await provinceOfPostal(token)).toBe(province);
+  });
+
+  it.each([['98101'], ['SW1A 1AA'], ['']])('%j has no province', async (token) => {
+    expect(await provinceOfPostal(token)).toBeNull();
   });
 });

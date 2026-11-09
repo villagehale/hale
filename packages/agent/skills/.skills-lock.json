@@ -41,7 +41,15 @@
   },
   "calendar-cancel-voice.md": {
     "file": "calendar-cancel-voice.md",
-    "sha256": "f8d5b7023e3b89c1f096b014c898c37a52c1f05ff5cf98f8ce94c31d49abe830"
+    "sha256": "e199f7bad0c42615373dbbe869f05424c35fd1d995e6a58387141fec0035b3fb"
+  },
+  "calendar-invite-time.md": {
+    "file": "calendar-invite-time.md",
+    "sha256": "f171de15fb55c9eb5ecf5b791c9116fd560fc31655ae355fb1207f9bd61c86ad"
+  },
+  "calendar-invite-voice.md": {
+    "file": "calendar-invite-voice.md",
+    "sha256": "8e9359cad3eb06966da050be62020602bc0572a9440a659239080e412f76eb81"
   },
   "calendar-offer-read.md": {
     "file": "calendar-offer-read.md",
@@ -62,6 +70,10 @@
   "carpool-voice.md": {
     "file": "carpool-voice.md",
     "sha256": "369b7834eb6e8696b66808f111277b424a89cfd5c9d29d8c84bd8103105c02ce"
+  },
+  "claim-read.md": {
+    "file": "claim-read.md",
+    "sha256": "7ccfa034d473deb59bd7305c9ccfd7ae5284e5dfd0bc6b9af1742d2da5105c10"
   },
   "classify-event.md": {
     "file": "classify-event.md",
@@ -90,6 +102,10 @@
   "coach-plan.md": {
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
+  },
+  "connector-disconnect-read.md": {
+    "file": "connector-disconnect-read.md",
+    "sha256": "7b351171cf1c93807d6267ebfcb1909e52965e8e7cf1a2b3b1fe6d747cac2d2f"
   },
   "consent-ask.md": {
     "file": "consent-ask.md",
@@ -225,7 +241,7 @@
   },
   "group-private-aside-draft.md": {
     "file": "group-private-aside-draft.md",
-    "sha256": "c40c6073e82a32935dd61c648a6afeb990b4306cb1d8958d4f577db8f18b51a2"
+    "sha256": "da1f28103d4c633fc287b48cb06f115e95b26e8399e58146f334198d14cafd4c"
   },
   "group-private-aside-read.md": {
     "file": "group-private-aside-read.md",
@@ -265,7 +281,7 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "3150b15c2756762ff331b1a19a3e2af98788b2c898a7a84c7fa45d77c70fd20b"
+    "sha256": "e4b872ab68fe701206dd87f9682634c85d04215f2bc81bbcb0f5f01945788eb7"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
@@ -325,15 +341,15 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "ba9317c09d8ec53f17f1830d28c4f2ce31283c5a04b24f137a72f84280ceca6d"
+    "sha256": "162614ba04b7303fe8afedc9b9103a4c12f1d5e64a62e42a965a26c71ceb065a"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "6c8e1f34fabc6505e54c760c2a6d39b4f75183c469a6cc51400539457314cf61"
+    "sha256": "16c25a5898fe91250ed9bac454069e07ad4095cb998a7141e774b6027fb2b221"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
-    "sha256": "d51cb27ef186c9a64272a3c5d3ad39cf8ff2a993243ac3875ea996c03a28cf29"
+    "sha256": "7a7a4350c4e133f709774debc8a5cfd261ca0e55bde8580e4ea61c6413d7246d"
   },
   "parse-village-search.md": {
     "file": "parse-village-search.md",
@@ -373,7 +389,7 @@
   },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "d3576ec420c6d2ad91922145ece5f518e2943b234089697990b3db672ae04e14"
+    "sha256": "5036b4da06914c0739a941a8d32a8a581fb9964fecf044c057c967ab62555473"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",
@@ -393,7 +409,7 @@
   },
   "said-line.md": {
     "file": "said-line.md",
-    "sha256": "2daeca7022da586e7b57b7e9742c33cfeb198fc8627eec1498fe6ee8cbfe1100"
+    "sha256": "6bd76029cfae6f5b53806179d3a5f3624c8ad0428d3873e7ef9057873de408ae"
   },
   "shared-group-reading.md": {
     "file": "shared-group-reading.md",
@@ -413,7 +429,7 @@
   },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
-    "sha256": "1be6e291057bab019496d8323e906d6a74043ae044541fba3d6a013a0711511f"
+    "sha256": "9e99c3eed045fb4290a382c09eb0b0e64dc426ecae79f269070b87bb7f4c5ff8"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
@@ -433,7 +449,7 @@
   },
   "verify-registration-window.md": {
     "file": "verify-registration-window.md",
-    "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
+    "sha256": "a3e769bf539465457a5b9ce040d70fdef85663e049003cfe3830072771c54155"
   },
   "voice-register.md": {
     "file": "voice-register.md",

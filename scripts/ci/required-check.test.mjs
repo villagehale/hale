@@ -3,7 +3,13 @@ import { REQUIRED_CI_JOB, pickFailedJob } from './classify.mjs';
 import { requiredCheckPasses } from './required-check.mjs';
 
 describe('requiredCheckPasses', () => {
-  const ok = { changes: 'success', verify: 'success', evals: 'success', workerEvals: 'true' };
+  const ok = {
+    changes: 'success',
+    verify: 'success',
+    tests: 'success',
+    evals: 'success',
+    workerEvals: 'true',
+  };
 
   it('passes when workspace checks and worker evals passed', () => {
     expect(requiredCheckPasses(ok)).toMatchObject({ ok: true });
@@ -26,6 +32,17 @@ describe('requiredCheckPasses', () => {
     expect(
       requiredCheckPasses({ ...ok, verify: 'failure', evals: 'skipped', workerEvals: 'false' }).ok,
     ).toBe(false);
+  });
+
+  it('fails when any workspace test shard failed, was cancelled or never reported', () => {
+    for (const tests of ['failure', 'cancelled', 'skipped', '']) {
+      expect(requiredCheckPasses({ ...ok, tests }).ok).toBe(false);
+      expect(requiredCheckPasses({ ...ok, tests, evals: 'skipped', workerEvals: 'false' }).ok).toBe(
+        false,
+      );
+    }
+    expect(requiredCheckPasses({ ...ok, tests: 'failure' }).reason).toBe('workspace tests failure');
+    expect(requiredCheckPasses({ ...ok, tests: '' }).reason).toBe('workspace tests missing');
   });
 
   it('fails when evals fail even if the filter called the diff site-only', () => {

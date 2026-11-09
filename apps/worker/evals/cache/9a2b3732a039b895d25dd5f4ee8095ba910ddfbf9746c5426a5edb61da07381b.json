@@ -1,0 +1,31 @@
+{
+  "value": {
+    "cycle_on_page": "Fall swimming lessons",
+    "evidence": "Fall swimming lessons | Aug. 12 | Aug. 22 9 a.m. | Aug. 28 9 a.m.",
+    "year_evidence": "Fall 2026 and Winter 2027 Registration Schedule",
+    "time_zone_evidence": null,
+    "time_zone": null,
+    "eligibility_evidence": "The table columns are \"Program viewable online\", \"Registration date and time (resident)\" and \"Registration date and time (non-resident)\". For Fall swimming lessons, Aug. 12 is the viewable date, Aug. 22 9 a.m. is under the resident column, and Aug. 28 9 a.m. is under the non-resident column.",
+    "preview": {
+      "quote": "Aug. 12",
+      "date": "2026-08-12",
+      "time": null
+    },
+    "resident_open": {
+      "quote": "Aug. 22 9 a.m.",
+      "date": "2026-08-22",
+      "time": "09:00"
+    },
+    "general_open": {
+      "quote": "Aug. 28 9 a.m.",
+      "date": "2026-08-28",
+      "time": "09:00"
+    },
+    "unclassified_open": null,
+    "note": "The row prints no year. The year 2026 is taken from the heading \"Fall 2026 and Winter 2027 Registration Schedule\", because this is a fall program.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.82
+  },
+  "latencyMs": 6238
+}

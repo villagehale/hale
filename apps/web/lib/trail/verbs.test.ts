@@ -41,6 +41,11 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
     expect(family).not.toBe('neutral');
   });
 
+  it('keeps a decision sync closed unsent out of the parent history, while a sent one shows', () => {
+    expect(isInternalTrailVerb('group_decision_sync_closed_unsent')).toBe(true);
+    expect(isInternalTrailVerb('group_decision_sync_sent')).toBe(false);
+  });
+
   it('says one text of a plan, because that is what one row is', () => {
     // sendInOrder writes one row per MESSAGE of a plan (compose enforces 2-3 per plan),
     // so "Hale sent you a coaching plan" three times reads as three plans.
@@ -206,8 +211,8 @@ describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
     expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
-  it('links a plan target to the plan surface', () => {
-    expect(targetLink('family_plans', 'plan-3')).toBe('/plan');
+  it('does not link a plan at the retired plan page', () => {
+    expect(targetLink('family_plans', 'plan-3')).toBeNull();
   });
 
   it('returns null (no fake link) for a target with no viewable surface', () => {
