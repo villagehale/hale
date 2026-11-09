@@ -1217,8 +1217,6 @@ export const COACH_CHANNEL_FIXTURES = [
   },
   {
     id: 'postal-home-unmarked-place',
-    // Cached-only miss is not a corpus failure until a recording exists.
-    unrecorded: true,
     text: 'anything fun Lin could do this Sunday afternoon?',
     city: 'Markham',
     postalTown: 'Markham',
@@ -1252,7 +1250,7 @@ export const COACH_CHANNEL_FIXTURES = [
     },
     judgeHome:
       "Home is Markham, from the postal code. Georgetown is an older or unconfirmed place from memory. Score 1 if the reply states Georgetown as where they live or as the place that was searched. One question, in the reply's own words, about whether that other place still matters is not that failure. Do not require particular wording.",
-    note: 'Sloane, VIL-519. Postal town is home. A 20-day unmarked home_city must not be named as home and must not be the search. The model judges the conflict. Unrecorded until a live cache exists.',
+    note: 'Sloane, VIL-519. Postal town is home. A 20-day unmarked home_city must not be named as home and must not be the search. The model judges the conflict.',
     expect: {
       mustNotDraft: true,
       mustCall: ['find_activities'],

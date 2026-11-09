@@ -1193,7 +1193,6 @@ function makeCachedAgentClient(
   legs,
   anthropicModel,
   subjectLatencies,
-  softMiss = false,
 ) {
   return {
     messages: {
@@ -1258,12 +1257,6 @@ function makeCachedAgentClient(
           return note(cached.response);
         }
         if (cachedOnly) {
-          if (softMiss) {
-            const missed = new Error(`unrecorded ${tag}`);
-            missed.unrecorded = true;
-            missed.cacheKey = key;
-            throw missed;
-          }
           console.error(
             `agent cache miss in --cached-only mode (${tag}, key ${key}). Re-run live to populate, then commit the cache.`,
           );
@@ -2163,7 +2156,6 @@ async function main() {
   }
 
   const results = [];
-  const pendingRecord = [];
   for (const fixture of corpus) {
     const calls = [];
     const auditLog = [];
@@ -2233,11 +2225,8 @@ async function main() {
         legs,
         anthropicModel,
         subjectLatencies,
-        fixture.unrecorded === true,
       );
-      let run;
-      try {
-        run = await agent.runAgent({
+      const run = await agent.runAgent({
         skill: turnSkill,
         context: turnContext,
         tools,
@@ -2247,16 +2236,6 @@ async function main() {
         toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
         guardDeps: makeGuardDeps(auditLog, children),
       });
-      } catch (err) {
-        if (err?.unrecorded) {
-          pendingRecord.push({ id: fixture.id, cacheKey: err.cacheKey });
-          console.log(
-            `UNRECORDED  ${fixture.id}  ${err.cacheKey}  (cached-only soft path until a recording exists)`,
-          );
-          continue;
-        }
-        throw err;
-      }
       if (run.answer === null) {
         // WHAT IT SPENT THE BUDGET ON. A bare "no answer" is unactionable: the loop can
         // end empty because it looped on a rejected tool call, or because it ran the
@@ -2566,14 +2545,7 @@ async function main() {
     !severed &&
     (!voiceRequired || (scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0));
   const segments = answered.map((r) => smsSegments(r.reply));
-  // An unrecorded fixture is not in `results`. A run of only that fixture has
-  // nothing to grade and is not a failure; a run that graded nothing else is.
-  const accuracy =
-    results.length === 0
-      ? pendingRecord.length > 0
-        ? 1
-        : 0
-      : passes.length / results.length;
+  const accuracy = passes.length / results.length;
 
   console.log('\n--- corpus metrics ---');
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
@@ -2693,10 +2665,6 @@ async function main() {
     voiceOk &&
     (broken || clashWrong.length === 0);
 
-  if (pendingRecord.length > 0) {
-    console.log('\n--- unrecorded (cached-only soft path) ---');
-    for (const row of pendingRecord) console.log(`  ${row.id}  ${row.cacheKey}`);
-  }
   if (isDryRun()) {
     console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
     const seen = new Set();
