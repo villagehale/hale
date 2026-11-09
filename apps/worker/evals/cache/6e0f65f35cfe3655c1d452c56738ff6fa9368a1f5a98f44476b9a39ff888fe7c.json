@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This is the correct, true answer to a Drive ask: Hale has no Drive connection, and the reply says so plainly and stops. It sends no URL, does not point to the app, and does not falsely promise a text will connect Drive. The only quirk is the switch from third person ('Hale doesn't') to first ('I can't'), which is negligible.",
-    "score": 5
-  }
-}

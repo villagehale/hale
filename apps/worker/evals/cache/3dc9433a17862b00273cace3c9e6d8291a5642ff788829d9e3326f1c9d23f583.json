@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly confirms, in the parent's language, that email autonomy is off. That matches turnedOffThisTurn (send_email, reply_to_email), so the claim is true. The last sentence, 'Te voy a consultar cada vez', restates the one before it: a small redundancy.",
+    "score": 4
+  }
+}
