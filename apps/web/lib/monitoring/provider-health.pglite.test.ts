@@ -70,11 +70,21 @@ describe('providerPreflight on a usage-limit 400', () => {
 
     expect(first).toEqual({
       proceed: false,
-      abort: { failure: 'usage_limit', detail: USAGE_LIMIT_TEXT, alerted: true },
+      abort: {
+        failure: 'usage_limit',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: true,
+      },
     });
     expect(second).toEqual({
       proceed: false,
-      abort: { failure: 'usage_limit', detail: USAGE_LIMIT_TEXT, alerted: false },
+      abort: {
+        failure: 'usage_limit',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+        alerted: false,
+      },
     });
     expect(third).toEqual(second);
     expect(sent).toHaveLength(1);

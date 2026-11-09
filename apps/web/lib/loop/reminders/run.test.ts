@@ -910,7 +910,8 @@ describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)
     const result = await runReminderCron({} as never, deps, NOW_T1H);
 
     expect(enqueued).toEqual([]);
-    expect(marked).toEqual([]);
+    // Still scheduled, marked so the drain can ask again before the event (VIL-586).
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'compose_unavailable' }]);
     expect(audited).toEqual([]);
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
     expect(error).toHaveBeenCalledWith(

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: Piano lesson (钢琴课), today evening (今晚), start 7:00 PM (晚上7点, correctly evening), end 8:00 PM (晚上8点), '还有一个小时' matches minutesUntilStart of 60, and venue 'Ms. Chen studio' kept as given. No address was given, so none is missing. No invented details (no travel time, no leave-by time), no changed/overlap fields, no planLink used, entirely in Chinese, and bold is none, which is fine.",
+    "score": 5
+  }
+}

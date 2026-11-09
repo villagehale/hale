@@ -114,10 +114,9 @@ describe('legal pages (long-form shell)', () => {
 
   it('dates both policies on the Toronto day the text was last edited', async () => {
     // Hard-coded calendar day, formatted in America/Toronto. UTC had already
-    // rolled to October 8 when the text was edited.
-    expect(privacyHtml).toContain('Last updated October 9, 2026');
+    // rolled to October 8 when the terms were edited.
+    expect(privacyHtml).toContain('Last updated November 8, 2026');
     expect(termsHtml).toContain('Last updated October 9, 2026');
-    expect(privacyHtml).not.toContain('October 8, 2026');
     expect(termsHtml).not.toContain('October 8, 2026');
     const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
     const zh = { params: Promise.resolve({ locale: 'zh' as const }) };
@@ -125,14 +124,20 @@ describe('legal pages (long-form shell)', () => {
     const frTerms = renderToStaticMarkup(await TermsPage(fr));
     const zhPrivacy = renderToStaticMarkup(await PrivacyPage(zh));
     const zhTerms = renderToStaticMarkup(await TermsPage(zh));
-    for (const html of [frPrivacy, frTerms]) {
-      expect(html).toContain('Dernière mise à jour le 9 octobre 2026');
-      expect(html).not.toContain('8 octobre 2026');
-    }
-    for (const html of [zhPrivacy, zhTerms]) {
-      expect(html).toContain('最后更新于 2026年10月9日');
-      expect(html).not.toContain('10月8日');
-    }
+    expect(frPrivacy).toContain('Dernière mise à jour le 8 novembre 2026');
+    expect(frTerms).toContain('Dernière mise à jour le 9 octobre 2026');
+    expect(frTerms).not.toContain('8 octobre 2026');
+    expect(zhPrivacy).toContain('最后更新于 2026年11月8日');
+    expect(zhTerms).toContain('最后更新于 2026年10月9日');
+    expect(zhTerms).not.toContain('10月8日');
+  });
+
+  it('names exactly the Google scopes the connect flow asks for, and no Drive', () => {
+    expect(privacyHtml).toContain('<code>gmail.readonly</code>');
+    expect(privacyHtml).toContain('<code>calendar.events.owned.readonly</code>');
+    expect(privacyHtml).not.toContain('<code>calendar.readonly</code>');
+    expect(privacyHtml).not.toContain('drive.readonly');
+    expect(privacyHtml).not.toContain('Google Drive (optional)');
   });
 
   it('does not carry a good-faith notice on either policy', async () => {

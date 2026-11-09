@@ -33,12 +33,19 @@ import type {
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
 import { voiceClient } from '~/lib/loop/voice/compose';
+import {
+  type ProviderErrorShape,
+  type ProviderFailureClass,
+  type ProviderHealth,
+  probeProviderHealth,
+} from '~/lib/monitoring/provider-health';
 import { scopeFamilies } from '~/lib/preview/family-scope';
 import { getQueue } from '~/lib/queue';
 import type { SourceChange } from './change';
 import { changeFromColumns } from './change';
 import { composeReminderTexts, reminderFacts } from './compose';
 import {
+  COMPOSE_HELD,
   type EventSnapshot,
   REMINDER_HORIZON_MS,
   REMINDER_OFFSETS,
@@ -254,6 +261,64 @@ function sqlExcluded(column: string) {
   return sql.raw(`excluded.${column}`);
 }
 
+/** The due ledger rows (status 'scheduled', fire_at ≤ now), each with what the fire gate
+ * needs to know about its recipient. `held` narrows them to the rows carrying that hold
+ * mark. */
+async function selectDueReminders(
+  db: Database,
+  now: Date,
+  held: typeof COMPOSE_HELD | null,
+): Promise<DueReminder[]> {
+  const rows = await db
+    .select({
+      id: schema.eventReminders.id,
+      familyId: schema.eventReminders.familyId,
+      eventRef: schema.eventReminders.eventRef,
+      parentUserId: schema.eventReminders.parentUserId,
+      offset: schema.eventReminders.offset,
+      fireAt: schema.eventReminders.fireAt,
+      timezone: schema.users.timezone,
+      role: schema.familyMembers.role,
+      channelId: schema.parentChannels.id,
+    })
+    .from(schema.eventReminders)
+    .innerJoin(schema.users, eq(schema.eventReminders.parentUserId, schema.users.id))
+    // LEFT, so a row whose recipient has left the family still arrives — with a null
+    // role, which the fire path reads as "prove nothing" and suppresses.
+    .leftJoin(
+      schema.familyMembers,
+      and(
+        eq(schema.familyMembers.familyId, schema.eventReminders.familyId),
+        eq(schema.familyMembers.userId, schema.eventReminders.parentUserId),
+      ),
+    )
+    // The SAME three columns caregiver-audience.ts joins on, asked per row. At most one
+    // row can match (`parent_channels_user_kind_active_idx` is unique on (user, kind)
+    // among the non-revoked), so this widens the result set by nothing.
+    .leftJoin(
+      schema.parentChannels,
+      and(
+        eq(schema.parentChannels.userId, schema.eventReminders.parentUserId),
+        eq(schema.parentChannels.kind, 'sms'),
+        isNotNull(schema.parentChannels.verifiedAt),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.eventReminders.status, 'scheduled'),
+        lte(schema.eventReminders.fireAt, now),
+        held ? eq(schema.eventReminders.suppressReason, held) : undefined,
+      ),
+    );
+  return rows.map(({ channelId, ...r }) => ({
+    ...r,
+    offset: r.offset as ReminderOffset,
+    role: (r.role as FamilyRole | null) ?? null,
+    smsChannelActive: channelId !== null,
+  }));
+}
+
 export function defaultReminderRunDeps(): ReminderRunDeps {
   return {
     selectReminderCaregivers: selectCaregiverSeats,
@@ -349,55 +414,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           ),
         );
     },
-    loadDueReminders: async (db, now) => {
-      const rows = await db
-        .select({
-          id: schema.eventReminders.id,
-          familyId: schema.eventReminders.familyId,
-          eventRef: schema.eventReminders.eventRef,
-          parentUserId: schema.eventReminders.parentUserId,
-          offset: schema.eventReminders.offset,
-          fireAt: schema.eventReminders.fireAt,
-          timezone: schema.users.timezone,
-          role: schema.familyMembers.role,
-          channelId: schema.parentChannels.id,
-        })
-        .from(schema.eventReminders)
-        .innerJoin(schema.users, eq(schema.eventReminders.parentUserId, schema.users.id))
-        // LEFT, so a row whose recipient has left the family still arrives — with a null
-        // role, which the fire path reads as "prove nothing" and suppresses.
-        .leftJoin(
-          schema.familyMembers,
-          and(
-            eq(schema.familyMembers.familyId, schema.eventReminders.familyId),
-            eq(schema.familyMembers.userId, schema.eventReminders.parentUserId),
-          ),
-        )
-        // The SAME three columns caregiver-audience.ts joins on, asked per row. At most one
-        // row can match (`parent_channels_user_kind_active_idx` is unique on (user, kind)
-        // among the non-revoked), so this widens the result set by nothing.
-        .leftJoin(
-          schema.parentChannels,
-          and(
-            eq(schema.parentChannels.userId, schema.eventReminders.parentUserId),
-            eq(schema.parentChannels.kind, 'sms'),
-            isNotNull(schema.parentChannels.verifiedAt),
-            isNull(schema.parentChannels.revokedAt),
-          ),
-        )
-        .where(
-          and(
-            eq(schema.eventReminders.status, 'scheduled'),
-            lte(schema.eventReminders.fireAt, now),
-          ),
-        );
-      return rows.map(({ channelId, ...r }) => ({
-        ...r,
-        offset: r.offset as ReminderOffset,
-        role: (r.role as FamilyRole | null) ?? null,
-        smsChannelActive: channelId !== null,
-      }));
-    },
+    loadDueReminders: (db, now) => selectDueReminders(db, now, null),
     loadEvent: async (db, eventRef) => {
       // No deleted_at filter: the live snapshot must carry deletedAt so classify can
       // return 'cancel' for a soft-deleted event (the trust gate).
@@ -539,8 +556,8 @@ export interface ReminderRunResult {
    * instead, and counted in `suppressed`. */
   heldQuietHours: number;
   /** VIL-563 · due reminders left 'scheduled' because the writer could not be reached (a
-   * provider fault that can clear, or a skill that did not load). Checked again at the
-   * next slot, like any held row. A refused draft is dropped ('unwritten'), and so is a
+   * provider fault that can clear, or a skill that did not load), marked COMPOSE_HELD.
+   * Checked again at the next slot, and a T-1h by the drain before that (VIL-586). A refused draft is dropped ('unwritten'), and so is a
    * request the provider rejected or our own bug ('compose_rejected'). */
   heldComposeUnavailable: number;
   sendEnabled: boolean;
@@ -604,17 +621,7 @@ export async function runReminderCron(
   deps: ReminderRunDeps = defaultReminderRunDeps(),
   now: Date = new Date(),
 ): Promise<ReminderRunResult> {
-  // The family's children, read at most once per run per family — the deterministic teen
-  // age gate needs them, and both phases ask.
-  const childCache = new Map<string, ReminderChild[]>();
-  const childrenFor = async (familyId: string): Promise<ReminderChild[]> => {
-    const hit = childCache.get(familyId);
-    if (hit) return hit;
-    const loaded = await deps.loadChildren(db, familyId);
-    childCache.set(familyId, loaded);
-    return loaded;
-  };
-
+  const childrenFor = childLoader(db, deps);
   const scope = deps.scopeFamilies ?? ((rows) => scopeFamilies(rows));
 
   // ── Phase A: converge the ledger from live placed events ─────────────────────
@@ -694,6 +701,56 @@ export async function runReminderCron(
     await deps.cancelDeletedEventReminders(db, familyId);
   }
 
+  const fire = await fireDueReminders(
+    db,
+    deps,
+    now,
+    scope(await deps.loadDueReminders(db, now)),
+    childrenFor,
+  );
+
+  if (fire.heldNoKidVerdict > 0 || notScheduledNoKidVerdict > 0) {
+    console.info(
+      { heldNoKidVerdict: fire.heldNoKidVerdict, notScheduledNoKidVerdict },
+      'reminder: mirror rows without a kid verdict, not sent',
+    );
+  }
+
+  return { converged, notScheduledLaneOff, notScheduledNoKidVerdict, ...fire };
+}
+
+/** The family's children, read at most once per run per family: the deterministic teen
+ * age gate needs them, and both phases ask. */
+function childLoader(
+  db: Database,
+  deps: Pick<ReminderRunDeps, 'loadChildren'>,
+): (familyId: string) => Promise<ReminderChild[]> {
+  const cache = new Map<string, ReminderChild[]>();
+  return async (familyId) => {
+    const hit = cache.get(familyId);
+    if (hit) return hit;
+    const loaded = await deps.loadChildren(db, familyId);
+    cache.set(familyId, loaded);
+    return loaded;
+  };
+}
+
+/** What the fire phase did with the due rows it was handed. */
+type ReminderFireResult = Omit<
+  ReminderRunResult,
+  'converged' | 'notScheduledLaneOff' | 'notScheduledNoKidVerdict'
+>;
+
+/** Phase B: classify each due row against the LIVE event, then hold, drop or send it. */
+async function fireDueReminders(
+  db: Database,
+  deps: ReminderRunDeps,
+  now: Date,
+  due: DueReminder[],
+  childrenFor: (familyId: string) => Promise<ReminderChild[]>,
+): Promise<ReminderFireResult> {
+  const mirrorLaneOn = laneEnabled('parent_calendar_mirror');
+
   /**
    * MAY THIS RECIPIENT BE TOLD ABOUT THIS EVENT, right now — the role half of the trust
    * gate, asked of the LIVE row the way the classify above asks about the live event.
@@ -715,8 +772,6 @@ export async function runReminderCron(
     return roleAllows(role, classifyFamilyEvent(event, await childrenFor(row.familyId), now));
   };
 
-  // ── Phase B: fire — classify each due row against the LIVE event ──────────────
-  const due = scope(await deps.loadDueReminders(db, now));
   const firing: FiringRow[] = [];
   let suppressed = 0;
   let cancelled = 0;
@@ -948,6 +1003,11 @@ export async function runReminderCron(
             },
             'reminder: compose unavailable, held for the next slot',
           );
+          // The mark is what lets the drain ask again before a T-1h's event starts.
+          for (const ref of batch.eventRefs) {
+            const r = rowByRef.get(ref);
+            if (r) await deps.markStatus(db, r.reminderId, 'scheduled', COMPOSE_HELD);
+          }
           heldComposeUnavailable += batch.eventRefs.length;
           continue;
         }
@@ -1055,30 +1115,82 @@ export async function runReminderCron(
     }
   }
 
-  if (heldNoKidVerdict > 0 || notScheduledNoKidVerdict > 0) {
-    console.info(
-      { heldNoKidVerdict, notScheduledNoKidVerdict },
-      'reminder: mirror rows without a kid verdict, not sent',
-    );
-  }
-
   if (heldQuietHours > 0) {
     console.info({ heldQuietHours }, 'reminder: held for quiet hours, checked again next slot');
   }
 
   return {
-    converged,
     due: due.length,
     fired,
     firedLate,
     suppressed,
     cancelled,
     heldLaneOff,
-    notScheduledLaneOff,
     heldNoKidVerdict,
-    notScheduledNoKidVerdict,
     heldQuietHours,
     heldComposeUnavailable,
     sendEnabled,
+  };
+}
+
+export interface HeldReminderRecheckDeps extends ReminderRunDeps {
+  /** Due rows the run held because the writer could not be reached ({@link COMPOSE_HELD}). */
+  loadHeldReminders: (db: Database, now: Date) => Promise<DueReminder[]>;
+  /** One call that carries no family fact: is the provider answering again? */
+  probe: (client: AgentClient) => Promise<ProviderHealth>;
+}
+
+export function defaultHeldReminderRecheckDeps(): HeldReminderRecheckDeps {
+  return {
+    ...defaultReminderRunDeps(),
+    loadHeldReminders: (db, now) => selectDueReminders(db, now, COMPOSE_HELD),
+    probe: probeProviderHealth,
+  };
+}
+
+export type HeldReminderRecheck =
+  | { held: 0 }
+  | { held: number; skipped: 'send_disabled' | 'no_client' }
+  | ({ held: number; skipped: 'provider_down'; failure: ProviderFailureClass } & ProviderErrorShape)
+  | ({ held: number } & ReminderFireResult);
+
+/**
+ * VIL-586 · the drain's ask-again for a time-sensitive reminder the hourly run held
+ * because the writer could not be reached. A T-1h's next hourly slot comes after its
+ * event has started, so without this the hold could only end as 'started'.
+ *
+ * The family's facts go to the writer again only once a probe that carries none of them
+ * says the provider answers. The rows then take the same fire path as the hourly run's,
+ * so every gate (live event, scope, quiet hours, teen redaction) is asked again.
+ */
+export async function recheckHeldReminders(
+  db: Database,
+  deps: HeldReminderRecheckDeps = defaultHeldReminderRecheckDeps(),
+  now: Date = new Date(),
+): Promise<HeldReminderRecheck> {
+  const scope = deps.scopeFamilies ?? ((rows) => scopeFamilies(rows));
+  const held = scope(await deps.loadHeldReminders(db, now)).filter(
+    (row) => offsetUrgency(row.offset) === 'time_sensitive',
+  );
+  if (held.length === 0) return { held: 0 };
+  if (!loopSendEnabled()) return { held: held.length, skipped: 'send_disabled' };
+  if (!deps.client) {
+    console.error({ held: held.length, skipped: 'no_client' }, 'reminder: held, no writer');
+    return { held: held.length, skipped: 'no_client' };
+  }
+
+  const health = await deps.probe(deps.client);
+  if (!health.ok) {
+    return {
+      held: held.length,
+      skipped: 'provider_down',
+      failure: health.failure,
+      httpStatus: health.httpStatus,
+      errorType: health.errorType,
+    };
+  }
+  return {
+    held: held.length,
+    ...(await fireDueReminders(db, deps, now, held, childLoader(db, deps))),
   };
 }

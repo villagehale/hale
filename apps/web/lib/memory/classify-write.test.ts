@@ -128,6 +128,27 @@ describe('memory brief kind', () => {
     expectedWeek: '2026-09-28',
   };
 
+  it('leaves a fact read off an event out of the brief, and keeps one with no event (VIL-429)', () => {
+    const fact = {
+      factType: 'routine',
+      factValue: 'Thursdays',
+      confidence: 0.9,
+      validFrom: OCT_4,
+      childId: null,
+      memoryKind: 'lasting',
+      memorySource: 'inferred',
+    };
+    const brief = renderMemoryBrief({
+      ...base,
+      facts: [
+        { ...fact, factKey: 'soccer_day', sourceEventId: '44444444-4444-4444-8444-444444444444' },
+        { ...fact, factKey: 'swim_day', sourceEventId: null },
+      ],
+    });
+    expect(brief.text).toContain('swim_day');
+    expect(brief.text).not.toContain('soccer_day');
+  });
+
   it('drops an expired declined Oct 1 activity and does not call it confirmed', () => {
     const brief = renderMemoryBrief({
       ...base,

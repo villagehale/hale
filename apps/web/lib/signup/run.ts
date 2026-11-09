@@ -47,6 +47,7 @@ import {
   createSignupOutcomeWriter,
 } from './outcome-reply';
 import { type InfoPackSlot, signupInfoPack } from './pack';
+import { type PlanTurnDeps, runPlanTurn } from './plan/conversation';
 import { type BookingConnector, bookingRoute } from './providers';
 import { type GroupSignupDelivery, sendSignupToGroup } from './report';
 import type { SignupRuntimeAcquire, SignupRuntimeSkipped } from './runtime/types';
@@ -76,6 +77,9 @@ export interface SignupRunDeps {
   consentReader?: SignupConsentReader;
   /** Writes the parent's reply from the structured outcome. Undefined uses the reply model. */
   outcomeWriter?: SignupOutcomeWriter;
+  /** VIL-558 · the day-before plan read and its replies. Undefined uses the reply model. */
+  planReader?: PlanTurnDeps['planReader'];
+  planWriter?: PlanTurnDeps['planWriter'];
   /** True when this sender holds a group seat that may not authorize a sign-up. */
   declineSeat?: () => Promise<boolean>;
   /** Undefined loads Playwright. Null means the browser is absent. */
@@ -167,6 +171,12 @@ export async function runAuthorizedSignup(
   deps: SignupRunDeps = {},
 ): Promise<SignupRunResult> {
   if (!authorizedSignupEnabled()) return { ...UNCLAIMED, outcome: 'flag_off' };
+  const planTurn = await runPlanTurn(database, input, {
+    planReader: deps.planReader,
+    planWriter: deps.planWriter,
+    declineSeat: deps.declineSeat,
+  });
+  if (planTurn) return planTurn;
 
   // No pending offer: nothing to consent to, and the message is someone else's.
   const offer = await loadPendingOffer(database, input.familyId);

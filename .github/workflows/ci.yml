@@ -332,8 +332,14 @@ jobs:
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
 
+      - name: Registration date-unconfirmed text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:registration-date-unconfirmed
+
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
+
+      - name: Class availability reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:class-availability
 
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
@@ -418,6 +424,16 @@ jobs:
 
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
+
+      # VIL-558: the day-before registration plan read (exact) and its replies (judge).
+      - name: Signup plan read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-read
+
+      - name: Signup plan reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply
+
+      - name: Signup plan reply calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
 
       - name: Rec-morning read eval (cached-only)
         run: pnpm --filter @hale/worker eval:rec-morning-read

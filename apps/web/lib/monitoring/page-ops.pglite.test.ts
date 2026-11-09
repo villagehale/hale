@@ -79,6 +79,7 @@ const recorded = () => recordedModel(RECORDINGS, () => budgetedAnthropic(HOT_SMS
 const CLASH: Parameters<ReturnType<typeof createGroupConflictWriter>['write']>[0] = {
   language: 'en',
   kids: ['Robin'],
+  sameKid: null,
   items: [
     { kind: 'plan', title: 'swim lesson', day: 'Saturday', start: '9:00', end: '10:00', has: null },
     {

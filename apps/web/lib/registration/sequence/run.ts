@@ -37,10 +37,19 @@ import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { familyInPreviewScope } from '~/lib/preview/family-scope';
 import {
+  DATE_CHECK_OUTCOMES,
+  type DateCheckOutcome,
+  type DateChecker,
+  type DateUnreadReason,
+  createDateChecker,
+  liveDateReader,
+} from '~/lib/registration/date-check';
+import {
   type RegistrationMatch,
   matchRegistrationWindows,
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/verify-sweep';
 import { loadClaimedWindowIds } from './claims.js';
 import {
@@ -48,12 +57,14 @@ import {
   type MorningFacts,
   approvalCardFacts,
   battlePlanDecision,
+  dateUnconfirmedFacts,
   headsUpFacts,
   headsUpPromisesPlan,
   legNoteFacts,
   morningFacts,
   windowPhrase,
 } from './copy.js';
+import { type DateUnconfirmedFacts, composeDateUnconfirmed } from './date-unconfirmed-compose.js';
 import { composeRegistrationEvening } from './evening-compose.js';
 import { composeRegistrationHeadsUp } from './heads-up-compose.js';
 import { composeRegistrationMorning } from './morning-compose.js';
@@ -332,6 +343,14 @@ export interface SequenceRunDeps {
   /** VIL-543 · the approval card and every other leg, written from facts. Null means
    * nothing is sent (and no card is drafted). */
   writeNote: RegistrationNoteWriter;
+  /**
+   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
+   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
+   */
+  createDateReader(): RegistrationReader | null;
+  /** VIL-423 · a dated leg the page did not corroborate, written without a date. Null
+   * means nothing is sent. */
+  composeDateUnconfirmed: typeof composeDateUnconfirmed;
   /** The wall clock the already-open retry reads its deadline against. Defaults to
    * real time; tests pin it. */
   clock?: () => Date;
@@ -372,10 +391,31 @@ const PREP_FATES: readonly PrepFate[] = [
  * `open_time_unpublished`: the go leg is a claim about a minute, and this window's
  * source published only a date, so there is no minute to claim. See
  * `openTimeIsPublished`.
+ *
+ * `date_unconfirmed` (VIL-423, `enforce`): the go leg's whole content is the stored
+ * minute, and the page did not corroborate it. The battle plan the evening before
+ * already carried what the page said, or the page to check.
  */
-export type SequenceSkipReason = 'open_time_unpublished';
+export type SequenceSkipReason = 'open_time_unpublished' | 'date_unconfirmed';
 
-const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished'];
+const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished', 'date_unconfirmed'];
+
+/** The legs that state the opening date or time, and so the only ones checked. */
+const DATED_LEGS: ReadonlySet<SequenceLeg> = new Set([
+  'heads_up',
+  'readiness',
+  'battle_plan',
+  'go',
+]);
+
+/** Check outcomes where Hale never got the page's words at all, as opposed to a page it
+ * read that did not confirm the date. */
+const PAGE_UNREADABLE: ReadonlySet<DateUnreadReason> = new Set([
+  'unreadable',
+  'busy',
+  'gone',
+  'no_reader',
+]);
 
 export interface SequenceRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
@@ -434,6 +474,9 @@ export interface SequenceRunResult {
   /** Link-watch legs that were due and held because no send-time read of the parent's
    * page exists yet. Nothing was sent and the dedupe key is unspent (slice 7b). */
   linkUnread: number;
+  /** VIL-423 · send-time date checks of a catalog window's page, by outcome. Zero
+   * everywhere while REGISTRATION_DATE_CHECK is off. */
+  dateCheck: Record<DateCheckOutcome, number>;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -458,6 +501,10 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     unwritten: 0,
     undated: 0,
     linkUnread: 0,
+    dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+      DateCheckOutcome,
+      number
+    >,
   };
 }
 
@@ -731,6 +778,7 @@ async function runLegForSequence(
   sequence: CatalogSequence,
   deps: SequenceRunDeps,
   reader: CourseReader,
+  checker: DateChecker,
   now: Date,
 ): Promise<LegTally> {
   // THIS family's open instant, not the general one. A resident household in a town
@@ -831,7 +879,37 @@ async function runLegForSequence(
   if (allowed.length === 0) return emptyTally({ deduped, held });
 
   const children = await deps.loadChildren(database, sequence.familyId);
-  const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor });
+
+  // VIL-423 · THE SEND-TIME DATE CHECK, for a dated leg whose opening comes from the
+  // catalog row (a bound course is read off its own page at the battle plan and the go
+  // leg). Shadow logs and changes nothing. Enforce states the stored opening only when
+  // the page agrees: a page that disagrees lends the text its own date, and a page that
+  // cannot confirm one gets the text with no date and the page to check. `stated` moves
+  // only the sentence; the schedule stays on `anchor`, so the leg already due is the one
+  // that goes and no interval is re-entered.
+  let stated = anchor;
+  let unconfirmed: DateUnconfirmedFacts['why'] | null = null;
+  let dateCheck: DateCheckOutcome | undefined;
+  if (checker.mode !== 'off' && sequence.courseOpensAt === null && DATED_LEGS.has(leg)) {
+    const check = await checker.check(
+      { window: sequence.window, resident: isResidentWindow, stated: anchor, sender: leg },
+      now,
+    );
+    dateCheck = check.outcome;
+    if (checker.mode === 'enforce' && check.outcome !== 'agree') {
+      if (leg === 'go') return emptyTally({ skipped: 'date_unconfirmed', deduped, held });
+      if (check.outcome === 'disagree' && check.liveAt.getTime() > now.getTime()) {
+        stated = check.liveAt;
+      } else {
+        unconfirmed =
+          check.outcome === 'unread' && PAGE_UNREADABLE.has(check.reason)
+            ? 'page_unreadable'
+            : 'page_unconfirmed';
+      }
+    }
+  }
+
+  const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: stated });
   // A course this family picked, on a portal Hale can read. Kept as ONE narrowed value
   // rather than a boolean, so nothing below can reach for a URL or a portal the
   // condition has not proved is there.
@@ -894,7 +972,7 @@ async function runLegForSequence(
     timeZone: sequence.timeZone,
     now,
     optIn: sequence.optIn,
-    anchor,
+    anchor: stated,
     portal,
     readinessReady: sequence.readinessReady,
     prep,
@@ -907,7 +985,31 @@ async function runLegForSequence(
     },
   };
   let body: string;
-  if (leg === 'battle_plan') {
+  if (unconfirmed !== null) {
+    const facts = dateUnconfirmedFacts(leg, legInput, sequence.window.sourceUrl, unconfirmed);
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeDateUnconfirmed(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_leg_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_leg_unwritten',
+          version: 'date_unconfirmed',
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  } else if (leg === 'battle_plan') {
     const decision = battlePlanDecision(legInput);
     // VIL-484 · THE ALREADY-OPEN RETRY. The anchor has just moved to the page's past
     // clock, so no later tick reaches this leg again: a miss here is a parent who is
@@ -1144,6 +1246,9 @@ async function runLegForSequence(
         // `prep` alone on the leg that had a portal and nothing bound: there was no
         // read, so there is no drift to report and no anchor that could have moved.
         ...(effects.prep === undefined ? {} : { prep: effects.prep }),
+        // VIL-423 · what the send-time date check said, and which text that earned.
+        ...(dateCheck === undefined ? {} : { dateCheck }),
+        ...(unconfirmed === null ? {} : { version: 'date_unconfirmed' }),
         ...(prep === null
           ? {}
           : {
@@ -1200,6 +1305,7 @@ async function runLegForSequence(
         messageId: promiseMessageId,
         anchor,
         prep: prep?.verdict ?? null,
+        promisedPlan: unconfirmed === null,
       },
       deps,
       now,
@@ -1307,12 +1413,15 @@ async function recordLegPromise(
     anchor: Date;
     /** THIS tick's reading of the bound course, where one happened. */
     prep: PrepVerdict | null;
+    /** False when the leg went out as the date-unconfirmed text, which promises no plan. */
+    promisedPlan: boolean;
   },
   deps: SequenceRunDeps,
   now: Date,
 ): Promise<void> {
   const { sequence, leg, messageId } = args;
   if (leg === 'heads_up' && headsUpPromisesPlan(sequence.optIn)) {
+    if (!args.promisedPlan) return;
     await deps.recordCommitment(database, {
       familyId: sequence.familyId,
       kind: 'registration_plan',
@@ -1476,10 +1585,11 @@ export async function runRegistrationSequenceCron(
   // properties of the RUN: two households on one course cost one GET, and the wall clock
   // starts when the leg phase does rather than when the process did.
   const reader = courseReader(deps.fetchBody, Date.now());
+  const checker = createDateChecker(deps.createDateReader);
   for (const sequence of sequences) {
     result.evaluated += 1;
     try {
-      const outcome = await runLegForSequence(database, sequence, deps, reader, now);
+      const outcome = await runLegForSequence(database, sequence, deps, reader, checker, now);
       if (outcome.prep) result.prep[outcome.prep] += 1;
       if (outcome.anchorMoved) result.prep.anchor_moved += 1;
       if (outcome.noFit) result.noFit += 1;
@@ -1498,6 +1608,7 @@ export async function runRegistrationSequenceCron(
       console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
     }
   }
+  result.dateCheck = { ...checker.tally };
   result.read = reader.tally.read;
   result.readSkipped = reader.tally.skipped;
   return result;
@@ -1701,6 +1812,8 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     composeMorning: composeRegistrationMorning,
     composeHeadsUp: composeRegistrationHeadsUp,
     writeNote: registrationNoteWriter(),
+    createDateReader: liveDateReader,
+    composeDateUnconfirmed,
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)

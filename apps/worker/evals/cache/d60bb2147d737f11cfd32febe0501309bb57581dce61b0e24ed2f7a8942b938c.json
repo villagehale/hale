@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly reports sold out, no registration, no charge, matches facts and watchFor, no promises or hints of reopening, plain warm tone in English. Minor issue: it says 'the registration page follows' is not stated, but the watchFor says the page follows, and the text omits that mention, which is acceptable. No invented facts detected.",
+    "score": 5
+  }
+}
