@@ -100,7 +100,7 @@ describe('a delayed undo during name capture', () => {
       new Date('2026-08-28T12:00:00.000Z'),
       new Date('2026-08-28T18:00:00.000Z'),
     ),
-    recentTurns: [{ role: 'hale', body: 'What should I call you?' }],
+    recentTurns: [{ role: 'hale', body: 'What should I call you?', asked: true }],
     checklist: {
       postal: true,
       kids: true,
@@ -820,14 +820,14 @@ describe('speakFriend', () => {
     expect(receipt.capture.connectCalendar).toBe(true);
     expect(receipt.body).not.toContain('?');
 
-    // The model says this reply is about the other connector. The words are not the check.
+    // The model lists Gmail among what this reply offers. The words are not the check.
     const pivot = await speakFriend(
       {
         async compose() {
           return {
             reply: 'Want me to watch Gmail for the dates too?',
             capture: { connectCalendar: true },
-            otherConnector: true,
+            connectorsOffered: ['gmail'],
           };
         },
       },
@@ -1149,7 +1149,7 @@ describe('model fields, not text matches', () => {
     expect(rhetorical.capture.connectCalendar).toBe(true);
   });
 
-  it('the other connector is the model field, in English and in Chinese', async () => {
+  it('the other connector comes from what the model says the reply offers, in English and in Chinese', async () => {
     const input = blank({
       step: 'calendar',
       parentWords: 'calendar',
@@ -1159,7 +1159,7 @@ describe('model fields, not text matches', () => {
     const english = await speakFriend(
       {
         async compose() {
-          return { reply: ask, otherConnector: false };
+          return { reply: ask, connectorsOffered: ['calendar'] };
         },
       },
       input,
@@ -1171,7 +1171,7 @@ describe('model fields, not text matches', () => {
     const chinese = await speakFriend(
       {
         async compose() {
-          return { reply: '也要连邮箱吗？', otherConnector: true };
+          return { reply: '也要连邮箱吗？', connectorsOffered: ['calendar', 'gmail'] };
         },
       },
       input,
@@ -1183,7 +1183,7 @@ describe('model fields, not text matches', () => {
     const chineseOk = await speakFriend(
       {
         async compose() {
-          return { reply: '也要连邮箱吗？', otherConnector: false };
+          return { reply: '也要连邮箱吗？', connectorsOffered: [] };
         },
       },
       input,
@@ -1191,6 +1191,33 @@ describe('model fields, not text matches', () => {
     );
     expect(chineseOk.source).toBe('composed');
     expect(chineseOk.body).toContain('邮箱');
+  });
+
+  it('an email ask that also offers the calendar is not sent under the Gmail link', async () => {
+    const input = blank({ step: 'email', parentWords: 'yes sure', checklist });
+    const reply = 'Tap the link to connect Gmail. Should I connect your calendar too?';
+    const offersBoth = await speakFriend(
+      {
+        async compose() {
+          return { reply, connectorsOffered: ['gmail', 'calendar'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(offersBoth.source).toBe('unsent');
+    expect(offersBoth.body).toBe('');
+
+    const ownOnly = await speakFriend(
+      {
+        async compose() {
+          return { reply, connectorsOffered: ['gmail'] };
+        },
+      },
+      input,
+      { page: async () => undefined, linkFollows: true },
+    );
+    expect(ownOnly.source).toBe('composed');
   });
 
   it('a co-parent yes points at the number only when joinPointer says so', async () => {

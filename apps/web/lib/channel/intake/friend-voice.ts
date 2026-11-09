@@ -281,11 +281,13 @@ export interface FriendComposed {
   asks?: boolean;
   /** Their message is a question, not a yes to Gmail, the calendar, or the group. */
   parentQuestion?: boolean;
-  /** This reply asks about or offers the connector this step is not. */
-  otherConnector?: boolean;
+  /** Every connector this reply asks, offers, or agrees to connect. */
+  connectorsOffered?: readonly OfferedConnector[];
   /** How a co-parent yes points at the number and phrase code places under the reply. */
   joinPointer?: JoinPointer | null;
 }
+
+export type OfferedConnector = 'gmail' | 'calendar';
 
 /** What the model says a co-parent yes does with the number code places under the reply. */
 export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
@@ -298,18 +300,24 @@ const JOIN_POINTERS = new Set<JoinPointer>([
   'missing',
 ]);
 
+/** The connector a card on this step is not for. The link under the reply connects only its own. */
+const OTHER_CONNECTOR: Partial<Record<FriendStep, OfferedConnector>> = {
+  email: 'calendar',
+  calendar: 'gmail',
+};
+
 /** The four decisions the model makes instead of a text match. Omitted is "did not say". */
 function replyMarks(composed: FriendComposed): {
   asks: boolean;
   parentQuestion: boolean;
-  otherConnector: boolean;
+  offered: readonly OfferedConnector[];
   joinPointer: JoinPointer | null;
 } {
   const pointer = composed.joinPointer;
   return {
     asks: composed.asks === true,
     parentQuestion: composed.parentQuestion === true,
-    otherConnector: composed.otherConnector === true,
+    offered: composed.connectorsOffered ?? [],
     joinPointer: pointer != null && JOIN_POINTERS.has(pointer) ? pointer : null,
   };
 }
@@ -459,7 +467,11 @@ const replySchema = z.object({
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
   parentQuestion: z.boolean().optional().default(false).catch(false),
-  otherConnector: z.boolean().optional().default(false).catch(false),
+  connectorsOffered: z
+    .array(z.enum(['gmail', 'calendar']))
+    .optional()
+    .default([])
+    .catch([]),
   joinPointer: z
     .enum(['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'])
     .nullable()
@@ -530,7 +542,7 @@ const replyJsonSchema = {
     stopAsking: { type: 'boolean' },
     asks: { type: 'boolean' },
     parentQuestion: { type: 'boolean' },
-    otherConnector: { type: 'boolean' },
+    connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
     joinPointer: {
       type: ['string', 'null'],
       enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing', null],
@@ -538,14 +550,15 @@ const replyJsonSchema = {
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
   },
-  required: ['reply'],
+  // Code reads these four instead of the reply's words, so the model always says.
+  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer'],
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
 export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
-  required: readonly ['reply'];
+  required: readonly string[];
 } {
   if (!linqGroupOnboardingV2Enabled()) {
     const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
@@ -2007,13 +2020,10 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
-      // A card is for one connector. The model says when the reply is about the other one.
+      // A card is for one connector. The model lists what the reply offers to connect.
       const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
-      if (
-        linkInPlay &&
-        (judgeInput.step === 'calendar' || judgeInput.step === 'email') &&
-        marks.otherConnector
-      ) {
+      const other = OTHER_CONNECTOR[judgeInput.step];
+      if (linkInPlay && other && marks.offered.includes(other)) {
         noteRefusal({ reason: 'other_connector', step: input.step, prompt }, 'unusable');
         return {
           fail: 'unusable',
@@ -2175,7 +2185,7 @@ function retryProblem(
         ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
         : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Set joinPointer to below when the reply points at them, wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
     case 'other_connector':
-      return 'Set otherConnector true only when this reply asks about or offers the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step). Otherwise set it false and stay on this step.';
+      return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
       return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
     case 'question':
@@ -2406,7 +2416,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         ahaMention: value.ahaMention,
         asks: value.asks,
         parentQuestion: value.parentQuestion,
-        otherConnector: value.otherConnector,
+        connectorsOffered: value.connectorsOffered,
         joinPointer: value.joinPointer,
       };
     },
