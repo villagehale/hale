@@ -90,6 +90,13 @@ import {
 } from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
 import {
+  type CoachEmailReader,
+  READ_EMAIL_SKILL,
+  augmentCoachSkillForReadEmail,
+  productionCoachEmailReader,
+  readEmailTool,
+} from './read-email-tool';
+import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
@@ -251,6 +258,12 @@ export interface ChannelCoachPorts {
   /** VIL-477 — the leave guard, run before the reply so a decline is told to the model. */
   groupLeaveCheck?(chatId: string): Promise<GroupLeaveEligibility>;
   /**
+   * VIL-433 — the parent's own Gmail, read only for an email an alert in this thread named.
+   * Offered on a 1:1 turn whose parent has it connected; never on a group turn. Absent, or
+   * not connected: no verb and the skill is untouched.
+   */
+  emailReader?: CoachEmailReader;
+  /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
    * The router builds its deps for EVERY inbound text, including the ones a
@@ -326,6 +339,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
       const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const emailReader = turn.audience !== 'group' ? ports.emailReader : undefined;
+      const emailLit =
+        emailReader !== undefined &&
+        (await emailReader.connected(turn.familyId, turn.parentUserId));
       const groupedSkill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
       // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
@@ -338,12 +355,15 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForGroupLeave(
-        augmentCoachSkillForExperienceCards(
-          baseSkill,
-          cardsLit ? await loadCronSkill('experience-card-coach') : null,
+      const skill = augmentCoachSkillForReadEmail(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
         ),
-        leaveLit,
+        emailLit ? await loadCronSkill(READ_EMAIL_SKILL) : null,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -488,6 +508,18 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                         }
                       : {}),
                   }),
+                ]
+              : []),
+            ...(emailLit && emailReader
+              ? [
+                  readEmailTool((gmailMessageId) =>
+                    emailReader.read({
+                      familyId: turn.familyId,
+                      parentUserId: turn.parentUserId,
+                      conversationId: turn.conversationId,
+                      gmailMessageId,
+                    }),
+                  ),
                 ]
               : []),
           ];
@@ -647,6 +679,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     experienceCardsEnabled: linqExperiencesEnabled,
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
+    emailReader: productionCoachEmailReader(database),
     loadSkill: async (parentUserId, familyId) =>
       augmentCoachSkillForSignupOffer(
         augmentCoachSkillForProviderWatch(

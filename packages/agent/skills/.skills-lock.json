@@ -387,6 +387,10 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "read-email-coach.md": {
+    "file": "read-email-coach.md",
+    "sha256": "bc30ea5a6f6be0eb9c76b1759bbe6f5b15e2733711d329ce03389a7fe36fd4f3"
+  },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"

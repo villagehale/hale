@@ -84,10 +84,13 @@ import { readRecentNotices } from './recent-notices';
  * decides whether Hale may speak right now. No sentence is assembled here.
  *
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
- *   - The SMS carries no line of the email. The snippet, the quote evidence and the body
- *     never reach the writer, a wire body or an audit row (rule #1). The thread row keeps
- *     the snippet for the coach as a separate untrusted turn, not as Hale's own text,
- *     except a 13+ child's mail, whose snippet is stored null.
+ *   - Barton's rule (2026-10-12): in the parent's 1:1 chat Hale may say what the email
+ *     says; in a group chat only what is relevant to the group, and never a quote of a
+ *     private email. This alert goes to the 1:1. The thread row keeps the snippet for the
+ *     coach as a separate untrusted turn, not as Hale's own text, and the coach's
+ *     `read_email` reads the body of a message this thread named (coach/read-email-tool).
+ *     A group turn gets neither. The snippet and the body never reach an audit row or a
+ *     log (rule #1), and a 13+ child's snippet is stored null.
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
  *     by the time this sees it, and the facts additionally drop the sender, subject, time
  *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
