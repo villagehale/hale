@@ -372,6 +372,13 @@ describe('browser use run settings, browser stop and session cost', () => {
     expect(seed?.body).toMatchObject({ proxyCountryCode: null });
   });
 
+  it('turns the CAPTCHA solver off on every browser Hale creates', async () => {
+    const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
+    await runBrowserUseSignup(input(), deps);
+    const seed = requests.find((r) => r.method === 'POST' && r.path === '/api/v4/browsers');
+    expect(seed?.body).toMatchObject({ solveCaptchas: false });
+  });
+
   it('turns the proxy back on only for a provider that asks for it', async () => {
     const { deps, requests } = setup({ ...happyRoutes(), ...costRoutes() });
     await runBrowserUseSignup(input({ proxyCountryCode: 'ca' }), deps);

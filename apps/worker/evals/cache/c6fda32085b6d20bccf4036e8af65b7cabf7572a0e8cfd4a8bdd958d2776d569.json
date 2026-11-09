@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message only reports the found drop-in, the forecast, and the registration status; it asks nothing and leaves no soft opening. The only ask is the shell question, which is allowed.",
+    "score": 5
+  }
+}

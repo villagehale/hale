@@ -35,6 +35,14 @@
     "file": "browser-use-payment.md",
     "sha256": "0cb09e88dc63291023bd687064cb8de927e8b24f2d1308fccbd0411c94cbd0a3"
   },
+  "browser-use-plan-signup.md": {
+    "file": "browser-use-plan-signup.md",
+    "sha256": "23d60bc84ec685643a8d9da6b75f91c039f4e725c3528520f569db92fe289bc9"
+  },
+  "browser-use-saved-card-payment.md": {
+    "file": "browser-use-saved-card-payment.md",
+    "sha256": "944d6bd3e553ce9b099121120529b5444cbd804bb8fe3bf7b763e81887d7b846"
+  },
   "browser-use-signup.md": {
     "file": "browser-use-signup.md",
     "sha256": "850b1a16363873cb8d547f4ab7703cf1798019af805ef84f4dcf711f3965aa1d"
@@ -345,11 +353,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "e1f3c252e47e0eea561fec5de87a03eb196f21b89121bd792e2a3c2d58f405f3"
+    "sha256": "19b450dbabc8d849d43729e218761d5dcedccb0c1a694eff6cd0211b0f6a6428"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "4137372f62f94980a1d3c57862e17d90a212fbfa9bc8318b1a9240632f8ab1e6"
+    "sha256": "e05ab699ac45adcb76d803a2fb56576939c981b53f734de0a1db9ab4be579799"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",

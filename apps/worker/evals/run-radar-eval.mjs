@@ -21,7 +21,7 @@
 // Calibrated BOTH directions: the real cached model clears every gate; the --broken
 // stand-in (a composer that invents a venue, a price and a time, re-asks the watch
 // question, and rambles past the segment budget) fails the fabrication gate, the
-// question gate, the length gate AND the tone judge — proving the gates have teeth.
+// length gate, the attribution judge AND the ask judge — proving the gates have teeth.
 //
 // THE ATTRIBUTION GATE (2026-08-13). A correct find with nothing saying where it came
 // from is trivia: the parent reads a date they could have googled and has no idea a
@@ -343,7 +343,7 @@ function indexOfFact(lower, token) {
   return hits.length === 0 ? -1 : Math.min(...hits);
 }
 
-function checkMessage(fixture, message, judgeScore, attributionScore) {
+function checkMessage(fixture, message, judgeScore, attributionScore, askScore) {
   const failures = [];
   if (!message) return ['answer failed to parse into a strict { message } object'];
 
@@ -352,9 +352,6 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
 
   if (message.includes(WATCH_OFFER)) {
     failures.push('re-asks the watch question the shell appends — the parent is asked twice');
-  }
-  if (message.includes('?')) {
-    failures.push('writes a question of its own (the shell owns the only question)');
   }
 
   const segments = smsSegments(payloadOf(fixture.decision, message));
@@ -400,6 +397,11 @@ function checkMessage(fixture, message, judgeScore, attributionScore) {
   if (attributionScore !== null && !(attributionScore >= JUDGE_MIN)) {
     failures.push(
       `attribution score ${attributionScore} < ${JUDGE_MIN} — the find lands as trivia, not as the watch reporting back`,
+    );
+  }
+  if (askScore !== null && !(askScore >= JUDGE_MIN)) {
+    failures.push(
+      `ask score ${askScore} < ${JUDGE_MIN} — the message asks something of its own beside the shell's one question`,
     );
   }
   return failures;
@@ -485,6 +487,32 @@ const ATTRIBUTION_JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
+/**
+ * The third judge, and it scores ONE property: one ask per turn. The shell always appends
+ * Hale's own question, so the composer's message must ask nothing. A model reads this
+ * rather than a character match, because an ask is a meaning, not a "?": "let me know and
+ * I'll hold it" asks with no question mark, and a question mark inside an activity's own
+ * title asks nothing.
+ */
+const ASK_JUDGE_SYSTEM = [
+  'You are scoring ONE property of the first useful text message Hale sends a parent:',
+  'how many things the whole text asks the parent. Nothing else. Not voice, not length,',
+  'not whether the facts are the right ones.',
+  'The text goes out in two parts. The composer writes `message`; the shell then appends',
+  '`shellQuestion` after it, every time. That shell question is the one ask this turn is',
+  "allowed, so the composer's `message` must ask nothing at all.",
+  'Score 1-5.',
+  'A 5: `message` asks the parent nothing. It reports what Hale found and stops, and the',
+  'only ask in the text is the shell question.',
+  'A 3: `message` leaves a soft opening the parent may still feel they owe a reply to.',
+  'A 1: `message` asks something of its own, in any wording and any language, with or',
+  'without a question mark: a question, a request to reply or confirm, an offer that',
+  'waits on a yes, or the shell question repeated or paraphrased, so the parent is asked',
+  'twice. A question mark that is not an ask (inside an activity title, say) is not an',
+  'ask, and you never mark a message down for one.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
 // in any fixture's decision, re-asks the watch question, and rambles past the budget.
 // Every gate must reject it — no API call, no cache read.
@@ -556,6 +584,16 @@ async function main() {
     cost,
     { samples: JUDGE_SAMPLES_MEDIAN },
   );
+  // Median of three, as for the other two: the ask gate is a hard floor too.
+  const askJudge = makeJudge(
+    judgeModel,
+    ASK_JUDGE_SYSTEM,
+    'radar-ask',
+    cachedOnly,
+    getClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
 
   console.log(
     `radar-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -602,12 +640,18 @@ async function main() {
       !message || !carriesAFind(fixture.decision)
         ? null
         : (await attributionJudge(fixture.id, { facts: context, message })).score;
+    // The ask judge runs in broken mode too, for the attribution judge's reason: its teeth
+    // are a model's opinion, so the harness has to prove it fails a message that re-asks.
+    const ask = message
+      ? (await askJudge(fixture.id, { message, shellQuestion: WATCH_OFFER })).score
+      : null;
     results.push({
       fixture,
       message,
       score,
       attribution,
-      failures: checkMessage(fixture, message, score, attribution),
+      ask,
+      failures: checkMessage(fixture, message, score, attribution, ask),
     });
   }
 
@@ -618,6 +662,7 @@ async function main() {
     const scoreLabel = [
       result.score === null ? '' : `voice=${result.score}`,
       result.attribution === null ? '' : `looked=${result.attribution}`,
+      result.ask === null ? '' : `ask=${result.ask}`,
     ]
       .filter(Boolean)
       .join(' ');
@@ -635,7 +680,7 @@ async function main() {
     (r) =>
       r.message && smsSegments(payloadOf(r.fixture.decision, r.message)) > MAX_PAYLOAD_SEGMENTS,
   );
-  const asking = results.filter((r) => r.message?.includes('?'));
+  const asking = results.filter((r) => r.message && !(r.ask >= JUDGE_MIN));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
   const attributions = results.map((r) => r.attribution).filter((s) => typeof s === 'number');
@@ -654,7 +699,7 @@ async function main() {
   console.log(`fixtures passing every check: ${(accuracy * 100).toFixed(1)}%  (100% required)`);
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
-  console.log(`messages asking a question:   ${asking.length}  (0 required — the shell asks)`);
+  console.log(`messages asking of their own: ${asking.length}  (0 required — the shell asks)`);
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
   console.log(
     `finds landing as trivia:      ${unattributed.length}  (0 required — a find with no look behind it)`,
@@ -685,9 +730,14 @@ async function main() {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);
   }
-  const calibrated = !allPass;
+  // The ask judge is held to every broken message by name, not just "some gate failed":
+  // the fabrication gate alone would fail this corpus, which proves nothing about it.
+  const composed = results.filter((r) => r.message);
+  const askHasTeeth = composed.length > 0 && asking.length === composed.length;
+  const calibrated = !allPass && askHasTeeth;
+  console.log(`ask judge failed every broken message: ${askHasTeeth ? 'yes' : 'NO'}`);
   console.log(
-    `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    `broken-mode calibration (must fail at least one gate, and the ask judge on every message): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
   );
   process.exit(calibrated ? 0 : 1);
 }
