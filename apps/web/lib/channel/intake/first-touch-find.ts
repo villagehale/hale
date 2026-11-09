@@ -12,7 +12,7 @@ import { asciiCopy } from './radar-decide';
  * locked empty line. This subject is a search seed, not a parent-facing string.
  */
 export const WEEK_FIND_SUBJECT =
-  'kids week drop-ins, examples not a limit: swim soccer gym earlyon library parks storytime music';
+  'kids week drop-ins, examples not a limit: swim soccer gym library parks rec centre storytime music';
 
 export type WeekFindOutcome =
   | 'found'

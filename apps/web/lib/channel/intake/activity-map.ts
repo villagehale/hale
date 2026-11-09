@@ -50,7 +50,7 @@ const EIGHTEEN = 18 * 12;
 export const ACTIVITY_CATEGORIES: readonly ActivityCategory[] = [
   {
     id: 'parent_baby',
-    subject: 'parent and baby toddler groups earlyon library story time drop-in play groups',
+    subject: 'parent and baby toddler groups family centre library story time drop-in play groups',
     minMonths: 0,
     maxMonths: PRESCHOOL + 11,
     rank: { newborn: 0, toddler: 0, preschool: 3, child: 9, teenager: 9 },

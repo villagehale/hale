@@ -1,10 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import { namesAVenue } from '~/lib/channel/activity/evidence';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { ACTIVITY_CATEGORIES } from './activity-map';
+import { WEEK_FIND_SUBJECT } from './first-touch-find';
 import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
 import { YEAR_OPEN_SUBJECT, collectYearOpenLines, yearOpenQuery } from './year-open';
 
 const SEB = { name: 'Seb', ageMonths: 17, dobPrecision: 'derived' as const };
+
+describe('the search seeds', () => {
+  it('name no one province program, so a US or Alberta family gets its own', () => {
+    const seeds = [
+      YEAR_OPEN_SUBJECT,
+      WEEK_FIND_SUBJECT,
+      ...ACTIVITY_CATEGORIES.map((c) => c.subject),
+    ];
+    for (const seed of seeds) expect(seed).not.toMatch(/earlyon|ontario|toronto/i);
+    expect(seeds.filter((seed) => seed.includes('library'))).toHaveLength(3);
+  });
+});
 
 describe('yearOpenQuery', () => {
   it('asks for the kids year in Halton Hills, with the stage beside the subject', () => {

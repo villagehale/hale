@@ -25,7 +25,7 @@ import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
  * in this module filters a pick against these words.
  */
 export const YEAR_OPEN_SUBJECT =
-  'kids year, examples not a limit: swim soccer gym earlyon library parks fairs music museum zoo farm trips stem storytime';
+  'kids year, examples not a limit: swim soccer gym library parks rec fairs music museum zoo farm trips stem storytime';
 
 export type YearFinderUse = 'used' | 'not_configured' | 'failed' | 'empty' | 'refused';
 
