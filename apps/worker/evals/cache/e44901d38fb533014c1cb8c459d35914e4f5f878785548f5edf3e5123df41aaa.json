@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "hi, thanks for letting us know about the toddler room spot for september. we got your note about the friday deadline."
+    },
+    "confidence": 0.6,
+    "rationale": "No parent decision on the offer is in the input, so the reply acknowledges the offer without accepting, declining, or promising an answer.",
+    "recipient_visibility": "public",
+    "commits_parent_to_enrollment_booking_or_payment": false
+  },
+  "latencyMs": 3871
+}

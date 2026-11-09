@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Appelez le 911 maintenant ou allez à l'urgence : fièvre, nuque raide et lumière qui fait mal aux yeux demandent un examen immédiat.",
+    "triage": "N'attendez pas. Composez le 911 aussi si somnolence, confusion, convulsion ou taches qui ne pâlissent pas. Le 811 plus tard, pas avant.",
+    "sources": [
+      "Mayo Clinic",
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Raising Children Network"
+    ]
+  },
+  "latencyMs": 5955
+}

@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
@@ -21,6 +22,7 @@ import {
 import { readConsent } from '~/lib/channel/consent-reply';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName, storeModelParentName } from '~/lib/channel/identity/name-reply';
@@ -78,7 +80,7 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
-import type { IntakeAnswerComposer } from './answer';
+import { type IntakeAnswerComposer, OWED_LINES } from './answer';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
@@ -117,11 +119,10 @@ import {
   speakFriend,
   turnsFromTranscript,
 } from './friend-voice';
+import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
-import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
   type OnboardingCapture,
@@ -302,7 +303,8 @@ export type IntakeOutcome =
   | { status: 'follow_up_asked' }
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
-  | { status: 'provisioned'; familyId: string }
+  /** `mapOwed` names an activity map that did not reach the parent and is retried next turn. */
+  | { status: 'provisioned'; familyId: string; mapOwed?: 'unsent' | 'send_failed' }
   /**
    * One ladder beat. `step` is the job this reply settled. `closed` is the
    * co-parent ask, after which the next text belongs to the coach. `held` is set
@@ -840,6 +842,45 @@ async function quietStopTyping(deps: IntakeDeps): Promise<void> {
   }
 }
 
+/**
+ * The map's bubbles in order, stopping at the first that does not land. A
+ * transport that throws is a bubble that did not land: the map stays owed and
+ * the turn goes on, instead of the error leaving the parent's turn unsaved.
+ */
+async function sendMapBubbles(
+  database: Database,
+  ctx: SendContext,
+  bubbles: readonly string[],
+  deps: IntakeDeps,
+  transcript: TranscriptEntry[],
+): Promise<'delivered' | 'send_failed'> {
+  const toSend = bubbles.filter((bubble) => bubble.trim().length > 0);
+  for (const [index, bubble] of toSend.entries()) {
+    let landed = false;
+    let err: string | null = null;
+    try {
+      landed =
+        (await sendAndRecord(database, ctx, bubble, deps, transcript)).channelMessageId != null;
+    } catch (caught) {
+      err = caught instanceof Error ? caught.name : 'unknown';
+    }
+    if (!landed) {
+      console.error(
+        {
+          reason: 'map_send_failed',
+          ...(err ? { err } : {}),
+          landed: index,
+          bubbles: toSend.length,
+        },
+        'intake: activity map not delivered, still owed',
+      );
+      return 'send_failed';
+    }
+    deps.keepTyping?.();
+  }
+  return toSend.length > 0 ? 'delivered' : 'send_failed';
+}
+
 async function sendAndRecord(
   database: Database,
   ctx: SendContext,
@@ -922,6 +963,7 @@ async function recordInbound(
     at: inbound.receivedAt.toISOString(),
     channel: ctx.pipe.channel,
     chatId: ctx.pipe.chatId,
+    ...(inbound.isGroup === undefined ? {} : { inGroup: inbound.isGroup }),
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -958,6 +1000,7 @@ export async function writeChannelMessage(
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
       providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
+      inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
       status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
@@ -1034,7 +1077,8 @@ async function offScriptReply(
     children: readonly ExtractedChild[];
     postalCode?: string | null;
     /** Every place the session holds, in order. The first Canadian or US code gives
-     * both the crisis region and the health line's province. Never guessed. */
+     * the crisis region, the health line's province, and the country and province or
+     * state the intake searches look in. Never guessed. */
     placeTokens: readonly (string | null | undefined)[];
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
@@ -1065,8 +1109,11 @@ async function offScriptReply(
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
   const { numberOrigin: _origin, placeTokens: _placeTokens, ...composeArgs } = args;
-  const outcome = await deps.answerComposer.compose(composeArgs);
   const placed = firstIntakePostal(args.placeTokens);
+  const outcome = await deps.answerComposer.compose({
+    ...composeArgs,
+    regionToken: placed?.token ?? null,
+  });
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. The same facts-only writer and
     // check as every crisis reply; a miss has already paged #ops. The turn's one read
@@ -1119,16 +1166,12 @@ async function offScriptReply(
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
   // the pending ask alone when they asked a real question. Safety stays above.
-  // #868: the not-posted / no-source / cheer-up lines are the model's words now;
-  // the code only picks which one is owed. Nothing written means nothing sent.
-  const purpose = isOfficialPageAsk(args.parentWords)
-    ? 'not_posted'
-    : isLiveLookupAsk(args.parentWords)
-      ? 'no_source'
-      : isCheerUpAsk(args.parentWords)
-        ? 'cheer_up'
-        : null;
-  if (purpose === null) return null;
+  // #868: the not-posted / no-source / cheer-up lines are the model's words now, and
+  // VIL-555: which one is owed is the composer's read of the ask, never the words.
+  // Nothing written means nothing sent.
+  if (outcome.status !== 'unavailable') return null;
+  const purpose = OWED_LINES.find((line) => line === outcome.reason);
+  if (purpose === undefined) return null;
   const written = await deps.saidLine?.write({
     purpose,
     language: null,
@@ -2238,6 +2281,8 @@ async function friendColdTurn(
     await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
     return { status: 'first_touch', step: 'find_sent' };
   }
+  // Their Saturday, on their clock: the zone signup wrote from their postal code.
+  const timeZone = await householdTimezone(database, familyId);
   // The map never reached them. Retry it before any later ask. A miss sends
   // nothing and leaves the debt; the bubbles go out ahead of this turn's reply.
   let alreadyRecorded: {
@@ -2262,6 +2307,7 @@ async function friendColdTurn(
         listKind: 'none',
         parentName: session.firstTouch?.given?.parentName ?? null,
         now,
+        timeZone,
       }),
       { pageScope: familyId },
     );
@@ -2279,16 +2325,8 @@ async function friendColdTurn(
     // Deliver the map before any reply-dependent write. A send that does not
     // land leaves the debt and creates no reminders.
     const recordedMap = await recordInbound(database, ctx, inbound, session.transcript);
-    let delivered = false;
-    for (const bubble of bubbles) {
-      const sentMap = await sendAndRecord(database, ctx, bubble, deps, recordedMap.transcript);
-      if (!sentMap.channelMessageId) {
-        delivered = false;
-        break;
-      }
-      delivered = true;
-    }
-    if (!delivered) {
+    const delivered = await sendMapBubbles(database, ctx, bubbles, deps, recordedMap.transcript);
+    if (delivered !== 'delivered') {
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
       return { status: 'first_touch_unsent', reason: 'unusable' };
     }
@@ -2311,6 +2349,10 @@ async function friendColdTurn(
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
   const join = gap === 'schedule' || gap === 'coparent' ? coparentJoinFor(ctx, language) : null;
+  const householdGroup = await householdGroupForTurn(database, familyId, {
+    wanted: given?.coparentGroup ?? null,
+    asking: gap === 'coparent',
+  });
   const spoken = await friendSpeak(
     deps,
     session.transcript,
@@ -2330,9 +2372,11 @@ async function friendColdTurn(
       parentName: given?.parentName ?? null,
       parentRole: given?.parentRole ?? null,
       now,
+      timeZone,
       scheduled: scheduledForModel(given, language),
       coparentJoin: join,
       checklist,
+      householdGroup,
     }),
     {
       // A card rides only the ask for its own connector, and only the first time.
@@ -2409,6 +2453,7 @@ async function friendColdTurn(
           familyId,
           userId,
           sessionId: session.id,
+          timeZone,
           adds: spoken.capture.scheduleAdds,
           lines,
           already: given?.scheduled ?? [],
@@ -2921,6 +2966,10 @@ async function provision(
     familyId,
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
+    place: await activityPlaceOfPostal(
+      gathered.location.postalCode ?? gathered.location.areaCoarse,
+    ),
+    timeZone: gathered.location.timezone,
     language,
     ...(discoveryOn ? { activityMap: true } : {}),
   });
@@ -2936,6 +2985,7 @@ async function provision(
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
+  let mapOwed: 'unsent' | 'send_failed' | null = null;
   {
     const given = session.firstTouch?.given ?? null;
     if (given?.parentName) {
@@ -2968,6 +3018,7 @@ async function provision(
       parentRole: given?.parentRole ?? null,
       checklist,
       now,
+      timeZone: gathered.location.timezone,
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3010,24 +3061,17 @@ async function provision(
         },
       ),
     ]);
-    const mapUnsent = map?.source === 'unsent';
-    if (map && !mapUnsent) {
-      let delivered = false;
-      for (const bubble of map.bubbles) {
-        if (bubble.trim().length === 0) continue;
-        const sentMap = await sendAndRecord(database, ctx, bubble, deps, []);
-        if (!sentMap.channelMessageId) {
-          delivered = false;
-          break;
-        }
-        delivered = true;
-        deps.keepTyping?.();
-      }
+    // A map that did not all land is owed, exactly as one the model could not write.
+    if (map?.source === 'unsent') mapOwed = 'unsent';
+    else if (map) {
+      const delivered = await sendMapBubbles(database, ctx, map.bubbles, deps, []);
       const offered = (radar.groups?.flatMap((group) => group.picks ?? []) ?? []).map(
         withSourceUrl,
       );
-      if (delivered && offered.length) await recordActivityOffers(database, familyId, offered, now);
+      if (delivered !== 'delivered') mapOwed = 'send_failed';
+      else if (offered.length) await recordActivityOffers(database, familyId, offered, now);
     }
+    const mapUnsent = mapOwed != null;
     outboundBody = mapUnsent ? '' : (friendOutbound(spoken) ?? '');
     outboundAsked = !mapUnsent && spoken.asks;
     if (discoveryOn && (step === 'find_empty' || step === 'names')) {
@@ -3217,7 +3261,7 @@ async function provision(
     source_code: session.sourceCode,
     ...intakeShape(gathered.transcript, now),
   });
-  return { status: 'provisioned', familyId };
+  return { status: 'provisioned', familyId, ...(mapOwed ? { mapOwed } : {}) };
 }
 
 /**

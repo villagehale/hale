@@ -7,6 +7,7 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import type { AuditVerb } from '~/lib/trail/verbs';
+import { type FamilyMemoryExport, loadFamilyMemoryExport } from './export-memory';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -34,6 +35,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'crisis_unanswered',
   // That Hale re-read one parent's held text to see whether they asked it to stop.
   'opt_out_hold_read',
+  // Which language one parent texts Hale in.
+  'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
   'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];
@@ -256,6 +259,8 @@ export interface FamilyExportDocument {
     outbound: number;
     openWorkstreamCount: number;
   }[];
+  /** What Hale remembers about the family: facts, episodes, jobs and promises. */
+  memory: FamilyMemoryExport;
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -664,6 +669,14 @@ export async function assembleFamilyExport(
     ];
   });
 
+  const memory = await loadFamilyMemoryExport(
+    database,
+    familyId,
+    childRows,
+    { userId: deps.actorUserId },
+    now,
+  );
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -696,6 +709,7 @@ export async function assembleFamilyExport(
     activityReviews,
     trips,
     memoryDigests,
+    memory,
     trail,
   };
 }

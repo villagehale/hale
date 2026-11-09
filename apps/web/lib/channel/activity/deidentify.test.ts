@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_QUERY_FIELD_CHARS,
   deidentifyActivityQuery,
+  deidentifyActivitySubject,
   refusalSentence,
-  townFor,
 } from './deidentify';
 
 /**
@@ -18,7 +18,7 @@ import {
 const HOUSEHOLD = ['Noah', 'Chloé', 'Sam'];
 
 const base = {
-  municipality: 'halton_hills' as const,
+  town: 'Halton Hills',
   stage: 'toddler' as const,
   householdNames: HOUSEHOLD,
 };
@@ -207,17 +207,28 @@ describe('the shape of what may be sent', () => {
     ).toEqual({ ok: false, refusal: 'subject_too_long' });
   });
 
-  it('carries a town only when the postal code named one', () => {
+  it('refuses a search with no place, and carries the town it was given', () => {
+    expect(deidentifyActivityQuery({ ...base, town: null, subject: 'story time' })).toEqual({
+      ok: false,
+      refusal: 'no_place',
+    });
     expect(
-      deidentifyActivityQuery({ ...base, municipality: null, subject: 'story time' }),
-    ).toMatchObject({ ok: true, query: { town: null } });
+      deidentifyActivityQuery({
+        ...base,
+        town: 'Seattle, Washington, United States',
+        subject: 'story time',
+      }),
+    ).toMatchObject({ ok: true, query: { town: 'Seattle, Washington, United States' } });
   });
 
-  it('turns a municipality id into the words a search engine reads', () => {
-    expect(townFor('halton_hills')).toBe('Halton Hills');
-    expect(townFor('richmond_hill')).toBe('Richmond Hill');
-    expect(townFor('toronto')).toBe('Toronto');
-    // The search query must not name a town by a spelling the radar never uses.
-    expect(townFor('whitchurch_stouffville')).toBe('Stouffville');
+  it('gates a stored subject alone, with the same refusals', () => {
+    expect(deidentifyActivitySubject('toddler gymnastics', HOUSEHOLD)).toEqual({
+      ok: true,
+      value: 'toddler gymnastics',
+    });
+    expect(deidentifyActivitySubject('gymnastics for Noah', HOUSEHOLD)).toEqual({
+      ok: false,
+      refusal: 'names_a_person',
+    });
   });
 });

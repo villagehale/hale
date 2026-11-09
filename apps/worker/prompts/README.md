@@ -23,3 +23,11 @@ files and the refreshed `.langfuse-lock.json` together, same as a pull.
 
 Stage-aware content packs live in `packs/<stage>.md` (newborn / toddler /
 child / teenager) and are lockfile-tracked under the name `packs/<stage>`.
+
+Eval judge rubrics live in `judges/<name>.md` and are lockfile-tracked under
+`judges/<name>`. Runners load them with `judgePrompt(name, variables)` from
+`evals/lib/judge-prompt.mjs`; `{{variable}}` is Langfuse prompt-variable syntax,
+filled from a value the runner's code owns. The file bytes are the judge's
+system text and part of every judge cache key, so editing one re-keys that
+judge: re-record its suite. `evals/judge-prompts-managed.test.mjs` fails on a
+rubric written inline in a runner.

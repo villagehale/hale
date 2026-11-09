@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthoredPlanView } from './authored.js';
-import { buildPlanSpine, orderedWeekdays } from './spine.js';
+import { buildPlanSpine, orderedWeekdays, zonedLocalInstant } from './spine.js';
 
 const TZ = 'America/Toronto';
 // Friday, 2026-07-03, mid-afternoon ET. The family's current week is Mon 2026-06-29
@@ -152,5 +152,43 @@ describe('buildPlanSpine — settling', () => {
     expect(settled.map((p) => p.id)).toEqual(['past']);
     expect(days.every((d) => d.plans.length === 0)).toBe(true);
     expect(undated).toHaveLength(0);
+  });
+});
+
+describe('zonedLocalInstant — DST changeover days west of UTC', () => {
+  // 2026 US changeovers: spring forward Sun 03-08 at 02:00, fall back Sun 11-01 at 02:00.
+  // Expected instants are the wall clock plus the offset in force at that wall clock.
+  it('08:00 Los Angeles on spring-forward day is 08:00 PDT (15:00Z), not 16:00Z', () => {
+    expect(zonedLocalInstant('2026-03-08', '08:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-03-08T15:00:00.000Z',
+    );
+  });
+
+  it('08:00 Denver on spring-forward day is 08:00 MDT (14:00Z)', () => {
+    expect(zonedLocalInstant('2026-03-08', '08:00', 'America/Denver').toISOString()).toBe(
+      '2026-03-08T14:00:00.000Z',
+    );
+  });
+
+  it('08:00 Los Angeles on fall-back day is 08:00 PST (16:00Z), not 15:00Z', () => {
+    expect(zonedLocalInstant('2026-11-01', '08:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-11-01T16:00:00.000Z',
+    );
+  });
+
+  it('a wall clock skipped by spring-forward resolves forward, never an hour early', () => {
+    // 02:30 does not exist in Los Angeles on 03-08; 03:30 PDT (10:30Z) is the moment after the gap.
+    expect(zonedLocalInstant('2026-03-08', '02:30', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-03-08T10:30:00.000Z',
+    );
+  });
+
+  it('an ordinary day and an east-of-UTC zone are unchanged (control)', () => {
+    expect(zonedLocalInstant('2026-07-03', '16:30', 'America/Toronto').toISOString()).toBe(
+      '2026-07-03T20:30:00.000Z',
+    );
+    expect(zonedLocalInstant('2026-03-29', '08:00', 'Europe/Berlin').toISOString()).toBe(
+      '2026-03-29T06:00:00.000Z',
+    );
   });
 });

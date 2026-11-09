@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with 'Reply YES and I'll book it for you' and a 'Reply STOP' instruction, which both ask the parent to respond. This is an explicit request for a reply, so it is a clear ask rather than a neutral statement.",
+    "score": 1
+  }
+}

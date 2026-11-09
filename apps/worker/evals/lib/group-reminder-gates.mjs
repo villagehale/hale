@@ -44,6 +44,39 @@ function primaryTag(tag) {
   return typeof tag === 'string' ? (tag.trim().toLowerCase().split('-')[0] ?? '') : '';
 }
 
+/**
+ * How a text says "you" to the people reading it, as the judge reads it from the text. A
+ * fact the judge reports, not a score: code compares it with `facts.audience`.
+ */
+export const ADDRESS_FORMS = ['none', 'one_form', 'plural_or_formal', 'familiar_singular'];
+
+/**
+ * Languages whose register result is reported but does not fail the run (VIL-493). The
+ * judge's read of French address was unstable (the same familiar-singular group confirm
+ * scored 2, 5, 2, 4); it blocks again once it holds across re-records.
+ */
+export const SOFT_REGISTER_LANGUAGES = new Set(['fr']);
+
+const ADDRESS_WORDS = {
+  plural_or_formal: 'the plural or formal',
+  familiar_singular: 'the familiar singular',
+};
+
+/**
+ * Who is reading against how the text addresses them. `group`: the whole chat reads it, so
+ * any "you" is the plural or formal one, even when one person is named. `direct`: one
+ * person, the familiar singular. No "you" at all always fits. Null when it fits.
+ */
+export function registerFinding({ audience, language, address }) {
+  const soft = SOFT_REGISTER_LANGUAGES.has(primaryTag(language));
+  if (!ADDRESS_FORMS.includes(address)) {
+    return { finding: 'register: the judge did not say how the text addresses its readers', soft };
+  }
+  const misfit = audience === 'group' ? 'familiar_singular' : 'plural_or_formal';
+  if (address !== misfit) return null;
+  return { finding: `register: ${audience} text addressed in ${ADDRESS_WORDS[address]}`, soft };
+}
+
 const iso = (at) => (at ? at.toISOString() : 'none');
 
 /**

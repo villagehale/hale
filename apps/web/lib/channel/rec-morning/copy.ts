@@ -12,6 +12,7 @@ import {
 } from './facts';
 import type { RecMorningTopic, RecMorningWhere } from './match';
 import { matchRecMorning, postalMentioned, resolveRecMorningWhere } from './match';
+import { type RecMorningReader, sharedRecMorningReader } from './read';
 
 /**
  * VIL-308 rec-morning FACTS. VIL-508 (absolute zero fixed copy): nothing in this file is
@@ -151,18 +152,18 @@ export function recMorningReturnLine(pendingAsk: string): string {
 }
 
 /**
- * Mid-signup there is no family row, so no stored zone yet. The zone is the one intake
- * derives for the parent from this same postal (intake/derive.ts); no postal, no zone.
+ * Mid-signup there is no family row, so the postal the parent texted is the whole place:
+ * no stored city or country, and the zone is the one intake derives for the parent from
+ * this same postal (intake/derive.ts). No postal, no place.
  */
-function intakeWhere(input: {
-  postal?: string | null;
-  city?: string | null;
-}): RecMorningWhere | null {
+function intakeWhere(input: { postal?: string | null }): RecMorningWhere | null {
   const postal = input.postal ?? null;
   const fsa = postal === null ? null : postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
   return resolveRecMorningWhere({
-    city: input.city ?? null,
+    city: null,
     postal,
+    country: null,
+    province: null,
     timeZone: fsa === null ? null : timezoneForIntakePostal('CA', fsa),
   });
 }
@@ -176,7 +177,6 @@ export function recMorningIntakeReply(input: {
   pendingAsk: string;
   now?: Date;
   postal?: string | null;
-  city?: string | null;
 }): string | null {
   const sms = recMorningReply(input.parentWords, input.now ?? new Date(), intakeWhere(input));
   if (sms === null) return null;
@@ -199,6 +199,10 @@ function verbatimFrom(facts: string): string[] {
  * Null when the family has no GTA place, when this is not a rec-morning question, when
  * the dataset holds no window, or when the model wrote nothing usable — the caller sends
  * nothing from this lane.
+ *
+ * VIL-545: the word test only picks the facts. The model reads whether they answer the
+ * text ({@link RecMorningReader}); any other reading, or a failed read, sends nothing
+ * from this lane and the coach answers the turn.
  */
 export async function writeRecMorningReply(
   body: string,
@@ -206,9 +210,22 @@ export async function writeRecMorningReply(
   where: RecMorningWhere | null,
   language: ReplyLanguage | null = null,
   write: typeof speak = speak,
+  read: RecMorningReader = sharedRecMorningReader(),
 ): Promise<string | null> {
   const facts = recMorningReply(body, now, where);
   if (facts === null) return null;
+  const reading = await read({ text: body, facts, language });
+  if (reading === null) {
+    console.error(
+      { outcome: 'read_failed' },
+      'rec-morning: read failed - nothing sent from this lane',
+    );
+    return null;
+  }
+  if (reading !== 'answers') {
+    console.info({ outcome: 'not_answered' }, 'rec-morning: facts do not answer this text');
+    return null;
+  }
   const text = await write({
     purpose: 'rec_morning',
     // Null only when intake has no stored language yet. The skill then writes
@@ -231,11 +248,11 @@ export async function writeRecMorningIntakeReply(
     pendingAsk: string;
     now?: Date;
     postal?: string | null;
-    city?: string | null;
     /** Stored ladder language, when intake has one. Null: the model follows parentWords. */
     language?: ReplyLanguage | null;
   },
   write: typeof speak = speak,
+  read: RecMorningReader = sharedRecMorningReader(),
 ): Promise<string | null> {
   if (recMorningIntakeReply(input) === null) return null;
   const text = await writeRecMorningReply(
@@ -244,6 +261,7 @@ export async function writeRecMorningIntakeReply(
     intakeWhere(input),
     input.language ?? null,
     write,
+    read,
   );
   return text;
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both pickups and the Friday 3pm time and asks one question of the group, but it asks for a reply with a number and includes a link, which the rubric marks down. The poll's last option duplicates 'Barton' instead of being a neutral 'we'll figure it out' option, and the message says Sam taking the plan is the fix rather than making a clean single ask for Sam. The message also asks 'Or skip one?' which is an extra ask.",
+    "score": 2
+  }
+}

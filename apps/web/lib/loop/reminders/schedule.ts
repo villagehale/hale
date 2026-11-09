@@ -124,7 +124,13 @@ export type SuppressReason =
   | 'compose_rejected'
   /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
    * starts, so it can never be sent in time. */
-  | 'quiet_hours';
+  | 'quiet_hours'
+  /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
+   * not be reached. The drain asks again for a T-1h held this way, which the next hourly
+   * slot would only find started. Sending or dropping the row overwrites it. */
+  | typeof COMPOSE_HELD;
+
+export const COMPOSE_HELD = 'compose_unavailable';
 
 export type ReminderDecision =
   | { action: 'fire' }

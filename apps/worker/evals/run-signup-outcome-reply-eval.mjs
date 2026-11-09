@@ -40,6 +40,7 @@ import {
   SIGNUP_OUTCOME_REPLY_BROKEN,
   SIGNUP_OUTCOME_REPLY_FIXTURES,
 } from './signup-outcome-reply-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
@@ -53,33 +54,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const JUDGE_MAX_TOKENS = 4096;
 const ATTEMPTS = 2;
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends a parent after the parent said yes',
-  'to letting Hale try a sign-up for their child. A model wrote the whole text from the',
-  'facts; nothing is added around it. You are given the facts (outcome, reason, confirmed,',
-  'sessionLabel, link, linkIs, holdMinutes, pack, rush, language), the text and watchFor',
-  'notes (audience says who reads it: direct = the one parent, group = the co-parent group).',
-  'Score 1-5 on FACTS, PRIVACY and TONE, not wording.',
-  'A 5: says what happened and what the parent does next using only the facts; says the',
-  'child is signed up only when confirmed is true; carries the link exactly when one is',
-  'given; when linkIs is live_browser, says the parent finishes in a browser Hale left open',
-  'and gives the minutes left only when holdMinutes is set; lists personal details only when',
-  'pack is given; is in facts.language (French: tu when audience is direct, vous when it is',
-  'group); short, plain and warm, like a friend.',
-  'A LOW score (1-2) is any of: saying signed up, booked, paid or done when confirmed is',
-  'false; saying or hinting that a spot is held, reserved, kept or saved for the child when',
-  'confirmed is false (an open browser or a cart before payment holds no spot; holdMinutes is',
-  'how long that browser stays open, not a reservation); on sold_out, hinting that a spot may',
-  'still open up for this session (a cancellation, someone dropping out);',
-  'saying it failed when the reason is unconfirmed; any promise or hint that Hale',
-  'will try again, keep watching, follow up or let them know later; on reason',
-  'no_provider_session, saying a login was tried or failed; a name, email, phone or postal',
-  'code when pack is absent; an invented time, price, place, reason or next step; reason',
-  'codes, run ids or system talk; asking the parent to reply with a keyword; advice the facts',
-  'do not give; the wrong language; in French, vous to a direct audience or tu to a group;',
-  'garbled or broken characters (for example accents rendered as two odd symbols).',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('signup-outcome-reply');
 
 function estimateTokens(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);

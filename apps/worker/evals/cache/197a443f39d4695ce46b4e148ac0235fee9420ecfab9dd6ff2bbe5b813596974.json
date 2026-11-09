@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every given fact: the event stays the generic 'an appointment', the day is tomorrow, Monday, which is correct from Sunday 6 PM, and the start 4:45 and end 5:45 are both present and marked 'in the afternoon', so the AM/PM is right. No location, travel, or departure details were invented, no guess was made about what the appointment is, and no link was added. The reply is in English, and [bold] is none, which is fine.",
+    "score": 5
+  }
+}

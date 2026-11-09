@@ -1,6 +1,7 @@
 import type { ClaimRowAlias } from './candidates';
 import { type EnforcedRead, refusedResolutions } from './claim-enforce';
 import type { ReconcileVerdict, RefusalReason, RegistrationWatchMint } from './reconcile';
+import type { Span } from './sentences';
 
 /**
  * VIL-581 PR 3 · what an enforced claim read means for one coach attempt. Pure.
@@ -85,17 +86,11 @@ export function judgeCoachRead(read: ReadOk, layout: CoachClaimLayout): CoachJud
   return { replyReasons, replyCut, inviteSegments, cardRefused, leaveRefused };
 }
 
-/** The reply with the cut segments removed, by index. */
-export function cutSegments(reply: string, read: ReadOk, cut: ReadonlySet<number>): string {
-  let out = '';
-  let from = 0;
-  for (const segment of read.segments) {
-    if (segment.start >= reply.length) break;
-    if (!cut.has(segment.index)) continue;
-    out += `${reply.slice(from, segment.start)} `;
-    from = Math.min(segment.end, reply.length);
-  }
-  return out + reply.slice(from);
+/** Where the cut segments sit in the reply, by index (`subtractSpans` removes them). */
+export function cutSegmentSpans(reply: string, read: ReadOk, cut: ReadonlySet<number>): Span[] {
+  return read.segments
+    .filter((segment) => segment.start < reply.length && cut.has(segment.index))
+    .map((segment) => ({ start: segment.start, end: Math.min(segment.end, reply.length) }));
 }
 
 const collapse = (text: string) => text.replace(/\s+/g, ' ').trim();

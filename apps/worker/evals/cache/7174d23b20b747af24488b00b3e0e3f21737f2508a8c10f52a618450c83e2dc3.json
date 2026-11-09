@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Got it, just you then. Thanks for telling me, Dana. I'll leave the co-parent group out, and I'll text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "coparentGroup": false
+  },
+  "latencyMs": 1312
+}

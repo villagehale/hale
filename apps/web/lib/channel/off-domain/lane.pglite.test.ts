@@ -999,10 +999,14 @@ describe('a pending ask on a database without its table', () => {
       .insert(schema.families)
       .values({ displayName: 'Household', provinceOrState: 'ON' })
       .returning({ id: schema.families.id });
-    const [parent] = await before0167.database
-      .insert(schema.users)
-      .values({ externalAuthId: 'sms_no_table' })
-      .returning({ id: schema.users.id });
+    // Raw SQL: drizzle's insert names every column of today's schema, and this database
+    // stops before the columns later migrations added to users.
+    const {
+      rows: [parent],
+    } = await before0167.client.query<{ id: string }>(
+      'insert into users (external_auth_id) values ($1) returning id',
+      ['sms_no_table'],
+    );
 
     expect(
       await readPendingAsk(before0167.database)({

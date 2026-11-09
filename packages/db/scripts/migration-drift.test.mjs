@@ -39,6 +39,15 @@ describe('catalog history cutover', () => {
       '0202_opt_out_held_messages',
       '0203_integrations_google_account_key',
       '0204_opt_out_held_crisis_read',
+      '0206_authorized_signup_plan',
+      '0207_family_sweep_marks',
+      '0209_agent_commitments_heard_facts',
+      '0210_watched_spots_any_page',
+      '0212_message_source',
+      '0213_parent_proactive_language',
+      '0214_activity_bookings_address',
+      '0216_group_lists',
+      '0217_capability_denials',
       '0205_opt_out_held_crisis_read_sealed',
     ]);
   });

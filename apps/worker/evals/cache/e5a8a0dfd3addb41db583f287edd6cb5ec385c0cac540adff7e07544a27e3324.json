@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "好的，那就先不说了。我还是会留意孩子们的事情。那我们接着聊：你希望我怎么称呼你？之后随时可以告诉我。",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1675
+}

@@ -145,7 +145,7 @@ describe('search_village uses this operation’s live evidence', () => {
     const find = vi.fn<ActivityFinder['find']>();
     const result = await search(familyId, { find });
     expect(find).not.toHaveBeenCalled();
-    expect(result.liveRead).toBe('no_area');
+    expect(result.liveRead).toBe('no_place');
   });
 });
 

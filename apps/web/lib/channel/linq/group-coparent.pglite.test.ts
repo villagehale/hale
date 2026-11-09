@@ -18,6 +18,7 @@ import {
 } from './group';
 import {
   considerGroupCoparent,
+  labelAppearingCoparent,
   sendCoparentGroupCalendarReceipt,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
@@ -151,6 +152,7 @@ function inbound(
     mediaCount: 0,
     receivedAt: NOW,
     otherHandles: [],
+    mentions: [],
     ...over,
   };
 }
@@ -357,6 +359,60 @@ describe('group co-parent seating', () => {
       .from(schema.familyMembers)
       .where(eq(schema.familyMembers.familyId, seeded.familyId));
     expect(members.some((row) => row.role === 'co_parent')).toBe(false);
+  });
+
+  it('labels a possible co-parent without the chat id, and names and logs each refusal', async () => {
+    const seeded = await seedHousehold();
+    const info = vi.spyOn(console, 'info');
+    const label = (handle: string) =>
+      labelAppearingCoparent(db.database, {
+        familyId: seeded.familyId,
+        handle,
+        via: 'participant_added',
+      });
+
+    expect(await label('camp-bot@example.com')).toEqual({
+      status: 'refused',
+      reason: 'not_a_person',
+    });
+    expect(await label(FROM)).toEqual({ status: 'refused', reason: 'not_a_person' });
+    expect(await label(PARENT_PHONE)).toEqual({ status: 'refused', reason: 'number_verified' });
+    expect(await label(COPARENT_PHONE)).toEqual({ status: 'needs_own_reply' });
+
+    const [coparent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `imessage:coparent-${seeded.familyId}`, name: 'Sam' })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: seeded.familyId,
+      userId: coparent?.id as string,
+      role: 'co_parent',
+    });
+    expect(await label(COPARENT_PHONE)).toEqual({
+      status: 'refused',
+      reason: 'family_has_coparent',
+    });
+
+    const rows = await db.database
+      .select({ actionTaken: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, seeded.familyId));
+    expect(rows).toEqual([
+      {
+        actionTaken: 'linq_group_member_refused',
+        after: { reason: 'seat_needs_own_reply', via: 'participant_added' },
+      },
+    ]);
+    const refusals = info.mock.calls
+      .map(([fields]) => fields as { outcome?: string; reason?: string })
+      .filter((fields) => fields?.outcome === 'label_refused')
+      .map((fields) => fields.reason);
+    expect(refusals).toEqual([
+      'not_a_person',
+      'not_a_person',
+      'number_verified',
+      'family_has_coparent',
+    ]);
   });
 
   it('does not seat the noted number without a parent grant', async () => {

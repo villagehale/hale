@@ -462,6 +462,7 @@ function liveLane(moment: 'written' | 'unwritten'): {
     },
     today: async () => '2026-10-20',
     place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+    healthPlace: async () => null,
     pendingAsk: async () => ({ status: 'none' }),
     medical: {
       answer: async () => {
@@ -603,7 +604,12 @@ describe('recoverHeldOptOutReads', () => {
     await hold(PHONE_A, 'pm-e', ago(20));
     const transport = new FakeTransport();
     const r = reader();
-    const abort = { failure: 'billing' as const, detail: 'credit balance', alerted: true };
+    const abort = {
+      failure: 'billing' as const,
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+      alerted: true,
+    };
 
     const down = await recoverHeldOptOutReads(
       db.database,

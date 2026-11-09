@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with 'Reply YES and I'll book it for you', an explicit request for the parent to reply, so it asks for a response. It also includes an unnecessary 'Reply STOP' line, though that is standard opt-out language. The core ask is a reply request, placing it at the low end of the scale.",
+    "score": 1
+  }
+}

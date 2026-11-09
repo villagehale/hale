@@ -1,8 +1,7 @@
 import { stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { fitsHouseholdAges } from './pick-fit';
+import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
@@ -26,19 +25,19 @@ import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
  * in this module filters a pick against these words.
  */
 export const YEAR_OPEN_SUBJECT =
-  'kids year, examples not a limit: swim soccer gym earlyon library parks fairs music museum zoo farm trips stem storytime';
+  'kids year, examples not a limit: swim soccer gym library parks rec fairs music museum zoo farm trips stem storytime';
 
 export type YearFinderUse = 'used' | 'not_configured' | 'failed' | 'empty' | 'refused';
 
 /**
  * What may be searched: the year subject above, a stage word, every stage in
- * the household when siblings differ, a town when the FSA names exactly one,
- * and "this year". No child name, no exact age, no postal code (rule #1).
+ * the household when siblings differ, the family's town (place.ts), and
+ * "this year". No town, no search. No child name, no exact age, no postal code (rule #1).
  * Ages 0-18 all get a subject; nothing here refuses a finder because of age.
  */
 export function yearOpenQuery(input: {
   children: readonly { name: string | null; ageMonths: number | null }[];
-  areaCoarse: string | null;
+  town: string | null;
 }): { ok: true; query: ActivityQuery } | { ok: false; reason: string } {
   const ages = input.children
     .map((child) => child.ageMonths)
@@ -47,15 +46,13 @@ export function yearOpenQuery(input: {
   const youngest = Math.min(...ages);
   const stage = stageFromAgeInMonths(youngest);
   const stages = [...new Set(ages.map((age) => stageFromAgeInMonths(age)))];
-  const municipalities = input.areaCoarse ? resolveMunicipalities(input.areaCoarse) : [];
-  const municipality = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   const householdNames = input.children
     .map((child) => child.name)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
     subject: YEAR_OPEN_SUBJECT,
     window: 'this year',
-    municipality,
+    town: input.town,
     stage,
     householdNames,
   });
@@ -117,23 +114,25 @@ export function renderYearOpen(lines: readonly string[]): string {
 /**
  * The live search always runs. Picks whose age band holds a child are said
  * first and civic weekend lines fill toward three; a pick outside every
- * child's age is left out (pick-fit.ts). Absence of the finder is logged and
+ * child's age, or whose only dates are behind `today`, is left out (pick-fit.ts). Absence of the finder is logged and
  * named. The locked empty sentence is the caller's job, and only when this
  * returns no lines.
  */
 export async function collectYearOpenLines(input: {
   civic: readonly WeekendPick[];
   children: readonly Pick<RadarChild, 'name' | 'ageMonths' | 'dobPrecision'>[];
-  areaCoarse: string | null;
+  town: string | null;
   finder: ActivityFinder | null;
   familyId: string;
+  /** YYYY-MM-DD in the family's zone. */
+  today: string;
 }): Promise<{ lines: string[]; titles: string[]; finder: YearFinderUse }> {
   const civic = input.civic.slice(0, 3).map(civicHit);
   if (!input.finder) {
     console.info({ familyId: input.familyId }, 'intake year find: skipped: not_configured');
     return packYearOpen(civic, 'not_configured');
   }
-  const query = yearOpenQuery({ children: input.children, areaCoarse: input.areaCoarse });
+  const query = yearOpenQuery({ children: input.children, town: input.town });
   if (!query.ok) {
     console.info(
       { familyId: input.familyId, reason: query.reason },
@@ -150,12 +149,14 @@ export async function collectYearOpenLines(input: {
       );
       return packYearOpen(civic, 'empty');
     }
-    const fitting = found.picks.filter((pick) => fitsHouseholdAges(pick, input.children));
+    const current = found.picks.filter((pick) => !onlyDatedBefore(pick, input.today));
+    const fitting = current.filter((pick) => fitsHouseholdAges(pick, input.children));
     console.info(
       {
         familyId: input.familyId,
         picks: found.picks.length,
-        droppedAge: found.picks.length - fitting.length,
+        droppedAge: current.length - fitting.length,
+        droppedPast: found.picks.length - current.length,
       },
       'intake year find',
     );

@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'prompts');
 const LOCKFILE = join(PROMPTS_DIR, '.langfuse-lock.json');
 const PRODUCTION_LABEL = 'production';
+const SUBDIRS = ['packs', 'judges'];
 
 function sha256(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -23,17 +24,21 @@ async function listPromptNames() {
   const topLevel = (await readdir(PROMPTS_DIR))
     .filter((f) => f.endsWith('.md') && f !== 'README.md')
     .map((f) => f.slice(0, -'.md'.length));
-  // Stage-aware content packs (B17) live one level down in packs/ and are
-  // tracked under a `packs/<stage>` name so they are lockfile-guarded too.
-  let packs = [];
-  try {
-    packs = (await readdir(join(PROMPTS_DIR, 'packs')))
-      .filter((f) => f.endsWith('.md') && f !== 'README.md')
-      .map((f) => `packs/${f.slice(0, -'.md'.length)}`);
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
+  // Stage-aware content packs (B17) and eval judge rubrics live one level down
+  // and are tracked under a `<dir>/<name>` name so they are lockfile-guarded too.
+  const nested = [];
+  for (const dir of SUBDIRS) {
+    try {
+      for (const f of await readdir(join(PROMPTS_DIR, dir))) {
+        if (f.endsWith('.md') && f !== 'README.md') {
+          nested.push(`${dir}/${f.slice(0, -'.md'.length)}`);
+        }
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
   }
-  return [...topLevel, ...packs].sort();
+  return [...topLevel, ...nested].sort();
 }
 
 function readPrompt(name) {

@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { type SpotUrlRefusal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { MAX_PORTAL_SEGMENTS, preparedCopyViolations } from './copy';
+import type { RegistrationNoteFacts } from './note-compose';
 import { BIND_READ_WINDOW_MS } from './prepare';
 import {
   BIND_READ_ROUTE,
@@ -72,12 +72,20 @@ function serving(body: string | (() => never)): PrepareReplyDeps['fetchBody'] {
   return async () => (typeof body === 'string' ? body : body());
 }
 
+/** The facts every ack was written from, in order. The composer seam returns the
+ * note's kind; what the model writes is the eval's (vil543-note-eval.mjs). */
+let notes: RegistrationNoteFacts[] = [];
+
 function deps(overrides: Partial<PrepareReplyDeps> = {}): PrepareReplyDeps {
   return {
     ...defaultPrepareReplyDeps(),
     fetchBody: serving(() => {
       throw new Error('this case must state what the portal serves');
     }),
+    writeNote: async (_db, _familyId, facts) => {
+      notes.push(facts);
+      return `note:${facts.kind}`;
+    },
     ...overrides,
   };
 }
@@ -214,6 +222,7 @@ afterEach(() => {
 });
 
 beforeEach(async () => {
+  notes = [];
   const seeded = await seedFamily(db.database, `Prepare Reply ${Math.random()}`);
   familyId = seeded.familyId;
   parentUserId = seeded.parentUserId;
@@ -611,10 +620,35 @@ describe('the bind write', () => {
     );
 
     if (outcome.status !== 'bound') throw new Error(`expected a bind, got ${outcome.status}`);
-    expect(outcome.reply).toContain("Markham's portal");
-    expect(outcome.reply).toMatch(/Course [0-9]/);
-    expect(outcome.reply).toMatch(/\$\d/);
-    expect(outcome.reply).toMatch(/Opens /);
+    expect(outcome.reply).toBe('note:course_bound');
+    const facts = notes.at(-1);
+    if (facts?.kind !== 'course_bound') throw new Error('expected course_bound facts');
+    expect(facts.portal).toBe("Markham's portal");
+    expect(facts.course.name).not.toBeNull();
+    expect(facts.course.day).not.toBeNull();
+    expect(facts.courseCode).toMatch(/^[0-9]/);
+    expect(facts.price).toMatch(/\$\d/);
+    expect(facts.opensOn).toMatch(/2026/);
+    expect(facts.replaced).toBe(false);
+  });
+
+  it('keeps the bind when the ack cannot be written, and sends nothing', async () => {
+    const outcome = await handleCourseBind(
+      db.database,
+      {
+        sequence: await preparing(),
+        answeredByUserId: parentUserId,
+        rawUrl: legoUrl,
+        inboundChannelMessageId: inboundId,
+        now: NOW,
+      },
+      deps({
+        fetchBody: serving(fixture('open-window-open-markham')),
+        writeNote: async () => null,
+      }),
+    );
+    expect(outcome).toEqual({ status: 'bound', reply: null });
+    expect(await auditRows('registration_course_bound')).toHaveLength(1);
   });
 
   it('is idempotent: the same link again re-renders the ack and writes no second audit row', async () => {
@@ -675,6 +709,7 @@ describe('the bind write', () => {
     );
 
     expect(outcome.status).toBe('bound');
+    expect(notes.at(-1)).toMatchObject({ kind: 'course_bound', replaced: true });
     const rows = await auditRows('registration_course_bound');
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => (row.after as { replaced: boolean }).replaced)).toEqual([false, true]);
@@ -824,11 +859,7 @@ describe('the read throttle', () => {
     expect(again.reply).toContain('I already have that class from you');
     expect(again.reply).not.toContain('I have not opened that link');
     expect(again.reply).not.toContain('send it again');
-    expect(
-      preparedCopyViolations(again.reply, { url: null, printed: [], backed: [], optOut: null }),
-    ).toEqual([]);
     expect(again.reply).not.toContain('?');
-    expect(smsSegments(again.reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
   });
 
   /** Kills hoisting the claim above the sanitizer and the municipality check: one
@@ -867,12 +898,10 @@ describe('the read throttle', () => {
   });
 
   /**
-   * The sentence is the promise, so it runs the composer's own gate. Kills a curly dash
-   * or apostrophe (which flips the whole body to UCS-2 and halves the segment), an
-   * interrogative rewrite, a template that grows past three segments, and a plural that
-   * says "in 1 minutes" — none of which any other test here would see.
+   * Kills a curly dash or apostrophe (which flips the whole body to UCS-2), an
+   * interrogative rewrite, and a plural that says "in 1 minutes".
    */
-  it('says it in one sentence the prepared-copy gate accepts, in both plurals', async () => {
+  it('says it in one GSM-7 sentence, in both plurals', async () => {
     const sequence = await preparing();
     const net = counting();
     // A SECOND class, not the one just bound: the link already bound has its own
@@ -909,11 +938,8 @@ describe('the read throttle', () => {
     const singular = await throttled(new Date(NOW.getTime() + BIND_READ_WINDOW_MS - 5_000));
 
     for (const reply of [plural, singular]) {
-      expect(
-        preparedCopyViolations(reply, { url: null, printed: [], backed: [], optOut: null }),
-      ).toEqual([]);
+      expect(smsEncoding(reply)).toBe('gsm7');
       expect(reply).not.toContain('?');
-      expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_PORTAL_SEGMENTS);
     }
     expect(plural).toContain('in 10 minutes');
     expect(singular).toContain('in 1 minute and');
@@ -984,10 +1010,12 @@ describe('the readiness writer', () => {
     );
 
     expect(outcome.status).toBe('readiness_recorded');
-    // Case-insensitive: the ack now OPENS on the attribution (docs/voice.md rule 3 took
-    // the `Noted - ` prefix off it), and what this pins is that the sentence is the
-    // parent's own statement rather than a claim of Hale's.
-    expect(outcome.reply).toMatch(/you told me/i);
+    expect(outcome.reply).toBe('note:readiness_answer');
+    expect(notes.at(-1)).toMatchObject({
+      kind: 'readiness_answer',
+      ready: true,
+      portal: "Markham's portal",
+    });
     expect((await sequenceRow()).readinessReady).toBe(true);
     const [audit] = await auditRows('registration_readiness_stated');
     expect(audit).toMatchObject({ actor: parentUserId, targetId: inboundId });
@@ -1089,9 +1117,7 @@ describe('the readiness writer', () => {
     expect(outcome.status).toBe('readiness_recorded');
     expect((await sequenceRow()).readinessReady).toBe(false);
     expect(await auditRows('registration_readiness_stated')).toHaveLength(2);
-    // The NO ack does not re-ask: under the last-word rule an ack that asked again
-    // would hold the question open across days of unrelated conversation.
-    expect(outcome.reply).not.toContain('?');
+    expect(notes.at(-1)).toMatchObject({ kind: 'readiness_answer', ready: false });
   });
 });
 

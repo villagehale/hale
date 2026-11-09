@@ -3,9 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { referralReply } from '~/lib/channel/off-domain/copy';
 import { smsEncoding, smsSegments } from './sms-segments';
+
+/** The province whose verified provider paths these lines are (VIL-589). */
+const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
 
 /**
  * VIL-265 — the structural tripwire under every word Hale texts.
@@ -233,7 +237,7 @@ describe('the French script stays GSM-7', () => {
   ] as const;
 
   it.each(ASKS)('%s', async (_name, ask) => {
-    const body = (await referralReply(ask, 'fr')) ?? '';
+    const body = (await referralReply(ask, 'fr', ONTARIO)) ?? '';
     expect(smsEncoding(body)).toBe('gsm7');
     expect(body.length).toBeGreaterThan(0);
   });
@@ -246,7 +250,9 @@ describe('the French script stays GSM-7', () => {
   it('names the characters French copy may not use here', async () => {
     const forbidden = [...'âêîôûçœ«»’—'];
     const rendered = await Promise.all(
-      ASKS.map(async ([name, ask]) => [name, (await referralReply(ask, 'fr')) ?? ''] as const),
+      ASKS.map(
+        async ([name, ask]) => [name, (await referralReply(ask, 'fr', ONTARIO)) ?? ''] as const,
+      ),
     );
     const offenders = rendered.flatMap(([name, body]) =>
       forbidden.filter((char) => body.includes(char)).map((char) => `${name}: ${char}`),
@@ -277,7 +283,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   ] as const;
 
   it.each(ASKS)('%s', async (_name, ask) => {
-    const body = (await referralReply(ask, 'en')) ?? '';
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(smsEncoding(body)).toBe('gsm7');
     expect(body.length).toBeGreaterThan(0);
   });
@@ -294,7 +300,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * pinned to exactly one so the exception cannot quietly widen.
    */
   it('allows the eye-care reply exactly one bare address and no more', async () => {
-    const reply = (await referralReply('find me an optometrist', 'en')) ?? '';
+    const reply = (await referralReply('find me an optometrist', 'en', ONTARIO)) ?? '';
     expect(reply).toContain('FindAnEyeDoctor.ca');
     expect(reply).not.toContain('811');
     expect(reply.match(/[\w-]+\.(?:ca|com|org|net)\b/g)).toEqual(['FindAnEyeDoctor.ca']);
@@ -310,7 +316,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * than on the one line that broke it.
    */
   it.each(ASKS)('%s points at no app and no scheme', async (_name, ask) => {
-    const body = (await referralReply(ask, 'en')) ?? '';
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(body).not.toMatch(/\bthe app\b/i);
     expect(body).not.toMatch(/https?:/i);
   });

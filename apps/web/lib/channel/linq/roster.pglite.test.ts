@@ -1032,7 +1032,7 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
         consents: [],
       });
       expect(await labels(familyId)).toEqual([
-        { reason: 'seat_needs_own_reply', via: 'participant_added', chatId: CHAT },
+        { reason: 'seat_needs_own_reply', via: 'participant_added' },
       ]);
 
       const own = await handleLinqInboundRequest(
@@ -1082,7 +1082,7 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
         consents: [],
       });
       expect(await labels(familyId)).toEqual([
-        { reason: 'seat_needs_own_reply', via: 'second_handle', chatId: CHAT },
+        { reason: 'seat_needs_own_reply', via: 'second_handle' },
       ]);
     });
 

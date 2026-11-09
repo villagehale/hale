@@ -363,8 +363,8 @@ function mapRegex(
       unmapped += 1;
       continue;
     }
-    cursor = at;
     const end = at + judgement.sentence.length;
+    cursor = end;
     mapped.push({
       judgement,
       segments: new Set(segments.filter((s) => s.start < end && at < s.end).map((s) => s.index)),

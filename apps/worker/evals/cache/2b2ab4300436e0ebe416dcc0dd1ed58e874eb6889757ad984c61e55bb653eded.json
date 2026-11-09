@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag case correctly directs to 911/emergency immediately and up front, distinguishes 811 as non-urgent, gives clear triage signs, and is written in Chinese as required for a Chinese-language parent. Plain language, no invented specifics, no diagnosis stated as certain. Minor nit: it says it 'may be very serious' rather than naming meningococcal risk, but triage is appropriate.",
+    "score": 5
+  }
+}

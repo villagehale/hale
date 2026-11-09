@@ -43,8 +43,8 @@ export const PROACTIVE_ROUTING = {
   calendar_alert: 'not_routed',
   evening_check_in: 'decider',
   mid_activity_ask: 'decider',
-  co_parent_departed: 'not_routed',
-  travel_brief: 'not_routed',
+  co_parent_departed: 'decider',
+  travel_brief: 'decider',
   duty_ask: 'not_routed',
   // Event-driven, on their own clock: the grant and the execution, not the decider's batch.
   autonomy_armed: 'immediate',

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks the parent to reply YES so Hale will book, and includes a reply-STOP instruction. This is an explicit request for a reply, which the rubric treats as an ask, so it scores at the low end.",
+    "score": 1
+  }
+}

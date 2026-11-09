@@ -41,7 +41,12 @@ const BEFORE_YMCA_OPENS = new Date('2026-08-20T14:00:00.000Z');
 const YMCA_OPEN_FACT =
   'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
 
-type StoredPlace = { city?: string | null; postal?: string | null };
+type StoredPlace = {
+  city?: string | null;
+  postal?: string | null;
+  country?: string | null;
+  province?: string | null;
+};
 
 /** The zone a GTA family's parent has on file in these fixtures. */
 const FAMILY_ZONE = 'America/Toronto';
@@ -49,10 +54,13 @@ const FAMILY_ZONE = 'America/Toronto';
 /** A family whose stored city is Toronto: the GTA family most of these asks come from. */
 const TORONTO_HOME: StoredPlace = { city: 'Toronto' };
 
+/** These fixtures are Canadian families unless a test says otherwise. */
 function at(place: StoredPlace) {
   return resolveRecMorningWhere({
     city: place.city ?? null,
     postal: place.postal ?? null,
+    country: place.country === undefined ? 'Canada' : place.country,
+    province: place.province ?? null,
     timeZone: FAMILY_ZONE,
   });
 }
@@ -65,17 +73,13 @@ function reply(text: string, now: Date = THIS_MORNING, place: StoredPlace = TORO
   return body;
 }
 
-function intake(
-  parentWords: string,
-  pendingAsk = WATCH_OFFER_ASK,
-  where: StoredPlace = TORONTO_HOME,
-): string {
+/** Mid-signup the only place Hale holds is the postal the parent texted: a Toronto FSA. */
+function intake(parentWords: string, pendingAsk = WATCH_OFFER_ASK, postal = 'M5V'): string {
   const body = recMorningIntakeReply({
     parentWords,
     pendingAsk,
     now: THIS_MORNING,
-    postal: where.postal,
-    city: where.city,
+    postal,
   });
   if (body === null) throw new Error(`expected an intake rec-morning reply for: ${parentWords}`);
   return body;
@@ -163,11 +167,11 @@ describe('VIL-591 · the GTA topics answer only a family whose place is in the G
   });
 
   it('mid-signup, a Texas ZIP or a Vancouver FSA is not a GTA place', () => {
-    const at = (parentWords: string, postal: string | null, city: string | null = null) =>
-      recMorningIntakeReply({ parentWords, pendingAsk: '', now: THIS_MORNING, postal, city });
-    expect(at('waitlist', '78701', 'Austin')).toBeNull();
-    expect(at('YMCA swim', '78701', 'Austin')).toBeNull();
-    expect(at('both parents need the login', 'V6B', 'Vancouver')).toBeNull();
+    const at = (parentWords: string, postal: string | null) =>
+      recMorningIntakeReply({ parentWords, pendingAsk: '', now: THIS_MORNING, postal });
+    expect(at('waitlist', '78701')).toBeNull();
+    expect(at('YMCA swim', '78701')).toBeNull();
+    expect(at('both parents need the login', 'V6B')).toBeNull();
     expect(at('YMCA swim', null)).toBeNull();
     // Positive control: the same asks from a Toronto FSA still get the reviewed facts.
     expect(at('waitlist', 'M5V')).toBe(TORONTO_FOLLOW);
@@ -202,11 +206,55 @@ describe('VIL-591 · the GTA topics answer only a family whose place is in the G
   });
 });
 
+describe('VIL-591 · a GTA town name alone places a family only when it is in Canada', () => {
+  it('does not place a US family whose stored town shares a GTA name', () => {
+    // Burlington is a town in Vermont too. No postal on file, so only the country can tell.
+    expect(at({ city: 'Burlington', country: 'United States' })).toBeNull();
+    expect(at({ city: 'Richmond Hill', country: 'US' })).toBeNull();
+    // Nothing on file says which country: no guessed town.
+    expect(at({ city: 'Burlington', country: null })).toBeNull();
+    expect(
+      recMorningReply(
+        'Burlington fall rec dates?',
+        THIS_MORNING,
+        at({ city: 'Burlington', country: null }),
+      ),
+    ).toBeNull();
+    // Positive controls: the same town in Canada, or in Ontario, is the GTA town.
+    expect(at({ city: 'Burlington', country: 'Canada' })?.municipality).toBe('burlington');
+    expect(at({ city: 'Burlington', country: null, province: 'ON' })?.municipality).toBe(
+      'burlington',
+    );
+    expect(at({ city: 'Burlington', country: null, postal: 'L7R' })?.municipality).toBe(
+      'burlington',
+    );
+  });
+});
+
+describe("VIL-591 · Toronto's own facts go only to a family asking about Toronto", () => {
+  const AT_MARKHAM_HOME = at({ city: 'Markham' });
+
+  it('leaves the two-parents, wishlist and eFun asks of another GTA town to the coach', () => {
+    expect(matchRecMorning('both parents need the login', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('the wishlist looks frozen is that broken', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('is eFun still a thing?', AT_MARKHAM_HOME)).toBeNull();
+    // Positive controls: a Toronto family, and a Markham family naming Toronto.
+    expect(matchRecMorning('both parents need the login', AT_TORONTO_HOME)).toBe('two_parents');
+    expect(matchRecMorning('the wishlist looks frozen is that broken', AT_TORONTO_HOME)).toBe(
+      'toronto_wishlist',
+    );
+    expect(matchRecMorning('is eFun still a thing?', AT_TORONTO_HOME)).toBe('toronto_efun');
+    expect(matchRecMorning('is the Toronto wishlist frozen?', AT_MARKHAM_HOME)).toBe(
+      'toronto_wishlist',
+    );
+  });
+});
+
 describe('VIL-591 · a dated fact is handed out only until its date', () => {
   const ASK = 'when does ymca swim open';
   const BEFORE_OPEN = BEFORE_YMCA_OPENS;
   const inZone = (timeZone: string | null) =>
-    resolveRecMorningWhere({ city: null, postal: 'M5V', timeZone });
+    resolveRecMorningWhere({ city: null, postal: 'M5V', country: null, province: null, timeZone });
 
   it('stops handing out the YMCA open date once that day has passed', () => {
     expect(
@@ -227,20 +275,12 @@ describe('VIL-591 · a dated fact is handed out only until its date', () => {
   });
 
   it('mid-signup, reads the day in the zone of the postal collected', () => {
-    const ask = (postal: string | null, city: string | null) =>
-      recMorningIntakeReply({ parentWords: ASK, pendingAsk: '', now: BEFORE_OPEN, postal, city });
-    expect(ask('M5V', null)).toBe(YMCA_OPEN_FACT);
-    expect(ask(null, 'Toronto')).toBeNull();
-    // Undated facts do not need a zone (positive control for the null above).
-    expect(
-      recMorningIntakeReply({
-        parentWords: 'YMCA otter or Ultra?',
-        pendingAsk: '',
-        now: BEFORE_OPEN,
-        postal: null,
-        city: 'Toronto',
-      }),
-    ).toBe(YMCA_FOLLOW);
+    const ask = (postal: string | null) =>
+      recMorningIntakeReply({ parentWords: ASK, pendingAsk: '', now: BEFORE_OPEN, postal });
+    expect(ask('M5V')).toBe(YMCA_OPEN_FACT);
+    expect(ask(null)).toBeNull();
+    // Undated facts do not need a zone (positive control for the zone-less null above).
+    expect(recMorningReply('YMCA otter or Ultra?', BEFORE_OPEN, inZone(null))).toBe(YMCA_FOLLOW);
   });
 });
 

@@ -53,7 +53,7 @@ export async function runMemoryDigestCron(
 ): Promise<DigestCronResult> {
   const mode = resolveDigestMode(process.env);
   const [familyIds, counted] = await Promise.all([
-    selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.memoryDigest),
+    selectFamiliesForRun(database, 'memory_digest', MAX_FAMILIES_PER_RUN.memoryDigest, now),
     database.select({ n: count() }).from(schema.families),
   ]);
   const totalFamilies = Number(counted[0]?.n ?? 0);
