@@ -90,6 +90,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `PARENT_CALENDAR_MIRROR_ENABLED` | `apps/web/lib/channel/lanes.ts:19` (compared at :26) | `true` | OFF | unset | Barton |
 | `PROACTIVE_CADENCE` | `apps/web/lib/channel/proactive/flag.ts:63` (exact `shadow` or `live` at :64, no trim, :14; anything else is `off`) | `shadow` or `live` (exact, no trim) | `off` mode | unset (anything except exact `shadow` or `live`) | unassigned |
 | `REGISTRATION_LADDER_ENABLED` | `apps/web/lib/channel/lanes.ts:22` (compared at :26) | `true` | OFF | unset | Barton |
+| `REGISTRATION_PLAN_RUN_ENABLED` | `apps/web/lib/signup/plan/flag.ts:10` | `true` | OFF | empty, or `false` | Barton |
 | `SAME_ACTIVITY_MEET_ENABLED` | `apps/web/lib/channel/same-activity/flag.ts:14` | `true` | OFF | `false` | Noah |
 | `SIGNUP_BROWSER_RUNTIME` | `apps/web/lib/signup/runtime/acquire.ts:80` (`local`, `vercel_sandbox` or `browserbase`, exact, at :81) | `local`, `vercel_sandbox`, or `browserbase` | no runtime chosen | unset | Noah |
 | `SIGNUP_SANDBOX_RUNTIME_ENABLED` | `apps/web/lib/signup/runtime/flag.ts:19` | `true` | OFF | `false` | Noah |
