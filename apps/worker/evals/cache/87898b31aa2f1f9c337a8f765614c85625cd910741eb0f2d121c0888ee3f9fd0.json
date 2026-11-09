@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The company name 'Village Hale Technologies Inc.' is turned into a vague description ('une entreprise de technologie pour les villages'), which is a name changed into a description and the central fact for a parent asking whether this is a scam. The line 'Si tu veux que j'arrête, dis-le-moi simplement' is also an offer of action not in the facts.",
+    "score": 1
+  }
+}

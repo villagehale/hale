@@ -1,0 +1,11 @@
+{
+  "value": {
+    "offer": true,
+    "prompt": "Saturday or Sunday for the park?",
+    "options": [
+      "Saturday",
+      "Sunday"
+    ]
+  },
+  "latencyMs": 2199
+}

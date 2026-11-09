@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both items with the day and time, but it invents an ask of the group that conflicts with the watchFor (it should ask Julien or Mamie whether one can take one, without a link), and it asks for a number reply and includes a link, both explicitly low-score faults. It also lacks the nobody-looks-free statement and the couldAsk ask, and mentions a poll-like choice without one going. Several facts and the one-ask rule are violated.",
+    "score": 1
+  }
+}
