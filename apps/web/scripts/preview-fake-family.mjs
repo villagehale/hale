@@ -12,8 +12,9 @@
 //            --turns <n>     how many of the persona's turns to send (default: all)
 //            --seq <0-9>     picks the persona's fake number; a used number is refused
 //            --media-ref <r> git ref the flyer photos are served from (default main)
-//            --base-url <u>  the Preview deploy (live only)
-// Live goes through `vercel curl <path> --deployment <base-url> -- <curl args>` (a
+//            --deployment <id> the Preview deployment id, dpl_... (live only; vercel curl
+//                            takes an id, not a URL)
+// Live goes through `vercel curl <path> --deployment <id> -- <curl args>` (a
 // logged-in Vercel CLI adds the protection bypass; plain fetch gets 401 on a protected
 // Preview). The bearer header is written to a 0600 temp file and passed as `-H @file`,
 // so it never lands on a command line or in output.
@@ -71,13 +72,15 @@ export const REMINDER_CALLS = [1, 2].map((attempt) => ({
 const flyer = (file) => ({ file, mime: 'image/png' });
 
 // VIL-466 personas. Fictional families, fictional places on the flyers, no names: each
-// one lives in a different US or Canadian city so no default city is assumed.
+// one lives in a different US or Canadian city so no default city is assumed. Intake
+// needs a postal code before it provisions, so each first turn gives a city-centre one
+// (a downtown ZIP, or a Canadian FSA with no LDU), as the intake tests do.
 /** @type {Record<string, { slot: number, fireReminders?: boolean, turns: Array<{ text: string, media?: Array<{ file: string, mime: string }> }> }>} */
 export const PERSONAS = {
   impatient: {
     slot: 0,
     turns: [
-      { text: 'hi do you find kids classes? 2 kids, 6 and 3, we live in Denver' },
+      { text: 'hi do you find kids classes? 2 kids, 6 and 3, we live in Denver, 80202' },
       { text: 'ok so whats on saturday' },
       { text: '??' },
       { text: 'thats not what i asked. something for BOTH of them saturday morning' },
@@ -89,7 +92,7 @@ export const PERSONAS = {
     slot: 1,
     turns: [
       {
-        text: "Bonjour! Une amie m'a dit que vous aidez à trouver des activités pour les enfants. J'ai une fille de 5 ans et un garçon de 2 ans, on habite à Montréal.",
+        text: "Bonjour! Une amie m'a dit que vous aidez à trouver des activités pour les enfants. J'ai une fille de 5 ans et un garçon de 2 ans, on habite à Montréal, H2X.",
       },
       { text: "Ma fille adore la danse et le petit aime surtout l'eau." },
       { text: "Est-ce qu'il y a des cours de danse le samedi matin pour elle ?" },
@@ -108,7 +111,7 @@ export const PERSONAS = {
     slot: 2,
     turns: [
       {
-        text: '你好！朋友说你可以帮忙找孩子的活动。我有两个孩子，女儿7岁，儿子4岁，我们住在温哥华。',
+        text: '你好！朋友说你可以帮忙找孩子的活动。我有两个孩子，女儿7岁，儿子4岁，我们住在温哥华，邮编V6B。',
       },
       { text: '女儿喜欢画画，儿子喜欢踢足球。' },
       { text: '这个周六上午有适合他们两个的活动吗？' },
@@ -127,7 +130,7 @@ export const PERSONAS = {
     slot: 3,
     turns: [
       {
-        text: "Hi! My daughter's daycare keeps sending home flyers and I lose track of them. She's 4, we're in Portland, Oregon.",
+        text: "Hi! My daughter's daycare keeps sending home flyers and I lose track of them. She's 4, we're in Portland, Oregon, 97201.",
       },
       { text: 'Got this one today, is it any good for her age?', media: [flyer('flyer-swim.png')] },
       { text: 'When would she need to sign up by?' },
@@ -146,7 +149,7 @@ export const PERSONAS = {
     slot: 4,
     turns: [
       {
-        text: "Hey, a friend gave me this number. I have a 3 year old and we're in Columbus, Ohio. What can you do?",
+        text: "Hey, a friend gave me this number. I have a 3 year old and we're in Columbus, Ohio, 43215. What can you do?",
       },
       { text: 'Anything for toddlers this week?' },
       { text: 'What time is the first one?' },
@@ -166,9 +169,10 @@ export const PERSONAS = {
     fireReminders: true,
     turns: [
       {
-        text: "Hi! My son is 5 and we're in Halifax. He has a swim lesson today that starts in about 50 minutes at our community pool. Can you put it on our calendar and remind me before it starts?",
+        text: "Hi! My son is 5 and we're in Halifax, B3H. He has a swim lesson today that starts in about 50 minutes at our community pool. Can you put it on our calendar and remind me before it starts?",
       },
-      { text: 'Yes please, add it.' },
+      { text: 'Can you add the swim lesson to our calendar now?' },
+      { text: "Yes, that's right, please add it." },
     ],
   },
 };
@@ -204,7 +208,7 @@ export function plannedSpend(persona, turns, maxUsd) {
   return { turns: fit, reminder, usd };
 }
 
-const VALUE_OPTS = ['--max-usd', '--turns', '--base-url', '--persona', '--seq', '--media-ref'];
+const VALUE_OPTS = ['--max-usd', '--turns', '--deployment', '--persona', '--seq', '--media-ref'];
 
 export function parseArgs(argv) {
   const modes = argv.filter((a) => a.startsWith('--') && !VALUE_OPTS.includes(a));
@@ -237,7 +241,7 @@ export function parseArgs(argv) {
     persona,
     turns,
     seq,
-    baseUrl: opt('--base-url'),
+    deployment: opt('--deployment'),
     mediaRef: opt('--media-ref') ?? 'main',
   };
 }
@@ -262,9 +266,9 @@ function dry({ maxUsd, persona, turns, seq }) {
     );
 }
 
-async function live({ maxUsd, persona, turns, seq, baseUrl, mediaRef }) {
-  if (!baseUrl?.startsWith('https://'))
-    throw new Error('--live needs --base-url https://<preview deploy>');
+async function live({ maxUsd, persona, turns, seq, deployment, mediaRef }) {
+  if (!deployment?.startsWith('dpl_'))
+    throw new Error('--live needs --deployment dpl_<preview deployment id>');
   const { turns: script, fireReminders } = PERSONAS[persona];
   const from = personaFrom(persona, seq);
   const mediaBase = `https://raw.githubusercontent.com/villagehale/hale/${encodeURIComponent(mediaRef)}/apps/web/scripts/qa-flyers/`;
@@ -286,7 +290,7 @@ async function live({ maxUsd, persona, turns, seq, baseUrl, mediaRef }) {
           'curl',
           path,
           '--deployment',
-          baseUrl,
+          deployment,
           '--',
           '-sS',
           '-H',

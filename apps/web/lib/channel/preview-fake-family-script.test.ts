@@ -26,7 +26,7 @@ describe('preview-fake-family personas (VIL-469)', () => {
       chinese: { turns: 12, photos: 0 },
       photos: { turns: 12, photos: 4 },
       optout: { turns: 10, photos: 0 },
-      reminder: { turns: 2, photos: 0 },
+      reminder: { turns: 3, photos: 0 },
     });
     expect(
       Object.entries(PERSONAS)
@@ -75,8 +75,27 @@ describe('preview-fake-family args and budget (VIL-469)', () => {
       seq: 0,
     });
     expect(
-      parseArgs(['--live', '--max-usd', '1', '--persona', 'optout', '--turns', '3', '--seq', '4']),
-    ).toMatchObject({ mode: 'live', persona: 'optout', turns: 3, seq: 4, maxUsd: 1 });
+      parseArgs([
+        '--live',
+        '--max-usd',
+        '1',
+        '--persona',
+        'optout',
+        '--turns',
+        '3',
+        '--seq',
+        '4',
+        '--deployment',
+        'dpl_x',
+      ]),
+    ).toMatchObject({
+      mode: 'live',
+      persona: 'optout',
+      turns: 3,
+      seq: 4,
+      maxUsd: 1,
+      deployment: 'dpl_x',
+    });
     expect(() =>
       parseArgs(['--dry', '--max-usd', '4', '--persona', 'optout', '--seq', '10']),
     ).toThrow(/--seq/);
@@ -84,13 +103,13 @@ describe('preview-fake-family args and budget (VIL-469)', () => {
 
   it('reserves the worst case of every turn and the reminder compose under the cap', () => {
     const per = turnWorstUsd();
-    // Under $1 the reminder persona fits both turns but not its reminder trigger.
-    const tight = plannedSpend(PERSONAS.reminder, 2, 2 * per + 0.001);
-    expect(tight).toMatchObject({ turns: 2, reminder: false });
-    const room = plannedSpend(PERSONAS.reminder, 2, 4);
-    expect(room.turns).toBe(2);
+    // Just over three turns' worst case fits the turns but not the reminder trigger.
+    const tight = plannedSpend(PERSONAS.reminder, 3, 3 * per + 0.001);
+    expect(tight).toMatchObject({ turns: 3, reminder: false });
+    const room = plannedSpend(PERSONAS.reminder, 3, 4);
+    expect(room.turns).toBe(3);
     expect(room.reminder).toBe(true);
-    expect(room.usd).toBeGreaterThan(2 * per);
+    expect(room.usd).toBeGreaterThan(3 * per);
     expect(room.usd).toBeLessThanOrEqual(4);
     // A persona without the trigger never reserves it.
     expect(plannedSpend(PERSONAS.french, 12, 4)).toMatchObject({
