@@ -39,6 +39,7 @@ import {
   totalUsd,
   withoutMessageCacheMarkers,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -54,14 +55,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 const MAX_STEPS = 6;
 const MAX_TOKENS = 400;
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sent a parent. You are given the',
-  'parent text, what Hale could and could not do on this turn (`facts`), the case `rubric`,',
-  'and the reply. Score 1-5 against the rubric, judging MEANING, never wording: any phrasing',
-  'that does what the rubric asks passes. Hale only ever answers texts the parent sends, so',
-  'a reply that promises to tell them later once something becomes possible scores 1. Reply',
-  'with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('coach-capability-correction');
 
 function contextFor(fixture) {
   return {
