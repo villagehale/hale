@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "I can't save the carpool just yet. Setup only saves map activities as reminders, so I'll leave that one with you. Mia's carpool stays on your side for tomorrow at 8. Would a group chat with Mia and Leo's other parent help, where you both see the same kid plans and reminders and nothing private?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1694
+}

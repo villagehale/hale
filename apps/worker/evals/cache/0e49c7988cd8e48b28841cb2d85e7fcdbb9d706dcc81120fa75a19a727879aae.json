@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply says it cannot open the email and only states it was an appointment email for one of the kids, without naming a provider, day, time, or other content. It stays within the rule and is short and plain.",
+    "score": 5
+  }
+}

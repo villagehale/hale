@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { judgeWholeFindReply } from './find-reasoning-judge';
+import { judgeFollowUpProcess, judgeWholeFindReply } from './find-reasoning-judge';
 
 /**
  * Mechanics of the find-reasoning gate. Whether a real model withholds the right
@@ -73,6 +73,65 @@ describe('judgeWholeFindReply', () => {
 
   it('loads a skill that judges and does not write the reply', async () => {
     const skill = await loadCronSkill('find-reasoning-judge');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(skill.meta.task).toBe('triage');
+    expect(skill.meta.tools).toEqual([]);
+    expect(prose).toContain('do not rewrite');
+    expect(prose).toContain('whatever language');
+    expect(prose).not.toContain('>');
+    expect(prose).not.toMatch(/"[^"]{12,}"/);
+  });
+});
+
+describe('judgeFollowUpProcess', () => {
+  const draft =
+    'Little Movers runs Saturdays at 9:30, $120 - their site says. I also checked two other gyms and neither had room.';
+
+  it('names the sentences the judge says report the search, not a find', async () => {
+    const seen: { user?: string; required?: string[] }[] = [];
+    const gate = await judgeFollowUpProcess(
+      dryClient(
+        {
+          reason: 'lists listings set aside',
+          process_sentences: ['I also checked two other gyms and neither had room.'],
+        },
+        seen,
+      ),
+      draft,
+    );
+    expect(gate).toEqual({
+      verdict: 'reports_process',
+      sentences: ['I also checked two other gyms and neither had room.'],
+    });
+    expect(seen[0]?.user).toBe(JSON.stringify({ draft }));
+    expect(seen[0]?.required).toEqual(['reason', 'process_sentences']);
+  });
+
+  it('POSITIVE CONTROL - a draft with no process sentence is clean', async () => {
+    const gate = await judgeFollowUpProcess(
+      dryClient({ reason: 'a find and a time', process_sentences: [] }),
+      'Little Movers runs Saturdays at 9:30, $120 - their site says.',
+    );
+    expect(gate).toEqual({ verdict: 'clean' });
+  });
+
+  it('names a missing client and does not pass the draft', async () => {
+    const gate = await judgeFollowUpProcess(() => {
+      throw new Error('ANTHROPIC_API_KEY is not set');
+    }, draft);
+    expect(gate).toEqual({ verdict: 'unjudged', reason: 'client_unavailable' });
+  });
+
+  it('names a judge that returns nothing usable', async () => {
+    const gate = await judgeFollowUpProcess(
+      dryClient({ reason: 'x', process_sentences: 'no' }),
+      draft,
+    );
+    expect(gate).toEqual({ verdict: 'unjudged', reason: 'judge_failed' });
+  });
+
+  it('loads a skill that points at sentences and does not write the text', async () => {
+    const skill = await loadCronSkill('followup-process-judge');
     const prose = skill.instructions.replace(/\s+/g, ' ');
     expect(skill.meta.task).toBe('triage');
     expect(skill.meta.tools).toEqual([]);

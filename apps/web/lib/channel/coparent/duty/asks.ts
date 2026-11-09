@@ -413,9 +413,8 @@ export interface BookingVenue {
   startsAt: number;
   /** The provider's own location string, verbatim. */
   place: string | null;
-  /** The provider's street address, when Hale holds one apart from the place. No
-   * booking or provider row carries one today, so this is null and the text gives
-   * the place name only. */
+  /** The street address the booking's own confirmation email gave for the place
+   * (`activity_bookings.address`), or null, and the text gives the place name only. */
   address: string | null;
   /** The session identity, for the multi-family shared-activity check. */
   sessionKey: string | null;
@@ -434,6 +433,7 @@ async function bookingVenues(database: Database, familyId: string): Promise<Book
       familyId: schema.activityBookings.familyId,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       location: schema.activityBookings.location,
+      address: schema.activityBookings.address,
       sessionKey: schema.activityBookings.sessionKey,
       cancelledAt: schema.activityBookings.cancelledAt,
       eventId: schema.activityBookings.eventId,
@@ -451,7 +451,7 @@ async function bookingVenues(database: Database, familyId: string): Promise<Book
         eventKey,
         startsAt: row.firstSessionAt.getTime(),
         place: row.location?.trim() || null,
-        address: null,
+        address: row.address?.trim() || null,
         sessionKey: row.sessionKey,
       });
     }

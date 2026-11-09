@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Here's what I found near Springfield for Mia and Leo. Want me to put any of these on your calendar as reminders?",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "groupLeads": [
+      "Swim lessons at the community pool for ages 3-5 run Saturdays at 10:00, so that suits Mia at 4 and is a weekly class.",
+      "Library storytime is free and open to all ages on Tuesdays at 10:30, which works for both of them. The drop-in playgroup is free too, for kids 0-6 on weekday mornings, so Leo can join in."
+    ]
+  },
+  "latencyMs": 2023
+}

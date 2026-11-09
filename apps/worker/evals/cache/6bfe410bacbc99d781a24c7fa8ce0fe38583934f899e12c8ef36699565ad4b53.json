@@ -1,0 +1,9 @@
+{
+  "value": {
+    "reason": "The first sentence describes how Hale ranked and weighed options; the second is a find with time, price and source.",
+    "process_sentences": [
+      "I ranked the three by distance and kept the closest."
+    ]
+  },
+  "latencyMs": 1112
+}

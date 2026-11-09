@@ -18,6 +18,7 @@ export const SHARED_GROUP_INTENTS = [
   'join',
   'leave',
   'stop_me',
+  'find_time',
   'question',
   'yes',
   'no',
@@ -53,6 +54,13 @@ export interface SharedGroupReadInput {
   language: string | null;
   people: readonly SharedGroupPersonFact[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** The speaker's clock, so `ruledOut` can be placed. Absent when no zone is known. */
+  clock?: { now: string; timeZone: string };
+}
+
+export interface RuledOutSpan {
+  start: Date;
+  end: Date;
 }
 
 export interface SharedGroupReading {
@@ -61,6 +69,8 @@ export interface SharedGroupReading {
   familyLabel: string | null;
   kidName: string | null;
   confidence: SharedGroupConfidence;
+  /** VIL-459: on `find_time`, the times the chat said do not work. Empty otherwise. */
+  ruledOut?: readonly RuledOutSpan[];
 }
 
 export interface SharedGroupReader {
@@ -74,6 +84,7 @@ const readingSchema = z
     familyLabel: z.string().nullable(),
     kidName: z.string().nullable(),
     confidence: z.enum(['high', 'low']),
+    ruledOut: z.array(z.object({ start: z.string(), end: z.string() }).strict()).optional(),
   })
   .strict();
 
@@ -86,8 +97,17 @@ export const sharedGroupReadingJsonSchema = {
     familyLabel: { type: ['string', 'null'] },
     kidName: { type: ['string', 'null'] },
     confidence: { type: 'string', enum: ['high', 'low'] },
+    ruledOut: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { start: { type: 'string' }, end: { type: 'string' } },
+        required: ['start', 'end'],
+      },
+    },
   },
-  required: ['intent', 'role', 'familyLabel', 'kidName', 'confidence'],
+  required: ['intent', 'role', 'familyLabel', 'kidName', 'confidence', 'ruledOut'],
 };
 
 const UNCLEAR: SharedGroupReading = {
@@ -96,6 +116,7 @@ const UNCLEAR: SharedGroupReading = {
   familyLabel: null,
   kidName: null,
   confidence: 'low',
+  ruledOut: [],
 };
 
 const STATE_CHANGE: ReadonlySet<SharedGroupIntent> = new Set([
@@ -113,7 +134,20 @@ export function sharedGroupUserMessage(input: SharedGroupReadInput): string {
     language: input.language,
     people: input.people,
     recent: input.recent.slice(-6),
+    ...(input.clock ? { clock: input.clock } : {}),
   });
+}
+
+function spansOf(raw: readonly { start: string; end: string }[] | undefined): RuledOutSpan[] {
+  const spans: RuledOutSpan[] = [];
+  for (const span of raw ?? []) {
+    const start = new Date(span.start);
+    const end = new Date(span.end);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    if (end.getTime() <= start.getTime()) continue;
+    spans.push({ start, end });
+  }
+  return spans;
 }
 
 function blankToNull(value: string | null): string | null {
@@ -126,7 +160,7 @@ function blankToNull(value: string | null): string | null {
 export function parseSharedGroupReading(value: unknown): SharedGroupReading {
   const parsed = readingSchema.safeParse(value);
   if (!parsed.success) return UNCLEAR;
-  const { intent, role, familyLabel, kidName, confidence } = parsed.data;
+  const { intent, role, familyLabel, kidName, confidence, ruledOut } = parsed.data;
   if (STATE_CHANGE.has(intent) && confidence !== 'high') return UNCLEAR;
   if (intent === 'unclear') return UNCLEAR;
   return {
@@ -135,8 +169,12 @@ export function parseSharedGroupReading(value: unknown): SharedGroupReading {
     familyLabel: blankToNull(familyLabel),
     kidName: blankToNull(kidName),
     confidence,
+    ruledOut: intent === 'find_time' ? spansOf(ruledOut) : [],
   };
 }
+
+/** Room for a find-time reading's spans ("after 5 on weekdays" is five of them). */
+export const SHARED_GROUP_READ_MAX_TOKENS = 400;
 
 export function createSharedGroupReader(
   clientOrResolver: AgentClient | (() => AgentClient),
@@ -153,7 +191,7 @@ export function createSharedGroupReader(
       toolDescription: 'What this person meant in the shared group.',
       inputJsonSchema: sharedGroupReadingJsonSchema,
       schema: readingSchema,
-      maxTokens: 200,
+      maxTokens: SHARED_GROUP_READ_MAX_TOKENS,
     });
     return parseSharedGroupReading(value);
   };

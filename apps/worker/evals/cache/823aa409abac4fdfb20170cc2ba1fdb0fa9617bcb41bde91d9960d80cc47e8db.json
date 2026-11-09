@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Milk was added to the Groceries list by Jordan, so the claim is accurate. The reply is short and warm, in English, with no invented items, no privacy leak, and no recital of eggs. It matches the scored reference for this exact situation (a 4), since the turn has nothing more to react to.",
+    "score": 4
+  }
+}

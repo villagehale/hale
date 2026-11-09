@@ -166,6 +166,26 @@ export function cacheKey(tag, payload) {
   return createHash('sha256').update(`${tag}\n${payload}`).digest('hex');
 }
 
+/**
+ * Canonical agent request for the replay key.
+ *
+ * `prompt` is the skill text the turn was built from, kept as its own field. Hashing
+ * only `system` misses a block that is just a cache marker: the marker does not change
+ * when the tone does, and the old recording replays.
+ */
+export function agentCacheMaterial(request, prompt) {
+  return JSON.stringify({
+    model: request.model,
+    system: request.system,
+    tools: request.tools,
+    messages: withoutMessageCacheMarkers(request.messages),
+    max_tokens: request.max_tokens,
+    thinking: request.thinking,
+    output_config: request.output_config,
+    prompt,
+  });
+}
+
 export async function cacheGet(key) {
   const path = join(CACHE_DIR, `${key}.json`);
   if (!existsSync(path)) return undefined;
@@ -1132,6 +1152,9 @@ export function callUsd(model, usage) {
  *                system prompt (so they are part of the cache key). Pass
  *                [...GENERAL_REFERENCE_TEXTS, ...yourOwn].
  *   logCost      true: print model, tokens and USD for every LIVE judge call
+ *   cacheSalt    extra key material that is NOT shown to the judge. The group-lists
+ *                suite passes the coach prompt, so a tone change moves the verdict
+ *                key even when the reply text is unchanged.
  */
 /** A verdict cut off at the judge's output cap. A judge error that stops the run. */
 export class JudgeTruncatedError extends Error {}
@@ -1173,7 +1196,7 @@ export function makeJudge(model, judgeSystemBase, tagPrefix, cachedOnly, getClie
         : '';
     const key = cacheKey(
       sampleTag,
-      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}${laneKey}`,
+      `${model}\n${judgeSystem}\n${userMessage}${options?.schema ? `\n${JSON.stringify(options.schema)}` : ''}${laneKey}${options?.cacheSalt ? `\nprompt:${options.cacheSalt}` : ''}`,
     );
     const cached = await cacheGet(key);
     const hit = cached && isVerdict(cached.parsed);

@@ -70,6 +70,7 @@ type HandlerTool = { name: string; handler: (...args: never[]) => unknown };
  */
 export const GROUP_WITHHELD_TOOLS: ReadonlySet<string> = new Set([
   'prepare_gmail_draft',
+  'read_email',
   'read_recent_memory',
   'read_recent_conversations',
   'list_watch_targets',

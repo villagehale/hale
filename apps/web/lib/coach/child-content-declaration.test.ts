@@ -75,6 +75,7 @@ function channelTools(): RegisteredTool[] {
       fetchBody: async () => ({ ok: false, reason: 'not_configured' }) as never,
       reader: { householdNames: async () => [] },
       watchConsentGranted: async () => false,
+      readClassAvailability: async () => ({ status: 'unknown', reason: 'extract_failed' }),
     },
     onDraft: () => {},
     onOffer: () => {},

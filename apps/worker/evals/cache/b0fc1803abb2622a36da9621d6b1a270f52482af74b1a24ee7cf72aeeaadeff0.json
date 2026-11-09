@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Pas de souci, tu n'es pas obligé. Tu peux me dire combien d'enfants tu as, pour que je te trouve des choses adaptées?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "fr",
+    "postalCode": null,
+    "placeLabel": null
+  },
+  "latencyMs": 1745
+}

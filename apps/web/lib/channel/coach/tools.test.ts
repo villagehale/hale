@@ -734,6 +734,7 @@ describe('watch_for_opening — registered only when the whole wiring is there',
     fetchBody: {} as never,
     reader: {} as never,
     watchConsentGranted: {} as never,
+    readClassAvailability: {} as never,
   };
 
   it('is registered when the ports and the collector are both wired', () => {

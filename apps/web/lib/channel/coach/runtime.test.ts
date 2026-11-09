@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RegisteredTool, Skill } from '@hale/agent';
+import { type RegisteredTool, type Skill, invokeTool } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
@@ -11,7 +12,11 @@ import {
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
+import {
+  type ChannelCoachPorts,
+  channelCoachRuntime,
+  productionChannelCoachPorts,
+} from './runtime';
 
 /**
  * The runtime, with every collaborator injected — the model included, because what is
@@ -323,6 +328,41 @@ describe('channelCoachRuntime', () => {
     expect(seen[1]).not.toHaveProperty('audience');
   });
 
+  it('offers the shared-list verbs only on a group turn with GROUP_SHARED_LISTS_ENABLED on (VIL-447)', async () => {
+    const seen: Array<{ tools: string[]; instructions: string }> = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push({
+          tools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const names = ['list_group_lists', 'add_to_group_list', 'check_off_group_list_items'];
+    const tone = await loadCronSkill('coach-group-lists');
+    try {
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', '');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      vi.stubEnv('GROUP_SHARED_LISTS_ENABLED', 'true');
+      await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+      await channelCoachRuntime(p).respond(turn(), []);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    for (const n of names) {
+      expect(seen[0]?.tools).not.toContain(n);
+      expect(seen[1]?.tools).toContain(n);
+      expect(seen[2]?.tools).not.toContain(n);
+    }
+    // A 1:1 turn adds only the VIL-303 decline verb, which rides while a capability is dark.
+    expect(seen[2]?.tools).toEqual([...SKILL.meta.tools, 'note_capability_declined']);
+    // Tone is the disk skill, appended only when the list verbs are offered.
+    expect(seen[0]?.instructions).not.toContain(tone.instructions);
+    expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
+    expect(seen[2]?.instructions).not.toContain(tone.instructions);
+  });
+
   it('hands the loop what the provider watch read as data, and omits the key when empty', async () => {
     const seen: Record<string, unknown>[] = [];
     const reading = {
@@ -510,6 +550,56 @@ describe('channelCoachRuntime', () => {
     expect((err as Error).cause).toBeInstanceOf(Error);
   });
 
+  it('VIL-447: a failed turn runs the undo its tools registered, and a good one does not', async () => {
+    const undone: string[] = [];
+    const failing = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('lists');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    await channelCoachRuntime(failing)
+      .respond(turn(), [])
+      .catch(() => undefined);
+    expect(undone).toEqual(['lists']);
+
+    const ok = ports({
+      buildTools: (...args: unknown[]) => {
+        const onUndo = args[8] as (u: () => Promise<void>) => void;
+        onUndo(async () => {
+          undone.push('should-not-run');
+        });
+        return [] as RegisteredTool[];
+      },
+    });
+    await channelCoachRuntime(ok).respond(turn(), []);
+    expect(undone).toEqual(['lists']);
+  });
+
+  it('VIL-447: an undo that throws never masks the turn failure', async () => {
+    const p = ports({
+      buildTools: (...args: unknown[]) => {
+        (args[8] as (u: () => Promise<void>) => void)(async () => {
+          throw new Error('db down');
+        });
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        throw new Error('anthropic timeout');
+      },
+    });
+    const err = await channelCoachRuntime(p)
+      .respond(turn(), [])
+      .catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/anthropic timeout/);
+  });
+
   it('surfaces nothing when a turn fails before it drafted anything', async () => {
     const p = ports({ runAgent: answering(null, true) });
 
@@ -590,7 +680,7 @@ describe('channelCoachRuntime', () => {
           location: { city: null, province: null, country },
         }) as never;
       await channelCoachRuntime(p).respond(turn(), []);
-      return (buildTools.mock.calls[0] as unknown[])[8];
+      return (buildTools.mock.calls[0] as unknown[])[9];
     };
 
     expect(await countryBuiltFor('United States')).toBe('US');
@@ -650,6 +740,7 @@ describe('the watch a turn started', () => {
         fetchBody: async () => fullPage,
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
+        readClassAvailability: {} as never,
         onWatch: onWatch as never,
       }),
     ];
@@ -692,6 +783,7 @@ describe('the watch a turn started', () => {
       instant: false,
       lastState: 'full',
       sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
+      sessionAnchor: null,
     });
   });
 
@@ -799,7 +891,8 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
     });
     const result = await channelCoachRuntime(p).respond(turn(), []);
     expect(seen[0]?.tools).not.toContain('share_experience_card');
-    expect(seen[0]?.skillTools).toEqual([]);
+    // VIL-303's declined verb rides while a deferred capability is dark; nothing else.
+    expect(seen[0]?.skillTools).toEqual(['note_capability_declined']);
     expect(result.experienceCard ?? null).toBeNull();
   });
 
@@ -869,6 +962,154 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
     });
     const result = await channelCoachRuntime(p).respond(turn(), []);
     expect(result.experienceCard?.title).not.toContain('Nora');
+  });
+});
+
+/**
+ * VIL-495 — the model chooses voice. Dark: no verb, untouched skill, never a memo. Lit
+ * (1:1 only): the verb and the addendum ride, and calling it marks the reply as voice.
+ */
+describe('channelCoachRuntime · voice memos (VIL-495)', () => {
+  function seeing(seen: { tools: string[]; skillTools: string[]; instructions: string }[]) {
+    return (call?: boolean): ChannelCoachPorts['runAgent'] =>
+      async (args) => {
+        seen.push({
+          tools: args.tools.map((t) => t.name),
+          skillTools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        if (call) {
+          const verb = args.tools.find((t) => t.name === 'reply_as_voice_memo');
+          if (!verb) throw new Error('no voice verb');
+          await verb.handler({} as never, {} as never);
+        }
+        return answering('So glad swim went well. Same time next week?')(args);
+      };
+  }
+
+  it('dark: no voice verb, the skill untouched, and never a memo', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(ports({ runAgent: seeing(seen)() })).respond(
+      turn(),
+      [],
+    );
+    expect(seen[0]?.tools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).not.toContain('reply_as_voice_memo');
+    expect(result.voiceMemo ?? false).toBe(false);
+  });
+
+  it('lit on a group turn: still no voice verb', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    await channelCoachRuntime(
+      ports({
+        voiceMemosEnabled: () => true,
+        loadSkill: async () => SKILL,
+        runAgent: seeing(seen)(),
+      }),
+    )
+      .respond({ ...turn(), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(seen[0]?.tools ?? []).not.toContain('reply_as_voice_memo');
+  });
+
+  it('lit 1:1: the verb and the addendum ride; not calling it stays text', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(false) }),
+    ).respond(turn(), []);
+    expect(seen[0]?.tools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).toContain('A voice memo they sent');
+    expect(result.voiceMemo).toBe(false);
+  });
+
+  it('lit 1:1: calling the verb marks the same written reply as voice', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(true) }),
+    ).respond(turn(), []);
+    expect(result.voiceMemo).toBe(true);
+    expect(result.reply).toContain('So glad swim went well');
+  });
+
+  it('hands a heard voice memo to the model as the words the parent said', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(null)) as unknown as typeof fetch,
+          async () => 'is swim still on this saturday',
+        ),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('It is.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [{ kind: 'audio', url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' }],
+      },
+      [],
+    );
+    expect(seen[0]?.arrivedMedia).toEqual([
+      { kind: 'audio', heard: 'is swim still on this saturday' },
+    ]);
+  });
+});
+
+describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', () => {
+  const MEMO = [
+    { kind: 'audio' as const, url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' },
+  ];
+
+  function lit() {
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'gateway_test_key_not_a_secret');
+    return vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (url) =>
+        String(url).startsWith('https://cdn.example/')
+          ? new Response(new Uint8Array([1, 2, 3]))
+          : new Response(JSON.stringify({ text: 'is swim still on' })),
+      );
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('the runtime tells the media port who the turn is for', async () => {
+    const audiences: unknown[] = [];
+    const p = ports({
+      readInboundMedia: async (_parts, audience) => {
+        audiences.push(audience);
+        return { blocks: [], unwatched: [{ kind: 'audio' }] };
+      },
+    });
+    for (const audience of ['group', 'direct'] as const) {
+      await channelCoachRuntime(p).respond({ ...turn(''), audience, inboundMedia: MEMO }, []);
+    }
+    expect(audiences).toEqual(['group', 'direct']);
+  });
+
+  it("a group member's memo is never sent to the transcriber", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'group');
+    expect(out?.unwatched).toEqual([{ kind: 'audio' }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("the parent's own 1:1 memo is heard (positive control)", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'direct');
+    expect(out?.unwatched).toEqual([{ kind: 'audio', heard: 'is swim still on' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -953,6 +1194,154 @@ describe('channelCoachRuntime · group leave (VIL-477)', () => {
     });
     const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
     expect(result.groupLeave ?? null).toBeNull();
+  });
+});
+
+describe('channelCoachRuntime · read_email (VIL-433)', () => {
+  function emailReader(connected: boolean) {
+    const reads: unknown[] = [];
+    const asked: string[] = [];
+    return {
+      reads,
+      asked,
+      reader: {
+        connected: async (_familyId: string, parentUserId: string) => {
+          asked.push(parentUserId);
+          return connected;
+        },
+        read: async (request: unknown) => {
+          reads.push(request);
+          return { read: true as const, body: 'We can set up a visit.', truncated: false };
+        },
+      },
+    };
+  }
+
+  function seeing(seen: { tools: string[]; skillTools: string[]; instructions: string }[]) {
+    return async (args: Parameters<ChannelCoachPorts['runAgent']>[0]) => {
+      seen.push({
+        tools: args.tools.map((t) => t.name),
+        skillTools: [...args.skill.meta.tools],
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+  }
+
+  it('1:1 with their own Gmail connected: lists and registers the verb, read in this thread', async () => {
+    const e = emailReader(true);
+    const p = ports({
+      emailReader: e.reader,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('read_email');
+        expect(args.skill.instructions).toContain('read_email');
+        const tool = args.tools.find((t) => t.name === 'read_email');
+        if (!tool) throw new Error('no read_email verb');
+        await tool.handler({ gmailMessageId: 'gm-1' } as never, {} as never);
+        return answering('They can set up a visit.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('what did it say'), []);
+    expect(e.asked).toEqual([PARENT]);
+    expect(e.reads).toEqual([
+      {
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        conversationId: CONVERSATION,
+        gmailMessageId: 'gm-1',
+      },
+    ]);
+  });
+
+  it('1:1 without a connected Gmail: no verb and the skill is untouched', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const e = emailReader(false);
+    await channelCoachRuntime(ports({ emailReader: e.reader, runAgent: seeing(seen) })).respond(
+      turn('what did it say'),
+      [],
+    );
+    expect(e.asked).toEqual([PARENT]);
+    expect(seen[0]?.tools).not.toContain('read_email');
+    expect(seen[0]?.skillTools).not.toContain('read_email');
+    expect(seen[0]?.instructions).not.toContain('read_email');
+  });
+
+  /** VIL-615: the runtime applies the taint to the whole turn's tool set, so a write
+   * the model reaches for after reading the email never runs. Each call goes through the
+   * real `invokeTool`, where the refusal lands before the audit row (VIL-616). */
+  function draftingTurn(order: 'read_first' | 'write_first') {
+    const e = emailReader(true);
+    const drafted: string[] = [];
+    const outcomes: string[] = [];
+    const propose: RegisteredTool = {
+      name: 'propose_calendar_add',
+      description: 'x',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => {
+        drafted.push('propose_calendar_add');
+        return { drafted: true };
+      },
+    };
+    const p = ports({
+      emailReader: e.reader,
+      buildTools: () => [propose],
+      runAgent: async (args) => {
+        const call = async (name: string, input: unknown) => {
+          const tool = args.tools.find((t) => t.name === name);
+          if (!tool) throw new Error(`no ${name}`);
+          await invokeTool(tool, input, { familyId: 'fam', actor: 'parent' }, args.guardDeps).then(
+            () => outcomes.push(`${name}:ran`),
+            (err: unknown) => outcomes.push(`${name}:${(err as { rail?: string }).rail}`),
+          );
+        };
+        const steps: [string, unknown][] = [
+          ['read_email', { gmailMessageId: 'gm-1' }],
+          ['propose_calendar_add', {}],
+        ];
+        for (const [name, input] of order === 'read_first' ? steps : steps.reverse())
+          await call(name, input);
+        return answering('Picture day is Friday.')(args);
+      },
+    });
+    return { p, drafted, outcomes };
+  }
+
+  it('a write after read_email returned text is refused for the rest of the turn', async () => {
+    const t = draftingTurn('read_first');
+    const result = await channelCoachRuntime(t.p).respond(turn('what did it say'), []);
+    expect(t.outcomes).toEqual(['read_email:ran', 'propose_calendar_add:untrusted_content']);
+    expect(t.drafted).toEqual([]);
+    expect(result.reply).toBe('Picture day is Friday.');
+    // VIL-616: the router marks the thread row this reply lands in.
+    expect(result.emailRead).toBe(true);
+  });
+
+  it('a write before the email was read still runs (positive control)', async () => {
+    const t = draftingTurn('write_first');
+    await channelCoachRuntime(t.p).respond(turn('add picture day, then what did it say'), []);
+    expect(t.outcomes).toEqual(['propose_calendar_add:ran', 'read_email:ran']);
+    expect(t.drafted).toEqual(['propose_calendar_add']);
+  });
+
+  it('a turn that never read an email does not mark its reply', async () => {
+    const e = emailReader(true);
+    const result = await channelCoachRuntime(
+      ports({ emailReader: e.reader, runAgent: answering('Swim is at 4.') }),
+    ).respond(turn('when is swim'), []);
+    expect(result.emailRead).toBe(false);
+  });
+
+  it('a group turn never offers it, even when the parent has Gmail connected', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const e = emailReader(true);
+    await channelCoachRuntime(ports({ emailReader: e.reader, runAgent: seeing(seen) }))
+      .respond({ ...turn('what did the daycare say'), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(e.asked).toEqual([]);
+    expect(seen[0]?.tools ?? []).not.toContain('read_email');
+    expect(seen[0]?.skillTools ?? []).not.toContain('read_email');
   });
 });
 
@@ -1084,5 +1473,117 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       expect.any(String),
     );
     error.mockRestore();
+  });
+});
+
+/**
+ * VIL-303 · the plumbing of a stale no: which verbs a turn gets, what context it
+ * carries, and what rides out. Whether the model calls them is the eval's
+ * (run-coach-capability-correction-eval.mjs).
+ */
+describe('deferred capabilities', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function lightEverything() {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
+    vi.stubEnv('F14_ENABLED', 'true');
+  }
+
+  async function run(
+    options: {
+      audience?: ChannelTurn['audience'];
+      owed?: { capability: 'sign_up' | 'spot_watch'; toldOn: string }[];
+      call?: { tool: string; capability: string }[];
+    } = {},
+  ) {
+    const seen: { tools: string[]; listed: string[]; context: unknown; instructions: string }[] =
+      [];
+    const p = ports({
+      ...(options.owed ? { loadOwedCorrections: async () => options.owed ?? [] } : {}),
+      runAgent: async (args) => {
+        seen.push({
+          tools: args.tools.map((tool) => tool.name),
+          listed: args.skill.meta.tools,
+          context: args.context,
+          instructions: args.skill.instructions,
+        });
+        for (const call of options.call ?? []) {
+          const tool = args.tools.find((t) => t.name === call.tool);
+          await tool?.handler({ capability: call.capability }, { familyId: FAMILY, actor: PARENT });
+        }
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn(), audience: options.audience ?? 'direct' },
+      [],
+    );
+    return { result, seen: seen[0] };
+  }
+
+  it('offers the declined verb with only the dark capabilities, and carries what it noted', async () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    const { result, seen } = await run({
+      call: [{ tool: 'note_capability_declined', capability: 'spot_watch' }],
+    });
+
+    expect(seen?.tools).toContain('note_capability_declined');
+    expect(seen?.listed).toContain('note_capability_declined');
+    expect(seen?.tools).not.toContain('note_capability_correction');
+    expect(result.capabilityNotes).toEqual({ declined: ['spot_watch'], corrected: [] });
+  });
+
+  it('cannot note a no about a capability that is already lit', async () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    const registered: RegisteredTool[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        registered.push(...args.tools);
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    const verb = registered.find((tool) => tool.name === 'note_capability_declined');
+    expect(verb?.inputSchema.safeParse({ capability: 'spot_watch' }).success).toBe(true);
+    expect(verb?.inputSchema.safeParse({ capability: 'sign_up' }).success).toBe(false);
+  });
+
+  it('offers no declined verb once every capability is lit, and none on a group turn', async () => {
+    const dark = await run();
+    expect(dark.seen?.tools).toContain('note_capability_declined');
+    expect((await run({ audience: 'group' })).seen?.tools).not.toContain(
+      'note_capability_declined',
+    );
+    lightEverything();
+    expect((await run()).seen?.tools).not.toContain('note_capability_declined');
+    expect((await run()).result.capabilityNotes).toBeNull();
+  });
+
+  it('carries an owed correction as context, with its addendum and verb', async () => {
+    lightEverything();
+    const addendum = (await loadCronSkill('coach-capability-correction')).instructions;
+    const owed = [{ capability: 'sign_up' as const, toldOn: '2026-10-02' }];
+    const { result, seen } = await run({
+      owed,
+      call: [{ tool: 'note_capability_correction', capability: 'sign_up' }],
+    });
+
+    expect(seen?.context).toEqual(expect.objectContaining({ capabilityCorrections: owed }));
+    expect(seen?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen?.listed).toContain('note_capability_correction');
+    expect(result.capabilityNotes).toEqual({ declined: [], corrected: ['sign_up'] });
+
+    const none = await run({ owed: [] });
+    expect(none.seen?.context).not.toHaveProperty('capabilityCorrections');
+    expect(none.seen?.instructions).not.toContain(addendum);
+    expect(none.seen?.tools).not.toContain('note_capability_correction');
+
+    const group = await run({ owed, audience: 'group' });
+    expect(group.seen?.context).not.toHaveProperty('capabilityCorrections');
+    expect(group.seen?.tools).not.toContain('note_capability_correction');
   });
 });

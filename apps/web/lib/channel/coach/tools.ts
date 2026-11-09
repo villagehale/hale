@@ -1,5 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -189,6 +190,9 @@ export interface ChannelCoachToolArgs {
   /** The Browser Use watch verbs (signup/browser-use/watch/tools.ts). Wired only while
    * BROWSER_USE_WATCH_ENABLED is on; absent leaves the tool set unchanged. */
   providerWatch?: WatchToolPorts | null;
+  /** VIL-447 shared-list verbs (channel/lists/tools.ts). Wired only on a group turn while
+   * GROUP_SHARED_LISTS_ENABLED is on; absent leaves the tool set unchanged. */
+  groupLists?: GroupListToolPorts | null;
   /** VIL-470 · record a signup offer Hale's AI wrote from facts. Wired only while
    * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
@@ -835,6 +839,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
   if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
+  if (args.groupLists) tools.push(...groupListTools(args.groupLists));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));
   return tools;

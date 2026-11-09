@@ -105,6 +105,7 @@ function switchOffTool(
       noop,
       createTurnOfferLedger(),
       undefined,
+      undefined,
       'CA',
     )
     .find((candidate) => candidate.name === 'turn_off_autonomy');
