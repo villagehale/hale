@@ -90,6 +90,13 @@ export interface ToolDefinition<TInput, TOutput> {
    * before any handler runs.
    */
   untrustedContentGate?: () => GuardResult;
+  /**
+   * An input-aware check on the `child_content` rail, for a tool whose free text may
+   * name a 13+ child whatever childId it carries (VIL-618: the memory saves). It runs
+   * BEFORE the audit row, so a refused input never lands in a family-visible
+   * `audit_log` row (rule #1). Absent = the input has no such text to check.
+   */
+  childContentGate?: (input: TInput, ctx: ToolHandlerContext) => Promise<GuardResult>;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
 }
 
@@ -189,8 +196,9 @@ export class GuardrailError extends Error {
  *   2. untrusted-content gate (if the caller set one) — throw on reject
  *   3. spending-cap gate (if monetary) — throw on reject
  *   4. child-content gate (if touchesChildContent) — throw on reject
- *   5. ALWAYS write the audit row (rule #6) — even a permitted call is logged
- *   6. run the handler
+ *   5. input-aware child-content gate (if the tool declares one) — throw on reject
+ *   6. ALWAYS write the audit row (rule #6) — even a permitted call is logged
+ *   7. run the handler
  *
  * Audit is written AFTER the gates pass and BEFORE the handler runs: a refused
  * call produces a GuardrailError (and the refusal is itself observable from the
@@ -232,6 +240,13 @@ export async function invokeTool<TInput, TOutput>(
       );
     }
     const verdict = await deps.checkChildContentAccess(ctx.familyId, tool.name, input);
+    if (!verdict.ok) {
+      throw new GuardrailError(tool.name, 'child_content', verdict.reason);
+    }
+  }
+
+  if (tool.childContentGate) {
+    const verdict = await tool.childContentGate(input, ctx);
     if (!verdict.ok) {
       throw new GuardrailError(tool.name, 'child_content', verdict.reason);
     }

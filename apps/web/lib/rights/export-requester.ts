@@ -1,10 +1,14 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
+import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import type { ExportTeenGate } from './export-memory';
 
 /**
  * The part of a right-to-access copy that is about the requesting adult alone: their 1:1
- * text thread with Hale, the language Hale writes to them in, and each time that changed.
+ * text thread with Hale, the language Hale writes to them in, each time that changed,
+ * their consent records, the accounts they connected, and the events Hale mirrored from
+ * their own Google Calendar.
  *
  * Every read here is keyed on the requester, so nothing in this block can be about the
  * co-parent: the thread by its per-parent note key (note-key.ts), the settings by the
@@ -15,6 +19,15 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
  * The thread keeps a turn the parent removed, stamped `removedAt`: Hale still holds its
  * words, and this copy goes only to the person who wrote or received them. The model
  * context a proactive turn carries (`messages.source`) is not part of it.
+ *
+ * Consent records are keyed on the requester as `user_id`, in this family or in none (a
+ * consent given before the family existed). A record is one adult's yes or no in their
+ * own words, so a co-parent's never reaches this copy. A teen-access request's evidence
+ * describes the teen, so it leaves as null with `withheld: 'teen'` (rule #1); its type,
+ * scope and dates stay. A connection is the provider, the scopes and the dates; its tokens,
+ * provider metadata and account key never leave. A calendar mirror is keyed on the
+ * requester's own connection. Every connection has a user (integrations/store.ts is the
+ * one writer), so this section covers them all.
  */
 export interface RequesterOnlyExport {
   textThread: {
@@ -36,6 +49,40 @@ export interface RequesterOnlyExport {
     to: string | null;
     why: string | null;
   }[];
+  consents: {
+    type: string;
+    scope: string | null;
+    granted: boolean;
+    grantedAt: string;
+    revokedAt: string | null;
+    expiresAt: string | null;
+    policyVersion: string;
+    evidence: Record<string, unknown> | null;
+    ip: string | null;
+    userAgent: string | null;
+    withheld: 'teen' | null;
+  }[];
+  connections: {
+    provider: string;
+    scopes: string[];
+    status: string;
+    connectedAt: string;
+    lastSyncAt: string | null;
+  }[];
+  calendarMirrors: {
+    title: string;
+    startsAt: string;
+    endsAt: string | null;
+    location: string | null;
+    cancelledAt: string | null;
+    withheld: 'teen' | null;
+  }[];
+}
+
+const TEEN_EVIDENCE_CONSENT = 'teen_content_access';
+
+function iso(date: Date | null): string | null {
+  return date ? date.toISOString() : null;
 }
 
 function field(value: unknown, key: string): string | null {
@@ -48,6 +95,7 @@ export async function loadRequesterOnlyExport(
   database: Database,
   familyId: string,
   requesterUserId: string,
+  gate: ExportTeenGate,
 ): Promise<RequesterOnlyExport> {
   const [user] = await database
     .select({
@@ -96,6 +144,67 @@ export async function loadRequesterOnlyExport(
     )
     .orderBy(asc(schema.auditLog.occurredAt));
 
+  const consent = schema.consentRecords;
+  const consentRows = await database
+    .select({
+      type: consent.consentType,
+      scope: consent.consentScope,
+      granted: consent.granted,
+      grantedAt: consent.grantedAt,
+      revokedAt: consent.revokedAt,
+      expiresAt: consent.expiresAt,
+      policyVersion: consent.policyVersion,
+      evidence: consent.evidence,
+      ip: consent.ip,
+      userAgent: consent.userAgent,
+    })
+    .from(consent)
+    .where(
+      and(
+        eq(consent.userId, requesterUserId),
+        or(eq(consent.familyId, familyId), isNull(consent.familyId)),
+      ),
+    )
+    .orderBy(asc(consent.grantedAt));
+
+  const connectionRows = await database
+    .select({
+      provider: schema.integrations.provider,
+      scopes: schema.integrations.scopes,
+      status: schema.integrations.status,
+      createdAt: schema.integrations.createdAt,
+      lastSyncAt: schema.integrations.lastSyncAt,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        eq(schema.integrations.userId, requesterUserId),
+      ),
+    )
+    .orderBy(asc(schema.integrations.createdAt));
+
+  const events = schema.familyEvents;
+  const mirrorRows = await database
+    .select({
+      title: events.title,
+      startsAt: events.startsAt,
+      endsAt: events.endsAt,
+      location: events.location,
+      childId: events.childId,
+      deletedAt: events.deletedAt,
+    })
+    .from(events)
+    .innerJoin(schema.integrations, eq(schema.integrations.id, events.integrationId))
+    .where(
+      and(
+        eq(events.familyId, familyId),
+        isNotNull(events.googleEventId),
+        eq(schema.integrations.userId, requesterUserId),
+      ),
+    )
+    .orderBy(asc(events.startsAt));
+
   return {
     textThread: turns.map((turn) => ({
       role: turn.role,
@@ -111,5 +220,41 @@ export async function loadRequesterOnlyExport(
       to: field(row.after, 'language'),
       why: field(row.after, 'why'),
     })),
+    consents: consentRows.map((row) => {
+      const withheld = row.type === TEEN_EVIDENCE_CONSENT ? ('teen' as const) : null;
+      return {
+        type: row.type,
+        scope: row.scope,
+        granted: row.granted,
+        grantedAt: row.grantedAt.toISOString(),
+        revokedAt: iso(row.revokedAt),
+        expiresAt: iso(row.expiresAt),
+        policyVersion: row.policyVersion,
+        evidence: withheld ? null : row.evidence,
+        ip: row.ip,
+        userAgent: row.userAgent,
+        withheld,
+      };
+    }),
+    connections: connectionRows.map((row) => ({
+      provider: row.provider,
+      scopes: row.scopes,
+      status: row.status,
+      connectedAt: row.createdAt.toISOString(),
+      lastSyncAt: iso(row.lastSyncAt),
+    })),
+    calendarMirrors: mirrorRows.map((row) => {
+      const withheld = gate.isPrivate([row.childId], [row.title, row.location ?? ''])
+        ? ('teen' as const)
+        : null;
+      return {
+        title: withheld ? TEEN_REDACTED_PLACEHOLDER : row.title,
+        startsAt: row.startsAt.toISOString(),
+        endsAt: iso(row.endsAt),
+        location: withheld ? null : row.location,
+        cancelledAt: iso(row.deletedAt),
+        withheld,
+      };
+    }),
   };
 }

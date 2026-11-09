@@ -7,7 +7,8 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
 import type { AuditVerb } from '~/lib/trail/verbs';
-import { type FamilyMemoryExport, loadFamilyMemoryExport } from './export-memory';
+import { type HouseholdExport, loadHouseholdExport } from './export-household';
+import { type FamilyMemoryExport, exportTeenGate, loadFamilyMemoryExport } from './export-memory';
 import { type RequesterOnlyExport, loadRequesterOnlyExport } from './export-requester';
 
 /**
@@ -268,6 +269,12 @@ export interface FamilyExportDocument {
     outbound: number;
     openWorkstreamCount: number;
   }[];
+  /** The household calendar Hale keeps; one parent's Google mirror is in their own section. */
+  calendarEvents: HouseholdExport['calendarEvents'];
+  /** The threads every parent can read; each parent's 1:1 is in their own section only. */
+  sharedThreads: HouseholdExport['sharedThreads'];
+  /** The group lists, with adders as you / your household / another household (export-household.ts). */
+  groupLists: HouseholdExport['groupLists'];
   /** The requester's own records, which no other adult's copy carries (export-requester.ts). */
   requesterOnly: RequesterOnlyExport;
   /** What Hale remembers about the family: facts, episodes, jobs and promises. */
@@ -701,7 +708,9 @@ export async function assembleFamilyExport(
     { userId: deps.actorUserId },
     now,
   );
-  const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId);
+  const gate = exportTeenGate(childRows, now);
+  const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
+  const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -735,6 +744,9 @@ export async function assembleFamilyExport(
     activityReviews,
     trips,
     memoryDigests,
+    calendarEvents: household.calendarEvents,
+    sharedThreads: household.sharedThreads,
+    groupLists: household.groupLists,
     requesterOnly,
     memory,
     trail,
