@@ -340,7 +340,7 @@ function harness(
       options.composeDateUnconfirmed ??
       (async (_client, facts) => {
         unconfirmed.push(facts);
-        return `composed unconfirmed ${facts.why} ${facts.link}`;
+        return `composed unconfirmed ${facts.why}`;
       }),
     ...(options.clock ? { clock: options.clock } : {}),
   };
@@ -2236,7 +2236,6 @@ describe('VIL-423 · the send-time date check (REGISTRATION_DATE_CHECK)', () => 
     expect(result.sent).toBe(1);
     expect(h.unconfirmed).toHaveLength(1);
     expect(h.unconfirmed[0]).toMatchObject({
-      link: win().sourceUrl,
       why: 'page_unconfirmed',
       offer: true,
       window: expect.stringContaining('Fall 2026'),
@@ -2245,6 +2244,12 @@ describe('VIL-423 · the send-time date check (REGISTRATION_DATE_CHECK)', () => 
     });
     // The facts carry no opening at all, so the text cannot state the unconfirmed one.
     expect(JSON.stringify(h.unconfirmed[0])).not.toMatch(/September 15|6:30/);
+    // The link is data: the writer is never handed it, and code puts it on its own line
+    // after the writer's text, exactly once.
+    expect(JSON.stringify(h.unconfirmed[0])).not.toContain(win().sourceUrl);
+    const wire = h.transport.bodies()[0] ?? '';
+    expect(wire.startsWith(`composed unconfirmed page_unconfirmed\n${win().sourceUrl}`)).toBe(true);
+    expect(wire.split(win().sourceUrl)).toHaveLength(2);
     expect(auditAfter(h.writes, 'registration_sequence_leg_sent')).toMatchObject({
       leg: 'heads_up',
       dateCheck: 'unread',
