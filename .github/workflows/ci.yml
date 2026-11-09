@@ -308,6 +308,9 @@ jobs:
       - name: Coach local day eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-local-day
 
+      - name: Coach capability correction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-capability-correction
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 

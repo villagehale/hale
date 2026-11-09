@@ -19,6 +19,17 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
+  type CapabilityNotes,
+  type OwedCorrection,
+  loadOwedCorrections,
+} from '~/lib/channel/capabilities/ledger';
+import { type DeferredCapability, darkCapabilities } from '~/lib/channel/capabilities/registry';
+import {
+  augmentCoachSkillForCapabilities,
+  noteCapabilityCorrectionTool,
+  noteCapabilityDeclinedTool,
+} from '~/lib/channel/capabilities/tools';
+import {
   groupPlanDraftPort,
   productionRecordGroupPlanOrigin,
 } from '~/lib/channel/group-plan/stamp';
@@ -228,6 +239,9 @@ export interface ChannelCoachPorts {
   /** Their coarse area's outlook, today onward (VIL-435). Optional: absent or empty
    * leaves the key out. */
   loadForecast?(familyId: string): Promise<ForecastDay[]>;
+  /** VIL-303 · this parent's earlier noes that are true now. Optional: absent or empty
+   * leaves the key, the addendum and the correction verb out. */
+  loadOwedCorrections?(familyId: string, parentUserId: string): Promise<OwedCorrection[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -418,10 +432,25 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           ? await appendFactSourceSkill(householdSkill)
           : householdSkill;
       // VIL-435: the local-day addendum rides only when a day fact does.
-      const skill = augmentCoachSkillForLocalDay(
+      const dayedSkill = augmentCoachSkillForLocalDay(
         sourcedSkill,
         Object.keys(localDay).length > 0 ? await loadCronSkill('coach-local-day') : null,
       );
+      // VIL-303: a 1:1 turn may say a deferred capability is not real yet while one is
+      // dark, and carries a correction while this parent is owed one. A group turn does
+      // neither: the no and its correction belong to the parent who heard the no.
+      const darkNow = turn.audience === 'group' ? [] : darkCapabilities(turn.familyId);
+      const owedCorrections =
+        turn.audience === 'group' || !ports.loadOwedCorrections
+          ? []
+          : await ports.loadOwedCorrections(turn.familyId, turn.parentUserId);
+      const skill = augmentCoachSkillForCapabilities(dayedSkill, {
+        declined: darkNow.length > 0,
+        correction:
+          owedCorrections.length > 0 ? await loadCronSkill('coach-capability-correction') : null,
+      });
+      const declined: DeferredCapability[] = [];
+      const corrected: DeferredCapability[] = [];
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -466,6 +495,8 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         // What the watch last read on this family's providers. Absent when empty, so
         // the ordinary turn's prompt bytes and cache prefix are untouched.
         ...(providerWatch.length > 0 ? { providerWatch } : {}),
+        // VIL-303: absent unless this parent is owed a correction, for the same reason.
+        ...(owedCorrections.length > 0 ? { capabilityCorrections: owedCorrections } : {}),
       };
       const media = await mediaForTurn(turn, ports);
       if (media.unwatched.length > 0) {
@@ -550,6 +581,22 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                           },
                         }
                       : {}),
+                  }),
+                ]
+              : []),
+            ...(darkNow.length > 0
+              ? [
+                  noteCapabilityDeclinedTool({
+                    dark: darkNow,
+                    onDeclined: (capability) => declined.push(capability),
+                  }),
+                ]
+              : []),
+            ...(owedCorrections.length > 0
+              ? [
+                  noteCapabilityCorrectionTool({
+                    owed: owedCorrections.map((owed) => owed.capability),
+                    onCorrected: (capability) => corrected.push(capability),
                   }),
                 ]
               : []),
@@ -690,11 +737,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           });
           await ports.recordRun(record('completed'));
           const card = experienceCard as ExperienceCardIntent | null;
+          const capabilityNotes: CapabilityNotes | null =
+            declined.length > 0 || corrected.length > 0 ? { declined, corrected } : null;
           return {
             reply,
             planOffer,
             activityPromise,
             spotWatch,
+            capabilityNotes,
             // The title passes the same age-derived teen floor as the answer (rule #1).
             experienceCard:
               card && !noticeReady
@@ -783,6 +833,14 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     // The line names the fault class only.
     loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
     loadForecast: (familyId) => loadCoachForecast(database, familyId),
+    loadOwedCorrections: (familyId, parentUserId) =>
+      loadOwedCorrections(database, { familyId, parentUserId }).catch((err: unknown) => {
+        console.error(
+          { fault: err instanceof Error ? err.name : typeof err },
+          'coach: owed capability corrections unavailable',
+        );
+        return [];
+      }),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(

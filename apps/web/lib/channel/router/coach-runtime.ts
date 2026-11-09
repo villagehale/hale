@@ -1,4 +1,5 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -112,6 +113,12 @@ export interface ChannelTurnResult {
    * `ifLeaveFails` is the model's own line sent only if that leave is then refused.
    */
   groupLeave?: { ifLeaveFails: string } | null;
+  /**
+   * VIL-303 · what this reply said about a deferred capability: a no it gave, or an
+   * earlier no it corrected. Rides out for the reason the promises above do, and the
+   * router writes it only once the reply is sent. Null or absent means neither.
+   */
+  capabilityNotes?: CapabilityNotes | null;
   /**
    * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
    * coach returned (the claim read) can still send the drafts receipt. The production
