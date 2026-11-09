@@ -487,7 +487,9 @@ const replySchema = z.object({
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
-  parentQuestion: z.boolean().optional().default(false).catch(false),
+  // Fails closed: a value that is there but not a boolean may hide a question, and a
+  // question must never stand as a yes.
+  parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
