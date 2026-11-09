@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "No worries, we can leave it there for now. What should I call you, whenever you want to tell me?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1370
+}
