@@ -114,8 +114,12 @@ async function estimate() {
     const input =
       estimateTokens((fixture.prompt === 'short' ? shortSkill : skill).instructions) +
       estimateTokens(JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture)))) +
-      estimateTokens(voice.onboardingReplyToolSchema());
-    usd += (input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output;
+      estimateTokens(voice.onboardingReplyToolSchema(inputFor(voice, fixture)));
+    // A turn graded through code may draw its one rewrite too.
+    const draws = fixture.throughCode ? 2 : 1;
+    usd +=
+      draws *
+      ((input / 1e6) * price.input + (voice.ONBOARDING_REPLY_MAX_TOKENS / 1e6) * price.output);
     if (fixture.watchFor) {
       const judgePrice = PRICE[await readJudgeModel(PLACE_JUDGE_TIER)];
       if (!judgePrice) throw new Error('no list price for the judge model');
@@ -149,7 +153,7 @@ async function record() {
   const getClient = lazyAnthropic('friend-marks');
   const cost = makeCost();
   const cachedOnly = process.argv.includes('--cached-only');
-  const { skill, shortSkill, voice, lane } = await loadSubject();
+  const { voice, lane } = await loadSubject();
   const judge = makeJudge(
     await readJudgeModel(PLACE_JUDGE_TIER),
     PLACE_JUDGE_SYSTEM,
@@ -159,26 +163,55 @@ async function record() {
     cost,
   );
 
-  let failed = 0;
-  for (const fixture of FRIEND_MARKS_FIXTURES) {
-    const result = await cachedToolCall({
-      tag: `friend-marks:${fixture.id}`,
+  // The system and the tool the live composer builds for this turn.
+  const draw = async (turn, prompt, tag) =>
+    cachedToolCall({
+      tag,
       lane,
-      system: (fixture.prompt === 'short' ? shortSkill : skill).instructions,
-      userMessage: JSON.stringify(voice.friendVoiceContext(inputFor(voice, fixture))),
+      system: (await voice.friendVoiceSystem(turn, prompt === 'short')).system,
+      userMessage: JSON.stringify(voice.friendVoiceContext(turn)),
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
-      toolSchema: voice.onboardingReplyToolSchema(),
+      toolSchema: voice.onboardingReplyToolSchema(turn),
       maxTokens: voice.ONBOARDING_REPLY_MAX_TOKENS,
       cachedOnly,
       getClient,
       cost,
     });
+
+  let failed = 0;
+  for (const fixture of FRIEND_MARKS_FIXTURES) {
+    const input = inputFor(voice, fixture);
+    const tag = `friend-marks:${fixture.id}`;
+    let result;
+    let sent = null;
+    const draws = [];
+    if (fixture.throughCode) {
+      // speakFriend itself runs on the recorded draws: its refusal and its one rewrite
+      // are the code under test, and the reply graded is the one it would send.
+      const composer = {
+        async compose(turn, options) {
+          const prompt = options?.prompt === 'short' ? 'short' : 'full';
+          const drawn = await draw(turn, prompt, draws.length === 0 ? tag : `${tag}:rewrite`);
+          draws.push(drawn);
+          if (drawn.dry) throw new Error('dry run');
+          return voice.parseReplyTool(drawn.value);
+        },
+      };
+      const spoken = await voice.speakFriend(composer, input, { page: async () => undefined });
+      result = draws[0];
+      sent = {
+        source: spoken.source,
+        placeDeclined: spoken.capture.placeDeclined,
+        body: spoken.body,
+      };
+    } else {
+      result = await draw(input, fixture.prompt === 'short' ? 'short' : 'full', tag);
+    }
     if (result.dry) {
       console.info(`DRY   ${fixture.id}`);
       continue;
     }
-    const input = inputFor(voice, fixture);
     const kept = fixture.groupBubbles
       ? (
           voice.findShowGroupBubbles(
@@ -199,7 +232,7 @@ async function record() {
           step: input.step,
           recentTurns: input.recentTurns,
           parentWords: input.parentWords,
-          reply: String(result.value?.reply ?? ''),
+          reply: sent ? sent.body : String(result.value?.reply ?? ''),
           watchFor: fixture.watchFor,
         })
       : null;
@@ -209,6 +242,7 @@ async function record() {
       judged,
       meaning,
       meaningMin: JUDGE_MIN,
+      sent,
     });
     // A quarantined miss is printed with its ticket and does not fail the run.
     const known = knownSeamMiss(fixture, result.value, misses);
@@ -219,6 +253,10 @@ async function record() {
     );
     if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);
+    if (draws.length > 1) {
+      console.info(`      rewrite: ${JSON.stringify(draws[1]?.value?.reply ?? null)}`);
+    }
+    if (sent) console.info(`      sent (${sent.source}): ${JSON.stringify(sent.body)}`);
     if (fixture.groupBubbles)
       console.info(`      groupLeads: ${JSON.stringify(result.value?.groupLeads ?? null)}`);
   }

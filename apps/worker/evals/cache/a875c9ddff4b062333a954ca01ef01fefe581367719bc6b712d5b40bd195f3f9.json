@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Totally fair, no problem. A rougher version works too: just the first three characters of your postal code, or the first five digits of your ZIP. That's enough to find things in your area. What's the kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "coarse"
+  },
+  "latencyMs": 1784
+}

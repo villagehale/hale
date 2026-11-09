@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent has already refused twice: the full code, then the first three characters. The reply asks again for the three characters, which presses them and repeats a request watchFor explicitly forbids. It also never moves on to the kids' names or ages.",
-    "score": 1
-  }
-}

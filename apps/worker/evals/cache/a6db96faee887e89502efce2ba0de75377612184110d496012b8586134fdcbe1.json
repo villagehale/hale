@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the second no warmly ('D'accord, pas de problème') and sets the place aside without pressing. It does not ask again for a code, ZIP, town or place. It makes no promise to find what is nearby. It moves on to the kids, asking for their ages or names, which is what watchFor calls right. It is short and plain. One flaw keeps it from a 5: 'est-ce qu'ils ont des prénoms qu'on peut utiliser' is awkward and oddly suggests the kids might not have names. A cleaner single question would read better.",
+    "score": 4
+  }
+}

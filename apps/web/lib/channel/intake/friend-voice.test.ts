@@ -8,6 +8,8 @@ import {
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
 import {
+  type FriendComposed,
+  type FriendVoiceComposer,
   type FriendVoiceInput,
   assembleFriendBody,
   createFriendVoiceComposer,
@@ -17,6 +19,7 @@ import {
   judgeFriendReply,
   lastInboundFact,
   nameAskVoiceInput,
+  onboardingReplyToolSchema,
   parentReading,
   readGroupLeads,
   speakFriend,
@@ -2280,5 +2283,187 @@ describe('a garbled parentQuestion', () => {
     } finally {
       info.mockRestore();
     }
+  });
+});
+
+/**
+ * VIL-641: the second no to the place is final in code. Code hands the turn the fact
+ * that the coarse code was already asked, and a reply that asks for a place once the
+ * place is declined is refused and written again, read from the model's `placeAsk`.
+ */
+describe('a declined place, closed in code', () => {
+  const NOTHING_KNOWN = {
+    postal: false,
+    kids: false,
+    ages: false,
+    name: false,
+    gmail: false,
+    calendar: false,
+    schedule: false,
+    coparent: false,
+  };
+  const secondNo = blank({
+    step: 'place',
+    parentWords: 'no, not even that',
+    coarseCodeAsked: true,
+    checklist: NOTHING_KNOWN,
+  });
+
+  function sequenced(drafts: FriendComposed[]) {
+    const seen: FriendVoiceInput[] = [];
+    const composer: FriendVoiceComposer = {
+      async compose(input) {
+        seen.push(input);
+        const draft = drafts[seen.length - 1];
+        if (!draft) throw new Error('no draft left');
+        return draft;
+      },
+    };
+    return { composer, seen };
+  }
+  const draft = (over: Partial<FriendComposed> & { placeDeclined?: boolean }): FriendComposed => {
+    const { placeDeclined = false, ...rest } = over;
+    return {
+      reply: 'No problem at all. What are your kids called?',
+      capture: { placeDeclined },
+      asks: true,
+      parentQuestion: false,
+      connectorsOffered: [],
+      joinPointer: null,
+      claimsSaved: false,
+      ...rest,
+    };
+  };
+
+  it('hands the model the fact that the coarse code was asked, and leaves the key out otherwise', () => {
+    const facts = (input: FriendVoiceInput) =>
+      (friendVoiceContext(input) as { facts: Record<string, unknown> }).facts;
+    expect(facts(secondNo).coarseCodeAsked).toBe(true);
+    expect(facts({ ...secondNo, coarseCodeAsked: false })).not.toHaveProperty('coarseCodeAsked');
+    expect(facts(blank({ step: 'place' }))).not.toHaveProperty('coarseCodeAsked');
+  });
+
+  it('asks for placeAsk and appends the place skill only while the place is in play', async () => {
+    const place = (await loadCronSkill('onboarding-friend-place')).instructions;
+    const base = (await loadOnboardingFriendSkill()).instructions;
+    expect((await friendVoiceSystem(secondNo, false)).system).toBe(`${base}\n\n${place}`);
+    expect(
+      (await friendVoiceSystem({ step: 'kids_names', placeDeclined: true }, true)).system,
+    ).toBe(`${(await loadOnboardingFriendShortSkill()).instructions}\n\n${place}`);
+    expect((await friendVoiceSystem({ step: 'email' }, false)).system).toBe(base);
+    expect(onboardingReplyToolSchema(secondNo).properties).toHaveProperty('placeAsk');
+    expect(onboardingReplyToolSchema(secondNo).required).toContain('placeAsk');
+    const email = onboardingReplyToolSchema(blank({ step: 'email' }));
+    expect(email.properties).not.toHaveProperty('placeAsk');
+    expect(email.required).not.toContain('placeAsk');
+  });
+
+  it('refuses a reply that asks for the place after the second no, and sends the rewrite', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { composer, seen } = sequenced([
+        draft({
+          reply: 'I get it. Would you share just the first three characters?',
+          placeDeclined: true,
+          placeAsk: 'coarse',
+        }),
+        draft({ placeAsk: 'none' }),
+      ]);
+      const sent = await speakFriend(composer, secondNo, { page: async () => undefined });
+      expect(seen).toHaveLength(2);
+      expect(sent.source).toBe('retry');
+      expect(sent.body).toBe('No problem at all. What are your kids called?');
+      expect(sent.capture.placeDeclined).toBe(true);
+      // The rewrite is written from the walk after the place, with the place closed.
+      expect(seen[1]?.step).toBe('kids_names');
+      expect(seen[1]?.placeDeclined).toBe(true);
+      expect(seen[1]?.retry?.problem).toBeTruthy();
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('refuses a rewrite that still asks for the place: nothing is sent', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const asking = draft({
+        reply: 'Fair enough. Would a ZIP work instead?',
+        placeDeclined: true,
+        placeAsk: 'full',
+      });
+      const { composer, seen } = sequenced([asking, { ...asking, capture: {} }]);
+      const sent = await speakFriend(composer, secondNo, { page: async () => undefined });
+      expect(seen).toHaveLength(2);
+      expect(sent.source).toBe('unsent');
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  it('sends a closed place that asks for no place, and a first no that asks for the coarse code', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      // The field decides, not the words: the same text marked as asking no place goes.
+      const closed = sequenced([
+        draft({
+          reply: 'I get it. Would you share just the first three characters?',
+          placeDeclined: true,
+          placeAsk: 'none',
+        }),
+      ]);
+      const moved = await speakFriend(closed.composer, secondNo, { page: async () => undefined });
+      expect(closed.seen).toHaveLength(1);
+      expect(moved.source).toBe('composed');
+      expect(moved.capture.placeDeclined).toBe(true);
+
+      const firstNo = sequenced([
+        draft({
+          reply: 'No problem. Would you share just the first three characters?',
+          placeAsk: 'coarse',
+        }),
+      ]);
+      const asked = await speakFriend(
+        firstNo.composer,
+        { ...secondNo, coarseCodeAsked: undefined, parentWords: "I'd rather not" },
+        { page: async () => undefined },
+      );
+      expect(firstNo.seen).toHaveLength(1);
+      expect(asked.source).toBe('composed');
+      expect(asked.placeAsk).toBe('coarse');
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it('reads placeAsk from the tool value, and a value outside the enum as not said', async () => {
+    const base = (
+      JSON.parse(
+        readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+      ) as { response: Anthropic.Message }
+    ).response;
+    const composerReplying = (input: Record<string, unknown>) => {
+      const response = {
+        ...base,
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+      } as Anthropic.Message;
+      const next = async () => response;
+      return createFriendVoiceComposer({
+        messages: { create: next, stream: () => ({ finalMessage: next }) },
+      } as never);
+    };
+    const fields = { reply: 'What are your kids called?', asks: true, parentQuestion: false };
+    expect(
+      (await composerReplying({ ...fields, placeAsk: 'coarse' }).compose(secondNo)).placeAsk,
+    ).toBe('coarse');
+    expect(
+      (await composerReplying({ ...fields, placeAsk: 'town' }).compose(secondNo)).placeAsk,
+    ).toBeNull();
   });
 });

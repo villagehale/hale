@@ -184,6 +184,8 @@ export interface FirstTouchGiven {
   kidsNamesDeclined?: boolean;
   /** True once they declined to give any place, the coarse code included. */
   placeDeclined?: boolean;
+  /** VIL-641. True once a reply that asked for the coarse code, after a first no, went out. */
+  coarseCodeAsked?: boolean;
   /** True once they said later to the calendar. */
   calendarLater?: boolean;
   /** True once they said later to email. */
@@ -425,6 +427,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     nameDeclined?: unknown;
     kidsNamesDeclined?: unknown;
     placeDeclined?: unknown;
+    coarseCodeAsked?: unknown;
     calendarLater?: unknown;
     gmailLater?: unknown;
     scheduleDone?: unknown;
@@ -447,6 +450,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
   const nameDeclined = row.nameDeclined === true;
   const kidsNamesDeclined = row.kidsNamesDeclined === true;
   const placeDeclined = row.placeDeclined === true;
+  const coarseCodeAsked = row.coarseCodeAsked === true;
   const calendarLater = row.calendarLater === true;
   const gmailLater = row.gmailLater === true;
   const scheduleDone = row.scheduleDone === true;
@@ -467,6 +471,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     !nameDeclined &&
     !kidsNamesDeclined &&
     !placeDeclined &&
+    !coarseCodeAsked &&
     !calendarLater &&
     !gmailLater &&
     !scheduleDone &&
@@ -485,6 +490,7 @@ function decodeFirstTouchGiven(value: unknown): FirstTouchPersisted['given'] {
     ...(nameDeclined ? { nameDeclined } : {}),
     ...(kidsNamesDeclined ? { kidsNamesDeclined } : {}),
     ...(placeDeclined ? { placeDeclined } : {}),
+    ...(coarseCodeAsked ? { coarseCodeAsked } : {}),
     ...(calendarLater ? { calendarLater } : {}),
     ...(gmailLater ? { gmailLater } : {}),
     ...(scheduleDone ? { scheduleDone } : {}),

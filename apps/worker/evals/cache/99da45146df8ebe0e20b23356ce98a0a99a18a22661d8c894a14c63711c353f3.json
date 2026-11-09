@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The parent has now said no twice, yet the reply asks again for the first three characters of the postal code. That is pressing, and watchFor explicitly marks asking for a code again as wrong. 'I won't push' is contradicted by the ask that follows. It also never moves on to the kids' names or ages.",
-    "score": 1
-  }
-}

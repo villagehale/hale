@@ -249,6 +249,16 @@ export interface FriendVoiceInput {
   /** On the retry only: the draft that was not sent and why, so the second try fixes that. */
   retry?: { draft: string; problem: string } | null;
   /**
+   * VIL-641. Code's record that an earlier reply asked for the coarse code after a
+   * first no, so a no now is the second one. Absent when it did not.
+   */
+  coarseCodeAsked?: boolean;
+  /**
+   * The place is declined for good. Code refuses a reply that asks for one. Not
+   * handed to the model: `checklist` already counts the place as answered.
+   */
+  placeDeclined?: boolean;
+  /**
    * How long ago the parent's last inbound was, when this reply is picking it up
    * after a real wait. Absent when that text just arrived. Facts only.
    */
@@ -281,6 +291,8 @@ export interface FriendVoiceResult {
   capture: OnboardingCapture;
   /** The model's `asks` on the reply that went out. False when nothing was sent. */
   asks: boolean;
+  /** The model's `placeAsk` on the reply that went out, when the place was in play. */
+  placeAsk?: PlaceAsk | null;
 }
 
 export interface FriendComposeOptions {
@@ -304,9 +316,32 @@ export interface FriendComposed {
   joinPointer?: JoinPointer | null;
   /** This reply tells the parent something was saved, added or set this turn. */
   claimsSaved?: boolean;
+  /** What this reply asks for about where they live. Null or omitted: the model did not say. */
+  placeAsk?: PlaceAsk | null;
 }
 
 export type OfferedConnector = 'gmail' | 'calendar';
+
+/** `full` is the postal code or ZIP; `coarse` is the smaller ask after a first no. */
+export type PlaceAsk = 'full' | 'coarse' | 'none';
+
+const PLACE_ASKS = ['full', 'coarse', 'none'] as const;
+
+/**
+ * The place is in play: its step, or a turn after the coarse code was asked or the
+ * place was declined. Only then does the turn carry the place skill and `placeAsk`,
+ * so every other turn keeps its bytes.
+ */
+function placeInPlay(
+  input: Pick<FriendVoiceInput, 'step' | 'coarseCodeAsked' | 'placeDeclined'>,
+): boolean {
+  return (
+    input.step === 'place' ||
+    input.step === 'place_card' ||
+    input.coarseCodeAsked === true ||
+    input.placeDeclined === true
+  );
+}
 
 /** What the model says a co-parent yes does with the number code places under the reply. */
 export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
@@ -332,9 +367,11 @@ function replyMarks(composed: FriendComposed): {
   offered: readonly OfferedConnector[];
   joinPointer: JoinPointer | null;
   claimsSaved: boolean;
+  placeAsk: PlaceAsk | null;
 } {
   const pointer = composed.joinPointer;
   return {
+    placeAsk: composed.placeAsk ?? null,
     asks: composed.asks === true,
     parentQuestion: composed.parentQuestion === true,
     offered: composed.connectorsOffered ?? [],
@@ -505,6 +542,7 @@ const replyFields = z.object({
     .default(null)
     .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
+  placeAsk: z.enum(PLACE_ASKS).nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
 });
@@ -606,17 +644,27 @@ const replyJsonSchema = {
   required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
-/** Flag off omits the choice field, so the tool the model fills is today's. */
-export function onboardingReplyToolSchema(): {
+/**
+ * Flag off omits the choice field, so the tool the model fills is today's. `placeAsk`
+ * rides only while the place is in play; without a turn it is not.
+ */
+export function onboardingReplyToolSchema(
+  input?: Pick<FriendVoiceInput, 'step' | 'coarseCodeAsked' | 'placeDeclined'>,
+): {
   type: 'object';
   properties: Record<string, unknown>;
   required: readonly string[];
 } {
-  if (!linqGroupOnboardingV2Enabled()) {
-    const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
-    return { ...replyJsonSchema, properties };
-  }
-  return replyJsonSchema;
+  const { coparentGroupMode: _choice, ...flagOff } = replyJsonSchema.properties;
+  const schema = linqGroupOnboardingV2Enabled()
+    ? replyJsonSchema
+    : { ...replyJsonSchema, properties: flagOff };
+  if (!input || !placeInPlay(input)) return schema;
+  return {
+    ...schema,
+    properties: { ...schema.properties, placeAsk: { type: 'string', enum: PLACE_ASKS } },
+    required: [...schema.required, 'placeAsk'],
+  };
 }
 
 const BANNED_PHRASE =
@@ -817,6 +865,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
     next: ASKS_NOTHING.has(input.step) ? null : (missing?.[1] ?? null),
     facts: {
       placeLabel: input.placeLabel,
+      // Absent unless set, so a turn without it keeps its prompt bytes.
+      ...(input.coarseCodeAsked === true ? { coarseCodeAsked: true } : {}),
       agesLabel: input.agesLabel,
       ageMonths: input.ageMonths,
       children: input.children ?? null,
@@ -1997,6 +2047,7 @@ export async function speakFriend(
     turnCapture: OnboardingCapture,
     step: FriendStep,
     asks: boolean,
+    placeAsk: PlaceAsk | null,
   ): FriendVoiceResult => {
     const capture = withPre(turnCapture);
     const body =
@@ -2012,6 +2063,7 @@ export async function speakFriend(
       step,
       capture,
       asks,
+      placeAsk,
     };
   };
 
@@ -2045,6 +2097,7 @@ export async function speakFriend(
         capture: OnboardingCapture;
         step: FriendStep;
         asks: boolean;
+        placeAsk: PlaceAsk | null;
       }
     | {
         fail: FriendFallback;
@@ -2095,7 +2148,14 @@ export async function speakFriend(
           : empty;
       const draft = composed.reply.trim();
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step, asks: marks.asks };
+        return {
+          prose: '',
+          bubbles: [],
+          capture,
+          step: input.step,
+          asks: marks.asks,
+          placeAsk: marks.placeAsk,
+        };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -2125,6 +2185,17 @@ export async function speakFriend(
           fail: 'unusable',
           capture,
           retry: { draft, problem: retryProblem('unbacked_save') },
+        };
+      }
+      // VIL-641: once the place is declined, a reply that asks for one goes back to
+      // the model, read from its own field. An omitted field is not a refusal.
+      const placeClosed = capture.placeDeclined || input.placeDeclined === true;
+      if (placeClosed && (marks.placeAsk === 'full' || marks.placeAsk === 'coarse')) {
+        noteRefusal({ reason: 'place_closed', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('place_closed') },
         };
       }
       const judgeInput = {
@@ -2245,6 +2316,7 @@ export async function speakFriend(
           capture,
           step: judgeInput.step,
           asks: marks.asks,
+          placeAsk: marks.placeAsk,
         };
       }
       return reject(judged);
@@ -2312,6 +2384,7 @@ export async function speakFriend(
       first.capture,
       first.step,
       first.asks,
+      first.placeAsk,
     );
   }
   if (firstPrompt === 'short') return failed(first.fail, first.capture);
@@ -2336,7 +2409,15 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step, second.asks);
+    return finish(
+      second.prose,
+      second.bubbles,
+      'retry',
+      capture,
+      second.step,
+      second.asks,
+      second.placeAsk,
+    );
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2376,11 +2457,14 @@ export function retryProblem(
     | 'unbacked_save'
     | 'unbacked_claim'
     | 'no_group_bubble'
-    | 'stop_still_asking',
+    | 'stop_still_asking'
+    | 'place_closed',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
+    case 'place_closed':
+      return 'They turned the place down twice, so it is settled, and the draft asked for it again. Accept the no and ask `next`, with no code, ZIP or town in it.';
     case 'no_group_bubble':
       return "A group bubble could not be sent: it was missing, or named a time, day, price, name or activity that is not in that group's own lines. Write one bubble per group in findGroups, from that group's lines only.";
     case 'stop_still_asking':
@@ -2448,20 +2532,23 @@ export function askInWords(step: FriendStep | undefined): string {
   }
 }
 
-/** The capture fields a retry may build on: facts and a yes or no to a connector. */
+/** The capture fields a retry may build on: facts, a yes or no to a connector, a declined place. */
 function settledFacts(capture: OnboardingCapture): OnboardingCapture {
   return {
     ...factsOnly(capture),
     nameConfirmed: capture.nameConfirmed,
     connectGmail: capture.connectGmail,
     connectCalendar: capture.connectCalendar,
+    // The parent's second no settles the place whatever the draft said next.
+    placeDeclined: capture.placeDeclined,
   };
 }
 
 /**
  * The input as it stands after a capture that moved the walk on, or null when
- * the capture did not. Only facts and a yes or no to a connector carry over:
- * a decision read from a refused draft (the group chat, a schedule add) does not.
+ * the capture did not. Only facts, a yes or no to a connector and a declined place
+ * carry over: a decision read from a refused draft (the group chat, a schedule add)
+ * does not.
  */
 function advancedInput(
   input: FriendVoiceInput,
@@ -2472,7 +2559,11 @@ function advancedInput(
   const judged = judgeInputFor(input, settled);
   if (judged.step === input.step) return null;
   return {
-    input: { ...judged, checklist: checklistAfter(input.checklist, settled) },
+    input: {
+      ...judged,
+      checklist: checklistAfter(input.checklist, settled),
+      ...(settled.placeDeclined ? { placeDeclined: true } : {}),
+    },
     settled,
   };
 }
@@ -2600,7 +2691,7 @@ export function findShowGroupBubbles(
  * addendum ride only on the turns that need them, so every other turn keeps its bytes.
  */
 export async function friendVoiceSystem(
-  input: Pick<FriendVoiceInput, 'step' | 'householdGroup'>,
+  input: Pick<FriendVoiceInput, 'step' | 'householdGroup' | 'coarseCodeAsked' | 'placeDeclined'>,
   short: boolean,
 ) {
   const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
@@ -2609,10 +2700,54 @@ export async function friendVoiceSystem(
       ? await loadCronSkill('group-onboarding-voice')
       : null;
   const group = input.householdGroup ? await loadCronSkill('household-group') : null;
-  const system = [skill, choice, group]
+  const place = placeInPlay(input) ? await loadCronSkill('onboarding-friend-place') : null;
+  const system = [skill, choice, group, place]
     .flatMap((part) => (part ? [part.instructions] : []))
     .join('\n\n');
   return { skill, system };
+}
+
+/** The parsed tool value as the composer hands it to speakFriend. */
+function composedFromReply(value: z.infer<typeof replySchema>): FriendComposed {
+  return {
+    reply: value.reply,
+    groupLeads: value.groupLeads,
+    capture: {
+      postalCode: value.postalCode,
+      city: value.city,
+      children: value.children,
+      parentName: value.parentName,
+      parentRole: value.parentRole,
+      parentRoleBasis: value.parentRoleBasis,
+      nameConfirmed: value.nameConfirmed,
+      connectCalendar: value.connectCalendar,
+      connectGmail: value.connectGmail,
+      scheduleAdds: value.scheduleAdds,
+      scheduleDone: value.scheduleDone,
+      coparentGroup: value.coparentGroup,
+      coparentGroupMode: value.coparentGroupMode,
+      nameDeclined: value.nameDeclined,
+      nameTakenBack: value.nameTakenBack,
+      kidsNamesDeclined: value.kidsNamesDeclined,
+      placeDeclined: value.placeDeclined,
+      calendarLater: value.calendarLater,
+      gmailLater: value.gmailLater,
+      stopAsking: value.stopAsking,
+      language: acceptReplyLanguage(value.language),
+    },
+    ahaMention: value.ahaMention,
+    asks: value.asks,
+    parentQuestion: value.parentQuestion,
+    connectorsOffered: value.connectorsOffered,
+    joinPointer: value.joinPointer,
+    claimsSaved: value.claimsSaved,
+    placeAsk: value.placeAsk,
+  };
+}
+
+/** A recorded tool value, read as the live composer reads it. For the eval harness. */
+export function parseReplyTool(raw: unknown): FriendComposed {
+  return composedFromReply(replySchema.parse(raw));
 }
 
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
@@ -2628,44 +2763,12 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
-        inputJsonSchema: onboardingReplyToolSchema(),
+        inputJsonSchema: onboardingReplyToolSchema(input),
         schema: replySchema,
         maxTokens: MAX_TOKENS,
         transport: llmTransport(),
       });
-      return {
-        reply: value.reply,
-        groupLeads: value.groupLeads,
-        capture: {
-          postalCode: value.postalCode,
-          city: value.city,
-          children: value.children,
-          parentName: value.parentName,
-          parentRole: value.parentRole,
-          parentRoleBasis: value.parentRoleBasis,
-          nameConfirmed: value.nameConfirmed,
-          connectCalendar: value.connectCalendar,
-          connectGmail: value.connectGmail,
-          scheduleAdds: value.scheduleAdds,
-          scheduleDone: value.scheduleDone,
-          coparentGroup: value.coparentGroup,
-          coparentGroupMode: value.coparentGroupMode,
-          nameDeclined: value.nameDeclined,
-          nameTakenBack: value.nameTakenBack,
-          kidsNamesDeclined: value.kidsNamesDeclined,
-          placeDeclined: value.placeDeclined,
-          calendarLater: value.calendarLater,
-          gmailLater: value.gmailLater,
-          stopAsking: value.stopAsking,
-          language: acceptReplyLanguage(value.language),
-        },
-        ahaMention: value.ahaMention,
-        asks: value.asks,
-        parentQuestion: value.parentQuestion,
-        connectorsOffered: value.connectorsOffered,
-        joinPointer: value.joinPointer,
-        claimsSaved: value.claimsSaved,
-      };
+      return composedFromReply(value);
     },
   };
 }

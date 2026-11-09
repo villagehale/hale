@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Totally fair, I won't push it. Who's the little one (or ones) I'm finding things for? Their names and ages help me point you to the right stuff.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true,
+    "asks_next": "kids"
+  },
+  "latencyMs": 1813
+}

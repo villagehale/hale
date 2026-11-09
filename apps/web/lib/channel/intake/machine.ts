@@ -1693,7 +1693,7 @@ function givenFromStored(
     coparentGroup: boolean | null;
     coparentGroupMode: CoparentGroupMode | null;
   },
-  extra: { scheduled?: FirstTouchScheduled[] } = {},
+  extra: { scheduled?: FirstTouchScheduled[]; coarseCodeAsked?: boolean } = {},
 ): FirstTouchGiven | null {
   const scheduled = [...(prior?.scheduled ?? []), ...(extra.scheduled ?? [])];
   const given: FirstTouchGiven = {
@@ -1705,6 +1705,7 @@ function givenFromStored(
     nameDeclined: prior?.nameDeclined === true || capture.nameDeclined,
     kidsNamesDeclined: prior?.kidsNamesDeclined === true || capture.kidsNamesDeclined,
     placeDeclined: prior?.placeDeclined === true || capture.placeDeclined === true,
+    coarseCodeAsked: prior?.coarseCodeAsked === true || extra.coarseCodeAsked === true,
     calendarLater: prior?.calendarLater === true || capture.calendarLater,
     gmailLater: prior?.gmailLater === true || capture.gmailLater,
     scheduleDone: prior?.scheduleDone === true || capture.scheduleDone,
@@ -1721,6 +1722,7 @@ function givenFromStored(
     !given.nameDeclined &&
     !given.kidsNamesDeclined &&
     !given.placeDeclined &&
+    !given.coarseCodeAsked &&
     !given.calendarLater &&
     !given.gmailLater &&
     !given.scheduleDone &&
@@ -1913,6 +1915,8 @@ async function friendOnboardingTurn(
         parentName: priorGiven?.parentName ?? null,
         parentRole: priorGiven?.parentRole ?? null,
         checklist,
+        ...(priorGiven?.coarseCodeAsked ? { coarseCodeAsked: true } : {}),
+        ...(priorGiven?.placeDeclined ? { placeDeclined: true } : {}),
       },
     ),
     {
@@ -1937,7 +1941,10 @@ async function friendOnboardingTurn(
     children: stored.collectedChildren,
     postalCode: stored.postalCode,
   };
-  const given = givenFromStored(priorGiven, stored, spoken.capture);
+  // Kept only when the reply that asked it is the one going out.
+  const given = givenFromStored(priorGiven, stored, spoken.capture, {
+    coarseCodeAsked: friendOutbound(spoken) != null && spoken.placeAsk === 'coarse',
+  });
   const children = withKnownAges(collected.children);
   const settled = settledLocation(nextPlace, given);
   const baseTouch: FirstTouchPersisted = {

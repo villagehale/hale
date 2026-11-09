@@ -1320,6 +1320,46 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies().slice(sentBeforeThird).join('\n')).not.toMatch(/postal code/i);
   });
 
+  // VIL-641: the second no is read against a fact code kept, not a guess from the thread.
+  it('keeps a sent coarse-code ask on the session and hands it to the next place turn', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const inputs: FriendVoiceInput[] = [];
+    const scripted = deps.friendVoice;
+    if (!scripted) throw new Error('harness has no voice');
+    let coarse: 'coarse' | 'full' = 'coarse';
+    deps.friendVoice = {
+      async compose(input, options) {
+        inputs.push(input);
+        const composed = await scripted.compose(input, options);
+        return input.step === 'place' && /rather not/i.test(input.parentWords)
+          ? { ...composed, placeAsk: coarse }
+          : composed;
+      },
+    };
+    const text = (body: string) => handleInboundSms(fake.db, inbound(transport, body), deps);
+
+    await text('hi');
+    await text("I'd rather not give out my postal code");
+    expect((await loadOpenSession(fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked).toBe(true);
+    await text('no thanks');
+    expect(inputs[1]?.coarseCodeAsked).not.toBe(true);
+    expect(inputs[2]?.coarseCodeAsked).toBe(true);
+
+    // Positive control: a reply that asked for the full code again records nothing.
+    const other = harness({ voice: true });
+    coarse = 'full';
+    other.deps.friendVoice = deps.friendVoice;
+    await handleInboundSms(other.fake.db, inbound(other.transport, 'hi'), other.deps);
+    await handleInboundSms(
+      other.fake.db,
+      inbound(other.transport, "I'd rather not give out my postal code"),
+      other.deps,
+    );
+    expect(
+      (await loadOpenSession(other.fake.db, PHONE))?.firstTouch?.given?.coarseCodeAsked,
+    ).not.toBe(true);
+  });
+
   it('names a later place turn the model could not write, instead of a step', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     let modelUp = true;

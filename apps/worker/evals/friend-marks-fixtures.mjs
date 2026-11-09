@@ -12,7 +12,8 @@
  * connector a question must not turn into a yes: code clears that yes only
  * when `parentQuestion` is set, so a yes without it is a miss. `offersNone` is a
  * turn whose reply must offer no connector at all. `sendable` is a reply that
- * must pass the code judge for its step, so code would send it.
+ * must pass the code judge for its step, so code would send it. `throughCode` is a
+ * turn graded on what speakFriend sends, after its refusal and its one rewrite.
  */
 
 const DONE_THROUGH_NAME = {
@@ -85,8 +86,10 @@ const PLACE_DECLINED_RETRY_FR = {
 };
 
 // VIL-641: a place turned down twice, per country. The first no gets the coarse code
-// that fits (a Canadian code's first three characters, a US five-digit ZIP); the second
-// settles the place with `placeDeclined` and moves on. Neither promises anything nearby.
+// that fits (a Canadian code's first three characters, a US five-digit ZIP), marked
+// `placeAsk: coarse` so code keeps it; the second turn carries that as
+// `coarseCodeAsked`, settles the place with `placeDeclined` and moves on. Neither
+// promises anything nearby.
 function declineTurns(opening, firstNo, offer, secondNo, language) {
   const ask = { role: 'hale', body: opening, asked: true };
   return {
@@ -101,6 +104,7 @@ function declineTurns(opening, firstNo, offer, secondNo, language) {
       step: 'place',
       ...(language ? { language } : {}),
       parentWords: secondNo,
+      coarseCodeAsked: true,
       checklist: NOTHING_YET,
       recentTurns: [
         ask,
@@ -309,8 +313,8 @@ export const FRIEND_MARKS_FIXTURES = [
   {
     id: 'place-decline-1-en-ca',
     over: DECLINE_CA.first,
-    emits: ['asks'],
-    expect: { asks: true, postalCode: null },
+    emits: ['asks', 'placeAsk'],
+    expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
     sendable: true,
     watchFor: `Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code (offering a ZIP as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
@@ -321,15 +325,15 @@ export const FRIEND_MARKS_FIXTURES = [
     over: DECLINE_CA.second,
     emits: ['asks'],
     expect: { asks: true, postalCode: null, placeDeclined: true },
-    sendable: true,
+    throughCode: true,
     watchFor: SECOND_NO_WATCH,
     printReply: true,
   },
   {
     id: 'place-decline-1-en-us',
     over: DECLINE_US.first,
-    emits: ['asks'],
-    expect: { asks: true, postalCode: null },
+    emits: ['asks', 'placeAsk'],
+    expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
     sendable: true,
     watchFor: `United States. Right: accepts the no and asks, as the one question, for just their five-digit ZIP, which shows the area and not their street (offering the first three characters of a Canadian postal code as well is fine). Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
@@ -340,15 +344,15 @@ export const FRIEND_MARKS_FIXTURES = [
     over: DECLINE_US.second,
     emits: ['asks'],
     expect: { asks: true, postalCode: null, placeDeclined: true },
-    sendable: true,
+    throughCode: true,
     watchFor: SECOND_NO_WATCH,
     printReply: true,
   },
   {
     id: 'place-decline-1-fr',
     over: DECLINE_FR.first,
-    emits: ['asks'],
-    expect: { asks: true, postalCode: null },
+    emits: ['asks', 'placeAsk'],
+    expect: { asks: true, postalCode: null, placeAsk: 'coarse' },
     placeOpen: true,
     sendable: true,
     watchFor: `French, Canada. Right: accepts the no and asks, as the one question, for just the first three characters of their postal code. Wrong: asking for a town or a street. ${NOTHING_NEARBY}`,
@@ -359,7 +363,7 @@ export const FRIEND_MARKS_FIXTURES = [
     over: DECLINE_FR.second,
     emits: ['asks'],
     expect: { asks: true, postalCode: null, placeDeclined: true },
-    sendable: true,
+    throughCode: true,
     watchFor: SECOND_NO_WATCH,
     printReply: true,
   },
@@ -522,6 +526,7 @@ const FIELD_TYPE = {
   claimsSaved: (v) => typeof v === 'boolean',
   joinPointer: (v) =>
     v === null || ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'].includes(v),
+  placeAsk: (v) => ['full', 'coarse', 'none'].includes(v),
 };
 
 /**
@@ -531,9 +536,15 @@ const FIELD_TYPE = {
 export function friendMarksMisses(
   fixture,
   value,
-  { keptGroupBubbles = 0, judged = null, meaning = null, meaningMin = 4 } = {},
+  { keptGroupBubbles = 0, judged = null, meaning = null, meaningMin = 4, sent = null } = {},
 ) {
   const misses = [];
+  // Graded on what code sends: speakFriend's refusal and its one rewrite ran on the draw.
+  if (fixture.throughCode) {
+    if (!sent) misses.push('sent:not_run');
+    else if (sent.source === 'unsent') misses.push('sent:unsent');
+    else if (sent.placeDeclined !== true) misses.push('sent:placeDeclined:false');
+  }
   // Graded on meaning by the friend-place judge: a low score, or no verdict, is a miss.
   if (fixture.watchFor) {
     if (!meaning) misses.push('meaning:not_judged');

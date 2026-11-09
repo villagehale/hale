@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is in French and accepts the no warmly. It asks once, without pressure, for only the first three characters of the postal code. It doesn't ask for a town or street and makes no promise about finding nearby things. But it also adds a fallback question about the children's names, so there are two questions instead of the one watchFor calls for. It is also a bit wordy.",
-    "score": 4
-  }
-}

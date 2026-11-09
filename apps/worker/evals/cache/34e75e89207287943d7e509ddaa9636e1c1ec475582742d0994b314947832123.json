@@ -1,13 +1,14 @@
 {
   "value": {
-    "reply": "Pas de souci, on n'est pas obligés. Tu peux me dire si vous avez des enfants de quel âge ?",
+    "reply": "Okay, no problem at all. We can skip the place for now. What are your kids' first names?",
     "asks": true,
     "parentQuestion": false,
     "connectorsOffered": [],
     "joinPointer": null,
     "claimsSaved": false,
+    "placeAsk": "none",
     "placeDeclined": true,
-    "language": "fr"
+    "language": "en"
   },
-  "latencyMs": 2140
+  "latencyMs": 1873
 }

@@ -101,7 +101,11 @@ describe('friendMarksMisses', () => {
     const first = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-1-en-us');
     const second = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-2-fr');
     const ok = { judged: { ok: true }, meaning: { score: 5, reason: 'fine' } };
-    const value = { asks: true, reply: 'Totally fair. Just the five-digit ZIP?' };
+    const value = {
+      asks: true,
+      placeAsk: 'coarse',
+      reply: 'Totally fair. Just the five-digit ZIP?',
+    };
     expect(friendMarksMisses(first, value, ok)).toEqual([]);
     expect(
       friendMarksMisses(first, value, { ...ok, meaning: { score: 2, reason: 'promised nearby' } }),
@@ -112,11 +116,41 @@ describe('friendMarksMisses', () => {
     expect(friendMarksMisses(first, { ...value, placeDeclined: true }, ok)).toEqual([
       'placeDeclined:true',
     ]);
+    const sent = { source: 'composed', placeDeclined: true };
     const moved = { asks: true, placeDeclined: true, reply: 'Pas de souci. Tes enfants?' };
-    expect(friendMarksMisses(second, moved, ok)).toEqual([]);
-    expect(friendMarksMisses(second, { ...moved, placeDeclined: false }, ok)).toEqual([
+    expect(friendMarksMisses(second, moved, { ...ok, sent })).toEqual([]);
+    expect(friendMarksMisses(second, { ...moved, placeDeclined: false }, { ...ok, sent })).toEqual([
       'placeDeclined:false',
     ]);
+  });
+
+  // VIL-641 round 2: the first no's coarse ask is what code keeps, and the second no is
+  // graded on what code sends, after its refusal and one rewrite.
+  it('fails a first no whose coarse ask is not marked, and a second no code would not send', () => {
+    const first = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-1-en-ca');
+    const second = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'place-decline-2-en-ca');
+    const ok = { judged: { ok: true }, meaning: { score: 5, reason: 'fine' } };
+    const asked = { asks: true, placeAsk: 'coarse', reply: 'Just the first three?' };
+    expect(friendMarksMisses(first, asked, ok)).toEqual([]);
+    expect(friendMarksMisses(first, { ...asked, placeAsk: 'full' }, ok)).toEqual([
+      'placeAsk:"full"',
+    ]);
+    expect(friendMarksMisses(first, { ...asked, placeAsk: undefined }, ok)).toEqual([
+      'placeAsk:omitted',
+      'placeAsk:null',
+    ]);
+
+    expect(second.over.coarseCodeAsked).toBe(true);
+    const draft = { asks: true, placeDeclined: true, reply: 'Even the first three?' };
+    const sent = { source: 'retry', placeDeclined: true };
+    expect(friendMarksMisses(second, draft, { ...ok, sent })).toEqual([]);
+    expect(
+      friendMarksMisses(second, draft, { ...ok, sent: { ...sent, source: 'unsent' } }),
+    ).toEqual(['sent:unsent']);
+    expect(
+      friendMarksMisses(second, draft, { ...ok, sent: { ...sent, placeDeclined: false } }),
+    ).toEqual(['sent:placeDeclined:false']);
+    expect(friendMarksMisses(second, draft, ok)).toEqual(['sent:not_run']);
   });
 
   it('fails a calendar ask that offers Gmail under the calendar link', () => {
