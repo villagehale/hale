@@ -20,8 +20,6 @@ export interface EmailAlertSnippetScrubSummary {
   applied: boolean;
 }
 
-export const EMAIL_ALERT_SNIPPET_SCRUB_ACTION = 'email_alert_snippets_scrubbed';
-
 const HAS_SNIPPET = sql`m.source ->> 'kind' = 'gmail' and m.source -> 'snippet' is not null`;
 
 export async function scrubEmailAlertSnippets(
@@ -60,7 +58,7 @@ export async function scrubEmailAlertSnippets(
         [...perFamily].map(([familyId, count]) => ({
           familyId,
           actor: 'system',
-          actionTaken: EMAIL_ALERT_SNIPPET_SCRUB_ACTION,
+          actionTaken: 'email_alert_snippets_scrubbed',
           targetTable: 'messages',
           after: { rows: count },
         })),
