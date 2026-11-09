@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
+import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
@@ -42,9 +43,10 @@ async function search(
   finder: ActivityFinder,
   recorder?: (rows: readonly unknown[]) => void,
   input: unknown = {},
+  areaReader?: NamedAreaReader,
 ) {
   return invokeTool(
-    searchVillageTool(db.database, recorder, finder),
+    searchVillageTool(db.database, recorder, finder, areaReader),
     input,
     { familyId, actor: 'test' },
     { writeAudit: async () => {} },
@@ -71,6 +73,43 @@ describe('search_village uses this operation’s live evidence', () => {
       window: 'October 2026',
       town: 'Toronto',
     });
+  });
+
+  it('searches the place the parent named instead of the home area (VIL-523)', async () => {
+    const familyId = await household(false, 'Toronto');
+    const find = vi.fn<ActivityFinder['find']>().mockResolvedValue({ found: true, picks: [pick] });
+    const kingston: NamedAreaReader = {
+      read: async () => ({ locality: 'Kingston', region: 'Ontario', granularity: 'locality' }),
+    };
+    await search(
+      familyId,
+      { find },
+      undefined,
+      { query: 'trick or treat', window: 'this weekend', area: 'Kingston' },
+      kingston,
+    );
+    expect(find.mock.calls[0]?.[0]).toMatchObject({
+      subject: 'trick or treat',
+      window: 'this weekend',
+      town: 'Kingston, Ontario',
+    });
+  });
+
+  it('reports a street as area_unusable with no candidates and no search of home', async () => {
+    const familyId = await household(false, 'Toronto');
+    const find = vi.fn<ActivityFinder['find']>();
+    const street: NamedAreaReader = {
+      read: async () => ({ locality: null, region: 'Ontario', granularity: 'street' }),
+    };
+    const result = await search(
+      familyId,
+      { find },
+      undefined,
+      { query: 'story time', area: 'Bayview Drive ON' },
+      street,
+    );
+    expect(result).toMatchObject({ candidates: [], liveRead: 'area_unusable' });
+    expect(find).not.toHaveBeenCalled();
   });
 
   it('offers fresh facts and records exactly the offered receipt, never an old schedule', async () => {
