@@ -240,6 +240,14 @@ describe('loadClaimShadowContext — the zone is the recipient’s own', () => {
     expect(context.timeZone).toBe('America/Phoenix');
   });
 
+  it('a recipient who is not a member of this family is no_time_zone: an id cannot borrow a zone', async () => {
+    const { familyId } = await seedA();
+    const outsider = await user('America/Phoenix');
+    expect(
+      await loadClaimShadowContext(db.database, { familyId, now: NOW, parentUserId: outsider }),
+    ).toEqual({ status: 'skipped', reason: 'no_time_zone' });
+  });
+
   it('an unknown recipient is no_time_zone, never a default zone', async () => {
     const { familyId } = await seedA();
     expect(

@@ -27,6 +27,9 @@ import {
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
+import { type ClaimEnforcer, createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { claimRowLabel } from '~/lib/channel/reconcile/claim-label';
+import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
 import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
@@ -43,6 +46,7 @@ import {
 import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
@@ -444,6 +448,16 @@ function offShadow(): ClaimShadow {
   return { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' };
 }
 
+/** The claim reader as production runs it with the flag unset: it never enforces. */
+function offEnforcer(): ClaimEnforcer {
+  return {
+    enforces: () => false,
+    read: async () => {
+      throw new Error('the claim reader is not enforced here');
+    },
+  };
+}
+
 function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
   return {
     openKinds: new Set(),
@@ -481,6 +495,7 @@ function harness(
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
     claimShadow?: ChannelRouterDeps['claimShadow'];
+    claimEnforcer?: ChannelRouterDeps['claimEnforcer'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
@@ -533,6 +548,7 @@ function harness(
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
       claimShadow: options.claimShadow ?? offShadow(),
+      claimEnforcer: options.claimEnforcer ?? offEnforcer(),
       // VIL-294. Nothing is stated by default, so a test that says nothing about the
       // inbound half cannot accidentally be relying on a write.
       recordStatedState:
@@ -6362,6 +6378,196 @@ describe('VIL-581 · the claim shadow starts after the send and changes nothing'
     await routeChannelMessage(h.deps, job());
     expect(h.transport.sent).toEqual([]);
     expect(rec.calls).toEqual([]);
+  });
+});
+
+describe('VIL-581 PR 3 · enforce: every claim a sentence makes must cite a row', () => {
+  const INTRO = 'Here are two indoor options.';
+  // VIL-580's reproducer: a real follow-up and a false booking in one sentence.
+  const REPRODUCER =
+    "Registration opens Tuesday, and I'll keep looking for toddler activities; your well-baby visit is booked.";
+  const FOLLOW_UP = "I'll keep looking for toddler activities.";
+  const PROMISE: ActivityPromise = { subject: 'toddler activities', childId: null };
+
+  function scriptedCoach(
+    turns: readonly { reply: string; promise?: boolean; drafted?: string[] }[],
+  ): ChannelCoachRuntime & { calls: number; rejected: string[][] } {
+    const coach = {
+      calls: 0,
+      rejected: [] as string[][],
+      async respond(_turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
+        const scripted = turns[Math.min(coach.calls, turns.length - 1)];
+        coach.calls += 1;
+        coach.rejected.push([...rejectedLastAttempt]);
+        return {
+          reply: scripted?.reply ?? '',
+          planOffer: null,
+          activityPromise: scripted?.promise ? PROMISE : null,
+          spotWatch: null,
+          ...(scripted?.drafted ? { draftedActionIds: scripted.drafted } : {}),
+        };
+      },
+    };
+    return coach;
+  }
+
+  /** The reader cites the pending follow-up for its clause and no row for a booking. */
+  const readsLikeTheEval = () =>
+    scriptedClaimReader((segments) =>
+      segments.flatMap((segment) => [
+        ...(/keep looking/.test(segment.text)
+          ? [{ segment: segment.index, kind: 'activity_followup' as const, row: 'p1' as const }]
+          : []),
+        ...(/booked/.test(segment.text)
+          ? [{ segment: segment.index, kind: 'scheduled_event' as const, row: 'none' as const }]
+          : []),
+      ]),
+    );
+
+  function enforcer(reader: ClaimReader): ClaimEnforcer {
+    return createClaimEnforcer({
+      enforces: () => true,
+      reader,
+      loadContext: async (_db, input) => ({
+        status: 'ready',
+        rows: input.pending?.activityFollowup
+          ? [
+              {
+                familyId: FAMILY,
+                source: 'pending',
+                kind: 'activity_followup',
+                what: claimRowLabel({ from: 'pending', text: input.pending.activityFollowup }, NOW),
+              },
+            ]
+          : [],
+        language: 'en',
+        timeZone: 'America/New_York',
+      }),
+    });
+  }
+
+  function recorded() {
+    const promises: unknown[] = [];
+    const research: unknown[] = [];
+    const options: Pick<
+      Parameters<typeof harness>[0] & object,
+      'recordActivityPromise' | 'dispatchDeepResearch'
+    > = {
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        research.push(payload);
+        return { status: 'enqueued' as const, jobId: 'job-1' };
+      },
+    };
+    return { promises, research, options };
+  }
+
+  it('off: the regex reads the reproducer as a follow-up only, so the false booking goes out (the hole)', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([{ reply: `${INTRO} ${REPRODUCER}`, promise: true }]);
+    const h = harness({ coach, ...rec.options });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([`${INTRO} ${REPRODUCER}`]);
+    expect(rec.promises).toHaveLength(1);
+  });
+
+  it('enforce: the booking is refused, re-asked, then its whole sentence is cut and the promise it carried is not written', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([{ reply: `${INTRO} ${REPRODUCER}`, promise: true }]);
+    const h = harness({ coach, claimEnforcer: enforcer(readsLikeTheEval()), ...rec.options });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(coach.calls).toBe(2);
+    expect(coach.rejected[1]?.join(' ')).toMatch(/something is booked or on the calendar/);
+    expect(h.transport.bodies()).toEqual([INTRO]);
+    // The follow-up's sentence never reached the parent, so nothing promises it.
+    expect(rec.promises).toEqual([]);
+    expect(rec.research).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('promise_cut');
+  });
+
+  it('enforce: a re-asked reply that keeps only the follow-up is sent, and its promise is written', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([
+      { reply: `${INTRO} ${REPRODUCER}`, promise: true },
+      { reply: `${INTRO} ${FOLLOW_UP}`, promise: true },
+    ]);
+    const h = harness({ coach, claimEnforcer: enforcer(readsLikeTheEval()), ...rec.options });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([`${INTRO} ${FOLLOW_UP}`]);
+    expect(rec.promises).toHaveLength(1);
+  });
+
+  it('enforce: an enforced turn starts no shadow read; it was read before the send', async () => {
+    const calls: unknown[] = [];
+    const reader = readsLikeTheEval();
+    const h = harness({
+      coach: fakeCoach(INTRO),
+      claimEnforcer: enforcer(reader),
+      claimShadow: {
+        ...offShadow(),
+        coachTurn: (...args) => {
+          calls.push(args);
+          return 'started';
+        },
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([INTRO]);
+    expect(reader.bodies).toEqual([INTRO]);
+    expect(calls).toEqual([]);
+  });
+
+  describe('a read that fails after the coach ran claims the turn and never re-drives it', () => {
+    const failing = () => scriptedClaimReader(() => 'unreachable');
+
+    it('sends the composed apology, records the failure, defers nothing', async () => {
+      const coach = scriptedCoach([{ reply: INTRO }]);
+      const apology = fakeApology();
+      const h = harness({ coach, apology, claimEnforcer: enforcer(failing()) });
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_failed');
+      expect(h.transport.bodies()).toEqual([APOLOGY]);
+      expect(h.turns.failed.map((f) => f.reason)).toEqual(['apology_sent']);
+      expect(h.turns.deferred).toEqual([]);
+      expect(coach.calls).toBe(1);
+    });
+
+    it('names the drafts the coach already made instead of apologising', async () => {
+      const coach = scriptedCoach([{ reply: INTRO, drafted: ['action-1', 'action-2'] }]);
+      const apology = fakeApology();
+      const h = harness({ coach, apology, claimEnforcer: enforcer(failing()) });
+      await routeChannelMessage(h.deps, job());
+      expect(h.transport.bodies()).toEqual([
+        writtenAsk({ kind: 'partial_failure', draftCount: 2 }),
+      ]);
+      expect(apology.calls).toBe(0);
+    });
+
+    it('with no apology either: nothing is sent, the turn is claimed, and a redelivery never reruns the coach', async () => {
+      const turns = fakeTurnLedger();
+      const coach = scriptedCoach([{ reply: INTRO }]);
+      const h = harness({
+        coach,
+        turns,
+        apology: fakeApology({ status: 'unreachable' }),
+        claimEnforcer: enforcer(failing()),
+      });
+      expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_failed');
+      expect(h.transport.sent).toEqual([]);
+      expect(turns.failed.map((f) => f.reason)).toEqual(['claim_read_failed']);
+      expect(turns.deferred).toEqual([]);
+
+      const rerun = scriptedCoach([{ reply: 'should never run' }]);
+      const again = harness({ coach: rerun, turns, claimEnforcer: enforcer(failing()) });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(rerun.calls).toBe(0);
+    });
   });
 });
 

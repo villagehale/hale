@@ -496,6 +496,24 @@ describe('size bounds (review item 2)', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it('the bounds count code points, not UTF-16 units: an astral body at the bound is read', async () => {
+    const astral = '\u{1F600}';
+    const at = fakeClient(CLEAN);
+    expect(astral.repeat(8_000).length).toBe(16_000);
+    expect((await reader(at.client).read(input({ body: astral.repeat(8_000) }))).status).toBe(
+      'read',
+    );
+    const over = fakeClient(CLEAN);
+    const out = await reader(over.client).read(input({ body: astral.repeat(8_001) }));
+    expect(out).toMatchObject({ status: 'failed', reason: 'oversize' });
+    const cut = fakeClient(CLEAN);
+    await reader(cut.client).read(input({ inbound: astral.repeat(2_050) }));
+    const inbound: string = sentPayload(cut.create).inbound;
+    expect([...inbound]).toHaveLength(2_000);
+    // Never mid-surrogate: every code point is the whole emoji.
+    expect([...inbound].every((point) => point === astral)).toBe(true);
+  });
+
   it('inbound is cut to 2,000 code points; a short one is byte-identical (control)', async () => {
     expect(CLAIM_READ_MAX_INBOUND_CHARS).toBe(2_000);
     const long = fakeClient(CLEAN);

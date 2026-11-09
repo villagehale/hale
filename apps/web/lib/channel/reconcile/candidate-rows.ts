@@ -22,8 +22,9 @@ import { loadReconcileView } from './view';
  * calendar item" (isPrivateEvent). No location, no row id and no URL is carried; a
  * watched page contributes its host only.
  *
- * THE ZONE IS THE RECIPIENT'S OWN `users.timezone`. A missing user row (or, with no
- * recipient named, no primary parent) is `no_time_zone`, never a default zone.
+ * THE ZONE IS THE RECIPIENT'S OWN `users.timezone`, read through this family's
+ * membership. A recipient who is not a member (or, with no recipient named, no primary
+ * parent) is `no_time_zone`, never a default zone.
  */
 
 export type ClaimShadowContext =
@@ -146,12 +147,19 @@ async function recipientTimeZone(
   parentUserId: string | null,
 ): Promise<string | null> {
   if (parentUserId !== null) {
-    const [user] = await database
+    // Joined on this family, so an id from another household cannot lend its zone.
+    const [member] = await database
       .select({ timezone: schema.users.timezone })
-      .from(schema.users)
-      .where(eq(schema.users.id, parentUserId))
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, familyId),
+          eq(schema.familyMembers.userId, parentUserId),
+        ),
+      )
       .limit(1);
-    return user?.timezone ?? null;
+    return member?.timezone ?? null;
   }
   const [primary] = await database
     .select({ timezone: schema.users.timezone })
