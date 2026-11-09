@@ -48,11 +48,13 @@ describe('official-page · not posted yet when search cannot ground a date', () 
 
 describe('official-page · what may be searched', () => {
   it('strips household names and a postal so they never cross the border', () => {
-    const query = deidentifyOfficialQuery('When does swim open for Maya in L3R 2T6?', [
+    const scrub = deidentifyOfficialQuery('When does swim open for Maya in L3R 2T6?', [
       { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
     ]);
-    expect(query.toLowerCase()).not.toContain('maya');
-    expect(query).not.toMatch(/L3R/i);
-    expect(query.toLowerCase()).toContain('swim');
+    expect(scrub.ok).toBe(true);
+    if (!scrub.ok) return;
+    expect(scrub.text.toLowerCase()).not.toContain('maya');
+    expect(scrub.text).not.toMatch(/L3R/i);
+    expect(scrub.text.toLowerCase()).toContain('swim');
   });
 });

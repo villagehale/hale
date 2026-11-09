@@ -281,10 +281,11 @@ describe('intake answer · the emergency tripwire', () => {
      * run-intake-answer-eval.mjs); this owns what the composer does with each read.
      */
     function wire(read: Read, search: Search | null) {
-      const requests: Array<{ tools?: Array<{ type?: string; name?: string }> }> = [];
+      type Request = { tools?: Array<{ type?: string; name?: string }>; messages?: unknown };
+      const requests: Request[] = [];
       const client = {
         messages: {
-          create: async (req: { tools?: Array<{ type?: string; name?: string }> }) => {
+          create: async (req: Request) => {
             requests.push(req);
             if (req.tools?.[0]?.type === 'web_search_20250305') {
               if (search === null) throw new Error('this read must not search');
@@ -309,9 +310,11 @@ describe('intake answer · the emergency tripwire', () => {
           },
         },
       } as never;
-      const searched = () =>
-        requests.filter((req) => req.tools?.[0]?.type === 'web_search_20250305').length;
-      return { client, searched };
+      const searches = () =>
+        requests.filter((req) => req.tools?.[0]?.type === 'web_search_20250305');
+      const searched = () => searches().length;
+      const searchedWords = () => JSON.stringify(searches().map((req) => req.messages));
+      return { client, searched, searchedWords };
     }
 
     const ASK = { pendingAsk: COLD_START_ASK, children: [] };
@@ -374,6 +377,58 @@ describe('intake answer · the emergency tripwire', () => {
         parentWords: '¿Cómo hago para que duerma la siesta?',
       });
       expect(outcome).toEqual({ status: 'unavailable', reason: 'no_source' });
+    });
+
+    describe('a child named in any language never reaches the search', () => {
+      const NOTES = {
+        notes: 'Registration opens September 8 at 7:00 a.m., the city page says.',
+        url: 'https://example.org/rec',
+      };
+      const CASES = [
+        { askKind: 'program_dates', name: '小明', words: '小明什么时候可以报名游泳课？' },
+        {
+          askKind: 'program_dates',
+          name: 'Zoé',
+          words: 'Quand ouvrent les inscriptions au camp pour Zoé?',
+        },
+        {
+          askKind: 'current_source',
+          name: 'José',
+          words: '¿Cuándo deja la siesta José? Tiene dos años.',
+        },
+        // Positive control: the English name the old \b scrub already caught.
+        { askKind: 'program_dates', name: 'Ava', words: 'When does swim open for Ava?' },
+      ];
+
+      for (const { askKind, name, words } of CASES) {
+        it(`${askKind} for ${name}: searched, without the name`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client, searched, searchedWords } = wire({ askKind }, NOTES);
+          await createIntakeAnswerComposer(client).compose({
+            pendingAsk: COLD_START_ASK,
+            children: [{ name, ageMonths: 48, agePrecision: 'years' }],
+            parentWords: words,
+          });
+          expect(searched()).toBe(1);
+          expect(searchedWords().toLowerCase()).not.toContain(name.toLowerCase());
+        });
+      }
+
+      it('a name the scrub cannot remove stops the search, and owes the line', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { client, searched } = wire({ askKind: 'program_dates' }, NOTES);
+        const outcome = await createIntakeAnswerComposer(client).compose({
+          pendingAsk: COLD_START_ASK,
+          children: [{ name: 'Zoé', ageMonths: 48, agePrecision: 'years' }],
+          parentWords: 'Quand ouvrent les inscriptions au camp pour Zoe?',
+        });
+        expect(searched()).toBe(0);
+        expect(outcome).toEqual({ status: 'unavailable', reason: 'not_posted' });
+        expect(error).toHaveBeenCalledWith(
+          { reason: 'names_a_child' },
+          'intake answer: official page not grounded',
+        );
+      });
     });
 
     it('a cheer_up read owes the cheer-up line and searches nothing', async () => {

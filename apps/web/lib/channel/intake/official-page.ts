@@ -1,3 +1,4 @@
+import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import type { ExtractedChild } from './extract';
 
@@ -71,29 +72,25 @@ export function officialPageReplyFromNotes(notes: string, pendingAsk: string): s
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the rec
  * question with household names and postal codes stripped. Dates stay — they
- * are the thing being looked up.
+ * are the thing being looked up. A child name the scrub cannot remove is a
+ * refusal, and the caller does not search.
  */
 export function deidentifyOfficialQuery(
   parentWords: string,
   children: readonly ExtractedChild[],
-): string {
-  let query = parentWords.replace(/\s+/g, ' ').trim();
-  for (const child of children) {
-    if (child.name) {
-      query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
-    }
-  }
-  query = query
+): ChildNameScrub {
+  const names = children.flatMap((child) => (child.name ? [child.name] : []));
+  const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
+  if (!scrub.ok) return scrub;
+  const query = scrub.text
     .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
     .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
     .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (query === '') return 'municipal recreation registration dates official page';
-  return query;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return {
+    ok: true,
+    text: query === '' ? 'municipal recreation registration dates official page' : query,
+  };
 }

@@ -1,5 +1,6 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
+import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
@@ -88,31 +89,24 @@ export function afterProvisionReplyFromNotes(notes: string): string | null {
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the
- * question with household names and postal codes stripped.
+ * question with household names and postal codes stripped. A child name the
+ * scrub cannot remove is a refusal, and the caller does not search.
  */
 export function deidentifyLiveQuery(
   parentWords: string,
   children: readonly ExtractedChild[],
-): string {
-  let query = parentWords.replace(/\s+/g, ' ').trim();
-  for (const child of children) {
-    if (child.name) {
-      query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
-    }
-  }
-  query = query
+): ChildNameScrub {
+  const names = children.flatMap((child) => (child.name ? [child.name] : []));
+  const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
+  if (!scrub.ok) return scrub;
+  const query = scrub.text
     .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
     .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
     .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (query === '') return 'current official reputable source';
-  return query;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return { ok: true, text: query === '' ? 'current official reputable source' : query };
 }
 
 export type LiveGround =
@@ -142,13 +136,14 @@ export async function groundCurrentSource(
   }
 
   const query = deidentifyLiveQuery(parentWords, children);
+  if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
+      messages: [{ role: 'user', content: query.text }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };

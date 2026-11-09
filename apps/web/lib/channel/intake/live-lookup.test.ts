@@ -61,11 +61,13 @@ describe('live-lookup · no current source when search cannot ground', () => {
 
 describe('live-lookup · what may be searched', () => {
   it('strips household names and a postal so they never cross the border', () => {
-    const query = deidentifyLiveQuery('How do I nap train Maya in L3R 2T6?', [
+    const scrub = deidentifyLiveQuery('How do I nap train Maya in L3R 2T6?', [
       { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
     ]);
-    expect(query.toLowerCase()).not.toContain('maya');
-    expect(query).not.toMatch(/L3R/i);
-    expect(query.toLowerCase()).toContain('nap');
+    expect(scrub.ok).toBe(true);
+    if (!scrub.ok) return;
+    expect(scrub.text.toLowerCase()).not.toContain('maya');
+    expect(scrub.text).not.toMatch(/L3R/i);
+    expect(scrub.text.toLowerCase()).toContain('nap');
   });
 });

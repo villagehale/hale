@@ -341,13 +341,14 @@ async function groundOfficialPages(
   }
 
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
+  if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
+      messages: [{ role: 'user', content: query.text }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
