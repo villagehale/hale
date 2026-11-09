@@ -581,7 +581,7 @@ export interface EmailAlertPorts {
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
   /** This family's children, the notice writer's context for "is this about them". */
   familyChildren(): Promise<readonly FamilyChildRef[]>;
-  /** The language this parent texts Hale in (`readNoticeLanguage`): the notice is written in it. */
+  /** The parent's one proactive language (`readParentLanguage`): the notice is written in it. */
   parentLanguage(parentUserId: string, now: Date): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. */

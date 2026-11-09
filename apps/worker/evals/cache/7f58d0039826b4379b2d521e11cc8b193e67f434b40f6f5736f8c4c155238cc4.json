@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a child's rash (symptom) — safety first over provider access",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 865
+}

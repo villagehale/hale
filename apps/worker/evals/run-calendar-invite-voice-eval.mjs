@@ -36,6 +36,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 assertRunFlags(['--broken']);
 
@@ -139,21 +140,7 @@ function refusals(body, request, starts, smsSegments, { textDestination, asciiDi
   return found;
 }
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text Hale sends a parent who just said yes to an',
-  'event: it carries one tap-to-add link (written as the placeholder [[link]]). Hale was',
-  'handed the event summary, its time and the language, nothing else. You are given the',
-  'request, the message, and watchFor notes. Score 1-5.',
-  'A 5 is in the requested language, names the event by its summary (as given or',
-  'translated), says when it is, and gets across, in any words, that Hale has noted it',
-  'and that opening the link adds it to their calendar. Score meaning, not wording: no',
-  'phrase is required, and "in your plans" is not "already on your calendar".',
-  'A LOW score is any of: a place, price, person or reason not handed; anything about a',
-  'child beyond the summary; a promise of a later text or check; saying it is already on',
-  'their phone calendar before they open the link; the wrong language; a web address',
-  'other than the placeholder.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('calendar-invite-voice');
 
 const BROKEN = 'Sign up now at swimfun.example!! Starts 5pm, see you there [[link]] [[link]]';
 

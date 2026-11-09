@@ -144,6 +144,8 @@ export const AUDIT_VERBS = [
   'channel_sms_revoked',
   // VIL-553. A text whose stop check failed during a model outage, read again later.
   'opt_out_hold_read',
+  // VIL-572. One parent's texting language became the one Hale writes to them in.
+  'parent_language_changed',
   'sms_reply_received',
   'sms_reply_sent',
   // Only ever written for the synthetic canary household — but rule #6 admits no
@@ -726,6 +728,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
   opt_out_hold_read: {
     sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
+  parent_language_changed: {
+    sentence: 'Hale started writing to you in the language you text it in',
     family: 'note',
   },
   sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
@@ -2099,6 +2105,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'crisis_unanswered',
   // VIL-553. About the one parent who texted: another adult in the home never sees it.
   'opt_out_hold_read',
+  // VIL-572. About the one parent whose language changed.
+  'parent_language_changed',
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',

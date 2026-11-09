@@ -54,6 +54,7 @@ import {
   scoreFirstJudgeSchema,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -61,26 +62,7 @@ const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const GROUP = join(WEB_ROOT, 'lib', 'loop', 'reminders', 'group');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 
-const JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE text that Hale, a planner for a family's kids that",
-  'lives in their group text, wrote about a reminder.',
-  'You get `kind`, `facts` (everything Hale was told, and the only true facts), `text` (what',
-  'Hale wrote) and `mustSay` (what this text has to get across, described, not quoted).',
-  'Score 1-5 on whether the text gets the facts across and reads right, NOT on its wording:',
-  'any phrasing a person would read as saying the same thing counts.',
-  '5: every mustSay item comes across, in the language facts.language names, plainly and',
-  'kindly, with nothing added that is not in facts. 4: the same with one small slip of style.',
-  '3: the facts are right but clarity or tone has a real flaw: padded or longer than the',
-  'facts need, gushing or salesy, or Hale speaking as a company or a team.',
-  'LOW (1-2) is any of: a mustSay item missing or wrong; a wrong time, day or person; saying',
-  'it will come as a private text when facts say it arrives here, or the reverse; anything',
-  'invented (a time, place, person, child, reason or feature); the wrong language; in French,',
-  'tu where vous is due; telling anyone to reply with a keyword, a code or STOP; a link or',
-  'phone number; a form-letter or robotic register.',
-  'A day and time is right when it matches facts the way a person would say it from',
-  'facts.now ("tomorrow at 9", "Thursday at 9 AM", "tonight at 8:45").',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('group-reminder');
 
 const JUDGE_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 

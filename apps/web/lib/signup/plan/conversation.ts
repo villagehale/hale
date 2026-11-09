@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import type { SignupRunInput, SignupRunResult } from '../run';
 import { markOffer } from '../store';
 import type { SignupSession } from '../types';
@@ -198,10 +198,9 @@ async function reply(
     question: extra.question ?? null,
     refusal: extra.refusal ?? null,
     run: null,
-    language: await readNoticeLanguage(database, {
+    language: await readParentLanguage(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
-      now: input.now,
     }),
   };
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
