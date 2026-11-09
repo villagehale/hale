@@ -387,6 +387,10 @@
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
   },
+  "registration-note.md": {
+    "file": "registration-note.md",
+    "sha256": "3ff9e76330bcbd0d9386738d7d926e83e2983a4ac1f45e69077536c02c1e8b81"
+  },
   "registration-text-check.md": {
     "file": "registration-text-check.md",
     "sha256": "b67b3163f17eaa4565af70be192ff65eb92cb7aa8b953615ff32502789a3ce9d"
