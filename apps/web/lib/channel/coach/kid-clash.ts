@@ -88,21 +88,21 @@ export function kidClashFacts(
     clashes.push(fact);
   };
 
-  others.forEach((other) => {
+  for (const other of others) {
     if (candEnd !== null && other.endMs !== null) {
       const realSpans = candStart < candEnd && other.startMs < other.endMs;
       if (realSpans && candStart < other.endMs && other.startMs < candEnd) push(other.fact);
-      return;
+      continue;
     }
     if (candEnd === null && other.endMs !== null) {
       if (other.startMs < candStart && candStart < other.endMs) push(other.fact);
-      return;
+      continue;
     }
     if (candEnd !== null && other.endMs === null) {
       if (candStart < other.startMs && other.startMs < candEnd) push(other.fact);
     }
     // Two instants: no span on either side, so no clash is claimed.
-  });
+  }
   return clashes;
 }
 
