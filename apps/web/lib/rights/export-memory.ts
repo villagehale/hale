@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { namesAny } from '@hale/worker/memory-context';
+import { namesAnyIn } from '@hale/worker/memory-context';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
@@ -86,10 +86,6 @@ interface ExportChild {
 
 function iso(date: Date | null): string | null {
   return date ? date.toISOString() : null;
-}
-
-function textOf(value: unknown): string {
-  return typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
 }
 
 const SHARED_FACT_TYPES: ReadonlySet<string> = new Set(['logistic', 'routine']);
@@ -195,9 +191,8 @@ export async function loadFamilyMemoryExport(
   const teenIds = new Set(teens.map((child) => child.id));
   const teenNames = teens.map((child) => child.name);
   const nameById = new Map(children.map((child) => [child.id, child.name]));
-  const isPrivate = (childIds: readonly (string | null)[], texts: readonly string[]) =>
-    childIds.some((id) => id !== null && teenIds.has(id)) ||
-    texts.some((text) => namesAny(text, teenNames));
+  const isPrivate = (childIds: readonly (string | null)[], texts: readonly unknown[]) =>
+    childIds.some((id) => id !== null && teenIds.has(id)) || namesAnyIn(texts, teenNames);
   const childName = (childId: string | null) =>
     childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null);
 
@@ -256,7 +251,7 @@ export async function loadFamilyMemoryExport(
   };
   const withheldFor = (
     childIds: readonly (string | null)[],
-    texts: readonly string[],
+    texts: readonly unknown[],
     sourceReason: MemoryWithheldReason | null,
   ): MemoryWithheldReason | null => (isPrivate(childIds, texts) ? 'teen' : sourceReason);
   const words = <T>(withheld: MemoryWithheldReason | null, text: T): T | string | null => {
@@ -271,7 +266,7 @@ export async function loadFamilyMemoryExport(
         SHARED_FACT_TYPES.has(row.factType) || SHARED_FACT_SOURCES.has(row.memorySource);
       const withheld = withheldFor(
         [row.childId],
-        [row.factKey, textOf(row.factValue)],
+        [row.factKey, row.factValue],
         sharedBySource ? null : unattributed,
       );
       return {
