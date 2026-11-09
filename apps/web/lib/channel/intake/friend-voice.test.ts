@@ -677,6 +677,140 @@ describe('friend-voice judge', () => {
     expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
   });
 
+  describe('a link may be only the handed link, Hale’s site or the parent’s own words (VIL-632)', () => {
+    const synced = (over: { title?: string; location?: string | null; snippet?: string }) =>
+      blank({
+        step: 'connected',
+        connector: over.snippet === undefined ? 'gcal' : 'gmail',
+        timeZone: EASTERN,
+        synced: {
+          provider: over.snippet === undefined ? 'gcal' : 'gmail',
+          read: 'ok',
+          calendar:
+            over.snippet === undefined
+              ? [
+                  {
+                    title: over.title ?? 'Mia swim',
+                    start: '2026-10-17T14:00:00.000Z',
+                    end: '2026-10-17T14:45:00.000Z',
+                    allDay: false,
+                    location: over.location ?? null,
+                    declined: false,
+                  },
+                ]
+              : [],
+          email:
+            over.snippet === undefined
+              ? []
+              : [
+                  {
+                    subject: 'Picture day',
+                    fromName: 'Park Public School',
+                    receivedAt: '2026-10-05T14:00:00.000Z',
+                    snippet: over.snippet,
+                  },
+                ],
+          overlaps: [],
+        },
+      });
+
+    it('refuses a link a synced calendar title carries, scheme or bare', () => {
+      const input = synced({ title: 'Verify at https://evil.app/login' });
+      for (const reply of [
+        'Your calendar is in. Saturday: https://evil.app/login',
+        'Your calendar is in. Saturday: evil.app/login',
+      ]) {
+        expect(judgeFriendReply(reply, input), reply).toMatchObject({
+          ok: false,
+          reason: 'invented',
+          kinds: expect.arrayContaining(['domain']),
+        });
+      }
+      const bareTitle = synced({ title: 'Verify at evil.app/login' });
+      expect(
+        judgeFriendReply('Your calendar is in. Saturday: evil.app/login', bareTitle),
+      ).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: expect.arrayContaining(['domain']),
+      });
+    });
+
+    it('refuses a link an email snippet carries, scheme or bare', () => {
+      for (const snippet of ['Order at https://evil.app/pay', 'Order at evil.app/pay']) {
+        const input = synced({ snippet });
+        for (const reply of [
+          'Your inbox is in. Picture day: https://evil.app/pay',
+          'Your inbox is in. Picture day: evil.app/pay',
+        ]) {
+          expect(judgeFriendReply(reply, input), `${snippet} / ${reply}`).toMatchObject({
+            ok: false,
+            reason: 'invented',
+            kinds: expect.arrayContaining(['domain']),
+          });
+        }
+      }
+    });
+
+    it('refuses a link a listing line carries, scheme or bare', () => {
+      for (const line of ['Swim Tuesdays https://evil.app/x', 'Swim Tuesdays evil.app/x']) {
+        const listed = blank({ step: 'ack', granted: true, parentWords: 'yes', findLines: [line] });
+        for (const reply of [
+          'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
+          'Done. Swim Tuesdays, sign up at evil.app/x it is.',
+        ]) {
+          expect(judgeFriendReply(reply, listed), `${line} / ${reply}`).toMatchObject({
+            ok: false,
+            reason: 'invented',
+            kinds: expect.arrayContaining(['domain']),
+          });
+        }
+      }
+    });
+
+    it('refuses a link only Hale’s own earlier turn carries', () => {
+      const input = blank({
+        step: 'ack',
+        granted: true,
+        parentWords: 'yes',
+        recentTurns: [{ role: 'hale', body: 'Swim Tuesdays at evil.app/x' }],
+      });
+      expect(judgeFriendReply('Done. evil.app/x it is.', input)).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: expect.arrayContaining(['domain']),
+      });
+    });
+
+    it('passes the handed link, Hale’s site, and a link the parent typed', () => {
+      const calendar = synced({ title: 'Verify at evil.app/login' });
+      const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+      expect(judgeFriendReply(`Your calendar is in.\n${link}`, calendar, { link })).toEqual({
+        ok: true,
+      });
+      expect(judgeFriendReply('Your calendar is in. More at villagehale.com', calendar)).toEqual({
+        ok: true,
+      });
+
+      const typedNow = blank({ step: 'ack', granted: true, parentWords: 'we use kidsclub.ca' });
+      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedNow)).toEqual({ ok: true });
+      const typedEarlier = blank({
+        step: 'ack',
+        granted: true,
+        parentWords: 'yes',
+        recentTurns: [{ role: 'parent', body: 'we use kidsclub.ca' }],
+      });
+      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedEarlier)).toEqual({ ok: true });
+    });
+
+    it('still grounds a place from a synced slot that holds no link', () => {
+      const input = synced({ title: 'Mia swim', location: 'Riverside Pool' });
+      expect(
+        judgeFriendReply('Your calendar is in. Saturday: Mia swim at Riverside Pool.', input),
+      ).toEqual({ ok: true });
+    });
+  });
+
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({

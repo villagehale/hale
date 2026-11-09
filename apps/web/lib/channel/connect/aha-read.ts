@@ -8,7 +8,7 @@
  */
 
 import { localeFor } from '~/lib/channel/language';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { zonedMidnight } from '~/lib/memory/period';
 
 export const AHA_ITEM_LIMIT = 8;
@@ -135,7 +135,7 @@ function readString(value: unknown): string | undefined {
 }
 
 function cleanTitle(value: string): string | null {
-  const text = value.replace(/\s+/g, ' ').trim();
+  const text = withoutLinks(value).trim();
   if (text.length === 0 || text.includes('@')) return null;
   return text.length <= TITLE_MAX ? text : text.slice(0, TITLE_MAX).trimEnd();
 }
@@ -147,13 +147,10 @@ function cleanLocation(value: string): string | null {
 }
 
 const EMAIL_ADDRESS = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-const URL_TOKEN = /https?:\/\/\S+/gi;
 const PHONE_TOKEN = /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}/g;
 
 export function stripContactTokens(value: string): string {
-  return value
-    .replace(EMAIL_ADDRESS, ' ')
-    .replace(URL_TOKEN, ' ')
+  return withoutLinks(value.replace(EMAIL_ADDRESS, ' '))
     .replace(PHONE_TOKEN, ' ')
     .replace(/\s+/g, ' ')
     .trim();

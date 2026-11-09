@@ -1,9 +1,8 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { withoutLinks } from './links';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.

@@ -108,6 +108,43 @@ describe('aha snapshot from fixture calendars and mail', () => {
     expect(JSON.stringify(facts)).not.toMatch(/"deadline"|"kind"/);
   });
 
+  it('drops a link from a title, a subject and a snippet however it is written (VIL-632)', () => {
+    const at = (id: string, summary: string) => ({
+      id,
+      status: 'confirmed',
+      summary,
+      start: { dateTime: '2026-09-12T13:00:00.000Z' },
+      end: { dateTime: '2026-09-12T14:00:00.000Z' },
+    });
+    const titles = calendarFactsFromItems(
+      [
+        at('scheme', 'Verify at https://evil.app/login'),
+        at('wide', 'Verify at https：//evil.app/login'),
+        at('bare', 'Verify at evil.app/login'),
+        at('only', 'evil.app/login'),
+      ],
+      NOW,
+      EASTERN,
+    ).map((fact) => fact.title);
+    expect(titles).toEqual(['Verify at', 'Verify at', 'Verify at']);
+
+    const mail = emailFactsFromMessages(
+      [
+        ['Order at https：//evil.app/pay today', 'Picture day https://evil.app/pay'],
+        ['Order at evil.app/pay today', 'Picture day evil.app/pay'],
+      ].map(([snippet, subject], index) => ({
+        id: `m${index}`,
+        internalDate: '1757606400000',
+        snippet,
+        payload: { headers: [{ name: 'Subject', value: subject }] },
+      })),
+    );
+    expect(mail.map((fact) => [fact.subject, fact.snippet])).toEqual([
+      ['Picture day', 'Order at today'],
+      ['Picture day', 'Order at today'],
+    ]);
+  });
+
   it("reads today on the family's own clock, so an all-day event today is still upcoming", () => {
     // 05:30Z on Nov 10: still Nov 9 in Chicago, already Nov 10 in Toronto.
     const lateEvening = new Date('2026-11-10T05:30:00.000Z');
