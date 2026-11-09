@@ -110,6 +110,29 @@ describe('the Linq send while PROACTIVE_CADENCE is armed', () => {
     expect(keyOf(calls[1])).not.toBe(keyOf(calls[0]));
   });
 
+  it('gives each resend after a refused mention and a refused thread target its own key', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { calls, fetchImpl } = linq([
+      { status: 400, body: { error: { code: 2015 } } },
+      { status: 400, body: { error: { code: 2001 } } },
+      OK,
+    ]);
+    await sendLinqChatMessage({
+      chatId: CHAT,
+      text: 'Saturday works',
+      replyTo: { messageId: 'in-1' },
+      mention: '+15555550123',
+      sendKey: 'ledger-row-1',
+      fetch: fetchImpl,
+    });
+    expect(calls).toHaveLength(3);
+    const keys = calls.map(keyOf);
+    for (const key of keys) expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(new Set(keys).size).toBe(3);
+  });
+
   it('retries a 429 once when Retry-After allows, with the same key', async () => {
     vi.stubEnv('LINQ_API_KEY', API_KEY);
     vi.stubEnv('PROACTIVE_CADENCE', 'live');

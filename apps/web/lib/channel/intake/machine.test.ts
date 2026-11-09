@@ -24,7 +24,7 @@ import {
   makeFakeDb,
 } from './fakes';
 import type { IntentReading } from './intent';
-import { type IntakeDeps, handleInboundSms } from './machine';
+import { type IntakeDeps, handleInboundSms, writeChannelMessage } from './machine';
 import { acceptOptOutReading } from './opt-out-reader';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import { FakeTransport } from './transport';
@@ -171,6 +171,33 @@ describe('intake · happy path', () => {
     for (const row of inbound) {
       expect(row.handedOffAt).toBeInstanceOf(Date);
     }
+  });
+
+  it("writes the door's group bit on an inbound row, and an absent bit as unknown", async () => {
+    const fake = makeFakeDb();
+    const owner = { familyId: 'family-1', parentUserId: 'parent-1' };
+    const entry = {
+      direction: 'in' as const,
+      body: 'hi',
+      providerId: 'in-1',
+      at: NOW.toISOString(),
+      channel: 'imessage' as const,
+      chatId: 'chat-direct',
+    };
+    await writeChannelMessage(fake.db, owner, { ...entry, inGroup: false }, NOW);
+    await writeChannelMessage(fake.db, owner, { ...entry, providerId: 'in-2' }, NOW);
+    await writeChannelMessage(
+      fake.db,
+      owner,
+      { ...entry, direction: 'out', providerId: 'out-1', inGroup: false },
+      NOW,
+    );
+
+    expect(inserts(fake, schema.channelMessages).map((r) => [r.direction, r.inGroup])).toEqual([
+      ['in', false],
+      ['in', null],
+      ['out', null],
+    ]);
   });
 
   it('records the consent evidence BEFORE the family is flipped to sms_active', async () => {

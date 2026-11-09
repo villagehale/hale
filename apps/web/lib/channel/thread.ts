@@ -33,7 +33,14 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
  */
 export async function threadProactiveMessage(
   database: Database,
-  input: { familyId: string; parentUserId: string; body: string; topic?: string | null },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    body: string;
+    topic?: string | null;
+    /** Model context for this turn. Not part of the parent-facing body. */
+    source?: schema.MessageSource | null;
+  },
 ): Promise<string> {
   const conversationId = await resolveOrCreateNoteConversation(
     input.familyId,
@@ -43,6 +50,7 @@ export async function threadProactiveMessage(
   await appendMessage(conversationId, 'assistant', input.body, database, {
     childId: null,
     topic: input.topic ?? null,
+    source: input.source ?? null,
   });
   return conversationId;
 }

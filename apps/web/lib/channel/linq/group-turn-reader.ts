@@ -36,6 +36,8 @@ export interface GroupTurnReadInput {
   senderName: string | null;
   haleNames: readonly string[];
   recent: readonly { from: 'hale' | 'member'; text: string }[];
+  /** VIL-475 — iMessage mentions Linq already resolved. Absent when the flag is off. */
+  mentions?: { haleMentioned: boolean; mentionedMembers: { name: string | null }[] };
 }
 
 export interface GroupTurnReader {
@@ -60,6 +62,7 @@ export function groupTurnUserMessage(input: GroupTurnReadInput): string {
     senderName: input.senderName,
     haleNames: [...input.haleNames],
     recent: input.recent.slice(-GROUP_TURN_RECENT_LINES),
+    ...(input.mentions ? { mentions: input.mentions } : {}),
   });
 }
 
@@ -151,9 +154,12 @@ export async function groupTurnReadContext(
   const transcript = await loadTranscript(conversationId, database);
   return {
     senderName,
-    recent: transcript.slice(-GROUP_TURN_RECENT_LINES).map((line) => ({
-      from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
-      text: line.content,
-    })),
+    recent: transcript
+      .filter((line) => line.role !== 'tool')
+      .slice(-GROUP_TURN_RECENT_LINES)
+      .map((line) => ({
+        from: line.role === 'assistant' ? ('hale' as const) : ('member' as const),
+        text: line.content,
+      })),
   };
 }

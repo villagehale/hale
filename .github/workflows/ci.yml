@@ -284,6 +284,12 @@ jobs:
       - name: Group privacy coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-privacy
 
+      - name: Read-email coach eval (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email
+
+      - name: Read-email coach eval broken calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:read-email:broken
+
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
 
@@ -294,6 +300,9 @@ jobs:
       # VIL-456 shared-group reading, with the VIL-459 find-time ask.
       - name: Shared-group reading classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:shared-group-reading
+
+      - name: Group mention read classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-mention-read
 
       - name: Introduction ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intro-voice
