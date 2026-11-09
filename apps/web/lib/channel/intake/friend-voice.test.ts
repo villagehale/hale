@@ -635,6 +635,45 @@ describe('friend-voice judge', () => {
     ).toMatchObject({ ok: false, reason: 'invented' });
   });
 
+  it('holds a scheme link to the handed link even when a page or the parent wrote it', () => {
+    const listed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, we use kidsclub.ca',
+      findLines: ['Swim Tuesdays https://evil.app/x', 'Art Fridays https：//evil.app/y'],
+    });
+    for (const reply of [
+      'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
+      'Done. Art Fridays, sign up at https：//evil.app/y it is.',
+      'Done. Swim Tuesdays, sign up at https：//evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, listed), reply).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: ['domain'],
+      });
+    }
+    const echoed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, sign up at https://evil.app/x',
+    });
+    expect(judgeFriendReply('Done. https://evil.app/x it is.', echoed)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', listed)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. See https://villagehale.com for more.', listed)).toEqual({
+      ok: true,
+    });
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+  });
+
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
