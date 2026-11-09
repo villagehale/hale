@@ -124,7 +124,13 @@ function harness(
     composer: {
       async compose(grounding) {
         composed.push(grounding);
-        return overrides.compose ?? { status: 'composed', message: `${PICK.name} runs Saturdays.` };
+        return (
+          overrides.compose ?? {
+            status: 'composed',
+            message: `${PICK.name} runs Saturdays.`,
+            mentionsWatch: false,
+          }
+        );
       },
     },
     buildGate: () => ({
@@ -263,6 +269,7 @@ describe('the promise is kept when the news is bad', () => {
       compose: {
         status: 'composed',
         message: 'I went back through the fall listings - nothing yet.',
+        mentionsWatch: false,
       },
     });
 
@@ -459,6 +466,7 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         status: 'composed',
         message:
           'Cartwheels has Tiny Gym Sundays 9:30-10:15 from Sept 14, $124 a term - their site says, and registration has been open since July 22.',
+        mentionsWatch: false,
       },
     });
 
@@ -569,7 +577,11 @@ describe("the founder's owed Cartwheels row, paid by the deep pass", () => {
         pagesRefused: 0,
         pageVerdict: 'page_has_schedule',
       },
-      compose: { status: 'composed', message: 'I read their fall page and there is nothing up.' },
+      compose: {
+        status: 'composed',
+        message: 'I read their fall page and there is nothing up.',
+        mentionsWatch: false,
+      },
     });
 
     const result = await runActivityFollowUpSweep(database, h.deps, NOW);
@@ -649,6 +661,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Cartwheels runs Tiny Gym for under-3s - their site says. I'll keep watching.",
+        mentionsWatch: true,
       },
       ...overrides,
     });
@@ -765,6 +778,7 @@ describe('a partial answer registers the watch it talks about', () => {
       compose: {
         status: 'composed',
         message: "Nothing up for the fall session yet - I'll keep looking and text you.",
+        mentionsWatch: true,
       },
     });
 
@@ -772,6 +786,36 @@ describe('a partial answer registers the watch it talks about', () => {
 
     expect(result).toMatchObject({ sentEmptyHanded: 1, watching: 1 });
     expect(h.composed[0]).toMatchObject({ watch: true });
+  });
+
+  it('a watch row whose sent text never mentions it is logged, counts and codes only', async () => {
+    armed();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const silent = 'Cartwheels runs Tiny Gym for under-3s - their site says.';
+    const h = partialHarness({
+      compose: { status: 'composed', message: silent, mentionsWatch: false },
+    });
+
+    const result = await runActivityFollowUpSweep(database, h.deps, NOW);
+    const calls = warn.mock.calls.filter(([, msg]) => String(msg).includes('silent watch'));
+    warn.mockRestore();
+
+    expect(result).toMatchObject({ sent: 1, watching: 1 });
+    expect(calls).toEqual([[{ code: 'silent_watch', picks: 1 }, expect.any(String)]]);
+    expect(JSON.stringify(calls)).not.toContain('Cartwheels');
+  });
+
+  it('POSITIVE CONTROL - a watch the text tells the parent about logs nothing', async () => {
+    armed();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = partialHarness();
+
+    await runActivityFollowUpSweep(database, h.deps, NOW);
+    const calls = warn.mock.calls.filter(([, msg]) => String(msg).includes('silent watch'));
+    warn.mockRestore();
+
+    expect(h.watched).toHaveLength(1);
+    expect(calls).toEqual([]);
   });
 
   it('a watch the ledger refused is COUNTED, never swallowed', async () => {
@@ -825,7 +869,11 @@ describe('a watch sends news or nothing', () => {
         pagesRefused: 0,
         pageVerdict: 'page_has_schedule',
       },
-      compose: { status: 'composed', message: 'Tiny Gym runs Saturdays at 9:15 and 10:30.' },
+      compose: {
+        status: 'composed',
+        message: 'Tiny Gym runs Saturdays at 9:15 and 10:30.',
+        mentionsWatch: false,
+      },
     });
   }
 
@@ -1058,6 +1106,7 @@ describe('the last read of the string that actually leaves', () => {
       compose: {
         status: 'composed',
         message: `${PICK.name} runs Saturdays. Want me to check back once they're up?`,
+        mentionsWatch: false,
       },
     });
 
@@ -1076,7 +1125,11 @@ describe('the last read of the string that actually leaves', () => {
     armed();
     const h = harness({
       find: { found: true, picks: [PICK] },
-      compose: { status: 'composed', message: `${PICK.name} runs Saturdays. Your spot is booked.` },
+      compose: {
+        status: 'composed',
+        message: `${PICK.name} runs Saturdays. Your spot is booked.`,
+        mentionsWatch: false,
+      },
       unbacked: ['no_scheduled_row'],
     });
 

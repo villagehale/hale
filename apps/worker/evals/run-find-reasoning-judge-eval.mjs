@@ -99,14 +99,20 @@ async function main() {
       cost,
     });
     if (dry) continue;
-    const sentences = (call.value?.process_sentences ?? []).filter((s) => s.trim() !== '');
+    // Scored through the runtime's own verbatim rule, so an invented quote fails here as it
+    // would leave the draft unsent in production.
+    const named = call.value?.process_sentences;
+    const gate = Array.isArray(named)
+      ? judge.followUpProcessVerdict(fixture.draft, named)
+      : { verdict: 'unjudged', reason: 'judge_failed' };
     const ok =
       fixture.expect === 'clean'
-        ? sentences.length === 0
-        : sentences.some((s) => s.includes(fixture.flagged) && fixture.draft.includes(s.trim()));
+        ? gate.verdict === 'clean'
+        : gate.verdict === 'reports_process' &&
+          gate.sentences.some((s) => s.includes(fixture.flagged));
     if (!ok) failures.push(fixture.id);
     console.info(
-      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id}  flagged=${sentences.length} (wanted ${fixture.expect})`,
+      `${ok ? 'PASS' : 'FAIL'}  ${fixture.id}  ${gate.verdict} (wanted ${fixture.expect})`,
     );
     if (!ok) console.info(`      reason: ${call.value?.reason ?? ''}`);
   }
