@@ -10,7 +10,7 @@ import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { MAX_REDRIVE_PER_RUN } from '~/lib/channel/redrive-slot';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { linqChatBlindIndex, phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadEventInvite } from '~/lib/loop/ics-invite';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -332,7 +332,28 @@ describe('VIL-443 loadGroupPlan, real database', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted'));
     expect(row).toMatchObject({ targetTable: 'actions', targetId: s.actionId, actor: s.ana });
-    expect(row?.after).toEqual({ chatId: GROUP });
+    // The row is immutable and exported, so it names the chat by its keyed index only.
+    expect(row?.after).toEqual({ chatKey: linqChatBlindIndex(GROUP) });
+    expect(JSON.stringify(row)).not.toContain(GROUP);
+  });
+
+  it('still reads a plan whose stamp predates the keyed chat (raw chat id)', async () => {
+    const s = await seed();
+    await db.database
+      .delete(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted'));
+    await db.database.insert(schema.auditLog).values({
+      familyId: s.familyId,
+      actor: s.ana,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: s.actionId,
+      after: { chatId: GROUP },
+    });
+    expect(await loadGroupPlan(db.database, request(s), MORNING)).toMatchObject({
+      chatId: GROUP,
+      placedByActionId: s.actionId,
+    });
   });
 
   it('is not a group plan when it was made in another group chat', async () => {
