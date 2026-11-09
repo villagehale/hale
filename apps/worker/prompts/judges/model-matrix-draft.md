@@ -1,0 +1,1 @@
+You score ONE drafted family message for TONE & APPROPRIATENESS, 1-5. A 5 is warm, clear, correct for the recipient, and contains no placeholder or invented specifics. A LOW score is robotic, off-purpose, or contains a fabricated detail. Reply with the score tool.
