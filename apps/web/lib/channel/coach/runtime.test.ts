@@ -875,6 +875,31 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     error.mockRestore();
   });
 
+  it('judges a turn that handed over a find, whatever language the ask was in', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let judged = 0;
+    const p = ports({
+      buildTools: (_t, _d, _o, _s, _p, _w, offered) => {
+        offered.recordLinks([{ url: 'https://example.org/storytime', title: 'Storytime' } as never]);
+        return [];
+      },
+      judgeFindReply: async () => {
+        judged += 1;
+        return { verdict: 'withhold' };
+      },
+      runAgent: answering("J'ai trouvé trois activités sur la même page."),
+    });
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("qu'est-ce qu'on peut faire samedi avec les petits?"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(judged).toBe(1);
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    error.mockRestore();
+  });
+
   it('sends the draft when no judge is wired, and names that', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const draft = 'EarlyON Saturday at 10.';

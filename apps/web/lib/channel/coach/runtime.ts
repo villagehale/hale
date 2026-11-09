@@ -595,11 +595,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
-          // VIL-524. The judge is the gate, and only on a nearby-find turn. It does
-          // not edit the draft. withhold, or a judge that failed, sends nothing.
+          // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
+          // turn whose tools handed over a find (any language). It does not edit the
+          // draft. withhold, or a judge that failed, sends nothing.
           // A runtime built without the port (scripted journey coaches) names that
           // and sends the draft: production always wires the judge.
-          if (!noticeReady && findTurn) {
+          const handedOverFind =
+            offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
+          if (!noticeReady && (findTurn || handedOverFind)) {
             if (!ports.judgeFindReply) {
               console.error(
                 { reason: 'not_configured' },
