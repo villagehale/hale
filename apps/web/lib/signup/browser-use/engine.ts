@@ -9,6 +9,7 @@ import {
   type BrowserUseRunStatus,
   TERMINAL_RUN_STATUSES,
 } from './client';
+import { liveViewUrl } from './live-view';
 import {
   BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA,
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
@@ -21,6 +22,7 @@ import {
   parseSignupOutput,
   sameProviderHttpsUrl,
 } from './outcome';
+import type { BrowserUsePlanResult } from './plan-engine';
 import type { ProviderSessionSeeder } from './seed';
 import type { ProviderStorageState } from './vault';
 
@@ -176,7 +178,7 @@ export interface BrowserUseEngineDeps {
   now: () => Date;
 }
 
-function failure(
+export function failure(
   outcome: BrowserUseEngineOutcome,
   detail: BrowserUseEngineDetail,
   run: { runId?: string | null; sessionId?: string | null; costUsd?: string | null } = {},
@@ -200,7 +202,12 @@ function failure(
 }
 
 /** Only the slots on the consent grant, and only those with a value. */
-export function signupFacts(input: BrowserUseSignupInput): Record<string, unknown> {
+export function signupFacts(
+  input: Pick<
+    BrowserUseSignupInput,
+    'fieldsAllowed' | 'identity' | 'session' | 'registrationUrl' | 'approvedPriceCents'
+  >,
+): Record<string, unknown> {
   const grant = new Set<string>(input.fieldsAllowed);
   const pick = (slot: ShareableSignupField, value: string | number | null | undefined) => {
     if (!grant.has(slot) || value === null || value === undefined) return undefined;
@@ -231,17 +238,8 @@ export function signupFacts(input: BrowserUseSignupInput): Record<string, unknow
   };
 }
 
-function taskWithFacts(skillBody: string, facts: Record<string, unknown>): string {
+export function taskWithFacts(skillBody: string, facts: Record<string, unknown>): string {
   return `${skillBody.trim()}\n\n## This registration\n\n\`\`\`json\n${JSON.stringify(facts, null, 2)}\n\`\`\`\n`;
-}
-
-function httpsUrl(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  try {
-    return new URL(value).protocol === 'https:' ? value : null;
-  } catch {
-    return null;
-  }
 }
 
 type RunWait =
@@ -249,7 +247,7 @@ type RunWait =
   | { kind: 'timeout'; liveViewUrl: string | null };
 
 /** The run's browser id, read from browser.ready / browser.reattached events. */
-interface BrowserTracker {
+export interface BrowserTracker {
   browserId: string | null;
   /** Set as soon as Browser Use creates a run or session, so a throw can carry it. */
   runId?: string | null;
@@ -284,14 +282,14 @@ export class BrowserUseEngineThrew extends Error {
   }
 }
 
-async function waitForRun(
+export async function waitForRun(
   deps: BrowserUseEngineDeps,
   runId: string,
   tracker: BrowserTracker = { browserId: null },
 ): Promise<RunWait> {
   const deadline = deps.now().getTime() + RUN_DEADLINE_MS;
   let cursor = 0;
-  let liveViewUrl: string | null = null;
+  let live: string | null = null;
   for (;;) {
     const status = await deps.api.getRunStatus(runId);
     for (let page = 0; page < 20; page += 1) {
@@ -299,7 +297,12 @@ async function waitForRun(
       for (const event of events.events) {
         cursor = Math.max(cursor, event.id);
         if (event.type === 'browser.ready' || event.type === 'browser.reattached') {
-          liveViewUrl = httpsUrl(event.data.live_view_url) ?? liveViewUrl;
+          const announced = event.data.live_view_url;
+          const pinned = liveViewUrl(announced);
+          if (pinned === null && announced !== undefined && announced !== null) {
+            console.warn({ refused: 'live_view_host' }, 'browser use: live view refused');
+          }
+          live = pinned ?? live;
           const browserId = event.data.browser_session_id;
           if (typeof browserId === 'string' && browserId) tracker.browserId = browserId;
         }
@@ -310,17 +313,22 @@ async function waitForRun(
       }
       cursor = events.nextAfter;
     }
-    if (TERMINAL_RUN_STATUSES.includes(status)) return { kind: 'terminal', status, liveViewUrl };
+    if (TERMINAL_RUN_STATUSES.includes(status)) {
+      return { kind: 'terminal', status, liveViewUrl: live };
+    }
     if (deps.now().getTime() >= deadline) {
       await deps.api.cancelRun(runId).catch(() => undefined);
-      return { kind: 'timeout', liveViewUrl };
+      return { kind: 'timeout', liveViewUrl: live };
     }
     await deps.sleep(POLL_INTERVAL_MS);
   }
 }
 
-async function ensureProfile(
-  input: BrowserUseSignupInput,
+export async function ensureProfile(
+  input: Pick<
+    BrowserUseSignupInput,
+    'providerSession' | 'correlationId' | 'onProfileCreated' | 'proxyCountryCode'
+  >,
   deps: BrowserUseEngineDeps,
 ): Promise<{ ok: true; profileId: string } | { ok: false; detail: BrowserUseEngineDetail }> {
   const existing = input.providerSession.browserUseProfileId;
@@ -355,17 +363,17 @@ async function ensureProfile(
  * over on its live view, then reads the session's true cost. The 900s
  * keepAlive only matters for that takeover.
  */
-async function settleBrowser(
+export async function settleBrowser<T extends BrowserUseSignupResult | BrowserUsePlanResult>(
   deps: BrowserUseEngineDeps,
-  result: BrowserUseSignupResult,
+  result: T,
   tracker: BrowserTracker,
-): Promise<BrowserUseSignupResult> {
+): Promise<T> {
   const settled = { ...result, browserId: tracker.browserId };
   if (settled.liveViewUrl !== null) return settled;
   return { ...settled, sessionCostUsd: await stopAndReadCost(deps, settled) };
 }
 
-async function stopAndReadCost(
+export async function stopAndReadCost(
   deps: BrowserUseEngineDeps,
   ids: { browserId: string | null; sessionId: string | null },
 ): Promise<string | null> {
@@ -490,7 +498,7 @@ async function driveSignup(
   }
 }
 
-function sumCost(a: string | null, b: string | null): string | null {
+export function sumCost(a: string | null, b: string | null): string | null {
   if (a === null && b === null) return null;
   return (Number(a ?? 0) + Number(b ?? 0)).toFixed(4);
 }

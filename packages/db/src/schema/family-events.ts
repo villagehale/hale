@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
@@ -54,6 +63,9 @@ export const familyEvents = pgTable(
     sourceChangedFromLocation: text('source_changed_from_location'),
     /** When Hale saw that change. */
     sourceChangedAt: timestamp('source_changed_at', { withTimezone: true }),
+    /** VIL-468. Parking and what-to-bring facts the source event stated, or null.
+     * Only the extracted facts, never the raw description (rule #1). */
+    notes: jsonb('notes').$type<FamilyEventNotes>(),
     source: familyEventSourceEnum('source').notNull(),
     /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan
      * item's privacySensitive (VIL-223). The reminder templates read it to genericize
@@ -156,6 +168,18 @@ export const familyEvents = pgTable(
       .where(sql`${table.googleEventId} IS NOT NULL`),
   }),
 );
+
+/** Logistics facts for one occasion. Each fact key is present only when the source stated it.
+ * `sourceHash` is a hash of the description the facts were read from (never the text), so an
+ * unchanged description is not read again; a read that found nothing stores only the hash.
+ * `failedReads` counts failed reads of that same hash (no facts are stored then); it is reset by a
+ * success or a new hash, and reading stops at EVENT_NOTES_MAX_FAILED_READS until the text changes. */
+export interface FamilyEventNotes {
+  parking?: string;
+  bring?: string;
+  sourceHash?: string;
+  failedReads?: number;
+}
 
 export type FamilyEvent = typeof familyEvents.$inferSelect;
 export type NewFamilyEvent = typeof familyEvents.$inferInsert;

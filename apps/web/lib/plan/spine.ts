@@ -88,53 +88,52 @@ export function addDaysToKey(key: string, days: number): string {
  * The UTC instant of a family-local wall-clock moment — the inverse of `dayKeyIn`, for
  * callers holding a day key and a `HH:MM` the family said out loud.
  *
- * The offset is measured AT the target moment (format the naive instant in the target
- * zone and in UTC; the machine's own zone cancels out of the difference), so a 4:30pm
- * event resolves against the offset in force at 4:30pm rather than at midnight — which
- * is the one hour a day-start measurement gets wrong on a DST changeover day.
+ * The offset must be the one in force at the RESULT, not at the naive UTC reading of
+ * the wall clock: west of UTC, 08:00Z on a changeover day is still the night before
+ * the switch. So the offset is measured at the naive instant, then re-measured at the
+ * first guess. A wall clock the spring-forward gap skips has no instant; it resolves to
+ * the moment after the gap, never an hour early.
  */
 export function zonedLocalInstant(dayKey: string, time: string, timeZone: string): Date {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
   if (!match) {
     throw new Error(`zonedLocalInstant: time must be HH:MM, got '${time}'`);
   }
-  const naive = new Date(`${dayKey}T${match[1]}:${match[2]}:00Z`);
-  if (Number.isNaN(naive.getTime())) {
+  const naive = new Date(`${dayKey}T${match[1]}:${match[2]}:00Z`).getTime();
+  if (Number.isNaN(naive)) {
     throw new Error(`zonedLocalInstant: '${dayKey}' is not a YYYY-MM-DD day key`);
   }
-  // The zone's offset must be read AT the answer, not at the naive UTC moment: on a
-  // spring-forward Sunday 03:30 Toronto reads the offset of 22:30 the night before
-  // (EST) and lands on 04:30 EDT (Devin #984). Re-read once at the first guess.
-  // Read as numbers, never re-parsed through the host's own zone (whose DST would skew it).
-  const format = new Intl.DateTimeFormat('en-US', {
+  const first = naive - zoneOffsetMs(naive, timeZone);
+  const offset = zoneOffsetMs(first, timeZone);
+  const second = naive - offset;
+  if (zoneOffsetMs(second, timeZone) === offset) return new Date(second);
+  return new Date(Math.max(first, second));
+}
+
+/** The wall clock in `timeZone` minus UTC at `instant`, read from the formatted parts so
+ * the machine's own zone plays no part. */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric',
     hourCycle: 'h23',
-  });
-  const offsetAt = (at: Date) => {
-    const part = (type: Intl.DateTimeFormatPartTypes) =>
-      Number(format.formatToParts(at).find((p) => p.type === type)?.value ?? 0);
-    const wall = Date.UTC(
-      part('year'),
-      part('month') - 1,
-      part('day'),
-      part('hour'),
-      part('minute'),
-      part('second'),
-    );
-    return Math.round((at.getTime() - wall) / 60_000) * 60_000;
-  };
-  const first = new Date(naive.getTime() + offsetAt(naive));
-  const second = new Date(naive.getTime() + offsetAt(first));
-  if (offsetAt(second) === offsetAt(first)) return second;
-  // A wall clock the zone skips (02:30 on spring-forward) — the later reading, so the
-  // hour moves forward with the clocks rather than back into the night before.
-  return first.getTime() > second.getTime() ? first : second;
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const wall = Date.UTC(
+    part('year'),
+    part('month') - 1,
+    part('day'),
+    part('hour'),
+    part('minute'),
+    part('second'),
+  );
+  return wall - Math.floor(instant / 1000) * 1000;
 }
 
 export interface WeekWindow {

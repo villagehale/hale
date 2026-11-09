@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give a timed event: PD Day, tomorrow 9:30 AM to 12:00 PM at Northside community centre. The text instead names it \"Jour de congé\" (wrong language, not the given title), gives the start as 3:00 with no AM/PM (wrong time, not 9:30 AM), drops the end time (12:00 PM) and the venue (Northside community centre), and tells the parent it is \"a day off\" with \"breathing room\", implying nothing to be at when a timed program exists. The language is also mixed with French in an English reminder. Bold is none, which is fine, but the facts are badly wrong.",
+    "score": 1
+  }
+}

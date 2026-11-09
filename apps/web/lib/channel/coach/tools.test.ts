@@ -95,7 +95,6 @@ function fakeReader(events: ScheduleEvent[]): ChannelScheduleReader {
 
 function fakePort(
   pendingIdentical?: ChannelDraftPort['pendingIdentical'],
-  confirmingSave?: ChannelDraftPort['confirmingSave'],
 ): ChannelDraftPort & { drafts: ChannelDraftInput[] } {
   const port = {
     drafts: [] as ChannelDraftInput[],
@@ -104,7 +103,6 @@ function fakePort(
       return { actionId: `action-${port.drafts.length}` };
     },
     ...(pendingIdentical ? { pendingIdentical } : {}),
-    ...(confirmingSave ? { confirmingSave } : {}),
   };
   return port;
 }
@@ -139,10 +137,8 @@ function harness(
   teenChildIds: ReadonlySet<string> = new Set(),
   offered: readonly OfferedCandidate[] = [],
   pendingIdentical?: ChannelDraftPort['pendingIdentical'],
-  confirmingSave?: ChannelDraftPort['confirmingSave'],
-  onDuplicateSaveConfirmation?: () => void,
 ): Harness {
-  const port = fakePort(pendingIdentical, confirmingSave);
+  const port = fakePort(pendingIdentical);
   const audit: unknown[] = [];
   const minted: string[] = [];
   const deps = guardDeps(audit, teenChildIds);
@@ -155,7 +151,6 @@ function harness(
     activity: null,
     spots: null,
     onDraft: (actionId) => minted.push(actionId),
-    onDuplicateSaveConfirmation,
     now: NOW,
   });
   return {
@@ -368,7 +363,10 @@ describe('propose_calendar_add', () => {
   });
 
   it('does not draft again when that add is already waiting', async () => {
-    const h = harness([scheduleEvent()], new Set(), [], async () => 'action-waiting');
+    const h = harness([scheduleEvent()], new Set(), [], async () => ({
+      outcome: 'already_pending',
+      id: 'action-waiting',
+    }));
 
     const result = await h.call('propose_calendar_add', {
       title: 'Trunk or Treat',
@@ -384,32 +382,6 @@ describe('propose_calendar_add', () => {
     });
     expect(h.port.drafts).toEqual([]);
     expect(h.minted).toEqual([]);
-  });
-
-  it('does not draft a second confirmation when that save is already confirming', async () => {
-    let duplicates = 0;
-    const h = harness(
-      [scheduleEvent()],
-      new Set(),
-      [],
-      undefined,
-      async () => true,
-      () => {
-        duplicates += 1;
-      },
-    );
-
-    const result = await h.call('propose_calendar_add', {
-      title: "Ava's carpool",
-      date: '2026-08-05',
-      time: '10:00',
-      weekday: 'wed',
-    });
-
-    expect(result).toMatchObject({ drafted: false, alreadyConfirming: true });
-    expect(h.port.drafts).toEqual([]);
-    expect(h.minted).toEqual([]);
-    expect(duplicates).toBe(1);
   });
 
   it('drafts an add from a family-local date and time', async () => {

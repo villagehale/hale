@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
-import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
-import { claimSaveConfirmation } from '~/lib/channel/calendar-save';
-import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import {
+  calendarInstantsClose,
+  matchingCalendarAddId,
+  unapprovedCalendarAddIds,
+} from '~/lib/channel/calendar-ask';
+import { calendarDraftApprovalSurfaces } from '~/lib/channel/coach/draft';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -280,14 +283,6 @@ export async function handleEmailAlertOfferReply(
     title: offer.title,
     when: when(offer.startsAt, timeZone, input.now),
     parentReply: input.parentReply,
-    language: await familySpeechLanguage(database, input.familyId),
-    googleCalendarConnected: await googleCalendarConnected(database, {
-      familyId: input.familyId,
-      parentUserId: input.parentUserId,
-    }),
-    // Nothing is written on a decline. An add here is always Hale's family calendar.
-    placedOn: null,
-    alsoOnGoogle: offerSaveReachesGoogle(),
   };
 
   if (input.polarity === 'no') {
@@ -307,11 +302,6 @@ export async function handleEmailAlertOfferReply(
   }
 
   await placeOfferedEvent(database, offer, input);
-  // This path writes family_events and does not deliver an ICS, so the place is
-  // Hale's family calendar. `ics` is not a value on this receipt. Google is a
-  // different writer (executor syncGoogle) and this function does not call it.
-  facts.placedOn = 'hale_family_calendar';
-  facts.alsoOnGoogle = offerSaveReachesGoogle();
   // The coach also drafted this add. The parent's YES just placed it, so the draft
   // must leave the queue or the next YES is not answerable and the coach drafts it again.
   await supersedeUnapprovedCalendarAdds(database, {
@@ -372,16 +362,25 @@ async function supersedeUnapprovedCalendarAdds(
         eq(schema.actions.actionType, 'calendar_add'),
       ),
     )
+    .orderBy(desc(schema.actions.draftedAt))
     .limit(20);
-  const timeZone = await parentTimeZone(database, input.parentUserId);
+  // A private YES retires only private-surface drafts: a household group's draft is that
+  // group's question, answered in the group (VIL-525).
+  const surfaces = await calendarDraftApprovalSurfaces(
+    database,
+    input.familyId,
+    rows.map((row) => row.id),
+  );
   const ids = unapprovedCalendarAddIds(
-    rows.map((row) => ({
-      id: row.id,
-      actionType: row.actionType,
-      reviewerApproved: row.reviewerVerdict === 'approved',
-      occasion: occasionFromPayload(row.payload),
-    })),
-    { title: input.title, startsAt: input.startsAt.toISOString(), timeZone },
+    rows
+      .filter((row) => surfaces.get(row.id)?.surface === 'private')
+      .map((row) => ({
+        id: row.id,
+        actionType: row.actionType,
+        reviewerApproved: row.reviewerVerdict === 'approved',
+        occasion: occasionFromPayload(row.payload),
+      })),
+    { title: input.title, startsAt: input.startsAt.toISOString() },
   );
   for (const id of ids) {
     await database.transaction(async (tx) => {
@@ -628,39 +627,6 @@ async function parentTimeZone(database: Database, parentUserId: string): Promise
 }
 
 /**
- * Whether an offer save is also written to the parent's Google calendar.
- *
- * It is not. {@link placeOfferedEvent} inserts `family_events` and returns.
- * Google is written only by the executor's `syncGoogle`, on a reviewed
- * `calendar_add` / `calendar_move` / `calendar_cancel`. A connected calendar
- * is not that write.
- */
-export function offerSaveReachesGoogle(): false {
-  return false;
-}
-
-/**
- * An active gcal row for THIS parent is a connection. A co-parent's row, a
- * family-wide row (no user), and anything not active are not.
- */
-async function googleCalendarConnected(
-  database: Database,
-  input: { familyId: string; parentUserId: string },
-): Promise<boolean> {
-  const rows = await database
-    .select({ userId: schema.integrations.userId, status: schema.integrations.status })
-    .from(schema.integrations)
-    .where(
-      and(
-        eq(schema.integrations.familyId, input.familyId),
-        eq(schema.integrations.userId, input.parentUserId),
-        eq(schema.integrations.provider, 'gcal'),
-      ),
-    );
-  return rows.some((row) => row.userId === input.parentUserId && row.status === 'active');
-}
-
-/**
  * The occasion is already on the week the household shares, or on this parent's
  * kid-related Google block. A mirror row (`google_event_id` set) is one parent's
  * calendar and is not a household event — the household predicate keeps it out.
@@ -705,16 +671,50 @@ export type CoachCalendarOfferOutcome =
   | 'recorded'
   | 'event_started'
   | 'already_held'
-  | 'already_confirming'
+  | 'already_asked'
   | 'unreadable';
+
+/**
+ * The open offer that already asks about this occasion, or null.
+ *
+ * One offer whose start is a close clock to this ask. Saturday morning is not
+ * Saturday afternoon. A minute off the sentence still matches.
+ */
+export async function standingCalendarOfferId(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: string;
+    now: Date;
+  },
+): Promise<string | null> {
+  const open = await loadOpenEmailAlertOffers(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+  });
+  return matchingCalendarAddId(
+    open.map((offer) => ({
+      id: offer.id,
+      actionType: 'calendar_add' as const,
+      occasion: { title: offer.title, startsAt: offer.startsAt.toISOString() },
+    })),
+    { title: input.title, startsAt: input.startsAt },
+  );
+}
 
 /**
  * Write the offer a coach sentence named, after the send.
  *
  * The model supplied the title and the instant. This function does not read the
  * sentence. A start that has passed is not an offer. An occasion already on the
- * calendar is not an offer. Older open offers for this parent expire, because the
- * sentence the parent is holding is the question now.
+ * calendar is not an offer. An offer that already asks about this occasion is
+ * that ask: nothing new is written, so the pending add is not asked twice
+ * (VIL-525). Older open offers for this parent expire only when this sentence
+ * is a new question, because the sentence the parent is holding is the question
+ * now.
  */
 export async function recordCoachCalendarOffer(
   database: Database,
@@ -742,17 +742,14 @@ export async function recordCoachCalendarOffer(
     return 'already_held';
   }
 
-  // One confirmation per save. An open offer for this title and a close clock is
-  // that confirmation: do not expire it and do not open a second one.
-  const open = await loadOpenEmailAlertOffers(database, input);
-  if (
-    claimSaveConfirmation(
-      open.map((row) => ({ title: row.title, startsAt: row.startsAt.toISOString() })),
-      { title, startsAt: input.startsAt.toISOString() },
-    ) === 'duplicate'
-  ) {
-    return 'already_confirming';
-  }
+  const standing = await standingCalendarOfferId(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title,
+    startsAt: input.startsAt.toISOString(),
+    now: input.now,
+  });
+  if (standing) return 'already_asked';
 
   await database
     .update(schema.emailAlertOffers)

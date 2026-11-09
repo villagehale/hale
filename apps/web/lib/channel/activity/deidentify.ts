@@ -1,8 +1,6 @@
-import type { Municipality } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { nameAnywhere } from '~/lib/channel/coach/reply';
 import { scrubResidualPii } from '~/lib/channel/off-domain/medical';
-import { townLabel } from '~/lib/channel/town-label';
 
 /**
  * PHASE 0 OF THE ACTIVITY LANE — de-identify BEFORE the search, deterministically.
@@ -25,9 +23,11 @@ import { townLabel } from '~/lib/channel/town-label';
  *     being remembered. The window was once capped by nothing at all, and a 431-character
  *     window — a parent's whole message pasted into the second argument — crossed the
  *     border beside a subject held to 120.
- *   · the TOWN — code-supplied from `families.area_coarse` via the FSA table. A
- *     municipality, never a postal code and never a street. The model cannot supply it,
- *     which is what makes "coarse location only" a property rather than an instruction.
+ *   · the TOWN — code-supplied from the family's record via the checked-in postal
+ *     tables (place.ts): a city, a province or state and a country, never a postal code
+ *     and never a street. The model cannot supply it, which is what makes "coarse
+ *     location only" a property rather than an instruction. A find with no town is
+ *     refused as `no_place`: a search of nowhere is not a search (VIL-590).
  *   · the STAGE WORD — code-supplied from the child's date of birth via `deriveStage`.
  *     A band, never an age and never a DOB, for the reason the medical lane keeps a band:
  *     an activity that fits a two-year-old does not fit a nine-year-old, and the band is
@@ -82,7 +82,8 @@ export type ActivityDeidRefusal =
   | 'empty_subject'
   | 'subject_too_long'
   | 'window_too_long'
-  | 'names_a_person';
+  | 'names_a_person'
+  | 'no_place';
 
 /**
  * A query that has cleared phase 0 — the ONLY shape the search is allowed to see.
@@ -94,9 +95,8 @@ export type ActivityDeidRefusal =
 export interface ActivityQuery {
   subject: string;
   window: string | null;
-  /** The family's town, in the words a search engine understands. Null when the postal
-   * code on file names no single municipality — see {@link townFor}. */
-  town: string | null;
+  /** The family's town, in the words a search engine understands (place.ts). */
+  town: string;
   /** The coarse band, or null when no child was named and the family has none on file. */
   stage: FamilyStage | null;
   /**
@@ -104,21 +104,16 @@ export interface ActivityQuery {
    * single-band query, so the payload this lane already sends does not grow a key.
    */
   stages?: readonly FamilyStage[];
+  /**
+   * Today where the family lives, `YYYY-MM-DD (Weekday)`, from their own zone (VIL-435).
+   * Absent when the zone is unknown, so the payload other callers send does not grow a key.
+   */
+  today?: string;
 }
 
 export type ActivityDeidResult =
   | { ok: true; query: ActivityQuery }
   | { ok: false; refusal: ActivityDeidRefusal };
-
-/**
- * `halton_hills` → `Halton Hills`, and `whitchurch_stouffville` → `Stouffville`. Taken
- * from {@link townLabel} rather than derived here, so a town has exactly one spelling:
- * a second title-caser could disagree with the one the parent is shown, and this string
- * is the town a web search is run against on that parent's behalf.
- */
-export function townFor(municipality: Municipality): string {
-  return townLabel(municipality);
-}
 
 /** True when `text` names any member of this household, as a whole word in any alphabet
  * ({@link nameAnywhere} — the boundary the outbound redactor uses, so the set of names
@@ -164,16 +159,15 @@ function gateFreeText(
 export function deidentifyActivityQuery(input: {
   subject: string;
   window?: string | null;
-  municipality: Municipality | null;
+  /** From place.ts. Null when the family has no place a search can be told. */
+  town: string | null;
   stage: FamilyStage | null;
   householdNames: readonly string[];
+  /** From the family's own clock, never the model (see {@link ActivityQuery.today}). */
+  today?: string | null;
 }): ActivityDeidResult {
-  const subject = gateFreeText(input.subject, input.householdNames);
-  if (!subject.ok) {
-    if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
-    if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };
-    return { ok: false, refusal: 'names_a_person' };
-  }
+  const subject = deidentifyActivitySubject(input.subject, input.householdNames);
+  if (!subject.ok) return subject;
 
   // An ABSENT window is legal and a REFUSED one is not — different outcomes, kept apart
   // (rule #11). A window that scrubs away to nothing is ABSENT: a search with no season is
@@ -189,15 +183,36 @@ export function deidentifyActivityQuery(input: {
     window = gated.ok ? gated.value : null;
   }
 
+  if (input.town === null) return { ok: false, refusal: 'no_place' };
+
   return {
     ok: true,
     query: {
       subject: subject.value,
       window,
-      town: input.municipality === null ? null : townFor(input.municipality),
+      town: input.town,
       stage: input.stage,
+      ...(input.today ? { today: input.today } : {}),
     },
   };
+}
+
+/**
+ * The subject alone, through the same gate: for a subject that is STORED rather than
+ * searched now (a promise, a watch label). It is searched later through
+ * {@link deidentifyActivityQuery}, which attaches the place then.
+ */
+export function deidentifyActivitySubject(
+  raw: string,
+  householdNames: readonly string[],
+):
+  | { ok: true; value: string }
+  | { ok: false; refusal: 'empty_subject' | 'subject_too_long' | 'names_a_person' } {
+  const subject = gateFreeText(raw, householdNames);
+  if (subject.ok) return subject;
+  if (subject.refusal === 'empty') return { ok: false, refusal: 'empty_subject' };
+  if (subject.refusal === 'too_long') return { ok: false, refusal: 'subject_too_long' };
+  return { ok: false, refusal: 'names_a_person' };
 }
 
 /**
@@ -217,7 +232,7 @@ export function deidentifyActivityQuery(input: {
  * already passed `destinationShape` at write time, so what reaches this gate is a place
  * name rather than whatever a model wrote.
  */
-export type TravelQueryRefusal = ActivityDeidRefusal | 'destination_unusable';
+export type TravelQueryRefusal = Exclude<ActivityDeidRefusal, 'no_place'> | 'destination_unusable';
 
 export type TravelQueryResult =
   | { ok: true; query: ActivityQuery }
@@ -288,5 +303,7 @@ export function refusalSentence(refusal: ActivityDeidRefusal): string {
       return `That window is longer than ${MAX_QUERY_FIELD_CHARS} characters. Call find_activities again with the season or the time of week in a few words, not the parent's whole message.`;
     case 'names_a_person':
       return 'That subject names somebody in the family, and a name never goes to a search. Call find_activities again with the activity alone - the age band travels with it already.';
+    case 'no_place':
+      return 'There is no town on file for this family, so there is nowhere to search.';
   }
 }

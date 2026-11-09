@@ -1,8 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { invokeTool } from '@hale/agent';
+import type { GuardDeps } from '@hale/agent';
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { declineDraftedAction } from '~/lib/actions/decline';
+import { approvalForCalendarYes, pairedDraftsForCalendarNo } from '~/lib/channel/calendar-ask';
+import { findPendingIdenticalCalendarAdd } from '~/lib/channel/coach/draft';
+import { productionChannelCoachPorts } from '~/lib/channel/coach/runtime';
+import { buildChannelCoachTools, createTurnOfferLedger } from '~/lib/channel/coach/tools';
+import { groupPlanDraftPort } from '~/lib/channel/group-plan/stamp';
 import { emailAlertAddHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext, HandlerVerdict, ResolvedAnswer } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
@@ -14,11 +21,9 @@ import {
   EMAIL_ALERT_OFFER_TTL_MS,
   handleEmailAlertOfferReply,
   loadOpenEmailAlertOffers,
-  offerSaveReachesGoogle,
   recordCoachCalendarOffer,
   recordEmailAlertOffer,
 } from './email-alert-offer';
-import { type OfferReceiptFacts, offerReceiptUserMessage } from './offer-receipt';
 
 /**
  * THE YES AT THE END OF AN EMAIL ALERT, against the real DDL.
@@ -43,6 +48,7 @@ const NOW = new Date('2026-09-17T15:00:00.000Z');
 /** Inside the reminder scheduler's 8-day horizon, and a Saturday morning in Toronto. */
 const STARTS_AT = new Date('2026-09-19T13:00:00.000Z');
 const TITLE = 'Picture day';
+const PRIVATE = { surface: 'private' } as const;
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -188,7 +194,12 @@ function reply(body: string, over?: Parameters<typeof turn>[1]): Promise<Handler
 
 /** A drafted change waiting for this family's approval — the other open question. */
 async function seedDraftedAction(
-  over: { title?: string; startsAt?: string; reviewerVerdict?: 'approved' | 'pending' } = {},
+  over: {
+    title?: string;
+    startsAt?: string;
+    reviewerVerdict?: 'approved' | 'pending';
+    draftedAt?: Date;
+  } = {},
 ): Promise<string> {
   const [event] = await db.database
     .insert(schema.events)
@@ -212,6 +223,7 @@ async function seedDraftedAction(
       },
       userVisibleState: 'drafted_for_approval',
       reviewerVerdict: over.reviewerVerdict ?? 'approved',
+      ...(over.draftedAt ? { draftedAt: over.draftedAt } : {}),
     })
     .returning({ id: schema.actions.id });
   if (!action) throw new Error('no action row');
@@ -233,114 +245,6 @@ function offers() {
 }
 
 describe('a YES puts the occasion on the family week', () => {
-  it('passes whether Google calendar is connected and where the entry went', async () => {
-    const seen: OfferReceiptFacts[] = [];
-    const offerId = await seedOffer();
-    const verdict = await emailAlertAddHandler({
-      writeReceipt: {
-        write: async (facts) => {
-          seen.push(facts);
-          return 'receipt';
-        },
-      },
-    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
-
-    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
-    expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({
-      happened: 'added',
-      language: 'en',
-      parentReply: 'yes',
-      googleCalendarConnected: false,
-      placedOn: 'hale_family_calendar',
-      alsoOnGoogle: false,
-    });
-    expect(offerSaveReachesGoogle()).toBe(false);
-  });
-
-  it('follows the parent’s words when the household has no stored language', async () => {
-    await db.database
-      .update(schema.families)
-      .set({ primaryLanguage: '' })
-      .where(eq(schema.families.id, family.familyId));
-    const seen: OfferReceiptFacts[] = [];
-    const offerId = await seedOffer();
-    const words = 'Oui, ça me va';
-    await emailAlertAddHandler({
-      writeReceipt: {
-        write: async (facts) => {
-          seen.push(facts);
-          return 'receipt';
-        },
-      },
-    }).handle(db.database, await turn(words, { resolved: reading(offerId, 'yes') }));
-
-    expect(seen[0]).toMatchObject({ language: null, parentReply: words });
-    const message = JSON.parse(offerReceiptUserMessage(seen[0] as OfferReceiptFacts)) as {
-      parentWords: string;
-      language: null;
-      address: string;
-    };
-    expect(message.parentWords).toBe(words);
-    expect(message.language).toBeNull();
-    expect(message.address).toBe('tu');
-  });
-
-  it('does not treat a co-parent’s Google calendar as this parent’s', async () => {
-    const [coParent] = await db.database
-      .insert(schema.users)
-      .values({ email: `${randomUUID()}@example.test`, name: 'Co Parent' })
-      .returning({ id: schema.users.id });
-    if (!coParent) throw new Error('no co-parent');
-    await db.database.insert(schema.familyMembers).values({
-      familyId: family.familyId,
-      userId: coParent.id,
-      role: 'co_parent',
-    });
-    await seedIntegration(db.database, family.familyId, coParent.id, 'gcal');
-
-    const seen: OfferReceiptFacts[] = [];
-    const offerId = await seedOffer();
-    await emailAlertAddHandler({
-      writeReceipt: {
-        write: async (facts) => {
-          seen.push(facts);
-          return 'receipt';
-        },
-      },
-    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
-
-    expect(seen[0]).toMatchObject({
-      happened: 'added',
-      googleCalendarConnected: false,
-      placedOn: 'hale_family_calendar',
-      alsoOnGoogle: false,
-    });
-  });
-
-  it('reports a connected Google calendar without moving the entry off Hale’s calendar', async () => {
-    await seedIntegration(db.database, family.familyId, family.parentUserId, 'gcal');
-    const seen: OfferReceiptFacts[] = [];
-    const offerId = await seedOffer();
-    await emailAlertAddHandler({
-      writeReceipt: {
-        write: async (facts) => {
-          seen.push(facts);
-          return 'receipt';
-        },
-      },
-    }).handle(db.database, await turn('yes', { resolved: reading(offerId, 'yes') }));
-
-    expect(seen[0]).toMatchObject({
-      happened: 'added',
-      googleCalendarConnected: true,
-      placedOn: 'hale_family_calendar',
-      alsoOnGoogle: false,
-    });
-    const rows = await events();
-    expect(rows[0]?.placedGoogleEventId).toBeNull();
-  });
-
   it('writes ONE family_events row at the offered instant, and answers with it', async () => {
     const offerId = await seedOffer();
 
@@ -697,6 +601,33 @@ describe('a bare YES is never stolen from another open question', () => {
     expect(audits.map((row) => row.actionTaken)).toContain('action.superseded_by_calendar_offer');
   });
 
+  it('a YES retires the newest unapproved draft of the same add behind a page of older drafts', async () => {
+    const offerId = await seedOffer();
+    for (let i = 0; i < 20; i += 1) {
+      await seedDraftedAction({
+        title: `Other class ${i}`,
+        startsAt: STARTS_AT.toISOString(),
+        reviewerVerdict: 'pending',
+        draftedAt: new Date(NOW.getTime() - (60 - i) * 60_000),
+      });
+    }
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+      draftedAt: new Date(NOW.getTime() - 60_000),
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const [action] = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, actionId));
+    expect(action).toEqual({ state: 'reverted' });
+  });
+
   it('acts on a RESOLVED answer even with another question open', async () => {
     // The other half: the resolver named which question this is, which is what the wait
     // exists to establish, so the handler acts.
@@ -972,6 +903,20 @@ describe('what the week does with it', () => {
  */
 describe('a coach offer is the calendar, not the sentence', () => {
   const SUNDAY = new Date('2026-10-04T13:00:00.000Z');
+
+  // The group drafts below are stamped for 'chat-family', which only the household group
+  // ever gets, so that chat is this family's household group (VIL-525).
+  beforeEach(async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: null })
+      .where(eq(schema.families.linqGroupChatId, 'chat-family'));
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: 'chat-family' })
+      .where(eq(schema.families.id, family.familyId));
+  });
   const THURSDAY = new Date('2026-10-01T20:15:00.000Z');
   const OCTOBER_SECOND = new Date('2026-10-02T15:00:00.000Z');
 
@@ -1076,25 +1021,475 @@ describe('a coach offer is the calendar, not the sentence', () => {
     await expect(offers()).resolves.toEqual([]);
   });
 
-  it('keeps the first confirmation for a save and does not open a second', async () => {
+  it('does not ask a pending add again once that ask has been sent', async () => {
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const minuteOff = new Date(STARTS_AT.getTime() + 60_000);
+
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        title: TITLE,
+        startsAt: minuteOff.toISOString(),
+        childId: null,
+        now: NOW,
+        origin: PRIVATE,
+      }),
+    ).toEqual({ outcome: 'already_pending', id: actionId });
+
     const channelMessageId = await sentOut(NOW);
-    await expect(coach({ title: 'Gymnastics', startsAt: SUNDAY, channelMessageId })).resolves.toBe(
+    await expect(coach({ title: TITLE, startsAt: minuteOff, channelMessageId })).resolves.toBe(
       'recorded',
     );
 
-    const again = await sentOut(new Date(NOW.getTime() + 1000));
+    const questions = await defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(questions.map((question) => question.kind)).toContain('email_alert_add');
+
+    const again = await sentOut(new Date(NOW.getTime() + 60_000));
+    await expect(
+      coach({ title: TITLE, startsAt: STARTS_AT, channelMessageId: again }),
+    ).resolves.toBe('already_asked');
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    expect(open).toHaveLength(1);
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        title: TITLE,
+        startsAt: STARTS_AT.toISOString(),
+        childId: null,
+        now: NOW,
+        origin: PRIVATE,
+      }),
+    ).toEqual({ outcome: 'already_pending', id: actionId });
+  });
+
+  it('does not treat Saturday afternoon as the Saturday morning offer', async () => {
+    const morning = new Date('2026-10-10T13:00:00.000Z');
+    const afternoon = new Date('2026-10-10T20:00:00.000Z');
+    const morningDraft = await seedDraftedAction({
+      title: 'Gymnastics',
+      startsAt: morning.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await seedOffer({ title: 'Gymnastics', startsAt: morning });
+
     await expect(
       coach({
-        title: '  gymnastics ',
-        startsAt: new Date(SUNDAY.getTime() + 60_000),
-        channelMessageId: again,
+        title: 'Gymnastics',
+        startsAt: afternoon,
+        channelMessageId: await sentOut(NOW),
       }),
-    ).resolves.toBe('already_confirming');
+    ).resolves.toBe('recorded');
 
-    const rows = await offers();
-    const standing = rows.filter((row) => row.resolvedAt === null && row.expiresAt > NOW);
-    expect(standing).toHaveLength(1);
-    expect(standing[0]?.messageId).toBe(`coach:${channelMessageId}`);
+    const open = await loadOpenEmailAlertOffers(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+    expect(open.map((row) => row.startsAt.toISOString())).toEqual([afternoon.toISOString()]);
+    const afternoonId = open[0]?.id;
+    if (!afternoonId) throw new Error('no afternoon offer');
+
+    const verdict = await reply('yes', { resolved: reading(afternoonId, 'yes') });
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const placed = await events();
+    expect(placed).toHaveLength(1);
+    expect(placed[0]?.startsAt.toISOString()).toBe(afternoon.toISOString());
+
+    const [draft] = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, morningDraft));
+    expect(draft?.state).toBe('drafted_for_approval');
+  });
+
+  it('a morning offer is not the ask for the same title that afternoon, so that ask drafts', async () => {
+    const morning = new Date('2026-10-10T13:00:00.000Z');
+    const offerId = await seedOffer({ title: 'Gymnastics', startsAt: morning });
+    const ask = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      title: 'Gymnastics',
+      childId: null,
+      now: NOW,
+      origin: PRIVATE,
+    };
+
+    await expect(
+      findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        startsAt: new Date(morning.getTime() + 60_000).toISOString(),
+      }),
+    ).resolves.toEqual({ outcome: 'already_asked', id: offerId });
+    await expect(
+      findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        startsAt: new Date(morning.getTime() + 7 * 3_600_000).toISOString(),
+      }),
+    ).resolves.toEqual({ outcome: 'none' });
+  });
+
+  it('a NO declines the hidden unapproved add, so the next turn does not list it', async () => {
+    const actionId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+
+    const open = async () =>
+      defaultOpenQuestionReader().open(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        now: NOW,
+      });
+    const first = await open();
+    const offer = first.find((question) => question.id === offerId);
+    expect(offer?.declinesActionId).toBe(actionId);
+    expect(offer?.approvesActionId).toBeUndefined();
+    expect(first.filter((question) => question.kind === 'approval')).toEqual([]);
+
+    const verdict = await reply('no', { resolved: reading(offerId, 'no') });
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'declined' });
+    if (!verdict.claimed) throw new Error('unreachable');
+    await declineDraftedAction(db.database, {
+      actionId,
+      familyId: family.familyId,
+      declinedBy: family.parentUserId,
+    });
+    await verdict.afterSend?.(await receipt());
+
+    const next = await open();
+    expect(next.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(next.find((question) => question.id === offerId)).toBeUndefined();
+  });
+
+  it("a private YES retires only the private draft of that add, never the household group's", async () => {
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+
+    const verdict = await reply('YES', { resolved: reading(offerId, 'yes') });
+
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const states = await db.database
+      .select({ id: schema.actions.id, state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.familyId, family.familyId));
+    expect(new Map(states.map((row) => [row.id, row.state]))).toEqual(
+      new Map([
+        [privateId, 'reverted'],
+        [groupId, 'drafted_for_approval'],
+      ]),
+    );
+  });
+
+  it('a private offer does not stop a group ask from drafting', async () => {
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const ask = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      childId: null,
+      now: NOW,
+    };
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        ...ask,
+        origin: { surface: 'group', chatId: 'chat-family' },
+      }),
+    ).toEqual({ outcome: 'none' });
+    expect(await findPendingIdenticalCalendarAdd(db.database, { ...ask, origin: PRIVATE })).toEqual(
+      { outcome: 'already_asked', id: offerId },
+    );
+  });
+
+  it('reuses the group draft when a private draft matches the same occasion', async () => {
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+
+    let minted = 0;
+    const port = groupPlanDraftPort(
+      {
+        pendingIdentical: (input) =>
+          findPendingIdenticalCalendarAdd(db.database, {
+            ...input,
+            parentUserId: family.parentUserId,
+            now: NOW,
+            origin: { surface: 'group', chatId: 'chat-family' },
+          }),
+        draft: async () => {
+          minted += 1;
+          return { actionId: 'third' };
+        },
+      },
+      { audience: 'group', conversationId: 'c-group' },
+      async () => 'recorded',
+    );
+    const tools = buildChannelCoachTools({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      reader: {
+        timeZone: async () => 'America/Chicago',
+        weekPlanSummary: async () => null,
+        eventsInWeek: async () => [],
+        resolveEvent: async () => null,
+        connectedWeek: async () => ({
+          calendarSync: 'not_connected',
+          blocks: [],
+          mailSync: 'not_connected',
+          processedCount: 0,
+          since: null,
+          activities: [],
+          trips: [],
+        }),
+      },
+      draftPort: port,
+      villageTool: null,
+      activity: null,
+      spots: null,
+      now: NOW,
+    });
+    const tool = tools.find((candidate) => candidate.name === 'propose_calendar_add');
+    if (!tool) throw new Error('no propose_calendar_add');
+    const guard: GuardDeps = {
+      writeAudit: async () => {},
+      checkChildContentAccess: async () => ({ ok: true, reason: 'ok' }),
+    };
+    const result = await invokeTool(
+      tool,
+      { title: TITLE, date: '2026-09-19', time: '08:00', weekday: 'sat' },
+      { familyId: family.familyId, actor: family.parentUserId },
+      guard,
+    );
+
+    expect(result).toMatchObject({ alreadyPending: true, actionId: groupId });
+    expect(result).not.toMatchObject({ actionId: privateId });
+    expect(minted).toBe(0);
+  });
+
+  it('a private ask beside a group-only draft drafts its own, and the private thread lists only that one', async () => {
+    const groupId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: family.parentUserId,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: groupId,
+      after: { chatId: 'chat-family' },
+    });
+    const privateAsk = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      childId: null,
+      now: NOW,
+      origin: PRIVATE,
+    };
+    const approvalIds = async (surface: 'direct' | 'group') =>
+      (
+        await defaultOpenQuestionReader().open(db.database, {
+          familyId: family.familyId,
+          parentUserId: family.parentUserId,
+          now: NOW,
+          surface,
+        })
+      )
+        .filter((question) => question.kind === 'approval')
+        .map((question) => question.id);
+
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toEqual({
+      outcome: 'none',
+    });
+    expect(
+      await findPendingIdenticalCalendarAdd(db.database, {
+        ...privateAsk,
+        origin: { surface: 'group', chatId: 'chat-family' },
+      }),
+    ).toEqual({ outcome: 'already_pending', id: groupId });
+    expect(await approvalIds('direct')).toEqual([]);
+    expect(await approvalIds('group')).toEqual([groupId]);
+
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    expect(await approvalIds('direct')).toEqual([privateId]);
+    expect(await findPendingIdenticalCalendarAdd(db.database, privateAsk)).toEqual({
+      outcome: 'already_pending',
+      id: privateId,
+    });
+  });
+
+  describe('through the production coach ports', () => {
+    async function proposeAdd(turn: { audience: 'direct' | 'group'; groupChatId?: string }) {
+      // Built, never called: a draft that reaches the reviewer stops at a closed local
+      // port. A stubbed global fetch does not reach the SDK's transport.
+      vi.stubEnv('ANTHROPIC_API_KEY', 'not-used-by-this-test');
+      vi.stubEnv('ANTHROPIC_BASE_URL', 'http://127.0.0.1:9');
+      await db.database
+        .update(schema.users)
+        .set({ timezone: 'America/Chicago' })
+        .where(eq(schema.users.id, family.parentUserId));
+      const noop = () => {};
+      const tool = productionChannelCoachPorts(db.database)
+        .buildTools(
+          {
+            familyId: family.familyId,
+            parentUserId: family.parentUserId,
+            conversationId: randomUUID(),
+            body: 'add picture day',
+            now: NOW,
+            standingQuestions: [],
+            ...turn,
+          },
+          noop,
+          noop,
+          noop,
+          noop,
+          noop,
+          createTurnOfferLedger(),
+        )
+        .find((candidate) => candidate.name === 'propose_calendar_add');
+      if (!tool) throw new Error('production buildTools registers no propose_calendar_add');
+      const guard: GuardDeps = {
+        writeAudit: async () => {},
+        checkChildContentAccess: async () => ({ ok: true, reason: 'ok' }),
+      };
+      return invokeTool(
+        tool,
+        { title: TITLE, date: '2026-09-19', time: '08:00', weekday: 'sat' },
+        { familyId: family.familyId, actor: family.parentUserId },
+        guard,
+      );
+    }
+
+    it("a private ask finds the parent's standing offer", async () => {
+      const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+      await expect(proposeAdd({ audience: 'direct' })).resolves.toMatchObject({
+        alreadyPending: true,
+        actionId: offerId,
+      });
+    });
+
+    it("a group ask reuses that chat's draft, not the parent's private offer", async () => {
+      await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+      const groupId = await seedDraftedAction({
+        title: TITLE,
+        startsAt: STARTS_AT.toISOString(),
+        reviewerVerdict: 'pending',
+      });
+      await db.database.insert(schema.auditLog).values({
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        actionTaken: 'group_plan.drafted',
+        targetTable: 'actions',
+        targetId: groupId,
+        after: { chatId: 'chat-family' },
+      });
+      await expect(
+        proposeAdd({ audience: 'group', groupChatId: 'chat-family' }),
+      ).resolves.toMatchObject({ alreadyPending: true, actionId: groupId });
+    });
+  });
+
+  it('a NO clears every private draft of that offer', async () => {
+    const privateId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: STARTS_AT.toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const secondId = await seedDraftedAction({
+      title: TITLE,
+      startsAt: new Date(STARTS_AT.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'pending',
+    });
+    const offerId = await seedOffer({ title: TITLE, startsAt: STARTS_AT });
+    const read = () =>
+      defaultOpenQuestionReader().open(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        now: NOW,
+      });
+
+    const first = await read();
+    expect(first.filter((question) => question.kind === 'approval')).toEqual([]);
+    const declined = pairedDraftsForCalendarNo(first, {
+      status: 'resolved',
+      questionId: offerId,
+      kind: 'email_alert_add',
+      polarity: 'no',
+      confidence: 'high',
+    });
+    expect(declined).toEqual(expect.arrayContaining([privateId, secondId]));
+
+    const verdict = await reply('no', { resolved: reading(offerId, 'no') });
+    expect(verdict.claimed).toBe(true);
+    for (const actionId of declined) {
+      await declineDraftedAction(db.database, {
+        actionId,
+        familyId: family.familyId,
+        declinedBy: family.parentUserId,
+      });
+    }
+    if (verdict.claimed) await verdict.afterSend?.(await receipt());
+
+    const next = await read();
+    expect(next.filter((question) => question.kind === 'approval')).toEqual([]);
+    expect(next.find((question) => question.id === offerId)).toBeUndefined();
   });
 
   it('records a future offer, expires the older one, and stops at the start', async () => {
@@ -1175,5 +1570,144 @@ describe('a coach offer is the calendar, not the sentence', () => {
     const rows = await events();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.startsAt.toISOString()).toBe(SUNDAY.toISOString());
+  });
+});
+
+/**
+ * VIL-596. An answer approves only the add it was asked about. A calendar offer pairs
+ * with the reviewer-approved draft of ITS occasion: the same title and a close clock.
+ * The same title on the same day at another hour is another occasion. Read by the
+ * shipped reader over real rows, then through the router's own YES and NO pairing.
+ */
+describe('an offer pairs only with the draft of its own occasion', () => {
+  const GYM = 'Gymnastics';
+  const MORNING = STARTS_AT;
+  const AFTERNOON = new Date(STARTS_AT.getTime() + 7 * 60 * 60 * 1000);
+
+  const open = () =>
+    defaultOpenQuestionReader().open(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      now: NOW,
+    });
+
+  function calendarReading(offerId: string, polarity: 'yes' | 'no') {
+    return {
+      status: 'resolved' as const,
+      questionId: offerId,
+      kind: 'email_alert_add' as const,
+      polarity,
+      confidence: 'high' as const,
+    };
+  }
+
+  async function draftState(actionId: string) {
+    const [row] = await db.database
+      .select({ state: schema.actions.userVisibleState })
+      .from(schema.actions)
+      .where(eq(schema.actions.id, actionId));
+    return row?.state;
+  }
+
+  it('a YES to the morning offer never approves the afternoon add of the same title', async () => {
+    const afternoonOffer = await seedOffer({
+      title: GYM,
+      startsAt: AFTERNOON,
+      createdAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+    });
+    const afternoonDraft = await seedDraftedAction({
+      title: GYM,
+      startsAt: AFTERNOON.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    // Newer, so the reader meets it first: the order that let it take the afternoon draft.
+    const morningOffer = await seedOffer({ title: GYM, startsAt: MORNING, createdAt: NOW });
+
+    const questions = await open();
+    const morning = questions.find((question) => question.id === morningOffer);
+    const afternoon = questions.find((question) => question.id === afternoonOffer);
+    expect(morning?.approvesActionId).toBeUndefined();
+    expect(afternoon?.approvesActionId).toBe(afternoonDraft);
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+
+    expect(approvalForCalendarYes(questions, calendarReading(morningOffer, 'yes'))).toEqual(
+      calendarReading(morningOffer, 'yes'),
+    );
+    expect(pairedDraftsForCalendarNo(questions, calendarReading(morningOffer, 'no'))).toEqual([]);
+    // POSITIVE CONTROL: the afternoon offer is the afternoon add's own question.
+    expect(approvalForCalendarYes(questions, calendarReading(afternoonOffer, 'yes'))).toEqual({
+      ...calendarReading(afternoonDraft, 'yes'),
+      kind: 'approval',
+    });
+    expect(pairedDraftsForCalendarNo(questions, calendarReading(afternoonOffer, 'no'))).toEqual([
+      afternoonDraft,
+    ]);
+
+    const verdict = await reply('yes', { resolved: reading(morningOffer, 'yes') });
+    expect(verdict).toMatchObject({ claimed: true, outcome: 'added' });
+    const placed = await events();
+    expect(placed.map((row) => row.startsAt.toISOString())).toEqual([MORNING.toISOString()]);
+    await expect(draftState(afternoonDraft)).resolves.toBe('drafted_for_approval');
+  });
+
+  it('a morning offer leaves an approved afternoon add listed as its own question', async () => {
+    const morningOffer = await seedOffer({ title: GYM, startsAt: MORNING });
+    const afternoonDraft = await seedDraftedAction({
+      title: GYM,
+      startsAt: AFTERNOON.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === morningOffer)?.approvesActionId).toBe(
+      undefined,
+    );
+    expect(
+      questions.filter((question) => question.kind === 'approval').map((question) => question.id),
+    ).toEqual([afternoonDraft]);
+  });
+
+  it('pairs the only approved add of the occasion when its clock reads a minute off (control)', async () => {
+    const offerId = await seedOffer({ title: GYM, startsAt: MORNING });
+    const actionId = await seedDraftedAction({
+      title: GYM,
+      startsAt: new Date(MORNING.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(actionId);
+    expect(questions.filter((question) => question.kind === 'approval')).toEqual([]);
+  });
+
+  it('names two approved adds of the occasion as ambiguous and pairs with neither', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const offerId = await seedOffer({ title: GYM, startsAt: MORNING });
+    const exact = await seedDraftedAction({
+      title: GYM,
+      startsAt: MORNING.toISOString(),
+      reviewerVerdict: 'approved',
+    });
+    const minuteOff = await seedDraftedAction({
+      title: GYM,
+      startsAt: new Date(MORNING.getTime() + 60_000).toISOString(),
+      reviewerVerdict: 'approved',
+    });
+
+    const questions = await open();
+
+    expect(questions.find((question) => question.id === offerId)?.approvesActionId).toBe(undefined);
+    expect(
+      questions
+        .filter((question) => question.kind === 'approval')
+        .map((question) => question.id)
+        .sort(),
+    ).toEqual([exact, minuteOff].sort());
+    expect(info).toHaveBeenCalledWith(
+      { offerId, actionIds: expect.arrayContaining([exact, minuteOff]), outcome: 'ambiguous' },
+      expect.any(String),
+    );
   });
 });

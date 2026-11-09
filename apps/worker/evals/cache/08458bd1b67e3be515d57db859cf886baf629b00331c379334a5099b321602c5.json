@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says login failed, child not signed up (confirmed false), gives the live browser link and the 8-minute window, no personal details, no retry promise, in zh. Minor: uses '这一场还没有报上名' accurately and does not claim a hold. Looks fully compliant.",
+    "score": 5
+  }
+}

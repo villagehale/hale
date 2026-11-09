@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type { GoogleAccessOutcome } from '~/lib/integrations/google-disconnect';
 import { revokeFamilyConnector } from '~/lib/integrations/load';
 
 export type DisconnectConnectorState =
@@ -9,13 +10,27 @@ export type DisconnectConnectorState =
   | { status: 'error'; message: string };
 
 /**
- * Disconnect one Google connector for the signed-in parent. Delegates to
- * revokeFamilyConnector: auth from the session, scoped to the caller's own
- * (family,user,provider), tokens purged + the rule-#6 audit row inside one
- * transaction. Every non-revoked result surfaces as an error — never the false
- * success the old fetch-the-route path returned when no row matched. The success
- * copy owns the local-only truth: Hale's tokens are deleted, but Google's own
- * record of the grant survives until the user removes it there.
+ * The label on the page the parent is looking at once the disconnect has run, one per
+ * thing Google may have confirmed (VIL-156). A UI label on the Settings surface, not a
+ * message Hale sends: a Settings click is not a thread the parent opened, so nothing is
+ * texted. Google revokes per project, so every label says both services are off, and
+ * none claims more than Google answered.
+ */
+const DISCONNECTED_LABEL: Record<GoogleAccessOutcome, string> = {
+  revoked:
+    'Disconnected. Gmail and Google Calendar are both off, and Google has removed Hale’s access to your Google account.',
+  pending_retry:
+    'Disconnected. Gmail and Google Calendar are both off. Hale asked Google to remove its access; Google hasn’t confirmed yet, and Hale keeps asking.',
+  not_confirmed:
+    'Disconnected. Gmail and Google Calendar are both off and Hale deleted its keys, but Google didn’t confirm removing Hale’s access. Your Google account settings show whether Hale is still listed.',
+};
+
+/**
+ * Disconnect Google for the signed-in parent. Delegates to revokeFamilyConnector, which
+ * goes through disconnectGoogle: auth from the session, scoped to the caller's own
+ * (family,user), every Google connector ended and revoked at Google. Every non-revoked
+ * result surfaces as an error — never the false success the old fetch-the-route path
+ * returned when no row matched.
  */
 export async function disconnectConnectorAction(
   _previous: DisconnectConnectorState,
@@ -30,11 +45,7 @@ export async function disconnectConnectorAction(
   switch (result.status) {
     case 'revoked':
       revalidatePath('/settings');
-      return {
-        status: 'success',
-        message:
-          'Disconnected. Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions.',
-      };
+      return { status: 'success', message: DISCONNECTED_LABEL[result.google] };
     case 'not_found':
       return {
         status: 'error',

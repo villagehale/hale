@@ -40,7 +40,13 @@ function message(p: ReminderPayload): LoopMessage {
 describe('reminder renderer — the text is the whole message', () => {
   it('sends the model text byte for byte, with no prefix, line or link added', () => {
     const rendered = loopTemplateRenderer.render(message(payload()), 'sms', 'first_name');
-    expect(rendered).toEqual({ kind: 'sms', text: TEXT, texts: [TEXT], recordBody: true });
+    expect(rendered).toEqual({
+      kind: 'sms',
+      text: TEXT,
+      texts: [TEXT],
+      modelWritten: true,
+      recordBody: true,
+    });
   });
 
   it('carries several texts in the order the model wrote them, unsplit and unjoined', () => {

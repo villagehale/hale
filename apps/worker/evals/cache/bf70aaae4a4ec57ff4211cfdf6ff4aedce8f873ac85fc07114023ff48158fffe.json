@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with the question 'Want me to keep an eye on all of this for you?', which is an ask of its own, duplicating the shell question. It asks the parent something, so the message is not ask-free.",
+    "score": 1
+  }
+}

@@ -7,7 +7,7 @@ import type {
   CalendarInviteRequest,
   CalendarInviteSender,
 } from '@hale/worker/executor';
-import { and, asc, eq, gt, gte, inArray, isNotNull, like, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, like, or, sql } from 'drizzle-orm';
 import { type DispatchPorts, type LegResult, dispatchLoopMessage } from '~/lib/channel/dispatch';
 import { hadGroupPlanLink } from '~/lib/channel/group-plan/send';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
@@ -23,6 +23,7 @@ import {
   inviteWhenLabel,
 } from '~/lib/loop/templates/calendar-invite/sms';
 import type { CalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
+import type { CalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
 
 /**
  * VIL-249 · M13 — the production fan-out: a placement, delivered as a tap-to-add link.
@@ -33,12 +34,14 @@ import type { CalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice
  * all happen there, exactly once, for this message like every other.
  *
  * ONE FORM: a text carrying one line and a per-event ICS URL the parent's phone opens
- * in Calendar. The emailed iTIP invite (and the one-time ask for an address to send it
- * to) is retired with the email channel; a parent with a connected Google Calendar
- * gets the placement written there directly, and everyone else gets iMessage
- * reminders. A CANCEL texts each parent who was sent that link that the event is
- * cancelled, in words a model writes (calendar-cancel-voice.ts); a parent who never got
- * the link is named `never_linked` and texted nothing.
+ * in Calendar. The line is words a model writes (calendar-invite-voice.ts); if it
+ * cannot, nothing is sent and the leg is `compose_deferred`. The emailed iTIP invite
+ * (and the one-time ask for an address to send it to) is retired with the email
+ * channel; a parent with a connected Google Calendar gets the placement written there
+ * directly, and everyone else gets iMessage reminders. A CANCEL texts each parent who
+ * was sent that link that the event is cancelled, in words a model writes
+ * (calendar-cancel-voice.ts); a parent who never got the link is named `never_linked`
+ * and texted nothing.
  *
  * ITS STANDING IS A LOOP SEND, not the "Approved" reply's — that reply is an answer to
  * an inbound turn and leaves through the transport with no policy gate, while this
@@ -60,6 +63,9 @@ export interface CalendarInviteDeps {
    * 'channel_unavailable', not an absent dependency here. */
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: TemplateRenderer;
+  /** The tap-to-add words. REQUIRED (rule #11); its deferral is named
+   * (`compose_deferred`) and nothing is sent. */
+  inviteVoice: CalendarInviteVoice;
   /** The cancellation's words. REQUIRED (rule #11); its deferral is named
    * (`compose_deferred`) and nothing is sent. */
   cancelVoice: CalendarCancelVoice;
@@ -70,6 +76,8 @@ interface InvitedParent {
   userId: string;
   timezone: string;
   role: string;
+  /** The family's language, read with the membership so there is no row without one. */
+  language: string;
 }
 
 /** The parents an invite is addressed to, primary first. */
@@ -79,9 +87,11 @@ async function loadInvitedParents(database: Database, familyId: string): Promise
       userId: schema.users.id,
       timezone: schema.users.timezone,
       role: schema.familyMembers.role,
+      language: schema.families.primaryLanguage,
     })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .innerJoin(schema.families, eq(schema.familyMembers.familyId, schema.families.id))
     .where(
       and(
         eq(schema.familyMembers.familyId, familyId),
@@ -138,16 +148,117 @@ interface InviteJob {
   method: CalendarInviteMethod;
 }
 
+/** LIKE metacharacters stay literal. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/** LIKE pattern that matches `value` as a substring. */
+function likeContains(value: string): string {
+  return `%${escapeLike(value)}%`;
+}
+
+/**
+ * Whether this parent was already texted this revision AND the part that carries
+ * the link landed. A first bubble with no url is not the invite: dispatch still
+ * has to send the missing part. Revision 1's key is not a prefix of revision 10.
+ */
+async function alreadyTextedThisLink(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  dedupeKey: string,
+  url: string,
+): Promise<boolean> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ id: m.id })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
+        or(
+          eq(m.dedupeKey, `${dedupeKey}:sms`),
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:sms:%`} ESCAPE '\\'`,
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(dedupeKey)}:r%:sms%`} ESCAPE '\\'`,
+        ),
+        sql`${m.body} LIKE ${likeContains(url)} ESCAPE '\\'`,
+        inArray(m.status, ['queued', 'sent', 'delivered']),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * The key for this attempt. The first try uses `base`. A later try, after any
+ * part was written (sent or failed), uses `:rN` one past the highest suffix
+ * already taken, so a failed receipt cannot hand that suffix out again.
+ */
+async function nextInviteKey(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+  baseKey: string,
+): Promise<string> {
+  const m = schema.channelMessages;
+  const rows = await database
+    .select({ dedupeKey: m.dedupeKey })
+    .from(m)
+    .where(
+      and(
+        eq(m.familyId, familyId),
+        eq(m.parentUserId, parentUserId),
+        eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
+        or(
+          eq(m.dedupeKey, `${baseKey}:sms`),
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(baseKey)}:sms:%`} ESCAPE '\\'`,
+          sql`${m.dedupeKey} LIKE ${`${escapeLike(baseKey)}:r%:sms%`} ESCAPE '\\'`,
+        ),
+      ),
+    );
+  if (rows.length === 0) return baseKey;
+  let max = 0;
+  for (const row of rows) {
+    const match = row.dedupeKey?.match(/:r(\d+):sms/);
+    if (match?.[1]) max = Math.max(max, Number(match[1]));
+  }
+  return `${baseKey}:r${max + 1}`;
+}
+
+/**
+ * The start label in this parent's own zone, or null when Intl cannot read the zone
+ * (empty, or no IANA name). That parent's text is then deferred as `time_unjudged`, the
+ * voices' own name for an unreadable zone, and the family's other parents still get theirs.
+ * Only the error's name is logged: the message repeats the stored zone.
+ */
+function whenLabelInZone(startsAt: Date, timeZone: string): string | null {
+  try {
+    return inviteWhenLabel(startsAt, timeZone);
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    console.error(
+      { reason: 'time_unjudged', detail: err.name },
+      'calendar invite: parent zone unreadable, nothing sent',
+    );
+    return null;
+  }
+}
+
+const ZONE_UNREADABLE = { outcome: 'compose_deferred', reason: 'time_unjudged' } as const;
+
 /**
  * Text one parent the placement as a tap-to-add link.
  *
- * NO COMPOSER. This is a receipt plus a URL, locked and segment-tested at the
- * authoring site like every other deterministic line Hale texts
- * (templates/calendar-invite/sms.ts).
+ * The line is the model's (calendar-invite-voice.ts). A deferred compose sends nothing
+ * and is named `compose_deferred`: there is no fixed confirmation to fall back to.
  */
 async function textOneParent(
   database: Database,
   ports: DispatchPorts,
+  voice: CalendarInviteVoice,
   job: InviteJob,
   parent: InvitedParent,
   now: Date,
@@ -164,10 +275,40 @@ async function textOneParent(
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
   }
 
+  const baseKey = linkDedupeKey(job.familyEventId, composed.sequence, parent.userId);
+  if (await alreadyTextedThisLink(database, job.familyId, parent.userId, baseKey, composed.url)) {
+    return { parentUserId: parent.userId, channel: 'sms', outcome: 'already_sent' };
+  }
+  // A previous attempt left a part that is not the link. A fresh key so dispatch
+  // does not skip the new part 0 when that is where the link now sits.
+  const dedupeKey = await nextInviteKey(database, job.familyId, parent.userId, baseKey);
+
+  const when = whenLabelInZone(composed.startsAt, parent.timezone);
+  if (when === null) return { parentUserId: parent.userId, channel: 'sms', ...ZONE_UNREADABLE };
+  const voiced = await voice.compose({
+    summary: composed.summary,
+    when,
+    url: composed.url,
+    startsAt: composed.startsAt,
+    timeZone: parent.timezone,
+    language: parent.language,
+  });
+  // No fixed fallback: a deferred compose sends nothing and is named back, so the
+  // confirmation is never a canned line (Barton: the model writes it, or nothing goes).
+  if (voiced.status !== 'composed') {
+    return {
+      parentUserId: parent.userId,
+      channel: 'sms',
+      outcome: 'compose_deferred',
+      reason: voiced.reason,
+    };
+  }
+
   const payload: CalendarInviteSmsPayload = {
     summary: composed.summary,
-    when: inviteWhenLabel(composed.startsAt, parent.timezone),
+    when,
     url: composed.url,
+    line: voiced.body,
   };
   const message: LoopMessage = {
     templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
@@ -176,7 +317,7 @@ async function textOneParent(
     category: 'approval',
     urgency: 'time_sensitive',
     channel: 'sms',
-    dedupeKey: linkDedupeKey(job.familyEventId, composed.sequence, parent.userId),
+    dedupeKey,
     payload: payload as unknown as Record<string, unknown>,
   };
 
@@ -225,6 +366,13 @@ async function wasTextedTheLink(
         eq(m.parentUserId, parentUserId),
         eq(m.templateKey, CALENDAR_INVITE_SMS_TEMPLATE_KEY),
         like(m.dedupeKey, `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${job.familyEventId}:%`),
+        // A null body is a send from before the text was stored, or one whose body
+        // retention already cleared. A stored body counts only when it holds the link,
+        // so a linkless first part is not "they have the invite".
+        or(
+          isNull(m.body),
+          sql`${m.body} LIKE ${likeContains(`/api/ics/event/${job.familyEventId}`)} ESCAPE '\\'`,
+        ),
         inArray(m.status, ['queued', 'sent', 'delivered']),
       ),
     )
@@ -287,8 +435,14 @@ async function cancelOneParent(
     return { parentUserId: parent.userId, channel: 'sms', outcome: 'event_not_found' };
   }
 
-  const when = inviteWhenLabel(event.startsAt, parent.timezone);
-  const voiced = await voice.compose({ summary: event.summary, when });
+  const when = whenLabelInZone(event.startsAt, parent.timezone);
+  if (when === null) return { parentUserId: parent.userId, channel: 'sms', ...ZONE_UNREADABLE };
+  const voiced = await voice.compose({
+    summary: event.summary,
+    when,
+    startsAt: event.startsAt,
+    timeZone: parent.timezone,
+  });
   // No fixed fallback: a deferred compose sends nothing and is named back, so the
   // cancellation is never a canned line (Barton: the model writes it, or nothing goes).
   if (voiced.status !== 'composed') {
@@ -299,7 +453,7 @@ async function cancelOneParent(
       reason: voiced.reason,
     };
   }
-  const payload: CalendarCancelSmsPayload = { summary: event.summary, when, line: voiced.body };
+  const payload: CalendarCancelSmsPayload = { when, line: voiced.body };
   const message: LoopMessage = {
     templateKey: CALENDAR_CANCEL_SMS_TEMPLATE_KEY,
     familyId: job.familyId,
@@ -345,7 +499,7 @@ export function createCalendarInviteSender(
       const outcomes: CalendarInviteParentOutcome[] = [];
       for (const parent of parents) {
         if (request.method === 'REQUEST') {
-          outcomes.push(await textOneParent(database, ports, job, parent, now));
+          outcomes.push(await textOneParent(database, ports, deps.inviteVoice, job, parent, now));
         } else {
           outcomes.push(await cancelOneParent(database, ports, deps.cancelVoice, job, parent, now));
         }

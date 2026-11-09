@@ -79,6 +79,8 @@ const RECEIVED_AT = '2026-07-20T09:00:00Z';
 const FAMILY_TIMEZONE = 'America/Toronto';
 const ENVELOPE = {
   messageId: 'gmail-rc-88214',
+  threadId: 'gmail-thread-88214',
+  labelIds: ['INBOX'],
   subject: 'Registration Confirmation #RC-88214 — Leo Tremblay',
   from: 'City of Brookfield Recreation <noreply@recreation.brookfield.example.ca>',
   snippet:

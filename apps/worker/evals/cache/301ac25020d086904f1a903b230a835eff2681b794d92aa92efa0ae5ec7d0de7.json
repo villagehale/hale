@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both Maya items and the day, but it hands Sam the swim pickup, which the watchFor says is wrong for two items that are the same child. It should say Maya is double-booked and ask which one she is going to. It also asks for a link vote and posts a poll (options given) when none should go, and the link is a second ask, breaking the one-ask rule. Those are several fact and ask failures.",
+    "score": 1
+  }
+}

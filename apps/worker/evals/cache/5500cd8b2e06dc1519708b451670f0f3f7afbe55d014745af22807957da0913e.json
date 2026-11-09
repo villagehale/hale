@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Wrong care: reading says home, but the situation calls for starting_soon since a start is coming in September. Confidence is high on a wrong fact."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the parent reached payment, that it is not yet confirmed, that the parent pays in the open browser at the given link for about 12 minutes, uses tu for a direct audience in French, carries the link exactly, and includes no personal details or retry promise. No hint of a held spot. Minor: 'J'ai laissé une fenêtre ouverte' is accurate and warm.",
+    "score": 5
+  }
+}

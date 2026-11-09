@@ -155,44 +155,40 @@ describe('buildPlanSpine — settling', () => {
   });
 });
 
-describe('zonedLocalInstant — DST (Devin #984)', () => {
-  const clock = (at: Date, timeZone: string) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).format(at);
-
-  it.each([
-    ['2027-03-14', '03:30'],
-    ['2027-03-14', '08:00'],
-    ['2027-03-13', '23:30'],
-    ['2026-11-01', '08:00'],
-    ['2026-11-01', '00:30'],
-    ['2026-10-31', '22:00'],
-  ])('Toronto %s %s round-trips', (day, time) => {
-    const at = zonedLocalInstant(day, time, 'America/Toronto');
-    expect(clock(at, 'America/Toronto')).toBe(`${day}, ${time}`);
-  });
-
-  it('spring-forward 03:30 Toronto is 07:30Z, not 04:30 EDT', () => {
-    expect(zonedLocalInstant('2027-03-14', '03:30', 'America/Toronto').toISOString()).toBe(
-      '2027-03-14T07:30:00.000Z',
+describe('zonedLocalInstant — DST changeover days west of UTC', () => {
+  // 2026 US changeovers: spring forward Sun 03-08 at 02:00, fall back Sun 11-01 at 02:00.
+  // Expected instants are the wall clock plus the offset in force at that wall clock.
+  it('08:00 Los Angeles on spring-forward day is 08:00 PDT (15:00Z), not 16:00Z', () => {
+    expect(zonedLocalInstant('2026-03-08', '08:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-03-08T15:00:00.000Z',
     );
   });
 
-  it('a skipped wall clock (02:30) moves forward with the clocks', () => {
-    expect(zonedLocalInstant('2027-03-14', '02:30', 'America/Toronto').toISOString()).toBe(
-      '2027-03-14T07:30:00.000Z',
+  it('08:00 Denver on spring-forward day is 08:00 MDT (14:00Z)', () => {
+    expect(zonedLocalInstant('2026-03-08', '08:00', 'America/Denver').toISOString()).toBe(
+      '2026-03-08T14:00:00.000Z',
     );
   });
 
-  it('round-trips in a zone east of UTC', () => {
-    const at = zonedLocalInstant('2027-03-28', '03:30', 'Europe/Paris');
-    expect(clock(at, 'Europe/Paris')).toBe('2027-03-28, 03:30');
+  it('08:00 Los Angeles on fall-back day is 08:00 PST (16:00Z), not 15:00Z', () => {
+    expect(zonedLocalInstant('2026-11-01', '08:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-11-01T16:00:00.000Z',
+    );
+  });
+
+  it('a wall clock skipped by spring-forward resolves forward, never an hour early', () => {
+    // 02:30 does not exist in Los Angeles on 03-08; 03:30 PDT (10:30Z) is the moment after the gap.
+    expect(zonedLocalInstant('2026-03-08', '02:30', 'America/Los_Angeles').toISOString()).toBe(
+      '2026-03-08T10:30:00.000Z',
+    );
+  });
+
+  it('an ordinary day and an east-of-UTC zone are unchanged (control)', () => {
+    expect(zonedLocalInstant('2026-07-03', '16:30', 'America/Toronto').toISOString()).toBe(
+      '2026-07-03T20:30:00.000Z',
+    );
+    expect(zonedLocalInstant('2026-03-29', '08:00', 'Europe/Berlin').toISOString()).toBe(
+      '2026-03-29T06:00:00.000Z',
+    );
   });
 });

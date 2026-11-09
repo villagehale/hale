@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Great, thanks Dana. Google shares the whole calendar with me, but I only keep and use what's about the kids, and I never change or delete any of your events. You can disconnect any time. Want to connect your calendar so I can keep the kids' plans in one place?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [
+      "calendar"
+    ],
+    "joinPointer": null
+  },
+  "latencyMs": 1537
+}

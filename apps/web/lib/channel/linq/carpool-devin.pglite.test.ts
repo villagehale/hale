@@ -54,12 +54,27 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_GROUP_CARPOOL_ENABLED', 'true');
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+  // The group floor's live read of CHAT: Maya, the family's parent. Nothing else is fetched.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'GET' && String(url).endsWith(`/chats/${CHAT}`)) {
+        return Response.json({
+          chat: { id: CHAT, is_group: true, handles: [{ handle: MAYA_PHONE }] },
+        });
+      }
+      throw new Error(`unexpected fetch ${String(url)}`);
+    }),
+  );
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   process.env.APP_ENCRYPTION_KEY = KEY;
   await db.exec(
-    'truncate table linq_group_carpools, linq_group_members, audit_log, channel_messages, family_members, families, users cascade',
+    'truncate table linq_group_carpools, linq_group_members, linq_group_rosters, audit_log, channel_messages, family_members, families, users cascade',
   );
 });
 
@@ -77,6 +92,17 @@ async function seed() {
   await db.database
     .insert(schema.familyMembers)
     .values({ familyId, userId: mayaId, role: 'primary_parent' });
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: CHAT, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values({
+    rosterId: roster?.id as string,
+    chatId: CHAT,
+    phoneE164Hash: phoneBlindIndex(MAYA_PHONE),
+    knownUserId: mayaId,
+    status: 'known_parent',
+  });
   return { familyId, mayaId };
 }
 
@@ -182,6 +208,7 @@ describe('security', () => {
   it('2: a ride reminder is held, not sent as a reply, when the roster is incomplete', async () => {
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
     const { familyId, mayaId } = await seed();
+    await db.database.update(schema.linqGroupRosters).set({ status: 'roles_proposed' });
     await turn(familyId, reading({ driverName: 'Maya', driverIsSender: true }), {
       handle: MAYA_PHONE,
       userId: mayaId,

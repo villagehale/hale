@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?', which is a direct question asking the parent to reply, duplicating the shell question. The question mark counts as an ask here since it is a request for a yes/no answer, not a question within an activity title.",
+    "score": 1
+  }
+}

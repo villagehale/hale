@@ -10,15 +10,16 @@ import type { MessageView } from './mappers';
  */
 
 const loadMessagesMock = vi.fn<() => Promise<MessageView[]>>();
+const listSeatsMock = vi.fn<() => Promise<Array<{ familyId: string; role: string }>>>();
 vi.mock('~/lib/messages/queries', () => ({ loadMessages: () => loadMessagesMock() }));
 vi.mock('~/lib/dashboard/queries', () => ({
   loadTrail: async () => [],
   loadPendingApprovals: async () => [],
   loadFamilyTimezone: async () => 'America/Toronto',
+  loadViewerSeats: () => listSeatsMock(),
 }));
 vi.mock('~/components/hale/approve-button', () => ({ ApproveButton: () => null }));
 vi.mock('~/components/hale/dismiss-button', () => ({ DismissButton: () => null }));
-vi.mock('~/components/hale/export-data-button', () => ({ ExportDataButton: () => null }));
 
 async function renderPage(): Promise<string> {
   const { default: MessagesPage } = await import('~/app/(authed)/messages/page');
@@ -49,6 +50,7 @@ describe('MessagesPage rendering', () => {
   beforeEach(() => {
     vi.resetModules();
     loadMessagesMock.mockReset();
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'primary_parent' }]);
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -87,5 +89,26 @@ describe('MessagesPage rendering', () => {
     loadMessagesMock.mockResolvedValue([]);
     const html = await renderPage();
     expect(html).toContain('Nothing here yet. Text Hale and it shows up here.');
+  });
+});
+
+// The export is the family's whole record, so it follows the export route's own rule
+// (exportSeat): a parent is offered it, a caregiver is not.
+describe('MessagesPage export', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    loadMessagesMock.mockResolvedValue([]);
+  });
+
+  it('offers a parent the export (the positive control)', async () => {
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'primary_parent' }]);
+    expect(await renderPage()).toContain('Export</button>');
+  });
+
+  it('offers a caregiver no export', async () => {
+    listSeatsMock.mockResolvedValue([{ familyId: 'family-a', role: 'nanny' }]);
+    const html = await renderPage();
+    expect(html).not.toContain('Export</button>');
+    expect(html).toContain('Messages');
   });
 });

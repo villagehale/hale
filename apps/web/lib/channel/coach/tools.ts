@@ -13,6 +13,7 @@ import {
 } from '~/lib/channel/mid-activity/said-tool';
 import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { type ReferralShare, shareReferralLinkTool } from '~/lib/channel/referral/share';
+import { type SpotReleasePorts, stopWatchingTool } from '~/lib/channel/spots/stop-tool';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
 import { type SpotWatchPorts, watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
@@ -25,7 +26,7 @@ import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
 import { type WatchToolPorts, providerWatchTools } from '~/lib/signup/browser-use/watch/tools';
 import { type SignupOfferToolPorts, offerSignupTool } from '~/lib/signup/offer-tool';
 import { type AutonomySwitchOffPorts, turnOffAutonomyTool } from './autonomy-switch-off-tool';
-import type { ChannelDraftInput, ChannelDraftPort } from './draft';
+import type { ChannelDraftInput, ChannelDraftPort, GroupApprovalPlace } from './draft';
 import {
   type GmailDraftNoticeBox,
   type GmailDraftToolPorts,
@@ -227,11 +228,6 @@ export interface ChannelCoachToolArgs {
    * and the router can only be honest about that if something counted (VIL-260). */
   onDraft?: (actionId: string) => void;
   /**
-   * This save already has a confirmation standing. The runtime sends nothing when
-   * the turn drafted no new save. Not a sentence, and not a second ask.
-   */
-  onDuplicateSaveConfirmation?: () => void;
-  /**
    * Told when the turn OFFERS a full coaching plan. The mirror image of `onDraft`: a
    * draft is a row the tool already wrote, while an offer is a row that cannot be
    * written yet — `agent_commitments.created_from` needs the outbound message id, and
@@ -287,6 +283,8 @@ export interface ChannelCoachToolArgs {
   onGmailNotice?: (box: GmailDraftNoticeBox) => void;
   /** The switch-off verb's ports. Absent in a test that is not exercising it. */
   autonomySwitchOff?: AutonomySwitchOffPorts;
+  /** The stop-watching verb's ports. Absent in a test that is not exercising it. */
+  spotRelease?: SpotReleasePorts;
   /** The texting parent. The allowlist arms this user while the global flag is unset. */
   parentUserId?: string | null;
   now: Date;
@@ -450,6 +448,14 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
 
+  /** Where a group turn's yes is given (VIL-595); nothing on a 1:1 turn's result. */
+  async function approvalPlace(
+    actionType: ChannelDraftInput['actionType'],
+  ): Promise<{ approvalWaitsIn?: GroupApprovalPlace }> {
+    const place = await draftPort.approvalWaitsIn?.({ familyId, actionType });
+    return place ? { approvalWaitsIn: place } : {};
+  }
+
   /** The one place a draft is minted, so the turn's ledger cannot miss one. */
   async function mint(input: ChannelDraftInput): Promise<string> {
     const { actionId } = await draftPort.draft(input);
@@ -592,6 +598,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_move')),
       };
     },
   });
@@ -626,7 +633,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: cancel the ${localWhen(event.startsAt, timeZone)} item`,
         teenContent: event.teen,
       });
-      return { drafted: true as const, actionId };
+      return { drafted: true as const, actionId, ...(await approvalPlace('calendar_cancel')) };
     },
   });
 
@@ -675,29 +682,18 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         familyId,
         title: input.title,
         startsAt: startsAt.toISOString(),
+        childId: input.childId ?? null,
       });
-      if (already) {
-        args.onDuplicateSaveConfirmation?.();
+      if (already?.outcome === 'group_chat_unknown') {
+        return { drafted: false as const, outcome: already.outcome };
+      }
+      if (already?.outcome === 'already_pending' || already?.outcome === 'already_asked') {
         return {
           drafted: true as const,
-          actionId: already,
+          actionId: already.id,
           when: longWhen(startsAt, timeZone),
           alreadyPending: true as const,
-        };
-      }
-      const confirming = await draftPort.confirmingSave?.({
-        familyId,
-        parentUserId: ctx.actor,
-        title: input.title,
-        startsAt: startsAt.toISOString(),
-        now,
-      });
-      if (confirming) {
-        args.onDuplicateSaveConfirmation?.();
-        return {
-          drafted: false as const,
-          alreadyConfirming: true as const,
-          when: longWhen(startsAt, timeZone),
+          ...(await approvalPlace('calendar_add')),
         };
       }
       claimDraftBudget();
@@ -729,7 +725,12 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         rationale: `Texted request: add "${input.title}" on ${localWhen(startsAt, timeZone)}`,
         teenContent: false,
       });
-      return { drafted: true as const, actionId, when: longWhen(startsAt, timeZone) };
+      return {
+        drafted: true as const,
+        actionId,
+        when: longWhen(startsAt, timeZone),
+        ...(await approvalPlace('calendar_add')),
+      };
     },
   });
 
@@ -828,6 +829,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   }
   // Offered to the model only where the skill lists it (augmentCoachSkillForAutonomySwitchOff).
   if (args.autonomySwitchOff) tools.push(turnOffAutonomyTool(args.autonomySwitchOff));
+  // Offered only where the skill lists it (augmentCoachSkillForStopWatching).
+  if (args.spotRelease) tools.push(stopWatchingTool(args.spotRelease));
   if (args.providerWatch) tools.push(...providerWatchTools(args.providerWatch));
   if (args.activitySignup) tools.push(noteActivitySignupTool(args.activitySignup));
   if (args.signupOffer) tools.push(offerSignupTool(args.signupOffer));

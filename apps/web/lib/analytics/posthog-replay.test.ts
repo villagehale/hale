@@ -28,6 +28,7 @@ const PORTAL_ROUTES = [
   '/rsvp/tok_example',
   '/invite/tok_example',
   '/settings/privacy',
+  '/privacy',
   '/demo/passport',
   '/family',
   '/family/child_example',

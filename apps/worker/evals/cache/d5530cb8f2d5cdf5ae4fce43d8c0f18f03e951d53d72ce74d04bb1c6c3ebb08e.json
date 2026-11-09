@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The text is in English, not the requested French. It omits Léa's swimming (Natation) entirely: no 10:00-11:00 AM time, no Piscine Main, no 120 Main St, no mention that it is for Léa. It invents a clock time ('at 3:00') for an all-day event that has no start time. It also calls the day 'a day off' with 'breathing room' while a timed event exists, which implies the family has nothing to be at. Bold is none, which is fine, but every fact check fails.",
+    "score": 1
+  }
+}

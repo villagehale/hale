@@ -1,3 +1,5 @@
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
+
 /**
  * Immediate drain kick (recipe #3). After a producer enqueues a hot-queue job
  * (accept → events.ingested, approve → actions.approved, a parent's text →
@@ -94,7 +96,7 @@ async function attemptKick(
 ): Promise<{ reason: KickFailure; detail?: unknown } | null> {
   try {
     const response = await fetch(url, {
-      headers: { authorization: `Bearer ${secret}` },
+      headers: kickHeaders(secret),
       signal: AbortSignal.timeout(KICK_TIMEOUT_MS),
     });
     if (response.ok) return null;
@@ -115,6 +117,26 @@ async function attemptKick(
   } catch (err) {
     return { reason: 'request_failed', detail: err };
   }
+}
+
+/**
+ * Where a producer kicks its drain. On Preview it is ALWAYS this deploy's own origin,
+ * never APP_URL: Preview enqueues into its own pg-boss schema (queueSchema), so only a
+ * Preview drain can claim the job, and an APP_URL pointing at production would kick a
+ * drain that cannot see it. Elsewhere APP_URL wins, as before.
+ */
+export function drainOrigin(req: Request, env: NodeJS.ProcessEnv = process.env): string {
+  if (isPreviewDeploy(env)) return new URL(req.url).origin;
+  return env.APP_URL ?? new URL(req.url).origin;
+}
+
+/** The kick's headers. A protected Preview deploy also needs Vercel's automation
+ * bypass to let its own kick reach its own drain route. */
+function kickHeaders(secret: string): Record<string, string> {
+  const headers: Record<string, string> = { authorization: `Bearer ${secret}` };
+  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (isPreviewDeploy() && bypass) headers['x-vercel-protection-bypass'] = bypass;
+  return headers;
 }
 
 /**

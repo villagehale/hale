@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request for a reply (\"Reply YES and I'll book it for you\") and also includes a STOP opt-out instruction, so it asks the parent to respond, which violates the zero-ask requirement for an unsolicited message.",
+    "score": 1
+  }
+}

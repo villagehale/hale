@@ -72,6 +72,48 @@ export const ACTIVITY_FIXTURES = [
       'EarlyON-style free drop-ins are always running somewhere in a covered town. `price` should come back free or absent, never invented. A cadence ("weekday mornings") is an acceptable `when`; a made-up clock time is not.',
   },
 
+  // ── a DAY, read against the family-local date (VIL-435) ──────────────────
+  {
+    id: 'toddler-drop-in-today-ottawa',
+    subject: 'toddler drop-in play group',
+    window: 'today',
+    today: '2026-11-10 (Tuesday)',
+    town: 'Ottawa, Ontario, Canada',
+    stage: 'toddler',
+    rawSubject: 'drop in for my 2 year old today',
+    dropsFromQuery: ['2 year'],
+    expectPicks: true,
+    watchFor:
+      "The window is today, and `today` says that is Tuesday November 10. A pick is a drop-in the page shows running on Tuesdays or on that date; a weekly program on another weekday is not a pick for today. Its `when` is that day's time as the page gives it, never a cadence turned into a time it does not give.",
+  },
+
+  // ── HOME outside the GTA (VIL-590): the town is the family's own city, province or
+  // state, and country, read from the postal tables — the shape place.ts composes. ──
+  {
+    id: 'home-seattle-preschool-swim',
+    subject: 'preschool swim lessons',
+    window: 'this winter',
+    town: 'Seattle, Washington, United States',
+    stage: 'preschool',
+    rawSubject: 'swim lessons for a 4 year old near 98101',
+    dropsFromQuery: ['98101', '4 year'],
+    expectPicks: true,
+    watchFor:
+      "A US family at home. Picks must be in or near Seattle - a parks and recreation pool, a YMCA, a swim school - never an Ontario or Canadian program. Each venue's source is that venue's own page, not a listings aggregator.",
+  },
+  {
+    id: 'home-calgary-toddler-drop-in',
+    subject: 'toddler drop-in play group',
+    window: null,
+    town: 'Calgary, Alberta, Canada',
+    stage: 'toddler',
+    rawSubject: 'drop in for my 2 year old near T3A',
+    dropsFromQuery: ['t3a', '2 year'],
+    expectPicks: true,
+    watchFor:
+      'A Canadian family outside Ontario. Picks must be in Calgary - a library, a community association, a city recreation centre - never an EarlyON or other Ontario program. `price` should come back free or absent, never invented.',
+  },
+
   // ── named place: answer about THAT place ──────────────────────────────────
   {
     id: 'named-venue-cartwheel',
@@ -84,7 +126,7 @@ export const ACTIVITY_FIXTURES = [
     expectPicks: null,
     mustMentionInNotes: 'cartwheel',
     watchFor:
-      "The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.",
+      'The parent named ONE place. The research must actually be about that place - substituting three other gyms is not answering the question. Whether it has a toddler class is genuinely unknown, so picks may be empty; what may not happen is a pick attributed to a different venue while presenting as an answer about this one.',
   },
 
   // ── a VISIT, not a term: the travel brief's own query shape ───────────────

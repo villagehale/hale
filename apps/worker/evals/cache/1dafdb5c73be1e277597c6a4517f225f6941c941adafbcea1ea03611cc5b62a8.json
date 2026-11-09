@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message promises \"I'll sign Max and Mia up for you,\" which says Hale registers for them. The approval card must say plainly that Hale never registers. The message also leaves out the four listed texts and their timing, the course-link tip (courseLinkTip is true), and Mia's near-band age fit. The residents-first context is missing as well.",
+    "score": 1
+  }
+}
