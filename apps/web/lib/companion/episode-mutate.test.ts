@@ -145,8 +145,16 @@ describe('updateEpisode', () => {
     expect(audit.actionTaken).toBe('quick_log_edited');
     expect(audit.targetTable).toBe('family_memory_episodes');
     expect(audit.targetId).toBe(EPISODE_ID);
-    expect(audit.before).toMatchObject({ summary: 'Fed 120 ml', payload: { amountMl: 120 } });
-    expect(audit.after).toMatchObject({ summary: 'Fed 150 ml', payload: { amountMl: 150 } });
+    // The audit row outlives the episode's text (the 30-day removed-episode window
+    // blanks the row, never the immutable audit), so it names WHAT changed, not the words.
+    expect(audit.before).toEqual({ occurredAt: BEFORE_ROW.occurredAt, episodeType: 'feed' });
+    expect(audit.after).toEqual({
+      occurredAt: BEFORE_ROW.occurredAt,
+      episodeType: 'feed',
+      changed: ['summary', 'payload'],
+    });
+    expect(JSON.stringify(audit)).not.toContain('Fed 1');
+    expect(JSON.stringify(audit)).not.toContain('amountMl');
   });
 
   it("rejects a foreign episode (another family's id) — no write, no audit row (rule #1)", async () => {
@@ -184,8 +192,10 @@ describe('softDeleteEpisode', () => {
     expect(audit.actor).toBe(ACTOR);
     expect(audit.actionTaken).toBe('quick_log_deleted');
     expect(audit.targetId).toBe(EPISODE_ID);
-    expect(audit.before).toMatchObject({ summary: 'Fed 120 ml' });
+    expect(audit.before).toEqual({ occurredAt: BEFORE_ROW.occurredAt, episodeType: 'feed' });
     expect(audit.after).toEqual({ deleted: true });
+    expect(JSON.stringify(audit)).not.toContain('Fed 120 ml');
+    expect(JSON.stringify(audit)).not.toContain('amountMl');
   });
 
   it('rejects a foreign episode — no delete, no audit row (rule #1)', async () => {
