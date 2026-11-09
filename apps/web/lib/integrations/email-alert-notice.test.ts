@@ -62,6 +62,8 @@ function facts(over: Partial<Parameters<typeof emailAlertNoticeFacts>[0]> = {}) 
     language: 'en',
     durationMinutes: null,
     recentNotices: [],
+    // 23:30 on Sep 15 in Toronto: the arrival day is the family's, not UTC's.
+    receivedAt: new Date('2026-09-16T03:30:00.000Z'),
     timeZone: 'America/Toronto',
     now: NOW,
     ...over,
@@ -167,6 +169,7 @@ describe('emailAlertNoticeFacts', () => {
       children: [{ name: 'Robin', ageYears: 3 }],
       email: {
         sender: 'Maple Daycare',
+        arrivedOn: 'Tuesday, September 15, 2026',
         subject: 'Picture day next Friday',
         kind: 'new_event',
         title: 'Picture day',
@@ -200,6 +203,7 @@ describe('emailAlertNoticeFacts', () => {
     expect(hidden.otherHaleFamiliesGoing).toBeNull();
     expect(hidden.email).toEqual({
       sender: null,
+      arrivedOn: null,
       subject: null,
       kind: 'new_event',
       title: 'a message about school',

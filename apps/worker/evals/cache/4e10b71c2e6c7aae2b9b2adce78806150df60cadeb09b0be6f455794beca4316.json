@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says only the generic category (a message about school that sounds like a reschedule) and that details were kept out, with no sender, time, place, or subject. It makes no offer to add anything, which is correct since offer is null. Language is English and the tone is casual. All claims are supported by the facts (private true, kind reschedule, title about school).",
+    "score": 5
+  }
+}

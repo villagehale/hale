@@ -77,7 +77,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     loadTranscript: async () => [{ role: 'user' as const, content: 'earlier' }],
     loadContext: async (input) => {
       contextInputs.push(input);
-      return { question: input.question, transcript: input.transcript } as never;
+      return { question: input.question, transcript: input.transcript, memoryFacts: [] } as never;
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
@@ -140,6 +140,7 @@ describe('channelCoachRuntime', () => {
           ({
             question: input.question,
             transcript: input.transcript,
+            memoryFacts: [],
             ...(householdGroup ? { householdGroup } : {}),
           }) as never,
         runAgent: async (args) => {
@@ -156,6 +157,38 @@ describe('channelCoachRuntime', () => {
     const none = await run();
     expect(none?.context).not.toHaveProperty('householdGroup');
     expect(none?.instructions).not.toContain(group);
+  });
+
+  it('carries the fact-source skill only on a 1:1 turn holding a fact read in email (VIL-429)', async () => {
+    const addendum = (await loadCronSkill('coach-fact-source')).instructions;
+    const fact = { childId: null, factType: 'routine', factKey: 'soccer_day', factValue: 'Thu' };
+    const sourced = { ...fact, seenIn: { email: { from: 'Northside Rec', on: '2026-10-03' } } };
+    const run = async (seen: boolean, audience: ChannelTurn['audience']) => {
+      const calls: string[] = [];
+      const p = ports({
+        loadContext: async (input) =>
+          ({
+            question: input.question,
+            transcript: input.transcript,
+            memoryFacts: [seen ? sourced : fact],
+          }) as never,
+        runAgent: async (args) => {
+          calls.push(args.skill.instructions);
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
+      return calls[0] ?? '';
+    };
+    expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(await run(false, 'direct')).not.toContain(addendum);
+    expect(await run(true, 'group')).not.toContain(addendum);
+  });
+
+  it('asks for the context as the parent who texted (VIL-429)', async () => {
+    const p = ports();
+    await channelCoachRuntime(p).respond(turn(), []);
+    expect(p.contextInputs).toEqual([expect.objectContaining({ readerUserId: PARENT })]);
   });
 
   it('hands the loop the channel context: the surface and the family clock', async () => {

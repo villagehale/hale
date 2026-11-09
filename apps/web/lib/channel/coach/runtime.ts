@@ -408,15 +408,21 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         focusedChildId: null,
         transcript,
         sourceNote: null,
+        readerUserId: turn.parentUserId,
       });
       // VIL-566: the household-group addendum rides only when the fact does, so every
-      // other turn keeps its system bytes.
+      // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
+      // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.
       const householdSkill = familyContext.householdGroup
         ? await appendHouseholdGroupSkill(composedSkill)
         : composedSkill;
+      const sourcedSkill =
+        turn.audience !== 'group' && familyContext.memoryFacts.some((fact) => fact.seenIn)
+          ? await appendFactSourceSkill(householdSkill)
+          : householdSkill;
       // VIL-435: the local-day addendum rides only when a day fact does.
       const skill = augmentCoachSkillForLocalDay(
-        householdSkill,
+        sourcedSkill,
         Object.keys(localDay).length > 0 ? await loadCronSkill('coach-local-day') : null,
       );
 
@@ -711,6 +717,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('household-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
+}
+
+async function appendFactSourceSkill(skill: Skill): Promise<Skill> {
+  const addendum = await loadCronSkill('coach-fact-source');
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {

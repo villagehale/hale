@@ -47,6 +47,10 @@ import { pageSource } from '~/lib/page-source';
  * where the code or a confirmed fact supports them (message retention, consent records,
  * Google Drive read-only, PostHog replay).
  *
+ * 2026-11-08: Drive is no longer a connector (no consent door; zero Drive rows in
+ * prod), and Calendar asks for calendar.events.owned.readonly, so the scope list
+ * matches the Google verification submission (VIL-556).
+ *
  * The public "last updated" line is the Toronto calendar day the text was last
  * edited (2026-10-07), not the UTC day. A later merge should bump that line to
  * the merge date. The Canada hosting sentence, the cookie banner, and the Speed
@@ -120,7 +124,7 @@ export default async function PrivacyPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Privacy Policy"
-      lastUpdatedIso="2026-10-09"
+      lastUpdatedIso="2026-11-08"
       intro={
         <p>
           Hale is a texted assistant for parents. It handles kids&rsquo; activities, reminders,
@@ -239,24 +243,19 @@ export default async function PrivacyPage({
             reaches you as a text rather than as a surprise.
           </li>
           <li>
-            <strong>Google Drive (optional).</strong> What is read: a file&rsquo;s name, its type,
-            when it was last modified, and a link to open it. Hale does not read the contents of the
-            file. Why: so Hale can find a file you ask about, such as a permission form.
-          </li>
-          <li>
             <strong>How it went.</strong> What is stored: your one-line answer to Hale&rsquo;s
             evening question, for thirty days, readable only by you and never shown to another
             family.
           </li>
         </ul>
         <p>
-          By default Hale asks Google for read-only access to Gmail (<code>gmail.readonly</code>),
-          Calendar (<code>calendar.readonly</code>), and Drive (<code>drive.readonly</code>), plus
-          your basic profile (your name). For some accounts, Hale may also ask for permission to
-          create email drafts (<code>gmail.compose</code>; it never sends them) and to add or change
-          calendar events (<code>calendar.events</code>). Hale asks for these separately and uses
-          them only when you ask. It never deletes your email, it never asks for permission to send
-          email as you, and Drive stays read-only.
+          By default Hale asks Google for read-only access to Gmail (<code>gmail.readonly</code>)
+          and to the events on calendars you own (<code>calendar.events.owned.readonly</code>), plus
+          your basic profile (your name). Hale does not connect to Google Drive. For some accounts,
+          Hale may also ask for permission to create email drafts (<code>gmail.compose</code>; it
+          never sends them) and to add or change calendar events (<code>calendar.events</code>).
+          Hale asks for these separately and uses them only when you ask. It never deletes your
+          email, and it never asks for permission to send email as you.
         </p>
         <p>
           <strong>What Hale works out for itself.</strong> A structured memory of facts and patterns
@@ -678,7 +677,7 @@ export default async function PrivacyPage({
           Message content, including messages from other members of a group chat Hale is in and from
           people who are not Hale users, is deleted or redacted 12 months after it was sent, and
           sooner if you or they ask. Your answer to Hale&rsquo;s evening question is kept for thirty
-          days. Disconnecting Gmail, Calendar, or Drive stops Hale reading that account. The details
+          days. Disconnecting Gmail or Calendar stops Hale reading that account. The details
           already saved from it are deleted when your account is deleted, and message content within
           them is deleted or redacted on the same 12-month schedule.
         </p>

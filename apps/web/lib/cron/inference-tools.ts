@@ -63,6 +63,8 @@ interface MemorySnapshot {
   /** Who a save may name as its subject. A 13+ child carries no name and is never one. */
   children: { childId: string; name: string | null; stage: FamilyStage }[];
   recentEvents: {
+    /** What `save_memory`'s `sourceEventId` names. Null once the event is redacted. */
+    eventId: string | null;
     childId: string | null;
     eventType: string;
     payload: unknown;
@@ -106,6 +108,7 @@ function redactEventsForTeens(
     (e.childId !== null && stageByChild.get(e.childId) === 'teenager') ||
     stringLeaves(e.payload).some((text) => namesAny(text, teenNames))
       ? {
+          eventId: null,
           childId: null,
           eventType: e.eventType,
           payload: TEEN_MEMORY_PLACEHOLDER,
@@ -127,6 +130,20 @@ function stringLeaves(value: unknown): string[] {
     return Object.entries(value).flatMap(([key, v]) => [key, ...stringLeaves(v)]);
   }
   return [];
+}
+
+/** The id names one of THIS family's events: a source is never another family's row. */
+async function familyEventExists(
+  database: Database,
+  familyId: string,
+  eventId: string,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.events.id })
+    .from(schema.events)
+    .where(and(eq(schema.events.familyId, familyId), eq(schema.events.id, eventId)))
+    .limit(1);
+  return row !== undefined;
 }
 
 export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {
@@ -154,6 +171,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
 
       const recentEvents = await database
         .select({
+          id: schema.events.id,
           childId: schema.events.childId,
           eventType: schema.events.eventType,
           payload: schema.events.payload,
@@ -176,6 +194,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         }),
         recentEvents: redactEventsForTeens(
           recentEvents.map((e) => ({
+            eventId: e.id,
             childId: e.childId,
             eventType: e.eventType,
             payload: e.payload,
@@ -210,7 +229,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Name its subject: childId is a childId from read_recent_memory's children when the fact is about that child, or null when it is about the whole family. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Name its subject: childId is a childId from read_recent_memory's children when the fact is about that child, or null when it is about the whole family. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. When the fact rests on recent events, pass sourceEventId: the eventId of the newest one it rests on. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
       childId: z.string().uuid().nullable(),
       factType: memoryFactType,
@@ -218,6 +237,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
       observedAt: z.string().optional(),
+      sourceEventId: z.string().uuid().nullable().optional(),
       ...modelClassificationShape,
     }),
     // Invented values only: examples are cached outside message protections (rule #1).
@@ -269,6 +289,10 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       ) {
         return { saved: false as const, reason: 'names_teen' };
       }
+      const sourceEventId = input.sourceEventId ?? undefined;
+      if (sourceEventId && !(await familyEventExists(database, ctx.familyId, sourceEventId))) {
+        return { saved: false as const, reason: 'unknown_source_event' };
+      }
 
       const decision = await decideDistilledFact(
         database,
@@ -291,6 +315,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         confidence: input.confidence,
         inferredBy: 'memory_inferencer',
         source: 'inferred',
+        sourceEventId,
         now,
         memoryClass: input.memoryClass,
         disposition: input.disposition,
