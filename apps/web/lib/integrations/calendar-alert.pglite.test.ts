@@ -196,7 +196,8 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 
   it('sends no fixed template text, not even for a timed event in the window', async () => {
     const h = harness();
-    await expect(sweep(h)).resolves.toEqual(['fixed_copy_retired']);
+    // VIL-570: a first sighting is not news for the model-written kid notice either.
+    await expect(sweep(h)).resolves.toEqual(['not_material']);
     expect(h.transport.sent).toEqual([]);
     expect(h.threaded).toEqual([]);
     await expect(ledgerRows()).resolves.toEqual([]);
@@ -204,7 +205,7 @@ describe('VIL-527 — the fixed-copy SMS sentence never sends', () => {
 
   it('skips an adult meeting — nothing reaches the parent', async () => {
     const h = harness();
-    await expect(sweep(h, { changes: [ADULT] })).resolves.toEqual(['fixed_copy_retired']);
+    await expect(sweep(h, { changes: [ADULT] })).resolves.toEqual(['not_material']);
     expect(h.transport.sent.map((m) => m.body).join(' ')).not.toContain('on your calendar');
     expect(h.transport.sent).toEqual([]);
   });

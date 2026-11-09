@@ -450,6 +450,9 @@ jobs:
       - name: Calendar cancel composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-cancel-voice
 
+      - name: Calendar kid notice writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-kid-notice
+
       # Hard cache gate. A miss fails the job.
       - name: Name take-back eval (cached-only)
         run: pnpm --filter @hale/worker eval:name-takeback
