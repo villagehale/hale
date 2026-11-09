@@ -288,6 +288,7 @@ async function calendarItem(
     endAt: item.end ?? AT_330,
     kidRelated: item.title !== null,
     title: item.title,
+    calendarStanding: 'organizer',
     status: 'confirmed',
     updatedStamp: `stamp-${item.eventId}`,
     announcedAt: item.announced ? DAY : null,

@@ -8,6 +8,7 @@ import { connectorSyncDeps } from '~/lib/cron/connector-sync';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import type { CalendarChange } from '~/lib/integrations/calendar-alert';
+import { calendarStandingOf } from '~/lib/integrations/calendar-standing';
 import { listActiveConnectorConnections } from '~/lib/integrations/store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { groupKidEventText } from './group-coparent-copy';
@@ -144,6 +145,7 @@ function change(
     status: 'confirmed',
     start: { dateTime: '2026-09-25T19:00:00.000Z' },
     end: { dateTime: '2026-09-25T20:00:00.000Z' },
+    standing: 'organizer',
     ...over,
   };
 }
@@ -300,7 +302,9 @@ describe('household calendars', () => {
       familyId: seeded.familyId,
       userId: seeded.primaryUserId,
       changes: [change({ eventId: 'budget', title: 'Quarterly budget review' })],
-      childNames: ['Maya'],
+      children: await db.database
+        .select({ id: schema.children.id, name: schema.children.name })
+        .from(schema.children),
       seeding: false,
       bothCalendars: true,
       now: DAY,
@@ -497,6 +501,7 @@ describe('household calendars', () => {
         endAt: end,
         kidRelated: true,
         title: 'Maya gymnastics',
+        calendarStanding: 'organizer',
         status: 'confirmed',
         updatedStamp: 'stamp-gym',
       },
@@ -535,6 +540,7 @@ describe('household calendars', () => {
       endAt: new Date('2026-09-25T20:00:00.000Z'),
       kidRelated: true,
       title: 'Maya gymnastics',
+      calendarStanding: 'organizer',
       status: 'confirmed',
       updatedStamp: 'stamp-handoff',
     });
@@ -559,6 +565,7 @@ describe('household calendars', () => {
       endAt: new Date(DAY.getTime() - 60 * 60 * 1000),
       kidRelated: true,
       title: 'Maya gymnastics',
+      calendarStanding: 'organizer',
       status: 'confirmed',
       updatedStamp: 'stamp-followup',
       announcedAt: new Date(DAY.getTime() - 3 * 60 * 60 * 1000),
@@ -636,6 +643,7 @@ describe('household calendars', () => {
         endAt: end,
         kidRelated: true,
         title: 'Maya gymnastics',
+        calendarStanding: 'organizer',
         status: 'confirmed',
         updatedStamp: 'stamp-gym',
       },
@@ -706,6 +714,7 @@ describe('household calendars', () => {
         endAt: new Date('2026-09-25T20:00:00.000Z'),
         kidRelated: true,
         title: 'Maya gymnastics',
+        calendarStanding: 'organizer',
         status: 'confirmed',
         updatedStamp: 'stamp-gym',
       },
@@ -750,6 +759,7 @@ describe('household calendars', () => {
         endAt: end,
         kidRelated: true,
         title: 'Maya gymnastics',
+        calendarStanding: 'organizer',
         status: 'confirmed',
         updatedStamp: 'stamp-gym',
       },
@@ -962,6 +972,7 @@ async function insertSharedKid(
       endAt: end,
       kidRelated: true,
       title: 'Maya gymnastics',
+      calendarStanding: 'organizer',
       status: 'confirmed',
       updatedStamp: 'stamp-a',
     },
@@ -974,6 +985,7 @@ async function insertSharedKid(
       endAt: end,
       kidRelated: true,
       title: 'Maya gymnastics',
+      calendarStanding: 'organizer',
       status: 'confirmed',
       updatedStamp: 'stamp-b',
     },
@@ -1026,6 +1038,169 @@ function pollWire(): {
     urls: () => urls,
   };
 }
+
+describe("someone else's event in the household group (VIL-651)", () => {
+  /** Someone else's words, naming the child, that must never reach the group. */
+  const STRANGER_TITLE = 'Maya pickup moved, Ms. Vale collects at the north gate';
+  const STRANGER_WORDS = ['north gate', 'Vale', 'collects', 'moved'];
+
+  async function sweepOnce(
+    seeded: Awaited<ReturnType<typeof seedPair>>,
+    changes: CalendarChange[],
+  ): Promise<string> {
+    const wire = linqFetch();
+    await rememberAndNarrateCalendar(db.database, {
+      integrationId: seeded.primaryIntegrationId,
+      familyId: seeded.familyId,
+      userId: seeded.primaryUserId,
+      changes,
+      seeding: false,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    return wire.texts();
+  }
+
+  async function storedBlock(eventId: string) {
+    const [row] = await db.database
+      .select({
+        title: schema.parentCalendarBlocks.title,
+        kidRelated: schema.parentCalendarBlocks.kidRelated,
+        standing: schema.parentCalendarBlocks.calendarStanding,
+        childId: schema.parentCalendarBlocks.childId,
+        announcedAt: schema.parentCalendarBlocks.announcedAt,
+      })
+      .from(schema.parentCalendarBlocks)
+      .where(eq(schema.parentCalendarBlocks.eventId, eventId));
+    return row;
+  }
+
+  async function childId(familyId: string, name: string): Promise<string> {
+    const [row] = await db.database
+      .select({ id: schema.children.id })
+      .from(schema.children)
+      .where(and(eq(schema.children.familyId, familyId), eq(schema.children.name, name)));
+    return row?.id as string;
+  }
+
+  it('announces an accepted invite by its kid, day and time, and stores none of its title', async () => {
+    const seeded = await seedPair();
+    const texts = await sweepOnce(seeded, [
+      change({ eventId: 'pickup', title: STRANGER_TITLE, standing: 'accepted' }),
+    ]);
+    expect(texts).toContain('Heads up:');
+    expect(texts).toContain('Maya');
+    for (const words of STRANGER_WORDS) expect(texts).not.toContain(words);
+    expect(await storedBlock('pickup')).toEqual({
+      title: null,
+      kidRelated: true,
+      standing: 'accepted',
+      childId: await childId(seeded.familyId, 'Maya'),
+      announcedAt: DAY,
+    });
+  });
+
+  it('says nothing about an unanswered invite, and announces it once the parent accepts', async () => {
+    const seeded = await seedPair();
+    const invited = change({ eventId: 'pickup', title: STRANGER_TITLE, standing: 'invited' });
+    expect(await sweepOnce(seeded, [invited])).toBe('[]');
+    expect(await storedBlock('pickup')).toMatchObject({
+      title: null,
+      kidRelated: true,
+      standing: 'invited',
+      announcedAt: null,
+    });
+    const accepted = await sweepOnce(seeded, [
+      { ...invited, updated: 'stamp-2', standing: 'accepted' },
+    ]);
+    expect(accepted).toContain('Maya');
+    for (const words of STRANGER_WORDS) expect(accepted).not.toContain(words);
+  });
+
+  it.each(['own', 'organizer'] as const)(
+    "keeps and speaks the title of the parent's %s kid event",
+    async (standing) => {
+      const seeded = await seedPair();
+      const texts = await sweepOnce(seeded, [
+        change({ eventId: 'gym', title: 'Maya gymnastics', standing }),
+      ]);
+      expect(texts).toContain('gymnastics');
+      expect(await storedBlock('gym')).toMatchObject({
+        title: 'Maya gymnastics',
+        kidRelated: true,
+        standing,
+        childId: await childId(seeded.familyId, 'Maya'),
+      });
+    },
+  );
+
+  it('treats an event the parent organized but let the guests edit as accepted', async () => {
+    const seeded = await seedPair();
+    const standing = calendarStandingOf({ organizer: { self: true }, guestsCanModify: true });
+    const texts = await sweepOnce(seeded, [
+      change({ eventId: 'pickup', title: STRANGER_TITLE, standing }),
+    ]);
+    expect(texts).toContain('Maya');
+    for (const words of STRANGER_WORDS) expect(texts).not.toContain(words);
+    expect(await storedBlock('pickup')).toMatchObject({ title: null, standing: 'accepted' });
+  });
+
+  it('speaks a titled row stored before standing was kept without its title', async () => {
+    const seeded = await seedPair();
+    await db.database.insert(schema.parentCalendarBlocks).values({
+      integrationId: seeded.primaryIntegrationId,
+      eventId: 'legacy',
+      familyId: seeded.familyId,
+      userId: seeded.primaryUserId,
+      startAt: new Date('2026-09-25T19:00:00.000Z'),
+      endAt: new Date('2026-09-25T20:00:00.000Z'),
+      kidRelated: true,
+      title: STRANGER_TITLE,
+      status: 'confirmed',
+      updatedStamp: 'stamp-legacy',
+    });
+    const wire = linqFetch();
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: wire.fetch,
+    });
+    expect(wire.texts()).toContain('Heads up:');
+    expect(wire.texts()).toContain('Maya');
+    for (const words of STRANGER_WORDS) expect(wire.texts()).not.toContain(words);
+    expect(await storedBlock('legacy')).toMatchObject({ title: STRANGER_TITLE });
+  });
+
+  it("never names a teenager from someone else's invite", async () => {
+    const seeded = await seedPair();
+    await db.database.insert(schema.children).values({
+      familyId: seeded.familyId,
+      name: 'Rowan',
+      dateOfBirth: '2010-02-01',
+    });
+    const texts = await sweepOnce(seeded, [
+      change({ eventId: 'teen', title: 'Rowan practice moved', standing: 'accepted' }),
+    ]);
+    expect(texts).toBe('[]');
+    expect(await storedBlock('teen')).toMatchObject({
+      title: null,
+      childId: await childId(seeded.familyId, 'Rowan'),
+    });
+  });
+
+  it('migration 0222 applies a second time over itself', async () => {
+    await expect(
+      db.applyMigration('0222_parent_calendar_blocks_standing.sql'),
+    ).resolves.toBeUndefined();
+    const result = await db.client.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+        where table_name = 'parent_calendar_blocks'
+          and column_name in ('calendar_standing', 'child_id')
+        order by column_name`,
+    );
+    expect(result.rows.map((r) => r.column_name)).toEqual(['calendar_standing', 'child_id']);
+  });
+});
 
 describe("the connector sweep's group notice under the calendar_alert lane", () => {
   async function sweep(seeded: Awaited<ReturnType<typeof seedPair>>) {

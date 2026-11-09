@@ -67,6 +67,7 @@ const TIMED: CalendarChange = {
   title: 'Cartwheels Gym',
   start: { dateTime: '2026-09-17T20:15:00.000Z' },
   end: { dateTime: '2026-09-17T21:00:00.000Z' },
+  standing: 'organizer',
 };
 
 interface Harness {
@@ -563,6 +564,7 @@ describe('alertParentForCalendarChanges', () => {
       status: 'cancelled',
       start: { dateTime: '2026-09-18T20:15:00.000Z' },
       end: { dateTime: '2026-09-18T20:15:00.000Z' },
+      standing: 'own',
     };
 
     await expect(sweep(h, { changes: [instance] })).resolves.toEqual(['sent']);
