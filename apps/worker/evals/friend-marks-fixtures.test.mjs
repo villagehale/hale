@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
+import {
+  FRIEND_MARKS_FIXTURES,
+  friendMarksMisses,
+  knownSeamMiss,
+} from './friend-marks-fixtures.mjs';
 
 const join = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'coparent-yes-join');
 const zh = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'email-question-zh');
@@ -151,5 +155,34 @@ describe('friendMarksMisses', () => {
     expect(friendMarksMisses(saved, { ...good, claimsSaved: false })).toEqual([
       'claimsSaved:false',
     ]);
+  });
+});
+
+// VIL-645: only the exact tool-call XML leak is quarantined, and only where the fixture names it.
+describe('knownSeamMiss', () => {
+  const ownQuestion = FRIEND_MARKS_FIXTURES.find((fixture) => fixture.id === 'ages-own-question');
+  const leaked = {
+    asks: true,
+    reply: 'Classes, lessons and story times near you. How old are Mia and Leo?',
+    parentQuestion: 'true</parentQuestion>\n<parameter name="connectorsOffered">[]',
+  };
+
+  it('names the ticket for the leak and nothing else wrong', () => {
+    const misses = friendMarksMisses(ownQuestion, leaked);
+    expect(misses.length).toBeGreaterThan(0);
+    expect(knownSeamMiss(ownQuestion, leaked, misses)).toBe('VIL-645');
+  });
+
+  it('still fails the leak when anything else is wrong too', () => {
+    const { asks: _asks, ...noAsks } = leaked;
+    const misses = friendMarksMisses(ownQuestion, noAsks);
+    expect(misses).toContain('asks:omitted');
+    expect(knownSeamMiss(ownQuestion, noAsks, misses)).toBeNull();
+  });
+
+  it('still fails a plain wrong answer, and the leak on a fixture that names no ticket', () => {
+    const wrong = { ...leaked, parentQuestion: false, connectorsOffered: [] };
+    expect(knownSeamMiss(ownQuestion, wrong, friendMarksMisses(ownQuestion, wrong))).toBeNull();
+    expect(knownSeamMiss(fr, leaked, friendMarksMisses(fr, leaked))).toBeNull();
   });
 });

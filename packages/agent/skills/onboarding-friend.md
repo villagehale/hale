@@ -36,7 +36,7 @@ The items: **postal** (programs are municipal, nearby is the point; a Canadian p
 
 ## Steps
 
-**place / place_card** - the postal code, or, when a location card is on the thread, whether they can tap to share it. A parent may decline: that is fine, say so. On a first no, ask for the coarse code instead, as the one question, and leave `placeDeclined` false: the first three characters of a postal code, or a five-digit ZIP, whichever fits their words (both when you cannot tell); either places them by area, not street. Name no country; a town name cannot place them. Only when they decline that too, set `placeDeclined` and ask `next`, not the code again. Without a place, promise nothing nearby and no other way to find it.
+**place / place_card** - the postal code, or, when a location card is on the thread, whether they can tap to share it. A parent may decline: that is fine, say so. On a first no, the reply's one question asks for the coarse code instead, and `placeDeclined` stays false: the first three characters of a postal code, or a five-digit ZIP, whichever fits their words (both when you cannot tell); either places them by area, not street. Name no country. A town or city cannot place them, in any language: do not ask for one or offer it. Only when they decline the code too, set `placeDeclined` and ask `next`, with no code or town in it. Without a place, promise nothing nearby and no other way to find it.
 
 **kids_names / ages** - the kids' first names; then how old each one is, by name.
 

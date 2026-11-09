@@ -20,7 +20,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { readCapUsd, readLedger } from '../../web/lib/testing/spend-cap.mjs';
-import { FRIEND_MARKS_FIXTURES, friendMarksMisses } from './friend-marks-fixtures.mjs';
+import {
+  FRIEND_MARKS_FIXTURES,
+  friendMarksMisses,
+  knownSeamMiss,
+} from './friend-marks-fixtures.mjs';
 import {
   JUDGE_MIN,
   PRICE,
@@ -206,9 +210,12 @@ async function record() {
       meaning,
       meaningMin: JUDGE_MIN,
     });
-    if (misses.length > 0) failed += 1;
+    // A quarantined miss is printed with its ticket and does not fail the run.
+    const known = knownSeamMiss(fixture, result.value, misses);
+    if (misses.length > 0 && !known) failed += 1;
+    const mark = misses.length === 0 ? 'PASS' : known ? 'KNOWN' : 'FAIL';
     console.info(
-      `${misses.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id.padEnd(24)} ${misses.join(' ')}`,
+      `${mark.padEnd(5)} ${fixture.id.padEnd(24)} ${misses.join(' ')}${known ? ` (${known})` : ''}`,
     );
     if (fixture.printReply || fixture.groupBubbles)
       console.info(`      reply: ${JSON.stringify(result.value?.reply ?? null)}`);

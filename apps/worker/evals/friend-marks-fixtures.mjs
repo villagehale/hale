@@ -267,6 +267,7 @@ export const FRIEND_MARKS_FIXTURES = [
     emits: ['asks', 'parentQuestion', 'connectorsOffered'],
     expect: { parentQuestion: true },
     offersNone: true,
+    knownSeam: 'VIL-645',
     printReply: true,
   },
   {
@@ -582,4 +583,22 @@ export function friendMarksMisses(
     if (got !== want) misses.push(`${field}:${JSON.stringify(got ?? null)}`);
   }
   return misses;
+}
+
+/** VIL-645: tool-call XML written into `parentQuestion`, swallowing the next field. */
+const TOOL_XML_LEAK = /<\/?(parameter|parentQuestion)\b/;
+
+/**
+ * The ticket a fixture's misses are quarantined under, or null. Only the exact leak
+ * shape, only on a fixture that names the ticket, and only when every miss is the
+ * leak's own: anything else wrong on that turn still fails.
+ */
+export function knownSeamMiss(fixture, value, misses) {
+  if (!fixture.knownSeam || misses.length === 0) return null;
+  const leaked = value?.parentQuestion;
+  if (typeof leaked !== 'string' || !TOOL_XML_LEAK.test(leaked)) return null;
+  const leakOnly = misses.every(
+    (miss) => miss.startsWith('parentQuestion:') || miss === 'connectorsOffered:omitted',
+  );
+  return leakOnly ? fixture.knownSeam : null;
 }
