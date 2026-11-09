@@ -20,9 +20,76 @@ const NOW = new Date('2026-11-08T15:00:00.000Z');
 const TEEN_NAME = 'Tamsin';
 
 /**
+ * The tables that were still unreviewed when the set was frozen (VIL-622). This list
+ * only shrinks: a table leaves it when the export reads it or a written reason replaces
+ * `unreviewed`. A table that is not on it cannot be marked `unreviewed`, so every table
+ * added after the freeze declares its export.
+ */
+const UNREVIEWED_AT_FREEZE: ReadonlySet<string> = new Set([
+  'caregiver_invites',
+  'channel_pending_asks',
+  'chat_attachments',
+  'email_alert_offers',
+  'email_forwards_pending',
+  'email_sends',
+  'event_reminders',
+  'family_active_days',
+  'family_areas',
+  'family_forward_senders',
+  'family_interest_settings',
+  'family_invites',
+  'family_link_wallets',
+  'family_plans',
+  'family_upgrade_offers',
+  'family_watch_subscriptions',
+  'group_decision_sync',
+  'group_reminders',
+  'interest_next_step_offers',
+  'join_invites',
+  'kid_interests',
+  'kid_passport_profiles',
+  'kid_relevance_verdicts',
+  'linq_group_carpools',
+  'linq_group_members',
+  'linq_group_onboarding',
+  'linq_group_plans',
+  'linq_group_polls',
+  'linq_group_rosters',
+  'linq_multi_family_joins',
+  'linq_multi_family_ledger',
+  'linq_multi_family_members',
+  'linq_poll_options',
+  'linq_shared_group_people',
+  'mcp_authorization_codes',
+  'optional_ask_ledger',
+  'parent_calendar_blocks',
+  'parent_channels',
+  'party_invites',
+  'pending_disambiguations',
+  'proactive_candidates',
+  'provider_signup_sessions',
+  'sms_intake_sessions',
+  'social_spots',
+  'teen_access_grants',
+  'village_endorsements',
+  'week_plans',
+]);
+
+const UNREVIEWED = 'unreviewed';
+
+/** The entries marked unreviewed that the freeze does not hold. */
+function unreviewedAfterFreeze(entries: Record<string, string>): string[] {
+  return Object.entries(entries)
+    .filter(([table, reason]) => reason === UNREVIEWED && !UNREVIEWED_AT_FREEZE.has(table))
+    .map(([table]) => table)
+    .sort();
+}
+
+/**
  * Family tables the export does not read, and why. A new `family_id` table fails the
- * ratchet until it is exported or added here. Entries marked `unreviewed` predate the
- * ratchet (VIL-597) and are a known gap to work down, not a decision.
+ * ratchet until it is exported or added here with a reason. Only tables in
+ * UNREVIEWED_AT_FREEZE may say `unreviewed`; that is a known gap to work down, not a
+ * decision.
  */
 const NOT_IN_EXPORT: Record<string, string> = {
   family_sweep_marks: 'scheduling metadata, no family content',
@@ -33,14 +100,12 @@ const NOT_IN_EXPORT: Record<string, string> = {
   caregiver_invites: 'unreviewed',
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
-  consent_records: 'unreviewed',
   email_alert_offers: 'unreviewed',
   email_forwards_pending: 'unreviewed',
   email_sends: 'unreviewed',
   event_reminders: 'unreviewed',
   family_active_days: 'unreviewed',
   family_areas: 'unreviewed',
-  family_events: 'unreviewed',
   family_forward_senders: 'unreviewed',
   family_interest_settings: 'unreviewed',
   family_invites: 'unreviewed',
@@ -49,9 +114,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_upgrade_offers: 'unreviewed',
   family_watch_subscriptions: 'unreviewed',
   group_decision_sync: 'unreviewed',
-  group_lists: 'unreviewed',
   group_reminders: 'unreviewed',
-  integrations: 'unreviewed',
   interest_next_step_offers: 'unreviewed',
   join_invites: 'unreviewed',
   kid_interests: 'unreviewed',
@@ -554,5 +617,20 @@ describe('family memory in the right-to-access copy', () => {
 
     const unread = familyTables().filter((table) => !read.has(table));
     expect(unread).toEqual(Object.keys(NOT_IN_EXPORT).sort());
+    // group_list_items has no family_id, so the schema scan above cannot see it; the
+    // export reads it through group_lists.
+    expect(read.has('group_list_items')).toBe(true);
+  });
+
+  it('marks no table unreviewed that the freeze does not hold', () => {
+    expect(unreviewedAfterFreeze(NOT_IN_EXPORT)).toEqual([]);
+    expect(unreviewedAfterFreeze({ ...NOT_IN_EXPORT, a_table_added_later: UNREVIEWED })).toEqual([
+      'a_table_added_later',
+    ]);
+    // Every frozen table is still a family table nobody exports; one that the export now
+    // reads, or that has a reason, comes off the freeze.
+    for (const table of UNREVIEWED_AT_FREEZE) {
+      expect(NOT_IN_EXPORT[table], table).toBe(UNREVIEWED);
+    }
   });
 });
