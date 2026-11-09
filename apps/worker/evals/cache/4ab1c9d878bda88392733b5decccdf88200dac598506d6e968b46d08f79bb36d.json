@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Reply says it cannot pull up the email text and only mentions it was an appointment email for one of the kids, without naming a provider, day, time, or other content. It also asks who sent it, which is a mild extra but doesn't reveal details. Meets the rule well.",
+    "score": 5
+  }
+}
