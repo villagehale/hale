@@ -550,11 +550,13 @@ export async function handleParentMemory(
     surface: 'memory' as const,
   };
 
+  const reader: FactReader = inbound.oneToOne ? { adult: input.parentUserId } : 'every_adult';
+
   if (intent.kind === 'recall') {
     const facts = await recallFamilyMemory(database, {
       familyId: input.familyId,
       now: input.now,
-      reader: inbound.oneToOne ? { adult: input.parentUserId } : 'every_adult',
+      reader,
     });
     const [sources, timeZone] = await Promise.all([
       loadFactSources(database, {
@@ -612,6 +614,7 @@ export async function handleParentMemory(
     const forgotten = await forgetMatchingFacts(database, {
       familyId: input.familyId,
       actor: input.parentUserId,
+      reader,
       now: input.now,
       needle: intent.needle,
     });
@@ -648,6 +651,7 @@ export async function handleParentMemory(
   const corrected = await correctFamilyFact(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
+    reader,
     // A correction is the speaker's own unless the door recorded the family group: a turn
     // it could not place stays with the adult who sent it (decision R7).
     heard: inbound.inGroup
@@ -689,9 +693,12 @@ export async function handleParentMemory(
 
 async function forgetMatchingFacts(
   database: Database,
-  input: { familyId: string; actor: string; now: Date; needle: string | null },
+  input: { familyId: string; actor: string; reader: FactReader; now: Date; needle: string | null },
 ): Promise<{ forgotten: number; refused: number; keys: string[] }> {
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -706,6 +713,7 @@ async function forgetMatchingFacts(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     )
     .orderBy(desc(schema.familyMemoryFacts.sourcedAt));
@@ -742,6 +750,7 @@ async function correctFamilyFact(
   input: {
     familyId: string;
     actor: string;
+    reader: FactReader;
     heard: FactHeard;
     factKey: string;
     value: string;
@@ -749,7 +758,10 @@ async function correctFamilyFact(
   },
 ): Promise<{ corrected: boolean }> {
   if (isReceiptKey(input.factKey) || !input.factKey || !input.value) return { corrected: false };
-  const teens = await teenIds(database, input.familyId, input.now);
+  const [teens, audience] = await Promise.all([
+    teenIds(database, input.familyId, input.now),
+    audiencePredicate(database, input.familyId, input.reader),
+  ]);
   const rows = await database
     .select({
       id: schema.familyMemoryFacts.id,
@@ -764,10 +776,16 @@ async function correctFamilyFact(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         eq(schema.familyMemoryFacts.factKey, input.factKey),
         isNull(schema.familyMemoryFacts.validUntil),
+        audience,
       ),
     );
 
   const live = rows.filter((row) => !row.childId || !teens.has(row.childId));
+  // One live row per identity: a new family-wide fact here would supersede what another
+  // adult said in their own 1:1, so the sender's word does not reach it (R7).
+  if (live.length === 0 && (await liveFamilyWideFact(database, input))) {
+    return { corrected: false };
+  }
   const subjects: Array<{
     childId: string | null;
     factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
@@ -809,6 +827,26 @@ async function correctFamilyFact(
     });
   });
   return { corrected: true };
+}
+
+async function liveFamilyWideFact(
+  database: Database,
+  input: { familyId: string; factKey: string },
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.familyMemoryFacts.id })
+    .from(schema.familyMemoryFacts)
+    .where(
+      and(
+        eq(schema.familyMemoryFacts.familyId, input.familyId),
+        isNull(schema.familyMemoryFacts.childId),
+        eq(schema.familyMemoryFacts.factType, factTypeFor(input.factKey)),
+        eq(schema.familyMemoryFacts.factKey, input.factKey),
+        isNull(schema.familyMemoryFacts.validUntil),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
 
 function factTypeFor(factKey: string): 'logistic' | 'preference' {

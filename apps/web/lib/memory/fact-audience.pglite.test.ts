@@ -293,3 +293,91 @@ describe('the right-to-access copy reads the same rule', () => {
     expect(JSON.stringify(doc.memory)).not.toContain('legacy_pref');
   });
 });
+
+describe('a forget or a correction touches only what the sender may hear (R7)', () => {
+  async function inboundFrom(familyId: string, parentUserId: string): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        inGroup: false,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!row) throw new Error('inbound insert returned no row');
+    return row.id;
+  }
+
+  async function texted(familyId: string, parentUserId: string, body: string) {
+    return handleParentMemory(db.database, {
+      familyId,
+      parentUserId,
+      body,
+      now: NOW,
+      inboundChannelMessageId: await inboundFrom(familyId, parentUserId),
+      env: { FAMILY_MEMORY_KINDS_ENABLED: 'true' },
+      replyClient: null,
+    });
+  }
+
+  async function live(familyId: string, factKey: string) {
+    return db.database
+      .select({
+        factValue: schema.familyMemoryFacts.factValue,
+        sourceUserId: schema.familyMemoryFacts.sourceUserId,
+      })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, familyId),
+          eq(schema.familyMemoryFacts.factKey, factKey),
+          isNull(schema.familyMemoryFacts.validUntil),
+        ),
+      );
+  }
+
+  it('A’s forget in A’s 1:1 leaves B’s 1:1 fact live; A’s own and a heard-by-both fact go', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
+    await fact(familyId, 'skating', { in: 'one_to_one', userId: a });
+    await fact(familyId, 'piano', { in: 'family', userId: b });
+    await fact(familyId, 'violin', { in: 'family', userId: a });
+
+    const held = await texted(familyId, a, 'forget swimming');
+    expect([held.outcome, held.forgotten, held.groupSync.skipped]).toEqual([
+      'nothing',
+      0,
+      'nothing_to_sync',
+    ]);
+    expect(await live(familyId, 'swimming')).toHaveLength(1);
+
+    expect((await texted(familyId, a, 'forget skating')).forgotten).toBe(1);
+    expect(await live(familyId, 'skating')).toHaveLength(0);
+    expect((await texted(familyId, a, 'forget piano')).forgotten).toBe(1);
+    expect(await live(familyId, 'piano')).toHaveLength(0);
+    expect((await texted(familyId, b, 'forget violin')).forgotten).toBe(1);
+    expect(await live(familyId, 'violin')).toHaveLength(0);
+  });
+
+  it('A’s correction leaves B’s 1:1 fact as B said it; A’s own and a heard-by-both fact change', async () => {
+    const { familyId, a, b } = await seedHousehold();
+    await fact(familyId, 'swimming', { in: 'one_to_one', userId: b });
+    await fact(familyId, 'skating', { in: 'one_to_one', userId: a });
+    await fact(familyId, 'piano', { in: 'family', userId: b });
+
+    const held = await texted(familyId, a, 'correct swimming: tuesdays');
+    expect([held.outcome, held.corrected]).toEqual(['refused', 0]);
+    expect(await live(familyId, 'swimming')).toEqual([
+      { factValue: { summary: 'swimming words' }, sourceUserId: b },
+    ]);
+
+    expect((await texted(familyId, a, 'correct skating: tuesdays')).corrected).toBe(1);
+    expect(await live(familyId, 'skating')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
+    expect((await texted(familyId, a, 'correct piano: tuesdays')).corrected).toBe(1);
+    expect(await live(familyId, 'piano')).toEqual([{ factValue: 'tuesdays', sourceUserId: a }]);
+  });
+});
