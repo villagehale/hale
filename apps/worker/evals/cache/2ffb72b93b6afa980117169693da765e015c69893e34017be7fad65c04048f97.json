@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request to reply YES so Hale will book, which is an ask for a reply, so it scores at the low end.",
+    "score": 1
+  }
+}

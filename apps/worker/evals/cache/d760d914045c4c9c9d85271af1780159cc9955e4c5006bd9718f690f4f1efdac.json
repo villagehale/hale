@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message only reports findings (a drop-in found, forecast dry, registration opened, dates not posted) and asks nothing; the sole ask is the shell question appended afterward.",
+    "score": 5
+  }
+}

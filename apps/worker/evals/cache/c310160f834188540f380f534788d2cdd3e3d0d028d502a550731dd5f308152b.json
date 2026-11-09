@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message explicitly asks the parent to reply YES so Hale will book, which is a direct request for a response; it also includes a STOP opt-out line, which is a standard compliance instruction, but the YES request is a clear ask.",
+    "score": 1
+  }
+}
