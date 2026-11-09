@@ -83,10 +83,33 @@ export interface FamilyMemoryExport {
   }[];
 }
 
-interface ExportChild {
+export interface ExportChild {
   id: string;
   name: string;
   dateOfBirth: string;
+}
+
+/**
+ * The deterministic age gate every block of the copy applies (rule #1): a row is the
+ * teen's when it names a 13+ child by id, or its text names one. A teen's id never
+ * leaves, and a younger child is named.
+ */
+export interface ExportTeenGate {
+  isPrivate(childIds: readonly (string | null)[], texts: readonly unknown[]): boolean;
+  childName(childId: string | null): string | null;
+}
+
+export function exportTeenGate(children: readonly ExportChild[], now: Date): ExportTeenGate {
+  const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
+  const teenIds = new Set(teens.map((child) => child.id));
+  const teenNames = teens.map((child) => child.name);
+  const nameById = new Map(children.map((child) => [child.id, child.name]));
+  return {
+    isPrivate: (childIds, texts) =>
+      childIds.some((id) => id !== null && teenIds.has(id)) || namesAnyIn(texts, teenNames),
+    childName: (childId) =>
+      childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null),
+  };
 }
 
 function iso(date: Date | null): string | null {
@@ -161,14 +184,7 @@ export async function loadFamilyMemoryExport(
   requester: { userId: string },
   now: Date,
 ): Promise<FamilyMemoryExport> {
-  const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
-  const teenIds = new Set(teens.map((child) => child.id));
-  const teenNames = teens.map((child) => child.name);
-  const nameById = new Map(children.map((child) => [child.id, child.name]));
-  const isPrivate = (childIds: readonly (string | null)[], texts: readonly unknown[]) =>
-    childIds.some((id) => id !== null && teenIds.has(id)) || namesAnyIn(texts, teenNames);
-  const childName = (childId: string | null) =>
-    childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null);
+  const { isPrivate, childName } = exportTeenGate(children, now);
 
   const [factRows, episodeRows, workstreamRows, commitmentRows, laterWrites] = await Promise.all([
     database

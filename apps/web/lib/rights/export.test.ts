@@ -207,6 +207,16 @@ function fakeDb(args: {
     };
   });
 
+  const householdOrderedWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue([]) };
+  });
+
+  const seatsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return Promise.resolve([]);
+  });
+
   const requesterOrderedWhere = vi.fn((cond: unknown) => {
     whereFamilyIds.push(cond);
     return { orderBy: vi.fn().mockResolvedValue([]) };
@@ -244,13 +254,26 @@ function fakeDb(args: {
     if (which === 20) {
       return { from: () => ({ where: () => ({ groupBy: vi.fn().mockResolvedValue([]) }) }) };
     }
+    // The household section (export-household.ts): the calendar, the shared threads,
+    // this family's seats and the group lists; export-household.pglite.test.ts covers
+    // the content.
+    if (which === 21) return { from: () => ({ where: householdOrderedWhere }) };
+    if (which === 22)
+      return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
+    if (which === 23) return { from: () => ({ where: seatsWhere }) };
+    if (which === 24)
+      return { from: () => ({ leftJoin: () => ({ where: householdOrderedWhere }) }) };
     // The requester's own section (export-requester.ts): their language settings, their
-    // 1:1 thread and their language changes; export.pglite.test.ts covers the content.
-    if (which === 21) return { from: () => ({ where: requesterWhere }) };
-    if (which === 22) {
+    // 1:1 thread, their language changes, consent rows, connections and calendar mirrors;
+    // export.pglite.test.ts and export-household.pglite.test.ts cover the content.
+    if (which === 25) return { from: () => ({ where: requesterWhere }) };
+    if (which === 26) {
       return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
     }
-    if (which === 23) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which >= 27 && which <= 29) return { from: () => ({ where: requesterOrderedWhere }) };
+    if (which === 30) {
+      return { from: () => ({ innerJoin: () => ({ where: requesterOrderedWhere }) }) };
+    }
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 
@@ -669,15 +692,16 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Nineteen scoped selects (family, children, members, village saves, this parent's
+    // Twenty-six scoped selects (family, children, members, village saves, this parent's
     // assistant grants, the registration preparations, the watched spots, the activity
     // bookings, the evening check-in prefs and notes, the activity verdicts, this
     // parent's trips, the memory digests, the authorized signup offers, the signup
-    // field consents, this household's same-activity opt-ins, and the requester's own
-    // language settings, text thread and language changes) each recorded a
+    // field consents, this household's same-activity opt-ins, the household calendar,
+    // shared threads, seats and group lists, and the requester's own language settings,
+    // text thread, language changes, consents, connections and calendar mirrors) each recorded a
     // where-condition; none was left unscoped. (The condition objects are opaque
     // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(19);
+    expect(spies.whereFamilyIds).toHaveLength(26);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 
