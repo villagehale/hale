@@ -12,6 +12,7 @@ import {
 } from '~/lib/channel/language';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
+import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -63,6 +64,7 @@ import {
  */
 const MAX_TOKENS = 1000;
 const SHORT_MAX_TOKENS = 600;
+export const ONBOARDING_REPLY_SHORT_MAX_TOKENS = SHORT_MAX_TOKENS;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -287,6 +289,8 @@ export interface FriendComposed {
   connectorsOffered?: readonly OfferedConnector[];
   /** How a co-parent yes points at the number and phrase code places under the reply. */
   joinPointer?: JoinPointer | null;
+  /** This reply tells the parent something was saved, added or set this turn. */
+  claimsSaved?: boolean;
 }
 
 export type OfferedConnector = 'gmail' | 'calendar';
@@ -314,6 +318,7 @@ function replyMarks(composed: FriendComposed): {
   parentQuestion: boolean;
   offered: readonly OfferedConnector[];
   joinPointer: JoinPointer | null;
+  claimsSaved: boolean;
 } {
   const pointer = composed.joinPointer;
   return {
@@ -321,6 +326,7 @@ function replyMarks(composed: FriendComposed): {
     parentQuestion: composed.parentQuestion === true,
     offered: composed.connectorsOffered ?? [],
     joinPointer: pointer != null && JOIN_POINTERS.has(pointer) ? pointer : null,
+    claimsSaved: composed.claimsSaved === true,
   };
 }
 
@@ -469,6 +475,7 @@ const replySchema = z.object({
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
   parentQuestion: z.boolean().optional().default(false).catch(false),
+  claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
     .optional()
@@ -551,9 +558,10 @@ const replyJsonSchema = {
     },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
+    claimsSaved: { type: 'boolean' },
   },
-  // Code reads these four instead of the reply's words, so the model always says.
-  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer'],
+  // Code reads these instead of the reply's words, so the model always says.
+  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer', 'claimsSaved'],
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
@@ -726,12 +734,17 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
         return { category: group.category, lines };
       })
     : null;
+  // The parent's words decide the reply's language (#868). A stored tag is for a
+  // message Hale sends on its own; beside their words it only pulled the retry
+  // into French for an English parent (VIL-538).
+  const theirWords = input.parentWords.trim().length > 0;
+  const french = copyLanguage(input.language) === 'fr';
   return {
     step: input.step,
-    // A hint only when certain; the parent's words decide the reply's language (#868).
-    languageHint: certainLanguageHint(input.language),
+    languageHint: theirWords ? null : certainLanguageHint(input.language),
     // tu/vous is French-only; sent bare it pulled English and Chinese hellos into French.
-    ...(copyLanguage(input.language) === 'fr' ? { address: input.address } : {}),
+    // A group's vous is the thread's, so it stays beside their words.
+    ...(french && (!theirWords || input.address === 'vous') ? { address: input.address } : {}),
     introduce: input.introduce,
     parentWords: input.parentWords,
     // A message Hale sends on its own (after a connect, a card) answers nothing.
@@ -1994,6 +2007,18 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('schedule') },
         };
       }
+      // The claim gate, onboarding's half (VIL-538): this lane sends straight to the
+      // transport, past the dispatch choke point. The only calendar write onboarding
+      // makes is this turn's accepted adds, so a reply that says something was saved
+      // is checked against them, in any language, by the model's own field.
+      if (marks.claimsSaved && capture.scheduleAdds.length === 0) {
+        noteRefusal({ reason: 'unbacked_save', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_save') },
+        };
+      }
       const judgeInput = {
         ...judgeInputFor(input, capture),
         nameTakenBack:
@@ -2071,6 +2096,15 @@ export async function speakFriend(
       const assembled = bubblesFor(prose);
       if (!assembled) return { fail: 'unusable', capture };
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
+      // The promises no row can ever back, refused here as dispatch refuses them.
+      if (judged.ok && claimsNoLedgerCanBack(assembled.judgedText).length > 0) {
+        noteRefusal({ reason: 'unbacked_claim', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('unbacked_claim') },
+        };
+      }
       if (judged.ok) {
         return {
           prose,
@@ -2196,8 +2230,14 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 }
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
-function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join' | 'other_connector',
+export function retryProblem(
+  reason:
+    | FriendJudgeFailure
+    | 'schedule'
+    | 'join'
+    | 'other_connector'
+    | 'unbacked_save'
+    | 'unbacked_claim',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
@@ -2209,7 +2249,11 @@ function retryProblem(
     case 'other_connector':
       return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
-      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
+      return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map, so nothing was saved. Use the n of a map line that matches, for a child its ages suit. When no line matches, nothing is saved: do not say it was, and do not confirm a day or time for it.';
+    case 'unbacked_save':
+      return 'It says something was saved, added or set, and nothing was saved this turn. Do not say it was or confirm a day or time for it; say plainly it is not saved.';
+    case 'unbacked_claim':
+      return 'It promised something Hale does not do from here (an invite, or a change to how Hale texts). Leave that promise out.';
     case 'question':
       return input && ZERO_QUESTION_STEPS.has(input.step)
         ? 'This message asks nothing. No question mark.'
@@ -2440,6 +2484,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         parentQuestion: value.parentQuestion,
         connectorsOffered: value.connectorsOffered,
         joinPointer: value.joinPointer,
+        claimsSaved: value.claimsSaved,
       };
     },
   };

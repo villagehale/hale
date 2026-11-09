@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Great, Dana. You're all set, and I'll text you when something matters for the kids.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "stopAsking": false
+  },
+  "latencyMs": 1320
+}
