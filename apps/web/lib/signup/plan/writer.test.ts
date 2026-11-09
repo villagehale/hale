@@ -53,7 +53,7 @@ describe('the plan reply gate', () => {
 
   it("restates the open in the parent's own zone", () => {
     const at = new Date('2026-12-01T12:00:00.000Z');
-    expect(planOpensAtLocal(at, 'America/Vancouver').local).toContain('4:00');
+    expect(planOpensAtLocal(at, 'America/Chicago').local).toContain('6:00');
     expect(planOpensAtLocal(at, 'America/New_York').local).toContain('7:00');
   });
 });
