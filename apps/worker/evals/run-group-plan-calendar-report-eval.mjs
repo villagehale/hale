@@ -35,6 +35,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -48,29 +49,7 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 const TAG = 'group-plan-calendar-report';
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring what Hale sends into a family group chat after a plan the',
-  'group made was put on the household calendar, moved, or called off: one message or a few, in',
-  'the order they go out, read together. Everyone in the chat reads them, including people who',
-  'are not Hale customers. You are given the facts the writer was handed (input: change, event',
-  'with title, starts, ends and where, onCalendarOf, notYet, othersNotYet, everyone, link,',
-  'language), the messages and watchFor notes. Score 1-5 on FACTS and BEHAVIOUR, not wording.',
-  'A 5 says plainly what changed; for a placement or move, gives the start, the end when ends is',
-  'given and the place in full (venue and address) when where is given, so nobody has to look',
-  'anything up; uses only the event as given; says it is on the calendars of exactly the people',
-  'in onCalendarOf and of nobody else; hands the link to the people it is not on yet, or to the',
-  'whole group when onCalendarOf is empty; says everyone has it only when everyone is true; for a',
-  'cancel, says it is off, with no link and no names; asks nothing of anyone, because the plan is',
-  'made; is in input.language (French: vous to the group); first person; plain and short, the way',
-  'a friend in the chat would say it, however many messages. A LOW score is any of: saying it is',
-  'on the calendar of someone not in onCalendarOf, or that everyone has it when everyone is false;',
-  'leaving out the start, a given end or a given place on a placement or move; a time, end,',
-  'length, place, address, person, attendee, availability or next step that is not in the input;',
-  'saying why someone does not have it; no link when one is given, or any link on a cancel;',
-  'asking the group anything (a question, a vote, an RSVP, a confirmation, a reply with a word);',
-  'the wrong language; system talk or hype; far more words than the facts need.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('group-plan-calendar-report');
 
 // --- the --dry bound -------------------------------------------------------------
 

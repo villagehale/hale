@@ -7,8 +7,10 @@
 // apps/web/lib/loop/reminders/group, not replicated. Code gates only structure — the
 // reading's fields, the plan the runtime derives from it (where each reminder goes, quiet
 // hours, a non-customer never 1:1, nobody reminded who is not in the chat), the STOP drop,
-// the refusals and fixed copy. Whether a text carries its facts, in the right language and
-// register, is the judge's call.
+// the refusals and fixed copy. Whether a text carries its facts in the right language is the
+// judge's call. Register is a separate fact check (VIL-493): an address read reports how the
+// text says "you", and code holds that against who reads it. In French that result is a
+// warning, not a failure, until the read holds steady across re-records.
 //
 //   node evals/group-reminder-eval.mjs --dry                    # offline: gates + worst case
 //   node evals/group-reminder-eval.mjs --broken --dry           # offline calibration: must FAIL
@@ -57,6 +59,7 @@ import {
   scoreFirstJudgeSchema,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -64,26 +67,7 @@ const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
 const GROUP = join(WEB_ROOT, 'lib', 'loop', 'reminders', 'group');
 const SKILLS = join(REPO_ROOT, 'packages', 'agent', 'skills');
 
-const JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE text that Hale, a planner for a family's kids that",
-  'lives in their group text, wrote about a reminder.',
-  'You get `kind`, `facts` (everything Hale was told, and the only true facts), `text` (what',
-  'Hale wrote) and `mustSay` (what this text has to get across, described, not quoted).',
-  'Score 1-5 on whether the text gets the facts across and reads right, NOT on its wording:',
-  'any phrasing a person would read as saying the same thing counts.',
-  '5: every mustSay item comes across, in the language facts.language names, plainly and',
-  'kindly, with nothing added that is not in facts. 4: the same with one small slip of style.',
-  '3: the facts are right but clarity or tone has a real flaw: padded or longer than the',
-  'facts need, gushing or salesy, or Hale speaking as a company or a team.',
-  'LOW (1-2) is any of: a mustSay item missing or wrong; a wrong time, day or person; saying',
-  'it will come as a private text when facts say it arrives here, or the reverse; anything',
-  'invented (a time, place, person, child, reason or feature); the wrong language; telling',
-  'anyone to reply with a keyword, a code or STOP; a link or phone number; a form-letter or',
-  'robotic register.',
-  'A day and time is right when it matches facts the way a person would say it from',
-  'facts.now ("tomorrow at 9", "Thursday at 9 AM", "tonight at 8:45").',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('group-reminder');
 
 const JUDGE_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
 
@@ -93,20 +77,7 @@ const JUDGE_SCHEMA = scoreFirstJudgeSchema(JUDGE_REASON_MAX_CHARS);
  * holds that against `facts.audience` (registerFinding). Asked inside the score, the
  * register question moved scores on texts that were fine.
  */
-const ADDRESS_SYSTEM = [
-  'You read ONE short text message and report a fact about it, not a judgment.',
-  'You get `language` (the language it is written in) and `text`.',
-  '`you`: every word of the text that says "you" to someone, copied as written: a pronoun',
-  'in any role (the one doing, the one done to, the one owning), a verb whose ending is the',
-  '"you" form, and a command. A name is not a "you" word, and neither is a sentence about',
-  'the task that addresses no one: list only words that are there, and leave it empty when',
-  'there are none.',
-  '`address`, read from `you` alone: `none` when it is empty. `one_form`: the language has a',
-  'single "you" for one person or many, formal or not, as English does. `plural_or_formal`:',
-  'the plural or formal "you" of a language that has one. `familiar_singular`: the familiar',
-  '"you" for one person of a language that also has a plural or formal one.',
-  'Reply with ONLY the address tool.',
-].join(' ');
+const ADDRESS_JUDGE_SYSTEM = judgePrompt('group-reminder-address');
 
 const ADDRESS_TOOL = 'address';
 const ADDRESS_TOOL_DESCRIPTION = 'Return how the text says "you".';
@@ -219,14 +190,14 @@ async function main() {
     agent.structuredRequest({
       lane: judgeLane,
       maxTokens: ADDRESS_MAX_TOKENS,
-      system: ADDRESS_SYSTEM,
+      system: ADDRESS_JUDGE_SYSTEM,
       userMessage,
       toolName: ADDRESS_TOOL,
       toolDescription: ADDRESS_TOOL_DESCRIPTION,
       inputJsonSchema: ADDRESS_SCHEMA,
     });
 
-  /** How a text says "you" (ADDRESS_SYSTEM). Priced on every run, read only when not --dry. */
+  /** How a text says "you" (ADDRESS_JUDGE_SYSTEM). Priced on every run, read only when not --dry. */
   async function readAddress(entry, tag, language, body) {
     const userMessage = JSON.stringify({ language, text: body });
     price(entry, addressRequest(userMessage), judgeLane, 1);
@@ -234,7 +205,7 @@ async function main() {
     const { value } = await cachedToolCall({
       tag: `group-reminder:address:${tag}`,
       lane: judgeLane,
-      system: ADDRESS_SYSTEM,
+      system: ADDRESS_JUDGE_SYSTEM,
       userMessage,
       toolName: ADDRESS_TOOL,
       toolSchema: ADDRESS_SCHEMA,
