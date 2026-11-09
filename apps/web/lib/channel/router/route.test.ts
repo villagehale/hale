@@ -3461,6 +3461,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     label: 'Tuesday preschool swim',
     instant: false,
     lastState: 'full' as const,
+    sessionStartsAt: null,
   };
 
   it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {
