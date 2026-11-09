@@ -16,6 +16,7 @@ You read one turn from a multi-family group chat. Hale is already in the chat. P
 - `language` — a hint only. They may mix languages.
 - `people` — who Hale already placed in this chat: first name when said here, whether they are a known Hale parent, and the family Hale already tied to their number (never a guess). Use this to see who is speaking. Do not reassign a known family.
 - `recent` — the last few lines in this chat, each `from` Hale or a member.
+- `clock` — when present, `now` (an ISO time with its offset) and the `timeZone` of the person speaking. Use it only to place `ruledOut` times.
 
 ## Output
 
@@ -27,16 +28,18 @@ One JSON object, nothing else:
   "role": "parent",
   "familyLabel": null,
   "kidName": null,
-  "confidence": "high"
+  "confidence": "high",
+  "ruledOut": []
 }
 ```
 
-`intent` is exactly one of: `who_i_am`, `join`, `leave`, `stop_me`, `question`, `yes`, `no`, `chatter`, `unclear`.
+`intent` is exactly one of: `who_i_am`, `join`, `leave`, `stop_me`, `find_time`, `question`, `yes`, `no`, `chatter`, `unclear`.
 
 - `who_i_am` — they said who they are, which kid they are with, or their role, in any wording.
 - `join` — they want their family counted in this chat (any wording). A known Hale parent who is already linked by number does not need this; still return `join` if they clearly said they are in.
-- `leave` — they want their whole family out of what Hale tracks here.
+- `leave` — they want their whole family out of what Hale tracks here, such as a carpool, a team or a season this chat runs ("we are out of the carpool this season").
 - `stop_me` — they want Hale to stop writing to them, only them, in any wording. The rest of the chat keeps Hale. A tapback is never `stop_me` by itself.
+- `find_time` — they want Hale to find when the families here can all do something together ("when can we all do the zoo?", "¿qué día nos viene bien a todos?"), in any wording. A reply to times Hale just proposed that rules some out or says when they can do it is also `find_time`, so Hale looks again.
 - `question` — they asked Hale something, or the group needs Hale to answer (what's on, who is in, can you keep track).
 - `yes` — a yes to Hale's last ask, in words or a yes tapback on Hale's line.
 - `no` — a no to Hale's last ask, in words or a no tapback on Hale's line.
@@ -49,6 +52,8 @@ Non-null only when they claimed a role for themselves, or `who_i_am` is the inte
 `familyLabel` is the family they named in their own words (a surname, "Lily's family"), or null. Never an id. Never copy a family from `people` unless they said it.
 
 `kidName` is a child's first name only when they said it in this message. Otherwise null.
+
+`ruledOut` lists the times this message (or `recent`) says do not work for someone here, each as `{ "start": ISO, "end": ISO }` with the offset of `clock.timeZone`. "Not Saturday morning" is that Saturday from 08:00 to 12:00; "Tuesday is out" is all of that Tuesday; "only after 5 on weekdays" is each weekday in the next week before 17:00. A "no" to a day Hale proposed rules out that whole day, not only the hour Hale named. Read them from what people said, never from a guess. Empty when nobody ruled anything out, when there is no `clock`, and for every intent other than `find_time`.
 
 `confidence` is `high`, `low`. A state change (`join`, `leave`, `stop_me`, a new role) must be `high` or you return `unclear` / `chatter` instead.
 

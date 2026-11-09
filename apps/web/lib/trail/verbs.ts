@@ -218,6 +218,9 @@ export const AUDIT_VERBS = [
   'linq_multi_family_member_stopped',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
+  'linq_multi_family_common_time_proposed',
+  'linq_multi_family_common_time_unsent',
+  'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
   'linq_multi_family_send_capped',
@@ -953,6 +956,20 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_reply_sent: {
     sentence: 'Hale replied in a shared thread from what was already said',
     family: 'done',
+  },
+  linq_multi_family_common_time_proposed: {
+    sentence: 'Hale suggested times that work for the families in a shared thread',
+    family: 'done',
+  },
+  linq_multi_family_common_time_unsent: {
+    sentence:
+      'Hale held its suggested times for a shared thread because it could not write them well',
+    family: 'problem',
+  },
+  linq_multi_family_free_busy_shared: {
+    sentence:
+      'A parent let Hale use the busy times on their own calendar to find a time in a shared thread',
+    family: 'note',
   },
   linq_multi_family_ask_sent: {
     sentence: 'Hale asked one family in a shared thread',

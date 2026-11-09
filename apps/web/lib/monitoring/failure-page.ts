@@ -1,6 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { type SQL, and, asc, eq, gt, gte, like, lt, sql } from 'drizzle-orm';
+import {
+  type SQL,
+  type SQLWrapper,
+  and,
+  asc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  like,
+  lt,
+  sql,
+} from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
 import {
   CRISIS_SITUATIONS,
@@ -8,14 +20,15 @@ import {
   type CrisisSituation,
   type CrisisWho,
 } from '~/lib/channel/crisis-resources';
-import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type {
   CrisisKind,
   CrisisPageOutcome,
   CrisisPager,
   CrisisUnanswered,
 } from '~/lib/channel/voice/said-line';
+import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 import {
   INCIDENT_FAILURES,
@@ -152,24 +165,49 @@ export const OPT_OUT_LATE_CRISIS_ROUTE = 'ops:opt-out-crisis-read';
 /** VIL-602 · one page per site per hour, for every path that pages #ops outside a sweep. */
 export const OPS_PAGE_ROUTE = 'ops:page';
 
-/** Every site that pages through {@link pageOps}. A closed list, so the claim key is too. */
-export const OPS_PAGE_SITES = [
-  'group_plan_unwritten',
-  'group_conflict_unwritten',
-  'spoken_line_unwritten',
-  'shared_group_unwritten',
-  'intake_health_unwritten',
-  'opt_out_hold_unwritten',
-  'opt_out_unread',
-] as const;
+/**
+ * Every site that pages through {@link pageOps}, and each fact it may carry with that fact's
+ * closed list of values. A key or value off its site's list never travels, however much it
+ * looks like a code (a short name or a postal code does): it is counted as `redacted`. The
+ * lists repeat the callers' own unions, and the callers' types pin them: a value added to a
+ * union and not here fails typecheck at the call.
+ */
+export const OPS_PAGE_VOCABULARY = {
+  group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
+  group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
+  spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
+  shared_group_unwritten: {
+    kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],
+    fallback: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'declined'],
+  },
+  intake_health_unwritten: {
+    basis: [
+      'ontario',
+      'province_unverified',
+      'canada_province_unknown',
+      'united_states',
+      'region_unknown',
+    ],
+    reason: ['write_failed', 'writer_absent'],
+  },
+  opt_out_hold_unwritten: {},
+  opt_out_unread: {},
+  erasure_intake_undecodable: { number: ['released', 'still_held'] },
+} as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
-export type OpsPageSite = (typeof OPS_PAGE_SITES)[number];
+type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;
 
-/** A page's facts: closed-vocabulary codes and counts, never a body, phone or name. */
-export interface OpsPage {
-  site: OpsPageSite;
-  facts: Readonly<Record<string, string | number>>;
-}
+/** A closed list, so the claim key is too. */
+export type OpsPageSite = keyof OpsPageVocabulary;
+
+type OpsPageFacts<S extends OpsPageSite> = {
+  readonly [K in keyof OpsPageVocabulary[S]]: OpsPageVocabulary[S][K] extends readonly (infer V)[]
+    ? V
+    : never;
+};
+
+/** A page's facts, from its site's vocabulary: never a body, phone or name. */
+export type OpsPage = { [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S> } }[OpsPageSite];
 
 /** Same vocabulary as CrisisPageOutcome. A page that did not leave is its own outcome,
  * never folded into `paged` (rule #11). */
@@ -426,30 +464,27 @@ export function composeCrisisUnansweredAlert(input: {
   ].join(' ');
 }
 
-const OPS_FACT_KEY_RE = /^[a-z][a-z_]{0,30}$/;
-
-/** A fact's value as it may travel: a short code, compared as is, never cleaned into one. */
-const OPS_FACT_CODE_RE = /^[a-z0-9_]{1,40}$/;
 const REDACTED_FACTS_KEY = 'redacted';
 
-function opsFactCode(value: string): string | null {
-  const code = value.toLowerCase();
-  return OPS_FACT_CODE_RE.test(code) && !/\d{7,}/.test(code) ? code : null;
-}
-
-/** Keys outside the closed shape are dropped. Numbers are counts; a string travels only
- * when it already is a short code, so a formatted phone or an email never does: it is
- * `redacted`, and how many were is the `redacted` fact. */
-function opsPageFacts(facts: OpsPage['facts']): Array<[string, string]> {
+/** The facts on the site's list travel. Any other key, or a value off its key's list, does
+ * not: a value is shown as `redacted`, a key is dropped, and how many were is the
+ * `redacted` fact. */
+function opsPageFacts(page: OpsPage): Array<[string, string]> {
+  const vocabulary: Readonly<Record<string, readonly string[]>> =
+    OPS_PAGE_VOCABULARY[page.site] ?? {};
   let redacted = 0;
-  const shown = Object.entries(facts)
-    .filter(([key]) => OPS_FACT_KEY_RE.test(key) && key !== REDACTED_FACTS_KEY)
-    .map(([key, value]): [string, string] => {
-      if (typeof value === 'number') return [key, pageCount(value)];
-      const code = opsFactCode(value);
-      if (code === null) redacted += 1;
-      return [key, code ?? 'redacted'];
-    });
+  const shown: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(page.facts as Readonly<Record<string, unknown>>)) {
+    const allowed = Object.hasOwn(vocabulary, key) ? vocabulary[key] : undefined;
+    if (allowed === undefined) {
+      redacted += 1;
+    } else if (typeof value === 'string' && allowed.includes(value)) {
+      shown.push([key, value]);
+    } else {
+      redacted += 1;
+      shown.push([key, 'redacted']);
+    }
+  }
   return redacted > 0 ? [...shown, [REDACTED_FACTS_KEY, String(redacted)]] : shown;
 }
 
@@ -457,16 +492,22 @@ export function composeOpsPageAlert(page: OpsPage): string {
   return [
     'Hale: ops page.',
     `site ${failureCategory(page.site)}.`,
-    ...opsPageFacts(page.facts).map(([key, value]) => `${key} ${value}.`),
+    ...opsPageFacts(page).map(([key, value]) => `${key} ${value}.`),
   ].join(' ');
 }
 
 /** Fixed-shape, so the identifier parses; the provider's id is never stored as is. An
- * empty id has no key: hashing it would make every such crisis one inbound. */
+ * empty id has no key: hashing it would make every such crisis one inbound. The id is
+ * hashed exactly as given, never trimmed, so {@link crisisInboundKeySql} over the stored
+ * id is the same key. */
 function crisisInboundKey(inboundId: string): string {
-  const id = inboundId.trim();
-  if (id === '') throw new CrisisInboundIdMissing('crisis inbound id is empty');
-  return createHash('sha256').update(id).digest('hex').slice(0, 32);
+  if (inboundId.trim() === '') throw new CrisisInboundIdMissing('crisis inbound id is empty');
+  return createHash('sha256').update(inboundId).digest('hex').slice(0, 32);
+}
+
+/** {@link crisisInboundKey}, computed in SQL over a stored provider id. */
+function crisisInboundKeySql(providerMessageId: SQLWrapper): SQL {
+  return sql`left(encode(sha256(convert_to(${providerMessageId}, 'UTF8')), 'hex'), 32)`;
 }
 
 /** A language tag fit to keep with a held text: never a word of it. */
@@ -672,9 +713,31 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
     );
 }
 
-/** No held text has this inbound key ({@link crisisInboundKey}, computed in SQL). */
+/**
+ * An erasure's crisis claims and reply marks: every one keyed by an inbound text the erased
+ * families sent. Run BEFORE the family cascade (rights/delete.ts): it deletes the ledger rows
+ * whose provider ids are the keys. A claim still owed goes too: the parent it would page
+ * about asked for everything to go.
+ */
+export async function releaseErasedCrisisMarks(
+  database: Database,
+  familyIds: readonly string[],
+): Promise<void> {
+  if (familyIds.length === 0) return;
+  const inbound = schema.channelMessages;
+  await database
+    .delete(schema.rateLimits)
+    .where(
+      and(
+        inArray(schema.rateLimits.route, [CRISIS_UNANSWERED_PAGE_ROUTE, CRISIS_ANSWERED_ROUTE]),
+        sql`split_part(${schema.rateLimits.identifier}, ':', 1) in (select ${crisisInboundKeySql(inbound.providerMessageId)} from ${inbound} where ${inArray(inbound.familyId, [...familyIds])} and ${inbound.direction} = 'in' and ${inbound.providerMessageId} is not null)`,
+      ),
+    );
+}
+
+/** No held text has this inbound key. */
 function notStillHeld(key: SQL): SQL {
-  return sql`not exists (select 1 from ${schema.optOutHeldMessages} where left(encode(sha256(convert_to(btrim(${schema.optOutHeldMessages.providerMessageId}), 'UTF8')), 'hex'), 32) = ${key})`;
+  return sql`not exists (select 1 from ${schema.optOutHeldMessages} where ${crisisInboundKeySql(schema.optOutHeldMessages.providerMessageId)} = ${key})`;
 }
 
 async function claimInsert(
@@ -1583,21 +1646,50 @@ interface CrisisClaim {
   windowStart: Date;
 }
 
+/** What a crisis was read as, sealed for its held row. */
+interface HeldCrisisRead {
+  language: ReplyLanguage | null;
+  situation: CrisisSituation | null;
+  who: CrisisWho | null;
+}
+
 /**
- * What a crisis was read as, kept on the held row of its text, never on the claim: it goes
- * when the row goes (read, released or erased), so a later tick writes from the same facts
- * while the text is held, and nothing about the crisis outlives it. No held row, nothing kept.
+ * What a crisis was read as, sealed for the held row of its text, never put on the claim:
+ * it goes when the row goes (read, released or erased), so a later tick writes from the
+ * same facts while the text is held, and nothing about the crisis outlives it. Null when
+ * nothing was read, or when it cannot be sealed: the claim is recorded either way, and a
+ * late reply is then written without the language, situation or who.
  */
-async function keepHeldCrisisRead(tx: Database, alert: CrisisUnanswered): Promise<void> {
-  const language = alert.language && HELD_LANGUAGE_RE.test(alert.language) ? alert.language : null;
-  const situation =
-    alert.situation && CRISIS_SITUATIONS.includes(alert.situation) ? alert.situation : null;
-  const who = alert.who && CRISIS_WHO.includes(alert.who) ? alert.who : null;
-  if (language === null && situation === null && who === null) return;
-  await tx
-    .update(schema.optOutHeldMessages)
-    .set({ crisisLanguage: language, crisisSituation: situation, crisisWho: who })
-    .where(eq(schema.optOutHeldMessages.providerMessageId, alert.inboundId));
+function sealHeldCrisisRead(alert: CrisisUnanswered): string | null {
+  const read: HeldCrisisRead = {
+    language: alert.language && HELD_LANGUAGE_RE.test(alert.language) ? alert.language : null,
+    situation: CRISIS_SITUATIONS.find((value) => value === alert.situation) ?? null,
+    who: CRISIS_WHO.find((value) => value === alert.who) ?? null,
+  };
+  if (read.language === null && read.situation === null && read.who === null) return null;
+  try {
+    return encryptString(JSON.stringify(read));
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown' },
+      'crisis claim: read not sealed - kept without it',
+    );
+    return null;
+  }
+}
+
+/** The sealed read, opened. Throws on a blob that does not decrypt (rule #1: never guessed). */
+function openHeldCrisisRead(sealed: string | null): HeldCrisisRead {
+  if (sealed === null) return { language: null, situation: null, who: null };
+  const read = JSON.parse(decryptString(sealed)) as Partial<Record<keyof HeldCrisisRead, unknown>>;
+  return {
+    language:
+      typeof read.language === 'string' && HELD_LANGUAGE_RE.test(read.language)
+        ? read.language
+        : null,
+    situation: CRISIS_SITUATIONS.find((value) => value === read.situation) ?? null,
+    who: CRISIS_WHO.find((value) => value === read.who) ?? null,
+  };
 }
 
 /**
@@ -1614,6 +1706,7 @@ async function recordCrisisClaim(
   now: Date,
 ): Promise<CrisisClaim> {
   const key = crisisInboundKey(alert.inboundId);
+  const sealedRead = sealHeldCrisisRead(alert);
   const { claim, inserted } = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
     await tx.execute(
@@ -1649,7 +1742,12 @@ async function recordCrisisClaim(
         windowStart: schema.rateLimits.windowStart,
       });
     if (!row) throw new Error('crisis claim insert returned no row');
-    await keepHeldCrisisRead(tx, alert);
+    if (sealedRead !== null) {
+      await tx
+        .update(schema.optOutHeldMessages)
+        .set({ crisisReadEncrypted: sealedRead })
+        .where(eq(schema.optOutHeldMessages.providerMessageId, alert.inboundId));
+    }
     return { claim: row, inserted: true };
   });
   if (inserted && alert.familyId !== null) {
@@ -1706,21 +1804,11 @@ export async function crisisClaimFor(
   const kind = row ? parseCrisisIdentifier(row.identifier)?.kind : undefined;
   if (!row || (kind !== 'emergency' && kind !== 'mental')) return null;
   const [held] = await database
-    .select({
-      language: schema.optOutHeldMessages.crisisLanguage,
-      situation: schema.optOutHeldMessages.crisisSituation,
-      who: schema.optOutHeldMessages.crisisWho,
-    })
+    .select({ sealed: schema.optOutHeldMessages.crisisReadEncrypted })
     .from(schema.optOutHeldMessages)
     .where(eq(schema.optOutHeldMessages.providerMessageId, inboundId))
     .limit(1);
-  return {
-    id: row.id,
-    kind,
-    language: held?.language && HELD_LANGUAGE_RE.test(held.language) ? held.language : null,
-    situation: CRISIS_SITUATIONS.find((value) => value === held?.situation) ?? null,
-    who: CRISIS_WHO.find((value) => value === held?.who) ?? null,
-  };
+  return { id: row.id, kind, ...openHeldCrisisRead(held?.sealed ?? null) };
 }
 
 /** A crisis reply's mark: taken as it leaves, and turned to sent once the transport accepted it. */
@@ -2060,7 +2148,7 @@ export async function pageOps(
   const post = deps.post ?? ((text: string) => postOpsSlack(text));
   const site = failureCategory(page.site);
   console.error(
-    { ...Object.fromEntries(opsPageFacts(page.facts)), page: site },
+    { ...Object.fromEntries(opsPageFacts(page)), page: site },
     `URGENT: ${site} - paging #ops`,
   );
   const text = composeOpsPageAlert(page);
