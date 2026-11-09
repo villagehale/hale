@@ -35,6 +35,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -56,28 +57,7 @@ const REPLY_TOOL_SCHEMA = {
   required: ['reply'],
 };
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sends a parent who asked Hale to',
-  'add someone (a co-parent, grandparent, nanny or babysitter) by their phone number. Hale',
-  'never texts a number first, so the message must say, in a few words, that Hale will not',
-  'add or text them, and how the person gets in: on iMessage the parent adds them to the',
-  'family group chat with Hale in it (or starts one with them and Hale), or the person texts',
-  'Hale themselves; on SMS the person texts Hale themselves.',
-  'You are given the request (kind, language, address, facts, and any refused drafts), the',
-  'message, and watchFor - fixture-specific notes on what right and wrong look like. Score 1-5.',
-  'A 5 reads like a friend who is good at this: short, plain, warm, first person, names',
-  'facts.name when given, at most one question. In French a 5 uses tu and real accents.',
-  'A LOW score is any of: saying or implying Hale texted, invited, messaged or added them, or',
-  'will; on SMS, any mention of a group or group chat; the person told to write to the PARENT',
-  'rather than to Hale (in French "te texter" / "t\'écrire" where it must be "m\'écrire");',
-  'claiming Hale lacks a number the parent just gave;',
-  'a phone number, link, or a phrase for the parent to send; a name or role not in the',
-  'facts; explaining what a role can see; telling the parent to reply YES or a keyword;',
-  'exclamation marks, emoji, hype, "we" for Hale; a corporate or bot register; padding;',
-  'Hale naming itself in the third person anywhere; a dangling or ungrammatical clause;',
-  'anything watchFor says must not happen.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('add-them-yourself');
 
 // Deterministic broken stand-in: a contact claim, a number, a link and no group word. The
 // composer's own gates refuse it on several lines at once.
