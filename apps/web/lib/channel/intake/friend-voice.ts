@@ -23,6 +23,7 @@ import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { HouseholdGroupFact } from './household-group';
 import { HALE_IDENTITY, NAMES_HALE_COMPANY } from './identity-challenge';
 import {
   ONBOARDING_ORDER,
@@ -228,6 +229,11 @@ export interface FriendVoiceInput {
   coparentJoin?: { line: string; phrase: string } | null;
   /** Their answer on the co-parent step, for the closing receipt. */
   coparentGroup?: boolean | null;
+  /**
+   * VIL-566 — the household group: claimed, pending (a yes and no group yet), or
+   * unclaimed (the ask is open and no group exists). Absent when not in play.
+   */
+  householdGroup?: HouseholdGroupFact | null;
   /**
    * What is already stored, in onboarding order. Absent on older callers.
    * The model uses it as guidance. Code computes it from stored facts.
@@ -798,6 +804,8 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
             }
         : null,
       coparentGroup: input.coparentGroup ?? null,
+      // Absent when not in play, so a turn with no group in it keeps its prompt bytes.
+      ...(input.householdGroup ? { householdGroup: input.householdGroup } : {}),
       // Who runs Hale is for when they ask; otherwise the founder's name is
       // one more name the model could take for the parent's.
       identity: input.introduce || input.identityAsked ? HALE_IDENTITY : null,
@@ -2430,22 +2438,36 @@ function tidyLeads(
   });
 }
 
+/**
+ * The system text for one compose. The co-parent choice and the household-group
+ * addendum ride only on the turns that need them, so every other turn keeps its bytes.
+ */
+export async function friendVoiceSystem(
+  input: Pick<FriendVoiceInput, 'step' | 'householdGroup'>,
+  short: boolean,
+) {
+  const skill = short ? await loadOnboardingFriendShortSkill() : await loadOnboardingFriendSkill();
+  const choice =
+    linqGroupOnboardingV2Enabled() && input.step === 'coparent'
+      ? await loadCronSkill('group-onboarding-voice')
+      : null;
+  const group = input.householdGroup ? await loadCronSkill('household-group') : null;
+  const system = [skill, choice, group]
+    .flatMap((part) => (part ? [part.instructions] : []))
+    .join('\n\n');
+  return { skill, system };
+}
+
 export function createFriendVoiceComposer(client: AgentClient | null): FriendVoiceComposer {
   return {
     async compose(input, options) {
       if (!client) throw new Error('onboarding-friend: voice_unavailable');
       const short = options?.prompt === 'short';
-      const skill = short
-        ? await loadOnboardingFriendShortSkill()
-        : await loadOnboardingFriendSkill();
-      const choice =
-        linqGroupOnboardingV2Enabled() && input.step === 'coparent'
-          ? await loadCronSkill('group-onboarding-voice')
-          : null;
+      const { skill, system } = await friendVoiceSystem(input, short);
       const { value } = await forceToolJson({
         client,
         lane: pickLane(skill.meta.task),
-        system: choice ? `${skill.instructions}\n\n${choice.instructions}` : skill.instructions,
+        system,
         userMessage: JSON.stringify(friendVoiceContext(input)),
         toolName: 'reply',
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
