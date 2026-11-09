@@ -365,14 +365,25 @@ async function familyDoor(
   };
 }
 
-async function originChatId(database: Database, messageId: string | null): Promise<string | null> {
-  if (!messageId) return null;
+/**
+ * The chat a turn arrived in, and whether the door recorded it as one-to-one. Only an
+ * explicit `in_group = false` is one-to-one: no message, no row or an unrecorded bit is
+ * read as a group, so a turn the door could not place never hears a source.
+ */
+async function inboundOrigin(
+  database: Database,
+  messageId: string | null,
+): Promise<{ chatId: string | null; oneToOne: boolean }> {
+  if (!messageId) return { chatId: null, oneToOne: false };
   const [row] = await database
-    .select({ providerChatId: schema.channelMessages.providerChatId })
+    .select({
+      providerChatId: schema.channelMessages.providerChatId,
+      inGroup: schema.channelMessages.inGroup,
+    })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, messageId))
     .limit(1);
-  return row?.providerChatId ?? null;
+  return { chatId: row?.providerChatId ?? null, oneToOne: row?.inGroup === false };
 }
 
 export async function syncMemoryDecisionToGroup(
@@ -515,7 +526,8 @@ export async function handleParentMemory(
   if (!intent) return { ...idle, outcome: 'not_memory' };
 
   const door = await familyDoor(database, input.familyId);
-  const origin = await originChatId(database, input.inboundChannelMessageId);
+  const inbound = await inboundOrigin(database, input.inboundChannelMessageId);
+  const origin = inbound.chatId;
   const language = door.language;
   const templates = copyLanguage(language);
 
@@ -534,8 +546,7 @@ export async function handleParentMemory(
       loadFactSources(database, {
         familyId: input.familyId,
         readerUserId: input.parentUserId,
-        // A group turn always carries its Linq chat id; an SMS 1:1 carries none.
-        inGroup: door.groupChatId !== null && origin === door.groupChatId,
+        inGroup: !inbound.oneToOne,
         now: input.now,
         sourceEventIds: facts.map((fact) => fact.sourceEventId),
       }),

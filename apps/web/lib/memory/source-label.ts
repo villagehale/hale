@@ -16,12 +16,11 @@ export type FactSourceLabel =
 /**
  * A connector fact with a null label came from Gmail or Calendar, but this reader may not
  * be told where: the item is a 13+ child's, its sender or title cannot be read, the
- * mailbox may be another adult's, or the reader is a group thread. Such a fact is not
- * shown at all: a connector fact never renders without its source.
+ * mailbox or calendar may be another adult's, or the reader is a group thread. Such a
+ * fact is not shown at all: a connector fact never renders without its source.
  */
 export type FactSource = { connector: true; label: FactSourceLabel | null } | { connector: false };
 
-const CONNECTOR_SOURCES = new Set(['gmail', 'gcal', 'google_calendar']);
 const TITLE_CHARS = 60;
 
 function text(value: unknown): string | null {
@@ -65,22 +64,37 @@ export function labelForEvent(event: {
   };
 }
 
+/** The connection an item of each connector source was read through. */
+const CONNECTION_PROVIDER = {
+  gmail: 'gmail',
+  gcal: 'gcal',
+  google_calendar: 'gcal',
+} as const;
+type ConnectionProvider = (typeof CONNECTION_PROVIDER)[keyof typeof CONNECTION_PROVIDER];
+
+function connectionProvider(source: string): ConnectionProvider | null {
+  return Object.hasOwn(CONNECTION_PROVIDER, source)
+    ? CONNECTION_PROVIDER[source as keyof typeof CONNECTION_PROVIDER]
+    : null;
+}
+
 /**
- * True only when every Gmail connection the family has ever kept is this reader's own,
- * so the email a fact came from was in their mailbox. Any other adult's connection, or
- * one with no adult on it, makes the mailbox unknown.
+ * True only when every connection to `provider` the family has ever kept is this
+ * reader's own, so the mailbox or calendar a fact came from was theirs. Any other
+ * adult's connection, or one with no adult on it, makes the owner unknown.
  */
-async function mailboxIsReaders(
+async function connectionIsReaders(
   database: Database,
   familyId: string,
   readerUserId: string | null,
+  provider: ConnectionProvider,
 ): Promise<boolean> {
   if (readerUserId === null) return false;
   const rows = await database
     .select({ userId: schema.integrations.userId })
     .from(schema.integrations)
     .where(
-      and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.provider, 'gmail')),
+      and(eq(schema.integrations.familyId, familyId), eq(schema.integrations.provider, provider)),
     );
   return rows.length > 0 && rows.every((row) => row.userId === readerUserId);
 }
@@ -117,15 +131,22 @@ export async function loadFactSources(
     })
     .from(schema.events)
     .where(and(eq(schema.events.familyId, input.familyId), inArray(schema.events.id, ids)));
-  const connectorRows = rows.filter((row) => CONNECTOR_SOURCES.has(row.source));
-  const [teens, ownMailbox] = await Promise.all([
+  const providers = [...new Set(rows.flatMap((row) => connectionProvider(row.source) ?? []))];
+  const [teens, owned] = await Promise.all([
     teenChildIds(database, input.familyId, input.now),
-    connectorRows.some((row) => row.source === 'gmail')
-      ? mailboxIsReaders(database, input.familyId, input.readerUserId)
-      : Promise.resolve(false),
+    Promise.all(
+      providers.map(
+        async (provider) =>
+          [
+            provider,
+            await connectionIsReaders(database, input.familyId, input.readerUserId, provider),
+          ] as const,
+      ),
+    ).then((pairs) => new Map(pairs)),
   ]);
   for (const row of rows) {
-    if (!CONNECTOR_SOURCES.has(row.source)) {
+    const provider = connectionProvider(row.source);
+    if (provider === null) {
       sources.set(row.id, { connector: false });
       continue;
     }
@@ -133,7 +154,7 @@ export async function loadFactSources(
       input.inGroup ||
       row.teenContent ||
       (row.childId !== null && teens.has(row.childId)) ||
-      (row.source === 'gmail' && !ownMailbox);
+      owned.get(provider) !== true;
     sources.set(row.id, { connector: true, label: hidden ? null : labelForEvent(row) });
   }
   // A fact that names an item Hale no longer holds (a disconnect erased it) cannot say

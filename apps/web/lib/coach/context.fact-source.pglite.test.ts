@@ -45,6 +45,7 @@ async function seedSourcedFamily() {
     .set({ timezone: 'America/New_York' })
     .where(eq(schema.users.id, parentUserId));
   await seedIntegration(db.database, familyId, parentUserId, 'gmail');
+  await seedIntegration(db.database, familyId, parentUserId, 'gcal');
   const [mail, event] = await db.database
     .insert(schema.events)
     .values([
@@ -113,11 +114,11 @@ describe('coach context — where a connector fact was seen', () => {
     expect(JSON.stringify(facts)).not.toContain('SECRET');
   });
 
-  it('leaves the email fact out for the other parent, and for an unnamed reader', async () => {
+  it('leaves the email and calendar facts out for the other parent, whose connections they are not, and for an unnamed reader', async () => {
     const { familyId, coParentId } = await seedSourcedFamily();
     for (const reader of [coParentId, undefined]) {
       const facts = byKey((await load(familyId, reader)).memoryFacts);
-      expect(Object.keys(facts).sort()).toEqual(['from_calendar', 'said_plainly']);
+      expect(Object.keys(facts).sort()).toEqual(['said_plainly']);
     }
   });
 });

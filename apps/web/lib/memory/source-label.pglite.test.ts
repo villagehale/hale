@@ -100,13 +100,43 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
     return user.id;
   }
 
-  async function recall(familyId: string, parentUserId: string): Promise<string | null> {
+  async function seedInbound(
+    familyId: string,
+    parentUserId: string,
+    door: { inGroup: boolean | null; chatId: string | null },
+  ): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'what do you know',
+        providerChatId: door.chatId,
+        inGroup: door.inGroup,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!row) throw new Error('channel message insert returned no row');
+    return row.id;
+  }
+
+  async function recall(
+    familyId: string,
+    parentUserId: string,
+    door: { inGroup: boolean | null; chatId: string | null } | null = {
+      inGroup: false,
+      chatId: 'chat-direct',
+    },
+  ): Promise<string | null> {
     const result = await handleParentMemory(db.database, {
       familyId,
       parentUserId,
       body: 'what do you know',
       now: NOW,
-      inboundChannelMessageId: null,
+      inboundChannelMessageId: door ? await seedInbound(familyId, parentUserId, door) : null,
       env: ON,
       replyClient: frameClient(),
     });
@@ -173,21 +203,97 @@ describe('VIL-429 · a connector fact says where Hale saw it', () => {
     expect(reply).not.toContain('soccer_day');
   });
 
-  it('names a calendar event by title and day, for either parent', async () => {
-    const { familyId, parentUserId } = await seedFamily(db.database);
-    const coParent = await seedCoParent(familyId);
-    const event = await seedEvent(familyId, 'gcal', {
+  async function calendarFamily() {
+    const seeded = await seedFamily(db.database);
+    const coParent = await seedCoParent(seeded.familyId);
+    await seedIntegration(db.database, seeded.familyId, seeded.parentUserId, 'gcal');
+    const event = await seedEvent(seeded.familyId, 'gcal', {
       summary: 'Soccer practice',
       start: { dateTime: '2026-10-02T22:00:00.000Z' },
       description: 'DESCRIPTION_NEVER_SHOWN',
     });
-    await seedInferred(familyId, 'soccer_day', 'Thursdays', event);
-    const line = '- soccer_day: I think Thursdays (from Soccer practice on your calendar, Oct 2)';
-    for (const reader of [parentUserId, coParent]) {
-      const reply = await recall(familyId, reader);
-      expect(reply).toContain(line);
-      expect(reply).not.toContain('DESCRIPTION_NEVER_SHOWN');
+    await seedInferred(seeded.familyId, 'soccer_day', 'Thursdays', event);
+    return { ...seeded, coParent, event };
+  }
+
+  const CALENDAR_LINE =
+    '- soccer_day: I think Thursdays (from Soccer practice on your calendar, Oct 2)';
+
+  it('names a calendar event by title and day for the parent whose calendar it is', async () => {
+    const { familyId, parentUserId } = await calendarFamily();
+    const reply = await recall(familyId, parentUserId);
+    expect(reply).toContain(CALENDAR_LINE);
+    expect(reply).not.toContain('DESCRIPTION_NEVER_SHOWN');
+  });
+
+  it("leaves a calendar fact out for a co-parent, because the calendar is the other adult's", async () => {
+    const { familyId, parentUserId, coParent, event } = await calendarFamily();
+    await seedInferred(familyId, 'swimming', 'saturday');
+    const reply = await recall(familyId, coParent);
+    expect(reply).toContain('- swimming: I think saturday (for now)');
+    expect(reply).not.toContain('soccer_day');
+    expect(reply).not.toContain('Soccer practice');
+
+    const read = (readerUserId: string) =>
+      loadFactSources(db.database, {
+        familyId,
+        readerUserId,
+        inGroup: false,
+        now: NOW,
+        sourceEventIds: [event],
+      });
+    expect((await read(coParent)).get(event)).toEqual({ connector: true, label: null });
+    expect((await read(parentUserId)).get(event)).toEqual({
+      connector: true,
+      label: {
+        kind: 'calendar',
+        title: 'Soccer practice',
+        on: new Date('2026-10-02T22:00:00.000Z'),
+      },
+    });
+  });
+
+  it('withholds the source of a mirrored calendar item from the adult who did not connect it', async () => {
+    const { familyId, parentUserId, coParent } = await calendarFamily();
+    const mirrored = await seedEvent(familyId, 'google_calendar', { summary: 'Swim lesson' });
+    const read = (readerUserId: string) =>
+      loadFactSources(db.database, {
+        familyId,
+        readerUserId,
+        inGroup: false,
+        now: NOW,
+        sourceEventIds: [mirrored],
+      });
+    expect((await read(coParent)).get(mirrored)).toEqual({ connector: true, label: null });
+    expect((await read(parentUserId)).get(mirrored)).toMatchObject({
+      connector: true,
+      label: { kind: 'calendar', title: 'Swim lesson' },
+    });
+  });
+
+  it('treats any turn not recorded as one-to-one as a group, and withholds every source', async () => {
+    const { familyId, parentUserId } = await mailFamily();
+    const groupOfFamilies = await recall(familyId, parentUserId, {
+      inGroup: true,
+      chatId: 'chat-not-the-household-group',
+    });
+    expect(groupOfFamilies).toContain('swimming');
+    expect(groupOfFamilies).not.toContain('soccer_day');
+    expect(groupOfFamilies).not.toContain('Northside');
+
+    for (const door of [{ inGroup: null, chatId: null }, null]) {
+      const reply = await recall(familyId, parentUserId, door);
+      expect(reply).toContain('swimming');
+      expect(reply).not.toContain('soccer_day');
     }
+
+    const direct = await recall(familyId, parentUserId, {
+      inGroup: false,
+      chatId: 'chat-not-the-household-group',
+    });
+    expect(direct).toContain(
+      '- soccer_day: I think Thursdays (from the Northside Rec email on Oct 3)',
+    );
   });
 
   it('withholds a source in the group thread, from a teen item, and from no reader', async () => {
