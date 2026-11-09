@@ -14,7 +14,7 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { type FamilyCountry, familyCountryOf } from '@hale/types';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
@@ -80,6 +80,7 @@ import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { POLICY_VERSION } from '~/lib/consent';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -257,6 +258,10 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** VIL-628 · the values of the facts the parent told Hale (`memory_source =
+   * parent_message`), read only on a turn that read an email: what its reply may repeat.
+   * Optional: absent, the reply may repeat only the parent's words in this thread. */
+  loadParentStatedFacts?(familyId: string, now: Date): Promise<string[]>;
   /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
    * Optional: absent or null, the turn carries only the UTC instant, as before. */
   loadTimeZone?(familyId: string): Promise<string | null>;
@@ -800,7 +805,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             const emails = emailTexts();
             const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
               emails,
-              trusted: emails.length > 0 ? trustedAfterEmail(turn, transcript, context) : [],
+              trusted:
+                emails.length > 0
+                  ? [
+                      ...trustedAfterEmail(turn, transcript),
+                      ...((await ports.loadParentStatedFacts?.(turn.familyId, now)) ?? []),
+                    ]
+                  : [],
             });
             if (Object.values(dropped).some((count) => count > 0)) {
               console.info(
@@ -895,32 +906,44 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 }
 
 /**
- * VIL-628 · what a reply written after read_email may repeat: the parent's own words in
- * this thread and the family's facts. Hale's earlier turns are not on it, because an
- * alert can quote the email, and neither is a rejected attempt's claim.
+ * VIL-628 · what a reply written after read_email may repeat from this turn: the
+ * parent's own words in this 1:1 and the app's own origin. Hale's earlier turns are not
+ * on it, because an alert can quote the email, and neither is a rejected attempt's claim.
+ * Nor is the family context: the provider watch and registration windows are read off
+ * provider pages, and memory facts and the brief can be read off an email or a calendar.
  */
-function trustedAfterEmail(
-  turn: ChannelTurn,
-  transcript: readonly TranscriptMessage[],
-  context: AgentContext & {
-    registrationWindows: readonly RegistrationWindowContext[];
-    providerWatch?: readonly ProviderWatchContext[];
-  },
-): string[] {
+function trustedAfterEmail(turn: ChannelTurn, transcript: readonly TranscriptMessage[]): string[] {
   return [
     turn.body,
     ...transcript.filter((message) => message.role === 'user').map((message) => message.content),
-    JSON.stringify({
-      parentName: context.parentName,
-      location: context.location,
-      children: context.children,
-      memoryFacts: context.memoryFacts,
-      memoryBrief: context.memoryBrief,
-      householdGroup: context.householdGroup,
-      registrationWindows: context.registrationWindows,
-      providerWatch: context.providerWatch,
-    }),
+    appBaseUrl(),
   ];
+}
+
+/** Enough for every fact a parent has told Hale; a fact past it is not trusted, so the
+ * bound can only drop a token, never let one through. */
+const PARENT_STATED_FACT_LIMIT = 500;
+
+async function loadParentStatedFactValues(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<string[]> {
+  const facts = schema.familyMemoryFacts;
+  const rows = await database
+    .select({ factKey: facts.factKey, factValue: facts.factValue })
+    .from(facts)
+    .where(
+      and(
+        eq(facts.familyId, familyId),
+        eq(facts.memorySource, 'parent_message'),
+        isNull(facts.validUntil),
+        or(isNull(facts.expiresAt), gt(facts.expiresAt, now)),
+      ),
+    )
+    .orderBy(desc(facts.createdAt))
+    .limit(PARENT_STATED_FACT_LIMIT);
+  return rows.map((row) => JSON.stringify(row));
 }
 
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
@@ -1005,6 +1028,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         );
         return [];
       }),
+    loadParentStatedFacts: (familyId, now) => loadParentStatedFactValues(database, familyId, now),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(

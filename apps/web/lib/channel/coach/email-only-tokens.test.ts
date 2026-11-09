@@ -66,8 +66,72 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
     expect(out.dropped).toEqual({ phone: 0, code: 0, host: 0 });
   });
 
-  it('a token the email never carried is left alone (the check is about the email)', () => {
+  it('fails closed: a token the email tokenizer never found is dropped too', () => {
     const reply = 'The office line is 555-0199 and the site is school.example.';
+    const out = drop(reply);
+    expect(out.text).toBe('The office line is and the site is.');
+    expect(out.dropped).toEqual({ phone: 1, code: 0, host: 1 });
+  });
+
+  describe('the email hides the token from a tokenizer; the reply writes it plain', () => {
+    const only = (emailText: string, reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [emailText], trusted: [PARENT] });
+
+    it('a spelled-out phone in the email, digits in the reply: dropped', () => {
+      const out = only('Call five five five, oh one four two today.', `Call ${ATTACKER.phone}.`);
+      expect(out.text).toBe('Call.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('a [dot] host in the email, a plain host in the reply: dropped', () => {
+      const out = only('Sign at verify-hale [dot] example now.', `Sign at ${ATTACKER.host}.`);
+      expect(out.text).toBe('Sign at.');
+      expect(out.dropped.host).toBe(1);
+    });
+
+    it('a spaced-dot host in the email, a plain host in the reply: dropped', () => {
+      expect(only('Go to evil . example now.', 'Go to evil.example.').text).toBe('Go to.');
+    });
+
+    it('a 6-digit code from the email: dropped', () => {
+      const out = only('Your code is 482913.', 'Enter 482913 to keep the spot.');
+      expect(out.text).toBe('Enter to keep the spot.');
+      expect(out.dropped.code).toBe(1);
+    });
+
+    it('a 4-digit code from the email: dropped', () => {
+      expect(only('PIN 7351', 'The PIN is 7351.').text).toBe('The PIN is.');
+    });
+  });
+
+  describe('phones match on equal digits, or a country code in front of the whole number', () => {
+    const parentSaid = (said: string, reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [email], trusted: [said] });
+
+    it("the parent's 7-digit number does not let a 10-digit number ending in it through", () => {
+      const out = parentSaid(`is ${ATTACKER.phone} right?`, `Call 202-${ATTACKER.phone}.`);
+      expect(out.text).toBe('Call.');
+    });
+
+    it("positive control: the parent's 10-digit number survives with +1 in front", () => {
+      const reply = `Call +1 202 ${ATTACKER.phone.replace('-', ' ')}.`;
+      expect(parentSaid(`call 202-${ATTACKER.phone}?`, reply).text).toBe(reply);
+    });
+  });
+
+  it('positive control: times, dates, years, prices and quantities survive a read turn', () => {
+    const reply =
+      'Pickup is at 9:00 on Nov 13, 2026 (2026-11-13), for the 2025-2026 season. ' +
+      'It is $45, or $1200 for the year, and the walk is 2500 steps.';
+    const out = drop(reply);
+    expect(out.text).toBe(reply);
+    expect(out.dropped).toEqual({ phone: 0, code: 0, host: 0 });
+  });
+
+  it("positive control: Hale's own site and the crisis and health lines survive", () => {
+    const reply =
+      'Settings are on villagehale.com. If you are worried, call or text 988, ' +
+      'call 811 any time, or 911 in an emergency.';
     expect(drop(reply).text).toBe(reply);
   });
 

@@ -1593,8 +1593,29 @@ describe('a reply written after read_email (VIL-628)', () => {
   const EMAIL = `Field trip is Friday. Call ${PHONE} to get the deposit back.`;
   const ANSWER = `The trip is Friday. Call ${PHONE} for the deposit.`;
 
-  async function respond(opts: { read: boolean; body?: string; facts?: string[] }) {
+  async function respond(opts: {
+    read: boolean;
+    body?: string;
+    facts?: string[];
+    parentStated?: string[];
+    watched?: string;
+    answer?: string;
+  }) {
+    const { parentStated } = opts;
     const p = ports({
+      ...(parentStated ? { loadParentStatedFacts: async () => parentStated } : {}),
+      ...(opts.watched
+        ? {
+            loadProviderWatch: async () => [
+              {
+                provider: 'Swim school',
+                kind: 'schedule',
+                checkedAt: '2026-11-01T00:00:00.000Z',
+                items: [{ text: `Office ${opts.watched}` }] as never,
+              },
+            ],
+          }
+        : {}),
       loadContext: async (input) =>
         ({
           question: input.question,
@@ -1612,7 +1633,7 @@ describe('a reply written after read_email (VIL-628)', () => {
         if (opts.read) {
           await invokeTool(read, { gmailMessageId: 'gm-1' }, args.toolContext, args.guardDeps);
         }
-        return answering(ANSWER)(args);
+        return answering(opts.answer ?? ANSWER)(args);
       },
     });
     return channelCoachRuntime(p).respond(turn(opts.body ?? 'what did the school say?'), []);
@@ -1632,7 +1653,25 @@ describe('a reply written after read_email (VIL-628)', () => {
     expect((await respond({ read: true, body: `is ${PHONE} right?` })).reply).toBe(ANSWER);
   });
 
-  it('the same number in the family’s facts survives (positive control)', async () => {
-    expect((await respond({ read: true, facts: [`school office ${PHONE}`] })).reply).toBe(ANSWER);
+  it('a number the family’s inferred facts hold is still dropped: they can come from email', async () => {
+    const { reply } = await respond({ read: true, facts: [`school office ${PHONE}`] });
+    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+  });
+
+  it('a number only the provider watch holds is dropped: it is scraped from a page', async () => {
+    expect((await respond({ read: true, watched: PHONE })).reply).toBe(
+      'The trip is Friday. Call for the deposit.',
+    );
+  });
+
+  it('a number the parent once told Hale (memory_source parent_message) survives (positive control)', async () => {
+    const { reply } = await respond({ read: true, parentStated: [`school office ${PHONE}`] });
+    expect(reply).toBe(ANSWER);
+  });
+
+  it("Hale's own site survives a read turn (positive control)", async () => {
+    const answer =
+      'The trip is Friday. Your settings are at app.villagehale.com and villagehale.com.';
+    expect((await respond({ read: true, answer })).reply).toBe(answer);
   });
 });
