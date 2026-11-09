@@ -4,10 +4,10 @@ import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import { liveViewUrl } from '../browser-use/live-view';
 import { runBrowserUsePlanSignup } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
@@ -100,10 +100,9 @@ export function createPlanNotifier(
         liveBrowser: live !== null,
         holdMinutes,
       },
-      language: await readNoticeLanguage(database, {
+      language: await readParentLanguage(database, {
         familyId: notice.familyId,
         parentUserId: notice.parentUserId,
-        now,
       }),
     });
     if (text === null) {

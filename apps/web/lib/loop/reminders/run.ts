@@ -7,6 +7,7 @@ import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { laneEnabled } from '~/lib/channel/lanes';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { proactiveFloorOpensAt, proactiveQuietNow } from '~/lib/channel/outbound-gate';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import {
   type FamilyRole,
   classifyFamilyEvent,
@@ -240,8 +241,8 @@ export interface ReminderRunDeps {
   /** The agent client that writes a parent's reminder. Null means no parent reminder
    * can be written, so none is sent (there is no fallback copy). */
   client: AgentClient | null;
-  /** The family's language tag, for the model-written reminder. */
-  loadLanguage: (db: Database, familyId: string) => Promise<ReplyLanguage>;
+  /** The recipient's one proactive language (VIL-572), for the model-written reminder. */
+  loadLanguage: (db: Database, familyId: string, parentUserId: string) => Promise<ReplyLanguage>;
   /** Writes the whole reminder from facts, or names why it could not (VIL-563). */
   composeText: typeof composeReminderTexts;
   /** VIL-563 · one agent_runs row per writer attempt, so a reminder outage is visible to
@@ -507,13 +508,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
     },
     capture: captureServerEvent,
     client: voiceClient(),
-    loadLanguage: async (db, familyId) => {
-      const [row] = await db
-        .select({ primaryLanguage: schema.families.primaryLanguage })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId));
-      return row?.primaryLanguage ?? 'en';
-    },
+    loadLanguage: (db, familyId, parentUserId) =>
+      readParentLanguage(db, { familyId, parentUserId }),
     composeText: composeReminderTexts,
     recordAgentRun: async (db, input) => {
       await recordAgentRun(db, input);
@@ -907,7 +903,9 @@ async function fireDueReminders(
     const nameLevel =
       !caregiver && sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
     const language =
-      !caregiver && sendEnabled && deps.client ? await deps.loadLanguage(db, group.familyId) : null;
+      !caregiver && sendEnabled && deps.client
+        ? await deps.loadLanguage(db, group.familyId, parentUserId)
+        : null;
     // VIL-562 · read once per recipient, and only once a batch could be sent.
     let prefs: LoopPrefsView | undefined;
     let floorClosed: boolean | undefined;

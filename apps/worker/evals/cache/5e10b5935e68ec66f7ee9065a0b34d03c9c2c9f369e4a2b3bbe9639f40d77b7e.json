@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "bare greeting, no off-domain or safety content",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 831
+}

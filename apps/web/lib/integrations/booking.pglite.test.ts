@@ -1504,7 +1504,7 @@ describe('migration 0214', () => {
 
   beforeAll(async () => {
     // 0214 is the next file after this name. The column is not added here.
-    old = await createTestDb('0212_message_source.sql');
+    old = await createTestDb('0213_parent_proactive_language.sql');
   });
 
   afterAll(async () => {
