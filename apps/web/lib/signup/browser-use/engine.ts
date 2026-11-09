@@ -9,6 +9,7 @@ import {
   type BrowserUseRunStatus,
   TERMINAL_RUN_STATUSES,
 } from './client';
+import { liveViewUrl } from './live-view';
 import {
   BROWSER_USE_CONFIRMATION_OUTPUT_SCHEMA,
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
@@ -241,15 +242,6 @@ export function taskWithFacts(skillBody: string, facts: Record<string, unknown>)
   return `${skillBody.trim()}\n\n## This registration\n\n\`\`\`json\n${JSON.stringify(facts, null, 2)}\n\`\`\`\n`;
 }
 
-function httpsUrl(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  try {
-    return new URL(value).protocol === 'https:' ? value : null;
-  } catch {
-    return null;
-  }
-}
-
 type RunWait =
   | { kind: 'terminal'; status: BrowserUseRunStatus; liveViewUrl: string | null }
   | { kind: 'timeout'; liveViewUrl: string | null };
@@ -297,7 +289,7 @@ export async function waitForRun(
 ): Promise<RunWait> {
   const deadline = deps.now().getTime() + RUN_DEADLINE_MS;
   let cursor = 0;
-  let liveViewUrl: string | null = null;
+  let live: string | null = null;
   for (;;) {
     const status = await deps.api.getRunStatus(runId);
     for (let page = 0; page < 20; page += 1) {
@@ -305,7 +297,12 @@ export async function waitForRun(
       for (const event of events.events) {
         cursor = Math.max(cursor, event.id);
         if (event.type === 'browser.ready' || event.type === 'browser.reattached') {
-          liveViewUrl = httpsUrl(event.data.live_view_url) ?? liveViewUrl;
+          const announced = event.data.live_view_url;
+          const pinned = liveViewUrl(announced);
+          if (pinned === null && announced !== undefined && announced !== null) {
+            console.warn({ refused: 'live_view_host' }, 'browser use: live view refused');
+          }
+          live = pinned ?? live;
           const browserId = event.data.browser_session_id;
           if (typeof browserId === 'string' && browserId) tracker.browserId = browserId;
         }
@@ -316,10 +313,12 @@ export async function waitForRun(
       }
       cursor = events.nextAfter;
     }
-    if (TERMINAL_RUN_STATUSES.includes(status)) return { kind: 'terminal', status, liveViewUrl };
+    if (TERMINAL_RUN_STATUSES.includes(status)) {
+      return { kind: 'terminal', status, liveViewUrl: live };
+    }
     if (deps.now().getTime() >= deadline) {
       await deps.api.cancelRun(runId).catch(() => undefined);
-      return { kind: 'timeout', liveViewUrl };
+      return { kind: 'timeout', liveViewUrl: live };
     }
     await deps.sleep(POLL_INTERVAL_MS);
   }
