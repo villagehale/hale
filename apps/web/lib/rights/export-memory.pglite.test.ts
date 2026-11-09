@@ -50,6 +50,7 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_upgrade_offers: 'unreviewed',
   family_watch_subscriptions: 'unreviewed',
   group_decision_sync: 'unreviewed',
+  group_lists: 'unreviewed',
   group_reminders: 'unreviewed',
   integrations: 'unreviewed',
   interest_next_step_offers: 'unreviewed',

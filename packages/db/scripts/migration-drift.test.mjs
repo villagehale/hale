@@ -46,7 +46,8 @@ describe('catalog history cutover', () => {
       '0212_message_source',
       '0213_parent_proactive_language',
       '0214_activity_bookings_address',
-      '0215_capability_denials',
+      '0216_group_lists',
+      '0217_capability_denials',
     ]);
   });
 });
