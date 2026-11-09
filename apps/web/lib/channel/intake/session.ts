@@ -77,6 +77,11 @@ export interface TranscriptEntry {
   channel?: 'sms' | 'imessage';
   /** Linq chat id when `channel` is imessage. Replay writes it onto the ledger row. */
   chatId?: string | null;
+  /**
+   * The model set `asks` on this outbound. Absent on older rows and on
+   * inbounds. A question mark in `body` is not a substitute.
+   */
+  asked?: boolean;
 }
 
 interface IntakeData {

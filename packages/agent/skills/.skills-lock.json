@@ -19,6 +19,10 @@
     "file": "activity-verdict.md",
     "sha256": "49c3038cbec9faa0dad50bf3dffe6190588b994eae0e1a4a62500422d44acd4b"
   },
+  "area-read.md": {
+    "file": "area-read.md",
+    "sha256": "c2ede60463df19cbe14bc9a8743a83c04a63f6b9695f27242f0ce29cd09ff014"
+  },
   "autonomy-notice.md": {
     "file": "autonomy-notice.md",
     "sha256": "2899aeb3100110f88540f906787e8b8144843fb6594b47e1dee44e3fa35a1625"
@@ -349,11 +353,11 @@
   },
   "onboarding-friend-short.md": {
     "file": "onboarding-friend-short.md",
-    "sha256": "877a54c3a5940e1199e5aa10f0608f1e4b01000ee6ce6778f5d57a392d505d14"
+    "sha256": "e1f3c252e47e0eea561fec5de87a03eb196f21b89121bd792e2a3c2d58f405f3"
   },
   "onboarding-friend.md": {
     "file": "onboarding-friend.md",
-    "sha256": "98e63efb80dc48b344b0fcb21ec31519ab2f779450d7d18a4480795c22eeb361"
+    "sha256": "4137372f62f94980a1d3c57862e17d90a212fbfa9bc8318b1a9240632f8ab1e6"
   },
   "opt-out-read.md": {
     "file": "opt-out-read.md",
