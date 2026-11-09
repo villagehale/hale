@@ -73,7 +73,15 @@ import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import {
+  DATE_CHECK_OUTCOMES,
+  type DateCheckOutcome,
+  type DateChecker,
+  createDateChecker,
+  liveDateReader,
+} from '~/lib/registration/date-check';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { proactiveSearchSubject } from '~/lib/seasonal/moments';
@@ -327,6 +335,11 @@ export interface NudgeRunDeps {
     },
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
+  /**
+   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
+   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
+   */
+  createDateReader(): RegistrationReader | null;
 }
 
 export interface NudgeRunResult {
@@ -363,6 +376,9 @@ export interface NudgeRunResult {
    * ran and did not hit that case.
    */
   skips: NudgeSkipCounts;
+  /** VIL-423 · send-time date checks of a registration window's page, by outcome. Zero
+   * everywhere while REGISTRATION_DATE_CHECK is off. */
+  dateCheck: Record<DateCheckOutcome, number>;
   /** Present when the provider pre-flight cancelled the window (VIL-255). */
   aborted?: AbortedWindow;
 }
@@ -379,6 +395,10 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     failed: 0,
     held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     skips: {},
+    dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+      DateCheckOutcome,
+      number
+    >,
   };
 }
 
@@ -541,6 +561,7 @@ async function decideForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  checker: DateChecker,
   now: Date,
 ): Promise<
   NudgeDecision & {
@@ -598,21 +619,45 @@ async function decideForFamily(
       })
     : [];
 
-  const decision = decideNudge({
-    children,
-    candidates,
-    windows,
-    weather,
-    teenChildIds,
-    healthChildren,
-    areaCoarse: area,
-    claimedWindowIds,
-    weekdayCare,
-    saturdayPlans,
-    householdBias,
-    now,
-    timeZone: family.timeZone,
-  });
+  const decideWith = (excludedWindowIds: Set<string>) =>
+    decideNudge({
+      children,
+      candidates,
+      windows,
+      weather,
+      teenChildIds,
+      healthChildren,
+      areaCoarse: area,
+      claimedWindowIds: excludedWindowIds,
+      weekdayCare,
+      saturdayPlans,
+      householdBias,
+      now,
+      timeZone: family.timeZone,
+    });
+  let decision = decideWith(claimedWindowIds);
+  // VIL-423 · the send-time date check. A registration nudge states the window's opening,
+  // so the window's page is read first. Shadow logs and changes nothing. Enforce keeps
+  // the nudge only when the page agrees; otherwise that window is set aside and the
+  // decide runs again, so the family hears the next thing worth saying or nothing.
+  let excluded = claimedWindowIds;
+  while (checker.mode !== 'off' && decision.nudge?.kind === 'registration') {
+    const windowId = decision.nudge.windowRef.id;
+    const match = windows.find((candidate) => candidate.window.id === windowId);
+    if (!match) throw new Error(`nudge: decided window ${windowId} is not a match`);
+    const check = await checker.check(
+      {
+        window: match.window,
+        resident: match.isResidentWindow,
+        stated: match.opensForFamilyAt,
+        sender: 'nudge',
+      },
+      now,
+    );
+    if (checker.mode === 'shadow' || check.outcome === 'agree') break;
+    excluded = new Set([...excluded, windowId]);
+    decision = decideWith(excluded);
+  }
   const search = {
     searchReason: candidates.searchReason ?? null,
     dropped: candidates.dropped ?? {},
@@ -679,6 +724,7 @@ async function runForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  checker: DateChecker,
   now: Date,
 ): Promise<FamilyTally> {
   // BOTH NUMBERS. `selectFamilies` keys on the primary parent because that is what a
@@ -708,7 +754,7 @@ async function runForFamily(
   if (allowed.length === 0) return emptyTally({ held });
 
   const cohort = cohortOf(family, now);
-  const decision = await decideForFamily(database, family, deps, now);
+  const decision = await decideForFamily(database, family, deps, checker, now);
   if (decision.nudge === null) {
     // Silence is the outcome, and it is recorded: an absent row is indistinguishable
     // from a family the sweep never looked at, and the difference is the whole metric.
@@ -1092,10 +1138,11 @@ export async function runNudgeCron(
     return { ...result, aborted: { ...preflight.abort, skipped: families.length } };
   }
 
+  const checker = createDateChecker(deps.createDateReader);
   for (const family of families) {
     result.evaluated += 1;
     try {
-      const outcome = await runForFamily(database, family, deps, now);
+      const outcome = await runForFamily(database, family, deps, checker, now);
       // The DECISION is per family and the SENDING is per recipient, so the two are
       // added differently and deliberately.
       if (outcome.quiet) result.quiet += 1;
@@ -1119,6 +1166,7 @@ export async function runNudgeCron(
       );
     }
   }
+  result.dateCheck = { ...checker.tally };
   return result;
 }
 
@@ -1208,5 +1256,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
       composeParentCallNameAsk(createFriendVoiceComposer(voiceClient()), input),
     pendingHowItWent: howItWentLinesForGroupWeekly,
     pendingDutyOverview: dutyOverviewForWeeklyBubble,
+    createDateReader: liveDateReader,
   };
 }
