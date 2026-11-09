@@ -35,6 +35,13 @@ import { users } from './users.js';
  * concerns one child (so the composer can apply the teen age gate to it), null for a
  * family-wide occasion.
  */
+/**
+ * VIL-633 · `organizer`: the parent made the event. `accepted`: they said yes to someone
+ * else's invite. `own`: no one else is on it. `invited`: someone else's invite, unanswered
+ * or tentative. The 1:1 calendar notice speaks only of the first three.
+ */
+export type CalendarStanding = 'organizer' | 'accepted' | 'own' | 'invited';
+
 export const familyEvents = pgTable(
   'family_events',
   {
@@ -147,6 +154,10 @@ export const familyEvents = pgTable(
     kidVerdictId: uuid('kid_verdict_id').references(() => kidRelevanceVerdicts.id, {
       onDelete: 'set null',
     }),
+    /** VIL-633. Where the connecting parent stands on this mirrored Google event (migration
+     * 0221). Null on every Hale-authored row and on every mirror written before the column
+     * existed. */
+    calendarStanding: text('calendar_standing').$type<CalendarStanding>(),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index
