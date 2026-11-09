@@ -59,6 +59,11 @@
     "version": null,
     "sha256": "f1eb94c2038186bee935497dfd777a9291c17c2d0e42bdc85bb3702f682a2f89"
   },
+  "judges/calendar-kid-notice": {
+    "name": "judges/calendar-kid-notice",
+    "version": null,
+    "sha256": "57b23f58a39c590c3352b0c8c311bb457b1e3cb6ae269596dc35654c7e02874e"
+  },
   "judges/calendar-write-notice": {
     "name": "judges/calendar-write-notice",
     "version": null,
@@ -98,6 +103,11 @@
     "name": "judges/coach-plan-note",
     "version": null,
     "sha256": "da8049cfc09c90ecab0993bc41cc1806ce46de5b725173e5caa2948d93b5fbc9"
+  },
+  "judges/common-time": {
+    "name": "judges/common-time",
+    "version": null,
+    "sha256": "2038293c899ebab80aefedf25dac090c11945264e8d375f23a3f51fce30806b1"
   },
   "judges/crisis-reply": {
     "name": "judges/crisis-reply",
