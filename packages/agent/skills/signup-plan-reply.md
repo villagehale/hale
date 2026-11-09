@@ -17,7 +17,7 @@ Registration for one activity opens at a set time. With the parent's yes the day
   - `cancelled`: the parent took the plan back before the open. Say Hale will not register.
   - `declined`: the parent said no to the plan Hale offered. Acknowledge it.
   - `clarify`: the plan is not settled. Ask `question`, in your own words.
-  - `refused`: Hale could not store the plan. `refusal` says why: `opens_at` the open time has passed; `choices` the sessions did not match; `max_price` the maximum is outside what Hale may pay; `missing_detail` Hale is missing details it needs for the form; `url_refused` the page is not one Hale may use; any other value means Hale could not save it. Say Hale is not registering, and that the parent can register at the link.
+  - `refused`: Hale could not store the plan. `refusal` says why: `opens_at` the open time has passed; `choices` the sessions did not match; `max_price` the maximum is outside what Hale may pay; `missing_detail` Hale is missing details it needs for the form; `url_refused` the page is not one Hale may use; `not_offer_parent` Hale offered this plan to the other parent, and only their yes can set it, because Hale would sign in and pay with their city account; any other value means Hale could not save it. Say Hale is not registering on this yes, and that the parent can register at the link.
   - `run_finished`: registration opened and Hale's attempt is over. `run` says how it went.
 - `childFirstName`: the child, when given. Do not invent a name.
 - `opensAt`: when registration opens, as `local` wall time in `timeZone`. Restate it in a plain way.

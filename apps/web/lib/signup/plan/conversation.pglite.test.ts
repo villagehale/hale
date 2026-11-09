@@ -72,6 +72,19 @@ async function family(options: { opensAt?: Date | null } = {}) {
   return { ...seeded, childId, offerId: offer.id };
 }
 
+/** A second adult in the household with full parent scope. */
+async function seedCoParent(familyId: string): Promise<string> {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ email: `co-${familyId}@example.test`, name: 'Co Parent' })
+    .returning({ id: schema.users.id });
+  if (!user) throw new Error('seedCoParent: users insert returned no row');
+  await db.database
+    .insert(schema.familyMembers)
+    .values({ familyId, userId: user.id, role: 'co_parent' });
+  return user.id;
+}
+
 function turn(f: { familyId: string; parentUserId: string }, body = 'parent words') {
   seq += 1;
   return {
@@ -157,6 +170,31 @@ describe('the day-before plan conversation', () => {
     ]);
     expect(written[0]?.maxPriceCents).toBe(10500);
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved', 'plan_reply']);
+  });
+
+  it("a co-parent's yes cannot approve the plan Hale offered the other parent", async () => {
+    const f = await family();
+    const coParentUserId = await seedCoParent(f.familyId);
+    const { planReader, planWriter, written } = fakes(APPROVE);
+    const result = await runPlanTurn(db.database, turn({ ...f, parentUserId: coParentUserId }), {
+      planReader,
+      planWriter,
+    });
+
+    expect(result?.outcome).toBe('plan_refused');
+    expect(written[0]?.refusal).toBe('not_offer_parent');
+    expect(result?.reply).toBe(`reply for refused\n${URL}`);
+    expect((await offer(f.offerId)).status).toBe('pending');
+    const consents = await db.database
+      .select()
+      .from(schema.authorizedSignupConsents)
+      .where(eq(schema.authorizedSignupConsents.familyId, f.familyId));
+    expect(consents).toEqual([]);
+
+    // Positive control: the parent the plan was offered to can still approve it.
+    const own = await runPlanTurn(db.database, turn(f), { planReader, planWriter });
+    expect(own?.outcome).toBe('plan_approved');
+    expect((await offer(f.offerId)).status).toBe('planned');
   });
 
   it('with the lane off, owns nothing and reads nothing', async () => {

@@ -259,6 +259,7 @@ async function runOnePlan(
   const providerHost = signupProviderHost(host);
   const granted = await loadPlanConsent(database, {
     familyId: plan.familyId,
+    parentUserId: plan.parentUserId,
     messageId: plan.messageId,
     activityKey: plan.activityKey,
     providerHost,

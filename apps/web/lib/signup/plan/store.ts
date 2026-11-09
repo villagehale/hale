@@ -20,6 +20,7 @@ export const MAX_PLAN_CHOICES = 5;
 
 export type ApprovePlanRefusal =
   | 'no_offer'
+  | 'not_offer_parent'
   | 'choices'
   | 'max_price'
   | 'opens_at'
@@ -61,6 +62,9 @@ export async function approveSignupPlan(
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   const offer = await loadPendingOffer(database, input.familyId);
   if (!offer || offer.id !== input.offerId) return { ok: false, reason: 'no_offer' };
+  // The run types this parent's details and pays with their city account's saved card, and
+  // re-checks their standing before paying. Only their own yes can consent to that.
+  if (offer.parentUserId !== input.parentUserId) return { ok: false, reason: 'not_offer_parent' };
   const ids = [...new Set(input.choiceIds)];
   const choices = ids.flatMap((id) => offer.sessions.filter((session) => session.id === id));
   if (
@@ -341,10 +345,19 @@ export async function loadConversablePlan(
   };
 }
 
-/** The consent row the approving message wrote. Read-only: a run never writes consent. */
+/**
+ * The consent row the plan's own parent wrote from the approving message. Read-only: a run
+ * never writes consent.
+ */
 export async function loadPlanConsent(
   database: Database,
-  input: { familyId: string; messageId: string; activityKey: string; providerHost: string },
+  input: {
+    familyId: string;
+    parentUserId: string;
+    messageId: string;
+    activityKey: string;
+    providerHost: string;
+  },
 ): Promise<ShareableSignupField[] | null> {
   const consents = schema.authorizedSignupConsents;
   const [row] = await database
@@ -353,6 +366,7 @@ export async function loadPlanConsent(
     .where(
       and(
         eq(consents.familyId, input.familyId),
+        eq(consents.parentUserId, input.parentUserId),
         eq(consents.messageId, input.messageId),
         eq(consents.activityKey, input.activityKey),
         eq(consents.providerHost, signupProviderHost(input.providerHost)),

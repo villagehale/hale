@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text asks the parent which day to try first, uses only given facts (both sessions, $98, opening time in Eastern), makes no booking claim, no link, friendly plain English.",
-    "score": 5
-  }
-}

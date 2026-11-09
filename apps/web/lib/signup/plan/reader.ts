@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SignupSession } from '../types';
+import { hasLink, withoutLinks } from './links';
 import { MAX_PLAN_CHOICES } from './store';
 
 /**
@@ -78,7 +79,7 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
       approvedPriceCents: input.offer.approvedPriceCents,
       sessions: input.offer.sessions.map((session) => ({
         id: session.id,
-        label: session.label,
+        label: withoutLinks(session.label),
         startsAt: session.startsAt,
         endsAt: session.endsAt,
         full: session.full,
@@ -90,11 +91,9 @@ export function signupPlanReadUserMessage(input: { text: string; offer: PlanRead
   });
 }
 
-const LINK = /https?:\/\/|www\./i;
-
 function cleanQuestion(value: string | null): string | null {
   const text = value?.replace(/\s+/g, ' ').trim() ?? '';
-  if (!text || text.length > MAX_QUESTION_CHARS || LINK.test(text)) return null;
+  if (!text || text.length > MAX_QUESTION_CHARS || hasLink(text)) return null;
   return text;
 }
 

@@ -106,6 +106,11 @@ export const SIGNUP_PLAN_REPLY_FIXTURES = [
     watchFor: `Says Hale could not set up the plan because that maximum is more than Hale may pay, that Hale is not registering, and that the parent can register at the link that follows. ${NO_SPOT}`,
   },
   {
+    id: 'refused-not-offer-parent',
+    facts: { ...BASE, moment: 'refused', refusal: 'not_offer_parent' },
+    watchFor: `Says this plan was offered to the other parent and only their yes can set it, since Hale would use their city account; Hale is not registering on this yes; the parent can register at the link that follows. Names no one. ${NO_SPOT}`,
+  },
+  {
     id: 'finished-confirmed',
     facts: {
       ...BASE,

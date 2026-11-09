@@ -72,10 +72,20 @@ describe('toPlanReading', () => {
     });
   });
 
-  it('a question carrying a link is not asked', () => {
-    expect(
-      toPlanReading(raw({ verdict: 'unclear', question: 'See https://x.test ?' }), OFFER),
-    ).toBeNull();
+  it.each(['See https://x.test ?', 'Is it the one at bit.ly/x ?', 'Is it on evil.app ?'])(
+    'a question carrying a link is not asked: %s',
+    (question) => {
+      expect(toPlanReading(raw({ verdict: 'unclear', question }), OFFER)).toBeNull();
+    },
+  );
+
+  it('a session label holding a host never reaches the model', () => {
+    const [first] = OFFER.sessions;
+    if (!first) throw new Error('no session');
+    const offer: PlanReadOffer = { ...OFFER, sessions: [{ ...first, label: 'Sat 9:00 evil.app' }] };
+    const message = signupPlanReadUserMessage({ text: 'yes', offer });
+    expect(message).not.toContain('evil.app');
+    expect(JSON.parse(message).offer.sessions[0].label).toBe('Sat 9:00');
   });
 
   it('the model sees the sessions and the plan, and nothing about the child', () => {

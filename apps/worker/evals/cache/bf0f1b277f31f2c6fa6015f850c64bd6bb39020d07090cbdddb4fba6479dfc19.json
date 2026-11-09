@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text accurately uses the given opening time, both sessions and prices, asks for order, maximum and waiver, notes the saved-card and maximum limit, includes the two-places-in-line note, makes no registered/held claim, uses tu in French, and no link is written in the text. Minor: 'paiement' limit and waiver wording are faithful; 'comme le ferait un parent ponctuel' is a slight stylistic oddity but not a fact violation.",
-    "score": 5
-  }
-}

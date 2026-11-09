@@ -2,6 +2,7 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { hasLink, withoutLinks } from './links';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -63,7 +64,7 @@ export const SIGNUP_PLAN_REPLY_SKILL = 'signup-plan-reply';
 export const SIGNUP_PLAN_REPLY_TOOL = 'signup_plan_reply';
 export const SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION =
   'Write the one text the parent sees about this registration plan.';
-export const SIGNUP_PLAN_REPLY_MAX_TOKENS = 400;
+export const SIGNUP_PLAN_REPLY_MAX_TOKENS = 800;
 export const signupPlanReplySchema = z.object({ text: z.string() }).strict();
 export const SIGNUP_PLAN_REPLY_TOOL_SCHEMA = {
   type: 'object',
@@ -71,8 +72,6 @@ export const SIGNUP_PLAN_REPLY_TOOL_SCHEMA = {
   required: ['text'],
   additionalProperties: false,
 } as const;
-
-const LINK = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io)\b/i;
 
 /** Moments where the parent is told about queueing on their own phone as well. */
 const QUEUE_MOMENTS: ReadonlySet<PlanReplyMoment> = new Set(['offer', 'approved']);
@@ -82,14 +81,32 @@ export function planReplyViolations(text: string): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (LINK.test(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasLink(tidy)) out.push('contains a link: Hale adds any link after the text');
   return out;
+}
+
+/** Labels and the question come from a page or a model: no link in them reaches the writer. */
+function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
+  return {
+    ...facts,
+    sessions: facts.sessions.map((session) => ({ ...session, label: withoutLinks(session.label) })),
+    question: facts.question === null ? null : withoutLinks(facts.question),
+    run:
+      facts.run === null
+        ? null
+        : {
+            ...facts.run,
+            sessionLabel:
+              facts.run.sessionLabel === null ? null : withoutLinks(facts.run.sessionLabel),
+          },
+  };
 }
 
 /** The user turn: the facts, and why the last draft could not leave. */
 export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | null): string {
+  const clean = linkFree(facts);
   return JSON.stringify({
-    facts: QUEUE_MOMENTS.has(facts.moment) ? { ...facts, alsoQueueing: true } : facts,
+    facts: QUEUE_MOMENTS.has(clean.moment) ? { ...clean, alsoQueueing: true } : clean,
     violation,
   });
 }
