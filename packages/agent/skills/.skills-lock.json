@@ -411,6 +411,10 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "read-class-availability.md": {
+    "file": "read-class-availability.md",
+    "sha256": "cf98fe76935f192f9305a9827accc2391cf9be0e908e81b25651e618f48b391e"
+  },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"

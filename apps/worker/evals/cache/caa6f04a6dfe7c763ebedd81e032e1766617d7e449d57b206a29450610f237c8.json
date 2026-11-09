@@ -1,0 +1,16 @@
+{
+  "value": {
+    "page_kind": "program_page",
+    "provider": "Ville de Rivière-Claire",
+    "session_quote": "Natation préscolaire - mardi 16 h 30",
+    "sessions_matching": "one",
+    "availability_quote": "Complet",
+    "waitlist_quote": "aucune liste d'attente",
+    "schedule_quote": "Natation préscolaire - mardi 16 h 30",
+    "state": "full",
+    "spots_left": null,
+    "waitlist_room": false,
+    "confidence": 0.9
+  },
+  "latencyMs": 1887
+}

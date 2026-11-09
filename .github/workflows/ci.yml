@@ -335,6 +335,9 @@ jobs:
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
 
+      - name: Class availability reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:class-availability
+
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
       # wired here BEFORE the pass that calls it exists.

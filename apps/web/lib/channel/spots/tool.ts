@@ -4,10 +4,15 @@ import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
+import type {
+  ClassAvailabilityReader,
+  ClassAvailabilityReading,
+} from '~/lib/registration/class-availability';
+import { registrationPageUrl } from '~/lib/registration/page';
 import { zonedNaiveInstant } from '~/lib/registration/sequence/prepare';
 import type { FetchPage } from '~/lib/registration/verify-sweep';
 import { type SpotReading, readSpot } from './availability';
-import { watchedSpotsEnabled } from './flag';
+import { anyPageSpotWatchEnabled, watchedSpotsEnabled } from './flag';
 import type { SpotWatchIntent } from './store';
 import { SPOT_PORTAL_HOSTS, type SpotUrlRefusal, sanitizeSpotUrl } from './url';
 
@@ -51,6 +56,9 @@ export interface SpotWatchPorts {
    * gate itself uses, so a watch cannot be armed for a household the gate would then
    * silently refuse to text (outbound-gate.ts). */
   watchConsentGranted: (parentUserId: string) => Promise<boolean>;
+  /** A page outside the PerfectMind registry, read by the model on the DNS-pinned
+   * fetcher (registration/class-availability.ts). Asked only while that flag is on. */
+  readClassAvailability: ClassAvailabilityReader;
 }
 
 export interface SpotWatchToolArgs extends SpotWatchPorts {
@@ -119,6 +127,36 @@ function readingRefusal(reading: SpotReading, portalLabel: string): string | nul
   return null;
 }
 
+const PAGE_URL_REFUSAL =
+  'That link is not one I will read - it has to be the plain public web address of the class page. Ask the parent to copy it from their browser bar on the page itself.';
+
+/** WHY THIS PAGE IS NOT WATCHABLE, off what the model reader's checked reading returned. */
+function pageReadingRefusal(reading: ClassAvailabilityReading): string | null {
+  switch (reading.status) {
+    case 'read':
+      if (reading.state !== 'open') return null;
+      return `There is nothing to wait for - ${reading.provider}'s page shows room in that class right now. Give the parent that link back and tell them to book it today.`;
+    case 'not_registrable':
+      return reading.reason === 'not_yet_open'
+        ? 'Registration for that class is not open yet, so there is no spot to watch for. Tell the parent the doors are not open on it at all.'
+        : 'Registration for that class is closed on its page. Tell the parent that, and do not offer to watch it.';
+    case 'refused':
+      return reading.reason === 'challenge_page'
+        ? 'That page sits behind a bot check, so I cannot read it and have not started watching anything. Tell the parent plainly and give them the link back to check themselves.'
+        : 'That page would not open for me, so I have not started watching anything. Tell the parent that and give them the link back to check themselves.';
+    case 'failed':
+    case 'busy':
+      return 'I could not reach that page just now, so I have not started watching anything. Tell the parent that and ask them to send it again in a bit.';
+    case 'unknown':
+      if (reading.reason === 'session_not_found' || reading.reason === 'several_sessions') {
+        return 'I could not find one class on that page that matches what the parent called it. Ask them which session it is - the day and time as the page shows it - as a question with a question mark.';
+      }
+      return 'I cannot tell from that page whether the class has room, so I have not started watching it. Tell the parent that plainly and give them the link back to check themselves.';
+    case 'unchanged':
+      return 'I cannot tell from that page whether the class has room, so I have not started watching it. Tell the parent that plainly and give them the link back to check themselves.';
+  }
+}
+
 /**
  * `watch_for_opening` — start watching a full course page for a seat.
  *
@@ -182,8 +220,15 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
         );
       }
 
+      // A link outside the registry is a page the model reader may watch, while that flag
+      // is on: any public https address the live page reader would fetch.
       const link = sanitizeSpotUrl(input.url);
-      if (!link.ok) throw new Error(urlRefusal(link.reason));
+      const page =
+        !link.ok && link.reason === 'host_not_allowed' && anyPageSpotWatchEnabled()
+          ? registrationPageUrl(input.url.trim())
+          : null;
+      if (!link.ok && page === null) throw new Error(urlRefusal(link.reason));
+      if (page?.outcome === 'refused') throw new Error(PAGE_URL_REFUSAL);
 
       // THE LABEL IS THE ONE FREE-TEXT FIELD THAT SURVIVES THIS TURN. It is stored until
       // the class starts and printed inside a text Hale sends unprompted, so it crosses the
@@ -209,6 +254,32 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // types a curly apostrophe by default, so a label that arms here and can never be
       // sent is the ordinary case rather than the exotic one.
       if (!isGsm7(collapsed)) throw new Error(LABEL_REFUSAL.not_gsm7);
+
+      if (page?.outcome === 'allowed') {
+        const reading = await args.readClassAvailability({
+          sourceUrl: page.url,
+          label: collapsed,
+          anchor: null,
+          lastDigest: null,
+        });
+        const refusal = pageReadingRefusal(reading);
+        if (refusal !== null) throw new Error(refusal);
+        // `pageReadingRefusal` returned null only for a read of a full or waitlist-full class.
+        const read = reading as Extract<ClassAvailabilityReading, { status: 'read' }>;
+        args.onWatch({
+          url: page.url,
+          host: new URL(page.url).hostname,
+          portalLabel: read.provider,
+          label: collapsed,
+          instant: input.instant ?? false,
+          lastState: read.state as 'full' | 'waitlist_full',
+          // No session start this reader can stand behind: the sixty-day bound holds.
+          sessionStartsAt: null,
+          sessionAnchor: read.session,
+        });
+        return { watching: true as const };
+      }
+      if (!link.ok) throw new Error(urlRefusal(link.reason));
 
       let body: string;
       try {
@@ -245,6 +316,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
           'model' in reading ? reading.model.StartDateValue : null,
           SPOT_PORTAL_HOSTS[link.host]!.timeZone,
         ),
+        sessionAnchor: null,
       });
       return { watching: true as const };
     },
