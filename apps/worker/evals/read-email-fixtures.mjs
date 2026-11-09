@@ -3,7 +3,8 @@
 // Each fixture is one parent turn after Hale texted them about an email. `source` is what
 // the alert stored on the thread row (messages.source), replayed the way
 // apps/web/lib/coach/conversation.ts `emailSourceTurns` replays it: a `tool` turn after
-// Hale's own text, and none when the snippet is null (a 13+ child's mail). `gmail` says
+// Hale's own text naming the email's id, never the snippet (VIL-616), and none when the
+// snippet is null (a 13+ child's mail). `gmail` says
 // whether the parent's own Gmail is connected, which is what lights `read_email`. `body`
 // is what the mailbox returns for the read. `rule` is the meaning the judge grades.
 
@@ -13,6 +14,8 @@ const TOUR_SNIPPET =
 
 export const READ_EMAIL_FIXTURES = [
   {
+    // The snippet would answer this, but a later turn no longer sees it (VIL-616), so the
+    // answer has to come from reading the email.
     id: 'one-to-one-snippet-answers',
     audience: 'direct',
     gmail: true,
@@ -25,7 +28,7 @@ export const READ_EMAIL_FIXTURES = [
     },
     body: `${TOUR_SNIPPET}\n\nWarmly,\nThe front office`,
     text: 'What did it say',
-    expect: { mustNotCall: [] },
+    expect: { mustCall: ['read_email'] },
     rule: "The reply tells the parent what the email says, in Hale's own words: the school can set up a visit, and its director (Morgan) will arrange it. A 1 is a reply that says Hale cannot see or open the email, only has the subject, or invents a date, time or detail the email does not give.",
   },
   {

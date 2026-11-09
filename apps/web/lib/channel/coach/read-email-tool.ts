@@ -1,4 +1,4 @@
-import { GuardrailError, type RegisteredTool, type Skill, defineTool } from '@hale/agent';
+import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -57,7 +57,7 @@ export interface CoachEmailReader {
 
 export interface CoachEmailReaderDeps {
   /** The source an alert row in this family's conversation stored for this message. */
-  alertedSource(request: ReadEmailRequest): Promise<schema.MessageSource | null>;
+  alertedSource(request: ReadEmailRequest): Promise<schema.GmailMessageSource | null>;
   gmailConnection(familyId: string, parentUserId: string): Promise<{ id: string } | null>;
   accessToken(integrationId: string): Promise<string | null>;
   fetchBody(gmailMessageId: string, accessToken: string): Promise<string>;
@@ -120,7 +120,8 @@ export function productionCoachEmailReaderDeps(database: Database): CoachEmailRe
           ),
         )
         .limit(1);
-      return rows[0]?.source ?? null;
+      const source = rows[0]?.source;
+      return source?.kind === 'gmail' ? source : null;
     },
     gmailConnection: async (familyId, parentUserId) => {
       const rows = await database
@@ -181,14 +182,23 @@ export const READS_AFTER_EMAIL: ReadonlySet<string> = new Set([
 
 /**
  * The turn's tools, tainted by the first `read_email` that returns text: from then on
- * every tool outside {@link READS_AFTER_EMAIL} throws a `GuardrailError` on the
- * `untrusted_content` rail before its handler runs. runAgent hands that back to the
- * model as a refusal not to retry, so the coach still answers the parent in words. A
- * fresh call is a fresh turn: build it once per turn, like the tools themselves.
+ * every tool outside {@link READS_AFTER_EMAIL} is refused on the `untrusted_content`
+ * rail. runAgent hands that back to the model as a refusal not to retry, so the coach
+ * still answers the parent in words. A fresh call is a fresh turn: build it once per
+ * turn, like the tools themselves.
+ *
+ * VIL-616 · the refusal is the tool's `untrustedContentGate`, which `invokeTool` checks
+ * BEFORE the audit row. A refused call's input may be the email's words (a calendar
+ * title naming a planted person), and a `tool:<name>` row is in the family export, so
+ * it must write no row at all. `emailRead` tells the caller the reply was written after
+ * reading one, so the thread row it lands in can say so (memory never learns from it).
  */
-export function taintTurnOnEmailRead(tools: RegisteredTool[]): RegisteredTool[] {
+export function taintTurnOnEmailRead(tools: RegisteredTool[]): {
+  tools: RegisteredTool[];
+  emailRead: () => boolean;
+} {
   let tainted = false;
-  return tools.map((tool): RegisteredTool => {
+  const wrapped = tools.map((tool): RegisteredTool => {
     if (tool.name === READ_EMAIL_TOOL) {
       return {
         ...tool,
@@ -202,18 +212,17 @@ export function taintTurnOnEmailRead(tools: RegisteredTool[]): RegisteredTool[] 
     if (READS_AFTER_EMAIL.has(tool.name)) return tool;
     return {
       ...tool,
-      handler: async (input, ctx) => {
-        if (tainted) {
-          console.info(
-            { outcome: 'email_tainted', tool: tool.name },
-            'coach: tool refused after read_email',
-          );
-          throw new GuardrailError(tool.name, 'untrusted_content', 'email_read_this_turn');
-        }
-        return tool.handler(input, ctx);
+      untrustedContentGate: () => {
+        if (!tainted) return { ok: true, reason: 'no_email_read' };
+        console.info(
+          { outcome: 'email_tainted', tool: tool.name },
+          'coach: tool refused after read_email',
+        );
+        return { ok: false, reason: 'email_read_this_turn' };
       },
     };
   });
+  return { tools: wrapped, emailRead: () => tainted };
 }
 
 /** Both or neither: the listed name and the loaded addendum. Null leaves the skill as it is

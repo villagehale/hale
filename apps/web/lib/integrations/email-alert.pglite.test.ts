@@ -1361,7 +1361,9 @@ describe('the going count in the alert path', () => {
 describe('the notice is the whole text, and the thread keeps the email for the coach', () => {
   const WRITTEN = 'Saturday swim is off this week.';
 
-  it('stores the snippet on the row and shows it only in the model transcript', async () => {
+  // VIL-616: a later turn has every tool, so the sender's words never ride into it. The
+  // transcript keeps only the pointer `read_email` needs, and Hale's own alert text.
+  it('stores the snippet on the row, and a later turn replays only the pointer to it', async () => {
     const h = harness({ notice: { send: true, text: WRITTEN } });
     h.ports.threadMessage = threadProactiveMessage;
     await expect(alert(h)).resolves.toBe('sent');
@@ -1394,8 +1396,12 @@ describe('the notice is the whole text, and the thread keeps the email for the c
     expect(transcript.map((turn) => turn.role)).toEqual(['assistant', 'tool']);
     expect(transcript[0]?.content).toBe(WRITTEN);
     expect(transcript[0]?.content).not.toContain(ENVELOPE.snippet);
-    expect(transcript[1]?.content).toContain(ENVELOPE.snippet);
-    expect(transcript[1]?.content).toContain('"trust":"external"');
+    expect(transcript[1]?.content).not.toContain(ENVELOPE.snippet);
+    expect(JSON.parse(transcript[1]?.content as string)).toEqual({
+      kind: 'gmail',
+      gmailMessageId: 'm1',
+      eventId: null,
+    });
 
     const trail = JSON.stringify(await auditRows());
     expect(trail).not.toContain(ENVELOPE.snippet);

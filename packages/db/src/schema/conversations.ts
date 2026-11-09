@@ -66,12 +66,20 @@ export const conversations = pgTable(
  */
 /** What a proactive email-alert turn was about, so the coach can answer a reply to it.
  * The SMS itself stays the notice text. A 13+ child's mail stores no snippet. */
-export interface MessageSource {
+export interface GmailMessageSource {
   kind: 'gmail';
   eventId: string | null;
   gmailMessageId: string;
   snippet: string | null;
 }
+
+/** VIL-616 · a reply the coach wrote after `read_email` handed its turn an email's text.
+ * It may repeat the sender's words, so the nightly memory writer skips the row. */
+export interface EmailReadMessageSource {
+  kind: 'read_email';
+}
+
+export type MessageSource = GmailMessageSource | EmailReadMessageSource;
 
 export const messages = pgTable(
   'messages',
