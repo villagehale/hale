@@ -999,6 +999,62 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     expect(seen[0]?.instructions).not.toContain('read_email');
   });
 
+  /** VIL-615: the runtime applies the taint to the whole turn's tool set, so a write
+   * the model reaches for after reading the email never runs. */
+  function draftingTurn(order: 'read_first' | 'write_first') {
+    const e = emailReader(true);
+    const drafted: string[] = [];
+    const outcomes: string[] = [];
+    const propose: RegisteredTool = {
+      name: 'propose_calendar_add',
+      description: 'x',
+      inputSchema: { parse: (v: unknown) => v } as never,
+      monetary: false,
+      touchesChildContent: false,
+      handler: async () => {
+        drafted.push('propose_calendar_add');
+        return { drafted: true };
+      },
+    };
+    const p = ports({
+      emailReader: e.reader,
+      buildTools: () => [propose],
+      runAgent: async (args) => {
+        const call = async (name: string, input: unknown) => {
+          const tool = args.tools.find((t) => t.name === name);
+          if (!tool) throw new Error(`no ${name}`);
+          await tool.handler(input as never, {} as never).then(
+            () => outcomes.push(`${name}:ran`),
+            (err: unknown) => outcomes.push(`${name}:${(err as { rail?: string }).rail}`),
+          );
+        };
+        const steps: [string, unknown][] = [
+          ['read_email', { gmailMessageId: 'gm-1' }],
+          ['propose_calendar_add', {}],
+        ];
+        for (const [name, input] of order === 'read_first' ? steps : steps.reverse())
+          await call(name, input);
+        return answering('Picture day is Friday.')(args);
+      },
+    });
+    return { p, drafted, outcomes };
+  }
+
+  it('a write after read_email returned text is refused for the rest of the turn', async () => {
+    const t = draftingTurn('read_first');
+    const result = await channelCoachRuntime(t.p).respond(turn('what did it say'), []);
+    expect(t.outcomes).toEqual(['read_email:ran', 'propose_calendar_add:untrusted_content']);
+    expect(t.drafted).toEqual([]);
+    expect(result.reply).toBe('Picture day is Friday.');
+  });
+
+  it('a write before the email was read still runs (positive control)', async () => {
+    const t = draftingTurn('write_first');
+    await channelCoachRuntime(t.p).respond(turn('add picture day, then what did it say'), []);
+    expect(t.outcomes).toEqual(['propose_calendar_add:ran', 'read_email:ran']);
+    expect(t.drafted).toEqual(['propose_calendar_add']);
+  });
+
   it('a group turn never offers it, even when the parent has Gmail connected', async () => {
     const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
     const e = emailReader(true);
