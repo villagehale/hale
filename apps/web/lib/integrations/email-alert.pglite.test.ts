@@ -10,6 +10,7 @@ import type { ExtractedEvent, ExtractionKind, SentinelClassification } from '~/l
 import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
+  EMAIL_ALERT_HOLD_MAX_HOURS,
   EMAIL_ALERT_TEMPLATE_KEY,
   type EmailAlertOutcome,
   type EmailAlertPorts,
@@ -111,6 +112,8 @@ interface Harness {
   classifyCalls: number;
   /** The writer port: what it was told, and what it answered. */
   writer: ScriptedNoticeWriter;
+  /** Every held message id the sweep asked Gmail for again. */
+  rereads: string[];
 }
 
 function harness(
@@ -121,6 +124,8 @@ function harness(
     phone?: string | null;
     sendThrows?: LinqSendError;
     notice?: EmailAlertNotice;
+    /** What a re-read of a held message finds; by default the message is still there. */
+    reread?: GmailAlertEnvelope | null | 'throws';
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -134,6 +139,7 @@ function harness(
     threaded,
     classifyCalls: 0,
     writer,
+    rereads: [],
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
@@ -157,6 +163,17 @@ function harness(
         return 'conv-1';
       },
       timeZone: async () => 'America/Toronto',
+      rereadEnvelope: async (messageId) => {
+        h.rereads.push(messageId);
+        if (over.reread === 'throws') throw new Error('gmail messages.get 503');
+        if (over.reread !== undefined) return over.reread;
+        return {
+          messageId,
+          threadId: `t-${messageId}`,
+          labelIds: ['INBOX'],
+          ...ENVELOPE,
+        };
+      },
     },
   };
   return h;
@@ -1317,4 +1334,131 @@ describe('the going count in the alert path', () => {
       othersGoing: h.writer.seen[0]?.otherHaleFamiliesGoing ?? null,
     };
   }
+});
+
+describe('a quiet-hours hold is a debt, not a drop', () => {
+  // 07:50 and 08:00 in Toronto (EDT). The gate is the port that knows quiet hours; these
+  // tests are about what the sweep does with its answer before and after the window ends.
+  const HELD_AT = new Date('2026-09-17T11:50:00.000Z');
+  const MORNING = new Date('2026-09-17T12:00:00.000Z');
+  const QUIET = { allowed: false, reason: 'quiet_hours' } as const;
+
+  function sweepAt(h: Harness, now: Date, envelopes: GmailAlertEnvelope[] = []) {
+    return alertParentForGmailSweep(
+      db.database,
+      {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        integrationId: INTEGRATION,
+        seeding: false,
+        envelopes,
+        now,
+      },
+      h.ports,
+    ).then((results) => results.map((r) => r.alert));
+  }
+
+  const HELD_ENVELOPE: GmailAlertEnvelope = {
+    messageId: 'm1',
+    threadId: 't-m1',
+    labelIds: ['INBOX'],
+    ...ENVELOPE,
+    receivedAt: '2026-09-17T11:49:00.000Z',
+  };
+
+  function holdRows() {
+    return db.database
+      .select()
+      .from(schema.emailAlertHolds)
+      .where(eq(schema.emailAlertHolds.integrationId, INTEGRATION));
+  }
+
+  async function holdAt0750() {
+    await expect(sweepAt(harness({ verdict: QUIET }), HELD_AT, [HELD_ENVELOPE])).resolves.toEqual([
+      'gate_refused:quiet_hours',
+    ]);
+  }
+
+  it('an email held at 07:50 is re-offered at 08:00, sent once, and the debt is closed', async () => {
+    await holdAt0750();
+    const [open] = await holdRows();
+    expect(open).toMatchObject({ messageId: 'm1', heldAt: HELD_AT, closedAt: null, outcome: null });
+
+    const morning = harness();
+    await expect(sweepAt(morning, MORNING)).resolves.toEqual(['sent']);
+    expect(morning.rereads).toEqual(['m1']);
+    expect(morning.transport.sent).toHaveLength(1);
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: MORNING, outcome: 'sent' }]);
+
+    // A closed debt is not owed again.
+    const later = harness();
+    await expect(sweepAt(later, new Date(MORNING.getTime() + 15 * 60_000))).resolves.toEqual([]);
+    expect(later.rereads).toEqual([]);
+    expect(later.transport.sent).toEqual([]);
+  });
+
+  it('still inside quiet hours, the debt waits without a Gmail read or a model call', async () => {
+    await holdAt0750();
+    const still = harness({ verdict: QUIET });
+    await expect(sweepAt(still, new Date('2026-09-17T11:55:00.000Z'))).resolves.toEqual([
+      'hold_waiting',
+    ]);
+    expect(still.rereads).toEqual([]);
+    expect(still.classifyCalls).toBe(0);
+    // One receipt for one hold, not one per sweep.
+    expect((await ledgerRows()).filter((r) => r.status === 'suppressed_quiet_hours')).toHaveLength(
+      1,
+    );
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: null, outcome: null }]);
+  });
+
+  it('a hold past the cutoff is closed as hold_expired and nothing is read or sent', async () => {
+    await holdAt0750();
+    const stale = new Date(HELD_AT.getTime() + (EMAIL_ALERT_HOLD_MAX_HOURS + 1) * 3_600_000);
+    const h = harness();
+    await expect(sweepAt(h, stale)).resolves.toEqual(['hold_expired']);
+    expect(h.rereads).toEqual([]);
+    expect(h.classifyCalls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+    await expect(holdRows()).resolves.toMatchObject([{ closedAt: stale, outcome: 'hold_expired' }]);
+  });
+
+  it('the writer still decides: a re-offer it will not send closes the debt with its reason', async () => {
+    await holdAt0750();
+    const h = harness({ notice: { send: false, why: 'not_about_the_kids' } });
+    await expect(sweepAt(h, MORNING)).resolves.toEqual(['not_about_the_kids']);
+    expect(h.writer.seen).toHaveLength(1);
+    expect(h.transport.sent).toEqual([]);
+    await expect(holdRows()).resolves.toMatchObject([{ outcome: 'not_about_the_kids' }]);
+  });
+
+  it('a held email gone from the mailbox, or a consent refusal, closes the debt by name', async () => {
+    await holdAt0750();
+    const gone = harness({ reread: null });
+    await expect(sweepAt(gone, MORNING)).resolves.toEqual(['hold_gone']);
+    expect(gone.classifyCalls).toBe(0);
+
+    INTEGRATION = randomUUID();
+    await holdAt0750();
+    const stopped = harness({ verdict: { allowed: false, reason: 'not_enrolled' } });
+    await expect(sweepAt(stopped, MORNING)).resolves.toEqual(['gate_refused:not_enrolled']);
+    expect(stopped.rereads).toEqual([]);
+    await expect(holdRows()).resolves.toMatchObject([{ outcome: 'gate_refused:not_enrolled' }]);
+  });
+
+  it('a Gmail failure on the re-read keeps the debt open and still alerts the new mail', async () => {
+    await holdAt0750();
+    const h = harness({ reread: 'throws' });
+    const fresh = { ...HELD_ENVELOPE, messageId: 'm2', threadId: 't-m2' };
+    await expect(sweepAt(h, MORNING, [fresh])).resolves.toEqual(['hold_reread_failed', 'sent']);
+    await expect(holdRows()).resolves.toMatchObject([{ messageId: 'm1', closedAt: null }]);
+  });
+
+  it('a consent hold is an answer, not a wait: it writes no debt', async () => {
+    const h = harness({ verdict: { allowed: false, reason: 'no_watch_consent' } });
+    await expect(sweepAt(h, HELD_AT, [HELD_ENVELOPE])).resolves.toEqual([
+      'gate_refused:no_watch_consent',
+    ]);
+    await expect(holdRows()).resolves.toEqual([]);
+  });
 });
