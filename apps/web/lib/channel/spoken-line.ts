@@ -69,7 +69,7 @@ export function createSpokenLineWriter(
         );
         await pager.page({
           site: 'spoken_line_unwritten',
-          facts: { purpose: request.purpose, stage: 'skill_load' },
+          facts: { stage: 'skill_load' },
         });
         return null;
       }
@@ -106,9 +106,11 @@ export function createSpokenLineWriter(
           );
         }
       }
+      // The purpose is a caller's code with no closed list, so it is logged, never paged.
+      console.error({ purpose: request.purpose }, 'spoken line: no line written');
       await pager.page({
         site: 'spoken_line_unwritten',
-        facts: { purpose: request.purpose, stage: 'after_retry' },
+        facts: { stage: 'after_retry' },
       });
       return null;
     },
