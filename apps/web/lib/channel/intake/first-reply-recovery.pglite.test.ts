@@ -244,7 +244,12 @@ describe('first-reply recovery reads the transcript, not the state', () => {
       deps(transport, voice, {
         preflight: async () => ({
           proceed: false,
-          abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+          abort: {
+            failure: 'billing',
+            httpStatus: 400,
+            errorType: 'invalid_request_error',
+            alerted: true,
+          },
         }),
       }),
       NOW,

@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, HAIKU_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
@@ -21,7 +22,8 @@ import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
  * on.
  *
  * Privacy (rule #1): an ops alert carries the send WINDOW (an enum), run COUNTS, and
- * the provider's own error text. Never a family, parent, child, or message body.
+ * the provider's HTTP status and error type. Never the provider's message (a 4xx can
+ * quote the request), a family, parent, child, or message body.
  */
 
 // ── classification ───────────────────────────────────────────────────────────
@@ -42,9 +44,24 @@ export const INCIDENT_FAILURES = ['billing', 'auth', 'usage_limit'] as const;
 export type IncidentFailure = (typeof INCIDENT_FAILURES)[number];
 export type ProviderFailureClass = IncidentFailure | 'quota' | 'transient';
 
+/** What the provider said went wrong, without what it quoted: its HTTP status and its
+ * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
+ * a 4xx can quote the request. Null when the provider never answered (a connection
+ * error, a bug). */
+export interface ProviderErrorShape {
+  httpStatus: number | null;
+  errorType: string | null;
+}
+
+export function providerErrorShape(err: unknown): ProviderErrorShape {
+  if (!(err instanceof Anthropic.APIError)) return { httpStatus: null, errorType: null };
+  const type = (err.error as { error?: { type?: unknown } } | undefined)?.error?.type;
+  return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
+}
+
 export type ProviderHealth =
   | { ok: true }
-  | { ok: false; failure: ProviderFailureClass; detail: string };
+  | ({ ok: false; failure: ProviderFailureClass } & ProviderErrorShape);
 
 /** The LLM cron windows this pre-flight guards. */
 export type SendWindow =
@@ -101,8 +118,8 @@ function isUsageLimitError(err: unknown): boolean {
 
 /** The provider's own explanation: the structured `error.message` from the response
  * body when present (the SDK buries it two levels deep), else the SDK's composed
- * message, else whatever was thrown. Used both to classify and to quote in the alert. */
-export function providerFailureDetail(err: unknown): string {
+ * message, else whatever was thrown. Read to classify only, never carried out of here. */
+function providerFailureDetail(err: unknown): string {
   const body = (err as { error?: { error?: { message?: unknown } } } | null)?.error?.error?.message;
   if (typeof body === 'string' && body.length > 0) {
     return body;
@@ -209,14 +226,14 @@ export async function probeProviderHealth(client: AgentClient): Promise<Provider
     );
     return { ok: true };
   } catch (err) {
-    return { ok: false, failure: classifyProviderFailure(err), detail: providerFailureDetail(err) };
+    return { ok: false, failure: classifyProviderFailure(err), ...providerErrorShape(err) };
   }
 }
 
 // ── incidents ────────────────────────────────────────────────────────────────
 
 export type ProviderIncident =
-  | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
+  | ({ kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass } & ProviderErrorShape)
   | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date }
   | { kind: 'spend_threshold'; totalUsd: number; thresholdUsd: number };
 
@@ -401,7 +418,7 @@ export function formatProviderAlert(
       'why',
       `  the pre-flight check against Anthropic failed at ${at.toISOString()}.`,
       `  classification: ${incident.failure} — ${FAILURE_EXPLANATION[incident.failure]}`,
-      `  the provider said: ${incident.detail}`,
+      `  the provider answered: ${incident.httpStatus === null ? 'no HTTP status' : `HTTP ${incident.httpStatus}`} ${incident.errorType ?? 'no error type'}`,
       '',
       'what Hale did',
       '  aborted the window before composing anything, so no family got a half-brief and',
@@ -501,9 +518,8 @@ function logAlertFailure(what: string, err: unknown): void {
 
 /** Why a window was cancelled — the shape each cron reports back in its own result, so
  * the run's JSON says what did not happen and why instead of an empty success. */
-export interface ProviderAbort {
+export interface ProviderAbort extends ProviderErrorShape {
   failure: ProviderFailureClass;
-  detail: string;
   alerted: boolean;
 }
 
@@ -541,11 +557,12 @@ export async function providerPreflight(
     return { proceed: true, health };
   }
 
+  const shape: ProviderErrorShape = { httpStatus: health.httpStatus, errorType: health.errorType };
   const { alerted } = await raiseProviderIncident(
     database,
-    { kind: 'preflight', window, failure: health.failure, detail: health.detail },
+    { kind: 'preflight', window, failure: health.failure, ...shape },
     deps,
     now,
   );
-  return { proceed: false, abort: { failure: health.failure, detail: health.detail, alerted } };
+  return { proceed: false, abort: { failure: health.failure, ...shape, alerted } };
 }

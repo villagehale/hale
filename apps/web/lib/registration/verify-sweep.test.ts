@@ -516,14 +516,20 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
     const h = harness({
       preflight: async () => ({
         proceed: false,
-        abort: { failure: 'billing', detail: 'credit balance too low', alerted: true },
+        abort: {
+          failure: 'billing',
+          httpStatus: 400,
+          errorType: 'invalid_request_error',
+          alerted: true,
+        },
       }),
     });
     const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
 
     expect(summary.aborted).toEqual({
       failure: 'billing',
-      detail: 'credit balance too low',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
       alerted: true,
     });
     expect(h.fetchPage).not.toHaveBeenCalled();
@@ -535,7 +541,12 @@ describe('runRegistrationVerifySweep — bounded and idempotent', () => {
       claimWeek,
       preflight: async () => ({
         proceed: false,
-        abort: { failure: 'auth', detail: 'bad key', alerted: true },
+        abort: {
+          failure: 'auth',
+          httpStatus: 401,
+          errorType: 'authentication_error',
+          alerted: true,
+        },
       }),
     });
     await runRegistrationVerifySweep({} as never, h.deps, NOW);

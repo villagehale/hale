@@ -135,7 +135,10 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
       EVENING_TICK,
     );
     expect(down).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
-    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: null });
+    expect(await eveningBefore()).toEqual({
+      status: 'scheduled',
+      suppressReason: 'compose_unavailable',
+    });
     expect(await runs()).toEqual([
       { agentName: 'reminder-voice', status: 'failed' },
       { agentName: 'reminder-voice', status: 'failed' },
@@ -167,7 +170,10 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
       EVENING_TICK,
     );
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
-    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: null });
+    expect(await eveningBefore()).toEqual({
+      status: 'scheduled',
+      suppressReason: 'compose_unavailable',
+    });
     expect(await audits()).toEqual([]);
   });
 
@@ -185,7 +191,10 @@ describe('runReminderCron with the real writer - a provider outage (VIL-563)', (
       EVENING_TICK,
     );
     expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
-    expect(await eveningBefore()).toEqual({ status: 'scheduled', suppressReason: null });
+    expect(await eveningBefore()).toEqual({
+      status: 'scheduled',
+      suppressReason: 'compose_unavailable',
+    });
     expect(await audits()).toEqual([]);
   });
 
