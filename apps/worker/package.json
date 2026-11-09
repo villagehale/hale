@@ -42,6 +42,7 @@
     "eval:followup-voice": "node evals/run-followup-voice-eval.mjs --cached-only",
     "eval:identity-ask": "node evals/run-identity-ask-eval.mjs --cached-only",
     "eval:name-takeback": "node evals/name-takeback-eval.mjs --cached-only",
+    "eval:friend-marks": "node evals/friend-marks-eval.mjs --cached-only",
     "eval:add-them-yourself": "node evals/run-add-them-yourself-eval.mjs --cached-only",
     "eval:reminder": "node evals/run-reminder-eval.mjs --cached-only",
     "eval:email-alert-notice": "node evals/run-email-alert-notice-eval.mjs --cached-only",

@@ -606,6 +606,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             groupLeave: groupLeave
               ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
               : null,
+            draftedActionIds,
           };
         },
       );

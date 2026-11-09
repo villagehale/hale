@@ -1,4 +1,6 @@
 import type { Database } from '@hale/db';
+import { type ClaimEnforcer, defaultClaimEnforcer, refusedResolutions } from './claim-enforce';
+import { CLAIM_READ_MAX_BUDGET_MS } from './claim-reader';
 import { type ClaimShadow, type ClaimShadowLane, defaultClaimShadow } from './claim-shadow';
 import { extractStateClaims } from './claims';
 import { type ReconcileVerdict, reconcile } from './reconcile';
@@ -29,7 +31,10 @@ import { loadReconcileView } from './view';
  * adds for a promise a sweep would have had to write and cannot. */
 export type SendRefusalReason =
   | ReconcileVerdict['refused'][number]['reason']
-  | 'unrecorded_promise';
+  | 'unrecorded_promise'
+  /** VIL-581 enforce: the claim reader could not read this body, so it is not sent
+   * unread. The read's own reason is logged; the next tick tries again. */
+  | 'claim_read_failed';
 
 /** Every reason this body may not go out, in the order the claims appear. Empty means
  * send it. */
@@ -44,9 +49,10 @@ export function unsendableReasons(verdict: ReconcileVerdict): SendRefusalReason[
  * Read the family's ledger and judge the body against it — the whole primitive, for a
  * caller that has a database handle and one string to decide about.
  *
- * VIL-581: the claim reader SHADOWS the decision. It is handed the verdict after the
- * decision is made and starts detached (claim-shadow.ts); what this returns never
- * depends on it. `lane` and `parentUserId` only label and place that read: a caller
+ * VIL-581: for a family the flag does not enforce, the claim reader SHADOWS the
+ * decision. It is handed the verdict after the decision is made and starts detached
+ * (claim-shadow.ts); what this returns never depends on it. For an enforced family the
+ * reader's verdict joins the regex's (claim-enforce.ts). `lane` and `parentUserId` only label and place that read: a caller
  * that names neither is the unlabelled sweep, read in the primary parent's zone.
  */
 export async function refuseUnbackedSend(
@@ -59,7 +65,9 @@ export async function refuseUnbackedSend(
     parentUserId?: string;
   },
   shadow: ClaimShadow = defaultClaimShadow(),
+  enforcer: ClaimEnforcer = defaultClaimEnforcer(),
 ): Promise<SendRefusalReason[]> {
+  if (enforcer.enforces(input.familyId)) return enforcedReasons(database, input, enforcer);
   const shadowed = {
     lane: input.lane ?? 'sweep_unlabelled',
     familyId: input.familyId,
@@ -78,4 +86,45 @@ export async function refuseUnbackedSend(
   const verdict = reconcile(claims, view);
   shadow.sweep(database, { ...shadowed, verdict, view });
   return unsendableReasons(verdict);
+}
+
+/**
+ * VIL-581 enforce: the regex verdict is the floor and the reader's verdict joins it, so
+ * the body goes only when both are clean. Every body is read, claim or not: "no regex
+ * claim" says nothing in French. A mint stays a refusal here (above), and a read that
+ * failed is its own named refusal, never a pass.
+ */
+async function enforcedReasons(
+  database: Database,
+  input: Parameters<typeof refuseUnbackedSend>[1],
+  enforcer: ClaimEnforcer,
+): Promise<SendRefusalReason[]> {
+  const view = await loadReconcileView(database, { familyId: input.familyId, now: input.now });
+  const floor = unsendableReasons(reconcile(extractStateClaims(input.body), view));
+  const read = await enforcer.read(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId ?? null,
+    now: input.now,
+    body: input.body,
+    view,
+    // A sweep has no turn deadline; the reader's own budget is the only one.
+    signal: new AbortController().signal,
+    budgetMs: CLAIM_READ_MAX_BUDGET_MS,
+  });
+  if (read.status === 'failed') {
+    console.error(
+      {
+        event: 'claim_read_enforce_failed',
+        lane: input.lane ?? 'sweep_unlabelled',
+        reason: read.reason,
+      },
+      'reconcile gate: the claim reader could not read the body - not sent',
+    );
+    return [...floor, 'claim_read_failed'];
+  }
+  return [
+    ...floor,
+    ...refusedResolutions(read.verdict).map((resolution) => resolution.reason),
+    ...read.mints.map(() => 'unrecorded_promise' as const),
+  ];
 }
