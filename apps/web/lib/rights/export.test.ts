@@ -219,6 +219,11 @@ function fakeDb(args: {
     if (which === 13) return { from: () => ({ where: signupsWhere }) };
     if (which === 14) return { from: () => ({ where: consentsWhere }) };
     if (which === 15) return { from: () => ({ where: optInsWhere }) };
+    // The four memory reads (facts, episodes, workstreams, commitments), empty here;
+    // export.pglite.test.ts covers their content against real Postgres.
+    if (which >= 16 && which <= 19) {
+      return { from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }) };
+    }
     throw new Error(`assembleFamilyExport fake: unexpected select #${which}`);
   });
 

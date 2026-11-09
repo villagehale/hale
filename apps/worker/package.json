@@ -13,6 +13,7 @@
     "./gmail-drafts": "./src/services/gmail-drafts.ts",
     "./gmail-send": "./src/services/gmail-send.ts",
     "./memory-writer": "./src/services/memory-writer.ts",
+    "./memory-context": "./src/services/memory-context.ts",
     "./autonomy-gate": "./src/orchestrator/autonomy-gate.ts"
   },
   "scripts": {

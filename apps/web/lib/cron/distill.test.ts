@@ -29,10 +29,31 @@ describe('redactTimelineForDistill (rule #1)', () => {
         [TOT, 'toddler'],
         [TEEN, 'teenager'],
       ]),
+      ['Rowan'],
     );
     expect(out).toEqual([
       { childId: TOT, role: 'user', content: 'Mara naps twice a day now', topic: 'sleep' },
     ]);
+  });
+
+  it('reduces a turn with no child that names a 13+ child, and keeps one that does not', () => {
+    const out = _internal.redactTimelineForDistill(
+      [
+        { childId: null, role: 'user', content: "ROWAN's been skipping practice", topic: null },
+        { childId: null, role: 'user', content: 'We love the library on Sundays', topic: null },
+      ],
+      new Map([[TEEN, 'teenager']]),
+      ['Rowan'],
+    );
+    expect(out[0]?.redacted).toBe(true);
+    expect(out[0]?.content).not.toContain('practice');
+    // Positive control: a family-wide turn that names no teen is kept raw.
+    expect(out[1]).toEqual({
+      childId: null,
+      role: 'user',
+      content: 'We love the library on Sundays',
+      topic: null,
+    });
   });
 
   it('reduces a teen turn to category/summary only and drops the child scope', () => {
@@ -49,6 +70,7 @@ describe('redactTimelineForDistill (rule #1)', () => {
         [TOT, 'toddler'],
         [TEEN, 'teenager'],
       ]),
+      ['Rowan'],
     );
     expect(out).toHaveLength(1);
     const [turn] = out;

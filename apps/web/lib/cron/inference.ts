@@ -224,7 +224,12 @@ export async function runInferenceCron(
   deps: InferenceCronDeps = defaultInferenceCronDeps(),
   now: Date = new Date(),
 ): Promise<InferenceCronResult> {
-  const familyIds = await selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.inference);
+  const familyIds = await selectFamiliesForRun(
+    database,
+    'inference',
+    MAX_FAMILIES_PER_RUN.inference,
+    now,
+  );
 
   // BEFORE the agent leg, so the inferencer's memory snapshot reads a tidied family
   // rather than the duplicates it is about to reason over — and OUTSIDE the provider
