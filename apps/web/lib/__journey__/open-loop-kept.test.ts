@@ -244,6 +244,10 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     // No model in this journey: the name ask cannot be written, so nothing is sent after the find.
     composeNameAsk: async () => null,
+    // REGISTRATION_DATE_CHECK is unset here, so no registration page is read.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
   };
 }
 

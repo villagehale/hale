@@ -50,6 +50,7 @@ async function armCourse(
       instant: false,
       lastState: 'full',
       sessionStartsAt: null,
+      sessionAnchor: null,
     },
     channelMessageId,
     now,

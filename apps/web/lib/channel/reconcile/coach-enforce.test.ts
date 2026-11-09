@@ -4,13 +4,13 @@ import type { ReadClaimResolution } from './claim-verdict';
 import {
   citedOnSurvivors,
   coachClaimLayout,
-  cutSegments,
+  cutSegmentSpans,
   inviteOnlyCut,
   judgeCoachRead,
   survivingMints,
 } from './coach-enforce';
 import type { ReconcileVerdict, RegistrationWatchMint } from './reconcile';
-import { segmentSentences } from './sentences';
+import { segmentSentences, subtractSpans } from './sentences';
 
 type ReadOk = Extract<EnforcedRead, { status: 'read' }>;
 const MINT: RegistrationWatchMint = {
@@ -19,6 +19,12 @@ const MINT: RegistrationWatchMint = {
   dueAt: new Date('2026-12-01T12:00:00Z'),
 };
 const CLEAN: ReconcileVerdict = { resolutions: [], refused: [], mints: [] };
+
+function cutSegments(reply: string, read: ReadOk, cut: ReadonlySet<number>): string {
+  const out = subtractSpans(reply, cutSegmentSpans(reply, read, cut));
+  if (out.status !== 'cut') throw new Error('the cut left a fragment');
+  return out.text;
+}
 
 function readOf(
   body: string,
@@ -72,6 +78,13 @@ describe('coach enforce', () => {
     expect(cutSegments(reply, read, judged.replyCut).replace(/\s+/g, ' ').trim()).toBe(
       'It is booked. Swim is at ten.',
     );
+  });
+
+  it('a refused sentence naming "St. Mary\'s" is cut whole (VIL-575)', () => {
+    const reply = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    const read = readOf(reply, [refused(1, 'scheduled_event')]);
+    const judged = judgeCoachRead(read, coachClaimLayout(reply, null, null));
+    expect(cutSegments(reply, read, judged.replyCut)).toBe('Swim runs Tuesdays at 4.');
   });
 
   it('a citation counts only on a sentence that reached the parent', () => {

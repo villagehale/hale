@@ -51,6 +51,7 @@ async function watchedFamily() {
       instant: false,
       lastState: 'full',
       sessionStartsAt: null,
+      sessionAnchor: null,
     },
     channelMessageId: 'CM-ack',
     now: NOW,

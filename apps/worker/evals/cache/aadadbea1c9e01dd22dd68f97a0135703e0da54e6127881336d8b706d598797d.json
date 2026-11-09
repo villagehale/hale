@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the window, uses the handed link, states no opening date, and asks no question, which is right since offer is false. It names no child. But why is page_unreadable, and 'could not confirm the opening date on the registration page' implies Hale read the page; it doesn't say Hale couldn't open it. That's minor. The tone is a bit stiff and formal ('so I can't give you a date', 'check the page yourself'), less like a friend texting.",
+    "score": 4
+  }
+}

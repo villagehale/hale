@@ -138,7 +138,7 @@ describe('friend voice brief', () => {
 
 describe('the open name ask, as the name-capture reader hands it to the model', () => {
   it('carries no Hale turn code wrote, and answers the name ask as a structured fact', () => {
-    const input = nameAskVoiceInput('laisse tomber', 'fr');
+    const input = nameAskVoiceInput('laisse tomber', 'fr', null);
     expect(input.recentTurns).toEqual([]);
     const context = friendVoiceContext(input);
     expect(context).toMatchObject({ answering: 'name', recentTurns: [] });
@@ -146,8 +146,52 @@ describe('the open name ask, as the name-capture reader hands it to the model', 
   });
 
   it("uses the family's own language, and none when none is stored", () => {
-    expect(nameAskVoiceInput('laisse tomber', 'fr').language).toBe('fr');
-    expect(nameAskVoiceInput('undo', null).language).toBeNull();
+    expect(nameAskVoiceInput('laisse tomber', 'fr', null).language).toBe('fr');
+    expect(nameAskVoiceInput('undo', null, null).language).toBeNull();
+  });
+
+  it('logs the kinds and count the judge matched, never the matched draft strings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const problems: string[] = [];
+      const spoken = await speakFriend(
+        {
+          async compose(input) {
+            if (input.retry) problems.push(input.retry.problem);
+            return {
+              reply: 'No problem, see you at swim on Thursday. What should I call you instead?',
+              capture: { nameTakenBack: true },
+            };
+          },
+        },
+        nameAskVoiceInput('undo', 'en', null),
+        { page: async () => {} },
+      );
+      expect(spoken.source).toBe('unsent');
+      // Positive control: the judge matched the draft's words, and only the retry was told.
+      expect(problems.join(' ')).toContain('thursday,swim');
+      const logged = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([, message]) =>
+          message === 'onboarding-friend: attempt refused' ||
+          message === 'onboarding-friend: unusable reply',
+      );
+      expect(logged).toHaveLength(2);
+      for (const [fields] of logged) {
+        expect(fields).toMatchObject({
+          reason: 'invented',
+          kinds: ['weekday', 'activity'],
+          count: 2,
+        });
+        expect(fields).not.toHaveProperty('detail');
+        expect(JSON.stringify(fields)).not.toMatch(/thursday|swim/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+      info.mockRestore();
+    }
   });
 });
 
@@ -268,6 +312,7 @@ describe('a delayed undo during name capture', () => {
       ok: false,
       reason: 'identity',
       detail: 'unknown_name',
+      kinds: ['unknown_name'],
     });
   });
 
@@ -285,7 +330,12 @@ describe('a delayed undo during name capture', () => {
     const long = { ...asked, parentWords: 'actually scratch that for now', nameTakenBack: true };
     expect(
       judgeFriendReply('Okay, "actually scratch that for now" it is. What next?', long),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 
   it('does not treat the message as a foreign name until the model marks a take-back', () => {
@@ -351,7 +401,12 @@ describe('a delayed undo during name capture', () => {
     expect(judgeFriendReply('What should I call you?', confirm)).toEqual({ ok: true });
     expect(
       judgeFriendReply('Got it, I\'ll call you "non". What should I call you?', confirm),
-    ).toEqual({ ok: false, reason: 'identity', detail: 'unknown_name' });
+    ).toEqual({
+      ok: false,
+      reason: 'identity',
+      detail: 'unknown_name',
+      kinds: ['unknown_name'],
+    });
   });
 });
 

@@ -2,6 +2,7 @@ import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { dayKeyIn } from '~/lib/plan/spine';
+import type { DateUnconfirmedFacts } from './date-unconfirmed-compose.js';
 import type { Moment, RegistrationNoteFacts } from './note-compose.js';
 import {
   type ApplicableClock,
@@ -537,6 +538,27 @@ export function legNoteFacts(
         : { kind: 'waitlist_final', now, ...clock, hoursLeft: WAITLIST_FINAL_LEAD_HOURS };
     }
   }
+}
+
+/**
+ * VIL-423 · facts for a dated leg whose stored opening the page did not corroborate.
+ * No date and no leg timing are handed: "the evening before" would state the
+ * unconfirmed day as surely as the date itself.
+ */
+export function dateUnconfirmedFacts(
+  leg: SequenceLeg,
+  input: LegCopyInput,
+  link: string,
+  why: DateUnconfirmedFacts['why'],
+): DateUnconfirmedFacts {
+  return {
+    now: moment(input.now, input.timeZone),
+    window: windowPhrase(input.shortlist),
+    who: whoPhrase(input.shortlist.fitNotes),
+    link,
+    why,
+    offer: leg === 'heads_up' && !headsUpPromisesPlan(input.optIn),
+  };
 }
 
 /** Facts for Hale's answer to what the parent reported. Solicited. */

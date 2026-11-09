@@ -826,6 +826,8 @@ async function humansAllowClaim(
   return true;
 }
 
+type LabelRefusal = 'not_a_person' | 'family_has_coparent' | 'number_verified';
+
 /**
  * A Linq add, or a handle beside the parent who claimed the chat, carries none of that
  * person's own words, so it never seats them (VIL-582). The audit row is the label; their
@@ -837,26 +839,28 @@ export async function labelAppearingCoparent(
   database: Database,
   input: {
     familyId: string;
-    chatId: string;
     handle: string;
     via: 'participant_added' | 'second_handle';
   },
-): Promise<{ status: 'needs_own_reply' } | { status: 'refused' }> {
+): Promise<{ status: 'needs_own_reply' } | { status: 'refused'; reason: LabelRefusal }> {
+  const refuse = (reason: LabelRefusal) => {
+    console.info(
+      { outcome: 'label_refused', reason, via: input.via },
+      'linq group co-parent: not labelled',
+    );
+    return { status: 'refused' as const, reason };
+  };
   const phone = realHumanPhone(input.handle);
-  if (
-    !phone ||
-    (await familyHasCoParent(database, input.familyId)) ||
-    (await resolveVerifiedChannelByPhone(database, phone))
-  ) {
-    return { status: 'refused' };
-  }
+  if (!phone) return refuse('not_a_person');
+  if (await familyHasCoParent(database, input.familyId)) return refuse('family_has_coparent');
+  if (await resolveVerifiedChannelByPhone(database, phone)) return refuse('number_verified');
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: 'system',
     actionTaken: 'linq_group_member_refused',
     targetTable: 'linq_group_members',
     targetId: input.familyId,
-    after: { reason: 'seat_needs_own_reply', via: input.via, chatId: input.chatId },
+    after: { reason: 'seat_needs_own_reply', via: input.via },
   });
   console.info(
     { outcome: 'seat_needs_own_reply', via: input.via },

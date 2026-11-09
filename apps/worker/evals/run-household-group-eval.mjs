@@ -30,6 +30,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
@@ -65,7 +66,7 @@ const BROKEN_REPLY = "Perfect, you're all set up and everything is in place. Mia
 
 function inputFor(voice, phrase, fixture) {
   const { join: wantsJoin, ...over } = fixture.over;
-  const base = voice.nameAskVoiceInput(over.parentWords, over.language ?? 'en');
+  const base = voice.nameAskVoiceInput(over.parentWords, over.language ?? 'en', NAME_ASK_STORED);
   const coparentJoin = wantsJoin ? { line: LINE, phrase } : null;
   return { ...base, ...over, coparentJoin };
 }

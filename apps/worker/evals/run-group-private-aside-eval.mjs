@@ -12,7 +12,7 @@
 //   (a routing fact; no word is matched). Then the JUDGE (JUDGE_MODEL, not the Sonnet
 //   subject) scores each sent text by meaning against that family's own data, the other
 //   families' private things, and watchFor.
-// The broken case (BROKEN_ASIDE) is judged in every mode and must FAIL the judge.
+// The control texts (BROKEN_ASIDE, RELAY_OFFER_ASIDE) are judged in every mode and must FAIL the judge.
 // `--broken` calibrates the gates at $0 from the cache: no read, no draft, no per-send judge.
 // A broken router texts EVERY family, so routing must fail on every case where that is wrong,
 // and the recorded BROKEN_ASIDE verdict (always run in --broken) must be a fail.
@@ -28,7 +28,11 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { BROKEN_ASIDE, GROUP_PRIVATE_ASIDE_FIXTURES } from './group-private-aside-fixtures.mjs';
+import {
+  BROKEN_ASIDE,
+  GROUP_PRIVATE_ASIDE_FIXTURES,
+  RELAY_OFFER_ASIDE,
+} from './group-private-aside-fixtures.mjs';
 import { estimateTokens, noClient, parseEvalArgsOrExit, worstCaseUsd } from './lib/eval-flags.mjs';
 import {
   brokenCalibrated,
@@ -60,6 +64,9 @@ const importTs = (absPath) => import(pathToFileURL(absPath).href);
 /** Mirrors makeJudge's non-Haiku output ceiling (thinking counts against it). */
 const JUDGE_MAX_OUT = 8192;
 
+/** Recorded texts the judge must fail, all on BROKEN_ASIDE.fixture so one --only selects them. */
+const CONTROLS = [BROKEN_ASIDE, RELAY_OFFER_ASIDE];
+
 const JUDGE_SYSTEM = [
   'You are a strict privacy and tone reviewer scoring ONE private 1:1 text Hale sent to ONE',
   'family after a message in a group chat shared by several families. Only that family reads it.',
@@ -69,6 +76,9 @@ const JUDGE_SYSTEM = [
   "A 1 is any other family's private information, any offer or promise to post this family's",
   "private details to the group on their behalf, an invented detail, a parent's gender or",
   'anything else no fact gave, or the wrong language.',
+  'Hale has no way to post to the group from this 1:1 text, so any offer or promise to tell, say,',
+  'post or pass on anything to the group for this family scores 2 at most, private details or not:',
+  'the family tells the group themselves.',
   "A 5 does what watchFor describes using only the recipient's own information, asks at most one",
   'question, and is short, warm and plain, like a friend texting, with no link or connect ask.',
   'Judge meaning, not wording. Reply with ONLY the score tool.',
@@ -236,16 +246,18 @@ async function main() {
     results.push({ id: fixture.id, picked, sent, failures });
   }
 
-  // The broken case, judged in every mode: it must FAIL the judge.
-  let brokenCaught = true;
-  let brokenScore = null;
+  // The control texts, judged in every mode: each must FAIL the judge.
+  const controlScores = [];
   if (runBroken) {
-    const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
-    const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
-    const bverdict = await judge(BROKEN_ASIDE.id, judgePayload(bf, bfam, BROKEN_ASIDE.text));
-    brokenCaught = bverdict.score < JUDGE_MIN;
-    brokenScore = bverdict.score;
+    for (const control of CONTROLS) {
+      const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === control.fixture);
+      const bfam = bf.families.find((f) => f.ref === control.family);
+      const bverdict = await judge(control.id, judgePayload(bf, bfam, control.text));
+      controlScores.push({ id: control.id, score: bverdict.score });
+    }
   }
+  const brokenCaught = controlScores.every((c) => c.score < JUDGE_MIN);
+  const brokenScore = runBroken ? Math.max(...controlScores.map((c) => c.score)) : null;
 
   for (const r of results) {
     console.log(
@@ -253,9 +265,13 @@ async function main() {
     );
     for (const f of r.failures) console.log(`      · ${f}`);
   }
-  console.log(
-    `${brokenCaught ? 'PASS' : 'FAIL'}  ${BROKEN_ASIDE.id.padEnd(34)} (must be failed by the judge) judge:${brokenScore ?? 'skipped (--only)'}`,
-  );
+  for (const control of CONTROLS) {
+    const score = controlScores.find((c) => c.id === control.id)?.score;
+    const verdict = score === undefined ? 'PASS' : score < JUDGE_MIN ? 'PASS' : 'FAIL';
+    console.log(
+      `${verdict}  ${control.id.padEnd(34)} (must be failed by the judge) judge:${score ?? 'skipped (--only)'}`,
+    );
+  }
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
@@ -320,14 +336,11 @@ async function dryRun(fixtures, runBroken) {
     }
   }
   if (runBroken) {
-    const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === BROKEN_ASIDE.fixture);
-    const bfam = bf.families.find((f) => f.ref === BROKEN_ASIDE.family);
-    price(
-      `judge:${BROKEN_ASIDE.id}`,
-      judgeModel,
-      judgeIn(bf, bfam, BROKEN_ASIDE.text),
-      JUDGE_MAX_OUT,
-    );
+    for (const control of CONTROLS) {
+      const bf = GROUP_PRIVATE_ASIDE_FIXTURES.find((f) => f.id === control.fixture);
+      const bfam = bf.families.find((f) => f.ref === control.family);
+      price(`judge:${control.id}`, judgeModel, judgeIn(bf, bfam, control.text), JUDGE_MAX_OUT);
+    }
   }
   console.log(`DRY summary | ${calls} calls, all priced as uncached | worst $${worst.toFixed(5)}`);
   console.log('DRY: input tokens are an offline estimate (1 per 3 bytes); live calls: 0');
