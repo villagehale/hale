@@ -11,10 +11,8 @@
 //   node --env-file=../../.env evals/run-said-line-convey-eval.mjs --live   # PAID
 //
 // Meaning is this cached judge, not a scripted verdict. CI runs --cached-only as a
-// soft path until the Nov 1 ~9:05 ET paid re-record: there is no recording yet, a
-// miss fails this process, and the workflow marks that step continue-on-error.
-// Do not delete the judge to keep the step green. --dry stays a hard $0 check of
-// the request. This file does not spend.
+// hard gate: a miss fails this process and the step. Do not delete the judge to
+// keep the step green. --dry stays a hard $0 check of the request. Only --live spends.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
