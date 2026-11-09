@@ -111,6 +111,7 @@ describe('requestErasure — one door, two answers', () => {
         teenGrantsRevoked: 0,
         openQuestionsDeleted: 'search_dark',
         membershipRemoved: true,
+        privateFactsDeleted: 0,
         consentWithdrawn: 0,
         threadRetained: 0,
         channelRecordRetained: 0,

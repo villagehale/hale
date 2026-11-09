@@ -77,6 +77,9 @@ async function seedSourcedFamily() {
     inferredBy: 'memory_inferencer',
     sourceEventId,
     memorySource: 'inferred',
+    // The household's, so the connector-owner rule is what holds a fact back here: an
+    // unrecorded routine reaches neither adult once a co-parent is on record (VIL-599).
+    sourceAudience: 'family' as const,
   });
   await db.database
     .insert(schema.familyMemoryFacts)

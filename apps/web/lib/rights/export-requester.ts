@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { privateAsidesSentTo } from '~/lib/channel/linq/private-aside-ledger';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 import type { ExportTeenGate } from './export-memory';
@@ -8,7 +9,7 @@ import type { ExportTeenGate } from './export-memory';
  * The part of a right-to-access copy that is about the requesting adult alone: their 1:1
  * text thread with Hale, the language Hale writes to them in, each time that changed,
  * their consent records, the accounts they connected, and the events Hale mirrored from
- * their own Google Calendar.
+ * their own Google Calendar, and the private texts Hale sent them from a shared group.
  *
  * Every read here is keyed on the requester, so nothing in this block can be about the
  * co-parent: the thread by its per-parent note key (note-key.ts), the settings by the
@@ -75,6 +76,12 @@ export interface RequesterOnlyExport {
     endsAt: string | null;
     location: string | null;
     cancelledAt: string | null;
+    withheld: 'teen' | null;
+  }[];
+  /** The private texts Hale sent this adult from a shared group (private-aside-ledger.ts). */
+  privateAsides: {
+    text: string;
+    sentAt: string;
     withheld: 'teen' | null;
   }[];
 }
@@ -205,6 +212,8 @@ export async function loadRequesterOnlyExport(
     )
     .orderBy(asc(events.startsAt));
 
+  const asides = await privateAsidesSentTo(database, { familyId, userId: requesterUserId });
+
   return {
     textThread: turns.map((turn) => ({
       role: turn.role,
@@ -253,6 +262,14 @@ export async function loadRequesterOnlyExport(
         endsAt: iso(row.endsAt),
         location: withheld ? null : row.location,
         cancelledAt: iso(row.deletedAt),
+        withheld,
+      };
+    }),
+    privateAsides: asides.map((aside) => {
+      const withheld = gate.isPrivate([], [aside.text]) ? ('teen' as const) : null;
+      return {
+        text: withheld ? TEEN_REDACTED_PLACEHOLDER : aside.text,
+        sentAt: aside.sentAt.toISOString(),
         withheld,
       };
     }),

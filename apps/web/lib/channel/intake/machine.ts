@@ -2461,7 +2461,13 @@ async function friendColdTurn(
     if (corrected?.ageMonths != null) {
       await writeFact(
         database,
-        ageCorrectionFact({ familyId, childId: null, ageMonths: corrected.ageMonths, now }),
+        ageCorrectionFact({
+          familyId,
+          parentUserId: userId,
+          childId: null,
+          ageMonths: corrected.ageMonths,
+          now,
+        }),
       );
     }
   }

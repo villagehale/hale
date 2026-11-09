@@ -257,14 +257,19 @@ export async function readBack(
     {},
     ctx,
   );
-  const fit = await productionActivityFamilyReader().familyFit?.(database, familyId, now);
+  const fit = await productionActivityFamilyReader().familyFit?.(
+    database,
+    familyId,
+    'every_adult',
+    now,
+  );
 
   const contexts: Record<PromptPath, string> = {
     coach: JSON.stringify(coach),
-    brief: (await assembleMemoryBrief(database, familyId, now)).text,
+    brief: (await assembleMemoryBrief(database, familyId, 'every_adult', now)).text,
     drafter: JSON.stringify(await getMemorySlice(familyId, database, now)),
     find: JSON.stringify(fit ?? null),
-    plan: JSON.stringify(await loadPlanFacts(database, familyId, now)),
+    plan: JSON.stringify(await loadPlanFacts(database, familyId, 'every_adult', now)),
     'inferencer.memory': JSON.stringify(memorySnapshot),
     'inferencer.events': JSON.stringify(recentEvents),
     distiller: JSON.stringify(turns),

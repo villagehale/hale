@@ -1,13 +1,16 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { leftChatSince, releaseGroupOnLeave } from './group-leave';
 
 /** VIL-477 Design blocker: an accepted leave releases the claim with onboarding v2 dark. */
 const NOW = new Date('2026-10-30T12:00:00.000Z');
+const KEY = Buffer.alloc(32, 7).toString('base64');
 let db: TestDb;
 beforeAll(async () => {
+  process.env.APP_ENCRYPTION_KEY = KEY;
   db = await createTestDb();
 });
 afterAll(async () => {
@@ -45,7 +48,11 @@ describe('releaseGroupOnLeave', () => {
       .select()
       .from(schema.auditLog)
       .where(eq(schema.auditLog.familyId, fam.familyId));
-    expect(audit.filter((a) => a.actionTaken === 'linq_group_left_on_ask')).toHaveLength(1);
+    const left = audit.filter((a) => a.actionTaken === 'linq_group_left_on_ask');
+    // Immutable and in every adult's copy: the chat is named by its key, never its raw id.
+    expect(left.map((a) => a.after)).toEqual([
+      { claimReleased: true, chatKey: linqChatBlindIndex('chat-left') },
+    ]);
 
     // a wrong-family call cannot release another family's chat
     const wrong = await releaseGroupOnLeave(db.database, {
@@ -86,6 +93,18 @@ describe('releaseGroupOnLeave', () => {
     // another chat is untouched
     expect(await leftChatSince(db.database, { chatId: 'chat-elsewhere', since: beforeLeave })).toBe(
       false,
+    );
+    // a leave row written before the key carries the raw chat id, and still gates
+    await db.database.insert(schema.auditLog).values({
+      familyId: fam.familyId,
+      actor: fam.parentUserId,
+      actionTaken: 'linq_group_left_on_ask',
+      targetTable: 'families',
+      targetId: fam.familyId,
+      after: { claimReleased: true, chatId: 'chat-legacy' },
+    });
+    expect(await leftChatSince(db.database, { chatId: 'chat-legacy', since: beforeLeave })).toBe(
+      true,
     );
     // a message that arrived after the leave (Hale re-added) is newer than the leave row
     const afterLeave = new Date(Date.now() + 60_000);

@@ -3,8 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
+import { checkedSchedule } from '~/lib/channel/spots/schedule';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
@@ -182,10 +182,6 @@ export function isChallengePage(raw: string): boolean {
 }
 
 const LETTER_RUN = /\p{L}{3}/u;
-/** What a schedule may hold to be printed in a text: words, digits, a colon, a comma and a
- * dash. No '.' and no '/', so no host or path a phone would link survives into one. */
-const SCHEDULE_SHAPE = /^[\p{L}\p{N} :,-]+$/u;
-const SCHEDULE_MAX = 60;
 
 function digitsIn(text: string): number[] {
   return (text.match(/\d+/g) ?? []).map(Number);
@@ -251,14 +247,8 @@ export function normalizeClassAvailability(
     return unknown('uncorroborated');
   }
 
-  const scheduleQuote = extracted.schedule_quote?.replace(/\s+/g, ' ').trim() ?? null;
-  const schedule =
-    onPage(scheduleQuote) &&
-    scheduleQuote.length <= SCHEDULE_MAX &&
-    SCHEDULE_SHAPE.test(scheduleQuote) &&
-    !hasLinkShape(scheduleQuote)
-      ? scheduleQuote
-      : null;
+  const scheduleQuote = extracted.schedule_quote;
+  const schedule = onPage(scheduleQuote) ? checkedSchedule(scheduleQuote) : null;
 
   return {
     status: 'read',
