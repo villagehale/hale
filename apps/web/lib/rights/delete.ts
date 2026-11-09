@@ -14,6 +14,7 @@ import {
   type FailurePageCounts,
   pageErasureGoogleUnconfirmed,
   recordErasureGoogleUnconfirmed,
+  releaseErasedCrisisMarks,
 } from '../monitoring/failure-page.js';
 import { type OrphanSweepSummary, runOrphanUserSweep } from './orphan-users.js';
 
@@ -431,6 +432,8 @@ export async function runDeletionSweep(
   // VIL-553 · held opt-out reads are keyed by the number and the text alone, out of the
   // cascade's reach. Read before the delete, like `stranded`.
   const erasedHolds = await erasedFamilyHolds(database, familyIds);
+  // Their crisis claims and reply marks are keyed by the texts the cascade deletes.
+  await releaseErasedCrisisMarks(database, familyIds);
 
   let purgedObjects = 0;
   for (const familyId of familyIds) {

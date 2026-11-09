@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { type OffDomainPorts, crisisMarkingLane } from '~/lib/channel/off-domain/lane';
 import type { Moment } from '~/lib/channel/off-domain/moment-reply';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { threadIfParent } from '~/lib/channel/thread';
 import {
+  type CrisisUnanswered,
   type SaidLineWriter,
   createSaidLineWriter,
   crisisReplyViolation,
@@ -19,6 +20,8 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import {
   CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
+  claimCrisisReply,
+  crisisClaimFor,
   crisisReplyState,
   failurePageCrisisPager,
   noteCrisisReplySent,
@@ -321,6 +324,37 @@ async function rowsNaming(word: string): Promise<string[]> {
      union all select 'audit_log', row_to_json(a)::text from audit_log a`,
   );
   return rows.filter((row) => row.row.includes(word)).map((row) => row.source);
+}
+
+const keyOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 32);
+
+/** Every crisis claim and reply mark, by route and inbound key. */
+async function crisisMarks(): Promise<{ route: string; key: string | undefined }[]> {
+  const rows = await db.database
+    .select({ route: schema.rateLimits.route, identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(inArray(schema.rateLimits.route, [CRISIS_UNANSWERED_PAGE_ROUTE, CRISIS_ANSWERED_ROUTE]))
+    .orderBy(desc(schema.rateLimits.route));
+  return rows.map((row) => ({ route: row.route, key: row.identifier.split(':')[0] }));
+}
+
+/** An emergency read for a child, recorded against `inboundId`. */
+function keptCrisis(
+  inboundId: string,
+  owner: { familyId: string; parentUserId: string } | null,
+): CrisisUnanswered {
+  return {
+    kind: 'emergency',
+    where: 'late read',
+    reason: 'write_failed',
+    writes: 2,
+    inboundId,
+    familyId: owner?.familyId ?? null,
+    parentUserId: owner?.parentUserId ?? null,
+    language: 'en',
+    situation: 'poisoning_or_overdose',
+    who: 'child',
+  };
 }
 
 async function crisisClaimIds(): Promise<string[]> {
@@ -1034,6 +1068,7 @@ describe('recoverHeldOptOutReads', () => {
       crisisLanguage: null,
       crisisSituation: null,
       crisisWho: null,
+      crisisReadEncrypted: null,
     });
 
     expect((await resolveHeldText(db.database, row('pm-us', PHONE_A)))?.region).toBe('US');
@@ -1728,8 +1763,22 @@ describe('recoverHeldOptOutReads', () => {
       }),
     );
     expect(read.outcomes.crisis_unanswered).toBe(1);
-    // Positive control: while the text is held for its retry, its facts are kept somewhere.
-    expect(await rowsNaming('poisoning_or_overdose')).not.toEqual([]);
+    // While the text is held for its retry, what it was read as is kept, sealed: no row
+    // names it in the clear, and the next tick still reads it back.
+    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+    expect(await rowsNaming(':child')).toEqual([]);
+    expect(await crisisClaimFor(db.database, 'pm-od')).toMatchObject({
+      kind: 'emergency',
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+    // The kept family's own crisis, and its reply mark: an erasure of the other never
+    // reaches them.
+    await inboundRow(kept, 'pm-kept', OVERDOSE_TEXT, ago(15));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-kept', kept));
+    expect(await claimCrisisReply(db.database, 'pm-kept', NOW)).toBe('claimed');
+    expect(await claimCrisisReply(db.database, 'pm-od', ago(60))).toBe('claimed');
 
     await db.database
       .update(schema.families)
@@ -1739,8 +1788,35 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(summary.erased).toBe(1);
     expect(await heldRow('pm-od')).not.toBeNull();
-    expect(await crisisClaimIds()).toHaveLength(1);
-    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+    expect(await heldRow('pm-od')).toMatchObject({ crisisReadEncrypted: null });
+    // The erased family's crisis claim and reply mark go with it; the kept family's stay.
+    expect(await crisisMarks()).toEqual([
+      { route: CRISIS_UNANSWERED_PAGE_ROUTE, key: keyOf('pm-kept') },
+      { route: CRISIS_ANSWERED_ROUTE, key: keyOf('pm-kept') },
+    ]);
+  }, 30_000);
+
+  it('an erasure clears the crisis read on a held text of its number the ledger never had', async () => {
+    // An intake-only text: no ledger row in the family names it, only its number does. The
+    // number is someone else's now, so the row stays.
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    const holder = await seedFamily(db.database, 'Second Family');
+    await channel(holder, PHONE_A, { verifiedAt: ago(60), revokedAt: null });
+    await hold(PHONE_A, 'pm-intake-only', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-intake-only', null));
+    // Positive control: the read was kept on the row.
+    expect((await heldRow('pm-intake-only'))?.crisisReadEncrypted).not.toBeNull();
+
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, erased.familyId));
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    // The number is still held, so the row stays, without what its text was read as.
+    expect(await heldRow('pm-intake-only')).toMatchObject({ crisisReadEncrypted: null });
   }, 30_000);
 
   it('a held crisis row released takes what it was read as with it', async () => {

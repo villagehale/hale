@@ -255,3 +255,40 @@ describe('opt_out_held_messages crisis read', () => {
     );
   });
 });
+
+/** VIL-602 · the sealed crisis read, found by suffix so it survives renumbering at merge. */
+describe('opt_out_held_messages sealed crisis read', () => {
+  const SEALED_FILE = migrationFiles().find((f) =>
+    f.endsWith('_opt_out_held_crisis_read_sealed.sql'),
+  );
+  const files = migrationFiles();
+  const before = files[files.indexOf(SEALED_FILE as string) - 1];
+  let db: TestDb;
+  const column = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'opt_out_held_messages' AND column_name = 'crisis_read_encrypted'",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds one nullable text column', async () => {
+    expect(SEALED_FILE).toMatch(/^\d{4}_opt_out_held_crisis_read_sealed\.sql$/);
+    // Positive control: the column is not there before the file.
+    expect(await column()).toEqual([]);
+
+    await db.applyMigration(SEALED_FILE as string);
+    await expect(db.applyMigration(SEALED_FILE as string)).resolves.toBeUndefined();
+
+    expect(await column()).toEqual([
+      { column_name: 'crisis_read_encrypted', is_nullable: 'YES', data_type: 'text' },
+    ]);
+  });
+});

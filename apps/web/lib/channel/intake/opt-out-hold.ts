@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 
@@ -94,16 +94,30 @@ export async function erasedFamilyHolds(
  * on its numbers, but only where nobody holds that number now. A number someone still
  * holds keeps every row on it, since any may be their own unread stop (a parent seated in
  * a second family, or the number's next holder). Such a row keeps no family content (a
- * phone hash, a provider id, a time): what a text the family sent was read as when it was
- * read as a crisis is cleared from it. Once its text is gone it reads as unrecorded, so
+ * phone hash, a provider id, a time): what a text the family sent, or any text on its
+ * numbers (an intake text no ledger row names), was read as when it was read as a crisis
+ * is cleared from it. Once its text is gone it reads as unrecorded, so
  * the hold stays fail closed and is paged.
  */
 export async function releaseErasedHolds(database: Database, erased: ErasedHolds): Promise<void> {
-  if (erased.providerMessageIds.length > 0) {
+  const crisisReads = [
+    ...(erased.providerMessageIds.length > 0
+      ? [inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds)]
+      : []),
+    ...(erased.phoneHashes.length > 0
+      ? [inArray(schema.optOutHeldMessages.phoneHash, erased.phoneHashes)]
+      : []),
+  ];
+  if (crisisReads.length > 0) {
     await database
       .update(schema.optOutHeldMessages)
-      .set({ crisisLanguage: null, crisisSituation: null, crisisWho: null })
-      .where(inArray(schema.optOutHeldMessages.providerMessageId, erased.providerMessageIds));
+      .set({
+        crisisReadEncrypted: null,
+        crisisLanguage: null,
+        crisisSituation: null,
+        crisisWho: null,
+      })
+      .where(or(...crisisReads));
   }
   const texts =
     erased.providerMessageIds.length === 0
