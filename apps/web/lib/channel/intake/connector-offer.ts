@@ -88,10 +88,13 @@ export function connectorOfferLabel(outcome: ConnectorOfferOutcome): ConnectorOf
   return outcome.status === 'sent' ? 'sent' : outcome.reason;
 }
 
+/** A claim whose card did not reach the parent with its link. Its dedupe key is
+ * released with it: the key is the family's one offer, and a card that never went
+ * has not spent it. */
 async function failClaim(database: Database, id: string, errorCode: string): Promise<void> {
   await database
     .update(schema.channelMessages)
-    .set({ status: 'failed', errorCode })
+    .set({ status: 'failed', errorCode, dedupeKey: null })
     .where(eq(schema.channelMessages.id, id));
 }
 
@@ -337,6 +340,7 @@ async function deliverConnectorCard(
       now: args.now,
     });
     const linked = link.status !== 'not_sent';
+    if (!linked) await failClaim(database, claimId, 'link_unsent');
     await ports.threadMessage(database, {
       familyId,
       parentUserId,
