@@ -277,13 +277,32 @@ describe('local registration PDF text extraction', () => {
       };
       expect(memoryBomb.byteLength).toBeLessThanOrEqual(MAX_PAGE_BYTES);
 
+      // Promptness is measured against this test's own sampler, not a wall clock. The
+      // sampler and the reader's poll share one event loop, so a busy runner delays both
+      // alike. A ceiling that trips late (a slow poll) still shows as a long lag. Both
+      // numbers are literals: they must not move with the poll constant they check.
+      const SAMPLE_EVERY_MS = 50;
+      const MAX_LAG_AFTER_CEILING_MS = 1_000;
+      const baseline = process.memoryUsage.rss();
+      let firstPastCeiling: number | null = null;
+      const sampler = setInterval(() => {
+        if (firstPastCeiling === null && process.memoryUsage.rss() - baseline > MEMORY_CEILING_BYTES) {
+          firstPastCeiling = performance.now();
+        }
+      }, SAMPLE_EVERY_MS);
       const started = performance.now();
-      await expect(registrationPdfText(memoryBomb, budget)).resolves.toEqual(
-        refused('pdf_read_budget', 'memory'),
-      );
-      // The 'memory' limit is the proof: the deadline refuses with 'time'. A wall-clock
-      // bound tighter than the deadline only measures how busy the runner is.
-      expect(performance.now() - started).toBeLessThan(budget.timeoutMs);
+      let result: Awaited<ReturnType<typeof registrationPdfText>>;
+      try {
+        result = await registrationPdfText(memoryBomb, budget);
+      } finally {
+        clearInterval(sampler);
+      }
+      const refusedAt = performance.now();
+      expect(result).toEqual(refused('pdf_read_budget', 'memory'));
+      expect(refusedAt - (firstPastCeiling ?? refusedAt)).toBeLessThan(MAX_LAG_AFTER_CEILING_MS);
+      // The deadline refuses with 'time', but a blocked event loop can still deliver
+      // 'memory' after it, so the deadline is bounded too.
+      expect(refusedAt - started).toBeLessThan(budget.timeoutMs);
       await readersExited();
 
       // The largest read the page and text ceilings allow, sampled every millisecond, so the
