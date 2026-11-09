@@ -3,10 +3,10 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import type { HandlerContext } from '../router/route';
 import { CANARY_PHONE_E164 } from './config';
 import { inboundCanaryHandler } from './handler';
-import type { HandlerContext } from '../router/route';
 
 /**
  * The last handler in the chain, over the real tables.
@@ -150,7 +150,10 @@ describe('inboundCanaryHandler', () => {
     // overwhelming majority of turns pay no query at all.
     const query = vi.spyOn(db.client, 'query');
 
-    await inboundCanaryHandler().handle(db.database, turn('yes', canary, async () => []));
+    await inboundCanaryHandler().handle(
+      db.database,
+      turn('yes', canary, async () => []),
+    );
 
     expect(query).not.toHaveBeenCalled();
   });

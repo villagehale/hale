@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: Library story time at 11:00 AM (上午) and Soccer 5:30-6:30 PM (下午) on Oct 26, which is tomorrow from Sunday evening. However the text gives the dates as '10月26日' with no 'tomorrow' phrasing, and uses a calendar-readout format (title：date time) rather than how a friend would text it. It also omits the planLink, which the watchFor allowed but did not require. Per the rubric, a calendar-readout style caps the score at 3.",
+    "score": 3
+  }
+}

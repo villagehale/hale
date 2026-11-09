@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import type { Database } from '@hale/db';
+import { describe, expect, it } from 'vitest';
 import { assignFoundingNumber } from './founding';
 
 /**

@@ -1,5 +1,6 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type NonGoogleClearance, assertClearance } from '~/lib/pipeline/provider-clearance';
 import { createInboundLaneScreen, laneUserMessage, toReading } from './screen';
 
 /**
@@ -109,9 +110,9 @@ describe('toReading', () => {
   });
 
   it('passes a language tag through unchanged, including one this code has never listed', () => {
-    expect(
-      toReading({ lane: 'in_domain', category: 'none', language: ' zh-Hant ' }).language,
-    ).toBe('zh-Hant');
+    expect(toReading({ lane: 'in_domain', category: 'none', language: ' zh-Hant ' }).language).toBe(
+      'zh-Hant',
+    );
     expect(
       toReading({ lane: 'off_domain_general', category: 'weather', language: 'ZH' }).language,
     ).toBe('ZH');
@@ -170,14 +171,15 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       category: 'none',
       reason: 'fallback',
     });
+    const evaluateChoice = vi.fn(async (_args: unknown, _clearance: NonGoogleClearance) => ({
+      choice: 'off_domain_general__weather' as const,
+      probabilities: { off_domain_general__weather: 0.7, in_domain__none: 0.3 },
+      confidence: 0.7,
+      usage: { inputTokens: 5, outputTokens: 1 },
+    }));
     const screen = createInboundLaneScreen(currentClient, {
       modelMode: 'candidate',
-      evaluateChoice: vi.fn(async () => ({
-        choice: 'off_domain_general__weather' as const,
-        probabilities: { off_domain_general__weather: 0.7, in_domain__none: 0.3 },
-        confidence: 0.7,
-        usage: { inputTokens: 5, outputTokens: 1 },
-      })),
+      evaluateChoice,
     });
 
     expect(await screen.read(READ)).toEqual({
@@ -186,6 +188,12 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
       fallback: null,
       language: null,
     });
+    // VIL-556 positive control: the parent's own words are cleared for the candidate,
+    // and the clearance it carries was minted, not cast.
+    const clearance = evaluateChoice.mock.calls[0]?.[1];
+    if (!clearance) throw new Error('the candidate was called without a clearance');
+    expect(clearance.basis).toBe('parent_text');
+    expect(() => assertClearance(clearance)).not.toThrow();
   });
 
   it('falls back to Haiku on a low-confidence JEV reading', async () => {
@@ -295,7 +303,12 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
     ['ar', 'هل يوجد نشاط للأطفال هذا الأسبوع'],
   ])('returns the %s tag the model read on that inbound', async (tag, text) => {
     const screen = createInboundLaneScreen(
-      clientReturning({ lane: 'in_domain', category: 'none', reason: 'family week', language: tag }),
+      clientReturning({
+        lane: 'in_domain',
+        category: 'none',
+        reason: 'family week',
+        language: tag,
+      }),
     );
 
     expect(await screen.read(text)).toEqual({

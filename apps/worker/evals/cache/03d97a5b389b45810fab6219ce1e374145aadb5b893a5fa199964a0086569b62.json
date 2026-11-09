@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, to stop sending emails without asking. turnedOffThisTurn lists send_email and reply_to_email, so the confirmation that this is done is true. The reply is in the parent's language, short, and correct. \"Listo, Sam.\" is a light greeting-like opener, and the third sentence mostly restates the second. That is a small redundancy, but the reply is accurate and stops.",
+    "score": 4
+  }
+}

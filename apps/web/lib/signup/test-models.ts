@@ -1,4 +1,5 @@
 import type { SignupConsentReader, SignupConsentReading } from './consent-reader';
+import type { SignupOfferFacts, SignupOfferWriter } from './offer-writer';
 import type { SignupOutcomeFacts, SignupOutcomeWriter } from './outcome-reply';
 
 /**
@@ -27,6 +28,19 @@ export function echoOutcomeWriter(): SignupOutcomeWriter & { facts: SignupOutcom
     async write(input) {
       facts.push(input);
       return renderEcho(input);
+    },
+  };
+}
+
+/** Returns a unique line that still carries the URL and a session Hale saw. */
+export function echoOfferWriter(): SignupOfferWriter & { facts: SignupOfferFacts[] } {
+  const facts: SignupOfferFacts[] = [];
+  return {
+    facts,
+    async write(input) {
+      facts.push(input);
+      const session = input.sessions[0]?.label ?? 'session';
+      return `From the ${input.source}: ${session} at ${input.registrationUrl} — want me to try?`;
     },
   };
 }

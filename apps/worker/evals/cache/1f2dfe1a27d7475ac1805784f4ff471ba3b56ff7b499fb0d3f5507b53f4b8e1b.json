@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French and gives tomorrow, the correct date, the 15 h to 16 h time range, and the Georgetown library location, all matching the facts. However, it presents the title 'Jour de congé' as a description of the day (': jour de congé') rather than as the name of an event at the library, so it reads as if the library or the day is a day off, which changes the title into a claim the facts do not make. Also, a native speaker would not normally write 'Ça se termine à 16 h 00' as a bare follow-up; the phrasing reads like a system readout rather than a friend's text. This is a fact-meaning failure on the title, capping it low.",
+    "score": 2
+  }
+}

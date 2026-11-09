@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the all-day PD Day tomorrow with no clock time, and is in English. However, it asserts 'there's no school for the kids,' a consequence not stated in the facts (the facts only give the event title, not that school is closed or who it affects). This is an unstated inference presented as fact, which warrants a low score.",
+    "score": 2
+  }
+}

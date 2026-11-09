@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It notes that the new page replaces the old one and correctly says the course details could not be read. The date, Tuesday, September 15 at 7:00 a.m., is right, and the clock is framed as the residents date. It gives the prerequisite warning to leave time, with no link and no question. Minor issues keep it from a 5. 'I'm going by the registration date' is slightly odd when haleHad is null. It also never names who it is for ('your teen').",
+    "score": 4
+  }
+}

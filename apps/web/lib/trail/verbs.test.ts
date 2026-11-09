@@ -1,8 +1,8 @@
+import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { describe, expect, it } from 'vitest';
 import type { ActorResolver, AuditLogEntry } from '~/lib/dashboard/mappers';
 import { toTrailView } from '~/lib/dashboard/mappers';
-import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
-import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+import { AUDIT_VERBS, isInternalTrailVerb, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
 
 /** No trail row may ever render a raw table name, a raw snake_case/dotted action
  * token, or a bare UUID (defect: /trail leaked `families · family_created · <uuid>`).
@@ -33,7 +33,17 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
   it.each(AUDIT_VERBS)('maps %s to a curated sentence, never the raw token', (verb) => {
     const { sentence, family } = trailVerb(verb);
     assertCleanHuman(sentence, verb);
+    // VIL-527 · eng-only audit is internal with no parent copy (Design lock).
+    if (verb === 'calendar_alert_debt_retired') {
+      expect(isInternalTrailVerb(verb)).toBe(true);
+      return;
+    }
     expect(family).not.toBe('neutral');
+  });
+
+  it('keeps a decision sync closed unsent out of the parent history, while a sent one shows', () => {
+    expect(isInternalTrailVerb('group_decision_sync_closed_unsent')).toBe(true);
+    expect(isInternalTrailVerb('group_decision_sync_sent')).toBe(false);
   });
 
   it('says one text of a plan, because that is what one row is', () => {
@@ -116,7 +126,7 @@ describe('a departure’s rows never tell the parent who stayed that they did it
 });
 
 describe('the streak sentence names the number the worker enforces', () => {
-  it('says the worker\'s own number, in the words Barton approved', () => {
+  it("says the worker's own number, in the words Barton approved", () => {
     expect(trailVerb('autonomous_action_class.granted').sentence).toBe(
       `You've approved this ${AUTONOMY_STREAK_REQUIRED} times, so Hale will handle it on its own from now on`,
     );
@@ -201,8 +211,8 @@ describe('targetLink — a UUID becomes a deep link, never a bare id', () => {
     expect(targetLink('actions', 'act-9')).toBeNull();
   });
 
-  it('links a plan target to the plan surface', () => {
-    expect(targetLink('family_plans', 'plan-3')).toBe('/plan');
+  it('does not link a plan at the retired plan page', () => {
+    expect(targetLink('family_plans', 'plan-3')).toBeNull();
   });
 
   it('returns null (no fake link) for a target with no viewable surface', () => {

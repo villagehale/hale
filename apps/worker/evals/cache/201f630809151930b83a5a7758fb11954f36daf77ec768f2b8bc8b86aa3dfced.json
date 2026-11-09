@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both pickups and the collision, but it invents a choice ('skip one') and does not ask Sam by name to take Maya's pickup; it adds a link and a reply-by-number ask, which breaks the one-ask rule; the poll options given are Barton, Sam, Barton, so the last option wrongly repeats Barton and does not name no one as required.",
+    "score": 1
+  }
+}

@@ -82,10 +82,10 @@ describe('every /onboarding URL forwards, permanently, off the app', () => {
     }
   });
 
-  it('leaves the /terms and /privacy forwards alone', async () => {
+  it('leaves the /terms forward alone, and /privacy to the app', async () => {
     const sources = (await redirects()).map((r) => r.source);
     expect(sources).toContain('/terms');
-    expect(sources).toContain('/privacy');
+    expect(sources).not.toContain('/privacy');
   });
 });
 

@@ -564,6 +564,23 @@ describe('activity links', () => {
     expect(out).toBe('Swim is Tuesday, see.');
   });
 
+  it('does not delete a sentence that says ref (VIL-501)', () => {
+    const soccer = 'The ref is at the field at 4.';
+    expect(toSmsReply(soccer, { children: [], now: NOW })).toBe(soccer);
+    const narration = 'A ref came back this time, so I can attach the page.';
+    expect(toSmsReply(narration, { children: [], now: NOW, activityLinks: [TUMBLERS] })).toBe(
+      narration,
+    );
+  });
+
+  it('does not treat refer as the marker', () => {
+    const reply = toSmsReply('Text this if you want to refer a friend.', {
+      children: [],
+      now: NOW,
+    });
+    expect(reply).toBe('Text this if you want to refer a friend.');
+  });
+
   it('cites a page from a reply in any script', () => {
     const zh = `周六下午北约克中央图书馆有灯笼手工活动。[${LANTERN.ref}]`;
     expect(toSmsReply(zh, { children: [], now: NOW, activityLinks: [LANTERN] })).toBe(

@@ -125,7 +125,7 @@ function signatureMatches(
  * needs. Soft-deleted rows are INCLUDED — a CANCEL is precisely the invite for an event
  * that has just been deleted; callers filter on `deletedAt` per method.
  */
-async function loadInviteEventRow(
+export async function loadInviteEventRow(
   database: Database,
   familyEventId: string,
 ): Promise<InviteEventRow | null> {

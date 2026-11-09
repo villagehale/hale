@@ -2,22 +2,18 @@ import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent
 import { z } from 'zod';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { recMorningIntakeReply } from '~/lib/channel/rec-morning';
+import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import {
-  groundCurrentSource,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-  liveLookupReplyFromNotes,
-} from './live-lookup';
+import { groundUserMessage } from './ground-message';
+import { groundCurrentSource, groundPlaceOf, liveLookupReplyFromNotes } from './live-lookup';
 import {
   deidentifyOfficialQuery,
-  isOfficialPageAsk,
   notesGroundADate,
   officialPageReplyFromNotes,
 } from './official-page';
@@ -63,24 +59,6 @@ import {
  *   signup detail is `nothing_to_answer`, and the machine's own reply — which was
  *   written for exactly that — goes out instead.
  */
-
-/**
- * ONE budget for the whole message, not one per half.
- *
- * 300 GSM-7 characters is two SMS segments (153 each) — the same ceiling the coach's own
- * replies and the off-domain answer are fitted to. Two rather than intake's usual one
- * because this turn is inherently two things, an answer and a question, and cutting the
- * answer to fit one segment would produce the terse non-reply the stage exists to
- * replace.
- *
- * IT WAS TWO CAPS (220/80, then 200/100) and both live recordings refused a perfectly
- * sendable pair on one half alone — a 105-character return line riding behind a
- * 58-character answer, well inside the message a carrier would have delivered as one
- * ordinary two-part text. The split was a budget invented for the model's convenience,
- * and what a carrier actually bills is the joined body; measuring anything else refuses
- * good messages for failing a rule nothing downstream enforces.
- */
-export const MAX_REPLY_CHARS = 300;
 
 const MAX_TOKENS = 300;
 
@@ -131,11 +109,10 @@ const DISCLOSES_AI = /\b(ai|a\.i\.|bot|software|a program|not a (real )?(person|
 
 /**
  * Why a composed pair may not be sent. Mechanical, and each one is a different story in
- * the log: the first six are a model writing something a carrier mangles or a shape the
+ * the log: the first five are a model writing something a carrier mangles or a shape the
  * turn cannot use, and the last four are a model writing something FALSE.
  */
 export type IntakeAnswerRefusal =
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'answer_carries_question'
@@ -149,14 +126,22 @@ export type IntakeAnswerRefusal =
 /** Why the stage produced no words. Four separate operational stories, none of them
  * silence (rule #11): `skill_unavailable` is a deploy bug, `model_failed` an outage,
  * `unusable` the model getting it wrong and the gates catching it. */
-export type IntakeAnswerFallback =
-  | 'skill_unavailable'
-  | 'model_failed'
-  | 'unusable'
-  /** Search found nothing sendable; the machine has the model say so (#868). */
-  | 'ungrounded'
-  /** A caregiver venting; the machine has the model write the warmth (#868). */
-  | 'cheer_up';
+export type IntakeAnswerFallback = 'skill_unavailable' | 'model_failed' | 'unusable' | OwedLine;
+
+/**
+ * The fallbacks that owe the parent a model-written line, named for the line the
+ * machine has the model write (#868). The composer's read of the ask picks one, never
+ * the parent's words.
+ */
+export const OWED_LINES = [
+  /** A program date the official pages have not posted. */
+  'not_posted',
+  /** A current fact search could not ground. */
+  'no_source',
+  /** A caregiver venting: warmth, not a method. */
+  'cheer_up',
+] as const;
+export type OwedLine = (typeof OWED_LINES)[number];
 
 export type IntakeAnswerOutcome =
   /** The whole message: the answer, then Hale's question again in different words. */
@@ -189,17 +174,44 @@ export interface IntakeAnswerInput {
    * only — never shown to the model (see {@link intakeAnswerContext}).
    */
   postalCode?: string | null;
+  /**
+   * The session's stored language, when intake has one. Null means the rec-morning
+   * line is written in the language of `parentWords`, not English.
+   */
+  language?: ReplyLanguage | null;
+  /**
+   * The first Canadian or US code the session holds (VIL-592). The searches are told its
+   * country and province or state, never the code; the answer model is told nothing.
+   */
+  regionToken?: string | null;
 }
 
 export interface IntakeAnswerComposer {
   compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome>;
 }
 
-const answerSchema = z.object({ answer: z.string(), returnLine: z.string() });
+/**
+ * What the parent is asking for, read by the model in whatever language they wrote
+ * (VIL-555: four English keyword matchers chose this before). `answer_here` is the
+ * composed pair; the other three are answered from a search or a model-written line.
+ */
+export const ASK_KINDS = ['answer_here', 'program_dates', 'current_source', 'cheer_up'] as const;
+
+const answerSchema = z.object({
+  askKind: z.enum(ASK_KINDS),
+  answer: z.string(),
+  returnLine: z.string(),
+});
 
 const answerJsonSchema = {
   type: 'object',
   properties: {
+    askKind: {
+      type: 'string',
+      enum: [...ASK_KINDS],
+      description:
+        'What the parent is asking for, decided before writing anything. For anything but answer_here, leave answer and returnLine empty.',
+    },
     answer: {
       type: 'string',
       description:
@@ -210,7 +222,7 @@ const answerJsonSchema = {
       description: "Hale's own pending question again, in different words, ending in '?'.",
     },
   },
-  required: ['answer', 'returnLine'],
+  required: ['askKind', 'answer', 'returnLine'],
 } as const;
 
 /**
@@ -251,7 +263,6 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
@@ -294,7 +305,7 @@ export function readPair(
     return { status: 'safety' };
   }
   // Read before the gates, not after: an empty answer is the model declining, which is
-  // a correct outcome, and grading a declined turn against a character cap would log a
+  // a correct outcome, and grading a declined turn against the gates would log a
   // refusal for a stage that did its job.
   if (answer === '') return { status: 'nothing_to_answer' };
 
@@ -336,13 +347,15 @@ async function groundOfficialPages(
   }
 
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
+  if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
   try {
+    const place = await groundPlaceOf(input.regionToken ?? null);
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
+      messages: [{ role: 'user', content: groundUserMessage(query.text, place) }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
@@ -352,6 +365,41 @@ async function groundOfficialPages(
   } catch (err) {
     return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
   }
+}
+
+async function answerFromOfficialPages(
+  client: AgentClient,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  const ground = await groundOfficialPages(client, input);
+  if (ground.status === 'ungrounded') {
+    console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
+    return { status: 'unavailable', reason: 'not_posted' };
+  }
+  const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
+  return body === null
+    ? { status: 'unavailable', reason: 'not_posted' }
+    : { status: 'answered', body };
+}
+
+async function answerFromCurrentSource(
+  client: AgentClient,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  const ground = await groundCurrentSource(
+    client,
+    input.parentWords,
+    input.children,
+    input.regionToken ?? null,
+  );
+  if (ground.status === 'ungrounded') {
+    console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
+    return { status: 'unavailable', reason: 'no_source' };
+  }
+  const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
+  return body === null
+    ? { status: 'unavailable', reason: 'no_source' }
+    : { status: 'answered', body };
 }
 
 export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
@@ -380,48 +428,14 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
       // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
       // texter asking which morning / which login must not wait on a model that still
       // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
-      const recMorning = recMorningIntakeReply({
+      // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
+      const recMorning = await writeRecMorningIntakeReply({
         parentWords: input.parentWords,
         pendingAsk: input.pendingAsk,
         postal: input.postalCode,
+        language: input.language ?? null,
       });
       if (recMorning !== null) return { status: 'answered', body: recMorning };
-
-      // VIL-326: a rec/camp/registration clock that missed the city pins. Search
-      // official pages; if a date is not on them, say so. Never invent a clock,
-      // and never return unavailable — that was the greet/ask-alone leak.
-      if (isOfficialPageAsk(input.parentWords)) {
-        const ground = await groundOfficialPages(client, input);
-        if (ground.status === 'ungrounded') {
-          console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
-          return { status: 'unavailable', reason: 'ungrounded' };
-        }
-        const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
-        return body === null
-          ? { status: 'unavailable', reason: 'ungrounded' }
-          : { status: 'answered', body };
-      }
-
-      // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
-      // one return ask. Crisis already left above. Therapist-find is live lookup.
-      if (isCheerUpAsk(input.parentWords)) {
-        return { status: 'unavailable', reason: 'cheer_up' };
-      }
-
-      // VIL-327: raising-kids, leftover current-source facts, therapist-find.
-      // Live lookup only. The SMS may only restate what search returned.
-      // Framework-only / model memory is not a path.
-      if (isLiveLookupAsk(input.parentWords)) {
-        const ground = await groundCurrentSource(client, input.parentWords, input.children);
-        if (ground.status === 'ungrounded') {
-          console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
-          return { status: 'unavailable', reason: 'ungrounded' };
-        }
-        const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
-        return body === null
-          ? { status: 'unavailable', reason: 'ungrounded' }
-          : { status: 'answered', body };
-      }
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
       // middle of a stranger's first conversation, and no deploy problem is worth
@@ -433,22 +447,36 @@ export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerCom
         return unavailable('skill_unavailable', message(err));
       }
 
+      let value: z.infer<typeof answerSchema>;
       try {
-        const { value } = await forceToolJson({
+        ({ value } = await forceToolJson({
           client,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAnswerContext(input)),
           toolName: 'reply',
           toolDescription:
-            "Return the answer to the parent's question and the line back to Hale's.",
+            "Return what kind of ask this is, the answer to the parent's question and the line back to Hale's.",
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
           maxTokens: MAX_TOKENS,
-        });
-        return readPair(value, input);
+        }));
       } catch (err) {
         return unavailable('model_failed', message(err));
+      }
+
+      // VIL-326 / VIL-327: a program date, a raising-kids question, a current fact or a
+      // care-find is answered from what search returned, never from model memory, and
+      // a miss owes the line saying so. Cheer-up is the model's warmth (#868).
+      switch (value.askKind) {
+        case 'program_dates':
+          return answerFromOfficialPages(client, input);
+        case 'current_source':
+          return answerFromCurrentSource(client, input);
+        case 'cheer_up':
+          return { status: 'unavailable', reason: 'cheer_up' };
+        case 'answer_here':
+          return readPair(value, input);
       }
     },
   };

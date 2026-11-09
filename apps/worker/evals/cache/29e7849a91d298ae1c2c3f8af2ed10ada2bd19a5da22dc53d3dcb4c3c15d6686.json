@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly answers Tiny Gym, grounded in Hale's own earlier message (under 3.5 with a parent) and Remy's 19 months. It has no greeting and no question. Small blemishes: the closing Mini Gym clause is more than the answer needed, and 'he' assumes a gender not given in knows.",
+    "score": 4
+  }
+}

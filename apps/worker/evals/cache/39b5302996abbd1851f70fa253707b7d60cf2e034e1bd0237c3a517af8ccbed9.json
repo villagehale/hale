@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: tomorrow, story time at 11 AM (\"上午11点\"), soccer 5:30-6:30 PM (\"下午5:30到6:30\"), both start and end given, no invented details, only the exact planLink, no emoji or questions. Chinese is mostly natural and friend-like. However, \"要看完整安排的话在这儿\" is a sentence whose job is to point to the full plan (a suggestion/pointer nobody asked for), which is unrequested filler, and \"下午5:30到6:30要踢足球\" reads slightly oddly compared with the more natural \"5点半\" phrasing. The filler sentence caps the score at 3.",
+    "score": 3
+  }
+}

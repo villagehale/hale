@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both items, the day and time, Barton, and the child correctly; suggests Sam for Maya's swim pickup as the single ask; poll matches input choices with a neutral last option in English. Minor issue: poll options are not clearly tied to the question's ask within the message text, but the poll is the who-takes poll as specified. Tone is casual and accurate.",
+    "score": 5
+  }
+}

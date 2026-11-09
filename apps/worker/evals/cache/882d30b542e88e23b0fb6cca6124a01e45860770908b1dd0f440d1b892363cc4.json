@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct and nothing is invented: tomorrow (Monday), 15 h to 16 h (both times present, correct PM), Georgetown library, and the title kept as the event's name in quotation marks without turning it into a claim about the day or a closure. It does not imply the day is free. French is natural (15 h, bibliothèque de Georgetown). However, it reads like a calendar readout, a bare entry of title, times and place, rather than a warm friend text. Per the friend-vs-notification check, that caps it at 3, in line with the scored references where correct but readout-style texts got 2.",
+    "score": 3
+  }
+}

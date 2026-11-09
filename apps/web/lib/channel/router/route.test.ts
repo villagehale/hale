@@ -1,13 +1,22 @@
+import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
-import type { AgentClient } from '@hale/agent';
+import type { AgentClient, RegisteredTool, Skill } from '@hale/agent';
 import { schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const waitUntil = vi.hoisted(() => vi.fn());
 vi.mock('@vercel/functions', () => ({ waitUntil }));
+const stickerDecide = vi.hoisted(() => vi.fn());
+vi.mock('~/lib/channel/linq/sticker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/linq/sticker')>()),
+  sharedLinqStickerDecider: () => ({ decide: stickerDecide }),
+}));
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import type { FindReplyGate } from '~/lib/channel/coach/find-reasoning-judge';
+import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
+import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import {
@@ -17,33 +26,46 @@ import {
 import {
   type OffDomainLane,
   type OffDomainVerdict,
+  crisisMarkingLane,
   offDomainLane,
   productionOffDomainLane,
 } from '~/lib/channel/off-domain/lane';
+import { type ClaimEnforcer, createClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { claimRowLabel } from '~/lib/channel/reconcile/claim-label';
+import type { ClaimReader } from '~/lib/channel/reconcile/claim-reader';
+import type { ClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import type { ReconcileView } from '~/lib/channel/reconcile/reconcile';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import type { CrisisPager, CrisisUnanswered } from '~/lib/channel/voice/said-line';
 import { channelGroupNoteKey, channelSmsNoteKey } from '~/lib/coach/note-key';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { calendarOffersIdle } from '~/lib/integrations/calendar-offer-read';
+import {
+  CRISIS_ANSWERED_ROUTE,
+  CRISIS_UNANSWERED_AUDIT_ACTION,
+  CRISIS_UNANSWERED_PAGE_ROUTE,
+} from '~/lib/monitoring/failure-page';
+import type { IncidentFailure } from '~/lib/monitoring/provider-health';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import { scriptedClaimReader } from '~/lib/testing/claim-reader';
 import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
-  DISCOVERABILITY_ALREADY_ON,
-  DISCOVERABILITY_OFF,
-  DISCOVERABILITY_ON,
-} from '~/lib/village/intros/copy';
-import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
-import type { ApologyOutcome, TurnApology } from './apology';
+  INTRO_REPLY_FACTS,
+  type IntroReplySituation,
+  type VillageIntroReplyDeps,
+} from '~/lib/village/intros/reply';
+import { type ApologyOutcome, type TurnApology, createTurnApology } from './apology';
 import { type ChannelTurn, ChannelTurnFailed, type ChannelTurnResult } from './coach-runtime';
-import { FLOOD_REPLY, capabilityReply, failureReply } from './copy';
 import type {
   DisambiguationOption,
   DisambiguationStore,
   PendingDisambiguation,
 } from './disambiguation';
 import { AGENT_TURNS_PER_HOUR } from './flood';
+import type { FloodLineCompose, FloodLineComposer } from './flood-line';
 import { villageIntroHandler } from './handlers';
 import {
   approvalHandler,
@@ -185,6 +207,20 @@ function fakeHoldingLine(line = "I'm on it."): HoldingLineComposer & { calls: nu
   return holding;
 }
 
+/** VIL-463: an over-limit composer that writes from facts, or fails like a dead model. */
+function fakeFloodLine(
+  result: FloodLineCompose = { status: 'composed', line: 'A lot came in at once.' },
+): FloodLineComposer & { calls: number } {
+  const flood = {
+    calls: 0,
+    async compose() {
+      flood.calls += 1;
+      return result;
+    },
+  };
+  return flood;
+}
+
 /** A coach that cannot run at all — the outage the canned choice sentence exists for. */
 function brokenCoach(): ChannelCoachRuntime {
   return {
@@ -252,7 +288,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
   deferredReasons: {
     channelMessageId: string;
     reason?: string;
-    providerFailure?: 'billing' | 'auth';
+    providerFailure?: IncidentFailure;
   }[];
   unanswered: { channelMessageId: string; reason: string }[];
   failed: { channelMessageId: string; reason: string }[];
@@ -264,7 +300,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     deferredReasons: [] as {
       channelMessageId: string;
       reason?: string;
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     }[],
     unanswered: [] as { channelMessageId: string; reason: string }[],
     failed: [] as { channelMessageId: string; reason: string }[],
@@ -282,7 +318,7 @@ function fakeTurnLedger(): InboundTurnLedger & {
     async recordDeferred(input: {
       channelMessageId: string;
       reason?: string;
-      providerFailure?: 'billing' | 'auth';
+      providerFailure?: IncidentFailure;
     }) {
       ledger.deferred.push(input.channelMessageId);
       ledger.deferredReasons.push({
@@ -311,7 +347,7 @@ function countingLimiter(): RateLimiter & { checks: number } {
     checks: 0,
     async check() {
       limiter.checks += 1;
-      return { allowed: true, retryAfterSec: 3600 };
+      return { allowed: true, retryAfterSec: 3600, firstDenied: false };
     },
   };
   return limiter;
@@ -410,6 +446,21 @@ function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } 
 /** A family Hale owes nothing and has nothing booked for — the state in which every
  * claim is false. The default, so a test that says nothing about the ledger cannot
  * accidentally be relying on one. */
+/** The claim shadow as production runs it with the flag unset. */
+function offShadow(): ClaimShadow {
+  return { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' };
+}
+
+/** The claim reader as production runs it with the flag unset: it never enforces. */
+function offEnforcer(): ClaimEnforcer {
+  return {
+    enforces: () => false,
+    read: async () => {
+      throw new Error('the claim reader is not enforced here');
+    },
+  };
+}
+
 function emptyReconcileView(overrides: Partial<ReconcileView> = {}): ReconcileView {
   return {
     openKinds: new Set(),
@@ -442,9 +493,12 @@ function harness(
     apology?: TurnApology;
     questions?: OpenQuestionReader;
     replyResolver?: ReplyResolver;
+    calendarOffers?: ChannelRouterDeps['calendarOffers'];
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
+    claimShadow?: ChannelRouterDeps['claimShadow'];
+    claimEnforcer?: ChannelRouterDeps['claimEnforcer'];
     recordRegistrationWatch?: ChannelRouterDeps['recordRegistrationWatch'];
     armWatchedSpot?: ChannelRouterDeps['armWatchedSpot'];
     recordStatedState?: ChannelRouterDeps['recordStatedState'];
@@ -458,6 +512,9 @@ function harness(
     callTimeoutMs?: number;
     holdingLine?: HoldingLineComposer;
     holdingLineAfterMs?: number;
+    floodLine?: FloodLineComposer;
+    consentAsk?: ChannelRouterDeps['consentAsk'];
+    crisisPager?: CrisisPager;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -484,6 +541,7 @@ function harness(
     turns,
     deps: {
       database: fake.db,
+      leftChatSince: async () => false,
       loadContext: async () => context,
       transport,
       handlers: options.handlers ?? [],
@@ -493,12 +551,14 @@ function harness(
         options.recordActivityPromise ??
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
       reconcileView: options.reconcileView ?? (async () => emptyReconcileView()),
+      claimShadow: options.claimShadow ?? offShadow(),
+      claimEnforcer: options.claimEnforcer ?? offEnforcer(),
       // VIL-294. Nothing is stated by default, so a test that says nothing about the
       // inbound half cannot accidentally be relying on a write.
       recordStatedState:
         options.recordStatedState ?? (async () => ({ status: 'nothing_stated' as const })),
       // VIL-360. No ask standing by default, for the reason above it.
-      consentAsk: askWriter(),
+      consentAsk: options.consentAsk ?? askWriter(),
       weekdayCareReader: options.weekdayCareReader ?? {
         read: async () => ({ status: 'nothing_stated' as const }),
       },
@@ -524,13 +584,15 @@ function harness(
       questions: options.questions ?? fakeQuestions([]),
       replyResolver:
         options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
-      calendarOffers: calendarOffersIdle,
+      calendarOffers: options.calendarOffers ?? calendarOffersIdle,
       disambiguation: fakeDisambiguation(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
       apology: options.apology ?? fakeApology(),
       holdingLine: options.holdingLine ?? fakeHoldingLine(),
+      floodLine: options.floodLine ?? fakeFloodLine(),
+      crisisPager: options.crisisPager ?? recordingCrisisPager().pager,
       holdingLineAfterMs: options.holdingLineAfterMs,
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: () => NOW,
@@ -541,6 +603,29 @@ function harness(
         warn: (...args: unknown[]) => logs.push(args),
         error: (...args: unknown[]) => logs.push(args),
       } as unknown as Pick<Console, 'info' | 'warn' | 'error'>,
+    },
+  };
+}
+
+/** The crisis pager port, recorded: what it was asked to record, then to page. */
+function recordingCrisisPager(): {
+  pager: CrisisPager;
+  recorded: CrisisUnanswered[];
+  paged: CrisisUnanswered[];
+} {
+  const recorded: CrisisUnanswered[] = [];
+  const paged: CrisisUnanswered[] = [];
+  return {
+    recorded,
+    paged,
+    pager: {
+      async record(alert) {
+        recorded.push(alert);
+      },
+      async page(alert) {
+        paged.push(alert);
+        return 'paged';
+      },
     },
   };
 }
@@ -1052,6 +1137,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -1145,6 +1231,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -1265,7 +1352,7 @@ describe('the off-domain lane', () => {
       },
     };
     const h = harness({ offDomain: lane });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     await routeChannelMessage(h.deps, unsaid);
 
@@ -1512,7 +1599,7 @@ describe('flood control', () => {
     const overflow = await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
-    expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
+    expect(h.transport.bodies().at(-1)).toBe('A lot came in at once.');
   });
 
   it('sends the flood line 1:1 on a family-group turn, never into the group', async () => {
@@ -1539,12 +1626,14 @@ describe('flood control', () => {
     const group = await spent(true);
     expect(group.result.status).toBe('flood_held');
     expect(group.coach.calls).toBe(0);
-    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: FLOOD_REPLY }]);
+    expect(group.h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'A lot came in at once.' }]);
 
     // Positive control: the same over-budget turn outside the group answers where it came from.
     const direct = await spent(false);
     expect(direct.result.status).toBe('flood_held');
-    expect(direct.h.transport.sent).toEqual([{ route: groupRoute, body: FLOOD_REPLY }]);
+    expect(direct.h.transport.sent).toEqual([
+      { route: groupRoute, body: 'A lot came in at once.' },
+    ]);
   });
 
   /**
@@ -1740,7 +1829,9 @@ describe('failure honesty', () => {
     const h = harness({ coach: throwingCoach });
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies()).not.toContain(failureReply());
+    expect(h.transport.bodies()).not.toContain(
+      'Something went wrong on my end - nothing was changed. Try me again in a minute.',
+    );
   });
 
   it('never leaves the parent with silence OR a fabricated success', async () => {
@@ -1805,11 +1896,9 @@ describe('failure honesty', () => {
     }
 
     /**
-     * The one templated line left on this path, and deliberately: it is a RECEIPT for
-     * rows that exist, not an apology. It carries a count and the YES/NO grammar that
-     * resolves against those rows, which is the same reason approvedReceipt and
-     * whichOneReply are templates the coach never touches — a model that miscounts here
-     * points a parent's "yes" at the wrong action.
+     * The parent sees whatever the consent writer returns from the count. This
+     * harness writer is a double, so the assertion is that the router sends that
+     * return value and does not also apologize. Production writes with the model.
      */
     it('names the drafts that are waiting instead of claiming nothing changed', async () => {
       const apology = fakeApology();
@@ -1846,6 +1935,204 @@ describe('failure honesty', () => {
       expect(h.transport.bodies()).toEqual([APOLOGY]);
       expect(apology.calls).toBe(1);
     });
+  });
+});
+
+/**
+ * VIL-524. A withheld or unjudged find draft throws into this same path. The
+ * parent hears a model written from facts (the situation, or a draft count),
+ * and a writer that cannot write sends nothing. The withheld draft is not a
+ * fact on that request.
+ */
+describe('a withheld find on the failed-turn path (VIL-524)', () => {
+  const FIND_TOKEN = 'storytime-9f3a';
+  const WITHHELD_DRAFT = `All three finds share one page. EarlyON at the library, ref ${FIND_TOKEN}.`;
+  const parentBody = `what's on this weekend near ${FIND_TOKEN}`;
+  const APOLOGY_BODY = 'Hale dropped that one and nothing changed.';
+  const RECEIPT_BODY = 'Holding the drafts until you say which.';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function quiet() {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  }
+
+  function findCoach(input: {
+    gate: FindReplyGate;
+    draftIds?: readonly string[];
+  }): ChannelCoachRuntime {
+    const skill: Skill = {
+      meta: { name: 'coach-channel-sms', whenToUse: 'x', task: 'converse', tools: [] },
+      instructions: 'be terse',
+    };
+    return channelCoachRuntime({
+      loadSkill: async () => skill,
+      loadTranscript: async () => [],
+      loadContext: async (ctx) =>
+        ({ question: ctx.question, transcript: ctx.transcript, memoryFacts: [] }) as never,
+      loadChildren: async () => [],
+      loadRegistrationWindows: async () => [],
+      buildTools: (_turn, onDraft) => {
+        for (const id of input.draftIds ?? []) onDraft(id);
+        return [] as RegisteredTool[];
+      },
+      nearbySaid: async () => null,
+      guardDeps: { async writeAudit() {} },
+      client: () => ({ messages: {} }) as AgentClient,
+      judgeFindReply: async () => input.gate,
+      runAgent: async () => ({
+        answer: WITHHELD_DRAFT,
+        steps: 1,
+        hitMaxSteps: false,
+        truncatedRetries: 0,
+        truncated: false,
+        usage: {
+          promptTokens: 10,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          completionTokens: 5,
+        },
+      }),
+      recordRun: async () => {},
+      now: () => NOW,
+    });
+  }
+
+  interface Captured {
+    system?: unknown;
+    messages?: Array<{ role: string; content: string }>;
+  }
+
+  function recordingClient(payload: Record<string, string>, seen: Captured[]): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          async create(request: Captured) {
+            seen.push({ system: request.system, messages: request.messages });
+            return {
+              content: [{ type: 'text', text: JSON.stringify(payload) }],
+              usage: { input_tokens: 10, output_tokens: 5 },
+              stop_reason: 'end_turn',
+            };
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function failingClient(): () => AgentClient {
+    return () =>
+      ({
+        messages: {
+          create: async () => {
+            throw new Error('writer down');
+          },
+        },
+      }) as unknown as AgentClient;
+  }
+
+  function userFacts(seen: Captured[]): unknown[] {
+    return seen.map((call) => JSON.parse(call.messages?.[0]?.content ?? 'null'));
+  }
+
+  /** The whole request the writer sent, system and user. Facts, not the reply. */
+  function assertNoFindFacts(seen: Captured[]) {
+    const raw = JSON.stringify(seen);
+    expect(raw).not.toContain(FIND_TOKEN);
+    expect(raw).not.toContain(WITHHELD_DRAFT);
+    expect(raw).not.toContain('find_reasoning');
+    expect(raw).not.toContain('judge_failed');
+  }
+
+  const gates: FindReplyGate[] = [
+    { verdict: 'withhold' },
+    { verdict: 'unjudged', reason: 'judge_failed' },
+  ];
+
+  it.each(gates)('apology writer input is only the situation (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const asks: unknown[] = [];
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate }),
+      apology: createTurnApology(recordingClient({ apology: APOLOGY_BODY }, seen)),
+      consentAsk: {
+        write: async (ask) => {
+          asks.push(ask);
+          return RECEIPT_BODY;
+        },
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([APOLOGY_BODY]);
+    expect(asks).toEqual([]);
+    expect(userFacts(seen)).toEqual([{ situation: 'turn_failed_nothing_changed' }]);
+    assertNoFindFacts(seen);
+  });
+
+  it.each(gates)('drafts receipt writer input is only the count (%j)', async (gate) => {
+    quiet();
+    const seen: Captured[] = [];
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate,
+        draftIds: [`draft-${FIND_TOKEN}-1`, `draft-${FIND_TOKEN}-2`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(recordingClient({ text: RECEIPT_BODY }, seen)),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([RECEIPT_BODY]);
+    expect(apology.calls).toBe(0);
+    expect(userFacts(seen)).toEqual([{ kind: 'partial_failure', draftCount: 2 }]);
+    assertNoFindFacts(seen);
+  });
+
+  it('sends nothing when the apology writer fails', async () => {
+    quiet();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({ gate: { verdict: 'withhold' } }),
+      apology: createTurnApology(failingClient()),
+    });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+  });
+
+  it('sends nothing when the drafts receipt writer fails', async () => {
+    quiet();
+    const apology = fakeApology();
+    const h = harness({
+      context: { body: parentBody },
+      coach: findCoach({
+        gate: { verdict: 'unjudged', reason: 'judge_failed' },
+        draftIds: [`draft-${FIND_TOKEN}`],
+      }),
+      apology,
+      consentAsk: createConsentAskWriter(failingClient()),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(apology.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('unwritten');
   });
 });
 
@@ -2112,6 +2399,19 @@ describe('a re-driven turn never answers twice', () => {
     expect(JSON.stringify(h.logs)).not.toContain('brokeAfterAnswering');
   });
 
+  it('#973: an empty coach turn is claimed answered, sends nothing, and a redelivery never reruns the coach', async () => {
+    const turns = fakeTurnLedger();
+    const coach = fakeCoach('');
+    const first = harness({ coach, turns });
+    expect((await routeChannelMessage(first.deps, job())).status).toBe('agent_silent');
+    expect(first.transport.sent).toEqual([]);
+
+    const rerun = fakeCoach('should never run');
+    const second = harness({ coach: rerun, turns });
+    expect((await routeChannelMessage(second.deps, job())).status).toBe('already_answered');
+    expect(second.transport.sent).toEqual([]);
+  });
+
   it('claims the caregiver line too — it is an answer like any other', async () => {
     const turns = fakeTurnLedger();
     const first = harness({ context: { role: 'nanny' }, turns });
@@ -2355,6 +2655,60 @@ describe('the outage smoke alarm', () => {
     expect(calls).toBe(2);
   });
 
+  it('a crisis moment nobody could write pages #ops at once, then defers as before', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unwritten = (
+      moment: 'mental_crisis' | 'emergency' | 'could_not_answer',
+      reason: string,
+    ): OffDomainLane => ({
+      async consider() {
+        return {
+          status: 'unwritten' as const,
+          moment,
+          reason,
+          lane: 'safety_critical' as const,
+          category: 'other' as const,
+        };
+      },
+    });
+    const crisis = recordingCrisisPager();
+    const turn = job();
+
+    for (const [moment, reason] of [
+      ['mental_crisis', 'model_failed'],
+      ['emergency', 'client_unavailable'],
+    ] as const) {
+      const h = harness({ offDomain: unwritten(moment, reason), crisisPager: crisis.pager });
+      await expect(routeChannelMessage(h.deps, turn)).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+      expect(h.transport.bodies()).toEqual([]);
+    }
+
+    const at = {
+      where: 'router moment',
+      inboundId: turn.provider_message_id,
+      familyId: turn.family_id,
+      parentUserId: turn.parent_user_id,
+    };
+    expect(crisis.paged).toEqual([
+      { kind: 'mental', reason: 'model_failed', writes: 2, ...at },
+      { kind: 'emergency', reason: 'client_unavailable', writes: 0, ...at },
+    ]);
+    expect(crisis.recorded).toEqual(crisis.paged);
+
+    // Positive control: a could-not-answer moment is not a crisis. It defers and pages nobody.
+    const plain = harness({
+      offDomain: unwritten('could_not_answer', 'model_failed'),
+      crisisPager: crisis.pager,
+    });
+    await expect(routeChannelMessage(plain.deps, turn)).rejects.toMatchObject({
+      reason: 'moment_unwritten',
+    });
+    expect(crisis.paged).toHaveLength(2);
+  });
+
   it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
     const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
 
@@ -2465,8 +2819,8 @@ describe('the C2 seam', () => {
 
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies()).toEqual([capabilityReply()]);
-    expect(capabilityReply()).toMatch(/past me for now/);
+    // VIL-504 · stub sends nothing (absolute-zero fixed copy).
+    expect(h.transport.bodies()).toEqual([]);
   });
 });
 
@@ -2537,6 +2891,9 @@ describe('the shipped chain, end to end', () => {
         recorded.push({ outcome: input.outcome, position: input.position });
       },
       recordReask: async () => {},
+      // The composer seam (VIL-543): the note's kind stands in for the model's text.
+      writeNote: async (_db: unknown, _familyId: string, facts: { kind: string }) =>
+        `note:${facts.kind}`,
     };
     return {
       recorded,
@@ -2563,9 +2920,8 @@ describe('the shipped chain, end to end', () => {
     expect(result.handler).toBe('registration');
     expect(coach.calls).toBe(0);
     expect(chain.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
-    // The parent is told the clock started — M7's copy, not the stub's boundary line.
-    expect(h.transport.bodies()).toHaveLength(1);
-    expect(h.transport.bodies()[0]).not.toBe(capabilityReply());
+    // The parent is told the clock started — the written note, not the stub's boundary line.
+    expect(h.transport.bodies()).toEqual(['note:outcome_waitlisted']);
   });
 
   it('answers "done" from the health handler, not the registration re-ask', async () => {
@@ -2885,7 +3241,7 @@ describe('natural reply resolution', () => {
     expect(coach.standingQuestions).toEqual([['reschedule on your calendar']]);
   });
 
-  it('falls back to the choice sentence only when the coach cannot run', async () => {
+  it('sends no canned choice sentence when the coach cannot run', async () => {
     const h = harness({
       context: { body: 'sounds good' },
       coach: brokenCoach(),
@@ -2896,11 +3252,9 @@ describe('natural reply resolution', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([
-      'Which one - reschedule on your calendar or meeting the family nearby?',
-    ]);
-    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b/);
-    expect(h.transport.bodies()[0]).not.toContain('2)');
+    // VIL-504 · no canned which-one skeleton: the model's apology, never fixed copy.
+    expect(h.transport.bodies()).toHaveLength(1);
+    expect(h.transport.bodies()[0]).not.toMatch(/Which one -/);
   });
 
   it('does not offer numbers when no menu was written down', async () => {
@@ -2920,8 +3274,8 @@ describe('natural reply resolution', () => {
     expect(result.status).toBe('agent_failed');
     expect((h.deps.disambiguation as unknown as { minted: number }).minted).toBe(0);
     const sent = h.transport.bodies()[0] as string;
-    // Still asked, still by name — the sentence that went out before VIL-304.
-    expect(sent).toBe('Which one - reschedule on your calendar or meeting the family nearby?');
+    // VIL-504 · no canned which-one skeleton on a coach-down turn.
+    expect(sent).not.toMatch(/Which one -/);
     expect(sent).not.toContain('1)');
     expect(sent).not.toMatch(/Reply 1/);
   });
@@ -3065,6 +3419,9 @@ describe('the 09:47 sequence', () => {
   };
 
   /** The real lane, over spies. `standing` is what the ledger already holds. */
+  const line = (situation: IntroReplySituation) =>
+    `model:${INTRO_REPLY_FACTS[situation].situation}`;
+
   function introChain(standing: 'unanswered' | 'granted') {
     const written: boolean[] = [];
     const deps: VillageIntroReplyDeps = {
@@ -3083,6 +3440,8 @@ describe('the 09:47 sequence', () => {
       answerableProposal: async () => null,
       recordDecision: async () => {},
       cancelOpenProposals: async () => {},
+      // Stands in for the model (said-line): never a paid call.
+      saidLine: { write: async (input) => `model:${String(input.facts.situation)}` },
     };
     return { written, handlers: [villageIntroHandler(deps)] };
   }
@@ -3109,7 +3468,7 @@ describe('the 09:47 sequence', () => {
     expect(result.status).toBe('resolved');
     expect(chain.written).toEqual([true]);
     // ONE message. What happened live was a coach turn about a stale calendar draft.
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_on')]);
     expect(coach.calls).toBe(0);
   });
 
@@ -3128,9 +3487,9 @@ describe('the 09:47 sequence', () => {
 
     expect(result.handler).toBe('village_intro');
     expect(chain.written).toEqual([]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ALREADY_ON]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_already_on')]);
     // Not the full acknowledgement a second time.
-    expect(h.transport.bodies()[0]).not.toBe(DISCOVERABILITY_ON);
+    expect(h.transport.bodies()[0]).not.toBe(line('discoverability_on'));
   });
 
   it('still honours a revocation seconds after the grant', async () => {
@@ -3145,7 +3504,7 @@ describe('the 09:47 sequence', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(chain.written).toEqual([false]);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
+    expect(h.transport.bodies()).toEqual([line('discoverability_off')]);
   });
 });
 
@@ -3306,6 +3665,8 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     label: 'Tuesday preschool swim',
     instant: false,
     lastState: 'full' as const,
+    sessionStartsAt: null,
+    sessionAnchor: null,
   };
 
   it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {
@@ -3482,6 +3843,28 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     expect(result.status).toBe('agent_replied');
   });
 
+  it('(c2) a claim naming "St. Mary\'s" is cut whole, never leaving "at St." (VIL-575)', async () => {
+    const named = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    const coach = scriptedCoach([{ reply: named }, { reply: named }]);
+    const h = harness({ coach });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4.']);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('(c3) a cut that would leave a dangling clause fails the turn (VIL-575)', async () => {
+    const dangling = "Here's where things stand:\nYour well-baby visit is booked.";
+    const coach = scriptedCoach([{ reply: dangling }, { reply: dangling }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Never "Here's where things stand:" on its own: the turn's failure path answers.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+    expect(JSON.stringify(h.logs)).toContain('"reason":"cut_fragment"');
+  });
+
   it('(d) a booking claim with nothing on the calendar never reaches the wire', async () => {
     const coach = scriptedCoach([
       { reply: 'Your well-baby visit is booked.' },
@@ -3492,6 +3875,16 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
 
     // Nothing survived the cut, so the turn is a FAILURE with an apology — not a blank
     // text, and not the claim.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+  });
+
+  it('(d1) a booking claim ending "Sat." is not hidden by the question after it (VIL-575)', async () => {
+    const asked = 'Your well-baby visit is booked for Sat. Want me to add a reminder?';
+    const coach = scriptedCoach([{ reply: asked }, { reply: asked }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
     expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
     expect(result.status).toBe('agent_failed');
   });
@@ -3871,7 +4264,7 @@ describe('the disambiguation a clarifier owns', () => {
 
   it('resolves the option the parent quoted back, instead of handing it to the coach', async () => {
     const founder = owner('founder_welcome', 'founder_welcome_offer');
-    const coach = brokenCoach();
+    const coach = fakeCoach('Which one did you mean - the calendar change or the welcome note?');
     const resolver = replayedResolver({
       // Turn one: an answer, and which one cannot be told from the word.
       YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
@@ -3889,7 +4282,7 @@ describe('the disambiguation a clarifier owns', () => {
     });
 
     const asked = await c.run();
-    expect(asked.status).toBe('agent_failed');
+    expect(asked.status).toBe('agent_replied');
     expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
 
     const answered = await c.run();
@@ -3938,7 +4331,7 @@ describe('the disambiguation a clarifier owns', () => {
     const c = conversation({
       bodies: ['YES', '2'],
       handlers: [founder.handler],
-      coach: brokenCoach(),
+      coach: fakeCoach('Which one did you mean - the calendar change or the welcome note?'),
       questions: fakeQuestions([calendarDraft(), founderOffer()]),
       replyResolver: replayedResolver({
         YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
@@ -3949,9 +4342,9 @@ describe('the disambiguation a clarifier owns', () => {
     const asked = await c.run();
     expect(c.h.transport.bodies()[0]).toMatch(/Which one/i);
     expect(c.h.transport.bodies()[0]).not.toContain('2)');
-    expect(asked.status).toBe('agent_failed');
+    expect(asked.status).toBe('agent_replied');
 
-    expect((await c.run()).status).toBe('agent_failed');
+    expect((await c.run()).status).toBe('agent_replied');
     expect(founder.seen).toEqual([]);
   });
 
@@ -4042,7 +4435,7 @@ describe('the disambiguation a clarifier owns', () => {
     const c = conversation({
       bodies: ['YES', 'yes 2'],
       handlers: [approvalHandler(queue.spine as never)],
-      coach: brokenCoach(),
+      coach: fakeCoach('Which one did you mean - the calendar change or the welcome note?'),
       questions: fakeQuestions(open),
       replyResolver: replayedResolver({
         YES: { target: 'ambiguous', polarity: 'yes', confidence: 'high' },
@@ -4311,6 +4704,219 @@ describe('the weekday-care answer', () => {
     expect(queue.approved).toEqual(['a-1']);
   });
 
+  /**
+   * VIL-513. The coach asked "Add Trunk or Treat …?" which is one drafted calendar
+   * add. A bare YES must approve that draft. It must not reach the coach, which
+   * would draft the same add again.
+   */
+  it('approves the pending calendar add when YES answers the coach offer', async () => {
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async () => ({ ok: true as const }),
+      undo: async () => ({ ok: true as const }),
+    };
+    const coach = fakeCoach();
+    let calendarReads = 0;
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'ambiguous' });
+    const offer: OpenQuestion = {
+      id: 'offer-1',
+      kind: 'email_alert_add',
+      description: 'An offer to put Trunk or Treat on your week, starting 2026-10-31T19:00:00.000Z',
+      subject: 'putting Trunk or Treat on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      approvesActionId: 'a-1',
+    };
+    const h = harness({
+      context: { body: 'YES' },
+      coach,
+      handlers: [approvalHandler(spine as never)],
+      questions: fakeQuestions([
+        {
+          id: 'a-flagged',
+          kind: 'approval',
+          description: 'Add to your calendar',
+          subject: 'add to your calendar',
+          answerable: { yes: false, no: true },
+          askedAt: null,
+          solicited: false,
+        },
+        offer,
+      ]),
+      replyResolver: resolver,
+      calendarOffers: {
+        readParent: async () => {
+          calendarReads += 1;
+          return {
+            status: 'resolved' as const,
+            questionId: 'offer-1',
+            kind: 'email_alert_add' as const,
+            polarity: 'yes' as const,
+            confidence: 'high' as const,
+          };
+        },
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(calendarReads).toBe(1);
+    expect(resolver.calls).toBe(0);
+    expect(approved).toEqual(['a-1']);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'approval' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('declines the paired calendar draft when NO answers the coach offer', async () => {
+    const declined: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true },
+      ],
+      latestUndoable: async () => null,
+      approve: async () => ({ ok: true as const }),
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const coach = fakeCoach();
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const h = harness({
+      context: { body: 'NO' },
+      coach,
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([
+        {
+          id: 'offer-1',
+          kind: 'email_alert_add',
+          description: 'An offer to put Trunk or Treat on your week',
+          subject: 'putting Trunk or Treat on your week',
+          answerable: { yes: true, no: true },
+          askedAt: NOW,
+          solicited: true,
+          approvesActionId: 'a-1',
+        },
+      ]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(declined).toEqual(['a-1']);
+    expect(coach.calls).toBe(0);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('declines every hidden unapproved draft when NO answers the offer, and YES does not approve them', async () => {
+    const declined: string[] = [];
+    const approved: string[] = [];
+    const spine = {
+      listPending: async () => [
+        { actionId: 'a-held', actionType: 'calendar_add', reviewerApproved: false },
+        { actionId: 'a-held-2', actionType: 'calendar_add', reviewerApproved: false },
+      ],
+      latestUndoable: async () => null,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return { ok: true as const };
+      },
+      decline: async (_db: unknown, args: { actionId: string }) => {
+        declined.push(args.actionId);
+        return { ok: true as const };
+      },
+      undo: async () => ({ ok: true as const }),
+    };
+    const offer = {
+      id: 'offer-1',
+      kind: 'email_alert_add' as const,
+      description: 'An offer to put Picture day on your week',
+      subject: 'putting Picture day on your week',
+      answerable: { yes: true, no: true },
+      askedAt: NOW,
+      solicited: true,
+      declinesActionId: 'a-held',
+      declinesActionIds: ['a-held', 'a-held-2'],
+    };
+    const offerHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'declined', reply: null }),
+    };
+    const no = harness({
+      context: { body: 'NO' },
+      coach: fakeCoach(),
+      handlers: [offerHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'no' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    await routeChannelMessage(no.deps, job());
+    expect(declined).toEqual(['a-held', 'a-held-2']);
+    expect(approved).toEqual([]);
+
+    const yesHandler: DeterministicHandler = {
+      name: 'email_alert_add',
+      resolves: new Set(['email_alert_add']),
+      handle: async () => ({ claimed: true, outcome: 'added', reply: null }),
+    };
+    const yes = harness({
+      context: { body: 'YES' },
+      coach: fakeCoach(),
+      handlers: [yesHandler, approvalHandler(spine as never)],
+      questions: fakeQuestions([offer]),
+      calendarOffers: {
+        readParent: async () => ({
+          status: 'resolved' as const,
+          questionId: 'offer-1',
+          kind: 'email_alert_add' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        }),
+        readCoach: async () => ({ status: 'none' as const, reason: 'no_offer' as const }),
+      },
+    });
+
+    const result = await routeChannelMessage(yes.deps, job());
+    expect(approved).toEqual([]);
+    expect(result).toMatchObject({ status: 'resolved', handler: 'email_alert_add' });
+  });
+
   it('a yes to the finder ask searches and does not write a care fact', async () => {
     const searches: Array<{ familyId: string; prompt: string }> = [];
     const { h, written, coach } = careHarness({
@@ -4570,7 +5176,7 @@ describe('a slow answer gets one holding line first', () => {
     return {
       async check() {
         await new Promise((resolve) => setTimeout(resolve, ms));
-        return { allowed, retryAfterSec: 0 };
+        return { allowed, retryAfterSec: 0, firstDenied: !allowed };
       },
     };
   }
@@ -4660,7 +5266,7 @@ describe('a slow answer gets one holding line first', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('flood_held');
-    expect(h.transport.bodies()).toEqual([FLOOD_REPLY]);
+    expect(h.transport.bodies()).toEqual(['A lot came in at once.']);
     expect(holding.calls).toBe(0);
   });
 
@@ -4837,7 +5443,7 @@ describe('a slow answer gets one holding line first', () => {
       holdingLine: holding,
       holdingLineAfterMs: 10,
     });
-    const { in_group: _unsaid, ...unsaid } = job();
+    const unsaid = job({ in_group: undefined });
 
     const result = await routeChannelMessage(h.deps, unsaid);
 
@@ -4889,6 +5495,8 @@ describe('the reply row, written to a real database', () => {
       // 0167 stays unapplied. The reply path now reads inbound media, which
       // arrives in 0173, so that column is present without the pending-ask table.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
+      // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
+      await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
     });
 
     afterAll(async () => {
@@ -5223,15 +5831,17 @@ describe('the reply row, written to a real database', () => {
      * line someone who is not a parent gets, and a tapback that stood in for the words.
      */
     describe('every answer closes the question', () => {
-      const SPENT: RateLimiter = { check: async () => ({ allowed: false, retryAfterSec: 60 }) };
+      const SPENT: RateLimiter = {
+        check: async () => ({ allowed: false, retryAfterSec: 60, firstDenied: true }),
+      };
 
       it.each([
         ['what the coach says', {}, ['coach says hi']],
-        ['the line a spent budget gets', { limiter: SPENT }, [FLOOD_REPLY]],
+        ['the line a spent budget gets', { limiter: SPENT }, ['A lot came in at once.']],
         [
           'the line a spent budget gets from a group, on their own phone',
           { limiter: SPENT, context: { inGroup: true } },
-          [FLOOD_REPLY],
+          ['A lot came in at once.'],
         ],
         [
           'the line someone who is not a parent gets',
@@ -5281,6 +5891,41 @@ describe('the reply row, written to a real database', () => {
         expect(next.said).toEqual([]);
         expect(await keptAsks(parent.familyId)).toEqual([]);
       });
+
+      it('a sticker the model chose to stand in for the words', async () => {
+        lit();
+        vi.stubEnv('LINQ_API_KEY', 'test-key');
+        vi.stubEnv('LINQ_STICKERS_ENABLED', 'true');
+        stickerDecide.mockResolvedValue({ sticker: '🙌', sendReply: false });
+        const peeled: unknown[] = [];
+        vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+          if (new URL(url).pathname.endsWith('/reactions'))
+            peeled.push(JSON.parse(String(init?.body)));
+          return new Response(null, { status: 204 });
+        });
+        const parent = await seedFamily(db.database);
+        await text(parent, 'hows the weather tomorrow', OWN_CHAT);
+        expect(await keptAsks(parent.familyId)).toHaveLength(1);
+
+        const next = await text(
+          parent,
+          'perfect, see you saturday',
+          { ...OWN_CHAT, replyToMessageId: 'in-1' },
+          { offDomain: fakeLane(IN_DOMAIN), coach: fakeCoach('See you then.') },
+        );
+        vi.unstubAllGlobals();
+
+        expect(stickerDecide).toHaveBeenCalledWith({
+          audience: 'direct',
+          parentText: 'perfect, see you saturday',
+          parentAttachments: [],
+          reply: 'See you then.',
+        });
+        expect(peeled).toEqual([{ operation: 'add', type: 'sticker', emoji: '🙌' }]);
+        expect(next.said).toEqual([]);
+        expect(await keptAsks(parent.familyId)).toEqual([]);
+        stickerDecide.mockReset();
+      });
     });
 
     /** One person, two households. A question is put to a parent in one family, and
@@ -5307,5 +5952,1057 @@ describe('the reply row, written to a real database', () => {
         { ...ASKED, chat: 'chat-own', direction: 'out' },
       ]);
     });
+  });
+
+  /** The production wiring: no `crisisPager` in the deps, so the router's default (the
+   * real failure-page pager on this turn's database) runs. Only the Slack post is faked. */
+  describe('a crisis moment nobody could write, through the default pager', () => {
+    const WEBHOOK = 'https://hooks.example.test/ops';
+    let db: TestDb;
+
+    beforeAll(async () => {
+      db = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await db.close();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("pages #ops once and leaves the claim and the texting parent's audit row", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+      const posted: string[] = [];
+      vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+        if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+        return new Response('ok', { status: 200 });
+      });
+      const { h, familyId, parentUserId, turn } = await onRealDatabase(db, {
+        offDomain: {
+          async consider() {
+            return {
+              status: 'unwritten' as const,
+              moment: 'mental_crisis' as const,
+              reason: 'model_failed',
+              lane: 'safety_critical' as const,
+              category: 'other' as const,
+            };
+          },
+        },
+      });
+      h.deps.crisisPager = undefined;
+
+      await expect(routeChannelMessage(h.deps, turn())).rejects.toMatchObject({
+        name: 'TurnDeferred',
+        reason: 'moment_unwritten',
+      });
+
+      expect(h.transport.bodies()).toEqual([]);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain('kind mental.');
+      expect(posted[0]).toContain('where router_moment.');
+      expect(posted[0]).toContain('reason model_failed.');
+      expect(posted[0]).toContain('writes 2.');
+      const claims = await db.database
+        .select({ count: schema.rateLimits.count })
+        .from(schema.rateLimits)
+        .where(eq(schema.rateLimits.route, CRISIS_UNANSWERED_PAGE_ROUTE));
+      expect(claims).toEqual([{ count: 1 }]);
+      const audit = await db.database
+        .select({
+          familyId: schema.auditLog.familyId,
+          targetId: schema.auditLog.targetId,
+          after: schema.auditLog.after,
+        })
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, CRISIS_UNANSWERED_AUDIT_ACTION));
+      expect(audit).toEqual([
+        {
+          familyId,
+          targetId: parentUserId,
+          after: { kind: 'mental', where: 'router moment', reason: 'model_failed', writes: 2 },
+        },
+      ]);
+    });
+  });
+});
+
+/**
+ * VIL-463 — a group turn never reaches a parent's 1:1 thread, 1:1 asks, or the group
+ * with a private line. Fake families only; no keys, no SMS, no model.
+ */
+describe('VIL-463 group scope', () => {
+  const GROUP_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-family-group',
+    replyToMessageId: 'in-1',
+  };
+
+  it('refuses a job with no group bit that arrived in an iMessage chat, opening no 1:1 thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: undefined }));
+
+    expect(result.status).toBe('group_unscoped');
+    expect(result.conversationId).toBeNull();
+    expect(conversationRows(h.fake)).toEqual([]);
+    expect(messageRows(h.fake)).toEqual([]);
+    expect(coach.calls).toBe(0);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('positive control: the same chat with the bit said false runs as a 1:1 turn', async () => {
+    const h = harness({ context: { reply: GROUP_ROUTE, inGroup: false } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('a group "yes" does not resolve a question open in the 1:1 chat', async () => {
+    const question: OpenQuestion = {
+      id: 'aaaa1111-1111-4111-8111-111111111111',
+      kind: 'approval',
+      description: 'Reschedule on your calendar',
+      subject: 'reschedule on your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const seen: unknown[] = [];
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: unknown }) {
+        seen.push(ctx.resolved);
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done.' };
+      },
+    } as unknown as DeterministicHandler;
+    const resolved = fakeResolver({
+      status: 'resolved',
+      questionId: question.id,
+      kind: 'approval',
+      polarity: 'yes',
+      confidence: 'high',
+    });
+
+    const questions = fakeQuestions([question]);
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions,
+      replyResolver: resolved,
+    });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).not.toBe('resolved');
+    expect(questions.calls).toBe(0);
+    expect(resolved.calls).toBe(0);
+    expect(seen.every((r) => r === null)).toBe(true);
+
+    // Positive control: the same "yes" in the 1:1 chat resolves it.
+    const direct = harness({
+      context: { body: 'yes' },
+      handlers: [owner],
+      questions: fakeQuestions([question]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: question.id,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+    expect((await routeChannelMessage(direct.deps, job())).status).toBe('resolved');
+  });
+
+  it('VIL-443: a group "yes" approves a plan drafted in that same group, and nothing else', async () => {
+    const planned: OpenQuestion = {
+      id: 'bbbb2222-2222-4222-8222-222222222222',
+      kind: 'approval',
+      description: 'Add to your calendar',
+      subject: 'add to your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const private1to1: OpenQuestion = { ...planned, id: 'cccc3333-3333-4333-8333-333333333333' };
+    const seen: Array<{ questionId: string } | null> = [];
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: { questionId: string } | null }) {
+        seen.push(ctx.resolved);
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done.' };
+      },
+    } as unknown as DeterministicHandler;
+    const shown: string[][] = [];
+    const resolver = {
+      calls: 0,
+      async read(input: { questions: readonly OpenQuestion[] }) {
+        resolver.calls += 1;
+        shown.push(input.questions.map((q) => q.id));
+        return {
+          status: 'resolved' as const,
+          questionId: planned.id,
+          kind: 'approval' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        };
+      },
+    };
+    const asked: Array<{ familyId: string; chatId: string }> = [];
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([private1to1, planned]),
+      replyResolver: resolver as never,
+    });
+    h.deps.groupPlanActionIds = async (_db, input) => {
+      asked.push(input);
+      return new Set([planned.id]);
+    };
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('resolved');
+    expect(asked).toEqual([{ familyId: expect.any(String), chatId: GROUP_ROUTE.chatId }]);
+    // The 1:1 approval is never shown to the resolver from the group.
+    expect(shown).toEqual([[planned.id]]);
+    expect(seen.at(-1)?.questionId).toBe(planned.id);
+
+    // Negative control: no plan drafted in this group, so the group yes answers nothing.
+    const none = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([private1to1, planned]),
+      replyResolver: resolver as never,
+    });
+    none.deps.groupPlanActionIds = async () => new Set();
+    const callsBefore = resolver.calls;
+    expect((await routeChannelMessage(none.deps, job({ in_group: true }))).status).not.toBe(
+      'resolved',
+    );
+    expect(resolver.calls).toBe(callsBefore);
+  });
+
+  it('a group text does not spend the menu Hale printed in the 1:1 chat', async () => {
+    function menuSpy() {
+      const spy = {
+        consumed: 0,
+        async pending() {
+          return {
+            id: 'menu-1',
+            polarity: 'yes' as const,
+            numbered: true,
+            options: [] as readonly DisambiguationOption[],
+          };
+        },
+        async mint() {
+          return { status: 'minted' as const };
+        },
+        async consume() {
+          spy.consumed += 1;
+          return 'spent' as const;
+        },
+      };
+      return spy;
+    }
+    const group = harness({ context: { body: '2', reply: GROUP_ROUTE, inGroup: true } });
+    const groupMenu = menuSpy();
+    group.deps.disambiguation = groupMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(group.deps, job({ in_group: true }));
+    expect(groupMenu.consumed).toBe(0);
+
+    // Positive control: the same text in the 1:1 chat spends it.
+    const direct = harness({ context: { body: '2' } });
+    const directMenu = menuSpy();
+    direct.deps.disambiguation = directMenu as unknown as DisambiguationStore;
+    await routeChannelMessage(direct.deps, job());
+    expect(directMenu.consumed).toBe(1);
+  });
+
+  // VIL-477: an overlapping turn (a "be quiet" reply composed before another member's
+  // leave landed) must not speak into the chat Hale already left.
+  it('sends nothing into a group chat Hale left while the turn was in flight', async () => {
+    const seen: Array<{ chatId: string; since: Date }> = [];
+    const h = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    h.deps.leftChatSince = async (_db, input) => {
+      seen.push(input);
+      return true;
+    };
+    const turn = job({ in_group: true });
+    const result = await routeChannelMessage(h.deps, turn);
+
+    expect(result.status).toBe('group_left');
+    expect(h.transport.sent).toEqual([]);
+    expect(seen[0]?.chatId).toBe(GROUP_ROUTE.chatId);
+    expect(seen[0]?.since.toISOString()).toBe(new Date(turn.received_at).toISOString());
+
+    // Positive control: the same group turn, chat not left, replies.
+    const stay = harness({
+      context: { body: 'Hale be quiet for a bit', reply: GROUP_ROUTE, inGroup: true },
+    });
+    const kept = await routeChannelMessage(stay.deps, job({ in_group: true }));
+    expect(kept.status).not.toBe('group_left');
+    expect(stay.transport.sent.length).toBeGreaterThan(0);
+  });
+
+  async function overLimitGroupTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine, context: { reply: GROUP_ROUTE, inGroup: true } });
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+    return { h, result };
+  }
+
+  it('sends the composed over-limit line 1:1 with no conversation, never into the group', async () => {
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+    expect(h.transport.sent.some((s) => s.route.channel === 'imessage')).toBe(false);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+    expect(messageRows(h.fake).filter((m) => m.role === 'assistant')).toEqual([]);
+  });
+
+  /** A receipt only its asker should read (a texted disconnect names their accounts). */
+  function askerOnlyHandler(onlyToAsker: boolean): DeterministicHandler {
+    return {
+      name: 'asker_only',
+      async handle() {
+        return {
+          claimed: true as const,
+          outcome: 'revoked',
+          reply: 'Your Gmail and Calendar are off.',
+          ...(onlyToAsker ? { onlyToAsker: true as const } : {}),
+        };
+      },
+    };
+  }
+
+  /** The asker's own SMS channel, verified, as enrolment leaves it. */
+  async function enrolAsker(h: Harness, phone = PHONE): Promise<void> {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    await h.fake.db.insert(schema.parentChannels).values({
+      familyId: FAMILY,
+      userId: PARENT,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: 'hash-asker',
+      verifiedAt: NOW,
+      revokedAt: null,
+    });
+  }
+
+  it('a group turn: a receipt marked for its asker goes 1:1 to them, never into the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.relatedConversationId).toBeNull();
+  });
+
+  it('a group turn whose asker has no enrolled SMS channel: nothing sent anywhere, named', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a group turn from an Apple ID handle: no SMS to an address, nothing to the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: { ...GROUP_ROUTE, to: 'parent@icloud.example' }, inGroup: true },
+    });
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it("a group handle that is a phone, but not the asker's enrolled one: nothing sent", async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(true)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+    await enrolAsker(h, '+12025550143');
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result).toMatchObject({ status: 'asker_unreachable', handler: 'asker_only' });
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a resolved answer whose owner marks the receipt for its asker goes 1:1 too', async () => {
+    const planned: OpenQuestion = {
+      id: 'dddd4444-4444-4444-8444-444444444444',
+      kind: 'approval',
+      description: 'Add to your calendar',
+      subject: 'add to your calendar',
+      answerable: { yes: true, no: true },
+      askedAt: null,
+      solicited: false,
+    };
+    const owner = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      async handle(_db: unknown, ctx: { resolved: { questionId: string } | null }) {
+        if (!ctx.resolved) return { claimed: false };
+        return { claimed: true, outcome: 'acted', reply: 'Done, just for you.', onlyToAsker: true };
+      },
+    } as unknown as DeterministicHandler;
+    const resolver = {
+      async read() {
+        return {
+          status: 'resolved' as const,
+          questionId: planned.id,
+          kind: 'approval' as const,
+          polarity: 'yes' as const,
+          confidence: 'high' as const,
+        };
+      },
+    };
+    const h = harness({
+      context: { body: 'yes', reply: GROUP_ROUTE, inGroup: true },
+      handlers: [owner],
+      questions: fakeQuestions([planned]),
+      replyResolver: resolver as never,
+    });
+    h.deps.groupPlanActionIds = async () => new Set([planned.id]);
+    await enrolAsker(h);
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(result.status).toBe('resolved');
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Done, just for you.' }]);
+  });
+
+  it('positive control: the same receipt without the mark answers in the group', async () => {
+    const h = harness({
+      handlers: [askerOnlyHandler(false)],
+      context: { reply: GROUP_ROUTE, inGroup: true },
+    });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(h.transport.sent).toEqual([
+      { route: GROUP_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+  });
+
+  it('a 1:1 turn: a receipt marked for its asker is the ordinary answer in their own thread', async () => {
+    const h = harness({ handlers: [askerOnlyHandler(true)] });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toEqual([
+      { route: SMS_ROUTE, body: 'Your Gmail and Calendar are off.' },
+    ]);
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out[0]?.relatedConversationId).not.toBeNull();
+  });
+
+  it('a 1:1 text re-driven by the reconciler with its stored bit (false) runs, in its own thread', async () => {
+    const coach = fakeCoach();
+    const h = harness({ coach, context: { reply: GROUP_ROUTE, inGroup: false } });
+    // `redriven` is the turn ledger's business; the job is the reconciler's shape.
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+    expect(result.status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(conversationRows(h.fake)).toHaveLength(1);
+  });
+
+  async function overLimitDirectTurn(floodLine: FloodLineComposer) {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const h = harness({ limiter, floodLine });
+    const result = await routeChannelMessage(h.deps, job());
+    return { h, result };
+  }
+
+  it('answers a 1:1 over-limit text with the composed line, told it is 1:1', async () => {
+    const seen: unknown[] = [];
+    const flood: FloodLineComposer = {
+      async compose(facts) {
+        seen.push(facts);
+        return { status: 'composed', line: 'Swamped for a second.' };
+      },
+    };
+    const { h, result } = await overLimitDirectTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(seen).toEqual([{ language: null, inGroup: false }]);
+    expect(h.transport.sent).toEqual([{ route: SMS_ROUTE, body: 'Swamped for a second.' }]);
+  });
+
+  it('records the 1:1 over-limit answer under the flood line template key', async () => {
+    const { h } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' }),
+    );
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([
+      expect.objectContaining({ templateKey: 'flood_line' }),
+    ]);
+  });
+
+  it('composes the over-limit line once per budget window: later texts make no model call', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'composed', line: 'Swamped for a second.' });
+    const h = harness({ limiter, floodLine: flood });
+    const results = [];
+    for (let i = 0; i < 3; i += 1) {
+      results.push((await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + i))).status);
+    }
+    expect(results).toEqual(['flood_held', 'flood_held', 'flood_held']);
+    expect(flood.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual(['Swamped for a second.']);
+  });
+
+  it('a failed compose still spends the window: the next over-limit text does not retry it', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await limiter.check(PARENT, 'sms-agent-turn', {
+        limit: AGENT_TURNS_PER_HOUR,
+        windowSec: 3600,
+      });
+    }
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const h = harness({ limiter, floodLine: flood });
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR + 1));
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('sends nothing on a 1:1 over-limit text when the line cannot be composed', async () => {
+    const { h, result } = await overLimitDirectTurn(
+      fakeFloodLine({ status: 'unavailable', reason: 'model_failed' }),
+    );
+    expect(result.status).toBe('flood_held');
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
+  });
+
+  it('sends nothing at all when the over-limit line cannot be composed', async () => {
+    const flood = fakeFloodLine({ status: 'unavailable', reason: 'model_failed' });
+    const { h, result } = await overLimitGroupTurn(flood);
+
+    expect(result.status).toBe('flood_held');
+    expect(flood.calls).toBe(1);
+    expect(h.transport.sent).toEqual([]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toEqual([]);
+  });
+});
+
+describe('VIL-581 · the claim shadow starts after the send and changes nothing', () => {
+  type CoachTurnCall = Parameters<ClaimShadow['coachTurn']>;
+  function recordingShadow() {
+    const calls: Array<{ args: CoachTurnCall; sentBefore: number }> = [];
+    const seen: { transport?: FakeReplyTransport } = {};
+    const shadow: ClaimShadow = {
+      coachTurn: (...args) => {
+        calls.push({ args, sentBefore: seen.transport?.sent.length ?? -1 });
+        return 'started';
+      },
+      sweep: () => 'off',
+      dispatch: () => 'off',
+    };
+    return { shadow, calls, seen };
+  }
+  function scripted(replies: readonly string[]): ChannelCoachRuntime {
+    let attempt = 0;
+    return {
+      async respond() {
+        const reply = replies[Math.min(attempt, replies.length - 1)] ?? '';
+        attempt += 1;
+        return { reply, planOffer: null, activityPromise: null, spotWatch: null };
+      },
+    };
+  }
+
+  it('a clean turn: one call, after the transport took the reply, with the sent reply', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: fakeCoach('Saturday has two indoor options.'),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(rec.calls).toHaveLength(1);
+    const call = rec.calls[0] as (typeof rec.calls)[number];
+    expect(call.sentBefore).toBe(1);
+    const [database, input] = call.args;
+    expect(database).toBe(h.deps.database);
+    expect(input.attempts).toHaveLength(1);
+    expect(input.attempts[0]?.reply).toBe(h.transport.bodies()[0]);
+    expect(input.inbound).toBe('anything indoors this weekend?');
+    expect(input.familyId).toBe(FAMILY);
+    expect(input.parentUserId).toBe(PARENT);
+
+    const baseline = harness({ coach: fakeCoach('Saturday has two indoor options.') });
+    await routeChannelMessage(baseline.deps, job());
+    expect(h.transport.bodies()).toEqual(baseline.transport.bodies());
+  });
+
+  it('a re-asked turn hands over both attempts, the first with its refusal', async () => {
+    const rec = recordingShadow();
+    const h = harness({
+      coach: scripted([
+        "I'm watching that morning and I'll text you before it goes live.",
+        'Riverford has not published a winter date yet.',
+      ]),
+      claimShadow: rec.shadow,
+    });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).toEqual(['Riverford has not published a winter date yet.']);
+    const attempts = rec.calls[0]?.args[1].attempts ?? [];
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.verdict.refused).toHaveLength(1);
+    expect(attempts[1]?.verdict.refused).toHaveLength(0);
+  });
+
+  it('an empty reply sends nothing and starts no shadow (control)', async () => {
+    const rec = recordingShadow();
+    const h = harness({ coach: fakeCoach(''), claimShadow: rec.shadow });
+    rec.seen.transport = h.transport;
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.sent).toEqual([]);
+    expect(rec.calls).toEqual([]);
+  });
+});
+
+describe('VIL-581 PR 3 · enforce: every claim a sentence makes must cite a row', () => {
+  const INTRO = 'Here are two indoor options.';
+  // VIL-580's reproducer: a real follow-up and a false booking in one sentence.
+  const REPRODUCER =
+    "Registration opens Tuesday, and I'll keep looking for toddler activities; your well-baby visit is booked.";
+  const FOLLOW_UP = "I'll keep looking for toddler activities.";
+  const PROMISE: ActivityPromise = { subject: 'toddler activities', childId: null };
+
+  function scriptedCoach(
+    turns: readonly { reply: string; promise?: boolean; drafted?: string[] }[],
+  ): ChannelCoachRuntime & { calls: number; rejected: string[][] } {
+    const coach = {
+      calls: 0,
+      rejected: [] as string[][],
+      async respond(_turn: ChannelTurn, rejectedLastAttempt: readonly string[]) {
+        const scripted = turns[Math.min(coach.calls, turns.length - 1)];
+        coach.calls += 1;
+        coach.rejected.push([...rejectedLastAttempt]);
+        return {
+          reply: scripted?.reply ?? '',
+          planOffer: null,
+          activityPromise: scripted?.promise ? PROMISE : null,
+          spotWatch: null,
+          ...(scripted?.drafted ? { draftedActionIds: scripted.drafted } : {}),
+        };
+      },
+    };
+    return coach;
+  }
+
+  /** The reader cites the pending follow-up for its clause and no row for a booking. */
+  const readsLikeTheEval = () =>
+    scriptedClaimReader((segments) =>
+      segments.flatMap((segment) => [
+        ...(/keep looking/.test(segment.text)
+          ? [{ segment: segment.index, kind: 'activity_followup' as const, row: 'p1' as const }]
+          : []),
+        ...(/booked/.test(segment.text)
+          ? [{ segment: segment.index, kind: 'scheduled_event' as const, row: 'none' as const }]
+          : []),
+      ]),
+    );
+
+  function enforcer(reader: ClaimReader): ClaimEnforcer {
+    return createClaimEnforcer({
+      enforces: () => true,
+      reader,
+      loadContext: async (_db, input) => ({
+        status: 'ready',
+        rows: input.pending?.activityFollowup
+          ? [
+              {
+                familyId: FAMILY,
+                source: 'pending',
+                kind: 'activity_followup',
+                what: claimRowLabel({ from: 'pending', text: input.pending.activityFollowup }, NOW),
+              },
+            ]
+          : [],
+        language: 'en',
+        timeZone: 'America/New_York',
+      }),
+    });
+  }
+
+  function recorded() {
+    const promises: unknown[] = [];
+    const research: unknown[] = [];
+    const options: Pick<
+      Parameters<typeof harness>[0] & object,
+      'recordActivityPromise' | 'dispatchDeepResearch'
+    > = {
+      recordActivityPromise: async (_db, input) => {
+        promises.push(input);
+        return { status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID };
+      },
+      dispatchDeepResearch: async (payload) => {
+        research.push(payload);
+        return { status: 'enqueued' as const, jobId: 'job-1' };
+      },
+    };
+    return { promises, research, options };
+  }
+
+  it('off: the regex reads the reproducer as a follow-up only, so the false booking goes out (the hole)', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([{ reply: `${INTRO} ${REPRODUCER}`, promise: true }]);
+    const h = harness({ coach, ...rec.options });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([`${INTRO} ${REPRODUCER}`]);
+    expect(rec.promises).toHaveLength(1);
+  });
+
+  it('enforce: the booking is refused, re-asked, then its whole sentence is cut and the promise it carried is not written', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([{ reply: `${INTRO} ${REPRODUCER}`, promise: true }]);
+    const h = harness({ coach, claimEnforcer: enforcer(readsLikeTheEval()), ...rec.options });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(coach.calls).toBe(2);
+    expect(coach.rejected[1]?.join(' ')).toMatch(/something is booked or on the calendar/);
+    expect(h.transport.bodies()).toEqual([INTRO]);
+    // The follow-up's sentence never reached the parent, so nothing promises it.
+    expect(rec.promises).toEqual([]);
+    expect(rec.research).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('promise_cut');
+  });
+
+  it('enforce: a re-asked reply that keeps only the follow-up is sent, and its promise is written', async () => {
+    const rec = recorded();
+    const coach = scriptedCoach([
+      { reply: `${INTRO} ${REPRODUCER}`, promise: true },
+      { reply: `${INTRO} ${FOLLOW_UP}`, promise: true },
+    ]);
+    const h = harness({ coach, claimEnforcer: enforcer(readsLikeTheEval()), ...rec.options });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([`${INTRO} ${FOLLOW_UP}`]);
+    expect(rec.promises).toHaveLength(1);
+  });
+
+  it('enforce: an enforced turn starts no shadow read; it was read before the send', async () => {
+    const calls: unknown[] = [];
+    const reader = readsLikeTheEval();
+    const h = harness({
+      coach: fakeCoach(INTRO),
+      claimEnforcer: enforcer(reader),
+      claimShadow: {
+        ...offShadow(),
+        coachTurn: (...args) => {
+          calls.push(args);
+          return 'started';
+        },
+      },
+    });
+    await routeChannelMessage(h.deps, job());
+    expect(h.transport.bodies()).toEqual([INTRO]);
+    expect(reader.bodies).toEqual([INTRO]);
+    expect(calls).toEqual([]);
+  });
+
+  describe('a read that fails after the coach ran claims the turn and never re-drives it', () => {
+    const failing = () => scriptedClaimReader(() => 'unreachable');
+
+    it('sends the composed apology, records the failure, defers nothing', async () => {
+      const coach = scriptedCoach([{ reply: INTRO }]);
+      const apology = fakeApology();
+      const h = harness({ coach, apology, claimEnforcer: enforcer(failing()) });
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_failed');
+      expect(h.transport.bodies()).toEqual([APOLOGY]);
+      expect(h.turns.failed.map((f) => f.reason)).toEqual(['apology_sent']);
+      expect(h.turns.deferred).toEqual([]);
+      expect(coach.calls).toBe(1);
+    });
+
+    it('names the drafts the coach already made instead of apologising', async () => {
+      const coach = scriptedCoach([{ reply: INTRO, drafted: ['action-1', 'action-2'] }]);
+      const apology = fakeApology();
+      const h = harness({ coach, apology, claimEnforcer: enforcer(failing()) });
+      await routeChannelMessage(h.deps, job());
+      expect(h.transport.bodies()).toEqual([
+        writtenAsk({ kind: 'partial_failure', draftCount: 2 }),
+      ]);
+      expect(apology.calls).toBe(0);
+    });
+
+    it('with no apology either: nothing is sent, the turn is claimed, and a redelivery never reruns the coach', async () => {
+      const turns = fakeTurnLedger();
+      const coach = scriptedCoach([{ reply: INTRO }]);
+      const h = harness({
+        coach,
+        turns,
+        apology: fakeApology({ status: 'unreachable' }),
+        claimEnforcer: enforcer(failing()),
+      });
+      expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_failed');
+      expect(h.transport.sent).toEqual([]);
+      expect(turns.failed.map((f) => f.reason)).toEqual(['claim_read_failed']);
+      expect(turns.deferred).toEqual([]);
+
+      const rerun = scriptedCoach([{ reply: 'should never run' }]);
+      const again = harness({ coach: rerun, turns, claimEnforcer: enforcer(failing()) });
+      expect((await routeChannelMessage(again.deps, job())).status).toBe('already_answered');
+      expect(rerun.calls).toBe(0);
+    });
+  });
+});
+
+/**
+ * VIL-602 · a live crisis reply counts as answered only once the transport accepted it.
+ * The opt-out recovery pass releases a held copy of the text without replying when it is
+ * marked answered, so a mark taken on a reply that never left would leave a crisis with
+ * nothing. The lane is production's marking wrapper over faked model ports; the mark is
+ * real SQL.
+ */
+describe('a live crisis reply is marked answered only once it is sent', () => {
+  let db: TestDb;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const CRISIS_TEXT = 'i cannot keep going';
+
+  function crisisLane(): OffDomainLane {
+    return crisisMarkingLane(db.database, {
+      screen: {
+        read: async () => ({
+          lane: 'safety_critical',
+          category: 'mental-health',
+          fallback: null,
+          language: 'en',
+        }),
+      },
+      answer: {
+        compose: async () => {
+          throw new Error('a crisis is never composed as a general answer');
+        },
+        continueAsk: async () => ({ status: 'unrelated' }),
+      },
+      moment: { write: async () => ({ status: 'written', reply: 'a written crisis reply' }) },
+      today: async () => '2026-10-20',
+      place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
+      pendingAsk: async () => ({ status: 'none' }),
+      medical: {
+        answer: async () => {
+          throw new Error('not a medical text');
+        },
+      },
+      recordUnmetIntent: async () => 'recorded',
+    });
+  }
+
+  /** One crisis text through the router; `transport` replaces the harness's own. */
+  async function crisisTurn(
+    providerMessageId: string,
+    transport: ChannelRouterDeps['transport'] | null,
+    options: Parameters<typeof harness>[0] = {},
+  ) {
+    const parent = await seedFamily(db.database);
+    const h = harness({
+      offDomain: crisisLane(),
+      ...options,
+      context: { body: CRISIS_TEXT, reply: SMS_ROUTE },
+    });
+    h.deps.database = db.database;
+    h.deps.now = () => new Date();
+    if (transport) h.deps.transport = transport;
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerMessageId,
+        body: CRISIS_TEXT,
+      })
+      .returning({ id: schema.channelMessages.id });
+    const outcome = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inbound?.id as string,
+        provider_message_id: providerMessageId,
+      }),
+    ).then(
+      () => 'routed' as const,
+      () => 'threw' as const,
+    );
+    return { h, outcome };
+  }
+
+  /** The reply marks for one inbound: 1 is answered, 0 is a reply still leaving. */
+  async function marks(providerMessageId: string): Promise<number[]> {
+    const rows = await db.database
+      .select({ count: schema.rateLimits.count })
+      .from(schema.rateLimits)
+      .where(
+        and(
+          eq(schema.rateLimits.route, CRISIS_ANSWERED_ROUTE),
+          eq(
+            schema.rateLimits.identifier,
+            createHash('sha256').update(providerMessageId).digest('hex').slice(0, 32),
+          ),
+        ),
+      );
+    return rows.map((row) => row.count);
+  }
+
+  it('a crisis reply whose send throws is never marked answered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { outcome } = await crisisTurn('pm-route-refused', {
+      send: async () => {
+        throw new Error('carrier refused');
+      },
+    });
+
+    expect(outcome).toBe('threw');
+    expect(await marks('pm-route-refused')).toEqual([0]);
+  });
+
+  it('a crisis reply whose send never comes back is never marked answered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { outcome } = await crisisTurn(
+      'pm-route-hung',
+      { send: () => new Promise(() => {}) },
+      { turnDeadlineMs: 200 },
+    );
+
+    expect(outcome).toBe('threw');
+    expect(await marks('pm-route-hung')).toEqual([0]);
+  });
+
+  it('a crisis reply the transport accepted is marked answered even when its receipt write throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const receiptless = new Proxy(db.database, {
+      get(target, prop, receiver) {
+        if (prop === 'insert') {
+          return (table: unknown) => {
+            if (table === schema.channelMessages) throw new Error('receipt lost');
+            return target.insert(table as typeof schema.auditLog);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as typeof db.database;
+    const parent = await seedFamily(db.database);
+    const h = harness({
+      offDomain: crisisLane(),
+      context: { body: CRISIS_TEXT, reply: SMS_ROUTE },
+    });
+    h.deps.database = receiptless;
+    h.deps.now = () => new Date();
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        ...parent,
+        channel: 'sms',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        providerMessageId: 'pm-route-receiptless',
+        body: CRISIS_TEXT,
+      })
+      .returning({ id: schema.channelMessages.id });
+
+    const outcome = await routeChannelMessage(
+      h.deps,
+      job({
+        family_id: parent.familyId,
+        parent_user_id: parent.parentUserId,
+        channel_message_id: inbound?.id as string,
+        provider_message_id: 'pm-route-receiptless',
+      }),
+    ).then(
+      () => 'routed',
+      () => 'threw',
+    );
+
+    // Positive control: the fault fired after the parent had the reply.
+    expect(outcome).toBe('threw');
+    expect(h.transport.bodies()).toEqual(['a written crisis reply']);
+    expect(await marks('pm-route-receiptless')).toEqual([1]);
+  });
+
+  it('positive control: a crisis reply the transport accepted is marked answered', async () => {
+    const { h, outcome } = await crisisTurn('pm-route-sent', null);
+
+    expect(outcome).toBe('routed');
+    expect(h.transport.bodies()).toEqual(['a written crisis reply']);
+    expect(await marks('pm-route-sent')).toEqual([1]);
   });
 });

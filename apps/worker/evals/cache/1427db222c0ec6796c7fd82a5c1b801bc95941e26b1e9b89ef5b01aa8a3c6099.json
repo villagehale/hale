@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday) is the all-day \"Jour de congé\" with no clock time; Léa has Natation tomorrow from 10 h to 11 h (morning, correctly not 22 h) at Piscine Main. No address was given, so none is missing. The title is kept as the event's name, the day is not called free or empty, nothing is invented (no travel/departure info), and the text is entirely in French. The titles are quoted/rendered as-is or woven in, which is fine.",
+    "score": 5
+  }
+}

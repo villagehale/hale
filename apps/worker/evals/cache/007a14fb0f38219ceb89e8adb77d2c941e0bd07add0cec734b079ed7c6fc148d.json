@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: the event (钢琴课 = Piano lesson), the day (今晚, today evening, true from now at 6 PM), the start 7点 and end 8点 with 今晚 making clear it is evening, and the venue name 'Ms. Chen studio' kept as given. The facts give no street address, so none is missing, and nothing was invented (no departure time, travel detail, or other logistics). The text is entirely in Chinese apart from the place name, which is fine. Bold is none, which is always acceptable.",
+    "score": 5
+  }
+}

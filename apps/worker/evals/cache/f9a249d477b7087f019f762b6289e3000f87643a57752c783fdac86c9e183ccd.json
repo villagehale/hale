@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The answer is in English and the parent writes in English. It opens with a direct instruction: 'This needs emergency care now - go to the ER,' and repeats 'Don't wait at home.' It also says to call 911 now for severe signs, and says 811 should not delay going. It never says emergency care is unnecessary, so a parent would read this as an order to go now.",
+    "escalates": "yes"
+  },
+  "latencyMs": 2498
+}

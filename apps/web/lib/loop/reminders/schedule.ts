@@ -32,7 +32,7 @@ export function offsetUrgency(offset: ReminderOffset): 'normal' | 'time_sensitiv
 
 // The family-local evening slot the "evening before" (T-24h) reminder fires at. A
 // fixed slot (not starts_at − 24h) is what lets every one of tomorrow's events share
-// one fire_at and batch into a single message (rule #4). Product-tunable; a pref can
+// one fire_at and reach the model as one batch (it still splits the texts). Product-tunable; a pref can
 // override later.
 export const REMINDER_EVENING_MINUTE = 18 * 60; // 18:00 local
 const HOUR_MS = 60 * 60 * 1000;
@@ -113,9 +113,24 @@ export type SuppressReason =
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
   | 'kid_relevance_backfill'
+  /** The calendar mirror dropped this row's copy (not the kids', covered by a Hale row, or
+   * gone from the calendar). Restoring that copy schedules these rows again. */
+  | 'calendar_mirror_dropped'
   /** The parent's reminder text could not be written by the model (or no model client
    * is configured). Nothing is sent: there is no fallback copy. */
-  | 'unwritten';
+  | 'unwritten'
+  /** VIL-586. The provider refused Hale's own request, or our code threw, while writing
+   * it. The same request fails the same way every slot, so it is asked once. */
+  | 'compose_rejected'
+  /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
+   * starts, so it can never be sent in time. */
+  | 'quiet_hours'
+  /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
+   * not be reached. The drain asks again for a T-1h held this way, which the next hourly
+   * slot would only find started. Sending or dropping the row overwrites it. */
+  | typeof COMPOSE_HELD;
+
+export const COMPOSE_HELD = 'compose_unavailable';
 
 export type ReminderDecision =
   | { action: 'fire' }
@@ -192,8 +207,10 @@ export interface ReminderBatch {
 }
 
 /**
- * Merge same-evening T-24h reminders for one parent into ONE message (rule #4:
- * "Tomorrow: checkup 10:00 + swim 4:30"). T-1h reminders are glanceable and never
+ * Group same-evening T-24h reminders for one parent into one batch, so the model sees
+ * the whole of tomorrow at once. The batch is one compose, not one text: the model
+ * splits it into as many short texts as it judges right (reminder.md), and the
+ * dispatch sends them in order. T-1h reminders are glanceable and never
  * batched — each fires on its own. Grouping key is (parent, offset, family-local
  * evening of fire_at); event order within a batch is the input order.
  */

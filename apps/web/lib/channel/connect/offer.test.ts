@@ -384,7 +384,36 @@ describe('connectorLinkHandler', () => {
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
     expect(verdict.outcome).toBe('mint_failed');
-    expect(verdict.reply).toContain('nothing was changed');
+    // VIL-504 · claimed, and nothing fixed is sent.
+    expect(verdict.reply).toBeNull();
+  });
+
+  it('declines a Drive ask so the coach answers it, names connector_not_offered, while Calendar still mints', async () => {
+    const log = { ...console, error: vi.fn(), info: vi.fn() };
+    const handler = connectorLinkHandler(log, scriptedSaidLine());
+
+    const drive = await handler.handle(db.database, turn('connect my google drive'));
+
+    expect(drive).toEqual({ claimed: false });
+    expect(log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'gdrive', outcome: 'connector_not_offered' }),
+      expect.any(String),
+    );
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    expect(
+      await db.database
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.actionTaken, 'connector_link_minted')),
+    ).toHaveLength(0);
+
+    const calendar = await handler.handle(db.database, turn('connect my google calendar'));
+
+    if (!calendar.claimed) throw new Error('expected the handler to claim');
+    expect(calendar.outcome).toBe('sent');
+    expect(calendar.reply).toContain('https://app.villagehale.com/connect?t=');
+    expect(calendar.reply).toContain('to=gcal');
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(1);
   });
 
   it('sends the link 1:1 and says nothing in the group when the ask came from the family group', async () => {
@@ -437,6 +466,36 @@ describe('connectorLinkHandler', () => {
     expect(wire[0]?.url).toContain(`/chats/${PERSONAL}/messages`);
     expect(wire[0]?.body).toContain('to=gcal');
     expect(wire.some((call) => call.url.includes(GROUP))).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('a Drive ask from the family group is declined to the coach: no token, no 1:1 text', async () => {
+    const GROUP = 'chat-family-group';
+    const PERSONAL = 'chat-parent-direct';
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: GROUP })
+      .where(eq(schema.families.id, familyId));
+    await inboundIn(PERSONAL, new Date('2026-08-31T14:00:00.000Z'));
+    const groupRow = await inboundIn(GROUP, new Date('2026-08-31T14:59:00.000Z'));
+    const wire: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        wire.push(String(url));
+        return Response.json({ message: { id: 'out-1' } });
+      }),
+    );
+
+    const verdict = await connectorLinkHandler(console, scriptedSaidLine()).handle(db.database, {
+      ...turn('connect my google drive'),
+      inboundChannelMessageId: groupRow,
+    });
+
+    expect(verdict).toEqual({ claimed: false });
+    expect(await db.database.select().from(schema.channelSigninTokens)).toHaveLength(0);
+    expect(wire).toHaveLength(0);
     vi.unstubAllGlobals();
   });
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event in the facts is a generic 'an appointment' tomorrow, Oct 26, 4:45-5:45 PM. The text instead names 'Jour de congé' (not in the facts, an invented title), gives the wrong time (3:00 with no AM/PM instead of 4:45 PM), and drops the end time of 5:45 PM. It also says the day is a day off with 'breathing room', which implies the family has nothing to be at when a timed appointment exists. Wrong time, missing end, invented detail, and the free-day implication are all fact failures.",
+    "score": 1
+  }
+}

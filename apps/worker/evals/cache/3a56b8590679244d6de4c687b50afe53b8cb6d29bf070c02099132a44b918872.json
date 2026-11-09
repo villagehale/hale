@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 'Thu, Jul 23 at 10:30 AM is in your plans' and includes a link. The summary is 'Swim class', but the text never names the event (swim class), only a date and time. The text states Thursday, July 23 at 10:30 AM, which matches the start (2026-07-23, Thursday, 10:30). However, the text does not name the event, so it does not identify this event as Swim class.",
+    "match": false
+  },
+  "latencyMs": 1959
+}

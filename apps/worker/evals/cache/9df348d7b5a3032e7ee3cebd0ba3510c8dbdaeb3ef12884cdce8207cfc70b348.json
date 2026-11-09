@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The text is in English, not French. It gives \"Jour de congé at 3:00\", an invented clock time for an all-day event. Léa's swimming (Natation, 10:00-11:00 AM at Piscine Main, 120 Main St) is missing entirely, with no start, end, venue or address. It also says the day is a day off with \"breathing room\", implying the family has nothing to be at, when a timed event exists.",
+    "score": 1
+  }
+}

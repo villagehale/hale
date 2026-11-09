@@ -6,9 +6,13 @@ import {
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
-import { channelSmsNoteKey } from '~/lib/coach/note-key';
-import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from '~/lib/channel/inbound-deps';
+import {
+  type MessageQueue,
+  type QueueOptions,
+  sendChannelMessageReceived,
+} from '~/lib/channel/inbound-deps';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 
 /**
  * VIL-220 · C1 — the producer half of per-conversation FIFO.
@@ -89,6 +93,7 @@ function job(overrides: Partial<ChannelMessageReceivedJob> = {}): ChannelMessage
     channel_message_id: '33333333-3333-4333-8333-333333333333',
     provider_message_id: 'SM1',
     received_at: '2026-07-30T12:00:00.000Z',
+    in_group: false,
     ...overrides,
   };
 }

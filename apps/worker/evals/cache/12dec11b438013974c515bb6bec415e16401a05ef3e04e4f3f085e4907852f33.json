@@ -1,0 +1,18 @@
+{
+  "value": {
+    "payload": {
+      "vendor": "DiaperCo",
+      "item": "size 4 diapers",
+      "quantity": 1,
+      "unit_price": "42.99",
+      "currency": "USD",
+      "reason": "supply running low, about 1 day remaining",
+      "urgency": "high"
+    },
+    "confidence": 0.6,
+    "rationale": "Diapers are down to about 1 day, so I drafted a single DiaperCo reorder at $42.99 for the parent to approve; quantity and shipping speed aren't in the input.",
+    "recipient_visibility": "internal_only",
+    "commits_parent_to_enrollment_booking_or_payment": true
+  },
+  "latencyMs": 3887
+}

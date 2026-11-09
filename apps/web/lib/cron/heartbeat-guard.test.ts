@@ -29,9 +29,10 @@ describe('cron heartbeat guard', () => {
     for (const { path } of crons()) {
       const slug = path.split('/').at(-1);
       const source = readFileSync(`${WEB_ROOT}app/api/cron/${slug}/route.ts`, 'utf8');
-      expect(source, `${path} must stamp the dead-man ledger via cronRoute('${slug}', …)`).toContain(
-        `cronRoute('${slug}'`,
-      );
+      expect(
+        source,
+        `${path} must stamp the dead-man ledger via cronRoute('${slug}', …)`,
+      ).toContain(`cronRoute('${slug}'`);
     }
   });
 

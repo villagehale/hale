@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both items, day and times correctly, and says nobody looks free on the calendars, asking couldAsk people (Julien, Mamie) without calling them free. However it asks two ways (who takes which), a minor extra ask, and says 'Dites-moi' plus asks which one, which is close to one ask. Facts and tone are good; no poll is mentioned, correct. Slight deduction for the double question and mild ambiguity about who takes what.",
+    "score": 4
+  }
+}

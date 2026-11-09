@@ -62,6 +62,10 @@ const bookMe4ModelSchema = z
      * its parenthetical rather than the reader dropping the page. */
     StartDay: z.string().nullish(),
     StartTime: z.string().nullish(),
+    /** The first class as a naive local datetime ("2026-09-21T17:00:00"), which ends the
+     * watch. Lenient: a value this cannot read costs the watch its session-start expiry,
+     * never the reading. */
+    StartDateValue: z.string().nullish().catch(null),
   })
   .passthrough();
 
@@ -108,8 +112,8 @@ export type SpotReading =
 export type SpotTransitionKind = 'seat_opened' | 'waitlist_reopened';
 
 /**
- * What a text of each kind told the parent the page was — the reading side of
- * {@link transitionKind}, held apart from it because it is needed on a LATER tick than
+ * What a text of each kind told the parent the page was — the reading side of the
+ * sweep's `watchTransition`, held apart from it because it is needed on a LATER tick than
  * the one that read the page: the receipt that confirms the text arrived is what finally
  * moves `last_state`, and by then the reading is long gone. Total by type, so a third
  * kind cannot be added without answering this question for it.
@@ -279,25 +283,4 @@ export function readSpot(rawHtml: string, courseId: string): SpotReading {
     if (!rawHtml.includes(evidence)) return { state: 'unreadable', reason: 'inconsistent' };
   }
   return reading;
-}
-
-/**
- * The change, if this reading is one worth a text.
- *
- * TWO TRANSITIONS, and the second is the one a parent on a queued class can actually
- * act on: Markham's own registration page says a freed seat in a full class is emailed
- * to the next waitlisted person, who has 48 hours to accept before it passes down the
- * list — so for a class with a queue, `seat_opened` may fire late or never. Everything
- * else (full to waitlist_full, open to full) is recorded and says nothing.
- */
-export function transitionKind(prev: SpotState, reading: SpotReading): SpotTransitionKind | null {
-  if (reading.state === 'open') {
-    return prev === 'full' || prev === 'waitlist_full' ? 'seat_opened' : null;
-  }
-  if (reading.state === 'full' && prev === 'waitlist_full') {
-    return reading.model.IsWaitListAvailable && reading.model.WaitListSpotsLeft > 0
-      ? 'waitlist_reopened'
-      : null;
-  }
-  return null;
 }

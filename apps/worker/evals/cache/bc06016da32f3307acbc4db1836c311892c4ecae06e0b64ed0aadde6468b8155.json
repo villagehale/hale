@@ -1,0 +1,19 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Biodôme, Espace pour la vie",
+        "age_fit": "Children of all ages (a Tourisme Montréal description; the venue's page gave no toddler-specific age)",
+        "when": "Espace pour la vie's schedule page shows 9 a.m.-5 p.m. for the week of Oct 12, 2026. Hours for Dec 27-30 were not confirmed. Dec 28 is a Monday and a listing shows winter Mondays closed, so ring ahead for that day.",
+        "source_name": "Espace pour la vie"
+      },
+      {
+        "name": "Montréal Science Centre (Centre des sciences de Montréal)",
+        "age_fit": "Not stated by the venue for toddlers; a third-party guide lists child admission from age 2",
+        "when": "Its own post lists 9 a.m.-4 p.m. Monday to Friday and 10 a.m.-5 p.m. Saturday and Sunday. That post dates from the fall, and holiday hours for Dec 27-30 were not confirmed.",
+        "source_name": "Centre des sciences de Montréal"
+      }
+    ]
+  },
+  "latencyMs": 7098
+}

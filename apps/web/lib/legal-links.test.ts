@@ -1,5 +1,5 @@
-import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import nextConfig from '../next.config';
@@ -7,9 +7,10 @@ import { PRIVACY_URL, TERMS_URL } from './legal-links';
 
 /**
  * VIL-256 — the policies moved to the marketing site (D20). The app keeps its
- * `/terms` and `/privacy` paths forever, as permanent redirects: emails already
- * sent, consent records already written, and mobile builds already in the App
- * Store all name the app URLs, and none of those can be rewritten after the fact.
+ * `/terms` path forever, as a permanent redirect: emails already sent, consent
+ * records already written, and mobile builds already in the App Store all name the
+ * app URL, and none of those can be rewritten after the fact. The app's `/privacy`
+ * path is the signed-in data-rights page (VIL-432), which links the policy.
  */
 
 describe('policy URLs', () => {
@@ -24,7 +25,7 @@ describe('policy URLs', () => {
 });
 
 describe('the app’s legal routes', () => {
-  it('forward to the marketing policies permanently (308), both of them', async () => {
+  it('forward /terms to the marketing policy permanently (308), and leave /privacy to the app', async () => {
     const redirects = await nextConfig.redirects?.();
     expect(redirects).toBeDefined();
     const bySource = new Map((redirects ?? []).map((r) => [r.source, r]));
@@ -33,10 +34,7 @@ describe('the app’s legal routes', () => {
       destination: TERMS_URL,
       permanent: true,
     });
-    expect(bySource.get('/privacy')).toMatchObject({
-      destination: PRIVACY_URL,
-      permanent: true,
-    });
+    expect(bySource.get('/privacy')).toBeUndefined();
   });
 });
 

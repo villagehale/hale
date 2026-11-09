@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says registration opens at 11:30 today, but the facts say the page already shows the window open now (situation already_open, pageShows 9:30 a.m. today), so 'opens at 11:30' is a wrong time and a wrong status. The link and French language are correct, but the stated opening time contradicts the facts.",
+    "score": 2
+  }
+}

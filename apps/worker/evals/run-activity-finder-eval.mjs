@@ -160,6 +160,7 @@ function groundUserMessage(q) {
     ...(q.town ? { town: q.town } : {}),
     ...(q.stage ? { stage: q.stage } : {}),
     ...(q.window ? { window: q.window } : {}),
+    ...(q.today ? { today: q.today } : {}),
   });
 }
 
@@ -963,7 +964,8 @@ async function main() {
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
   const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
-  const followupMaxTokens = followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
+  const followupMaxTokens =
+    followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
   }
@@ -994,7 +996,17 @@ async function main() {
       process.exit(1);
     }
   }
-  const skill = await agent.loadSkill(ACTIVITY_SKILL);
+  // VIL-510: the web lane appends activity-finder-events for the inline research + extract.
+  const base = await agent.loadSkill(ACTIVITY_SKILL);
+  const events = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
+  );
+  const skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+  // VIL-435: the lane appends activity-finder-day only when the query carries `today`.
+  const day = await agent.loadSkill(
+    join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-day.md'),
+  );
+  const daySkill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
@@ -1051,7 +1063,9 @@ async function main() {
       town: fixture.town,
       stage: fixture.stage,
       window: fixture.window,
+      ...(fixture.today ? { today: fixture.today } : {}),
     };
+    const laneSkill = query.today ? daySkill : skill;
 
     // ── the border: what actually leaves ─────────────────────────────────────
     // The de-identification is DETERMINISTIC in the runtime, so what is checked here is
@@ -1068,7 +1082,7 @@ async function main() {
       : await cachedGround({
           tag: evalRunTag(`activity-ground:${fixture.id}`),
           model,
-          system: skill.instructions,
+          system: laneSkill.instructions,
           userMessage: groundUserMessage(query),
           // The wire shape production sends for THIS subject — search-only for a general
           // question, search plus fetch when it names a place (see groundTools).
@@ -1098,7 +1112,7 @@ async function main() {
             tag: evalRunTag(`activity-picks:${fixture.id}`),
             model,
             lane: subjectLane,
-            system: skill.instructions,
+            system: laneSkill.instructions,
             userMessage: composeUserMessage(query, ground.notes),
             toolName: 'activity_picks',
             toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
@@ -1126,7 +1140,7 @@ async function main() {
       ground = await cachedGround({
         tag: evalRunTag(`activity-ground-read:${fixture.id}`),
         model,
-        system: skill.instructions,
+        system: laneSkill.instructions,
         userMessage: groundUserMessage(query),
         tools: groundTools(fixture.subject, true),
         cachedOnly,
@@ -1138,7 +1152,7 @@ async function main() {
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),
           model,
           lane: subjectLane,
-          system: skill.instructions,
+          system: laneSkill.instructions,
           userMessage: composeUserMessage(query, ground.notes),
           toolName: 'activity_picks',
           toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
@@ -1276,7 +1290,13 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, pageEvidence, watch, composed.commits_to_return === true);
+      violations = followUpViolations(
+        body,
+        kept,
+        pageEvidence,
+        watch,
+        composed.commits_to_return === true,
+      );
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }

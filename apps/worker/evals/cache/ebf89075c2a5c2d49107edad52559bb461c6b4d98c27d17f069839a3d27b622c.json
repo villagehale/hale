@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts at all. It mentions 'Jour de congé at 3:00' instead of the Natation event at 5:00 PM to 5:45 PM, so the event, start time and end are wrong or missing. The venue name and address (Piscine Centennial, 5 Lake Rd) are missing, and the venue change from Mold-Masters SportsPlex is never mentioned. It is in English rather than French. It also invents that the day is off with 'breathing room' when a timed event exists. No bold was used, which is also wrong given a changed venue.",
+    "score": 1
+  }
+}

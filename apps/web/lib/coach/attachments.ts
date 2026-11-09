@@ -1,7 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, lt } from 'drizzle-orm';
-import { sniffMime } from '../files/mime.js';
 import {
   type FetchLike,
   downloadDocument,
@@ -9,6 +8,7 @@ import {
   signDocumentUrl,
   uploadDocument,
 } from '../docs/storage.js';
+import { sniffMime } from '../files/mime.js';
 import { attachmentContentBlock } from './attachment-blocks.js';
 import type { Db } from './conversation.js';
 
@@ -156,10 +156,7 @@ export async function sweepUnlinkedAttachments(
     })
     .from(schema.chatAttachments)
     .where(
-      and(
-        isNull(schema.chatAttachments.messageId),
-        lt(schema.chatAttachments.createdAt, cutoff),
-      ),
+      and(isNull(schema.chatAttachments.messageId), lt(schema.chatAttachments.createdAt, cutoff)),
     );
 
   let swept = 0;
@@ -172,9 +169,7 @@ export async function sweepUnlinkedAttachments(
       // failure rolls the row back so the next sweep retries).
       const claimed = await tx
         .delete(schema.chatAttachments)
-        .where(
-          and(eq(schema.chatAttachments.id, att.id), isNull(schema.chatAttachments.messageId)),
-        )
+        .where(and(eq(schema.chatAttachments.id, att.id), isNull(schema.chatAttachments.messageId)))
         .returning({ id: schema.chatAttachments.id });
       if (claimed.length === 0) return;
       await removeObject(att.storagePath);
@@ -233,7 +228,10 @@ export async function loadUnlinkedAttachments(
  * enclosing transaction rolls back, so the user message is NOT persisted and the
  * model is never called with the bytes. */
 export class AttachmentConsumptionError extends Error {
-  constructor(readonly requested: number, readonly linked: number) {
+  constructor(
+    readonly requested: number,
+    readonly linked: number,
+  ) {
     super(`attachment consumption failed: linked ${linked} of ${requested}`);
     this.name = 'AttachmentConsumptionError';
   }
@@ -288,9 +286,7 @@ export async function loadOwnedAttachment(
       mime: schema.chatAttachments.mime,
     })
     .from(schema.chatAttachments)
-    .where(
-      and(eq(schema.chatAttachments.id, id), eq(schema.chatAttachments.familyId, familyId)),
-    )
+    .where(and(eq(schema.chatAttachments.id, id), eq(schema.chatAttachments.familyId, familyId)))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -349,6 +345,8 @@ export async function buildAttachmentBlocks(
   fetchImpl: FetchLike = fetch,
 ): Promise<Anthropic.ContentBlockParam[]> {
   return Promise.all(
-    attachments.map(async (a) => attachmentContentBlock(await downloadDocument(a.storagePath, fetchImpl), a.mime)),
+    attachments.map(async (a) =>
+      attachmentContentBlock(await downloadDocument(a.storagePath, fetchImpl), a.mime),
+    ),
   );
 }

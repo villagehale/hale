@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text 3 gives Storytime only as 'at the library'; the venue name 'Georgetown Branch' and the address '9 Church St' were given in the facts and are missing, which is a fact failure. The Montessori tour is complete: it is tomorrow, starts at 10 with no AM/PM stated but 'tomorrow' plus an end given as 'about an hour' (and 'at 10' reads as morning), at Little Oaks Montessori, 41 Mill St. Storytime's time (1:30 to 2:15) and day are right, and Léa is named. Nothing is invented, and bold is none, which is fine.",
+    "score": 2
+  }
+}

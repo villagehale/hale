@@ -3,9 +3,14 @@ import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
-import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
+import {
+  type ChannelTurn,
+  ChannelTurnFailed,
+  draftsFromFailure,
+} from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
+import { loadCronSkill } from '~/lib/cron/skill';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
 
 /**
@@ -72,7 +77,7 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     loadTranscript: async () => [{ role: 'user' as const, content: 'earlier' }],
     loadContext: async (input) => {
       contextInputs.push(input);
-      return { question: input.question, transcript: input.transcript } as never;
+      return { question: input.question, transcript: input.transcript, memoryFacts: [] } as never;
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
@@ -126,6 +131,66 @@ describe('channelCoachRuntime', () => {
     ]);
   });
 
+  it('carries the household group and its skill only when the context has one (VIL-566)', async () => {
+    const group = (await loadCronSkill('household-group')).instructions;
+    const run = async (householdGroup?: 'pending' | 'claimed') => {
+      const seen: { context: unknown; instructions: string }[] = [];
+      const p = ports({
+        loadContext: async (input) =>
+          ({
+            question: input.question,
+            transcript: input.transcript,
+            memoryFacts: [],
+            ...(householdGroup ? { householdGroup } : {}),
+          }) as never,
+        runAgent: async (args) => {
+          seen.push({ context: args.context, instructions: args.skill.instructions });
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond(turn(), []);
+      return seen[0];
+    };
+    const pending = await run('pending');
+    expect(pending?.context).toMatchObject({ householdGroup: 'pending' });
+    expect(pending?.instructions.endsWith(`\n\n${group}`)).toBe(true);
+    const none = await run();
+    expect(none?.context).not.toHaveProperty('householdGroup');
+    expect(none?.instructions).not.toContain(group);
+  });
+
+  it('carries the fact-source skill only on a 1:1 turn holding a fact read in email (VIL-429)', async () => {
+    const addendum = (await loadCronSkill('coach-fact-source')).instructions;
+    const fact = { childId: null, factType: 'routine', factKey: 'soccer_day', factValue: 'Thu' };
+    const sourced = { ...fact, seenIn: { email: { from: 'Northside Rec', on: '2026-10-03' } } };
+    const run = async (seen: boolean, audience: ChannelTurn['audience']) => {
+      const calls: string[] = [];
+      const p = ports({
+        loadContext: async (input) =>
+          ({
+            question: input.question,
+            transcript: input.transcript,
+            memoryFacts: [seen ? sourced : fact],
+          }) as never,
+        runAgent: async (args) => {
+          calls.push(args.skill.instructions);
+          return answering('ok.')(args);
+        },
+      });
+      await channelCoachRuntime(p).respond({ ...turn(), audience }, []);
+      return calls[0] ?? '';
+    };
+    expect((await run(true, 'direct')).endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(await run(false, 'direct')).not.toContain(addendum);
+    expect(await run(true, 'group')).not.toContain(addendum);
+  });
+
+  it('asks for the context as the parent who texted (VIL-429)', async () => {
+    const p = ports();
+    await channelCoachRuntime(p).respond(turn(), []);
+    expect(p.contextInputs).toEqual([expect.objectContaining({ readerUserId: PARENT })]);
+  });
+
   it('hands the loop the channel context: the surface and the family clock', async () => {
     const seen: unknown[] = [];
     const p = ports({
@@ -144,6 +209,62 @@ describe('channelCoachRuntime', () => {
         question: 'move swim to tuesday',
       }),
     );
+  });
+
+  it('hands the loop the family-local day and forecast as facts, with their skill (VIL-435)', async () => {
+    const addendum = (await loadCronSkill('coach-local-day')).instructions;
+    const seen: { context: Record<string, unknown>; instructions: string }[] = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      seen.push({
+        context: args.context as Record<string, unknown>,
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+    const rainy = { date: '2026-10-12', precipitationChancePct: 80, highTempC: 9 };
+    // 10:07 on Canadian Thanksgiving in Toronto is 14:07 UTC.
+    const thanksgiving = new Date('2026-10-12T14:07:20Z');
+
+    await channelCoachRuntime(
+      ports({
+        runAgent,
+        now: () => thanksgiving,
+        loadTimeZone: async () => 'America/Toronto',
+        loadForecast: async () => [{ ...rainy, weekday: 'Monday' }],
+      }),
+    ).respond(turn('find me something to do today'), []);
+
+    expect(seen[0]?.context.localNow).toEqual({
+      date: '2026-10-12',
+      weekday: 'Monday',
+      time: '10:07',
+      timeZone: 'America/Toronto',
+    });
+    expect(seen[0]?.context.forecast).toEqual([{ ...rainy, weekday: 'Monday' }]);
+    expect(seen[0]?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+  });
+
+  it('leaves the day facts and their skill out when neither is known', async () => {
+    const addendum = (await loadCronSkill('coach-local-day')).instructions;
+    const seen: { context: Record<string, unknown>; instructions: string }[] = [];
+    const runAgent: ChannelCoachPorts['runAgent'] = async (args) => {
+      seen.push({
+        context: args.context as Record<string, unknown>,
+        instructions: args.skill.instructions,
+      });
+      return answering('ok.')(args);
+    };
+
+    await channelCoachRuntime(
+      ports({ runAgent, loadTimeZone: async () => null, loadForecast: async () => [] }),
+    ).respond(turn(), []);
+    await channelCoachRuntime(ports({ runAgent })).respond(turn(), []);
+
+    expect(seen[0]?.context).not.toHaveProperty('localNow');
+    expect(seen[0]?.context).not.toHaveProperty('forecast');
+    expect(seen[0]?.instructions).not.toContain(addendum);
+    expect(JSON.stringify(seen[0]?.context)).toBe(JSON.stringify(seen[1]?.context));
+    expect(seen[0]?.instructions).toBe(seen[1]?.instructions);
   });
 
   it('reads a photo into the loop and names a video it did not watch', async () => {
@@ -501,6 +622,7 @@ describe('the watch a turn started', () => {
         fetchBody: async () => fullPage,
         reader: { householdNames: async () => [] },
         watchConsentGranted: async () => true,
+        readClassAvailability: {} as never,
         onWatch: onWatch as never,
       }),
     ];
@@ -542,6 +664,8 @@ describe('the watch a turn started', () => {
       label: 'Saturday skating',
       instant: false,
       lastState: 'full',
+      sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
+      sessionAnchor: null,
     });
   });
 
@@ -553,6 +677,7 @@ describe('the watch a turn started', () => {
     const p = ports({
       buildTools: (_turn, _onDraft, _onOffer, _onShare, _onPromise, onWatch) =>
         watchTools(onWatch as never),
+      judgeFindReply: async () => ({ verdict: 'send' }),
     });
 
     const result = await channelCoachRuntime(p).respond(turn('what is on thursday'), []);
@@ -619,5 +744,319 @@ describe('the nearby count', () => {
     expect(asked).toEqual([]);
     expect(reply).not.toContain('families near you');
     expect(reply).toContain('Want me to send the full plan?');
+  });
+});
+
+/**
+ * VIL-497 — the experience-card product path. Dark: no verb, untouched skill, no card.
+ * Lit (1:1 only): the model may pick one cited find as a card and writes its title; the
+ * URL is the find's own page, resolved from the ref a tool returned this turn.
+ */
+describe('channelCoachRuntime · experience cards (VIL-497)', () => {
+  const PAGE = 'https://example.org/swim/saturday';
+  const withLink: ChannelCoachPorts['buildTools'] = (_t, _d, _o, _s, _p, _w, offered) => {
+    offered.recordLinks([{ url: PAGE, title: 'Saturday swim' } as never]);
+    return [];
+  };
+
+  it('dark: registers no card verb and leaves the skill tools untouched', async () => {
+    const seen: { tools: string[]; skillTools: string[] }[] = [];
+    const p = ports({
+      buildTools: withLink,
+      runAgent: async (args) => {
+        seen.push({
+          tools: args.tools.map((t) => t.name),
+          skillTools: [...args.skill.meta.tools],
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[0]?.tools).not.toContain('share_experience_card');
+    expect(seen[0]?.skillTools).toEqual([]);
+    expect(result.experienceCard ?? null).toBeNull();
+  });
+
+  it('lit on a group turn: still no card verb', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        seen.push(args.tools.map((t) => t.name));
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(p)
+      .respond({ ...turn(), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(seen[0] ?? []).not.toContain('share_experience_card');
+  });
+
+  it('lit 1:1: the model picks the card, writes the title; the url comes from the ref', async () => {
+    const ref = (await import('./activity-links')).linkRef(PAGE);
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('share_experience_card');
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        if (!card) throw new Error('no card verb');
+        await card.handler({ ref, title: 'Sat swim 10am · Riverdale pool' } as never, {} as never);
+        return answering(`Saturday swim at Riverdale has room [${ref}].`)(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(result.experienceCard).toEqual({ url: PAGE, title: 'Sat swim 10am · Riverdale pool' });
+    // The text still cites the page; the router swaps it for the card on iMessage 1:1.
+    expect(result.reply).toContain(PAGE);
+  });
+
+  it('lit: a ref no tool returned is refused back to the model, nothing registered', async () => {
+    let refusal = '';
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        await card?.handler({ ref: 'link-000000', title: 'x' } as never, {} as never).catch((e) => {
+          refusal = (e as Error).message;
+        });
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(refusal).toContain('not one a tool returned');
+    expect(result.experienceCard).toBeNull();
+  });
+
+  it("lit: a teen's name in the title is redacted like the answer", async () => {
+    const ref = (await import('./activity-links')).linkRef(PAGE);
+    const p = ports({
+      experienceCardsEnabled: () => true,
+      buildTools: withLink,
+      runAgent: async (args) => {
+        const card = args.tools.find((t) => t.name === 'share_experience_card');
+        await card?.handler({ ref, title: 'Nora · Sat swim' } as never, {} as never);
+        return answering(`Swim [${ref}].`)(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(result.experienceCard?.title).not.toContain('Nora');
+  });
+});
+
+describe('channelCoachRuntime · group leave (VIL-477)', () => {
+  it('dark group turn: no leave verb, skill untouched', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        seen.push([...args.tools.map((t) => t.name), ...args.skill.meta.tools]);
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    expect(seen[0]).not.toContain('leave_group_chat');
+    expect(result.groupLeave ?? null).toBeNull();
+  });
+
+  it('lit on a 1:1 turn: still no leave verb', async () => {
+    const seen: string[][] = [];
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      runAgent: async (args) => {
+        seen.push(args.tools.map((t) => t.name));
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(turn(), []);
+    expect(seen[0]).not.toContain('leave_group_chat');
+    expect(result.groupLeave ?? null).toBeNull();
+  });
+
+  it('lit group: the model reads the ask, writes its own goodbye, registers the leave', async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        expect(args.skill.meta.tools).toContain('leave_group_chat');
+        const leave = args.tools.find((t) => t.name === 'leave_group_chat');
+        if (!leave) throw new Error('no leave verb');
+        await leave.handler(
+          { ask: 'Hale can you leave this group', ifLeaveFails: 'Model stay line.' } as never,
+          {} as never,
+        );
+        return answering('Model-written goodbye.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn('Hale can you leave this group?'), audience: 'group' },
+      [],
+    );
+    expect(result.groupLeave).toEqual({ ifLeaveFails: 'Model stay line.' });
+    expect(result.reply).toContain('Model-written goodbye.');
+  });
+
+  it("lit group: a model-invented ask (not in this turn's words) registers no leave", async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: async (args) => {
+        const leave = args.tools.find((t) => t.name === 'leave_group_chat');
+        if (!leave) throw new Error('no leave verb');
+        await leave.handler(
+          { ask: 'Hale please leave this group', ifLeaveFails: 'x' } as never,
+          {} as never,
+        );
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn('who is doing pickup friday'), audience: 'group' },
+      [],
+    );
+    expect(result.groupLeave ?? null).toBeNull();
+  });
+
+  it('lit group, no ask: the model does not call it, nothing registered', async () => {
+    const p = ports({
+      groupLeaveEnabled: () => true,
+      loadSkill: async () => SKILL,
+      runAgent: answering('Sure, quieter from me.'),
+    });
+    const result = await channelCoachRuntime(p).respond({ ...turn(), audience: 'group' }, []);
+    expect(result.groupLeave ?? null).toBeNull();
+  });
+});
+
+describe('find reasoning stays off the reply (VIL-524)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+
+  it('does not append the private skill or call the judge on a calendar edit', async () => {
+    let instructions = '';
+    let judged = 0;
+    const p = ports({
+      judgeFindReply: async () => {
+        judged += 1;
+        return { verdict: 'withhold' };
+      },
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('You and Sam share one page for the swim signup.')(args);
+      },
+    });
+    const { reply } = await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('Keep the finding to yourself');
+    expect(judged).toBe(0);
+    expect(reply).toBe('You and Sam share one page for the swim signup.');
+  });
+
+  it('appends the private skill on a nearby-find ask and sends the draft unchanged', async () => {
+    const draft = 'All three finds are at the library: Storytime Saturday at 10.';
+    let instructions = '';
+    const p = ports({
+      judgeFindReply: send,
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering(draft)(args);
+      },
+    });
+    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(instructions).toContain('Keep the finding to yourself');
+    expect(instructions).toContain('Nearby finds');
+    expect(reply).toBe(draft);
+  });
+
+  it('sends nothing when the judge says the whole reply is reasoning', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'All three finds share one page…';
+    const p = ports({
+      judgeFindReply: async () => ({ verdict: 'withhold' }),
+      runAgent: answering(draft),
+    });
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("what's on this weekend"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    // A failed turn (router keeps the drafts receipt + failed ledger), never the draft.
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    const thrown = failure as ChannelTurnFailed;
+    expect(thrown.message).not.toContain(draft);
+    expect(String(thrown.cause ?? '')).not.toContain(draft);
+    expect(thrown.draftedActionIds).toEqual([]);
+    expect(p.recorded).toEqual([expect.objectContaining({ status: 'failed' })]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'find_reasoning' }),
+      expect.any(String),
+    );
+    error.mockRestore();
+  });
+
+  it('judges a turn that handed over a find, whatever language the ask was in', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let judged = 0;
+    const p = ports({
+      buildTools: (_t, _d, _o, _s, _p, _w, offered) => {
+        offered.recordLinks([
+          { url: 'https://example.org/storytime', title: 'Storytime' } as never,
+        ]);
+        return [];
+      },
+      judgeFindReply: async () => {
+        judged += 1;
+        return { verdict: 'withhold' };
+      },
+      runAgent: answering("J'ai trouvé trois activités sur la même page."),
+    });
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("qu'est-ce qu'on peut faire samedi avec les petits?"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(judged).toBe(1);
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    error.mockRestore();
+  });
+
+  it('sends the draft when no judge is wired, and names that', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'EarlyON Saturday at 10.';
+    const p = ports({ runAgent: answering(draft) });
+    const { reply } = await channelCoachRuntime(p).respond(turn("what's on this weekend"), []);
+    expect(reply).toBe(draft);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'not_configured' }),
+      expect.any(String),
+    );
+    error.mockRestore();
+  });
+
+  it('sends nothing when the judge does not run', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const draft = 'EarlyON Saturday at 10.';
+    const p = ports({
+      judgeFindReply: async () => ({ verdict: 'unjudged', reason: 'judge_failed' }),
+      runAgent: answering(draft),
+    });
+    const failure = await channelCoachRuntime(p)
+      .respond(turn("what's on this weekend"), [])
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    expect(failure).toBeInstanceOf(ChannelTurnFailed);
+    const thrown = failure as ChannelTurnFailed;
+    expect(thrown.message).not.toContain(draft);
+    expect(String(thrown.cause ?? '')).not.toContain(draft);
+    expect(thrown.draftedActionIds).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'judge_failed' }),
+      expect.any(String),
+    );
+    error.mockRestore();
   });
 });

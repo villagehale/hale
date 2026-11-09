@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event name (PD Day), the correct day (tomorrow, Monday, true from Sunday evening), start 9:30 a.m., end 12:00 p.m., and the venue name (Northside community centre). AM/PM is correct, it is clearly something to be at, and nothing is invented. No address or 'for' was given in the facts, and no planLink exists, so nothing is missing.",
+    "score": 5
+  }
+}

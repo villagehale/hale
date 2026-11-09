@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text invents an event: 'Jour de congé at 3:00' is French, not English, and gives a wrong time (3:00 instead of 4:45 PM). It also drops the end time 5:45 PM, and it says the day is a day off with breathing room, implying the day is open when a timed event exists at 4:45 PM. Wrong language, wrong time, missing end time, and a false claim about the day all make this a fact and language failure.",
+    "score": 1
+  }
+}

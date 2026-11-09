@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. Theo's Montessori tour: tomorrow morning, 10 to 11 (AM correct for 10:00-11:00 AM), at Little Oaks Montessori, 41 Mill St. Léa's Storytime: tomorrow afternoon, 1:30 to 2:15 (PM correct), at Georgetown Branch, 9 Church St. Days are correct from now (Sunday evening to Monday). Titles are kept as event names, who each is for is stated, nothing invented (no travel or departure times, no overlap claimed; the events do not overlap), no link included (planLink is null), language is English, and bold is none, which is fine.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h), the title quoted as-is, the venue name and the street address, and invents nothing. It omits the given end time (4:00 PM / 16 h), and no duration is stated either. Per the rubric, dropping a given end is a fact failure.",
+    "score": 2
+  }
+}

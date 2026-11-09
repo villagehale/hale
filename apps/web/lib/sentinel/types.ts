@@ -48,6 +48,9 @@ export interface ExtractedEvent {
   childRef: string | null;
   originalTime: string | null;
   newTime: string | null;
+  /** When the `newTime` occasion ends, only when the email states it; else null/absent.
+   * Never estimated. */
+  endTime?: string | null;
   location: string | null;
 }
 
@@ -89,6 +92,9 @@ export interface SentinelClassification {
      */
     teenAttributed: boolean;
     matchedEventRef: CorrelatedEventRef | null;
+    /** How many candidates cleared correlation (VIL-474). A source change is recorded
+     * only when this is exactly 1; absent is treated as unknown, so nothing is recorded. */
+    matchedEventCount?: number;
   } | null;
   usage: {
     triage: { promptTokens: number; completionTokens: number };

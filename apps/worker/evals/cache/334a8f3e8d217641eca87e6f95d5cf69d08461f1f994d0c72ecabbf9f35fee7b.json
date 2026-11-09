@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct days and times: tomorrow, 11:00 AM library story time, and soccer 5:30 to 6:30 PM with the afternoon correctly marked. The Chinese reads naturally and the text is short and calm. However, it does not say the planLink, which is not a fact failure but the watchFor asks for it to appear. Nothing is invented and no title is changed. Score is limited by the missing plan link being expected in the text and by the phrasing 有两件事 which reads slightly like a summary label rather than a friend's message, so a 4 is fair.",
+    "score": 4
+  }
+}

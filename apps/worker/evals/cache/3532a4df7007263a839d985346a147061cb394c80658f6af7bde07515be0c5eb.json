@@ -1,0 +1,59 @@
+{
+  "response": {
+    "id": "msg_011CgUtLtGP2TyUxFepmL855",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS3wYKEAgTGAI4AUIIdGhpbmtpbmcSDPfA/eXd3NaFbOstpxoMFVnAGNO/UlM6JdFaIjCITcZL+rVZiMvDHowAvydZWA4k5VH/65uAMVy9kCXA/LBdrOJIfuKwkvidiNhmw3Aq/AUBwY3FcS8fE2+nVa5YdAcvlHuvEi3av0bz48Fy22et4vWtAdH3KC3XbZZQE9H1l8H0vlKTZjm4V855OvzcsHAjns0/Rhzb9Cio3K7HG2odcnNJsBOq/KNndu/7Vp7tqtXYrjVEz8rlTZxrsIYzOMAWWu2rlncHkCkhanEct/DMCTG1/IJlKZ4C7DWtvHTEY721+h4P3TG1FR2FVMM6Tms8WU9h39i1tWEt/z/vgrooSJ2qfmmWdZDEupo0R6XmLxelar9yHyQcIqplyTHQ3rmHFcdnL7hO5czPBVpOXLw95p0M0S+CfBtT/FRrfzacDGn7UDYNX/HLOOSmIGnP0Irxgq/sfCTsMazIlayFh2I6X0XwLB8Hu9SZ67g6w3p/t/3gOzu739ly6BC920D8SBN/UtESjI4JQJH2Ear8S6Ej4QB8ur2TpVdMjXPX46HE0d6GlmtiNDzSBdjQgQQrZjRQKs/aXMzWjINYtWiUHCkt+qO17CFg6OU2XwX10jTJaEQRGuyoj0r2lUBMNkFSxs6E2MHXP36B5L2/mU57X4XM4306oc4U8sRJy4IOAI6wDTPdTjhKVdgjPVudW+9xgU79bVtXXpZDj3vkVtmyjwDTYAtjEX1SNrU0pMXRC3gld5FvEguVvzWxVhZFOUm76T3tGj0y7A27aBcKD+FGyHNfKhOIxJz1eVH0IM/6XdRuZC2qI2Y3BwdXF+KjHmphK5zuyWv1bqskBa2m7ksu0zS1K0o6EWyQdY0o2aYT3KC8FAvlmq2P/Ax3iLCo575u+CSFace2iRho3aklA3aYrA7WhoCOzio57bkazjfLQMfunQQMzRWWgj6w0CI9cGy/AF0Vi7mLuE7hnjKVCP521ScDExCsuD+e0OoNFSzm71SXZe5S5aSum9qbEc5iBsIjz9KMsAooKdk7RsJlmPKqFRoRWXP7VXFTwki+6WFU76Ey2H6BD076bSgowH+pETP5UAyprmvv0l3uY6P8JIRrbhpbsJ50hY+AY8CEquczxRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_012tUfpoeWpbHKDXq7MQiqYG",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "ageMonths": 63
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LKo6jzAq2937aH8HzGsHXS",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-milo",
+          "offer": "Want me to send the full plan for moving Milo to his own bed?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 386,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21045,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 322,
+      "output_tokens_details": {
+        "thinking_tokens": 124
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3299
+}

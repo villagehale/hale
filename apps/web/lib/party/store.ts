@@ -252,12 +252,7 @@ export async function loadLivePartyInvite(
       publicToken: schema.partyInvites.publicToken,
     })
     .from(schema.partyInvites)
-    .where(
-      and(
-        eq(schema.partyInvites.familyId, familyId),
-        isNull(schema.partyInvites.cancelledAt),
-      ),
-    )
+    .where(and(eq(schema.partyInvites.familyId, familyId), isNull(schema.partyInvites.cancelledAt)))
     .orderBy(desc(schema.partyInvites.createdAt))
     .limit(1);
 
@@ -268,10 +263,7 @@ export async function loadLivePartyInvite(
 }
 
 /** Every answer on one invite, oldest-first — the host's list, and only the host's. */
-export async function loadPartyTally(
-  database: Database,
-  inviteId: string,
-): Promise<RsvpTally> {
+export async function loadPartyTally(database: Database, inviteId: string): Promise<RsvpTally> {
   const rows = await database
     .select({
       displayName: schema.partyRsvps.displayName,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says 'Reminder set!' which tells the group a reminder was set, the opposite of the cancellation in facts. It fails to convey the cancelled swim pickup and wrongly implies something new was set."
+  }
+}

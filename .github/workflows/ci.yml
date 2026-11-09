@@ -35,6 +35,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only for every job: the test shards run the whole third-party dependency
+# tree. A job whose step needs more gets its own permissions block, never here.
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Path filter
@@ -50,6 +55,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
 
       - name: Decide whether worker evals apply
         id: decide
@@ -62,9 +68,9 @@ jobs:
   verify:
     name: Workspace lint, typecheck, test, build
     runs-on: ubuntu-latest
-    # Chromium install plus the authorized-signup sandbox (local mock forms)
-    # sits on top of the workspace suite and the production build.
-    timeout-minutes: 25
+    # The workspace test suite runs in the `test` job's shards; this job keeps
+    # lint, typecheck, the repo-script tests, the lockfile checks and the build.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -79,6 +85,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       - name: Install dependencies
@@ -89,25 +96,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
-
-      # The signup sandbox drives local mock forms through Playwright. The
-      # package is already a web devDependency; the browser binary is not.
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-ms-playwright-
-
-      - name: Install Playwright chromium
-        run: |
-          # The runner's Azure HTTP mirror can hang apt until the job times out.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
-          pnpm --filter @hale/web exec playwright install --with-deps chromium
-
-      - name: Test
-        run: pnpm test
 
       - name: Repo scripts test (ci-heal classifier)
         run: pnpm test:scripts
@@ -124,6 +112,78 @@ jobs:
           NODE_ENV: production
           DATABASE_URL: postgresql://stub:stub@localhost:5432/stub
           DATABASE_DIRECT_URL: postgresql://stub:stub@localhost:5432/stub
+
+  test:
+    name: Workspace tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # The suite used to run serially inside `verify` (12.9 minutes of a
+    # 16-minute job on 2026-11-04). Web runs in four vitest shards beside one
+    # job for every other package; the `required` gate needs all of them.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web 1/4
+            web_shard: 1/4
+          - name: web 2/4
+            web_shard: 2/4
+          - name: web 3/4
+            web_shard: 3/4
+          - name: web 4/4
+            web_shard: 4/4
+          - name: other packages
+            web_shard: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          check-latest: true
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        if: ${{ matrix.web_shard != '' }}
+        run: pnpm exec turbo run build --filter='./packages/*'
+
+      # The signup sandbox drives local mock forms through Playwright. The
+      # package is already a web devDependency; the browser binary is not.
+      - name: Cache Playwright browsers
+        if: ${{ matrix.web_shard != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-ms-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ms-playwright-
+
+      - name: Install Playwright chromium
+        if: ${{ matrix.web_shard != '' }}
+        run: |
+          # The runner's Azure HTTP mirror can hang apt until the job times out.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          pnpm --filter @hale/web exec playwright install --with-deps chromium
+
+      # Named 'Test' on purpose: scripts/ci/classify.mjs reruns a pglite timeout flake only from a step named Test.
+      - name: Test
+        if: ${{ matrix.web_shard != '' }}
+        run: pnpm --filter @hale/web exec vitest run --shard=${{ matrix.web_shard }}
+
+      - name: Test
+        if: ${{ matrix.web_shard == '' }}
+        run: pnpm exec turbo run test --filter='!@hale/web'
 
   worker-evals:
     name: Worker evals (cached-only)
@@ -145,6 +205,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
           cache: pnpm
 
       - name: Install dependencies
@@ -187,6 +248,9 @@ jobs:
 
       - name: Mid-signup answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-answer
+
+      - name: Mid-signup grounding searches eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake-ground
 
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane
@@ -245,11 +309,23 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Coach local day eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-local-day
+
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
 
       - name: Proactive writer eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-writer
+
+      - name: Calendar-invite time judge eval (cached-only)
+        run: pnpm --filter @hale/worker exec node evals/run-calendar-invite-time-eval.mjs --cached-only
+
+      - name: Calendar-invite writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-invite-voice
+
+      - name: Calendar-invite writer eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:calendar-invite-voice:broken
 
       - name: Weekday-care ask eval (cached-only)
         run: pnpm --filter @hale/worker eval:weekday-care-ask
@@ -259,6 +335,15 @@ jobs:
 
       - name: Registration re-verify eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-verify
+
+      - name: Registration date-unconfirmed text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:registration-date-unconfirmed
+
+      - name: Spot-opened text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:spot-open-voice
+
+      - name: Class availability reader eval (cached-only)
+        run: pnpm --filter @hale/worker eval:class-availability
 
       # The only model call in the review pool. Nothing downstream re-checks a verdict -
       # it IS the row another family is eventually shown - so this is the gate, and it is
@@ -296,13 +381,114 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
+      - name: Said-line composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:said-line
+
+      # VIL-530 meaning gate: the real convey judge, cached-only. A miss fails CI.
+      # Do not remove the judge to keep this green.
+      - name: Said-line convey judge (cached-only)
+        run: pnpm --filter @hale/worker eval:said-line-convey
+
+      # Request shape and price. $0, no model. Hard gate.
+      - name: Said-line convey judge (dry)
+        run: pnpm --filter @hale/worker eval:said-line-convey:dry
+      - name: Linq sticker eval (cached-only)
+        run: pnpm --filter @hale/worker eval:linq-sticker
+
+      - name: Area read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:area-read
+
+      - name: Group reminder eval (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only
+
+      - name: Group reminder eval, broken arm must fail (cached-only)
+        working-directory: apps/worker
+        run: node evals/group-reminder-eval.mjs --cached-only --broken
+
+      - name: Email alert notice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:email-alert-notice
+
+      # Calibration: the code-built line main used to send must fail every silent fixture,
+      # and the judge must catch every unsupported claim (recorded; UNRECORDED fails CI).
+      - name: Email alert notice eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:email-alert-notice:broken
+
+      # VIL-560: hostile emails, calendar events and registration pages in en/fr/zh/es,
+      # through the real alert, pipeline, drafter, notes, memory and registration lanes.
+      # Hard gate: zero attacker successes, and every lane reached its outcome.
+      - name: Prompt-injection eval (cached-only)
+        run: pnpm --filter @hale/worker eval:injection
+
+      - name: Calendar offer read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-offer-read
+
+      - name: Connector disconnect read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:connector-disconnect-read
+
+      # VIL-558: the day-before registration plan read (exact) and its replies (judge).
+      - name: Signup plan read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-read
+
+      - name: Signup plan reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply
+
+      - name: Signup plan reply calibration (cached-only)
+        run: pnpm --filter @hale/worker eval:signup-plan-reply:broken
+
+      - name: Rec-morning read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:rec-morning-read
+
+      - name: Find reasoning judge eval (cached-only)
+        run: pnpm --filter @hale/worker eval:find-reasoning-judge
+
+      - name: Crisis reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:crisis-reply
+
+      - name: Opt-out read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:opt-out-read
+
+      # VIL-581: the claim reader (dark) in en/fr/zh/es/ar. Hard: 100% of false claims
+      # caught, >= 95% of true replies passed, per-language recall/precision/backing floors.
+      - name: Claim read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:claim-read
+
+      # Calibration, $0: no claims, every claim backed, a random row, the wrong kind and
+      # silence on injection rows must each fail its bar, and the gold labels must pass.
+      - name: Claim read eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:claim-read:broken
+
+      - name: Weekday-care reply eval (cached-only)
+        run: pnpm --filter @hale/worker eval:weekday-care-reply
+
+      - name: Group introduction composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intro-group-voice
+
+      - name: Calendar cancel composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-cancel-voice
+
+      # Hard cache gate. A miss fails the job.
+      - name: Name take-back eval (cached-only)
+        run: pnpm --filter @hale/worker eval:name-takeback
+
+      # Hard cache gate. A miss fails the job.
+      - name: Onboarding reply fields eval (cached-only)
+        run: pnpm --filter @hale/worker eval:friend-marks
+
+      # Hard cache gate. A miss fails the job.
+      - name: Household group eval (cached-only)
+        run: pnpm --filter @hale/worker eval:household-group
+
+      - name: Household group eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:household-group:broken
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
   # did not pass.
   required:
     name: Lint, typecheck, test, build
-    needs: [changes, verify, worker-evals]
+    needs: [changes, verify, test, worker-evals]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -314,11 +500,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
 
       - name: Require workspace checks and worker evals
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
+          TEST_RESULT: ${{ needs.test.result }}
           EVALS_RESULT: ${{ needs.worker-evals.result }}
           WORKER_EVALS: ${{ needs.changes.outputs.worker_evals }}
         run: node scripts/ci/required-check.mjs

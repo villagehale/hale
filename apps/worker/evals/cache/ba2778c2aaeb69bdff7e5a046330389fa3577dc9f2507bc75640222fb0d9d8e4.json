@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific, local venues that fit a toddler: the Acton library's Kids & Me drop-in and the Links2Car EarlyON centres in Acton and Georgetown. There are only two picks, and the message leads with the best one by name. It is plain text with no link and no question. Free and the Thursday 10:30-12 time both come from the picks; nothing is invented. Under no_page_read, the gap is correctly phrased as \"I couldn't get into their page today for times\" rather than \"not posted yet\". With watch true, it gives a first-person \"I'll keep watching\". Two minor weaknesses. First, the promise is terse and never says it will text when times appear. Second, the Kids & Me attribution is muddy: the notes say the time and day came from Halton Region's page, but the message credits \"their site\" and the pick credits the library.",
+    "score": 4
+  }
+}

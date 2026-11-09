@@ -13,9 +13,9 @@
 // `check` recomputes and exits non-zero on any mismatch/missing/extra file.
 
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, readdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const LOCKFILE = join(SKILLS_DIR, '.skills-lock.json');

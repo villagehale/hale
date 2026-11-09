@@ -27,12 +27,14 @@ import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { groupDraftedActionIds, groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
@@ -41,6 +43,8 @@ import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { defaultClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
@@ -79,6 +83,7 @@ import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
+import { createFloodLine } from './flood-line';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -293,6 +298,21 @@ async function primaryParentDisplayName(
   return row?.name ?? null;
 }
 
+/** Title and start off a calendar payload, or nothing. Used to see that a coach offer
+ * and a draft are one occasion (VIL-513). Not a sentence a parent reads. */
+function calendarOccasion(
+  actionType: string,
+  payload: unknown,
+): { title: string; startsAt: string } | undefined {
+  if (actionType !== 'calendar_add') return undefined;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const title = 'title' in payload && typeof payload.title === 'string' ? payload.title : '';
+  const startsAt =
+    'startsAt' in payload && typeof payload.startsAt === 'string' ? payload.startsAt : '';
+  if (title.trim() === '' || startsAt.trim() === '') return undefined;
+  return { title, startsAt };
+}
+
 /**
  * The approvals spine, bound to the SAME functions the app's buttons call.
  *
@@ -317,6 +337,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
           id: schema.actions.id,
           actionType: schema.actions.actionType,
           reviewerVerdict: schema.actions.reviewerVerdict,
+          payload: schema.actions.payload,
         })
         .from(schema.actions)
         .where(
@@ -332,11 +353,21 @@ export function defaultApprovalSpine(): ApprovalSpine {
       // decline, so removing it would take away an answer they have. What it cannot be is
       // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
       // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
-      return rows.map((row) => ({
-        actionId: row.id,
-        actionType: row.actionType,
-        reviewerApproved: row.reviewerVerdict === 'approved',
-      }));
+      const groupIds = await groupDraftedActionIds(
+        database,
+        familyId,
+        rows.map((row) => row.id),
+      );
+      return rows.map((row) => {
+        const occasion = calendarOccasion(row.actionType, row.payload);
+        return {
+          actionId: row.id,
+          actionType: row.actionType,
+          reviewerApproved: row.reviewerVerdict === 'approved',
+          ...(occasion ? { occasion } : {}),
+          ...(groupIds.has(row.id) ? { groupPlan: true as const } : {}),
+        };
+      });
     },
 
     /**
@@ -720,6 +751,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
         });
       },
     }),
+    groupPlanActionIds,
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
     saidLine: createSaidLineWriter(screenClient),
@@ -739,6 +771,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     apology: createTurnApology(screenClient),
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
+    floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),
@@ -790,6 +823,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.
     reconcileView: loadReconcileView,
+    // VIL-581 · the claim reader in shadow; a no-op while CLAIM_READER_MODE is unset.
+    claimShadow: defaultClaimShadow(),
+    claimEnforcer: defaultClaimEnforcer(),
     recordRegistrationWatch,
     armWatchedSpot,
     limiter: new PostgresRateLimiter(database),
@@ -808,7 +844,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
 /** The drain's handler: route one inbound text. */
 export async function routeInboundChannelMessage(
   database: Database,
-  job: ChannelMessageReceivedPayload,
+  job: ChannelMessageReceivedJob,
 ): Promise<void> {
   await routeChannelMessage(channelRouterDeps(database), job);
 }
@@ -934,6 +970,8 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           summary: emailAlertOfferSummary(offer),
           subject: emailAlertOfferSubject(offer),
           askedAt: offer.askedAt,
+          title: offer.title,
+          startsAt: offer.startsAt.toISOString(),
         }));
       },
       // The email forwarding door is retired with the email channel, so no revoke

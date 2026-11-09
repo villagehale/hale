@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts have the event titled \"Jour de congé\" at 3:00-4:00 PM tomorrow at Georgetown library, 9 Church St. The text gives tomorrow, 15 h, until 16 h, the venue name and address, so all given facts are present with correct times. The problem is the title: the text writes \"il y a un jour de congé\" as a plain description of what is happening, instead of presenting it as the name of the event. It no longer uses \"Jour de congé\" as a title but as a statement that tomorrow is a day off, which changes what the title says. Under the title-meaning rule, this is a fact failure even though the words match. No bold, which is fine.",
+    "score": 2
+  }
+}

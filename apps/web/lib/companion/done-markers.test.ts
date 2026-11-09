@@ -9,8 +9,16 @@ describe('buildDoneByChild', () => {
   it('folds milestone and health_done episodes into per-child done sets', () => {
     const byChild = buildDoneByChild([
       { childId: CHILD_A, episodeType: MILESTONE_EPISODE, payload: { milestone: 'Rolls over' } },
-      { childId: CHILD_A, episodeType: HEALTH_DONE_EPISODE, payload: { healthKey: '4-immunization' } },
-      { childId: CHILD_B, episodeType: MILESTONE_EPISODE, payload: { milestone: 'Says first words' } },
+      {
+        childId: CHILD_A,
+        episodeType: HEALTH_DONE_EPISODE,
+        payload: { healthKey: '4-immunization' },
+      },
+      {
+        childId: CHILD_B,
+        episodeType: MILESTONE_EPISODE,
+        payload: { milestone: 'Says first words' },
+      },
     ]);
 
     const a = doneForChild(byChild, CHILD_A);
@@ -24,7 +32,11 @@ describe('buildDoneByChild', () => {
   it('ignores non-marker episodes and unattributed rows', () => {
     const byChild = buildDoneByChild([
       { childId: CHILD_A, episodeType: FEED_EPISODE, payload: { amountMl: 120 } },
-      { childId: null, episodeType: MILESTONE_EPISODE, payload: { milestone: 'Walks independently' } },
+      {
+        childId: null,
+        episodeType: MILESTONE_EPISODE,
+        payload: { milestone: 'Walks independently' },
+      },
     ]);
     // A feed doesn't mark anything done; an unattributed milestone has no child to
     // key against, so nothing is recorded.

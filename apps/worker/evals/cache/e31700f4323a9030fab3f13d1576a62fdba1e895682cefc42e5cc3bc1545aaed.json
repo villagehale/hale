@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Gets the reminder set and the chairs, but omits the time and day entirely, so the second mustSay item is missing. Also never names Sam as the one being reminded, which the first item needs."
+  }
+}

@@ -242,6 +242,21 @@ function render(
         "I can't use this thread as your kids' year.",
         "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
       );
+    case 'rec_morning':
+      // Test stand-in: the scripted model restates the reviewed facts.
+      return facts.answer;
+    case 'linq_group_open':
+      return pick(
+        language,
+        "This thread is your kids' year - both of you, and me.",
+        "Ce fil, c'est l'annee de vos enfants - vous deux, et moi.",
+      );
+    case 'linq_group_unreachable':
+      return pick(
+        language,
+        "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.",
+        "Je n'ai pas pu ouvrir le groupe. Demandez-leur d'ecrire une fois a ce numero, puis redites-le moi.",
+      );
     case 'linq_group_line_missing':
       return pick(
         language,
@@ -330,24 +345,9 @@ function render(
       if (facts.provider === 'gcal') return pick(language, 'Google Calendar', 'Google Agenda');
       if (facts.provider === 'gmail') return 'Gmail';
       return 'Google Drive';
-    case 'connector_revoke': {
-      const noun = facts.noun ?? '';
-      if (facts.outcome === 'revoke_failed') {
-        return fr(language)
-          ? `Quelque chose s'est mal passé chez moi avec votre ${noun} - rien n'a changé. Réessayez dans une minute.`
-          : `Something went wrong on my end with your ${noun} - nothing was changed. Try me again in a minute.`;
-      }
-      if (facts.outcome === 'not_connected') {
-        return fr(language)
-          ? `Hale n'a pas de clés pour votre ${noun} - rien à déconnecter. Demandez dans ce fil si vous voulez le lier.`
-          : `Hale has no keys for your ${noun} - nothing to disconnect. Ask in this thread if you want to link it.`;
-      }
-      return fr(language)
-        ? `Fait - votre ${noun} est déconnecté, Hale a supprimé ses clés. Google garde Hale jusqu'à ce que vous l'enleviez sur myaccount.google.com/permissions`
-        : `Done - your ${noun} is disconnected and Hale deleted its keys. Google still lists Hale until you remove it at myaccount.google.com/permissions`;
-    }
     case 'provider_access': {
       const body = facts.body ?? '';
+      if (facts.verified_paths !== 'ontario') return pick(language, UNPLACEABLE_EN, UNPLACEABLE_FR);
       if (asksAboutEyeCare(body)) return EYE;
       if (PRIMARY_CARE.test(body)) return pick(language, PROVIDER_EN, PROVIDER_FR);
       return pick(language, UNPLACEABLE_EN, UNPLACEABLE_FR);

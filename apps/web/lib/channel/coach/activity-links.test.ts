@@ -37,4 +37,25 @@ describe('attachLinks', () => {
   it('drops an unknown ref', () => {
     expect(attachLinks('Swim. [link-000000]', links)).toEqual({ body: 'Swim.', urls: [] });
   });
+
+  it('does not attach a cited page that is not absolute https (VIL-501)', () => {
+    const http = 'http://example.com/swim';
+    expect(attachLinks(`Swim. [${linkRef(http)}]`, [{ ref: linkRef(http), url: http }])).toEqual({
+      body: 'Swim.',
+      urls: [],
+    });
+    expect(attachLinks('Swim. [link-abcdef]', [{ ref: 'link-abcdef', url: 'not-a-url' }])).toEqual({
+      body: 'Swim.',
+      urls: [],
+    });
+  });
+
+  it('leaves the word ref in the prose', () => {
+    expect(attachLinks('The ref is at the field at 4.', links).body).toBe(
+      'The ref is at the field at 4.',
+    );
+    expect(attachLinks('A ref came back this time, so I can attach the page.', links).body).toBe(
+      'A ref came back this time, so I can attach the page.',
+    );
+  });
 });

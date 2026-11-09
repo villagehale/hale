@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: event name, day (tomorrow, said in text 1), start 10:30 and end 11:20 AM, venue name and address are all present, nothing invented, English throughout. Minor gap: Léa (who it is for) is not named, which counts as a given fact left out. Bold check: the whole greeting 'hey, heads up for tomorrow' was bolded, which is not a single actionable fact, so the score is capped at 3.",
+    "score": 2
+  }
+}

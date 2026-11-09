@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, so it fails the language requirement. It also invents a day off ('Jour de congé') and gives 3:00 instead of 4:45 PM, a wrong time. It further implies breathing room, which the facts do not support since a timed event exists. Several fact failures make this a clear low score.",
+    "score": 1
+  }
+}

@@ -63,6 +63,11 @@ export interface ForceToolJsonArgs<TSchema extends z.ZodTypeAny> extends Structu
    * timeout sized for a ten-second one.
    */
   transport?: 'create' | 'stream';
+  /**
+   * Aborts every send of this call (the first, a re-ask, a thinking-off re-ask). It rides
+   * as the SDK REQUEST OPTION, never in the body, so no recorded request moves.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ForceToolJsonResult<TValue> {
@@ -144,13 +149,19 @@ export function structuredRequest(args: StructuredRequestArgs): StructuredReques
 
 type Send = (request: StructuredRequest) => Promise<Anthropic.Message>;
 
-function sender(client: AgentClient, transport: 'create' | 'stream' | undefined): Send {
+function sender(
+  client: AgentClient,
+  transport: 'create' | 'stream' | undefined,
+  signal: AbortSignal | undefined,
+): Send {
   // The widened body is the wire request; see StructuredRequest.
   const wire = (request: StructuredRequest) =>
     request as unknown as Anthropic.MessageCreateParamsNonStreaming;
+  // Only a caller that passed a signal sends a second argument: every other call is unchanged.
+  const options: [] | [{ signal: AbortSignal }] = signal ? [{ signal }] : [];
   return transport === 'stream'
-    ? (request) => client.messages.stream(wire(request)).finalMessage()
-    : (request) => client.messages.create(wire(request));
+    ? (request) => client.messages.stream(wire(request), ...options).finalMessage()
+    : (request) => client.messages.create(wire(request), ...options);
 }
 
 function findToolUse(response: Anthropic.Message, toolName: string) {
@@ -240,7 +251,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   args: ForceToolJsonArgs<TSchema>,
 ): Promise<ForceToolJsonResult<z.infer<TSchema>>> {
   const request = structuredRequest(args);
-  const send = sender(args.client, args.transport);
+  const send = sender(args.client, args.transport, args.signal);
   let response = await send(request);
   let usage = response.usage;
 

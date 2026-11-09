@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts only say there is an all-day event titled \"PD Day\" tomorrow. The text correctly gives the day and no clock time, but adds \"so school is closed for students,\" which is an unstated inference drawn from the title (what is closed and who is affected) that the facts do not contain. Bold is none, which is fine.",
+    "score": 2
+  }
+}

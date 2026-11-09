@@ -26,6 +26,7 @@ interface ExtractionInput {
     child_ref?: string | null;
     original_time?: string | null;
     new_time?: string | null;
+    end_time?: string | null;
     location?: string | null;
   };
   source_confidence: number;
@@ -463,5 +464,41 @@ describe('classifyChildEventEmail — teen-content backstop (rule #1)', () => {
     });
 
     expect(result.extraction?.teenContent).toBe(false);
+  });
+});
+
+describe('classifyChildEventEmail — end time', () => {
+  async function endOf(event: Partial<ExtractionInput['event']>) {
+    const client = scriptedClient(
+      { child_related: true, confidence: 0.9, rationale: 'new class' },
+      {
+        kind: 'new_event',
+        event: { title: 'Pottery', new_time: '2026-08-01T14:00:00Z', ...event },
+        source_confidence: 0.9,
+        quote_evidence: 'Pottery runs 2 to 3:30 on Saturday.',
+      },
+    );
+    const result = await classifyChildEventEmail(ENVELOPE, {
+      client,
+      children: [YOUNG_CHILD],
+      fetchBody: vi.fn().mockResolvedValue('body'),
+      correlationCandidates: [],
+    });
+    return result.extraction?.event.endTime;
+  }
+
+  it('carries the end the email stated', async () => {
+    expect(await endOf({ end_time: '2026-08-01T15:30:00Z' })).toBe('2026-08-01T15:30:00Z');
+  });
+
+  it('stays null when the email states none, and never guesses one', async () => {
+    expect(await endOf({})).toBeNull();
+    expect(await endOf({ end_time: null })).toBeNull();
+  });
+
+  it('drops an end that is not a real instant after the start', async () => {
+    expect(await endOf({ end_time: '2026-08-01T13:00:00Z' })).toBeNull();
+    expect(await endOf({ end_time: 'around 3' })).toBeNull();
+    expect(await endOf({ new_time: null, end_time: '2026-08-01T15:30:00Z' })).toBeNull();
   });
 });

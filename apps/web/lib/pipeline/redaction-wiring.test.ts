@@ -2,8 +2,8 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClassifyInput } from './classify';
-import { dedupHashFor } from './record';
 import { ingestEvent } from './ingest';
+import { dedupHashFor } from './record';
 
 /**
  * Rule #1 at the ingest boundary (web pipeline). Connector/inbound PII must be
@@ -135,7 +135,9 @@ describe('ingestEvent — redaction at the ingest boundary (rule #1)', () => {
 
     const originalRaw = JSON.stringify({ subject: baseInput.subject, body: baseInput.body });
     expect(capture.events).toHaveLength(1);
-    expect(capture.events[0]?.dedupHash).toBe(dedupHashFor(FAMILY_ID, baseInput.source, originalRaw));
+    expect(capture.events[0]?.dedupHash).toBe(
+      dedupHashFor(FAMILY_ID, baseInput.source, originalRaw),
+    );
     // Sanity: the redacted content hashes differently — the stored key is NOT
     // derived from what the classifier saw.
     expect(capture.events[0]?.dedupHash).not.toBe(

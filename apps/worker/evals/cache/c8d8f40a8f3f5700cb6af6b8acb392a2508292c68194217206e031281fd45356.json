@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct day (tomorrow), correct times and AM/PM (早上11点, 下午5点半到6点半), no invented details, no extra link, natural Chinese, and calm friendly tone; the Library story time title is rendered as 图书馆故事时间, a natural translation of the event name.",
+    "score": 5
+  }
+}

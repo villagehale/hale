@@ -105,6 +105,14 @@ export type CommitmentCloseOutcome =
   | { status: 'none_open' }
   | { status: 'not_closed'; reason: 'no_ledger_row' | 'write_failed' };
 
+/** A Postgres error's message and detail can carry the failing row's values, summary
+ * included, so a log keeps the SQLSTATE only. */
+function pgErrorCode(err: unknown): string {
+  return err instanceof Error && 'code' in err && typeof err.code === 'string'
+    ? err.code
+    : 'unknown';
+}
+
 /** The predicate that IS "still owed": not kept, not voided. Written once so a reader
  * and the unique index cannot disagree about what open means. */
 function openPredicate() {
@@ -135,6 +143,9 @@ export async function recordCommitment(
     /** WHICH OTHER HOUSEHOLD the promise is about, for the one kind whose subject is not
      * the family it is owed to (see the column's own note). Null for every other kind. */
     subjectFamilyId?: string | null;
+    /** The schedule facts the message that carried this promise already told the parent
+     * (the column's own note). Only an activity watch writes it; null for every other kind. */
+    heardFacts?: readonly string[] | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -146,28 +157,44 @@ export async function recordCommitment(
     );
     return { status: 'not_recorded', reason: 'no_ledger_row' };
   }
+  const channelMessageId = input.channelMessageId;
   try {
-    const [row] = await database
-      .insert(schema.agentCommitments)
-      .values({
+    const row = await database.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(schema.agentCommitments)
+        .values({
+          familyId: input.familyId,
+          commitmentKind: input.kind,
+          summary: input.summary,
+          topic: input.topic ?? null,
+          subjectChildId: input.subjectChildId ?? null,
+          subjectFamilyId: input.subjectFamilyId ?? null,
+          heardFacts: input.heardFacts ? [...input.heardFacts] : null,
+          dueAt: input.dueAt,
+          createdFrom: channelMessageId,
+        })
+        // The partial unique index refuses a second open promise of this kind. A tick that
+        // ran twice must cost one rejected insert, never a second debt.
+        .onConflictDoNothing()
+        .returning({ id: schema.agentCommitments.id });
+      if (!inserted) return null;
+      // `summary` and `topic` stay out of `after`: the summary is free text that may name a
+      // child, and an activity follow-up's topic is the search phrase it is built from.
+      await tx.insert(schema.auditLog).values({
         familyId: input.familyId,
-        commitmentKind: input.kind,
-        summary: input.summary,
-        topic: input.topic ?? null,
-        subjectChildId: input.subjectChildId ?? null,
-        subjectFamilyId: input.subjectFamilyId ?? null,
-        dueAt: input.dueAt,
-        createdFrom: input.channelMessageId,
-      })
-      // The partial unique index refuses a second open promise of this kind. A tick that
-      // ran twice must cost one rejected insert, never a second debt.
-      .onConflictDoNothing()
-      .returning({ id: schema.agentCommitments.id });
+        actor: 'system',
+        actionTaken: 'commitment_recorded',
+        targetTable: 'agent_commitments',
+        targetId: inserted.id,
+        after: { kind: input.kind, dueAt: input.dueAt },
+      });
+      return inserted;
+    });
     if (!row) return { status: 'already_open' };
     return { status: 'recorded', commitmentId: row.id };
   } catch (err) {
     console.error(
-      { err, familyId: input.familyId, kind: input.kind },
+      { code: pgErrorCode(err), familyId: input.familyId, kind: input.kind },
       'commitments: promise write failed - this debt is invisible',
     );
     return { status: 'not_recorded', reason: 'write_failed' };
@@ -203,6 +230,10 @@ export async function fulfillCommitment(
     database,
     { familyId: input.familyId, kind: input.kind },
     { fulfilledAt: input.now, fulfilledBy: input.channelMessageId },
+    {
+      actionTaken: 'commitment_fulfilled',
+      after: { kind: input.kind, fulfilledBy: input.channelMessageId },
+    },
   );
 }
 
@@ -231,33 +262,103 @@ export async function cancelCommitment(
     database,
     { familyId: input.familyId, kind: input.kind },
     { cancelledAt: input.now, cancelledReason: input.reason },
+    { actionTaken: 'commitment_cancelled', after: { kind: input.kind, reason: input.reason } },
   );
 }
 
+/**
+ * Move one open promise's due time — it is still owed, and not yet.
+ *
+ * The one production caller is the activity sweep's `nothing_new` outcome (VIL-564): the
+ * research ran, it found nothing the parent has not already been told, so nothing is sent
+ * and the watch is pushed to its next look. Neither kept (no message made good on it) nor
+ * voided (Hale still owes the answer), so it is the one ledger write that is not a
+ * closure — and it still writes its audit row in the same transaction (rule #6).
+ *
+ * Scoped by id AND the open predicate, so a promise closed between the read and this
+ * write is never reopened onto a new clock.
+ */
+export async function deferCommitment(
+  database: Database,
+  input: { commitmentId: string; familyId: string; dueAt: Date; reason: 'nothing_new' },
+): Promise<{ status: 'deferred' } | { status: 'none_open' } | { status: 'not_deferred' }> {
+  try {
+    const moved = await database.transaction(async (tx) => {
+      const rows = await tx
+        .update(schema.agentCommitments)
+        .set({ dueAt: input.dueAt })
+        .where(
+          and(
+            eq(schema.agentCommitments.id, input.commitmentId),
+            eq(schema.agentCommitments.familyId, input.familyId),
+            openPredicate(),
+          ),
+        )
+        .returning({
+          id: schema.agentCommitments.id,
+          kind: schema.agentCommitments.commitmentKind,
+        });
+      const [row] = rows;
+      if (!row) return false;
+      await tx.insert(schema.auditLog).values({
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'commitment_deferred',
+        targetTable: 'agent_commitments',
+        targetId: row.id,
+        after: { kind: row.kind, dueAt: input.dueAt, reason: input.reason },
+      });
+      return true;
+    });
+    return moved ? { status: 'deferred' } : { status: 'none_open' };
+  } catch (err) {
+    console.error(
+      { code: pgErrorCode(err), commitmentId: input.commitmentId },
+      'commitments: defer failed - promise left due, the next tick looks again',
+    );
+    return { status: 'not_deferred' };
+  }
+}
+
 /** The one closing write. Scoped by the open predicate, so a promise already kept or
- * already voided is never reopened or re-stamped by a later surface. */
+ * already voided is never reopened or re-stamped by a later surface. Each closed row gets
+ * its audit row in the same transaction, so a refused audit leaves the promise open. */
 async function close(
   database: Database,
   target: { familyId: string; kind: CommitmentKind },
   patch: Record<string, unknown>,
+  audit: Pick<typeof schema.auditLog.$inferInsert, 'actionTaken' | 'after'>,
 ): Promise<CommitmentCloseOutcome> {
   try {
-    const rows = await database
-      .update(schema.agentCommitments)
-      .set(patch)
-      .where(
-        and(
-          eq(schema.agentCommitments.familyId, target.familyId),
-          eq(schema.agentCommitments.commitmentKind, target.kind),
-          openPredicate(),
-        ),
-      )
-      .returning({ id: schema.agentCommitments.id });
+    const rows = await database.transaction(async (tx) => {
+      const closed = await tx
+        .update(schema.agentCommitments)
+        .set(patch)
+        .where(
+          and(
+            eq(schema.agentCommitments.familyId, target.familyId),
+            eq(schema.agentCommitments.commitmentKind, target.kind),
+            openPredicate(),
+          ),
+        )
+        .returning({ id: schema.agentCommitments.id });
+      if (closed.length === 0) return closed;
+      await tx.insert(schema.auditLog).values(
+        closed.map((row) => ({
+          familyId: target.familyId,
+          actor: 'system',
+          targetTable: 'agent_commitments',
+          targetId: row.id,
+          ...audit,
+        })),
+      );
+      return closed;
+    });
     if (rows.length === 0) return { status: 'none_open' };
     return { status: 'closed', commitmentIds: rows.map((row) => row.id) };
   } catch (err) {
     console.error(
-      { err, familyId: target.familyId, kind: target.kind },
+      { code: pgErrorCode(err), familyId: target.familyId, kind: target.kind },
       'commitments: close failed - promise left open, Hale will read as still owing it',
     );
     return { status: 'not_closed', reason: 'write_failed' };
@@ -272,6 +373,8 @@ export interface OpenCommitment {
   dueAt: Date;
   /** Past its due time and still open — the state the family can feel. */
   overdue: boolean;
+  /** Whose promise it is, when it was about one child. */
+  subjectChildId: string | null;
 }
 
 /**
@@ -344,6 +447,7 @@ export async function loadOpenCommitmentById(
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      heardFacts: schema.agentCommitments.heardFacts,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)
@@ -369,6 +473,9 @@ export interface DueCommitment {
    * search on this child's stage, so a household promise and a promise about the
    * three-year-old are two different searches. Null for a household one. */
   subjectChildId: string | null;
+  /** What the parent has already been told on this subject — set on an activity watch,
+   * null on every promise no follow-up has answered yet (the column's own note). */
+  heardFacts: string[] | null;
   dueAt: Date;
 }
 
@@ -393,6 +500,7 @@ export async function loadDueCommitments(
       summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
       subjectChildId: schema.agentCommitments.subjectChildId,
+      heardFacts: schema.agentCommitments.heardFacts,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)
@@ -426,6 +534,7 @@ export async function loadOpenCommitments(
       commitmentKind: schema.agentCommitments.commitmentKind,
       summary: schema.agentCommitments.summary,
       dueAt: schema.agentCommitments.dueAt,
+      subjectChildId: schema.agentCommitments.subjectChildId,
     })
     .from(schema.agentCommitments)
     .where(and(eq(schema.agentCommitments.familyId, familyId), openPredicate()))
@@ -436,6 +545,7 @@ export async function loadOpenCommitments(
     summary: row.summary,
     dueAt: row.dueAt,
     overdue: row.dueAt.getTime() < now.getTime(),
+    subjectChildId: row.subjectChildId,
   }));
 }
 

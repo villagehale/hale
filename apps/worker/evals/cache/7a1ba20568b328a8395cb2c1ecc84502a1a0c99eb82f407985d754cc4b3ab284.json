@@ -1,0 +1,16 @@
+{
+  "value": {
+    "reply": "Got it, no calendar for now. I'll hold off on Mia's carpool until it matches a line on the map, so nothing is saved yet. Would a group chat with the other parent help?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "scheduleAdds": [],
+    "coparentGroup": null,
+    "connectCalendar": false,
+    "connectGmail": null,
+    "stopAsking": false
+  },
+  "latencyMs": 1583
+}

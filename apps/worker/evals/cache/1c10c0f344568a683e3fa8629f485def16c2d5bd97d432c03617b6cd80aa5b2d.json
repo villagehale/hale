@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, not the requested Chinese, so the language requirement fails. It omits both timed events (story time at 11:00 AM and soccer 5:30-6:30 PM), invents a 3:00 time, and says the day is open with breathing room even though timed events exist. It also omits the plan link and contains an unrequested comment about the family's day.",
+    "score": 1
+  }
+}

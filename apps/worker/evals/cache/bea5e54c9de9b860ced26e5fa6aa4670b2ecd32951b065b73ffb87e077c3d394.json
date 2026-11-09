@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is not in French; it is mostly English (\"Tomorrow's a day off, so you've got a bit of breathing room\") and the event line reads \"Mon, Oct 26: Jour de congé at 3:00\", inventing a 3:00 time for an all-day event. Léa's swimming at 10:00-11:00 AM at Piscine Main is missing entirely, and the text calls the day open with breathing room although a timed event exists. Multiple fact failures and wrong language.",
+    "score": 1
+  }
+}

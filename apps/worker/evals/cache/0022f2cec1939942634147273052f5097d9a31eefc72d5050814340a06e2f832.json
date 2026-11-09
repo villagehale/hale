@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (tomorrow, Monday), the start (4:45) and the given end (5:45 PM) with the PM meaning clear, and keeps the event generic as 'an appointment' with no guessing, no invented place, no logistics, and no link. Every given fact is present and nothing is invented.",
+    "score": 5
+  }
+}

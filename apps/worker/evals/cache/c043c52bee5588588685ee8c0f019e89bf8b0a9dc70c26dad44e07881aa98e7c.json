@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Names the plan and time correctly, says plainly that the cancellation did not fully go through for this family's calendar (cancel_failed), and asks them to remove it themselves. Warm and brief with no technical terms or other families mentioned. It does not invent promises beyond what the input supports, though 'called off' is slightly stronger than the input, which only says cancel failed for the family's copy.",
+    "score": 5
+  }
+}

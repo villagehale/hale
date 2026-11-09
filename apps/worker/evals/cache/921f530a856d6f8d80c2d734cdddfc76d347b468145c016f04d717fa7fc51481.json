@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: all-day PD Day tomorrow, no clock time given, and no invented details. However the text is not natural English: 'it is having PD Day the whole of day, school is not' is a clumsy, ungrammatical construction a native speaker would not send. It should read something like 'Tomorrow is a PD Day, so there is no school all day.' Native speaker check fails, capping the score at 3.",
+    "score": 3
+  }
+}

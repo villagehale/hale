@@ -23,17 +23,21 @@
 //
 // Calibrated BOTH directions: the real cached model clears every gate; the --broken
 // stand-in (a composer that invents a venue, a price and a time, writes the opt-out line
-// itself, asks a question, and rambles past the segment budget) fails the fabrication
-// gate, the opt-out gate, the question gate, the length gate AND the tone judge.
+// itself, asks for a reply without a question mark, and rambles past the segment budget)
+// fails the fabrication gate, the opt-out gate, the length gate AND the ask judge.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  JUDGE_SAMPLES_MEDIAN,
+  assertRunFlags,
   cachedTextCall,
+  dryReportLine,
   evalRunTag,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -229,7 +233,7 @@ function countSentences(message) {
     .filter((part) => part.length > 0).length;
 }
 
-function checkMessage(fixture, message, judgeScore) {
+function checkMessage(fixture, message, judgeScore, askScore) {
   if (fixture.expect.neverComposes) {
     return message === null
       ? []
@@ -244,9 +248,6 @@ function checkMessage(fixture, message, judgeScore) {
 
   if (message.includes(NUDGE_OPT_OUT)) {
     failures.push('writes an opt-out line — outbound texts do not carry one');
-  }
-  if (message.includes('?')) {
-    failures.push('asks a question in an unprompted text (nothing here needs an answer)');
   }
 
   const segments = smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`);
@@ -274,6 +275,11 @@ function checkMessage(fixture, message, judgeScore) {
   if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
     failures.push(`voice score ${judgeScore} < ${JUDGE_MIN}`);
   }
+  if (askScore !== null && !(askScore >= JUDGE_MIN)) {
+    failures.push(
+      `ask score ${askScore} < ${JUDGE_MIN} — an unprompted text asks the parent for something`,
+    );
+  }
   return failures;
 }
 
@@ -295,17 +301,50 @@ const JUDGE_SYSTEM = [
   'Reply with ONLY the score tool.',
 ].join(' ');
 
+/**
+ * The second judge, and it scores ONE property: does the text ask the parent for anything?
+ * A model reads this rather than a character match, because an ask is a meaning, not a
+ * "?": "Reply YES and I'll hold a spot" asks with no question mark, and a question mark
+ * inside an activity's own title asks nothing.
+ */
+const ASK_JUDGE_SYSTEM = [
+  'You are scoring ONE property of an UNSOLICITED text message Hale sends a parent: does',
+  'the message ask the parent for anything? Nothing else. Not voice, not length, not',
+  'whether the facts are the right ones.',
+  'Nobody asked for this message and nothing in it needs an answer, so the right number',
+  'of asks is zero. An unprompted text that asks something turns a favour into a chore.',
+  'Score 1-5.',
+  'A 5 asks nothing: it tells the parent the one thing and stops.',
+  'A 3 leaves a soft opening the parent may still feel they owe a reply to.',
+  'A 1 asks, in any wording and any language, with or without a question mark: a',
+  'question, a request to reply or confirm, an offer that waits on a yes, or a',
+  'rhetorical question. A question mark that is not an ask (inside an activity title,',
+  'say) is not an ask, and you never mark a message down for one.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
-// in any fixture's nudge, writes the opt-out line itself, asks a question, and rambles
-// past the budget. Every gate must reject it — no API call, no cache read.
+// in any fixture's nudge, writes the opt-out line itself, asks for a reply, and rambles
+// past the budget. Every gate must reject it — no API call for the message itself.
+// The ask carries no question mark on purpose: the ask judge has to catch the meaning,
+// which is the thing a "?" match could never do.
 const BROKEN_MESSAGE = [
   "Great news! I found Sunnyside Splash Pad for you on Friday, and it's only $14 per child, starting at 9:15 sharp.",
   'You should also know about the Beaches Rec Centre program which opens on September 3 at 8:00 for everyone in Etobicoke.',
-  'Want me to book it?',
+  "Reply YES and I'll book it for you.",
   NUDGE_OPT_OUT,
 ].join(' ');
 
 async function main() {
+  assertRunFlags([
+    '---',
+    '--anthropic-model',
+    '--broken',
+    '--only',
+    '--show',
+    '--env-file',
+    '--max-usd',
+  ]);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   const candidateModel = process.argv
@@ -323,6 +362,19 @@ async function main() {
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'nudge', cachedOnly, getClient, cost);
+  // Median of three: the ask gate is a hard floor, and one draw in a judge's tail is not
+  // a measurement (harness JUDGE_SAMPLES_MEDIAN).
+  const askJudge = makeJudge(
+    judgeModel,
+    ASK_JUDGE_SYSTEM,
+    'nudge-ask',
+    cachedOnly,
+    getClient,
+    cost,
+    {
+      samples: JUDGE_SAMPLES_MEDIAN,
+    },
+  );
 
   console.log(
     `nudge-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -342,7 +394,8 @@ async function main() {
         fixture,
         message: null,
         score: null,
-        failures: checkMessage(fixture, null, null),
+        ask: null,
+        failures: checkMessage(fixture, null, null, null),
       });
       continue;
     }
@@ -367,12 +420,23 @@ async function main() {
         getClient,
         cost,
       });
-      message = parseNudgeVoice(text);
+      // --dry: an uncached reply is a stand-in that will not parse; judge it anyway so
+      // the judge draw is priced (never made).
+      message = parseNudgeVoice(text) ?? (isDryRun() ? text : null);
     }
 
     const score =
       broken || !message ? null : (await judge(fixture.id, { facts: context, message })).score;
-    results.push({ fixture, message, score, failures: checkMessage(fixture, message, score) });
+    // The ask judge DOES run in broken mode, unlike the voice judge: its teeth are a
+    // model's opinion, so the harness itself has to prove it fails a text that asks.
+    const ask = message ? (await askJudge(fixture.id, { message })).score : null;
+    results.push({
+      fixture,
+      message,
+      score,
+      ask,
+      failures: checkMessage(fixture, message, score, ask),
+    });
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
@@ -380,7 +444,7 @@ async function main() {
   for (const result of results) {
     const ok = result.failures.length === 0;
     console.log(
-      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}`,
+      `${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}${result.ask === null ? '' : `  ask=${result.ask}`}`,
     );
     for (const failure of result.failures) console.log(`        - ${failure}`);
     if (process.argv.includes('--show') && result.message)
@@ -395,7 +459,7 @@ async function main() {
   const overBudget = composed.filter(
     (r) => smsSegments(`${r.message}\n\n${NUDGE_OPT_OUT}`) > MAX_PAYLOAD_SEGMENTS,
   );
-  const asking = composed.filter((r) => r.message.includes('?'));
+  const asking = composed.filter((r) => !(r.ask >= JUDGE_MIN));
   const optingOut = composed.filter((r) => r.message.includes(NUDGE_OPT_OUT));
   const leaked = results.filter((r) => r.fixture.expect.neverComposes && r.message !== null);
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
@@ -408,7 +472,7 @@ async function main() {
   console.log(`FABRICATIONS:                 ${fabricating.length}  (0 required — the hard gate)`);
   console.log(`composed behind a closed gate:${leaked.length}  (0 required — the CASL gate)`);
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
-  console.log(`messages asking a question:   ${asking.length}  (0 required)`);
+  console.log(`messages asking the parent:   ${asking.length}  (0 required — the ask judge)`);
   console.log(
     `messages writing the opt-out: ${optingOut.length}  (0 required — outbound texts do not carry one)`,
   );
@@ -433,13 +497,21 @@ async function main() {
     optingOut.length === 0;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('nudge', [judge.plan, askJudge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);
   }
-  const calibrated = !allPass;
+  // The ask judge is held to every broken text by name, not just "some gate failed": the
+  // fabrication gate alone would fail this corpus, which proves nothing about the judge.
+  const askHasTeeth = composed.length > 0 && asking.length === composed.length;
+  const calibrated = !allPass && askHasTeeth;
+  console.log(`ask judge failed every broken text: ${askHasTeeth ? 'yes' : 'NO'}`);
   console.log(
-    `broken-mode calibration (must fail at least one gate): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
+    `broken-mode calibration (must fail at least one gate, and the ask judge on every text): ${calibrated ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`,
   );
   process.exit(calibrated ? 0 : 1);
 }

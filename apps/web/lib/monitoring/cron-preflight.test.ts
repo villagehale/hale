@@ -137,9 +137,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/** Only the incident claim may be written by an aborted window. */
+/** Only the incident claim and the sweep rotation mark may be written by an aborted
+ * window. The mark is scheduling metadata: it says the run took the family, not that
+ * any work was done for it. */
 function assertNoFamilyWork(capture: DbCapture): void {
-  expect(capture.insertedTables.filter((table) => table !== schema.rateLimits)).toEqual([]);
+  expect(
+    capture.insertedTables.filter(
+      (table) => table !== schema.rateLimits && table !== schema.familySweepMarks,
+    ),
+  ).toEqual([]);
 }
 
 describe('the memory-inference window (the 06:00Z cron that failed on 2026-08-01)', () => {

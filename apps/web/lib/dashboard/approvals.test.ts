@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 import { type PendingApprovalRow, toApprovalView } from './approvals';
+import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 
 const BASE: PendingApprovalRow = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -229,8 +229,10 @@ describe('toApprovalView — the preview names the drafted item', () => {
       'Reschedule on your calendar — Swim lesson, Jul 1, 10:00',
     );
     expect(
-      toApprovalView({ ...BASE, actionType: 'calendar_cancel', payload: { title: 'Swim lesson' } }, TZ)
-        .preview,
+      toApprovalView(
+        { ...BASE, actionType: 'calendar_cancel', payload: { title: 'Swim lesson' } },
+        TZ,
+      ).preview,
     ).toBe('Remove from your calendar — Swim lesson');
   });
 });

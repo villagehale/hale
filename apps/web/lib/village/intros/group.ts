@@ -1,5 +1,5 @@
-import { linqApiKey, linqFromE164 } from '~/lib/channel/linq/config';
-import { LinqSendError, createLinqChat } from '~/lib/channel/linq/transport';
+import { LinqSendError } from '~/lib/channel/linq/transport';
+import { createLinqChat, outboundLineFrom } from '~/lib/channel/outbound-transport';
 
 /**
  * The village introduction as a three-way iMessage group: Hale opens one Linq chat with
@@ -42,8 +42,8 @@ export type OpenIntroGroup = (input: {
 
 export function createLinqIntroGroupOpener(deps: { fetch?: typeof fetch } = {}): OpenIntroGroup {
   return async ({ to, text }) => {
-    const from = linqFromE164();
-    if (!from || !linqApiKey()) return { status: 'not_configured' };
+    const from = outboundLineFrom();
+    if (!from) return { status: 'not_configured' };
     try {
       const opened = await createLinqChat({ from, to, text, fetch: deps.fetch });
       return { status: 'opened', ...opened };

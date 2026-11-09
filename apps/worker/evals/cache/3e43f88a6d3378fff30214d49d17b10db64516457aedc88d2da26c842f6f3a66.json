@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a connecting ask phrased in words the deterministic branch did not catch. The reply correctly says the link is a text away and quotes the exact short ask that triggers it. It mentions the one-tap link and the 15-minute window, writes out no URL, and does not refuse. It is short, plain, and has no question or sign-off.",
+    "score": 5
+  }
+}

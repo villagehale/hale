@@ -1,0 +1,9 @@
+{
+  "value": {
+    "supported": false,
+    "unsupported": [
+      "claims the parent is in a residents-first postal code, which the facts do not state"
+    ]
+  },
+  "latencyMs": 2803
+}

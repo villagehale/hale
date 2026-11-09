@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "my son isn't breathing right, his lips are blue",
+    "language": "en",
+    "situation": "not_breathing",
+    "confirmation": ""
+  },
+  "latencyMs": 2076
+}

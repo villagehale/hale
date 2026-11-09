@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is the generic 'an appointment' with no location or 'for' given. The text says tomorrow (correct from Sunday evening, Monday event), gives 4:45 to 5:45 PM with the PM marked and correct, and the end is given in the facts so it is not invented. It stays exactly generic, guesses nothing about what the appointment is, invents no logistics, no link, and is in English. Bold is none, which is fine.",
+    "score": 5
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The first clause is a negation (no spot held), which is not a claim. The second says the parent's appointment is booked, a scheduled_event claim, but there are no rows on record, so it cites none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2257
+}

@@ -150,6 +150,13 @@ export const watchedSpots = pgTable(
      * same send-time discipline as the open-loops ledger: a watch nobody was told about
      * is not a watch. Provenance only. */
     createdFrom: text('created_from').notNull(),
+    /** A page outside the PerfectMind registry only: the page text that named the session
+     * when the watch was armed, which every later read must find again (migration 0210).
+     * Null on a registry course page, whose courseId already is the session. */
+    sessionAnchor: text('session_anchor'),
+    /** A page outside the registry only: the digest of the last page text whose reading
+     * was quiet, so an unchanged page is not read by the model again. */
+    pageDigest: text('page_digest'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

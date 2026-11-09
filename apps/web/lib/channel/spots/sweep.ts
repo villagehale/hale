@@ -11,13 +11,21 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { voiceClient } from '~/lib/loop/voice/compose';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
+import {
+  type ClassAvailabilityReader,
+  createLiveClassAvailabilityReader,
+} from '~/lib/registration/class-availability';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
-import { STATE_TOLD, type SpotReading, readSpot, transitionKind } from './availability';
-import { renderSpotOpen } from './copy';
+import { STATE_TOLD, readSpot } from './availability';
+import { composeSpotOpen } from './compose';
+import { type SpotOpenFacts, spotOpenBody } from './copy';
 import { resettleSpotWatchPromise } from './promise';
 import {
   type LiveWatchedSpot,
@@ -37,6 +45,14 @@ import {
   setNotifiedMessage,
 } from './store';
 import { sanitizeSpotUrl } from './url';
+import {
+  type StateReading,
+  type WatchReading,
+  fromPageReading,
+  fromSpotReading,
+  supportsKind,
+  watchTransition,
+} from './watch-reading';
 
 /**
  * VIL-337 · THE WATCHED-SPOTS SWEEP — every ten minutes, re-read the course pages
@@ -68,14 +84,15 @@ import { sanitizeSpotUrl } from './url';
  * count; the run returns, the heartbeat stamps (cron/auth.ts stamps on COMPLETION), and
  * the founder is not paged for somebody else's flaky portal.
  *
- * NO MODEL RUNS ON THIS PATH — not the reader (availability.ts is a brace scan and a
- * Zod parse) and not the composer (copy.ts is a template with an evidence gate). The
- * cron route deliberately constructs no Anthropic client.
+ * ONE MODEL CALL, AND ONLY TO WRITE. The reader is a brace scan and a Zod parse
+ * (availability.ts); the model is handed facts already checked against this tick's bytes
+ * and writes the text (copy.ts, compose.ts). It never sees the course url, which code
+ * appends after its text.
  */
 
 // The dark-launch gate lives in ./flag so the arming verb reads the SAME definition
 // without importing this module's transport and fetch graph into every texted turn.
-import { watchedSpotsEnabled } from './flag';
+import { anyPageSpotWatchEnabled, watchedSpotsEnabled } from './flag';
 export { WATCHED_SPOTS_ENABLED_ENV, watchedSpotsEnabled } from './flag';
 
 /** The rate_limits `route` this sweep's per-slot claim lives under — an ops event with
@@ -249,6 +266,9 @@ export interface WatchedSpotsSweepDeps {
    * `stripHtml` deletes the `<script>` block a PerfectMind course page keeps its whole
    * availability record in, so a watcher built on it could never see a spot open. */
   fetchBody: FetchPage;
+  /** A page outside the PerfectMind registry: the model reader on VIL-423's DNS-pinned
+   * fetcher (registration/class-availability.ts), one per run so its byte cache is. */
+  readClassAvailability: ClassAvailabilityReader;
   claimSlot(database: Database, now: Date): Promise<boolean>;
   buildGate(database: Database): OutboundGatePorts;
   /** The send-boundary gate (VIL-293), on the string that actually leaves. REQUIRED: a
@@ -263,6 +283,11 @@ export interface WatchedSpotsSweepDeps {
   /** The parent's own thread — `channel_messages` carries no body (rule #1), so a send
    * that skips this is a sentence the coach can never see the parent answering. */
   threadMessage: typeof threadProactiveMessage;
+  /** The parent's language, which the writer composes in. */
+  loadLanguage(database: Database, familyId: string): Promise<string>;
+  /** THE WRITER: the model's whole text from this tick's facts, or null when no draft
+   * cleared the refusals (compose.ts). Null is nothing sent, counted as `unwritten`. */
+  writeSpotOpen(facts: SpotOpenFacts, familyId: string): Promise<string | null>;
   random(): number;
   sleep(ms: number): Promise<void>;
   /** The wall clock the run's own budget is measured on, injected apart from `now`:
@@ -273,6 +298,7 @@ export interface WatchedSpotsSweepDeps {
 export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
   return {
     fetchBody: createFetchBody(),
+    readClassAvailability: lazyClassAvailabilityReader(),
     claimSlot: claimWatchedSpotsSlot,
     buildGate: buildOutboundGatePorts,
     refuseUnbackedSend,
@@ -290,9 +316,28 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
       await database.insert(schema.auditLog).values(row);
     },
     threadMessage: threadProactiveMessage,
+    loadLanguage: familyLanguage,
+    writeSpotOpen: async (facts, familyId) => {
+      const client = voiceClient();
+      if (client === null) {
+        console.error({ familyId, outcome: 'no_client' }, 'watched spots: no writer, nothing sent');
+        return null;
+      }
+      return composeSpotOpen(client, facts, familyId);
+    },
     random: Math.random,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     clockMs: () => Date.now(),
+  };
+}
+
+/** Built on the first page read, so a run with no such watch never needs a model key;
+ * a missing key then throws inside that spot and is counted `failed`. */
+function lazyClassAvailabilityReader(): ClassAvailabilityReader {
+  let reader: ClassAvailabilityReader | undefined;
+  return (target) => {
+    reader ??= createLiveClassAvailabilityReader(budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS));
+    return reader(target);
   };
 }
 
@@ -302,7 +347,7 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
  * moves, so "every non-send has a name" is read off one switch rather than trusted.
  */
 type SpotFate =
-  | { kind: 'skipped'; reason: 'wall_budget' | 'host_budget' }
+  | { kind: 'skipped'; reason: 'wall_budget' | 'host_budget' | 'any_page_off' }
   | { kind: 'released'; reason: WatchedSpotReleaseReason }
   | { kind: 'awaiting_receipt' }
   | { kind: 'healed' }
@@ -312,6 +357,7 @@ type SpotFate =
   | { kind: 'closed_before_send' }
   | { kind: 'held'; reason: DeliveryHoldReason }
   | { kind: 'refused' }
+  | { kind: 'unwritten' }
   | { kind: 'sent' }
   | { kind: 'failed' };
 
@@ -341,8 +387,11 @@ export interface WatchedSpotsSweepSummary {
   /** A text out with no terminal receipt yet — still live, and not re-read this tick. */
   awaitingReceipt: number;
   /** The wire body claimed a row the family's ledger does not hold (VIL-293). Its own
-   * count: nothing broke, and a non-zero here means the TEMPLATE is asserting something. */
+   * count: nothing broke, and a non-zero here means the WRITER is asserting something. */
   refused: number;
+  /** The writer produced no draft that cleared its refusals. Nothing was sent and no
+   * attempt was spent: the observation stays held and the next tick asks again. */
+  unwritten: number;
   failed: number;
   held: Record<DeliveryHoldReason, number>;
   released: Record<WatchedSpotReleaseReason, number>;
@@ -350,6 +399,8 @@ export interface WatchedSpotsSweepSummary {
     wallBudget: number;
     hostBudget: number;
     f14Dark: number;
+    /** A live watch on a page outside the registry while its flag is off: not read. */
+    anyPageOff: number;
     /** True when this slot was already swept — a double cron fire, total no-op, zero
      * requests to any municipality. */
     slotClaimed: boolean;
@@ -369,6 +420,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
     closedBeforeSend: 0,
     awaitingReceipt: 0,
     refused: 0,
+    unwritten: 0,
     failed: 0,
     held: {
       not_enrolled: 0,
@@ -387,7 +439,7 @@ function emptySummary(enabled: boolean): WatchedSpotsSweepSummary {
       delivery_failed: 0,
       send_unconfirmed: 0,
     },
-    skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, slotClaimed: false },
+    skipped: { wallBudget: 0, hostBudget: 0, f14Dark: 0, anyPageOff: 0, slotClaimed: false },
   };
 }
 
@@ -395,6 +447,7 @@ function tally(summary: WatchedSpotsSweepSummary, fate: SpotFate): void {
   switch (fate.kind) {
     case 'skipped':
       if (fate.reason === 'wall_budget') summary.skipped.wallBudget += 1;
+      else if (fate.reason === 'any_page_off') summary.skipped.anyPageOff += 1;
       else summary.skipped.hostBudget += 1;
       return;
     case 'released':
@@ -424,12 +477,21 @@ function tally(summary: WatchedSpotsSweepSummary, fate: SpotFate): void {
     case 'refused':
       summary.refused += 1;
       return;
+    case 'unwritten':
+      summary.unwritten += 1;
+      return;
     case 'sent':
       summary.sent += 1;
       return;
     case 'failed':
       summary.failed += 1;
   }
+}
+
+/** Where a watch is read from: the host is all a log or an audit row may name. */
+interface SpotSource {
+  host: string;
+  url: string;
 }
 
 /** Everything one run shares across its spots. */
@@ -442,6 +504,8 @@ interface RunContext {
   pages: Map<string, Promise<string>>;
   /** Uncached fetches spent per host this run. */
   hostSpend: Map<string, number>;
+  /** Pages outside the registry already requested this run; the reader caches bytes. */
+  pageReads: Set<string>;
   /** The enrolment + consent answer per parent, asked once per run. */
   precheck: Map<string, Promise<PrecheckVerdict>>;
 }
@@ -516,6 +580,7 @@ export async function runWatchedSpotsSweep(
     summary,
     pages: new Map(),
     hostSpend: new Map(),
+    pageReads: new Set(),
     precheck: new Map(),
   };
 
@@ -570,13 +635,24 @@ async function sweepSpot(
   // leads with both come from. A refusal here means the registry no longer carries this
   // host: loud and counted, never a release, because ending a parent's watch on a deploy
   // is not something a sweep gets to do quietly.
+  //
+  // A watch on a page outside the registry carries the session anchor it was armed with,
+  // and is read by the model reader instead, behind its own flag.
   const link = sanitizeSpotUrl(spot.sourceUrl);
-  if (!link.ok) {
+  const anchor = spot.sessionAnchor;
+  if (!link.ok && anchor === null) {
     console.error(
       { spotId: spot.id, reason: link.reason },
       'watched spots: a live watch no longer sanitizes - it cannot be read',
     );
     return { kind: 'failed' };
+  }
+  const source: SpotSource = link.ok
+    ? { host: link.host, url: link.url }
+    : { host: new URL(spot.sourceUrl).hostname, url: spot.sourceUrl };
+  if (!link.ok && !anyPageSpotWatchEnabled()) {
+    console.info({ spotId: spot.id }, 'watched spots: any-page watching is off, spot not polled');
+    return { kind: 'skipped', reason: 'any_page_off' };
   }
 
   // NOT a mutable local. Every question below is about the pointer AS THIS TICK LOADED
@@ -606,12 +682,12 @@ async function sweepSpot(
         cancelReason: 'spot_watch_ended',
         now,
       });
-      await deps.audit(database, releaseAudit(spot, 'notified', link.host, {}));
+      await deps.audit(database, releaseAudit(spot, 'notified', source.host, {}));
       return { kind: 'released', reason: 'notified' };
     }
     if (status === 'failed') {
       if (spot.sendAttempts >= MAX_SEND_ATTEMPTS) {
-        return releaseSpot(database, deps, now, spot, 'delivery_failed', link.host, {
+        return releaseSpot(database, deps, now, spot, 'delivery_failed', source.host, {
           attempts: spot.sendAttempts,
         });
       }
@@ -626,13 +702,28 @@ async function sweepSpot(
     }
   }
 
-  const fetched = await readBody(context, spot, link.url, link.host);
-  if (fetched.status === 'host_budget') return { kind: 'skipped', reason: 'host_budget' };
-
-  const reading: SpotReading =
-    fetched.status === 'fetch_failed'
-      ? { state: 'unreadable', reason: 'fetch_failed' }
-      : readSpot(fetched.body, link.courseId);
+  let reading: WatchReading;
+  let quietDigest: string | undefined;
+  if (link.ok) {
+    const fetched = await readBody(context, spot, source.url, source.host);
+    if (fetched.status === 'host_budget') return { kind: 'skipped', reason: 'host_budget' };
+    reading = fromSpotReading(
+      fetched.status === 'fetch_failed'
+        ? { state: 'unreadable', reason: 'fetch_failed' }
+        : readSpot(fetched.body, link.courseId),
+      link.portalLabel,
+    );
+  } else {
+    const page = await readPage(context, spot, source, anchor as string);
+    if (page.status === 'host_budget') return { kind: 'skipped', reason: 'host_budget' };
+    if (page.status === 'unchanged') {
+      summary.polled += 1;
+      await stampRead(database, spot.id, now);
+      return { kind: 'quiet' };
+    }
+    reading = page.reading;
+    quietDigest = page.digest;
+  }
   summary.polled += 1;
 
   if (reading.state === 'unreadable') {
@@ -647,19 +738,19 @@ async function sweepSpot(
       now,
     });
     if (failures >= MAX_CONSECUTIVE_FAILURES) {
-      return releaseSpot(database, deps, now, spot, 'unreadable_streak', link.host, {
+      return releaseSpot(database, deps, now, spot, 'unreadable_streak', source.host, {
         readingReason: reading.reason,
       });
     }
     console.warn(
-      { spotId: spot.id, host: link.host, reason: reading.reason, failures },
+      { spotId: spot.id, host: source.host, reason: reading.reason, failures },
       'watched spots: the page could not be read',
     );
     return { kind: 'unreadable' };
   }
 
   if (reading.state === 'not_registrable') {
-    return releaseSpot(database, deps, now, spot, 'registration_closed', link.host, {
+    return releaseSpot(database, deps, now, spot, 'registration_closed', source.host, {
       readingReason: reading.reason,
     });
   }
@@ -699,7 +790,7 @@ async function sweepSpot(
           now,
           spot,
           prior === null ? 'send_unconfirmed' : 'delivery_failed',
-          link.host,
+          source.host,
           { attempts: spot.sendAttempts },
         );
       }
@@ -713,7 +804,7 @@ async function sweepSpot(
       // knows, both of those are the ORDINARY question asked of any reading, and the two
       // directions need no rule of their own: drop the claim, ask it, and either the
       // page went away (nothing to say) or there is a true opening to claim in its place.
-      const overtaken = transitionKind(spot.lastState, reading);
+      const overtaken = watchTransition(spot.lastState, reading);
       if (overtaken === null) {
         // The only honest thing that can happen to a stale observation. A 2 a.m. opening
         // held through quiet hours and gone by 8 a.m. is not news, and this tick's
@@ -725,25 +816,26 @@ async function sweepSpot(
       // clause, and a crash between the two writes leaves an ordinary un-held transition
       // for the next tick to claim exactly as this one did.
       await closeBeforeSend(database, { spotId: spot.id, lastState: null, now });
-      return claimAndSend(database, context, spot, link, reading, overtaken);
+      return claimAndSend(database, context, spot, source, reading, overtaken);
     }
-    return sendSpotOpen(database, context, spot, link, reading, spot.pendingKind);
+    return sendSpotOpen(database, context, spot, source, reading, spot.pendingKind);
   }
 
-  const kind = transitionKind(spot.lastState, reading);
+  const kind = watchTransition(spot.lastState, reading);
   if (kind === null) {
     await recordPoll(database, {
       spotId: spot.id,
       lastState: reading.state,
       consecutiveFailures: 0,
       nextPollAt: null,
+      ...(quietDigest === undefined ? {} : { pageDigest: quietDigest }),
       now,
     });
     return { kind: 'quiet' };
   }
 
   await stampRead(database, spot.id, now);
-  return claimAndSend(database, context, spot, link, reading, kind);
+  return claimAndSend(database, context, spot, source, reading, kind);
 }
 
 /**
@@ -755,8 +847,8 @@ async function claimAndSend(
   database: Database,
   context: RunContext,
   spot: LiveWatchedSpot,
-  link: Extract<ReturnType<typeof sanitizeSpotUrl>, { ok: true }>,
-  reading: Extract<SpotReading, { state: 'open' | 'full' | 'waitlist_full' }>,
+  source: SpotSource,
+  reading: StateReading,
   kind: NonNullable<LiveWatchedSpot['pendingKind']>,
 ): Promise<SpotFate> {
   const { now, summary } = context;
@@ -774,7 +866,7 @@ async function claimAndSend(
     database,
     context,
     { ...spot, openTransitions, sendAttempts: 0, notifiedMessageId: null },
-    link,
+    source,
     reading,
     kind,
   );
@@ -803,25 +895,6 @@ function stampRead(database: Database, spotId: string, now: Date): Promise<void>
 }
 
 /**
- * Does THIS tick's reading still support the observation being held?
- *
- * Asked again immediately before every compose, which is what makes deferral and
- * truthfulness one mechanism rather than two: a held opening the page has taken back is
- * a `closed_before_send`, and there is no path from a stored reading to a sentence.
- */
-function supportsKind(
-  kind: NonNullable<LiveWatchedSpot['pendingKind']>,
-  reading: Extract<SpotReading, { state: 'open' | 'full' | 'waitlist_full' }>,
-): boolean {
-  if (kind === 'seat_opened') return reading.state === 'open';
-  return (
-    reading.state === 'full' &&
-    reading.model.IsWaitListAvailable &&
-    reading.model.WaitListSpotsLeft > 0
-  );
-}
-
-/**
  * THE SIX-STEP LEDGERED RITUAL, in the order registration/sequence/run.ts spends it,
  * with one thing moved: the attempt is claimed AFTER the send-boundary gate and
  * immediately BEFORE the transport call.
@@ -838,8 +911,8 @@ async function sendSpotOpen(
   database: Database,
   context: RunContext,
   spot: LiveWatchedSpot,
-  link: Extract<ReturnType<typeof sanitizeSpotUrl>, { ok: true }>,
-  reading: Extract<SpotReading, { state: 'open' | 'full' | 'waitlist_full' }>,
+  source: SpotSource,
+  reading: StateReading,
   kind: NonNullable<LiveWatchedSpot['pendingKind']>,
 ): Promise<SpotFate> {
   const { deps, gate, now } = context;
@@ -862,14 +935,19 @@ async function sendSpotOpen(
     return { kind: 'held', reason: verdict.reason };
   }
 
-  const body = renderSpotOpen({
+  const prepared = reading.facts(
     kind,
-    portalLabel: link.portalLabel,
-    label: spot.label,
-    url: link.url,
-    model: reading.model,
-    evidence: reading.evidence,
-  });
+    spot.label,
+    await deps.loadLanguage(database, spot.familyId),
+  );
+  if (!prepared.ok) {
+    // `supportsKind` just said this reading backs the opening, so bytes that cannot back
+    // its facts are a contradiction inside one page, not a state to send around.
+    throw new Error(`spot-open facts refused: ${prepared.reasons.join(', ')}`);
+  }
+  const text = await deps.writeSpotOpen(prepared.facts, spot.familyId);
+  if (text === null) return { kind: 'unwritten' };
+  const body = spotOpenBody(text, source.url);
 
   const to = await deps.resolveSendablePhone(database, spot.parentUserId);
   if (!to) {
@@ -883,6 +961,8 @@ async function sendSpotOpen(
     familyId: spot.familyId,
     body: wireBody,
     now,
+    lane: 'spot_open',
+    parentUserId: spot.parentUserId,
   });
   if (unbacked.length > 0) {
     console.error(
@@ -897,7 +977,7 @@ async function sendSpotOpen(
     // Both attempts are gone and no ledger row was ever found under either key: the
     // texts, if they left at all, cannot be accounted for. Ending the watch is the only
     // honest thing left — the delivery sweep's own vocabulary for it.
-    return releaseSpot(database, deps, now, spot, 'send_unconfirmed', link.host, {
+    return releaseSpot(database, deps, now, spot, 'send_unconfirmed', source.host, {
       attempts: spot.sendAttempts,
     });
   }
@@ -956,7 +1036,7 @@ async function sendSpotOpen(
     // Provenance only, never the page, the label or the body (rule #1).
     after: {
       watchedSpotId: spot.id,
-      host: link.host,
+      host: source.host,
       kind,
       openTransitions: spot.openTransitions,
       attempt,
@@ -1077,5 +1157,62 @@ async function readBody(
       'watched spots: the page could not be fetched',
     );
     return { status: 'fetch_failed' };
+  }
+}
+
+/**
+ * One read of a page outside the registry, under the same per-host budget and spacing as
+ * {@link readBody}: the first read of a url in this run is the one that spends them, and
+ * the reader's own cache serves the rest.
+ *
+ * Every outcome but a state is unreadable. A challenge page is a refusal, never a full
+ * class, and a fact the page text does not back is never a state. An unchanged page
+ * whose last reading was quiet is not read by the model again; while an opening is held,
+ * the page is always read afresh so the text rests on this tick's reading.
+ */
+async function readPage(
+  context: RunContext,
+  spot: LiveWatchedSpot,
+  source: SpotSource,
+  anchor: string,
+): Promise<
+  | { status: 'host_budget' }
+  | { status: 'unchanged' }
+  | { status: 'read'; reading: WatchReading; digest: string | undefined }
+> {
+  const { deps } = context;
+  if (!context.pageReads.has(source.url)) {
+    const spent = context.hostSpend.get(source.host) ?? 0;
+    if (spent >= MAX_FETCHES_PER_HOST_PER_RUN) return { status: 'host_budget' };
+    context.hostSpend.set(source.host, spent + 1);
+    await deps.sleep(FETCH_SPACING_MIN_MS + deps.random() * FETCH_SPACING_SPAN_MS);
+    context.pageReads.add(source.url);
+  }
+  const read = await deps.readClassAvailability({
+    sourceUrl: source.url,
+    label: spot.label,
+    anchor,
+    lastDigest:
+      spot.pendingKind === null && spot.consecutiveFailures === 0 ? spot.pageDigest : null,
+  });
+  switch (read.status) {
+    case 'busy':
+      return { status: 'host_budget' };
+    case 'unchanged':
+      return { status: 'unchanged' };
+    case 'read':
+      return { status: 'read', reading: fromPageReading(read), digest: read.digest };
+    case 'not_registrable':
+      return {
+        status: 'read',
+        reading: { state: 'not_registrable', reason: read.reason },
+        digest: undefined,
+      };
+    default:
+      return {
+        status: 'read',
+        reading: { state: 'unreadable', reason: read.reason },
+        digest: undefined,
+      };
   }
 }

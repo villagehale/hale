@@ -1,11 +1,8 @@
 import type { RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
 import { toRegistrationWindowRow } from '~/lib/registration/registration-windows';
-import {
-  type RegistrationContextPorts,
-  loadRegistrationWindows,
-} from './registration-context';
+import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
+import { type RegistrationContextPorts, loadRegistrationWindows } from './registration-context';
 
 /**
  * The coach's view of the radar. Every fact here is one a parent ACTS on — they set an
@@ -39,7 +36,7 @@ function ports(overrides: Partial<RegistrationContextPorts> = {}): RegistrationC
 }
 
 describe('the coach registration context', () => {
-  it("gives the family their OWN date, with the general one named as the later alternative", async () => {
+  it('gives the family their OWN date, with the general one named as the later alternative', async () => {
     const [window] = await loadRegistrationWindows(ports(), 'fam-1', TZ, NOW);
 
     // Published: taxpayers Tuesday September 1 at 7 a.m.; everyone else seven days later.

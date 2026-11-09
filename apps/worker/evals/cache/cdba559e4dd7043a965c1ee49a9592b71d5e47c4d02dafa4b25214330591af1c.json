@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "names the child, pool sender fits a toddler class, clear cancellation with old date and time",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Riverside Pool just cancelled Robin's parent and tot swim class this Saturday, Sept 19 at 9:00 AM. No need to pack the swim bag!",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

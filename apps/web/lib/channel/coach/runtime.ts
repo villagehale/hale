@@ -19,10 +19,17 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { bindActivityReader, productionActivityFamilyReader } from '~/lib/channel/activity/reader';
 import {
+  groupPlanDraftPort,
+  productionRecordGroupPlanOrigin,
+} from '~/lib/channel/group-plan/stamp';
+import {
   type InboundMediaPart,
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
+import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
+import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
 import { buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -33,7 +40,12 @@ import {
   ChannelTurnFailed,
   type ChannelTurnResult,
 } from '~/lib/channel/router/coach-runtime';
-import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { augmentCoachSkillForStopWatching } from '~/lib/channel/spots/stop-tool';
+import {
+  type SpotWatchIntent,
+  loadParentLiveWatches,
+  releaseWatchByParent,
+} from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import {
   type AgentContext,
@@ -47,6 +59,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { createLiveClassAvailabilityReader } from '~/lib/registration/class-availability';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
   activityReviewsSurfaceEnabled,
@@ -61,22 +74,44 @@ import {
 } from '~/lib/signup/browser-use/watch/context';
 import { browserUseWatchEnabled } from '~/lib/signup/browser-use/watch/flag';
 import { augmentCoachSkillForProviderWatch } from '~/lib/signup/browser-use/watch/tools';
+import { augmentCoachSkillForSignupOffer, signupOfferToolEnabled } from '~/lib/signup/offer-tool';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
-import { productionChannelDraftPort } from './draft';
+import { draftOriginForTurn, productionChannelDraftPort } from './draft';
+import {
+  type ExperienceCardIntent,
+  augmentCoachSkillForExperienceCards,
+  shareExperienceCardTool,
+} from './experience-card-tool';
+import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
   type GmailDraftNoticeBox,
   augmentCoachSkillForGoogleDrafts,
   productionGmailDraftPorts,
 } from './gmail-draft-tool';
+import {
+  type GroupLeaveIntent,
+  augmentCoachSkillForGroupLeave,
+  leaveGroupChatTool,
+} from './group-leave-tool';
 import { groupScopedContext, groupScopedTools } from './group-privacy-scope';
+import {
+  type ForecastDay,
+  augmentCoachSkillForLocalDay,
+  loadCoachForecast,
+  loadCoachTimeZone,
+  localDayContext,
+} from './local-day';
+import { familyLocalNow } from './local-now';
 import {
   type RegistrationWindowContext,
   loadRegistrationWindows,
   productionRegistrationContextPorts,
 } from './registration-context';
+import { redactTeenNames } from './reply';
 import { type ReplyChild, toSmsReply } from './reply';
 import {
   type TurnOfferLedger,
@@ -109,8 +144,9 @@ import {
  * answer in the parent's history before it existed. Nothing in {@link ChannelCoachPorts}
  * can write to that table, which is the structural half of the promise.
  *
- * A failed turn THROWS. The router owns the honesty template ("nothing was changed"),
- * and it can only use it if a failure looks like one — see route.ts runAgentTurn.
+ * A failed turn THROWS. The router owns what a parent hears next (route.ts
+ * disposeOfFailedTurn): a model writes it from facts, or nothing is sent. That
+ * path only runs when a failure looks like one.
  */
 
 /** The whole turn's model budget. Six steps is enough for lookup_week → resolve → two
@@ -187,6 +223,12 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** The family's own IANA time zone, or null when Hale does not know it (VIL-435).
+   * Optional: absent or null, the turn carries only the UTC instant, as before. */
+  loadTimeZone?(familyId: string): Promise<string | null>;
+  /** Their coarse area's outlook, today onward (VIL-435). Optional: absent or empty
+   * leaves the key out. */
+  loadForecast?(familyId: string): Promise<ForecastDay[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -219,6 +261,20 @@ export interface ChannelCoachPorts {
   ): Promise<{ clause: string; title: string; otherTitles: string[] } | null>;
   guardDeps: GuardDeps;
   /**
+   * VIL-497 — whether Linq experience cards are lit (`LINQ_EXPERIENCES_ENABLED`). Absent
+   * or false: the card verb is not registered and the skill is untouched, so a dark turn's
+   * prompt bytes and cache prefix are exactly main's. Never offered on a group turn.
+   */
+  experienceCardsEnabled?(): boolean;
+  /**
+   * VIL-477 — whether Hale may leave a group on a member's explicit ask
+   * (`LINQ_GROUP_LEAVE_ENABLED`). Absent or false: the verb is not registered and the
+   * skill is untouched. Only ever offered on a group turn.
+   */
+  groupLeaveEnabled?(): boolean;
+  /** VIL-477 — the leave guard, run before the reply so a decline is told to the model. */
+  groupLeaveCheck?(chatId: string): Promise<GroupLeaveEligibility>;
+  /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
    *
    * The router builds its deps for EVERY inbound text, including the ones a
@@ -228,6 +284,14 @@ export interface ChannelCoachPorts {
    * approvals". Deferring it means the key is only required by the turn that needs one.
    */
   client(): AgentClient;
+  /**
+   * VIL-524. On a nearby-find turn, after the model writes, this decides whether
+   * the whole reply is internal reasoning. Production always sets it. Absent is
+   * named `not_configured` and the draft is sent, so a scripted coach is not
+   * silenced. A wired judge that withholds or fails sends nothing. The judge
+   * does not rewrite parent text.
+   */
+  judgeFindReply?(draft: string): Promise<FindReplyGate>;
   /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
@@ -273,23 +337,65 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // read about is the one in the sentence it ended up writing.
       let spotWatch: SpotWatchIntent | null = null;
       let gmailNotice: GmailDraftNoticeBox | null = null;
+      // VIL-497: the one find this turn chose to send as a card. LAST CALL WINS.
+      let experienceCard: ExperienceCardIntent | null = null;
+      // VIL-477: a member asked Hale to leave this group. LAST CALL WINS.
+      let groupLeave: GroupLeaveIntent | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
       const now = ports.now();
-      const [loadedSkill, transcript, children, registrationWindows] = await Promise.all([
-        ports.loadSkill(turn.parentUserId, turn.familyId),
-        ports.loadTranscript(turn.conversationId),
-        ports.loadChildren(turn.familyId),
-        ports.loadRegistrationWindows(turn.familyId, now),
-      ]);
+      const [loadedSkill, transcript, children, registrationWindows, timeZone, forecast] =
+        await Promise.all([
+          ports.loadSkill(turn.parentUserId, turn.familyId),
+          ports.loadTranscript(turn.conversationId),
+          ports.loadChildren(turn.familyId),
+          ports.loadRegistrationWindows(turn.familyId, now),
+          ports.loadTimeZone ? ports.loadTimeZone(turn.familyId) : null,
+          ports.loadForecast ? ports.loadForecast(turn.familyId) : [],
+        ]);
+      const localDay = localDayContext(timeZone ? familyLocalNow(now, timeZone) : null, forecast);
       const providerWatch = ports.loadProviderWatch
         ? await ports.loadProviderWatch(turn.familyId, now)
         : [];
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
-      const skill =
+      const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
+      const leaveLit = turn.audience === 'group' && (ports.groupLeaveEnabled?.() ?? false);
+      const groupedSkill =
         turn.audience === 'group' ? await appendGroupCoachSkill(loadedSkill) : loadedSkill;
+      // VIL-510: nearby-find voice + link rules ride as an addendum so the disk
+      // coach-channel-sms bytes (and every eval recording keyed on them) stay put.
+      const nearbyFind = await loadCronSkill('coach-nearby-find');
+      const baseSkill = {
+        ...groupedSkill,
+        instructions: `${groupedSkill.instructions}\n\n${nearbyFind.instructions}`,
+      };
+      // VIL-524. Only a nearby-find turn gets this addendum. coach-nearby-find
+      // itself stays byte-identical, so coach-channel and group-privacy
+      // recordings stay keyed on the prompt they already have.
+      const findTurn = nearbyFindTurn(turn.body, transcript);
+      const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
+      // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
+      // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
+      // the card when the answer is one venue's page (VIL-500).
+      const composedSkill = augmentCoachSkillForFindPrivate(
+        augmentCoachSkillForGroupLeave(
+          augmentCoachSkillForExperienceCards(
+            baseSkill,
+            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+          ),
+          leaveLit,
+        ),
+        findPrivate,
+      );
+      // The ref→page table for this turn: the same list the reply's [link-…] markers
+      // resolve against, so a card and a cited link can never point at different pages.
+      const turnLinks = () =>
+        [
+          ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
+          ...offeredThisTurn.links().map((link) => link.url),
+        ].map((url) => ({ ref: linkRef(url), url }));
 
       const familyContext = await ports.loadContext({
         familyId: turn.familyId,
@@ -300,7 +406,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         focusedChildId: null,
         transcript,
         sourceNote: null,
+        readerUserId: turn.parentUserId,
       });
+      // VIL-566: the household-group addendum rides only when the fact does, so every
+      // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
+      // only a 1:1 turn holding a fact Hale read in email or the calendar carries it.
+      const householdSkill = familyContext.householdGroup
+        ? await appendHouseholdGroupSkill(composedSkill)
+        : composedSkill;
+      const sourcedSkill =
+        turn.audience !== 'group' && familyContext.memoryFacts.some((fact) => fact.seenIn)
+          ? await appendFactSourceSkill(householdSkill)
+          : householdSkill;
+      // VIL-435: the local-day addendum rides only when a day fact does.
+      const skill = augmentCoachSkillForLocalDay(
+        sourcedSkill,
+        Object.keys(localDay).length > 0 ? await loadCronSkill('coach-local-day') : null,
+      );
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -322,6 +444,10 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // TODAY WHERE THE FAMILY LIVES, AND ITS WEATHER (VIL-435). Facts for the model to
+        // reason over (a holiday there? a day for indoors?), never a filter and never
+        // copy. Each key is absent when unknown.
+        ...localDay,
         // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
         // FACT about state, handed to the model the same way the family's schedule is —
         // so a turn that is plainly an answer to one of them can be treated as one, and a
@@ -386,7 +512,49 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
           // are busy-only, on every group turn.
-          const tools = groupScoped ? groupScopedTools(builtTools) : builtTools;
+          const tools = [
+            ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
+            ...(cardsLit
+              ? [
+                  shareExperienceCardTool({
+                    links: turnLinks,
+                    onCard: (card) => {
+                      experienceCard = card;
+                    },
+                  }),
+                ]
+              : []),
+            ...(leaveLit
+              ? [
+                  leaveGroupChatTool({
+                    memberWords: turn.body,
+                    onLeave: (intent) => {
+                      groupLeave = intent;
+                    },
+                    ...(ports.groupLeaveCheck
+                      ? {
+                          check: async () => {
+                            const chatId = turn.groupChatId;
+                            if (!chatId)
+                              return { ok: false as const, reason: 'not_group' as const };
+                            const g = await ports.groupLeaveCheck!(chatId);
+                            if (g.status === 'eligible') return { ok: true as const };
+                            if (g.status === 'failed')
+                              return { ok: false as const, reason: 'unavailable' as const };
+                            return {
+                              ok: false as const,
+                              reason:
+                                g.reason === 'no_explicit_ask'
+                                  ? ('unavailable' as const)
+                                  : g.reason,
+                            };
+                          },
+                        }
+                      : {}),
+                  }),
+                ]
+              : []),
+          ];
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -472,6 +640,40 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               new GmailDraftNoticeUnsent(),
             );
           }
+          // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
+          // turn whose tools handed over a find (any language). It does not edit the
+          // draft. withhold, or a judge that failed, sends nothing.
+          // A runtime built without the port (scripted journey coaches) names that
+          // and sends the draft: production always wires the judge.
+          const handedOverFind =
+            offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
+          if (!noticeReady && (findTurn || handedOverFind)) {
+            if (!ports.judgeFindReply) {
+              console.error(
+                { reason: 'not_configured' },
+                'channel coach: find-reasoning judge absent - draft sent unjudged',
+              );
+            } else {
+              const gate = await ports.judgeFindReply(spoken);
+              if (gate.verdict !== 'send') {
+                console.error(
+                  {
+                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                  },
+                  'channel coach: find reply withheld - nothing sent',
+                );
+                await ports.recordRun(record('failed'));
+                // A failed turn, not a deliberate silence (Devin #983): the router's
+                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                // The withheld draft itself is never sent.
+                throw failed(
+                  gate.verdict === 'withhold'
+                    ? 'channel coach: find reply withheld (find_reasoning)'
+                    : `channel coach: find reply judge failed (${gate.reason})`,
+                );
+              }
+            }
+          }
           // VIL-434: the model's answer goes out whole. Length is the model's judgment
           // (the skill, or a rewrite the model chooses). Code does not cut it, and it
           // does not call a shorten pass because a sentence ran past two segments.
@@ -483,19 +685,41 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               : {
                   planOffer: offer?.sentence,
                   referral: share ? referralBlock(share) : undefined,
-                  activityLinks: [
-                    ...offeredThisTurn.read().flatMap((item) => (item.url ? [item.url] : [])),
-                    ...offeredThisTurn.links().map((link) => link.url),
-                  ].map((url) => ({ ref: linkRef(url), url })),
+                  activityLinks: turnLinks(),
                   nearby: nearby ?? undefined,
                 }),
           });
           await ports.recordRun(record('completed'));
-          return { reply, planOffer, activityPromise, spotWatch };
+          const card = experienceCard as ExperienceCardIntent | null;
+          return {
+            reply,
+            planOffer,
+            activityPromise,
+            spotWatch,
+            // The title passes the same age-derived teen floor as the answer (rule #1).
+            experienceCard:
+              card && !noticeReady
+                ? { url: card.url, title: redactTeenNames(card.title, children, now) }
+                : null,
+            groupLeave: groupLeave
+              ? { ifLeaveFails: (groupLeave as GroupLeaveIntent).ifLeaveFails }
+              : null,
+            draftedActionIds,
+          };
         },
       );
     },
   };
+}
+
+async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
+  const group = await loadCronSkill('household-group');
+  return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
+}
+
+async function appendFactSourceSkill(skill: Skill): Promise<Skill> {
+  const addendum = await loadCronSkill('coach-fact-source');
+  return { ...skill, instructions: `${skill.instructions}\n\n${addendum.instructions}` };
 }
 
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
@@ -528,22 +752,38 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
 export function productionChannelCoachPorts(database: Database): ChannelCoachPorts {
   return {
     client: anthropicClient,
+    judgeFindReply: (draft) => judgeWholeFindReply(anthropicClient, draft),
+    experienceCardsEnabled: linqExperiencesEnabled,
+    groupLeaveEnabled: linqGroupLeaveEnabled,
+    groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     loadSkill: async (parentUserId, familyId) =>
-      augmentCoachSkillForProviderWatch(
-        augmentCoachSkillForAutonomySwitchOff(
-          await augmentCoachSkillForGoogleDrafts(
-            await loadCronSkill('coach-channel-sms'),
-            parentUserId,
+      augmentCoachSkillForStopWatching(
+        augmentCoachSkillForSignupOffer(
+          augmentCoachSkillForProviderWatch(
+            augmentCoachSkillForAutonomySwitchOff(
+              await augmentCoachSkillForGoogleDrafts(
+                await loadCronSkill('coach-channel-sms'),
+                parentUserId,
+              ),
+              await familyHasAutonomyGrant(familyId, database),
+            ),
+            browserUseWatchEnabled(),
           ),
-          await familyHasAutonomyGrant(familyId, database),
+          signupOfferToolEnabled(),
         ),
-        browserUseWatchEnabled(),
+        (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
-    loadContext: (input) => loadAgentContext(input, database),
+    loadContext: async (input) => {
+      const context = await loadAgentContext(input, database);
+      const householdGroup = await loadHouseholdGroupFact(database, input.familyId);
+      return householdGroup ? { ...context, householdGroup } : context;
+    },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
+    loadTimeZone: (familyId) => loadCoachTimeZone(database, familyId),
+    loadForecast: (familyId) => loadCoachForecast(database, familyId),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
@@ -563,7 +803,17 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       return buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database, turn.now),
-        draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
+        // VIL-443: a calendar_add drafted in the family group records that origin, so its
+        // placement is reported back to the group. Code writes it; the model never sees it.
+        draftPort: groupPlanDraftPort(
+          productionChannelDraftPort(database, anthropicClient(), {
+            now: turn.now,
+            parentUserId: turn.parentUserId,
+            origin: draftOriginForTurn(turn),
+          }),
+          turn,
+          productionRecordGroupPlanOrigin(database),
+        ),
         // The turn's offer ledger, written by the search verb and read by the add verb:
         // a placement should carry what placed it, and the process already holds the row.
         // Never shown to the model, which is the whole point.
@@ -590,6 +840,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
           reader: bindActivityReader(database, productionActivityFamilyReader()),
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
+          readClassAvailability: createLiveClassAvailabilityReader(
+            anthropicClient(),
+            MINT_FETCH_TIMEOUT_MS,
+          ),
         },
         onDraft,
         onOffer,
@@ -598,6 +852,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onWatch,
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
+        spotRelease: {
+          liveWatches: (scope) => loadParentLiveWatches(database, scope),
+          release: (input) => releaseWatchByParent(database, { ...input, now: turn.now }),
+        },
         autonomySwitchOff: {
           parentWords: turn.body,
           revoke: (input) =>
@@ -621,6 +879,21 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
               familyId: turn.familyId,
               parentUserId: turn.parentUserId,
               conversationId: turn.conversationId,
+              parentWords: turn.body,
+              linksThisTurn: () => [
+                ...offered.links(),
+                ...offered
+                  .read()
+                  .flatMap((item) => (item.url ? [{ title: item.title, url: item.url }] : [])),
+              ],
+            }
+          : null,
+        signupOffer: signupOfferToolEnabled()
+          ? {
+              database,
+              familyId: turn.familyId,
+              parentUserId: turn.parentUserId,
+              now: turn.now,
               parentWords: turn.body,
               linksThisTurn: () => [
                 ...offered.links(),

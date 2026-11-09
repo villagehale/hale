@@ -12,6 +12,7 @@ import { writeScheduleAdds } from './schedule-adds';
 const FAMILY = '00000000-0000-4000-8000-000000000001';
 const USER = '00000000-0000-4000-8000-000000000002';
 const SESSION = '00000000-0000-4000-8000-000000000003';
+const EASTERN = 'America/Toronto';
 const LINES = ['Swim (ages 3-5) - Saturdays 9:15am - $12', 'Fall fair - Sunday', 'Story time'];
 
 function iso(value: unknown): string {
@@ -34,6 +35,7 @@ describe('writeScheduleAdds', () => {
       familyId: FAMILY,
       userId: USER,
       sessionId: SESSION,
+      timeZone: EASTERN,
       adds: [{ line: 1, cadence: 'weekly', date: '2026-10-10', time: '09:15', weeks: 3 }],
       lines: LINES,
       already: [],
@@ -63,6 +65,7 @@ describe('writeScheduleAdds', () => {
       familyId: FAMILY,
       userId: USER,
       sessionId: SESSION,
+      timeZone: EASTERN,
       adds: [{ line: 2, cadence: 'once', date: '2026-10-11', time: null, weeks: null }],
       lines: LINES,
       already: [],
@@ -79,6 +82,7 @@ describe('writeScheduleAdds', () => {
       familyId: FAMILY,
       userId: USER,
       sessionId: SESSION,
+      timeZone: EASTERN,
       adds: [
         { line: 1, cadence: 'weekly', date: '2026-10-10', time: null, weeks: null },
         { line: 3, cadence: 'weekly', date: '2026-10-13', time: null, weeks: 40 },
@@ -97,6 +101,7 @@ describe('writeScheduleAdds', () => {
       familyId: FAMILY,
       userId: USER,
       sessionId: SESSION,
+      timeZone: EASTERN,
       adds: [
         { line: 9, cadence: 'once', date: '2026-10-11', time: null, weeks: null },
         { line: 2, cadence: 'once', date: '2026-10-11', time: null, weeks: null },
@@ -111,12 +116,30 @@ describe('writeScheduleAdds', () => {
     expect(audits(fake)).toHaveLength(1);
   });
 
+  it("writes a timed add on the family's own clock", async () => {
+    const fake = makeFakeDb();
+    await writeScheduleAdds(fake.db, {
+      familyId: FAMILY,
+      userId: USER,
+      sessionId: SESSION,
+      timeZone: 'America/Chicago',
+      adds: [{ line: 1, cadence: 'once', date: '2026-11-14', time: '10:00', weeks: null }],
+      lines: LINES,
+      already: [],
+    });
+    // 10:00 a.m. CST (UTC-6). On the Toronto clock it would be 15:00Z.
+    expect(fake.rows(schema.familyEvents).map((row) => iso(row.startsAt))).toEqual([
+      '2026-11-14T16:00:00.000Z',
+    ]);
+  });
+
   it('writes nothing and audits nothing for no adds', async () => {
     const fake = makeFakeDb();
     const written = await writeScheduleAdds(fake.db, {
       familyId: FAMILY,
       userId: USER,
       sessionId: SESSION,
+      timeZone: EASTERN,
       adds: [],
       lines: LINES,
       already: [],

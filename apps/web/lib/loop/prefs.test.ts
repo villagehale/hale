@@ -59,18 +59,18 @@ describe('child-name level composes with the teen age gate (rule #1)', () => {
 
   it('under 13, the parent preference is honored (name / relation / generic)', () => {
     expect(resolveChildNameLevel(CHILD_DOB, 'first_name', NOW)).toBe('first_name');
-    expect(loopChildName({ name: 'Maya', gender: 'girl', dateOfBirth: CHILD_DOB }, 'first_name', NOW)).toBe(
-      'Maya',
-    );
-    expect(loopChildName({ name: 'Sam', gender: 'boy', dateOfBirth: CHILD_DOB }, 'relation', NOW)).toBe(
-      'your son',
-    );
-    expect(loopChildName({ name: 'Ari', gender: 'nonbinary', dateOfBirth: CHILD_DOB }, 'relation', NOW)).toBe(
-      'your child',
-    );
-    expect(loopChildName({ name: 'Ari', gender: 'unspecified', dateOfBirth: CHILD_DOB }, 'generic', NOW)).toBe(
-      'your kid',
-    );
+    expect(
+      loopChildName({ name: 'Maya', gender: 'girl', dateOfBirth: CHILD_DOB }, 'first_name', NOW),
+    ).toBe('Maya');
+    expect(
+      loopChildName({ name: 'Sam', gender: 'boy', dateOfBirth: CHILD_DOB }, 'relation', NOW),
+    ).toBe('your son');
+    expect(
+      loopChildName({ name: 'Ari', gender: 'nonbinary', dateOfBirth: CHILD_DOB }, 'relation', NOW),
+    ).toBe('your child');
+    expect(
+      loopChildName({ name: 'Ari', gender: 'unspecified', dateOfBirth: CHILD_DOB }, 'generic', NOW),
+    ).toBe('your kid');
   });
 });
 
@@ -99,7 +99,9 @@ describe('quiet hours are wall-clock in the parent timezone, DST-safe', () => {
   });
 
   it('a start==end window means "no quiet hours" (deliver anytime)', () => {
-    expect(isWithinQuietHours(new Date('2026-01-15T03:00:00Z'), TZ, '09:00:00', '09:00:00')).toBe(false);
+    expect(isWithinQuietHours(new Date('2026-01-15T03:00:00Z'), TZ, '09:00:00', '09:00:00')).toBe(
+      false,
+    );
   });
 });
 
@@ -116,7 +118,9 @@ describe('deliverableNow composes quiet hours with the urgent-bypass toggle', ()
     expect(deliverableNow(view, IN_QUIET, TZ, true)).toBe(true);
   });
   it('holds a time-sensitive message when the parent turned bypass off', () => {
-    expect(deliverableNow({ ...view, urgentBypassQuietHours: false }, IN_QUIET, TZ, true)).toBe(false);
+    expect(deliverableNow({ ...view, urgentBypassQuietHours: false }, IN_QUIET, TZ, true)).toBe(
+      false,
+    );
   });
   it('delivers anything outside quiet hours', () => {
     expect(deliverableNow(view, OUT_QUIET, TZ, false)).toBe(true);
@@ -155,8 +159,12 @@ describe('isValidLoopPrefUpdate rejects malformed untrusted input', () => {
   });
 
   it('rejects out-of-set enums and malformed times', () => {
-    expect(isValidLoopPrefUpdate({ field: 'loopChannel', value: 'carrier_pigeon' as never })).toBe(false);
-    expect(isValidLoopPrefUpdate({ field: 'childNameLevel', value: 'full_name' as never })).toBe(false);
+    expect(isValidLoopPrefUpdate({ field: 'loopChannel', value: 'carrier_pigeon' as never })).toBe(
+      false,
+    );
+    expect(isValidLoopPrefUpdate({ field: 'childNameLevel', value: 'full_name' as never })).toBe(
+      false,
+    );
     expect(isValidLoopPrefUpdate({ field: 'quietHoursEnd', value: '25:00' })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'quietHoursEnd', value: '7:5' })).toBe(false);
     expect(isValidLoopPrefUpdate({ field: 'catAlert', value: 'yes' as never })).toBe(false);
@@ -164,12 +172,16 @@ describe('isValidLoopPrefUpdate rejects malformed untrusted input', () => {
 
   it('rejects a non-writable field (no reaching userId / timestamps)', () => {
     expect(isValidLoopPrefUpdate({ field: 'userId' as never, value: true })).toBe(false);
-    expect(isValidLoopPrefUpdate({ field: 'updatedAt' as never, value: 'now' as never })).toBe(false);
+    expect(isValidLoopPrefUpdate({ field: 'updatedAt' as never, value: 'now' as never })).toBe(
+      false,
+    );
   });
 
   it('rejects the retired weekly-plan fields — the columns stay, the edge no longer writes them', () => {
     expect(isValidLoopPrefUpdate({ field: 'catWeeklyPlan' as never, value: false })).toBe(false);
-    expect(isValidLoopPrefUpdate({ field: 'weeklyPlanSendTime' as never, value: '07:00:00' })).toBe(false);
+    expect(isValidLoopPrefUpdate({ field: 'weeklyPlanSendTime' as never, value: '07:00:00' })).toBe(
+      false,
+    );
   });
 });
 
@@ -184,7 +196,9 @@ describe('writeLoopPref upserts and writes an audit row in one transaction', () 
       });
     };
     const tx = { insert: (table: unknown) => ({ values: capture(table) }) };
-    const database = { transaction: async (fn: (t: typeof tx) => Promise<void>) => fn(tx) } as never;
+    const database = {
+      transaction: async (fn: (t: typeof tx) => Promise<void>) => fn(tx),
+    } as never;
     return { database, inserts };
   }
 
@@ -207,7 +221,10 @@ describe('writeLoopPref upserts and writes an audit row in one transaction', () 
 
   it("normalizes a bare 'HH:MM' to the 'HH:MM:SS' the time column round-trips", async () => {
     const { database, inserts } = fakeTxDb();
-    await writeLoopPref(database, 'user-1', 'family-9', { field: 'quietHoursStart', value: '22:00' });
+    await writeLoopPref(database, 'user-1', 'family-9', {
+      field: 'quietHoursStart',
+      value: '22:00',
+    });
     const auditInsert = inserts.find((i) => i.table === schema.auditLog);
     expect((auditInsert?.values as { after: Record<string, unknown> }).after).toEqual({
       quietHoursStart: '22:00:00',

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text 1-2 are fine: Montessori tour for Theo, tomorrow, 10 with 'about an hour' (matches 10-11 AM), Little Oaks Montessori, 41 Mill St. But the storytime in text 3 says only 'at the library' and drops the venue name (Georgetown Branch) and the street address (9 Church St), both given in the facts. 'The library' is also an unstated inference from the venue name. Times 1:30 to 2:15 omit PM, though the sequence after the 10 AM tour makes it fairly clear. Missing venue name and address is a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

@@ -1,8 +1,8 @@
-import { type Database, schema } from '@hale/db';
 import { GuardrailError, invokeTool } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { buildCronGuardDeps } from './guards';
-import { buildDistillTools, _internal } from './inference-tools';
+import { _internal, buildDistillTools } from './inference-tools';
 
 /**
  * Chat → memory distillation. The infer-memory agent also reads recent
@@ -29,10 +29,44 @@ describe('redactTimelineForDistill (rule #1)', () => {
         [TOT, 'toddler'],
         [TEEN, 'teenager'],
       ]),
+      ['Rowan'],
     );
     expect(out).toEqual([
       { childId: TOT, role: 'user', content: 'Mara naps twice a day now', topic: 'sleep' },
     ]);
+  });
+
+  it('reduces a turn with no child that names a 13+ child, and keeps one that does not', () => {
+    const out = _internal.redactTimelineForDistill(
+      [
+        { childId: null, role: 'user', content: "ROWAN's been skipping practice", topic: null },
+        { childId: null, role: 'user', content: 'We love the library on Sundays', topic: null },
+      ],
+      new Map([[TEEN, 'teenager']]),
+      ['Rowan'],
+    );
+    expect(out[0]?.redacted).toBe(true);
+    expect(out[0]?.content).not.toContain('practice');
+    // Positive control: a family-wide turn that names no teen is kept raw.
+    expect(out[1]).toEqual({
+      childId: null,
+      role: 'user',
+      content: 'We love the library on Sundays',
+      topic: null,
+    });
+  });
+
+  it('reduces a turn filed under a younger child that names a 13+ child', () => {
+    const out = _internal.redactTimelineForDistill(
+      [{ childId: TOT, role: 'user', content: 'Rowan has a secret boyfriend', topic: null }],
+      new Map([
+        [TOT, 'toddler'],
+        [TEEN, 'teenager'],
+      ]),
+      ['Rowan'],
+    );
+    expect(out).toEqual([expect.objectContaining({ childId: null, redacted: true })]);
+    expect(out[0]?.content).not.toContain('boyfriend');
   });
 
   it('reduces a teen turn to category/summary only and drops the child scope', () => {
@@ -49,6 +83,7 @@ describe('redactTimelineForDistill (rule #1)', () => {
         [TOT, 'toddler'],
         [TEEN, 'teenager'],
       ]),
+      ['Rowan'],
     );
     expect(out).toHaveLength(1);
     const [turn] = out;
@@ -89,7 +124,9 @@ describe('save_child_fact tool', () => {
       }
       throw new Error('unexpected insert target');
     });
-    return { insert, update } as never;
+    // Every save reads the roster for the teen-name check; this family has no teen.
+    const select = () => ({ from: () => ({ where: async () => [] }) });
+    return { insert, update, select } as never;
   }
 
   it('writes a per-child categorized fact through the guarded invoker', async () => {
@@ -127,7 +164,13 @@ describe('save_child_fact tool', () => {
     const save = tools.find((t) => t.name === 'save_child_fact');
 
     const result = await save?.handler(
-      { childId: TOT, category: 'routines', factKey: 'naps', summary: 'maybe naps?', confidence: 0.4 },
+      {
+        childId: TOT,
+        category: 'routines',
+        factKey: 'naps',
+        summary: 'maybe naps?',
+        confidence: 0.4,
+      },
       { familyId: FAMILY_ID, actor: 'system' },
     );
 
@@ -152,8 +195,7 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
     return {
       select: () => ({
         from: () => ({
-          where: () =>
-            Object.assign(Promise.resolve(childRows), { limit: async () => childRows }),
+          where: () => Object.assign(Promise.resolve(childRows), { limit: async () => childRows }),
         }),
       }),
       insert: (table: unknown) => ({
@@ -170,8 +212,7 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
       // back-pointer with a bare awaited `.where(...)` — both shapes, one fake.
       update: () => ({
         set: () => ({
-          where: () =>
-            Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+          where: () => Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
         }),
       }),
     } as unknown as Database;

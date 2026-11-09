@@ -427,10 +427,8 @@ describe('a 13+ child’s appointment', () => {
       teenWorld.db.database,
       SWEEP_AT,
     );
-    const serialized = JSON.stringify(context.memoryFacts);
-    expect(serialized).not.toContain('immunization_14_to_16_years');
-    expect(serialized).not.toContain(teenWorld.teenId);
-    expect(serialized).toContain('teen content');
+    // The row exists (the test above reads it); the coach is given nothing of it.
+    expect(context.memoryFacts).toEqual([]);
   });
 });
 

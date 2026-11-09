@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "library storytime cancellation names the child, fits age, already on calendar, old time given",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maplewood Library says Robin's Storytime this Saturday (Sept 19) at 1:00 PM is cancelled.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

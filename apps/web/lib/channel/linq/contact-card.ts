@@ -1,12 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
-import { linqFromE164 } from './config';
 import {
   patchLinqContactCard,
-  retrieveLinqContactCard,
   setupLinqContactCard,
   shareLinqContactCard,
-} from './transport';
+} from '~/lib/channel/outbound-transport';
+import { linqFromE164 } from './config';
+import { retrieveLinqContactCard } from './transport';
 
 /**
  * VIL-335 — push Hale's Name and Photo card on a 1:1 iMessage chat, after an

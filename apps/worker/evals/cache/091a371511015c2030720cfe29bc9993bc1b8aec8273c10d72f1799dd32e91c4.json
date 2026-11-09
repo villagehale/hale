@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZUYQAzvYwK5fW85iGsv",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrQUKEAgTGAI4AUIIdGhpbmtpbmcSDEgmunasUBXHbWmU2BoMZ5n/KG/hIRNh1TNLIjB22oJu2+xZyJOqckPx0SXgdS4UTbk/ignINeGy5YAcf8N+Z9YQ24f68FA1Rm3PSf4qygSJMDYJFzU3hLCiX+wbITpEsPOtC7bhcylIy8BynQ5wQFbfrHmf2BAjK2KtDxiIqfCb7d+OYZGDUr9rnmlyQnJwFDYs16Icg6J6sVczVmpw1w5akSVMLPmUegkvlfmCj0pMEZtEcrWTU3fI80cD5Cf7JE1kk9FkrDZQXX8OvQT+eMLTD6cLqpvcrdAQdwN+ACH+VuUjeoXGwIGtm0LAcG799G51EuMqG/0EXqNNqB0LAEBPmXH7peWD8xJojPVYSH1/drwiIPa9yMZV782fNKa7zE5z2x+qf+v8aQXwsK2XNSFYxeCPIDKllc0CHu76iQBCj/W9C9R6xvpdiGXl3Co9fKiejubxCkfWRjTyHmfliXQJHtubhcnUBybCwOSXP3w+rtFgRZP6AaIIS50BcC2yueNCI8QOAK9XQmuajixusJG7oeV8gtF/thp1fT8ivubF+OY77VJYg8bQPQy75AF3HwYIUv+cSuo8bgdGELGNMNkbpFcE+0ke+ygr/pKz5UMsT4esPh2zfQK8zMSxecTnMopv6siRguYPKRn796OlTmfeZZ1s55o10YH5GoEXtUbAsDxN22hZYLibB7cqgUc+QGbt291GeZovIxiDuU8ngp/uOiOZVqbeKAaF+7usrmiSNHvUGzgYw90QHNBwOPhmbWUnIaLU+93l39XWMW5zadwrNT02MXwxQCMcRsxf+3BvXxxspGUMHMlqqLwSGmoOHdZRXlOyUJeYVF8A1m9Xqh21gR6xop4Ql1CFqPQ9Xx4N6h96ZMiSBuTVGAE="
+      },
+      {
+        "type": "text",
+        "text": "Got it, I'm leaving Thursday swim at 5:15pm at East pool as is."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 859,
+      "cache_read_input_tokens": 21833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 859,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 68,
+      "output_tokens_details": {
+        "thinking_tokens": 36
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1231
+}

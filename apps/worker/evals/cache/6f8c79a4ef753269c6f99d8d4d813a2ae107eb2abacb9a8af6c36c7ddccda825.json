@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Arabic text, correct script, names and contact details match facts exactly. Identifies Hale, company, accountable person, email and site. Adds an opt-out line not in facts, but it is not a promise about future action beyond stopping on request, which is reasonable. Does not answer \"how did you get my number\", a gap the parent asked about, so it falls short of full identity coverage. Tone is plain and friendly."
+  }
+}

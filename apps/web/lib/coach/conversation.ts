@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
 import { isConversationVisibleToParent } from './note-key.js';
 
@@ -37,10 +38,7 @@ export interface RehydratedThread {
 }
 
 /** Creates a fresh conversation for a family and returns its id. */
-export async function createConversation(
-  familyId: string,
-  database: Database,
-): Promise<string> {
+export async function createConversation(familyId: string, database: Database): Promise<string> {
   const rows = await database
     .insert(schema.conversations)
     .values({ familyId })
@@ -69,10 +67,7 @@ export async function resolveNoteConversation(
     .select({ id: schema.conversations.id })
     .from(schema.conversations)
     .where(
-      and(
-        eq(schema.conversations.familyId, familyId),
-        eq(schema.conversations.noteKey, noteKey),
-      ),
+      and(eq(schema.conversations.familyId, familyId), eq(schema.conversations.noteKey, noteKey)),
     )
     .limit(1);
 
@@ -137,10 +132,7 @@ export async function resolveConversationForParent(
     .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(
-      and(
-        eq(schema.conversations.id, conversationId),
-        eq(schema.conversations.familyId, familyId),
-      ),
+      and(eq(schema.conversations.id, conversationId), eq(schema.conversations.familyId, familyId)),
     )
     .limit(1);
 
@@ -164,12 +156,7 @@ export async function resolveLatestConversationForFamily(
   const rows = await database
     .select({ id: schema.conversations.id })
     .from(schema.conversations)
-    .where(
-      and(
-        eq(schema.conversations.familyId, familyId),
-        isNull(schema.conversations.noteKey),
-      ),
-    )
+    .where(and(eq(schema.conversations.familyId, familyId), isNull(schema.conversations.noteKey)))
     .orderBy(desc(schema.conversations.createdAt))
     .limit(1);
 
@@ -205,10 +192,7 @@ export async function loadTranscript(
     .select({ role: schema.messages.role, content: schema.messages.content })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 
@@ -223,7 +207,9 @@ export interface MessageScope {
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
  * Returns the new message id so the caller can link per-turn rows (e.g. chat
- * attachments) to the exact message that was just written. */
+ * attachments) to the exact message that was just written. A Browser Use live-view
+ * link is never stored: every later turn re-reads this thread, and the link is a
+ * credential to the parent's provider session (live-view.ts). */
 export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
@@ -233,7 +219,13 @@ export async function appendMessage(
 ): Promise<string> {
   const rows = await database
     .insert(schema.messages)
-    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic })
+    .values({
+      conversationId,
+      role,
+      content: withoutLiveViewLinks(content),
+      childId: scope.childId,
+      topic: scope.topic,
+    })
     .returning({ id: schema.messages.id });
   const id = rows[0]?.id;
   if (!id) {
@@ -262,10 +254,7 @@ export async function loadTranscriptWithAttachments(
     })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 
@@ -313,10 +302,7 @@ export async function loadTimeline(
     })
     .from(schema.messages)
     .where(
-      and(
-        eq(schema.messages.conversationId, conversationId),
-        isNull(schema.messages.deletedAt),
-      ),
+      and(eq(schema.messages.conversationId, conversationId), isNull(schema.messages.deletedAt)),
     )
     .orderBy(asc(schema.messages.createdAt));
 

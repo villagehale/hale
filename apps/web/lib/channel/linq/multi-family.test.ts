@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqMultiFamilyGroupsEnabled } from './config';
+import * as multiFamily from './multi-family';
+import { sharedGroupLineInput } from './shared-group-line-input';
 import {
-  MULTI_FAMILY_PARENT_COPY,
-  classifySharedGroupIntent,
-  replyStaysInThread,
-  sharedThreadContext,
-} from './multi-family';
+  SHARED_GROUP_INTENTS,
+  createSharedGroupReader,
+  parseSharedGroupReading,
+  sharedGroupReader,
+} from './shared-group-reading';
 
 describe('LINQ_MULTI_FAMILY_GROUPS_ENABLED', () => {
   afterEach(() => {
@@ -26,29 +28,39 @@ describe('LINQ_MULTI_FAMILY_GROUPS_ENABLED', () => {
   });
 });
 
-describe('shared group intent', () => {
-  it('joins or leaves only on the explicit phrase', () => {
-    expect(classifySharedGroupIntent('our family is in this group')).toBe('join');
-    expect(classifySharedGroupIntent('Notre famille est dans ce groupe.')).toBe('join');
-    expect(classifySharedGroupIntent('our family is leaving this group')).toBe('leave');
-    expect(classifySharedGroupIntent('notre famille quitte ce groupe')).toBe('leave');
-    expect(classifySharedGroupIntent('I think the other family is in')).toBe('none');
-    expect(classifySharedGroupIntent('add the Chens')).toBe('none');
+describe('shared group path has no keyword list', () => {
+  it('the door consumes a model reading, not a phrase table', () => {
+    expect(multiFamily).not.toHaveProperty('classifySharedGroupIntent');
+    expect(multiFamily).not.toHaveProperty('MULTI_FAMILY_JOINED_TEXT');
+    expect(multiFamily).not.toHaveProperty('MULTI_FAMILY_SHARED_REPLY');
+    expect(typeof multiFamily.takeMultiFamilyTurn).toBe('function');
+    expect(typeof createSharedGroupReader).toBe('function');
+    expect(SHARED_GROUP_INTENTS).toEqual(
+      expect.arrayContaining(['stop_me', 'chatter', 'question', 'who_i_am']),
+    );
+    expect(parseSharedGroupReading('anything they typed').intent).toBe('unclear');
+    expect(
+      parseSharedGroupReading({
+        intent: 'stop_me',
+        role: 'unclear',
+        familyLabel: null,
+        kidName: null,
+        confidence: 'high',
+      }).intent,
+    ).toBe('stop_me');
+    const stop = sharedGroupLineInput({ kind: 'member_stop', name: 'Jordan' }, 'en');
+    expect(stop.facts).toEqual({ name: 'Jordan' });
+    expect(stop).not.toHaveProperty('line');
+    expect(stop.skill).toBe('shared-group-voice');
   });
-});
 
-describe('shared thread copy', () => {
-  it('is a design placeholder and carries no opt-out wording', () => {
-    for (const line of MULTI_FAMILY_PARENT_COPY) {
-      expect(line.startsWith('TODO-Design:')).toBe(true);
-      expect(line.toLowerCase()).not.toContain('stop');
-    }
-    expect(replyStaysInThread(MULTI_FAMILY_PARENT_COPY[0])).toBe(true);
-    expect(replyStaysInThread('Zephyrina has soccer on Thursday')).toBe(false);
+  it('has no reader when the model is not there — not a word list', () => {
+    expect(process.env.ANTHROPIC_API_KEY).toBeFalsy();
+    expect(sharedGroupReader()).toBeNull();
   });
 
   it('keeps memory, calendar, email, children, and signups out of the reply context', () => {
-    const context = sharedThreadContext(['saturday at the park', '  ']);
+    const context = multiFamily.sharedThreadContext(['saturday at the park', '  ']);
     expect(context.threadTexts).toEqual(['saturday at the park']);
     expect(context.memory).toEqual([]);
     expect(context.calendar).toEqual([]);

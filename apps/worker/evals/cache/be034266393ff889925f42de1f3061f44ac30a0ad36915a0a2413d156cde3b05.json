@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text, in Chinese, says the Library storytime is set for Wednesday July 22 at 下午4:00 (4:00 PM). The start is 2026-07-22 Wednesday 16:00 in America/Chicago, so the day, weekday, and hour all match, and the text names no minute beyond the top of the hour, which is minute 0. The event name matches as well.",
+    "match": true
+  },
+  "latencyMs": 1892
+}

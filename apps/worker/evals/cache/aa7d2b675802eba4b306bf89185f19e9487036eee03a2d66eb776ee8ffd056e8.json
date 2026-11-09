@@ -1,0 +1,9 @@
+{
+  "value": {
+    "supported": false,
+    "unsupported": [
+      "says registration opens tomorrow, but facts say Tuesday, September 15, 2026 (a week away)"
+    ]
+  },
+  "latencyMs": 2133
+}

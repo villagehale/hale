@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts check out: tomorrow Monday Oct 26, 15 h to 16 h, Georgetown library, title kept. But the text reads 'Demain, lundi 26 octobre, à 15 h 00 à la bibliothèque de Georgetown : jour de congé', which recasts the event title 'Jour de congé' as a claim about the day itself (that it is a day off), a fact change the reason must flag, and the sentence structure is a stiff calendar-readout label rather than how a French friend would text. The padded '15 h 00' and '16 h 00' with the separate 'Ça se termine à' sentence also reads like a system alert. Fact changes plus unnatural phrasing make this score low.",
+    "score": 2
+  }
+}

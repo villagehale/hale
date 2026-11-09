@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event name (PD Day), the day from now (tomorrow, Monday), the start 9:30 AM and end 12:00 PM with correct AM/PM, and the venue name (Northside community centre). The facts give no street address, and none was invented. It treats the event as something to be at, not a free day. No invented logistics, no changed title, no link, and bold is none, which is fine.",
+    "score": 5
+  }
+}

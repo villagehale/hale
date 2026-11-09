@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event as soccer practice for Ada, which matches the summary 'Ada - soccer practice', and says it is Monday, Sep 14 at 5:30 PM. The real start is Monday 2026-09-14 at 17:30 America/Chicago, so the day, weekday, hour, and minute all agree.",
+    "match": true
+  },
+  "latencyMs": 1386
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give an all-day event titled \"PD Day\" tomorrow with no start time, end time, or location. The text invents a clock time (\"at 3:00\"), which is forbidden for an all-day event. It also changes the title to \"Jour de congé\" (a French rendering, in an English-language reminder), and adds unstated inferences: \"Tomorrow's a day off\" and \"a bit of breathing room\" are not in the facts. Bold is none, which is fine, but the invented time and inferences are fact failures.",
+    "score": 1
+  }
+}

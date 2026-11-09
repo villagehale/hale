@@ -24,8 +24,11 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -153,6 +156,7 @@ const BROKEN_LINE =
   'Hi! Good news, I checked the schedule and it looks fine 😊. Back in 2 minutes - see https://villagehale.com, ok?';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -234,6 +238,10 @@ async function main() {
 
   const allPass = results.every((r) => r.failures.length === 0) && !tooSame;
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('holding-line', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

@@ -3,10 +3,9 @@ import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isStage } from '~/lib/testing/structured-reply';
 import { FakeTransport } from '~/lib/channel/intake/transport';
-import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import type {
   ExtractedEvent,
   ExtractionKind,
@@ -16,7 +15,9 @@ import type {
 import { loadCorrelationCandidates } from '~/lib/sentinel/candidates';
 import { correlateExtraction } from '~/lib/sentinel/correlate';
 import { classifyChildEventEmail } from '~/lib/sentinel/pipeline';
+import { type ScriptedNoticeWriter, scriptedNoticeWriter } from '~/lib/testing/email-alert-notice';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { isStage } from '~/lib/testing/structured-reply';
 import {
   BOOKING_CONFIDENCE_FLOOR,
   bookingDraft,
@@ -73,6 +74,7 @@ beforeEach(async () => {
   vi.stubEnv('F14_ENABLED', 'true');
   vi.stubEnv('EMAIL_ALERT_ENABLED', 'true');
   vi.stubEnv('BOOKED_DETECTION_ENABLED', 'true');
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -129,6 +131,7 @@ interface Harness {
   ports: EmailAlertPorts;
   transport: FakeTransport;
   threaded: Array<{ familyId: string; parentUserId: string; body: string }>;
+  writer: ScriptedNoticeWriter;
 }
 
 function harness(
@@ -148,10 +151,15 @@ function harness(
 ): Harness {
   const transport = new FakeTransport();
   const threaded: Harness['threaded'] = [];
+  const writer = scriptedNoticeWriter();
   return {
     transport,
     threaded,
+    writer,
     ports: {
+      familyChildren: writer.familyChildren,
+      writeNotice: writer.writeNotice,
+      parentLanguage: writer.parentLanguage,
       classify: async (envelope) => {
         const base = over.byMessage?.[envelope.messageId] ?? over.classification ?? classified();
         if (!over.correlate || base.extraction === null) return base;
@@ -201,8 +209,9 @@ function alert(h: Harness, messageId = 'm1', now = NOW) {
       parentUserId: family.parentUserId,
       integrationId: INTEGRATION,
       messageId,
+      threadId: `t-${messageId}`,
+      labelIds: ['INBOX'],
       envelope: ENVELOPE,
-      cancelledThisSweep: new Set<string>(),
       timeZone: 'America/Toronto',
       now,
     },
@@ -659,6 +668,20 @@ describe('a provider cancellation closes what it cancelled', () => {
     expect(open.map((offer) => offer.title)).toEqual(['Skating Level 1']);
   });
 
+  it('closes nothing when the writer says the cancellation is not about the kids', async () => {
+    await booked();
+    for (const why of ['not_about_the_kids', 'unclear', 'unwritten'] as const) {
+      const h = cancellation('Swim Level 2');
+      h.ports.writeNotice = async () => ({ send: false, why });
+      await alert(h, `m-${why}`);
+      expect(h.transport.sent).toEqual([]);
+      await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toBeNull();
+    }
+    // The writer's yes is what closes it.
+    await alert(cancellation('Swim Level 2'), 'm-yes');
+    await expect(bookingRows().then((r) => r[0]?.cancelledAt)).resolves.toEqual(NOW);
+  });
+
   it('leaves a different class from the same provider alone', async () => {
     await booked();
     await alert(cancellation('Skating Level 1'), 'm2');
@@ -716,30 +739,27 @@ describe('a provider cancellation closes what it cancelled', () => {
 });
 
 /**
- * ONE SWEEP, TWO EMAILS, AND THE ORDER IS BACKWARDS.
+ * ONE SWEEP, TWO EMAILS, READ IN THE ORDER THEY WERE SENT.
  *
- * A batch is read NEWEST FIRST, because when a mailbox has just taken sixty messages the
- * ones worth a text are the ones that arrived last. That is right for what may be SPENT
- * and exactly wrong for a cancellation: the provider's "CANCELLED" is newer than the
- * receipt it cancels, so inside ONE sweep the closer runs first, finds nothing — the
- * booking does not exist yet — and the receipt is then read, texted as "you're in",
- * offered, and written down live. Hale tells a parent they are in a class it told them was
- * off ninety seconds earlier, and asks how it went four days later.
- *
- * So the sweep REMEMBERS what it has already been told is off, and a receipt whose provider
- * and class are in that set is not spoken about at all: no text, no CTA, no offer row, no
- * booking. Not merely "no booking" — a "you're in" with no calendar question behind it
- * would still be Hale contradicting itself on the same phone in the same minute.
- *
- * It is sound ONLY because of the sort: everything read after a cancellation is older than
- * it. The mirror — a re-registration NEWER than the cancellation, read first and then
- * closed by it — is named in the commit and is a missing question rather than a wrong one.
+ * A batch is handled OLDEST FIRST, so a receipt is written down before the provider's later
+ * "CANCELLED" reaches the closer, and the closer finds the row it cancels. The parent hears
+ * "you're in" and then "it's off", which is the order the provider said them in: the last
+ * word is the newest email's. And a re-registration NEWER than a cancellation is read after
+ * it, so it is never closed by the email it follows.
  */
-describe('a cancellation the same sweep has already read', () => {
-  const RECEIPT = { ...ENVELOPE, messageId: 'm-receipt', receivedAt: '2026-09-17T14:00:00.000Z' };
+describe('one sweep with a receipt and a cancellation', () => {
+  const RECEIPT = {
+    ...ENVELOPE,
+    messageId: 'm-receipt',
+    threadId: 't-receipt',
+    labelIds: ['INBOX'],
+    receivedAt: '2026-09-17T14:00:00.000Z',
+  };
   const CANCELLED = {
     ...ENVELOPE,
     messageId: 'm-cancelled',
+    threadId: 't-cancelled',
+    labelIds: ['INBOX'],
     subject: 'CANCELLED - Swim Level 2',
     snippet: 'Swim Level 2 on Sep 26 has been cancelled.',
     receivedAt: '2026-09-17T14:30:00.000Z',
@@ -759,7 +779,7 @@ describe('a cancellation the same sweep has already read', () => {
     });
   }
 
-  function sweep(h: Harness) {
+  function sweep(h: Harness, envelopes: readonly (typeof RECEIPT)[]) {
     return alertParentForGmailSweep(
       db.database,
       {
@@ -767,54 +787,55 @@ describe('a cancellation the same sweep has already read', () => {
         parentUserId: family.parentUserId,
         integrationId: INTEGRATION,
         seeding: false,
-        // Handed in the order they sit in the mailbox; the sweep is what reverses them.
-        envelopes: [RECEIPT, CANCELLED],
+        envelopes,
         now: NOW,
       },
       h.ports,
     );
   }
 
-  it('says nothing at all about the receipt for the class it just called off', async () => {
+  it('tells the receipt and then its cancellation, and the cancellation closes the booking', async () => {
     const h = batch('Swim Level 2');
 
-    await expect(sweep(h)).resolves.toEqual([
-      // Newest first: the cancellation is read BEFORE the receipt it cancels.
+    // Handed newest first; the sweep reads the receipt first because it was sent first.
+    await expect(sweep(h, [CANCELLED, RECEIPT])).resolves.toEqual([
+      { alert: 'sent', booking: 'recorded', going: 'going_dark' },
       { alert: 'sent', booking: 'not_a_booking', going: null },
-      { alert: 'cancelled_in_sweep', booking: null, going: null },
     ]);
 
-    expect(h.transport.sent).toHaveLength(1);
-    expect(h.transport.sent[0]?.body).not.toContain("you're in");
-    await expect(bookingRows()).resolves.toEqual([]);
-    await expect(offerRows()).resolves.toEqual([]);
+    expect(h.writer.seen.map((facts) => facts.email.kind)).toEqual([
+      'booking_confirmation',
+      'cancellation',
+    ]);
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      NOW,
+    ]);
+    await expect(offerRows().then((rows) => rows.map((r) => r.expiresAt))).resolves.toEqual([NOW]);
   });
 
-  it('still speaks about a receipt the cancellation does not name', async () => {
-    // THE POSITIVE CONTROL. Without it the assertion above passes on a sweep that stopped
-    // sending anything after a cancellation, which is a different and worse feature.
+  it('leaves open the booking of a class the cancellation does not name', async () => {
+    // THE POSITIVE CONTROL: the closer above closed what was named, not everything.
     const h = batch('Skating Level 1');
 
-    await expect(sweep(h)).resolves.toEqual([
+    await expect(
+      sweep(h, [CANCELLED, RECEIPT]).then((all) => all.map((o) => o.alert)),
+    ).resolves.toEqual(['sent', 'sent']);
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      null,
+    ]);
+  });
+
+  it('keeps a re-registration newer than the cancellation', async () => {
+    const h = batch('Swim Level 2');
+    const rebooked = { ...RECEIPT, receivedAt: '2026-09-17T15:00:00.000Z' };
+
+    await expect(sweep(h, [rebooked, CANCELLED])).resolves.toEqual([
       { alert: 'sent', booking: 'not_a_booking', going: null },
       { alert: 'sent', booking: 'recorded', going: 'going_dark' },
     ]);
-    expect(h.transport.sent).toHaveLength(2);
-    await expect(bookingRows()).resolves.toHaveLength(1);
-  });
-
-  it('suppresses nothing when booked detection is dark', async () => {
-    // The flag gates this too, and it must: dark, a `booking_confirmation` IS a
-    // `new_event` in every respect, and a new_event was never suppressed by a
-    // cancellation. Flag-off behaviour stays byte-identical to today's.
-    vi.stubEnv('BOOKED_DETECTION_ENABLED', 'false');
-    const h = batch('Swim Level 2');
-
-    await expect(sweep(h)).resolves.toEqual([
-      { alert: 'sent', booking: 'booked_dark', going: null },
-      { alert: 'sent', booking: 'booked_dark', going: null },
+    await expect(bookingRows().then((rows) => rows.map((r) => r.cancelledAt))).resolves.toEqual([
+      null,
     ]);
-    expect(h.transport.sent).toHaveLength(2);
   });
 });
 
@@ -873,8 +894,8 @@ describe('the booking write', () => {
     await expect(bookingRows()).resolves.toHaveLength(0);
     await expect(offerRows()).resolves.toHaveLength(0);
     expect(h.transport.sent).toHaveLength(1);
-    // No row behind it, so no question in front of it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
+    // No row behind it, so the writer is told there is nothing to ask.
+    expect(h.writer.seen[0]?.offer).toBeNull();
   });
 
   it("folds the row's place through the same one function the offer row uses", async () => {
@@ -922,7 +943,7 @@ describe('the booking write', () => {
       channelMessageId,
       draft: { ...draft.draft, title: 'A DIFFERENT TITLE' },
     });
-    expect(second).toEqual({ outcome: 'already_recorded', bookingId: null });
+    expect(second).toEqual({ outcome: 'already_recorded', bookingId: null, closed: null });
 
     const rows = await bookingRows();
     expect(rows).toHaveLength(1);
@@ -960,7 +981,7 @@ describe('the booking write', () => {
         location: 'pool 2',
       },
     });
-    expect(second).toEqual({ outcome: 'refreshed', bookingId: first.bookingId });
+    expect(second).toEqual({ outcome: 'refreshed', bookingId: first.bookingId, closed: null });
 
     // A weekday abbreviation is the same class, not a second one.
     const abbrev = bookingDraft({
@@ -986,7 +1007,11 @@ describe('the booking write', () => {
       channelMessageId: await sentAlertRow(),
       draft: { ...abbrev.draft, title: 'Parent and Tot (Tues)' },
     });
-    expect(abbrevAgain).toEqual({ outcome: 'refreshed', bookingId: abbrevRow.bookingId });
+    expect(abbrevAgain).toEqual({
+      outcome: 'refreshed',
+      bookingId: abbrevRow.bookingId,
+      closed: null,
+    });
 
     const rows = await bookingRows();
     expect(rows).toHaveLength(2);
@@ -1064,8 +1089,8 @@ describe('the booking write', () => {
     const h = harness();
     await expect(alert(h)).resolves.toEqual({ alert: 'sent', booking: 'booked_dark', going: null });
     await expect(bookingRows()).resolves.toHaveLength(0);
-    expect(h.transport.sent[0]?.body).toContain('Want me to add it to your week?');
-    expect(h.transport.sent[0]?.body).not.toContain('Want it on your calendar?');
+    expect(h.writer.seen[0]?.offer).toBe('add_to_week');
+    expect(h.writer.seen[0]?.email.kind).toBe('new_event');
   });
 
   it('counts a booking that never reached the decision as null, not as a refusal', async () => {
@@ -1104,8 +1129,9 @@ describe('record_failed', () => {
           parentUserId: family.parentUserId,
           integrationId: INTEGRATION,
           messageId: 'm1',
+          threadId: 't-m1',
+          labelIds: ['INBOX'],
           envelope: ENVELOPE,
-          cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',
           now: NOW,
         },
@@ -1157,8 +1183,9 @@ describe('record_failed', () => {
           parentUserId: family.parentUserId,
           integrationId: INTEGRATION,
           messageId: 'm1',
+          threadId: 't-m1',
+          labelIds: ['INBOX'],
           envelope: ENVELOPE,
-          cancelledThisSweep: new Set<string>(),
           timeZone: 'America/Toronto',
           now: NOW,
         },
@@ -1173,7 +1200,7 @@ describe('record_failed', () => {
 });
 
 describe('the offer that must not be made twice', () => {
-  it('makes NO offer for a class already on the calendar, and stamps the booking with it', async () => {
+  it('sends NOTHING for a class already on the calendar, and still stamps the booking with it', async () => {
     // Through the REAL `loadCorrelationCandidates` and the REAL `correlateExtraction`:
     // the family said YES to the September announcement two weeks ago, the receipt
     // arrives now, and a second offer would place a second copy of one Saturday.
@@ -1190,13 +1217,15 @@ describe('the offer that must not be made twice', () => {
 
     const h = harness({ correlate: true });
     await expect(alert(h)).resolves.toEqual({
-      alert: 'sent',
+      alert: 'already_on_calendar',
       booking: 'recorded',
-      going: 'going_dark',
+      going: null,
     });
 
-    // No question, because no row would have been behind it.
-    expect(h.transport.sent[0]?.body).not.toContain('?');
+    // The family already holds it: a second text about it is the duplicate, and the
+    // receipt is still evidence the booking row is written from.
+    expect(h.writer.seen).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
     await expect(offerRows()).resolves.toHaveLength(0);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBe(event.id);
@@ -1231,7 +1260,8 @@ describe('the offer that must not be made twice', () => {
       going: 'going_dark',
     });
 
-    expect(h.transport.sent[0]?.body).toContain('Want it on your calendar?');
+    expect(h.writer.seen[0]?.offer).toBe('add_to_calendar');
+    expect(h.transport.sent[0]?.body).toContain('?');
     await expect(offerRows()).resolves.toHaveLength(1);
     const rows = await bookingRows();
     expect(rows[0]?.eventId).toBeNull();

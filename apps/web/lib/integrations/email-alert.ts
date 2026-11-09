@@ -1,10 +1,17 @@
-import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { laneEnabled } from '~/lib/channel/lanes';
-import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import {
+  CONSUMED_SEND_STATUSES,
+  SENT_STATUSES,
+  acceptedStatus,
+  dedupeActive,
+} from '~/lib/channel/ledger';
 import { familyOutboundTarget } from '~/lib/channel/linq/family-outbound';
+import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type ProactiveSendRequest,
@@ -16,41 +23,54 @@ import {
   readSendRefusal,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
-import { isPrintableGsm7Basic, smsSegments } from '~/lib/channel/sms-segments';
+import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
-import { formatDayHeading } from '~/lib/format/datetime';
+import { emailAlertAnchorIndex } from '~/lib/crypto/blind-index';
+import type { SourceChange } from '~/lib/loop/reminders/change';
+import { applyProviderChange } from '~/lib/loop/reminders/provider-change';
 import { attachPassportToEmailAlert } from '~/lib/passport/ingest';
 import type {
   CorrelatedEventRef,
   ExtractedEvent,
   ExtractionKind,
+  FamilyChildRef,
   InboxEnvelope,
   SentinelClassification,
 } from '~/lib/sentinel';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
 import { bookedDetectionEnabledFor } from './booked';
 import {
+  BOOKING_CONFIDENCE_FLOOR,
   type BookingDraftResult,
-  bookingCancellationKey,
+  type ClosedBooking,
   bookingDraft,
+  canonicalBookingTitle,
   closeCancelledBookings,
   familyHoldsLiveBooking,
   recordActivityBooking,
+  senderHost,
 } from './booking';
+import {
+  type EmailAlertNotice,
+  type EmailAlertNoticeFacts,
+  emailAlertNoticeFacts,
+  quietBeforeWriting,
+} from './email-alert-notice';
 import {
   type EmailAlertOfferDraft,
   recordEmailAlertOffer,
   withdrawEmailAlertOffer,
 } from './email-alert-offer';
+import { parentsOwnMail } from './gmail-labels';
 import {
   type GoingCount,
   type GoingOutcome,
-  goingClause,
   goingCount,
   goingCountEnabled,
   goingOutcome,
   readSessionGoing,
 } from './going';
+import { readRecentNotices } from './recent-notices';
 
 /**
  * A parenting email in a connected Gmail becomes ONE text to the parent.
@@ -59,18 +79,22 @@ import {
  * sweep reads envelopes and enqueues them as drafts on a web page nobody opens, and the
  * E2 sentinel can tell a cancelled swim class from a newsletter but had no production
  * caller at all. This module is the join, and it is deliberately the only thing between
- * them — the classifier's verdict decides WHETHER, the outbound chokepoint decides
- * whether Hale may speak right now, and the sentence itself is assembled from the typed
- * extraction by the code below rather than by a second model call (rule #2).
+ * them — the classifier's verdict decides whether the email holds a dated change, the
+ * notice writer (email-alert-notice.ts) decides from facts whether it is about THIS
+ * family's children and clear, and writes every word if so, and the outbound chokepoint
+ * decides whether Hale may speak right now. No sentence is assembled here.
  *
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
  *   - The SMS carries no line of the email. The snippet, the quote evidence and the body
- *     never reach a wire body or an audit row (rule #1); what goes out is the extraction's
- *     own title, the sender's display name or bare domain, and a time.
+ *     never reach the writer, a wire body or an audit row (rule #1).
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
- *     by the time this sees it, and {@link renderEmailAlert} additionally drops the
- *     sender and the time, because a therapist's domain and a Thursday 4pm are the
- *     disclosure, not the title.
+ *     by the time this sees it, and the facts additionally drop the sender, subject, time
+ *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
+ *   - Nothing is sent that the writer did not write: an email that is not about the kids,
+ *     is unclear, or could not be written ends as a named outcome with no text.
+ *   - An email about an occasion already on the family's calendar is told only when it
+ *     CHANGES it (a cancellation or a move). Anything else would be a second text about
+ *     something the parent already has.
  *   - Every ending is a named outcome ({@link EmailAlertOutcome}) the cron summary counts
  *     (rule #11). A throw is the one ending this module cannot name for itself, so the
  *     sweep holds a boundary around the call and names it `alert_failed` — because the
@@ -84,6 +108,11 @@ import {
  * rather than anchored on a guess. */
 export interface GmailAlertEnvelope {
   messageId: string;
+  /** Gmail's thread id. Absent only if the metadata response omitted it → `no_thread_id`. */
+  threadId?: string;
+  /** Gmail's labels at the metadata read (`[]` when the read returned none). Absent means
+   * no label read happened → `labels_unread` (fail closed). */
+  labelIds?: readonly string[];
   subject: string;
   from: string;
   snippet: string;
@@ -107,11 +136,14 @@ export interface GmailAlertEnvelope {
 export const EMAIL_ALERT_OUTCOMES = [
   'sent',
   'not_parenting',
-  // This sweep had ALREADY read the provider calling this exact class off, and a batch is
-  // read newest first — so the receipt is the older email and there is nothing true left
-  // to say about it. Its own name rather than silence, because "Hale chose not to speak"
-  // is a fact about a mailbox and a counter is the only place it is recorded.
-  'cancelled_in_sweep',
+  /** The extraction or the notice writer could not tell what the email was about. */
+  'unclear',
+  /** The notice writer judged the email is not about this family's children. */
+  'not_about_the_kids',
+  /** The family already holds this occasion and the email does not change it. */
+  'already_on_calendar',
+  /** The notice writer failed or every draft was refused. There is no fallback. */
+  'notice_unwritten',
   'already_sent',
   'dark',
   'no_parent_user',
@@ -132,6 +164,21 @@ export const EMAIL_ALERT_OUTCOMES = [
   'group_privacy',
   /** EMAIL_ALERT_ENABLED is not `true`: no classifier call, no text, no offer. */
   'lane_off',
+  /** SENT label: the parent's own outgoing mail. No classifier call, no text. */
+  'own_mail',
+  /** DRAFT label: an unsent draft (each autosave is a new id). No classifier call. */
+  'draft',
+  /** No label read happened for this envelope. No classifier call, no alert. */
+  'labels_unread',
+  /** Live pass only: no thread to key the alert on. No classifier call, no alert. */
+  'no_thread_id',
+  /** Read in a later sweep than a NEWER email in this thread about the same instant, which
+   * was already told: not texted, so the parent's last word stays the newest email's. Its
+   * booking effects still happen, as for any email. */
+  'stale_news',
+  /** An earlier text for this occasion in this thread failed. Its claim stays held (the
+   * ledger is at-most-once per key), so nothing is sent. */
+  'occasion_send_failed',
 ] as const;
 
 export type EmailAlertOutcome = (typeof EMAIL_ALERT_OUTCOMES)[number];
@@ -215,9 +262,309 @@ export const EMAIL_ALERT_TEMPLATE_KEY = 'connector:email_alert';
 
 /** Keyed on the CONNECTION and the provider's message id, so re-connecting a mailbox
  * that re-seeds the same messages mints new keys while a re-run of the same sweep does
- * not. */
+ * not. The alert row carries it, and it is how a parent's "not mine" finds the message
+ * the text was about (kid-relevance/untrack.ts). */
 export function emailAlertDedupeKey(integrationId: string, messageId: string): string {
   return `email_alert:${integrationId}:${messageId}`;
+}
+
+/**
+ * The claim on the NEWS rather than on the message: the CONNECTION, the THREAD and the
+ * OCCASION ({@link emailAlertOccasion}), held in `email_alert_occasions`. A message id
+ * changes with every reply and every reminder, so the per-message key alone told one
+ * Saturday once per message.
+ *
+ * The occasion is hashed: it can carry a place the model read, and a key is a column that
+ * is never redacted (rule #1).
+ */
+export function emailAlertOccasionKey(
+  integrationId: string,
+  threadId: string,
+  occasion: string,
+): string {
+  return `email_alert_occasion:${integrationId}:${threadId}:${shortDigest(occasion)}`;
+}
+
+/** One instant (or, with none, the event or message) a claim was about, in this thread:
+ * a keyed index, because an instant is guessable. */
+function emailAlertAnchorKey(integrationId: string, threadId: string, anchor: string): string {
+  return emailAlertAnchorIndex(`${integrationId}\u0000${threadId}\u0000${anchor}`);
+}
+
+function shortDigest(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 32);
+}
+
+/**
+ * WHAT THE EMAIL IS NEWS ABOUT, from the extraction's own output and ids: whether the
+ * occasion is on, off or moved, and the instant(s) it sits at. A reminder, a
+ * re-announcement or a receipt of the same instant is the same occasion; a cancellation
+ * or a move of it is new news. No title: the model's name for one class drifts across
+ * emails, and instants are what the extraction normalises.
+ *
+ * With no usable instant, the matched event joins two messages, and failing that the
+ * message id keeps each email its own occasion (no cross-message dedupe for it).
+ */
+export function emailAlertOccasion(
+  extraction: {
+    kind: ExtractionKind;
+    event: ExtractedEvent;
+    matchedEventRef: CorrelatedEventRef | null;
+  },
+  messageId: string,
+): string {
+  return occasionOf(extraction, messageId).occasion;
+}
+
+/** The occasion, and what it is ABOUT: the instant(s) it sits at, or failing those the
+ * matched event, or failing that the message. On, off and moved about one instant share
+ * that instant, which is how a later email finds what this thread last said about it. */
+function occasionOf(
+  extraction: Parameters<typeof emailAlertOccasion>[0],
+  messageId: string,
+): { occasion: string; anchors: readonly string[] } {
+  const { state, anchor, instants } = OCCASION[extraction.kind](extraction.event);
+  if (anchor !== null) {
+    const occasion = stated(state, anchor);
+    return { occasion, anchors: instants.length > 0 ? instants : [occasion] };
+  }
+  if (extraction.matchedEventRef !== null) {
+    const ref = `ref:${extraction.matchedEventRef.table}:${extraction.matchedEventRef.id}`;
+    return { occasion: stated(state, ref), anchors: [ref] };
+  }
+  const own = `msg:${messageId}`;
+  return { occasion: own, anchors: [own] };
+}
+
+function stated(state: 'on' | 'off' | 'moved', anchor: string): string {
+  return `${state}|${anchor}`;
+}
+
+/** Per kind, whether the occasion is on, off or moved, the field(s) it sits at, and the
+ * instants among them. `OFFERED_TIME` cannot be reused: it has no instant for a
+ * cancellation. */
+const OCCASION: Record<
+  ExtractionKind,
+  (event: ExtractedEvent) => {
+    state: 'on' | 'off' | 'moved';
+    anchor: string | null;
+    instants: readonly string[];
+  }
+> = {
+  new_event: (event) => ({ state: 'on', ...at(event.newTime) }),
+  booking_confirmation: (event) => ({ state: 'on', ...at(event.newTime) }),
+  reminder_only: (event) => ({ state: 'on', ...at(event.originalTime) }),
+  cancellation: (event) => ({ state: 'off', ...at(event.originalTime) }),
+  // A move back to an earlier time, or to another place at the same time, is a different
+  // occasion from the announcement it moves.
+  reschedule: (event) => {
+    const from = instantIso(event.originalTime);
+    const to = instantIso(event.newTime);
+    const place = event.location?.trim().toLowerCase() ?? '';
+    const instants = [from, to].filter((instant): instant is string => instant !== null);
+    if (from === null && to === null && place === '') {
+      return { state: 'moved', anchor: null, instants };
+    }
+    return { state: 'moved', anchor: `${from ?? ''}>${to ?? ''}@${place}`, instants };
+  },
+  // Never reaches the key: `unclear` returns before it.
+  unclear: () => ({ state: 'on', anchor: null, instants: [] }),
+};
+
+function at(iso: string | null): { anchor: string | null; instants: readonly string[] } {
+  const instant = instantIso(iso);
+  return { anchor: instant, instants: instant === null ? [] : [instant] };
+}
+
+function instantIso(iso: string | null): string | null {
+  return offsetInstant(iso)?.toISOString() ?? null;
+}
+
+type Told = 'already_sent' | 'occasion_send_failed' | 'stale_news';
+
+/**
+ * AN OCCASION IS A STATE CHANGE, so whether this email is news is decided by what this
+ * thread LAST told about the same instant(s): the same occasion is a repeat, anything else
+ * (a cancellation after an announcement, the class back on after its cancellation) is
+ * news. The claim key carries the claim it follows, so on, off, on, off are four keys and
+ * two sweeps reading the same history still compute one. With nothing told about these
+ * instants the key is the bare occasion key, which is also every claim written before the
+ * anchors existed.
+ *
+ * "Last" is the order the EMAILS were received in. A sweep is read oldest first, so inside
+ * one sweep that is also the order claims are written in; across sweeps it is not, and an
+ * email older than what the thread last told is `stale_news`.
+ */
+async function occasionClaim(
+  database: Database,
+  integrationId: string,
+  threadId: string,
+  extraction: Parameters<typeof emailAlertOccasion>[0],
+  messageId: string,
+  receivedAt: Date,
+  from: string,
+): Promise<{ occasionKey: string; anchorKeys: string[]; told: Told | null }> {
+  const { occasion, anchors } = occasionOf(extraction, messageId);
+  const base = emailAlertOccasionKey(integrationId, threadId, occasion);
+  const instantKeys = anchors.map((anchor) => emailAlertAnchorKey(integrationId, threadId, anchor));
+  // Written with the claim, read only by `toldCancellationAfter`: every claim holding one of
+  // these also holds the instant key it was built from, so the told check below is unchanged.
+  const anchorKeys = [
+    ...instantKeys,
+    ...classAnchorKeys(
+      integrationId,
+      threadId,
+      anchors,
+      classIdentity(senderHost(from), sanitizedTitle(extraction.event.title)),
+    ),
+  ];
+  const last = await lastToldClaim(database, instantKeys);
+  if (last !== undefined && isClaimOf(last.occasionKey, base)) {
+    return { occasionKey: last.occasionKey, anchorKeys, told: 'already_sent' };
+  }
+  if (last?.receivedAt != null && receivedAt < last.receivedAt) {
+    return { occasionKey: base, anchorKeys, told: 'stale_news' };
+  }
+  const occasionKey = last === undefined ? base : `${base}:${last.channelMessageId}`;
+  return { occasionKey, anchorKeys, told: await occasionAlreadyTold(database, occasionKey) };
+}
+
+/** The class an email is about, by the folds the cancellation closer matches a booking on:
+ * the sender's domain (empty when the email had no sender, which the closer matches too) and
+ * the canonical title. `null` names no class, and a cancellation that names no class closes
+ * nothing. */
+function classIdentity(providerHost: string, title: string): string | null {
+  const canonical = canonicalBookingTitle(title);
+  if (canonical === '') return null;
+  return `${providerHost}|${canonical}`;
+}
+
+/** One keyed anchor per instant, for this class only: two classes at one instant in one
+ * thread share the instant's anchor and never these. */
+function classAnchorKeys(
+  integrationId: string,
+  threadId: string,
+  anchors: readonly string[],
+  identity: string | null,
+): string[] {
+  if (identity === null) return [];
+  return anchors.map((anchor) =>
+    emailAlertAnchorKey(integrationId, threadId, `class:${identity}|${anchor}`),
+  );
+}
+
+/** A claim key is the occasion's bare key, or that key followed by the claim it came after. */
+function isClaimOf(occasionKey: string, base: string): boolean {
+  return occasionKey === base || occasionKey.startsWith(`${base}:`);
+}
+
+/** The newest claim, by the emails' own received time, that TOLD the parent something
+ * about any of these anchors. */
+async function lastToldClaim(database: Database, anchorKeys: readonly string[]) {
+  const [last] = await database
+    .select({
+      occasionKey: schema.emailAlertOccasions.occasionKey,
+      channelMessageId: schema.emailAlertOccasions.channelMessageId,
+      receivedAt: schema.emailAlertOccasions.receivedAt,
+    })
+    .from(schema.emailAlertOccasions)
+    .innerJoin(
+      schema.channelMessages,
+      eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+    )
+    .where(
+      and(
+        // One text param per key: a bare JS array is expanded into a row, not a text[].
+        sql`${schema.emailAlertOccasions.anchorKeys} && ARRAY[${sql.join(
+          anchorKeys.map((key) => sql`${key}`),
+          sql`, `,
+        )}]::text[]`,
+        // What the parent HEARD: a failed send told nobody, so it is not the thread's last
+        // word. Read again, it is still found by its own key below and named.
+        inArray(schema.channelMessages.status, [...SENT_STATUSES]),
+      ),
+    )
+    // Every claim with anchors carries received_at: both arrived in migration 0200.
+    .orderBy(
+      desc(schema.emailAlertOccasions.receivedAt),
+      desc(schema.emailAlertOccasions.createdAt),
+    )
+    .limit(1);
+  return last;
+}
+
+/**
+ * A BOOKING IS OPEN ONLY IF THE THREAD'S LAST WORD ABOUT ITS CLASS AT ITS INSTANT IS NOT A
+ * NEWER CANCELLATION. The receipt is history when, in its own thread, the newest thing the
+ * parent was told about the same class at the same instant is "it's off" and that email is
+ * newer than the receipt: the booking it records or refreshes is closed at the
+ * cancellation's received time. A newer "back on" told after the cancellation is the last
+ * word instead, and leaves it open. Another class at the same instant is not this one.
+ *
+ * Returns that cancellation's received time, or `null` when the last word is not one.
+ * Anchors are per thread, so a cancellation in another thread is the closer's to apply.
+ */
+async function toldCancellationAfter(
+  database: Database,
+  input: {
+    integrationId: string;
+    threadId: string;
+    extraction: Parameters<typeof emailAlertOccasion>[0];
+    messageId: string;
+    receivedAt: Date;
+    /** The booking draft's own sender domain and title: the folds the claim was keyed on. */
+    providerHost: string;
+    title: string;
+  },
+): Promise<Date | null> {
+  const { integrationId, threadId } = input;
+  const { anchors } = occasionOf(input.extraction, input.messageId);
+  const keys = classAnchorKeys(
+    integrationId,
+    threadId,
+    anchors,
+    classIdentity(input.providerHost, input.title),
+  );
+  if (keys.length === 0) return null;
+  const last = await lastToldClaim(database, keys);
+  if (last?.receivedAt == null || last.receivedAt <= input.receivedAt) return null;
+  const cancelled = anchors.some((anchor) =>
+    isClaimOf(
+      last.occasionKey,
+      emailAlertOccasionKey(integrationId, threadId, stated('off', anchor)),
+    ),
+  );
+  return cancelled ? last.receivedAt : null;
+}
+
+/**
+ * Who has already been told this occasion in this thread, by the alert row its claim
+ * points at: a send that went (or is going) is `already_sent`; a send that failed is its
+ * own name, because "never told" is not "told" (rule #11). The claim is not freed either way.
+ */
+async function occasionAlreadyTold(database: Database, occasionKey: string): Promise<Told | null> {
+  const [row] = await database
+    .select({ status: schema.channelMessages.status })
+    .from(schema.emailAlertOccasions)
+    .innerJoin(
+      schema.channelMessages,
+      eq(schema.channelMessages.id, schema.emailAlertOccasions.channelMessageId),
+    )
+    .where(
+      and(
+        eq(schema.emailAlertOccasions.occasionKey, occasionKey),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    )
+    .limit(1);
+  if (row === undefined) return null;
+  return toldBy(row.status);
+}
+
+function toldBy(status: string): Told {
+  return (SENT_STATUSES as readonly string[]).includes(status)
+    ? 'already_sent'
+    : 'occasion_send_failed';
 }
 
 export interface EmailAlertPorts {
@@ -226,6 +573,13 @@ export interface EmailAlertPorts {
    * a stand-in for Claude standing in for the classifier's judgment (rule #8 — quality is
    * the eval suite's job, and the pipeline has its own tests over a scripted client). */
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
+  /** This family's children, the notice writer's context for "is this about them". */
+  familyChildren(): Promise<readonly FamilyChildRef[]>;
+  /** The language this parent texts Hale in (`readNoticeLanguage`): the notice is written in it. */
+  parentLanguage(parentUserId: string, now: Date): Promise<string>;
+  /** The notice writer: one model call that decides and writes, or sends nothing. Its
+   * quality is the eval's job (rule #8); a port here, like `classify`. */
+  writeNotice(facts: EmailAlertNoticeFacts, familyId: string): Promise<EmailAlertNotice>;
   gate(request: ProactiveSendRequest): Promise<ProactiveSendVerdict>;
   resolvePhone(database: Database, parentUserId: string): Promise<string | null>;
   transport: ChannelTransport;
@@ -239,18 +593,12 @@ export interface EmailAlertInput {
   parentUserId: string;
   integrationId: string;
   messageId: string;
+  /** Gmail's thread id: with the occasion, what the claim is keyed on. `undefined` →
+   * `no_thread_id`. */
+  threadId: string | undefined;
+  /** Gmail's labels at the metadata read. `undefined` (no label read) → `labels_unread`. */
+  labelIds: readonly string[] | undefined;
   envelope: { subject: string; from: string; snippet: string; receivedAt: string };
-  /**
-   * WHAT THIS SWEEP HAS ALREADY BEEN TOLD IS OFF — {@link bookingCancellationKey} per
-   * cancellation read so far, written by this function and read by it.
-   *
-   * Required rather than optional, and a caller's own Set rather than one minted here: a
-   * batch is read newest first, so the cancellation reaches the closer BEFORE the receipt
-   * it cancels exists in the table, and the only thing that can carry that fact the few
-   * milliseconds forward is the loop that owns both envelopes. A default would make the
-   * hole re-openable by forgetting an argument.
-   */
-  cancelledThisSweep: Set<string>;
   timeZone: string;
   now: Date;
 }
@@ -270,6 +618,12 @@ export async function alertParentForEmail(
   // calls have already been paid for.
   if (await dedupeActive(dedupeKey, database))
     return { alert: 'already_sent', booking: null, going: null };
+
+  // Beside the classifier call, so no caller can hand it the parent's own mail.
+  const side = mailboxSide(input.labelIds);
+  if (side !== null) return { alert: side, booking: null, going: null };
+  const threadId = input.threadId;
+  if (threadId === undefined) return { alert: 'no_thread_id', booking: null, going: null };
 
   let classification: SentinelClassification;
   try {
@@ -298,55 +652,168 @@ export async function alertParentForEmail(
   if (classification.status !== 'classified' || extraction === null) {
     return { alert: 'not_parenting', booking: null, going: null };
   }
+  // The extraction's own verdict that it could not tell what changed. Nothing true and
+  // specific is left to say, so nothing is said.
+  const kind = extraction.kind;
+  const quiet = quietBeforeWriting(extraction);
+  if (kind === 'unclear' || quiet === 'unclear') {
+    return { alert: 'unclear', booking: null, going: null };
+  }
 
   // ONE read of the flag per envelope, threaded into every call below rather than read
-  // again: the closer, the sentence and the row it promises must be built from the same
+  // again: the closer, the facts and the row they promise must be built from the same
   // answer.
   const booked = bookedDetectionEnabledFor(familyId);
 
-  // THE PROVIDER CANCELLED IT, so Hale stops holding it — and this runs ABOVE THE GATE,
-  // which is the whole point of where it sits. A hold returns before every post-send line,
-  // and the Gmail cursor advanced past this message the moment the sweep read it, so
-  // nothing will offer it again: a closer placed after the send would leave a 23:40
-  // cancellation permanently unread and the follow-up asking, four days later, how a class
-  // the provider called off went. Closing a booking is not speaking to anybody, so the
-  // chokepoint has no say in it.
-  //
-  // ONE KEY, TWO USES: the closer matches the table on it, and the sweep remembers it.
-  const cancellationKey = bookingCancellationKey(
-    input.envelope.from,
-    sanitizedTitle(extraction.event.title),
-  );
-  if (booked && extraction.kind === 'cancellation') {
+  // VIL-474 · THE PROVIDER SAYS IT MOVED: record the change (field + old value) for the
+  // reminder to bold and the parent to be told. NOTHING MOVES from email (#955 review):
+  // moving is a follow-up gated on a model confirming the exact event, ambiguity meaning
+  // no move, confidence, provider-owned events only, and an audit_log undo row. Above the
+  // gate for the cancellation closer's reason: writing down a provider fact is not
+  // speaking to anybody.
+  await recordEmailProviderChange(database, {
+    familyId,
+    from: input.envelope.from,
+    extraction,
+    timeZone: input.timeZone,
+    now,
+  });
+
+  // ALREADY ON THE CALENDAR AND UNCHANGED: a reminder, a re-announcement or a second
+  // receipt for an occasion the family already holds is a duplicate of what they have.
+  // Only a cancellation or a move is news about it. The booking row is still written, as
+  // the backfill writes it, because the receipt is evidence whether or not a text goes.
+  if (quiet === 'already_on_calendar') {
+    return {
+      alert: 'already_on_calendar',
+      booking: await recordQuietBooking(database, {
+        familyId,
+        parentUserId,
+        integrationId,
+        threadId,
+        messageId,
+        envelope: input.envelope,
+        extraction,
+        booked,
+        now,
+      }),
+      going: null,
+    };
+  }
+
+  const receivedAt = new Date(input.envelope.receivedAt);
+  // THE PROVIDER CANCELLED IT: close what it cancelled, unless a newer email recorded it.
+  // Called only once a writer has said this occasion is about these children and clear:
+  // below on this message, or earlier on the message that first told it.
+  const closeIfCancelled = async () => {
+    if (!booked || extraction.kind !== 'cancellation') return;
     await closeBookingsFor(database, {
       familyId,
       from: input.envelope.from,
       title: extraction.event.title,
+      receivedAt,
       now,
     });
-    // ...AND THE REST OF THIS SWEEP HEARS ABOUT IT. The closer above can only stamp rows
-    // that already exist, and the receipt for this class may still be three envelopes
-    // away — older, therefore read later.
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
+  };
+
+  // ONE OCCASION IN ONE THREAD IS TOLD ONCE. Read here, after the provider-change and
+  // quiet-booking writes (every message is evidence) and before the writer (a second text
+  // is not). The key needs the extraction, so this costs the classifier call; a receipt
+  // still refreshes its booking and a cancellation still closes, as on the first message.
+  const { occasionKey, anchorKeys, told } = await occasionClaim(
+    database,
+    integrationId,
+    threadId,
+    extraction,
+    messageId,
+    receivedAt,
+    input.envelope.from,
+  );
+  // OLDER THAN THE THREAD'S LAST WORD, read late: not texted, and its booking effects below
+  // happen as for any email.
+  if (told === 'stale_news') {
+    console.info({ familyId }, 'email alert: older than what this thread last told');
+  }
+  if (told !== null) {
+    await closeIfCancelled();
+    return {
+      alert: told,
+      booking:
+        extraction.kind === 'booking_confirmation'
+          ? await recordQuietBooking(database, {
+              familyId,
+              parentUserId,
+              integrationId,
+              threadId,
+              messageId,
+              envelope: input.envelope,
+              extraction,
+              booked,
+              now,
+            })
+          : null,
+      going: null,
+    };
   }
 
-  // A RECEIPT FOR A CLASS THIS SWEEP HAS ALREADY BEEN TOLD IS OFF. Nothing true is left to
-  // say: the batch is newest-first, so this email is older than the cancellation, and
-  // "you're in for Swim Level 2" would contradict a text this same run put on the same
-  // phone. No text, no CTA, no offer row, no booking — the suppression sits ABOVE the gate
-  // and above the claim so none of the three is minted for a message nobody is told about.
-  if (
-    booked &&
-    extraction.kind === 'booking_confirmation' &&
-    cancellationKey !== null &&
-    input.cancelledThisSweep.has(cancellationKey)
-  ) {
-    console.warn(
-      { familyId },
-      'email alert: a receipt for a class this sweep already read the cancellation of - staying quiet',
-    );
-    return { alert: 'cancelled_in_sweep', booking: null, going: null };
+  // THE BOOKING DECISION and the count come first, because both are facts the writer is
+  // handed, and the post-send write reuses the same draft: the row and the number the
+  // parent is told cannot be read off two different keys.
+  const draft = bookingDraftFor(extraction, input.envelope.from, booked, now);
+  // Gated on `draft.ok`, which is gated on `booked`: a dark-booked family's sweep never
+  // reads other families' bookings.
+  const counted = await readGoingFor(database, familyId, draft);
+  // The one pure decision the offer row is written from. The writer is told whether it may
+  // ask, and the refusals hold its question to this answer.
+  const offer = emailAlertOfferDraft({
+    kind,
+    event: extraction.event,
+    teenContent: extraction.teenContent,
+    matchedEventRef: extraction.matchedEventRef,
+    booked,
+    from: input.envelope.from,
+    now,
+  });
+
+  const facts = emailAlertNoticeFacts({
+    from: input.envelope.from,
+    subject: input.envelope.subject,
+    // Dark-booked, a receipt is a new date like any other: the writer is not told about a
+    // place Hale is not recording (`effectiveKind`).
+    kind: kind === 'booking_confirmation' && !booked ? 'new_event' : kind,
+    extraction,
+    children: await ports.familyChildren(),
+    fromParentsOwnCalendar: fromParentsCalendar(input.envelope.from),
+    offer:
+      offer === null
+        ? null
+        : offer.kind === 'booking_confirmation'
+          ? 'add_to_calendar'
+          : 'add_to_week',
+    otherHaleFamiliesGoing: counted?.shown ? counted.others : null,
+    language: await ports.parentLanguage(parentUserId, now),
+    recentNotices: await readRecentNotices(database, { familyId, parentUserId }),
+    durationMinutes: await matchedDurationMinutes(database, familyId, extraction.matchedEventRef),
+    receivedAt,
+    timeZone: input.timeZone,
+    now,
+  });
+  // ABOVE THE GATE: an email the writer will not text about leaves no hold receipt for a
+  // text that was never going to exist.
+  const notice = await ports.writeNotice(facts, familyId);
+  if (!notice.send) {
+    console.info({ familyId, outcome: notice.why }, 'email alert: nothing sent');
+    return { alert: NOT_SENT[notice.why], booking: null, going: null };
   }
+
+  // THE PROVIDER CANCELLED IT, so Hale stops holding it — but only once the writer has
+  // said this email is about these children and clear. A cancellation the model calls
+  // not about the kids (or cannot read) must not close a child's booking on a sender and
+  // title key alone. It still runs ABOVE THE GATE: a hold returns before every post-send
+  // line, and the Gmail cursor advanced past this message the moment the sweep read it,
+  // so a closer placed after the send would leave a 23:40 cancellation permanently
+  // unread. Closing a booking is not speaking to anybody, so the chokepoint has no say.
+  await closeIfCancelled();
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'email_alert', now });
   if (!verdict.allowed) {
@@ -358,10 +825,13 @@ export async function alertParentForEmail(
     //
     // The key stays NULL: the unique index is total over non-null dedupe keys, so a
     // suppression carrying it would block the send it is a record of NOT making.
+    // The channel is the parent's door: no transport ran, so the row names the pipe the
+    // text would have left on, never a hard-coded SMS.
+    const door = await resolveMessagingDoor(database, parentUserId);
     await database.insert(schema.channelMessages).values({
       familyId,
       parentUserId,
-      channel: 'sms',
+      channel: door.channel,
       direction: 'out',
       category: 'email_alert',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
@@ -372,31 +842,8 @@ export async function alertParentForEmail(
     return { alert: `gate_refused:${verdict.reason}`, booking: null, going: null };
   }
 
-  // THE BOOKING DECISION MOVES AHEAD OF THE SENTENCE (R3), and its result is reused by the
-  // post-send write rather than made a second time: the clause speaks a count read off the
-  // very key the row will be written with, so the two cannot disagree about which session
-  // this is. The same one-decision-two-readers discipline `emailAlertOfferDraft` states
-  // for itself.
-  const draft = bookingDraftFor(extraction, input.envelope.from, booked, now);
-  // ...and the count sits between the draft and the render. Gated on `draft.ok`, which is
-  // gated on `booked`: dark, `effectiveKind` renders a `booking_confirmation` as a
-  // `new_event` in every respect, so there is no booking frame to carry a clause - and a
-  // dark-booked family's sweep must never read other families' bookings for a sentence
-  // that cannot exist.
-  const counted = await readGoingFor(database, familyId, draft);
-  const { body: message, going } = renderEmailAlert({
-    from: input.envelope.from,
-    kind: extraction.kind,
-    event: extraction.event,
-    teenContent: extraction.teenContent,
-    matchedEventRef: extraction.matchedEventRef,
-    booked,
-    going: counted,
-    timeZone: input.timeZone,
-    now,
-  });
   const passport = await attachPassportToEmailAlert(database, {
-    body: message,
+    body: notice.text,
     sending: true,
     familyId,
     parentUserId,
@@ -409,35 +856,39 @@ export async function alertParentForEmail(
     childRef: extraction.event.childRef,
     now,
   });
-  // The same pure decision the sentence above just made. Two calls of one function rather
-  // than a flag threaded between them: the CTA and the row it promises cannot disagree.
-  const offer = emailAlertOfferDraft({
-    kind: extraction.kind,
-    event: extraction.event,
-    teenContent: extraction.teenContent,
-    matchedEventRef: extraction.matchedEventRef,
-    booked,
-    from: input.envelope.from,
-    now,
-  });
 
-  // CLAIM FIRST, by the insert rather than by a read a concurrent sweep can race. The
-  // dedupe read above is the cost guard; this is the correctness one.
-  const [claimed] = await database
-    .insert(schema.channelMessages)
-    .values({
-      familyId,
-      parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'email_alert',
-      templateKey: EMAIL_ALERT_TEMPLATE_KEY,
-      dedupeKey,
-      status: acceptedStatus('sms'),
-      sentAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: schema.channelMessages.id });
+  // CLAIM FIRST, by the inserts rather than by a read a concurrent sweep can race. The two
+  // reads above are the cost guards; these are the correctness ones: the message's key on
+  // the alert row, then the occasion's, in one transaction. A sweep that loses the
+  // occasion to another message takes its alert row back out.
+  const claimed = await database.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(schema.channelMessages)
+      .values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'email_alert',
+        templateKey: EMAIL_ALERT_TEMPLATE_KEY,
+        dedupeKey,
+        status: acceptedStatus('sms'),
+        sentAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.channelMessages.id });
+    if (!row) return null;
+    const [occasion] = await tx
+      .insert(schema.emailAlertOccasions)
+      .values({ occasionKey, channelMessageId: row.id, anchorKeys, receivedAt })
+      .onConflictDoNothing()
+      .returning({ occasionKey: schema.emailAlertOccasions.occasionKey });
+    if (!occasion) {
+      await tx.delete(schema.channelMessages).where(eq(schema.channelMessages.id, row.id));
+      return null;
+    }
+    return row;
+  });
   if (!claimed) return { alert: 'already_sent', booking: null, going: null };
 
   const to = await ports.resolvePhone(database, parentUserId);
@@ -528,12 +979,16 @@ export async function alertParentForEmail(
     messageId,
     channelMessageId: claimed.id,
     draft,
-    message,
+    offered: offer !== null,
+    receivedAt,
+    toldIn: { threadId, extraction },
+    timeZone: input.timeZone,
+    now,
   });
   await passport.afterSend();
 
-  // The composed sentence. The opt-out line is not appended, so this is also the wire
-  // body. The coach re-reads this row next turn (channel/thread.ts).
+  // The written text. The opt-out line is not appended, so this is also the wire body.
+  // The coach re-reads this row next turn (channel/thread.ts).
   await ports.threadMessage(database, { familyId, parentUserId, body: passport.body });
 
   await database.insert(schema.auditLog).values({
@@ -545,9 +1000,9 @@ export async function alertParentForEmail(
     // Enums and flags only. Not the title, not the sender, not the subject: an audit row
     // a support agent can read is a copy of the email in a table that is never redacted.
     //
-    // `othersCount` is EXACTLY what the text said, and a bare integer about no identifiable
-    // person is a flag: it is what makes this row able to answer "what did Hale tell me
-    // about other families". `null` whenever nothing was shown - the REASON lives in the
+    // `othersCount` is EXACTLY what the writer was handed, and a bare integer about no
+    // identifiable person is a flag: it is what makes this row able to answer "what could
+    // Hale have told me about other families". `null` whenever nothing was shown - the REASON lives in the
     // cron counter, because `below_floor` will be the answer ten thousand times and a
     // column full of it is noise rather than a receipt.
     //
@@ -556,21 +1011,77 @@ export async function alertParentForEmail(
     // them another Hale family is in their child's class - the same disclosure, in reverse,
     // to a household that was never asked.
     after: {
-      kind: extraction.kind,
+      kind,
       teenContent: extraction.teenContent,
-      othersCount: going?.shown ? going.others : null,
+      othersCount: counted?.shown ? counted.others : null,
     },
   });
 
   return {
     alert: 'sent',
     booking,
-    going: going === null ? null : goingOutcome(going),
+    going: counted === null ? null : goingOutcome(counted),
   };
 }
 
+const NOT_SENT: Record<Extract<EmailAlertNotice, { send: false }>['why'], EmailAlertOutcome> = {
+  not_about_the_kids: 'not_about_the_kids',
+  unclear: 'unclear',
+  unwritten: 'notice_unwritten',
+};
+
 /**
- * The booking decision, made ONCE and before the sentence (R3).
+ * An email about an occasion the family already holds, which does not change it: no
+ * text, no offer, no channel row. A receipt still becomes its booking row, through the
+ * same decision the live path uses, exactly as the quiet backfill writes one.
+ */
+async function recordQuietBooking(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    integrationId: string;
+    threadId: string;
+    messageId: string;
+    envelope: EmailAlertInput['envelope'];
+    extraction: NonNullable<SentinelClassification['extraction']>;
+    booked: boolean;
+    now: Date;
+  },
+): Promise<BookingOutcome> {
+  const { extraction } = input;
+  const booking = await recordBooking(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    integrationId: input.integrationId,
+    messageId: input.messageId,
+    channelMessageId: null,
+    draft: bookingDraftFor(extraction, input.envelope.from, input.booked, input.now),
+    offered: false,
+    receivedAt: new Date(input.envelope.receivedAt),
+    toldIn: { threadId: input.threadId, extraction },
+    now: input.now,
+  });
+  const passport = await attachPassportToEmailAlert(database, {
+    body: '',
+    sending: false,
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    integrationId: input.integrationId,
+    messageId: input.messageId,
+    subject: input.envelope.subject,
+    title: extraction.event.title,
+    kind: extraction.kind,
+    teenAttributed: extraction.teenAttributed,
+    childRef: extraction.event.childRef,
+    now: input.now,
+  });
+  await passport.afterSend();
+  return booking;
+}
+
+/**
+ * The booking decision, made ONCE and before the notice is written (R3).
  *
  * `null` and not a refusal when booked detection is dark: "this family's receipts are not
  * being recorded" is a different fact from "this receipt was refused", and `recordBooking`
@@ -583,10 +1094,7 @@ function bookingDraftFor(
   now: Date,
 ): BookingDraftResult | null {
   if (!booked) return null;
-  // THE SAME ANSWER THE SENTENCE IS BUILT FROM, from the same call rather than from half
-  // of it: the row and the text can only name the class differently if this is two calls.
-  // `booked` is true by the line above, so `effectiveKind` is the extraction's own kind.
-  const rendered = renderedTitle(extraction.event.title, extraction.kind);
+  const title = sanitizedTitle(extraction.event.title);
   return bookingDraft({
     kind: extraction.kind,
     event: extraction.event,
@@ -595,13 +1103,10 @@ function bookingDraftFor(
     teenAttributed: extraction.teenAttributed,
     sourceConfidence: extraction.sourceConfidence,
     matchedEventRef: extraction.matchedEventRef,
-    // The VENDOR's own name for the class, through the renderer's own fold - so the row
-    // and the message can never name the class differently - and the FLAG beside it,
-    // because Hale's `GENERIC_TITLE` words are the object of the sentence rather than a
-    // name: `bookingDraft` refuses an email that leaves nothing behind them, and a key
-    // built from them would file every nameless receipt under one "session".
-    title: rendered.text,
-    titleIsFallback: rendered.fallback,
+    // The VENDOR's own name for the class, through the one fold the cancellation key and
+    // the offer row use. A title that folds to nothing is refused as `no_title`.
+    title,
+    titleIsFallback: title === '',
     // The same fold the offer row's place goes through, and the same function.
     location: foldedPlace(extraction.event.location),
     now,
@@ -680,22 +1185,33 @@ async function readGoingFor(
  */
 async function closeBookingsFor(
   database: Database,
-  input: { familyId: string; from: string; title: string; now: Date },
+  input: { familyId: string; from: string; title: string; receivedAt: Date; now: Date },
 ): Promise<void> {
   const closed = await closeCancelledBookings(database, {
     familyId: input.familyId,
     from: input.from,
     title: sanitizedTitle(input.title),
+    receivedAt: input.receivedAt,
     now: input.now,
   });
+  await recordClosedBookings(database, input.familyId, closed, input.now);
+}
+
+/** Each closed booking's calendar offer comes down, and its trail row is written. */
+async function recordClosedBookings(
+  database: Database,
+  familyId: string,
+  closed: readonly ClosedBooking[],
+  now: Date,
+): Promise<void> {
   for (const booking of closed) {
     const offer = await withdrawEmailAlertOffer(database, {
       integrationId: booking.integrationId,
       messageId: booking.messageId,
-      now: input.now,
+      now,
     });
     await database.insert(schema.auditLog).values({
-      familyId: input.familyId,
+      familyId,
       actor: 'system',
       actionTaken: 'activity_booking_cancelled',
       targetTable: 'activity_bookings',
@@ -710,7 +1226,7 @@ async function closeBookingsFor(
  * feature, behind one boundary.
  *
  * THE DECISION IS NOT MADE HERE ANY MORE: it is `bookingDraftFor`, called before the
- * sentence so the clause can speak a count read off the key this row will carry (R3). One
+ * notice so the writer is handed a count read off the key this row will carry (R3). One
  * decision, two readers — a second call here would be a row keyed differently from the
  * number the parent was just told.
  *
@@ -732,7 +1248,17 @@ async function recordBooking(
     channelMessageId: string | null;
     /** `null` when booked detection is dark — the one state that is not a refusal. */
     draft: BookingDraftResult | null;
-    message: string;
+    /** Whether the text that went out asked to put it on the calendar. */
+    offered: boolean;
+    /** The email's own received time: a cancellation older than it does not close the row. */
+    receivedAt: Date;
+    /** The thread this email is read in and what it said: a cancellation that thread told,
+     * newer than this email, records the booking closed (`toldCancellationAfter`). */
+    toldIn: { threadId: string; extraction: Parameters<typeof emailAlertOccasion>[0] } | null;
+    /** Live mail only: a registration refresh may apply the provider's move (VIL-474).
+     * The backfill leaves it unset, because historical mail is not today's schedule. */
+    timeZone?: string;
+    now: Date;
   },
 ): Promise<BookingOutcome> {
   const { draft } = input;
@@ -741,6 +1267,18 @@ async function recordBooking(
 
   let recorded: Awaited<ReturnType<typeof recordActivityBooking>>;
   try {
+    const cancelledAt =
+      input.toldIn === null
+        ? null
+        : await toldCancellationAfter(database, {
+            integrationId: input.integrationId,
+            threadId: input.toldIn.threadId,
+            extraction: input.toldIn.extraction,
+            messageId: input.messageId,
+            receivedAt: input.receivedAt,
+            providerHost: draft.draft.providerHost,
+            title: draft.draft.title,
+          });
     recorded = await recordActivityBooking(database, {
       familyId: input.familyId,
       parentUserId: input.parentUserId,
@@ -748,6 +1286,9 @@ async function recordBooking(
       messageId: input.messageId,
       channelMessageId: input.channelMessageId,
       draft: draft.draft,
+      receivedAt: input.receivedAt,
+      ...(cancelledAt === null ? {} : { cancelledAt }),
+      timeZone: input.timeZone,
     });
   } catch (err) {
     // The CLASS only — a rejection here can carry a title or an address in its message
@@ -776,29 +1317,13 @@ async function recordBooking(
       actionTaken: 'activity_booking_recorded',
       targetTable: 'activity_bookings',
       targetId: recorded.bookingId,
-      after: { offered: input.message.endsWith(BOOKING_CTA) },
+      after: { offered: input.offered },
     });
   }
+  if (recorded.closed !== null) {
+    await recordClosedBookings(database, input.familyId, [recorded.closed], input.now);
+  }
   return recorded.outcome;
-}
-
-/**
- * The title the renderer put on the wire: the vendor's own, folded, or Hale's words when
- * that survives sanitising as nothing at all. ONE definition, read by the sentence and by
- * the row — which it now actually is, because `recordBooking` reads it here rather than
- * calling half of it a second time.
- *
- * IT RETURNS THE FALLBACK FLAG BESIDE THE TEXT, because the two readers need opposite
- * things from one answer: the sentence needs Hale's words so the message is still true,
- * and the row needs to know they ARE Hale's words — a booking has no name to ask about
- * four days later, and a session key built from them would file every nameless receipt
- * from one host at one instant under a single "session" (going.ts).
- */
-function renderedTitle(raw: string, kind: ExtractionKind): { text: string; fallback: boolean } {
-  const vendor = sanitizedTitle(raw);
-  return vendor === ''
-    ? { text: GENERIC_TITLE[kind], fallback: true }
-    : { text: vendor, fallback: false };
 }
 
 export interface GmailSweepAlertInput {
@@ -848,8 +1373,9 @@ export function gmailAlertSweepInput(
 /**
  * One sweep's worth of Gmail envelopes for one connection → one outcome per envelope.
  *
- * Newest first. Every dated envelope in the sweep is read. A count is not a reason
- * to leave one unsaid.
+ * Oldest first, by each email's own received time, so the claims and booking effects of
+ * one sweep happen in the order the provider sent them. Every dated envelope in the sweep
+ * is read. A count is not a reason to leave one unsaid.
  */
 const BOOKING_WROTE = new Set<BookingOutcome>(['recorded', 'already_recorded', 'refreshed']);
 
@@ -897,6 +1423,19 @@ function logSweepOutcomes(
   }
 }
 
+/**
+ * THE PARENT'S OWN MAIL IS NOT NEWS TO THE PARENT. A pure function of Gmail's labels, never
+ * of the From header: SENT is Gmail's record that this account sent it, send-as aliases
+ * included. A note-to-self carries SENT and INBOX and is still the parent's own. Fails
+ * closed: an envelope no label read produced is not read.
+ */
+function mailboxSide(
+  labelIds: readonly string[] | undefined,
+): 'labels_unread' | 'draft' | 'own_mail' | null {
+  if (labelIds === undefined) return 'labels_unread';
+  return parentsOwnMail(labelIds);
+}
+
 function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
   skipped: EmailAlertResult[];
   considered: Array<GmailAlertEnvelope & { receivedAt: string }>;
@@ -908,7 +1447,7 @@ function datedEnvelopes(envelopes: readonly GmailAlertEnvelope[]): {
       skipped.push({ alert: 'no_received_at', booking: null, going: null });
     else dated.push({ ...envelope, receivedAt: envelope.receivedAt });
   }
-  dated.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  dated.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
   return { skipped, considered: dated };
 }
 
@@ -924,7 +1463,6 @@ async function recordBackfillEnvelope(
     parentUserId: string;
     integrationId: string;
     envelope: GmailAlertEnvelope & { receivedAt: string };
-    cancelledThisSweep: Set<string>;
     timeZone: string;
     now: Date;
   },
@@ -935,6 +1473,8 @@ async function recordBackfillEnvelope(
     booking,
     going: null,
   });
+  const side = mailboxSide(input.envelope.labelIds);
+  if (side !== null) return { alert: side, booking: null, going: null };
   if (!bookedDetectionEnabledFor(input.familyId)) return quiet('booked_dark');
 
   const signal = falseBookingSignal({
@@ -972,26 +1512,16 @@ async function recordBackfillEnvelope(
     return { alert: 'not_parenting', booking: null, going: null };
   }
 
-  const cancellationKey = bookingCancellationKey(
-    input.envelope.from,
-    sanitizedTitle(extraction.event.title),
-  );
+  const receivedAt = new Date(input.envelope.receivedAt);
   if (extraction.kind === 'cancellation') {
     await closeBookingsFor(database, {
       familyId: input.familyId,
       from: input.envelope.from,
       title: extraction.event.title,
+      receivedAt,
       now: input.now,
     });
-    if (cancellationKey !== null) input.cancelledThisSweep.add(cancellationKey);
     return quiet('not_a_booking');
-  }
-  if (
-    extraction.kind === 'booking_confirmation' &&
-    cancellationKey !== null &&
-    input.cancelledThisSweep.has(cancellationKey)
-  ) {
-    return { alert: 'cancelled_in_sweep', booking: null, going: null };
   }
 
   const draft = bookingDraftFor(extraction, input.envelope.from, true, input.now);
@@ -1002,8 +1532,14 @@ async function recordBackfillEnvelope(
     messageId: input.envelope.messageId,
     channelMessageId: null,
     draft,
-    // No sentence went out, so the audit's `offered` flag is false.
-    message: '',
+    offered: false,
+    receivedAt,
+    // No thread, no claim in it: claims are keyed on the thread.
+    toldIn:
+      input.envelope.threadId === undefined
+        ? null
+        : { threadId: input.envelope.threadId, extraction },
+    now: input.now,
   });
   const passport = await attachPassportToEmailAlert(database, {
     body: '',
@@ -1046,7 +1582,6 @@ export async function alertParentForGmailSweep(
     const outcomes: EmailAlertResult[] = [...skipped];
     if (considered.length > 0) {
       const timeZone = await ports.timeZone(parentUserId);
-      const cancelledThisSweep = new Set<string>();
       for (const envelope of considered) {
         outcomes.push(
           await recordBackfillEnvelope(
@@ -1056,7 +1591,6 @@ export async function alertParentForGmailSweep(
               parentUserId,
               integrationId: input.integrationId,
               envelope,
-              cancelledThisSweep,
               timeZone,
               now: input.now,
             },
@@ -1102,10 +1636,6 @@ export async function alertParentForGmailSweep(
   }
 
   const timeZone = await ports.timeZone(parentUserId);
-  // ONE SET FOR THE WHOLE BATCH. The sort above is what makes it sound: every envelope
-  // read after a cancellation is OLDER than that cancellation, so a receipt that lands in
-  // this set is a receipt the provider has since called off.
-  const cancelledThisSweep = new Set<string>();
   for (const envelope of considered) {
     outcomes.push(
       await alertParentForEmail(
@@ -1115,13 +1645,14 @@ export async function alertParentForGmailSweep(
           parentUserId,
           integrationId: input.integrationId,
           messageId: envelope.messageId,
+          threadId: envelope.threadId,
+          labelIds: envelope.labelIds,
           envelope: {
             subject: envelope.subject,
             from: envelope.from,
             snippet: envelope.snippet,
             receivedAt: envelope.receivedAt,
           },
-          cancelledThisSweep,
           timeZone,
           now: input.now,
         },
@@ -1133,72 +1664,31 @@ export async function alertParentForGmailSweep(
   return outcomes;
 }
 
-// ── The sentence ─────────────────────────────────────────────────────────────
-
-export interface EmailAlertRenderInput {
-  from: string;
-  kind: ExtractionKind;
-  event: ExtractedEvent;
-  teenContent: boolean;
-  /** The family occasion this email already matched, or null. It decides whether the text
-   * may END with an offer — see {@link emailAlertOfferDraft}. */
-  matchedEventRef: CorrelatedEventRef | null;
-  /** Whether BOOKED DETECTION is armed for this family (lib/integrations/booked.ts).
-   * Dark, a `booking_confirmation` is rendered and offered as a `new_event` in every
-   * respect — see {@link effectiveKind}. */
-  booked: boolean;
-  /**
-   * HOW MANY OTHER HALE FAMILIES hold this session, already decided (going.ts). An INPUT
-   * rather than a read, so this function stays sync and pure and the property test can
-   * call it directly — and so the number the parent is told is the number the audit row
-   * carries. `null` when the envelope never reached the going decision.
-   */
-  going: GoingCount | null;
-  timeZone: string;
-  now: Date;
-}
-
-/** The sentence, and what the count ACTUALLY did — which is not always what it was handed,
- * because the measured fold can drop the clause (rule #11: the outcome has to be able to
- * leave the renderer or `over_segment_budget` is decorative). */
-export interface EmailAlertRendered {
-  body: string;
-  going: GoingCount | null;
-}
+// ── The offer, and the folds the rows keep ───────────────────────────────────
 
 /**
- * THE KIND THE SENTENCE AND THE OFFER ARE BUILT FROM.
+ * THE KIND THE OFFER IS BUILT FROM.
  *
- * One subtraction rather than three gates. Dark, `booking_confirmation` simply IS
- * `new_event` here: it picks the same frame, the same CTA, the same generic title and
- * the same offered instant, so the flag-off body is byte-identical to what that email
- * produces today by construction rather than by three branches that have to agree. The
- * kind itself never changes — it stays in `EXTRACTION_KINDS` in both states, because a
- * flag that changed what the model may return would re-key the eval cache on every flip.
+ * Dark, `booking_confirmation` simply IS `new_event` here: the same offer row and the same
+ * offered instant. The kind itself never changes — it stays in `EXTRACTION_KINDS` in both
+ * states, because a flag that changed what the model may return would re-key the eval
+ * cache on every flip.
  */
 function effectiveKind(kind: ExtractionKind, booked: boolean): ExtractionKind {
   return kind === 'booking_confirmation' && !booked ? 'new_event' : kind;
 }
 
-/** The clamps that keep the composed body inside TWO GSM-7 segments once the full
- * opt-out paragraph is appended (the conservative bound — the short form is cheaper).
- * Nothing else in the message is variable-length, so these are what make that arithmetic
- * a fact rather than a hope; the property test in this module's suite is the proof. */
-const SENDER_MAX = 40;
+/** The clamp on every vendor string a row keeps. */
 const TITLE_MAX = 60;
-const LOCATION_MAX = 30;
-const TEEN_CLOSER = "I've kept the details out of this text.";
 
 /** `Reminder:`, `CANCELLED -`, `New:` — the label a vendor files its own subject line
- * under. Hale's sentence already says who and what happened, so relaying the label says it
- * a second time in someone else's voice. Only a label followed by a colon or a dash: the
- * words are ordinary English otherwise ("New time for swim class" is the title). */
+ * under, off the front of the name a ROW keeps (the offer, the booking and the
+ * cancellation key), so a cancellation matches the booking it cancels. It never decides
+ * whether or what Hale texts. */
 const VENDOR_LABEL =
   /^(?:reminder|cancell?ed|rescheduled|postponed|new|update|updated|notice|fyi)\s*[:\-]\s*/i;
 
-/** The full stop that ends someone else's line and lands in the middle of Hale's — a
- * subject line's ("Picture Day." on Friday) and a display name's alike ("Riverside Pool."
- * as the subject of a sentence). */
+/** The full stop that ends someone else's line, off the back of a row's name. */
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 /**
@@ -1213,13 +1703,12 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  * while the gate allows three alerts a day, and because the row has to carry a title and
  * an instant that the ledger's parent-safe `summary` and closed-vocabulary `topic` cannot
  * hold. That row is `email_alert_offers` (lib/integrations/email-alert-offer.ts), and
- * this function is the single decision both it and the sentence are derived from.
+ * this function is the single decision both it and the writer's question are derived from.
  *
- * SIX CONDITIONS, and each one is a way the sentence would otherwise be untrue:
+ * SIX CONDITIONS, and each one is a way the question would otherwise be untrue:
  *   · A 13+ child's mail is genericised by the time this sees it, so there is no occasion
  *     left to add and nothing that could be added without re-disclosing what the teen
- *     gate just removed (rule #1). No row, and — since the teen text is category-only —
- *     no sentence either.
+ *     gate just removed (rule #1). No row and no question.
  *   · A CANCELLATION is the removal of a date. Putting it on the week is the opposite of
  *     what the email said. `unclear` means Hale could not tell what the email was.
  *   · The occasion must have a CONCRETE time: the destination for a move or a new date,
@@ -1234,10 +1723,9 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  *     reachable for a booking only because `correlate.ts` maps the kind to a time.
  *   · The mail must not already BE the parent's calendar. A Google Calendar notification
  *     is the week speaking about an event that is on it; "Want me to add it to your
- *     week?" asks them to add what they already have. The text is a plain notice instead
- *     ({@link calendarNotice}).
+ *     week?" asks them to add what they already have.
  *
- * Everything else ends with today's sentence, and that is still the common case.
+ * Everything else is told without a question, and that is still the common case.
  */
 export function emailAlertOfferDraft(input: {
   kind: ExtractionKind;
@@ -1269,9 +1757,7 @@ export function emailAlertOfferDraft(input: {
  * down, because these strings reach a wire later, in a reminder or in an ask.
  *
  * ONE function, read by the offer row and by the booking row, so the two rows born from
- * one email can never hold the place differently. Unlike {@link venue} a digit is allowed:
- * a room number on your own calendar is the useful half of an address, and that rule is
- * about what goes out in a text rather than about what the family holds.
+ * one email can never hold the place differently.
  */
 function foldedPlace(location: string | null): string | null {
   const place = clamp(gsm7(location ?? ''), TITLE_MAX);
@@ -1279,8 +1765,7 @@ function foldedPlace(location: string | null): string | null {
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,
- * and the stated time of something the parent already has — the same choice the sentence
- * itself makes when it decides which instant to name. */
+ * and the stated time of something the parent already has. */
 const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | null> = {
   new_event: (event) => event.newTime,
   reschedule: (event) => event.newTime,
@@ -1292,129 +1777,10 @@ const OFFERED_TIME: Record<ExtractionKind, (event: ExtractedEvent) => string | n
   unclear: () => null,
 };
 
-/** The sentence the offer prints, and it is printed if and only if a row will exist to
- * keep it. English only: an alert is outbound-first and there is no inbound body to read
- * a language off (`replyLanguage` takes one), and `families.primary_language` is a column
- * nothing in this product reads yet. The REPLIES to this sentence do have a French twin,
- * because by then the parent has written (email-alert-offer.ts). */
-const OFFER_CTA = 'Want me to add it to your week?';
-
 /**
- * The booking's own ending. A receipt has already told the parent they are in, so
- * "Want me to add it to your week?" would answer a question they did not ask; what is
- * genuinely open is the calendar.
- *
- * IT CLEARS THE CLAIM TAXONOMY, and that is checked rather than assumed:
- * `SCHEDULED_ASSERTION` (channel/reconcile/claims.ts) matches `is/are/'s/'re on your
- * calendar` — a copula immediately before the phrase — and this sentence has none. The
- * email-alert path does not run `refuseUnbackedSend`, so this is a copy discipline the
- * module's suite pins rather than a gate that would catch it.
- */
-const BOOKING_CTA = 'Want it on your calendar?';
-
-/**
- * WHICH ENDING, per kind — and the reason this is a Record and not a constant.
- *
- * `renderEmailAlert` appends a CTA if and only if `emailAlertOfferDraft` returned a
- * draft, which is exactly when a row will be written. That single line is what stops a
- * question ever being asked with nothing behind it (#649), so the booking's question
- * lives HERE and never inside `compose`: a frame that carried it would ask it in every
- * draft-null case, and after the correlation fix the most common such case is precisely
- * the booking for a class the family already holds.
- */
-const CTA: Record<ExtractionKind, string> = {
-  cancellation: OFFER_CTA,
-  reschedule: OFFER_CTA,
-  new_event: OFFER_CTA,
-  reminder_only: OFFER_CTA,
-  unclear: OFFER_CTA,
-  booking_confirmation: BOOKING_CTA,
-};
-
-/** What the sentence says when it has nothing specific, per kind — the fallback when a
- * vendor title survives sanitising as nothing at all (a subject line entirely outside the
- * Latin alphabet). Hale's own words, so the message is still true, and each one is
- * written to read as the OBJECT of its kind's frame ("... has a new date on Friday"). */
-const GENERIC_TITLE: Record<ExtractionKind, string> = {
-  cancellation: 'something was cancelled',
-  reschedule: 'something moved',
-  new_event: 'a new date',
-  reminder_only: 'there is something coming up',
-  unclear: 'a possible schedule change',
-  // A lowercase noun phrase, not the pipeline's standalone sentence of the same name:
-  // this one is written to read as the OBJECT of its frame — "Riverside Pool says you're
-  // in for a spot - first one Saturday, Sep 26 at 9:00 a.m."
-  booking_confirmation: 'a spot',
-};
-
-/**
- * The text, assembled from the typed extraction and nothing else.
- *
- * Deterministic on purpose (rule #2): there is no prompt here and no second model call.
- * The extraction already decided what this email says; a composer would only give it a
- * chance to say something the email did not.
- *
- * The SENDER IS THE SUBJECT of a plain sentence and the time is a clause of it, because
- * that is how a person relays a message: "Riverside Pool cancelled Saturday swim class -
- * it was Saturday, Sep 19 at 9:00 a.m." No label in front of it, no dash standing in for
- * a verb, and no offer at the end (see above).
- */
-export function renderEmailAlert(input: EmailAlertRenderInput): EmailAlertRendered {
-  const kind = effectiveKind(input.kind, input.booked);
-  const { text: title } = renderedTitle(input.event.title, kind);
-
-  if (input.teenContent) {
-    // Category only. The pipeline has already replaced the title with its own generic
-    // line; dropping the sender and the time is this renderer's half of the same rule,
-    // because who wrote and when are the disclosure a 13+ child is owed protection from.
-    return { body: `${title}. ${TEEN_CLOSER}`, going: input.going };
-  }
-
-  // Already on the parent's calendar. A reminder or a newly extracted date from that
-  // mailbox is the event itself, so the text names it and stops. A cancellation or a
-  // move still uses its own frame below — the news is the change — and the offer stays
-  // off either way, because {@link emailAlertOfferDraft} refuses this From.
-  if (fromParentsCalendar(input.from) && (kind === 'new_event' || kind === 'reminder_only')) {
-    return { body: calendarNotice(input, kind, title), going: input.going };
-  }
-
-  const sender = clamp(gsm7(senderLabel(input.from)), SENDER_MAX).replace(TRAILING_PUNCTUATION, '');
-  // The offer, decided by the one function that also decides whether the row gets
-  // written. Appended AFTER `compose`, never inside it: every frame in there ends through
-  // `end()`, and a clause spliced before that would put Hale's own offer inside the
-  // vendor's sentence. The ENDING is per kind (see {@link CTA}) and the condition is not:
-  // a question is asked if and only if a row will exist to keep it.
-  const offered = emailAlertOfferDraft(input) !== null;
-  const assemble = (clause: string): string => {
-    const body = compose(input, kind, sender, title, clause);
-    return offered ? `${body} ${CTA[kind]}` : body;
-  };
-
-  const clause = goingClause(input.going);
-  if (clause === '') return { body: assemble(''), going: input.going };
-  const spoken = assemble(clause);
-  // THE MEASURED FOLD (R2), and it is measured rather than argued. At the clamp maxima the
-  // worst case is inside two segments - sender 40, title 60, the longest `longWhen`
-  // ("Wednesday, Sep 30, 2027 at 12:00 p.m.", 37), a 30-character place, the longest count
-  // word and the CTA. The opt-out line is not part of the measurement: it is not appended.
-  //
-  // THE COUNT IS THE FIRST THING DROPPED AND IT IS DROPPED WHOLE. Never a cut inside the
-  // clause ("with two other Hale fam"), and never a third segment: this text is billed per
-  // family per email and the module's two-segment property is what makes the clamps
-  // load-bearing. The drop is a COUNTED outcome rather than silence, because if it ever
-  // fires in prod the arithmetic above moved.
-  if (smsSegments(withOptOut(spoken, 'full')) <= 2) return { body: spoken, going: input.going };
-  return { body: assemble(''), going: { shown: false, reason: 'over_segment_budget' } };
-}
-
-/**
- * The vendor's own filing label off the front and its punctuation off the back, because
- * every frame supplies the sentence's own subject and its own ending: "YRDSB says
- * Reminder: the form is due" says the kind of thing twice, and "Picture Day. on Friday"
- * is what a subject line's full stop reads as inside a clause.
- *
- * ONE function, two readers — the sentence and the row it offers to write. A second copy
- * of this fold would be a week entry titled differently from the text that offered it.
+ * The vendor's own filing label off the front and its punctuation off the back: the name
+ * the offer row, the booking row and the cancellation key all keep. ONE function, so the
+ * three can never hold the class differently.
  */
 function sanitizedTitle(raw: string): string {
   return clamp(gsm7(raw).replace(VENDOR_LABEL, ''), TITLE_MAX).replace(TRAILING_PUNCTUATION, '');
@@ -1434,271 +1800,63 @@ function fromParentsCalendar(from: string): boolean {
 }
 
 /**
- * `Gymnastics on Thursday, Oct 1 at 4:15 p.m.`
- *
- * Name and time, and nothing else. No sender ("Google Calendar has…"), no place, and no
- * "Reply YES" — the event is already on the week this mail came from. A title that
- * sanitises to Hale's generic phrase still reads as the notice, and a time the model
- * did not write as a date is dropped rather than printed as "Invalid Date".
+ * VIL-474 · the email path's provider change: RECORD ONLY, never move. Records nothing
+ * unless every gate holds: a reschedule; exactly one correlation candidate (ambiguity
+ * records nothing); confidence at the booking floor (as bookingDraft does for receipts);
+ * not a Google Calendar notification (the parent's private calendar); a new time that
+ * carries an explicit UTC offset (an offset-less time is ignored, never read as UTC);
+ * and an event this provider owns (applyProviderChange checks the booking link and
+ * refuses parent-created and mirror rows).
  */
-function calendarNotice(input: EmailAlertRenderInput, kind: ExtractionKind, title: string): string {
-  const iso = kind === 'new_event' ? input.event.newTime : input.event.originalTime;
-  const on = longWhen(iso, input.timeZone, input.now);
-  return end(on === null ? title : `${title} on ${on}`);
-}
-
-/** One sentence per kind, and they are all the same sentence: who, what, when. */
-function compose(
-  input: EmailAlertRenderInput,
-  kind: ExtractionKind,
-  sender: string,
-  title: string,
-  /** The going clause, or '' — inside the frame and before `end()`'s period, because a
-   * count is never its own sentence (`coach-channel-sms.md`). Only the booking frame can
-   * carry one: it is the only kind a booking, and therefore a session key, exists for. */
-  clause: string,
-): string {
-  const { event, timeZone, now } = input;
-  const at = (iso: string | null): string | null => longWhen(iso, timeZone, now);
-
-  switch (kind) {
-    case 'cancellation': {
-      const { text: head } = changeHead(sender, title, CHANGE.cancellation);
-      const was = at(event.originalTime);
-      return end(was === null ? head : `${head} - it was ${was}`);
-    }
-    case 'reschedule': {
-      const { text: head, relayed } = changeHead(sender, title, CHANGE.reschedule);
-      const to = at(event.newTime);
-      if (to === null) {
-        const was = at(event.originalTime);
-        return end(was === null ? head : `${head} - it was ${was}`);
-      }
-      // The destination hangs off Hale's own verb when Hale supplied it, and off a dash
-      // when the head is the vendor's sentence — "moved Practice to Saturday" against
-      // "says Practice moved to 5pm - now Saturday", never the two spliced into one.
-      const destination = relayed ? `${head} - now ${to}` : `${head} to ${to}`;
-      // The old date as a bare parenthetical: a parent scanning this needs to recognise
-      // WHICH occasion moved, and that is the date, not the hour it used to start at.
-      const from = shortDate(event.originalTime, timeZone, now);
-      return end(from === null ? destination : `${destination} (was ${from})`);
-    }
-    case 'new_event':
-    case 'reminder_only': {
-      // One frame for both, because the only difference between them is WHICH time the
-      // extraction put the date in: a date the parent did not have, or one they did.
-      // "Fall registration is open" is a sentence already and nothing HAS a sentence, so a
-      // title carrying a verb is relayed under "says" — Ollie's own frame for that line —
-      // with its time as a dash clause; a noun phrase takes Hale's verb and an "on", never
-      // a dash standing in for the verb ("says Pediatric checkup - Saturday").
-      const relayed = VERBISH.test(title);
-      const head = sender === '' ? title : `${sender} ${relayed ? 'says' : 'has'} ${title}`;
-      const on = at(kind === 'new_event' ? event.newTime : event.originalTime);
-      const place = kind === 'new_event' ? venue(event.location) : '';
-      const when = on === null ? '' : relayed ? ` - ${on}` : ` on ${on}`;
-      return end(`${head}${place}${when}`);
-    }
-    case 'booking_confirmation': {
-      // THE PROVIDER IS THE SUBJECT, as in every other frame here, and that is what keeps
-      // Hale from asserting a thing it did not see: the receipt says the family is in, so
-      // the sentence says the receipt says it. "you're in" clears SCHEDULED_ASSERTION
-      // where "you're registered" and "is confirmed" do not (claims.ts).
-      //
-      // IT ENDS WITH A PERIOD AND CONTAINS NO QUESTION. The question is the CTA, appended
-      // one level up and only when a row will exist behind it.
-      //
-      // The title is relayed flat — no "says X is open" grammar to weld onto — because a
-      // confirmation's title is the CLASS ("Swim Level 2"), not a sentence about it.
-      //
-      // THE COUNT RIDES LAST, inside the sentence: "... - first one Saturday, Sep 26 at
-      // 9:00 a.m. at the Leisure Centre, with two other Hale families." It is written by
-      // code and handed to no model - the only lint on the voice seam catches clock times
-      // and URLs, so a composed count would be unguarded, and the one place in the repo
-      // that does guard a number treats any ungiven digit as invented.
-      const head = sender === '' ? title : `${sender} says you're in for ${title}`;
-      const first = at(event.newTime);
-      if (first === null) return end(`${head}${clause}`);
-      // The place LAST, after the instant, unlike the new_event frame: what a parent
-      // reading a receipt needs first is which session is the first one.
-      return end(`${head} - first one ${first}${venue(event.location)}${clause}`);
-    }
-    case 'unclear':
-      return end(
-        sender === '' ? `Something about ${title}` : `${sender} sent something about ${title}`,
-      );
-  }
-}
-
-/**
- * THE ONE QUESTION. Does the title already carry a verb — a finite verb or a change word,
- * anywhere in it?
- *
- * Every frame in this file hangs off that single answer, and it is one regex rather than a
- * test per frame because the alternative was found twice in review: a copula-only test
- * ("is"/"are") let "Term 1 registration opens Monday" through as a noun phrase, and a
- * past-tense-only test ("moved") let "Practice moves to 5pm" through, each producing the
- * sentence with two verbs or two destinations that the frames exist to prevent. Naming the
- * next inflection would have been the third fix of the same bug.
- *
- * Deliberately broad, because the two sides are not symmetric: relaying a noun phrase under
- * "says" reads a little flat, while treating a sentence as a noun phrase welds Hale's
- * grammar onto the vendor's. Erring towards "it has a verb" is the cheap side.
- */
-const VERBISH =
-  /\b(?:is|are|was|were|has|have|will|opens?|starts?|begins?|returns?|resumes?|ends?|mov(?:e|es|ed|ing)|cancell?(?:s|ed|ing)?|cancellation|called off|reschedul\w*|postpon\w*|new time)\b/i;
-
-/** `9:00 a.m.` already ends the sentence; a second period is the kind of thing nobody
- * notices in review and everybody notices on a phone. */
-function end(sentence: string): string {
-  return sentence.endsWith('.') ? sentence : `${sentence}.`;
-}
-
-/** The words a vendor subject line has usually already said, per kind that has a verb. */
-interface ChangeWords {
-  /** What Hale says when the title has NOT said it. */
-  verb: string;
-  /** The word as a tail the vendor tacked on — `... - CANCELLED`, `... is now cancelled`. */
-  tail: RegExp;
-}
-
-/** `... - CANCELLED`, `... is now cancelled`, `... is moving` — the change word at the very
- * end of the title, with however much auxiliary the vendor put in front of it. The two
- * auxiliary slots are optional AND independent: one combined group took `is cancelled` and
- * `now cancelled` but left the `is` of `is now cancelled` behind as the occasion Hale then
- * named ("cancelled Swim class is"). */
-function changeTail(word: string): RegExp {
-  return new RegExp(
-    `[\\s\\-:,]*(?:\\b(?:is|are|was|were|has been|have been|will be)\\s+)?(?:\\bnow\\s+)?\\b(?:${word})\\b$`,
-    'i',
-  );
-}
-
-/**
- * WHY THE TITLE IS INSPECTED AT ALL.
- *
- * `extract-child-event.md`'s contract for `title` is the bare `"title": string` — nothing
- * says it names the occasion rather than the change — and the shipped fixtures settle it
- * the other way: `'Swim Class - CANCELLED'`, `'Soccer practice moved'`
- * (lib/sentinel/correlate.test.ts). A frame that always supplies the verb would write
- * "cancelled Swim Class - CANCELLED", and a frame that never supplies one would fail to
- * say what happened at all for the titles that are just `'Swim lessons'`.
- *
- * So: take a TRAILING change word off and say it in Hale's own voice; where the word is
- * embedded and cannot be removed cleanly ("Cancellation of Tuesday practice"), relay the
- * title under "says" and add no second verb — only, for a reschedule, the new time as its
- * own clause. Hale never states the change twice, and never rewrites the middle of a
- * sentence the school wrote.
- *
- * What counts as "embedded" is {@link VERBISH} — the same one question every other frame
- * here asks, rather than a per-kind list of change words, which is what caught 'moved' and
- * let 'moves' through.
- */
-const CHANGE: Record<'cancellation' | 'reschedule', ChangeWords> = {
-  cancellation: {
-    verb: 'cancelled',
-    tail: changeTail('cancell?ed|cancellation'),
-  },
-  reschedule: {
-    verb: 'moved',
-    tail: changeTail('mov(?:ed|es|ing)|reschedul(?:ed|es|ing)|postpon(?:ed|es|ing)'),
-  },
-};
-
-/** A title that is ONLY the change word ('CANCELLED') leaves no occasion to name. Under
- * "says" it would put a vendor's shout in Hale's mouth, so the frame keeps its own verb
- * and takes Hale's own object instead. */
-const GENERIC_OCCASION = 'something';
-
-interface Head {
-  text: string;
-  /** True when the title was RELAYED whole under "says" — the change word is inside it, so
-   * the head is the VENDOR's sentence and a clause welded straight onto it continues
-   * someone else's grammar ("says Practice moved to 5pm to Saturday, Sep 26"). */
-  relayed: boolean;
-}
-
-function changeHead(sender: string, title: string, words: ChangeWords): Head {
-  const occasion = title.replace(words.tail, '').trim() || GENERIC_OCCASION;
-  if (!VERBISH.test(occasion)) {
-    return {
-      text: sender === '' ? `${occasion} ${words.verb}` : `${sender} ${words.verb} ${occasion}`,
-      relayed: false,
+export async function recordEmailProviderChange(
+  database: Database,
+  input: {
+    familyId: string;
+    from: string;
+    extraction: {
+      kind: ExtractionKind;
+      event: { newTime: string | null; location: string | null };
+      sourceConfidence: number;
+      matchedEventRef: CorrelatedEventRef | null;
+      matchedEventCount?: number;
     };
-  }
-  return { text: sender === '' ? title : `${sender} says ${title}`, relayed: true };
+    timeZone: string;
+    now: Date;
+  },
+): Promise<SourceChange | null> {
+  const { extraction } = input;
+  if (extraction.kind !== 'reschedule') return null;
+  if (extraction.matchedEventRef?.table !== 'family_events') return null;
+  if (extraction.matchedEventCount !== 1) return null;
+  if (extraction.sourceConfidence < BOOKING_CONFIDENCE_FLOOR) return null;
+  if (fromParentsCalendar(input.from)) return null;
+  const startsAt = offsetInstant(extraction.event.newTime);
+  const location = extraction.event.location?.trim() || null;
+  if (startsAt === null && location === null) return null;
+  return applyProviderChange(database, {
+    familyId: input.familyId,
+    eventId: extraction.matchedEventRef.id,
+    providerHost: senderHost(input.from),
+    source: { startsAt, location },
+    timeZone: input.timeZone,
+    now: input.now,
+    move: false,
+  });
 }
 
-/** `Saturday, Sep 19 at 9:00 a.m.`, in the parent's zone, with the year on another year's
- * date — the weekday included because a parent reading this on a phone plans against the
- * DAY and should not have to look the date up. Null when the extraction's time field is
- * absent or is not a date: the skill asks for ISO 8601 with an offset, but the field is a
- * model's free text, and "Invalid Date" on a phone is worse than no time at all. */
-function longWhen(iso: string | null, timeZone: string, now: Date): string | null {
-  const at = instant(iso);
-  if (at === null) return null;
-  const clock = new Intl.DateTimeFormat('en-CA', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone,
-  }).format(at);
-  return gsm7(`${formatDayHeading(at, timeZone, now)} at ${clock}`);
-}
-
-/** `Sep 19` — the reschedule parenthetical, same zone and same other-year rule. */
-function shortDate(iso: string | null, timeZone: string, now: Date): string | null {
-  const at = instant(iso);
-  if (at === null) return null;
-  const yearOf = (date: Date): string =>
-    new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone }).format(date);
-  return gsm7(
-    new Intl.DateTimeFormat('en-CA', {
-      month: 'short',
-      day: 'numeric',
-      year: yearOf(at) === yearOf(now) ? undefined : 'numeric',
-      timeZone,
-    }).format(at),
-  );
+/** An ISO datetime WITH an explicit offset (Z or ±hh:mm), else null. The extractor's
+ * schema does not enforce the offset its skill asks for, and `new Date` reads an
+ * offset-less datetime in the server's zone (UTC on Vercel). */
+function offsetInstant(iso: string | null): Date | null {
+  if (iso === null) return null;
+  if (!/T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.test(iso.trim())) return null;
+  return instant(iso.trim());
 }
 
 function instant(iso: string | null): Date | null {
   if (iso === null) return null;
   const at = new Date(iso);
   return Number.isNaN(at.getTime()) ? null : at;
-}
-
-/**
- * ` at the gym` — a short PLACE, and nothing that looks like an address.
- *
- * A street line or a room number is the half of a school email a text should not repeat:
- * the parent has been there, it is the longest thing the extraction returns, and putting
- * it on the wire is what turns an alert into a copy of the message. Any digit is the
- * cheap, honest test for one, and losing a genuine "Studio 2" to it is the right side to
- * err on.
- */
-function venue(location: string | null): string {
-  if (location === null) return '';
-  const place = gsm7(location);
-  if (place === '' || place.length > LOCATION_MAX || /\d/.test(place)) return '';
-  return ` at ${place}`;
-}
-
-/**
- * Who it is from, as a parent would name them: the display name if the header carries
- * one, otherwise the bare domain.
- *
- * NEVER the full address. `registrar.k12@yrdsb.ca` in a text is a mailbox anyone holding
- * the phone can write to, and the domain is the whole of what the parent needs to know
- * who is speaking. Which is why a display name containing '@' is DROPPED rather than
- * trusted: `"noreply@school.ca" <noreply@school.ca>` is the standard header of every
- * school and daycare system that sends from a no-reply box, and reading its display name
- * is reading the address out loud. Any label with an '@' in it falls through to the
- * domain — a rare "Rec @ Markham" losing its flourish is the right side to err on.
- */
-function senderLabel(from: string): string {
-  const display = /^\s*"?([^"<]*?)"?\s*<[^>]*>\s*$/.exec(from)?.[1]?.trim();
-  if (display !== undefined && display !== '' && !display.includes('@')) return display;
-  const address = /<([^>]*)>/.exec(from)?.[1] ?? from;
-  return address.split('@')[1]?.trim() ?? '';
 }
 
 /** The typographic characters a mail client emits that GSM-7 has no septet for. One
@@ -1746,4 +1904,30 @@ function clamp(text: string, max: number): string {
   const cut = text.slice(0, max);
   const space = cut.lastIndexOf(' ');
   return (space > max / 2 ? cut.slice(0, space) : cut).trimEnd();
+}
+
+/**
+ * How long the matched calendar occasion lasts, from its own `ends_at`. Only a
+ * `family_events` row carries an end; a week-plan item or a row with none is null.
+ */
+export async function matchedDurationMinutes(
+  database: Database,
+  familyId: string,
+  ref: CorrelatedEventRef | null,
+): Promise<number | null> {
+  if (ref === null || ref.table !== 'family_events') return null;
+  const [row] = await database
+    .select({ startsAt: schema.familyEvents.startsAt, endsAt: schema.familyEvents.endsAt })
+    .from(schema.familyEvents)
+    .where(
+      and(
+        eq(schema.familyEvents.id, ref.id),
+        eq(schema.familyEvents.familyId, familyId),
+        householdFamilyEvent(),
+      ),
+    )
+    .limit(1);
+  if (!row?.endsAt) return null;
+  const minutes = Math.round((row.endsAt.getTime() - row.startsAt.getTime()) / 60_000);
+  return minutes > 0 ? minutes : null;
 }

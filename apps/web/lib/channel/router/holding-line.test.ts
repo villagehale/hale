@@ -54,7 +54,10 @@ describe('what may not be sent as a holding line', () => {
   it.each([
     ['two sentences', "I'm on it. Your answer is coming."],
     ['a question', "I'm on it - you good to hang on?"],
-    ['a line longer than one text', `I'm on it ${'and still working through your answer '.repeat(5)}`],
+    [
+      'a line longer than one text',
+      `I'm on it ${'and still working through your answer '.repeat(5)}`,
+    ],
   ])('sends %s as written', (_name, body) => {
     expect(refusals(body)).toEqual([]);
   });
@@ -137,7 +140,8 @@ describe('createHoldingLine', () => {
     ],
   ] as const)('logs %s by name, without the provider message', async (reason, client) => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    if (reason === 'skill_unavailable') skillLoad.error = new Error('echo: her daughter is wheezing');
+    if (reason === 'skill_unavailable')
+      skillLoad.error = new Error('echo: her daughter is wheezing');
     try {
       const outcome = await createHoldingLine(client).compose('en');
       expect(outcome).toEqual({ status: 'unavailable', reason });

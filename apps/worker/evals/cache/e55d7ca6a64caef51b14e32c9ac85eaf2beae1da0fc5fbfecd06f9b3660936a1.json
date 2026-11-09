@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all present and correct: tomorrow (lundi), 15 h to 16 h, Georgetown library, event titled 'Jour de congé' kept as the name. However, the phrasing 'Rappel : demain, lundi, de 15 h à 16 h, il y a Jour de congé à la bibliothèque de Georgetown.' is a calendar-readout style with a colon label and a stiff 'il y a X à Y' construction; a native French speaker texting a friend would say something like 'Demain, lundi, de 15 h à 16 h : Jour de congé à la bibliothèque de Georgetown.' or 'Demain de 15 h à 16 h, c'est Jour de congé à la bibliothèque de Georgetown.' The 'Rappel :' label and 'il y a' construction read like an automated alert, capping the score at 3.",
+    "score": 3
+  }
+}

@@ -59,6 +59,11 @@ function sweepMinutes(field: string): number[] {
  * staggered and every other cron necessarily shares its minute.
  */
 const EVERY_MINUTE = '/api/cron/drain';
+/**
+ * VIL-558 · day-before registration plans join an open set to the minute, so they run
+ * every minute too. A tick with no plan due reads one index and sends nothing.
+ */
+const EVERY_MINUTE_PATHS: ReadonlySet<string> = new Set([EVERY_MINUTE, '/api/cron/signup-plans']);
 
 describe('vercel cron schedule', () => {
   it('gives every fixed-minute cron a minute of its own', () => {
@@ -78,7 +83,9 @@ describe('vercel cron schedule', () => {
     const all = crons();
     const occupied = new Set(
       all
-        .filter((cron) => cron.path !== EVERY_MINUTE && isRecurring(minuteField(cron.schedule)))
+        .filter(
+          (cron) => !EVERY_MINUTE_PATHS.has(cron.path) && isRecurring(minuteField(cron.schedule)),
+        )
         .flatMap((cron) => sweepMinutes(minuteField(cron.schedule))),
     );
     // A positive control on the set itself: if this were empty the test would pass on

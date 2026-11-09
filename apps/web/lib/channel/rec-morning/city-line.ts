@@ -196,9 +196,7 @@ function upcomingLine(
       : residentGone
         ? `residents opened ${pastPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`
         : `residents ${upcomingPhrase(resident)}, non-residents ${upcomingPhrase(event.openAt)}`;
-  const nouns = labelNeedsNouns(event.cycleLabel, townEvents)
-    ? `${joinNouns(event.domains)} `
-    : '';
+  const nouns = labelNeedsNouns(event.cycleLabel, townEvents) ? `${joinNouns(event.domains)} ` : '';
   const line = endSentence(
     `${townLabel(city)} ${asciiCopy(event.cycleLabel)} ${nouns}registration: ${halves}`,
   );
@@ -243,6 +241,27 @@ function betweenCyclesLine(
   return `${townLabel(city)} ${asciiCopy(latest.cycleLabel)} registration already opened ${pastPhrase(openedAt)} - ${nextLabel} dates are not posted yet. ${LEFTOVER_OFFER}`;
 }
 
+/** The FSA of `postal` when it is one of `city`'s; null for any other town or no code. */
+function fsaInCity(city: RecHelloCity, postal: string | null): string | null {
+  if (postal === null || postal.trim() === '') return null;
+  const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
+  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  return municipalitiesForFsa(fsa).some((town) => town === city) ? fsa : null;
+}
+
+/**
+ * The postal whose district a line names: the one in the ask when it is one of this
+ * city's, else the one on file. An ask that mentions some other town's code ("my
+ * sister is in L4G") says nothing about which of this city's mornings is theirs.
+ */
+export function districtPostal(
+  city: RecHelloCity,
+  asked: string | null,
+  stored: string | null,
+): string | null {
+  return fsaInCity(city, asked) === null ? stored : asked;
+}
+
 /**
  * A postal code that resolves to a district of THIS city narrows the rows to that
  * morning. A postal code for a different town is ignored — the parent named this
@@ -255,10 +274,8 @@ function rowsForAsk(
   rows: readonly RecRow[],
   postal: string | null,
 ): readonly RecRow[] {
-  if (postal === null || postal.trim() === '') return rows;
-  const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return rows;
-  if (!municipalitiesForFsa(fsa).some((town) => town === city)) return rows;
+  const fsa = fsaInCity(city, postal);
+  if (fsa === null) return rows;
   const district = districtForFsa(fsa);
   if (district === null) return rows.filter((row) => (row.district ?? null) === null);
   return preferDistrictRows(rows, district);

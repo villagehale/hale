@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly states the cancelled event, date and 1:00 PM time, names Maplewood Library, matches the email kind, asks nothing and offers no calendar addition (offer is null, alreadyOnCalendar true), and uses a casual tone in English. Nothing is invented and no private details are involved.",
+    "score": 5
+  }
+}

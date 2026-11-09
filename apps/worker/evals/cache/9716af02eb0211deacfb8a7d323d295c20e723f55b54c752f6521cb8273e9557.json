@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgV2UsKUoBf6Q6mDksRqp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwoKEAgTGAI4AUIIdGhpbmtpbmcSDCs3GYv+0cAxiglwWxoMvFSPR+TtGkeCRjLnIjC8/sGneUlwT7lDd5loXA/qJoO9Bxd3yuKVt40pVfRHXf1DGO7/DcQHHxCCNJdo5mAq5Al1UvcMjFoHSOk5kQq0We1gcqlN/d4aTjPdbK+IMI+AyCfU6Q0nmosJ6SE3U044yfF6WBUuedGGeu0o1WqOqR2XwashGrJ5M/eHMT9gPW8DOnuGuTCHey0oCkZLRNSPC9CINvSG6dQfZDpoH0fMLzYFZTz9aUGLd+XmCOV0/N+FKpaphLL3/uYPsXEDZvuBRiQhzmhLaZpnguVe8UasXgKe3NAaaO0M1mEK6gB6qN2HWvztuOEZLDzoP8XZB8Yyj8IzNsNv9KZspwGxAwArjH3ynT9qlZZWZV3rVZft/4o2n7iGjH9iZMWBCaSYwKjauDFz8kJ1JZpkExdXPa/aolrXfVpqu+0O5K4RZhtrm7aYc912UWUHKCdUOfhYwORoXb8FyL+AFcokd7vCaLGe2TDVFRwP7zxCAMMwpcHcEMNVLmLFNOWwMA0kCBo+srHwd3d9bOx5e5A4VxdRIkmOE0BrLxJl9Y1QxzibfWRaGNPlWEmxjVj1d/AjKi40WEZineHukWrWlkcV05+eHYIq3CvUAQzuj2yeov40fLCEqKmUMQv/ov3NncJi83hh/veDcu8HuyQDoaf+od3r0MnIcV/0tOboNJl827+V/OkKJs8ul5SNMzyJoMBfQd33hOyB9LNHspUbBTDJsGr8WrpQ38154b7Fz2QUqJO+GbnoG9QM8iZYtenLcF44mpZevdgZSPkHLaL68knlSzzew0O4uuAcEbxr9WDgx1tyTiWBaXrc9oSnZC19RXSh01YUUvjM/mfQdkgd5yVOfwhuWemkUBB8FX8cN2IgpULxBndYp+FXH14YKCEVVLdmEYu4JIRQ5+Ev0WBJDsQ8A1LB3oRhn0olBItuafIhOmiBDz5X2pFEDCFKwsbbKmXAyTBUQmcdrVBSjIEFz6Wq0l2F+nrJkWZtDBWD2s8fKE963RaUl3peh2XvI8+yWKypTDGc19wCBTVL9WRGIpOlb0Kx3K/k3oSRGF1TsSkMo3LvOEZ1D7fLStX62sxSN/ASEN4CjYr+Hr2Pf96SoIcfRNUN9YwsNLAspSpHyqbfFM7ryCfKCX+AAWuuuKmQhEslljcEWMn/P0mL5nTt1QK1maY9s6wBumUZBhy0IgzU9L1u3PVtDXg7G6g035ykBruumVyOvQZSdUBbc04l+XzQa8arxg7elNZEVO8/72s+sB6FG0WUME7KbF0VxUc1PyNA6dhjWs4Qo7jKdTLjdZ+xEBGWL6U0l3OHdIuNHr0/nHynTWiz2gy4bvSrNMNxgQF6sZt2jy9LVEDV6p3E9sW97FxXZI2l1B1aIBM8SJYz/ulbsqjT62fInCWt9mKHW+/aIdMU6dTgQgvTomb0FGTmAV0FKDgQefLesSdxo4AKeUsk7Ry/FmWxTp4YaRKuvku0pa000b5JBeMNp2/N0ZZdX6MHqJoPN6BslYnas63zH2AGmF3d7TKKWZYDCs488kk+E2hTKqIoqxEboGYyQso/6hki83uI0KOJM/jB5BCdH1PhiZaht8mh/nbDVOpllSC8NFh4ZXTYAKAC2Lu/U910n0Da8Ngg9FurJwuShnseghV4SZHfbUbK/wheOs80RX9aet+55hSQqb3ylzhcEtjyD81st6VvjGoLM+JYlgZ6ehO+UtVrQTTxsL6eAaELNsBWUYiVwgmxJnUNooEmGAE="
+      },
+      {
+        "type": "text",
+        "text": "Anyone's personal calendar isn't something I can read out in the group. Jordan can tell you directly, or you can text me one to one and I'll sort out Thursday for Maya's dentist visit."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17664,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 338,
+      "output_tokens_details": {
+        "thinking_tokens": 273
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

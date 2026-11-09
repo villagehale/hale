@@ -480,6 +480,36 @@ describe('runKidRelevanceBackfill', () => {
     expect(after.audit).toEqual([]);
   });
 
+  it('judges each instance of a series on its own title, and drops only the adult one (Devin #1007)', async () => {
+    const kidInstance = await mirror('lesson_1012', 'Wren swim');
+    const adultInstance = await mirror('lesson_1014', 'Dentist');
+    await db.database.insert(schema.calendarEventSnapshots).values(
+      ['lesson_1012', 'lesson_1014'].map((eventId) => ({
+        integrationId: gcal,
+        eventId,
+        recurringEventId: 'lesson-series',
+        updatedStamp: 'u1',
+        status: 'confirmed',
+      })),
+    );
+
+    const counts = await dryRunThenApply();
+
+    expect(counts).toMatchObject({ eventsDropped: 1, remindersCancelled: 2 });
+    expect(seenTexts.sort()).toEqual(['Dentist at Community hall', 'Wren swim at Community hall']);
+    const after = await state();
+    const event = (id: string) => after.events.find((row) => row.id === id);
+    expect(event(kidInstance)?.deletedAt).toBeNull();
+    expect(event(adultInstance)?.deletedAt).toEqual(NOW);
+    const linked = after.verdicts.find((row) => row.id === event(kidInstance)?.kidVerdictId);
+    expect(linked).toMatchObject({ itemKey: 'lesson_1012', verdict: 'kid' });
+    expect(
+      after.reminders
+        .map((row) => `${row.eventRef === kidInstance ? 'kid' : 'adult'}/${row.status}`)
+        .sort(),
+    ).toEqual(['adult/cancelled', 'adult/cancelled', 'kid/scheduled', 'kid/scheduled']);
+  });
+
   it('stamps every audit row an apply writes with its run id', async () => {
     await seed();
     await dryRunThenApply();

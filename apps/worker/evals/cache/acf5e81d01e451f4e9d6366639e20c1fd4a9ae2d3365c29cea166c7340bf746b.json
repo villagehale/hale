@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep every given fact: day (tomorrow), start and end times with correct AM/PM, venue names and street addresses, and who each is for (Theo, Léa). Nothing is invented, no travel or departure claims, no link, and the text is in English. The 'Lรฉa' rendering is a character-encoding glitch, not a fact change.",
+    "score": 5
+  }
+}

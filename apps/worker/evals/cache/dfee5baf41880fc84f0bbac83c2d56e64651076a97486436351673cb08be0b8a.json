@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgZVGRVoG5MFxtJocoXSj",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6gYKEAgTGAI4AUIIdGhpbmtpbmcSDAVZ2PMHBdBtszZ0+RoMg7CTCp9coUMn22CDIjBW7myJeEpAXiDJjXUJzUffu3iCgEo5TY5/MosHIoN2uW5do1FxN/9gP2/wpBKnsGIqhwaNxj6zlH+DHnRnIfdna8jt4CeoQMJWfT5jaUTTxAkJx9BmIS4RypMBSvLcAt5X9bRS/2UQqysGv8PsZkVNAGxtfawisj+XUH3E4JdgQTzy4Y+hfaFDz3KaSqTY0GeJPjBJe88KFho4vb1CqINmAf+QNja5DnTn9JF1voRnviGjmLXmlBVQCk0WXqpH0x0FpeEMClhMiy/pK/vGn86mHbi5LSBwzKwimfcOQjQUf+mQ0zxO316DWo4K1k23Cj7u1dm67EnrPqYJSli3nm8HeDUloIfiE58pN04bL1q7QFRFxnPu8hDPn1jUm0EQKrC7ImK4Hd0MrES+WWYJz8Tfo8x1C/dhmC7sMKbLil0302zsU8akylzMpIzF2UFno9++w0PmTlMx7nT63KXou8gZEGNOjmVpLSUZgp30u7a2qIRoRF44YSOtbIirk+ZLQhsN5uPvuBBV7ofS0LTYsYKdbfB/sw0HK4HA2SabgAcRA6JkzNSQvgvzuJSvYjOTtmDky0Onh6OQpDthAu1jLccG5zTSvIbBPTYCeYm3kmhBfYLiwWZiZNmLmHqnu38fcNtHJ70mmEw7l1q52mYoLLy2LtZYGoG+eIcV+Jdr0hDhHJI1yorWhpcmuysePLZKisiLTwkqTYj1tlY3vz4wC1qL1zTduuH9oo4mnFLH19vXnU1aTnJB3JaCsrgliznjNpVs13B7HR6VVoM6zqgnVtRBHed6g+tZmhDavCMp0LAoD++ugt/i+rB4DuME4t2iQoB2nUKA3wMuRFr/MOHEl/CYF4qUCg4b38uWdWzZ/kOJqU/aThHsjWYkr4OF8ZZ+/ZpjHWBKgNb8XPjVdbAdj6tKtcToDmBLg4F1EhoXtqS/vj6K2vZvxqUmH6C8twwkpdlmh39XlbTNmjxoy7MawO2FlvmwZvitmd8FX/cr/WGAkakDkgYvofZemanOAZTcvS9jeV9XVJaAWllU5GCZaIm5nurXJjmtFZx77Xt4+M81Jvc3mWiS0mJT6tGdmMddNPrd0yKA5BccIzxoGAE="
+      },
+      {
+        "type": "text",
+        "text": "That email was mine, and I'm sorry it had the wrong day. I'll send the swim school a correction. You've got swim Mon 4:30 at West pool and Thu 5:15 at East pool. Which day should the email have said?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1152,
+      "cache_read_input_tokens": 22387,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1152,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 149,
+      "output_tokens_details": {
+        "thinking_tokens": 74
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2231
+}

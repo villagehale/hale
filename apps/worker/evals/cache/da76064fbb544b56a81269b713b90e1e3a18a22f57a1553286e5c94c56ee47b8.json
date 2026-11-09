@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not mention the Swim event at all: Léa, the 4:30-5:15 PM time, the venue Mold-Masters SportsPlex, and the address 221 Guelph St are all missing. It also fails to say the time moved from 5:00 PM. Instead it invents a 'Jour de congé' at 3:00 that is not in the facts, and says the day is a day off with 'breathing room' when a timed event exists. No bold was used on the changed time.",
+    "score": 1
+  }
+}

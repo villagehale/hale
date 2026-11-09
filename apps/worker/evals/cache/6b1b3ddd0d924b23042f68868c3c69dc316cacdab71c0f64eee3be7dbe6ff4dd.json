@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly states nothing is booked (confirmed false), gives the registration link exactly, lists only pack values, uses direct audience in English, makes no retry promise, and avoids system talk. Minor: 'couldn't finish' is a fair plain description of the error with no reason code exposed.",
+    "score": 5
+  }
+}

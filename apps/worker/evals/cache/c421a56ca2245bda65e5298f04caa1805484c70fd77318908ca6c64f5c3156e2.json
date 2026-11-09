@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request for a reply ('Reply YES and I'll book it for you') and a 'Reply STOP to opt out' prompt, which are asks for a response from the parent, making it a clear ask.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English, not the requested French (wrong language). It omits the end time (4:00 PM), the venue name (Georgetown library), and the address (9 Church St). It also states the day is 'a day off' with 'a bit of breathing room', an unstated inference that implies the family is free even though a timed event exists. Bold is none, which is fine.",
+    "score": 1
+  }
+}

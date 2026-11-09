@@ -1,0 +1,9 @@
+{
+  "value": {
+    "send": true,
+    "before": "Quick nudge on soccer Saturday: still waiting on Ben.",
+    "question": "Ben, are you in for this one?",
+    "why": "follow_up"
+  },
+  "latencyMs": 1591
+}

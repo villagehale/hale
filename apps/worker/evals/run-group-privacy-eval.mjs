@@ -18,13 +18,18 @@ import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { GROUP_PRIVACY_FIXTURES } from './group-privacy-fixtures.mjs';
 import {
+  DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   cacheGet,
   cacheKey,
   cachePut,
+  dryReportLine,
+  dryRequestPlanEntry,
+  dryStandInText,
   evalRunTag,
   evalSubjectRequest,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
@@ -146,7 +151,7 @@ function toolsFor(agent, fixture, calls, listed) {
     stub('search_village', { found: false }),
     stub('propose_calendar_move', { ok: false }),
     stub('propose_calendar_cancel', { ok: false }),
-    stub('propose_calendar_add', { ok: false }),
+    stub('propose_calendar_add', fixture.addResult ?? { ok: false }),
     stub('get_framework_guidance', { found: false }),
     stub('find_activities', { found: false, reason: 'no_picks' }),
     stub('prepare_gmail_draft', { ok: true }),
@@ -176,6 +181,25 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
         });
         const key = cacheKey(evalRunTag(`${tag}:agent`), canonical);
         const cached = await cacheGet(key);
+        if (isDryRun()) {
+          // --dry: price this leg as if uncached and never call. An uncached leg ends the
+          // turn with a max-length stand-in reply (same contract as coach-channel).
+          DRY_SUBJECT_PLAN.push({
+            ...dryRequestPlanEntry(`${tag}:agent`, request),
+            cached: Boolean(cached),
+          });
+          if (!cached) {
+            return {
+              id: 'dry',
+              type: 'message',
+              role: 'assistant',
+              model: request.model,
+              content: [{ type: 'text', text: dryStandInText(request.max_tokens ?? 1024) }],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 0, output_tokens: 0 },
+            };
+          }
+        }
         if (cached) return cached.response;
         if (cachedOnly) {
           console.error(`agent cache miss in --cached-only mode (${tag}, key ${key}).`);
@@ -210,7 +234,12 @@ async function main() {
   const { groupScopedContext, groupScopedTools, GROUP_WITHHELD_TOOLS } = await importTs(SCOPE_SRC);
   const coach = await agent.loadSkill(join(SKILLS, 'coach-channel-sms.md'));
   const group = await agent.loadSkill(join(SKILLS, 'coach-channel-group.md'));
-  const skill = { ...coach, instructions: `${coach.instructions}\n\n${group.instructions}` };
+  // VIL-510: runtime order is coach + group appendix + coach-nearby-find.
+  const nearby = await agent.loadSkill(join(SKILLS, 'coach-nearby-find.md'));
+  const skill = {
+    ...coach,
+    instructions: `${coach.instructions}\n\n${group.instructions}\n\n${nearby.instructions}`,
+  };
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'group-privacy', cachedOnly, getClient, cost);
 
@@ -265,6 +294,10 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (isDryRun()) {
+    console.log(dryReportLine('group-privacy', [judge.plan]));
+    process.exit(0);
+  }
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);

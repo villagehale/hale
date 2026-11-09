@@ -5,7 +5,6 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import { type NudgeRunDeps, defaultNudgeRunDeps, runNudgeCron } from '~/lib/channel/nudge/run';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { ChannelCoachRuntime } from '~/lib/channel/router/coach-runtime';
-import { conflictReply } from '~/lib/channel/router/copy';
 import { healthReplyHandler } from '~/lib/channel/router/handlers';
 import { createReplyTransport } from '~/lib/channel/router/reply-transport';
 import { type ReplyResolver, toReading } from '~/lib/channel/router/resolve';
@@ -481,6 +480,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Add to my week', REPLY_AT, 1),
         provider_message_id: 'SM-in-1',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -516,6 +516,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('You said 18 month baby visit', REPLY_AT, 2),
         provider_message_id: 'SM-in-2',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -533,13 +534,13 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Yes, please add it', REPLY_AT, 3),
         provider_message_id: 'SM-in-3',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
     const everythingSaid = transport.bodies().join('\n');
     // NO REVIEWER JARGON, anywhere in the thread.
     expect(everythingSaid).not.toMatch(/cleared my own checks|reviewer|verdict|flagged/i);
-    expect(everythingSaid).not.toContain(conflictReply('not_reviewer_approved'));
     // NO MACHINE MENU, and in particular no option list built from action-type labels.
     expect(everythingSaid).not.toMatch(/Which one -/);
     expect(everythingSaid).not.toMatch(/add to your calendar/i);
@@ -577,6 +578,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('Add to my week', REPLY_AT, 1),
         provider_message_id: 'SM-in-1',
         received_at: REPLY_AT.toISOString(),
+        in_group: false,
       },
     );
 
@@ -609,6 +611,7 @@ describe('the offer is a proposal', () => {
         channel_message_id: await inboundText('yes', lapsed, 1),
         provider_message_id: 'SM-in-1',
         received_at: lapsed.toISOString(),
+        in_group: false,
       },
     );
 

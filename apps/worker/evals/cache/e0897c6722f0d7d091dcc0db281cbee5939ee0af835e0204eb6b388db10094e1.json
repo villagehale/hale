@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Wrong language: the parent writes in Spanish and the text is in English. It also hints at another family (\"The Patel family said no to meeting you\"), apologizes unprompted, and invents a \"YES INTROS\" reply instruction and a Friday Nov 3 date that aren't in the facts. It omits the actual facts: the no is recorded, the parent stays open to other introductions, and Hale will text when it finds a good match.",
+    "score": 1
+  }
+}

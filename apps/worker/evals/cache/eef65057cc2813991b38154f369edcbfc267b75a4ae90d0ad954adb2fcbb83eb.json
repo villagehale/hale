@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Saturday's swimming session is booked. The only row is a dentist appointment on Thursday, which is not the swim booking, so the claim is cited to none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1843
+}

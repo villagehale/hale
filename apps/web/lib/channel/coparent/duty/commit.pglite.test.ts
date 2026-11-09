@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { writeLogisticsDecision } from '~/lib/channel/linq/logistics-poll';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { DUTY_BOTH_CLAIMED_COPY, DUTY_WHICH_KID_COPY } from './copy';
 import { commitDutyRemoval, commitDutyUpdate, loadReadableDuties } from './model';
 
 let db: TestDb;
@@ -77,7 +76,7 @@ describe('commitDutyUpdate', () => {
     });
     expect(again.state?.status).toBe('conflict');
     expect(again.state?.owner).toBeNull();
-    expect(again.ask).toBe(DUTY_BOTH_CLAIMED_COPY);
+    expect(again.ask).toBe('both_claimed');
     expect(again.sent).toBe(false);
 
     const live = await loadReadableDuties(db.database, family.familyId);
@@ -175,7 +174,7 @@ describe('commitDutyUpdate', () => {
     });
     expect(question).toMatchObject({ written: false, reason: 'question', sent: false });
     expect(low).toMatchObject({ written: false, reason: 'low_confidence', sent: false });
-    expect(which).toMatchObject({ written: false, reason: 'which_kid', ask: DUTY_WHICH_KID_COPY });
+    expect(which).toMatchObject({ written: false, reason: 'which_kid', ask: 'which_kid' });
     expect(shadow).toMatchObject({ written: false, reason: 'shadow', sent: false });
     expect(single).toMatchObject({ written: false, reason: 'single_parent' });
     expect(await loadReadableDuties(db.database, family.familyId)).toEqual([]);

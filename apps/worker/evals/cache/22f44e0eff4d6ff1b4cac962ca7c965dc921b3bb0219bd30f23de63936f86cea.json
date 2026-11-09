@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English although the requested language is French (wrong language). It drops the end time (4:00 PM), the venue name (Georgetown library) and the address (9 Church St). It also recasts the event title \"Jour de congé\" as a statement about the day (\"Tomorrow's a day off\") and says the family has \"a bit of breathing room\", which implies a free day even though a timed event exists.",
+    "score": 1
+  }
+}

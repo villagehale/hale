@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep every given fact: day (tomorrow, Monday, true from Sunday evening), start and end times with correct AM/PM (10-11 a.m.; 1:30-2:15 p.m.), venue names and street addresses, and who each is for (Theo, Lea). Nothing is invented, no logistics claims, no link, and the language is English. Dropping the accent in Lea is a spelling matter, not a fact failure.",
+    "score": 5
+  }
+}

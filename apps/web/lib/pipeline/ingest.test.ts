@@ -235,7 +235,10 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
       actionUpdates: [],
       eventUpdates: [],
     };
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     // Reviewer invokes all required checks, then approves.
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
 
@@ -290,7 +293,10 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
       actionUpdates: [],
       eventUpdates: [],
     };
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
 
     await ingestEvent(baseInput, db, client, NOW);
@@ -314,7 +320,10 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
       actionUpdates: [],
       eventUpdates: [],
     };
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     // Model jumps straight to approve WITHOUT invoking any check.
     const client = scriptedClient([SUBMIT('approve', 'looks fine to me')]);
 
@@ -366,7 +375,10 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
       actionUpdates: [],
       eventUpdates: [],
     };
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     // A classifier turn that routes surface_only — overrides the default forced classify.
     let call = 0;
     const create = vi.fn().mockImplementation(async () => {
@@ -431,7 +443,10 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
 
   it('records an ended gcal item without calling the model', async () => {
     const capture = freshCapture();
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     const create = vi.fn();
     const client = { messages: { create } } as unknown as AgentClient;
 
@@ -452,7 +467,10 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
 
   it('still classifies a future gcal item', async () => {
     const capture = freshCapture();
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     const create = vi.fn().mockResolvedValue({
       content: [
         {
@@ -495,7 +513,10 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
   it('GCAL_PAST_CLASSIFY_SKIP=false sends an ended item through the classifier', async () => {
     vi.stubEnv('GCAL_PAST_CLASSIFY_SKIP', 'false');
     const capture = freshCapture();
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     const create = vi.fn().mockResolvedValue({
       content: [
         {
@@ -525,7 +546,10 @@ describe('ingestEvent — ended calendar items skip the classifier', () => {
 
   it('does not skip gmail even when the payload carries a past calendar time', async () => {
     const capture = freshCapture();
-    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const db = fakeDb(capture, {
+      familyCreatedAt: new Date('2026-01-01T00:00:00Z'),
+      allowlisted: true,
+    });
     const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
 
     const outcome = await ingestEvent(

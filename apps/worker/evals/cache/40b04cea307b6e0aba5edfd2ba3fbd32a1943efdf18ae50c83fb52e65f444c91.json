@@ -1,0 +1,9 @@
+{
+  "value": {
+    "messages": [
+      "Swim lesson is set for Sat, Nov 7, 10:00 a.m. to 11:00 a.m. at Riverside Y, 120 Main St, Toronto. It's on Ana's and Sam's calendars, and everyone in the group has it.",
+      "Add it to your own calendar with this link: https://app.villagehale.com/api/ics/event/5d0e3a52-1b7c-4f0e-9a51-0c3f7b2a9e41.Qm9vZ3lHcm91cA"
+    ]
+  },
+  "latencyMs": 1378
+}

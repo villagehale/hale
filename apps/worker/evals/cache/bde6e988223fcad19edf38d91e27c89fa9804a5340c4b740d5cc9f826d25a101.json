@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Tells the parent privately that many texts arrived at once and this one isn't being answered now, and invites them to resend later. It adds 'I can't promise I'll get to it right away', which is a non-promise and does not commit to answering. No wait time, no scolding, no third-party mention, correct language, first person. Minor concern: 'I can't promise I'll get to it right away' implies a later answer is possible, nudging against the no-promise rule, but it is hedged, so a small deduction.",
+    "score": 4
+  }
+}

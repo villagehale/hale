@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are correct: both events tomorrow, start and end times with correct AM/PM, venue names and addresses, no invented details, no link, English throughout. The problem is register: it reads like a templated calendar readout. Each line is title, venue, address, time range, stacked as a list with a fixed 'Heads up, two things tomorrow:' header. A friend would weave it into a natural text (e.g. 'Theo's Montessori tour is tomorrow at 10, at Little Oaks...') rather than a list; the bare '10:00-11:00 AM' ranges and full address strings keep it notification-like. Also 'Heads up' is a notification-style opener. Capped at 3 for friend-versus-notification register.",
+    "score": 3
+  }
+}

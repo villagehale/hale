@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly names Barton as the handoff parent, Leo as the child, soccer, Monday September 28 at 9:00am, and phrases the day correctly as tomorrow relative to Sunday 7pm. It makes no unsupported claims about booking, venue, or end time, and does not ask Barton to confirm the handoff, which is already settled. It is in English as required.",
+    "score": 5
+  }
+}

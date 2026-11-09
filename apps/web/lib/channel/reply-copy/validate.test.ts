@@ -121,19 +121,19 @@ describe('reply copy validator rules', () => {
     ).toBe('question');
   });
 
-  it('rejects a reply that does not end in one next step', () => {
+  it('Design #973: needs no fixed closing phrase and has no sentence cap', () => {
     expect(
       validateReplyCopy(
-        'Theo has swim at 9 on Saturday.',
-        check({ facts: ['Theo', 'swim', '9', 'Saturday'], questionAllowed: false }),
+        'Got it, swim is covered.',
+        check({ facts: ['swim'], questionAllowed: false }),
       ),
-    ).toBe('next_step');
+    ).toBeNull();
     expect(
       validateReplyCopy(
-        'Theo has swim. Sam has it too. Say so here if that changes.',
+        'Theo has swim. Sam has it too. All set.',
         check({ facts: ['Theo', 'Sam', 'swim'], questionAllowed: false }),
       ),
-    ).toBe('next_step');
+    ).toBeNull();
   });
 
   it('rejects a place that was not in the facts', () => {
