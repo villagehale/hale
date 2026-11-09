@@ -1228,6 +1228,7 @@ async function routeChannelMessageInner(
     groupSync?: GroupActivityDecision,
     pendingAsk: PendingAsk | null = null,
     onSent?: () => Promise<unknown>,
+    threadSource: schema.MessageSource | null = null,
     voiceMemo = false,
   ) =>
     sendReply(deps, {
@@ -1238,6 +1239,7 @@ async function routeChannelMessageInner(
       claim: claimAnswer,
       medicalSource,
       replySource,
+      threadSource,
       openAsks: { leaves: pendingAsk },
       groupSync,
       templateKey,
@@ -1740,8 +1742,18 @@ async function routeChannelMessageInner(
     return await runAgentTurn(deps, {
       job,
       turn,
-      answer: (body, how) =>
-        answer(body, null, null, null, undefined, null, undefined, how?.voiceMemo === true),
+      answer: (body, threadSource, how) =>
+        answer(
+          body,
+          null,
+          null,
+          null,
+          undefined,
+          null,
+          undefined,
+          threadSource,
+          how?.voiceMemo === true,
+        ),
       hasAnswered: () => answered,
       claimSilent: claimAnswer,
       conversationId,
@@ -2196,10 +2208,15 @@ async function runAgentTurn(
      * The turn's answer: sent, then claimed. Hands back the `channel_messages` id,
      * because a promise is minted against the message that CARRIED it (the MEM-10
      * send-time discipline) and this is the only place that knows which row that was.
+     * `threadSource` marks the thread row the answer lands in (VIL-616).
      * `voiceMemo` (VIL-495): the model chose to say it; the send gates decide whether it
      * goes as a memo or as this same text.
      */
-    answer: (body: string, how?: { voiceMemo: true }) => Promise<string>;
+    answer: (
+      body: string,
+      threadSource: schema.MessageSource | null,
+      how?: { voiceMemo: true },
+    ) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
     /**
@@ -2253,8 +2270,12 @@ async function runAgentTurn(
       voiceMemo,
       attempts,
       enforced,
+      emailRead,
       capabilityNotes,
     } = await composeReconciledReply(deps, args, view);
+    // VIL-616: a reply written after reading an email may repeat the sender's words, so
+    // its thread row says so and the nightly memory writer leaves it out.
+    const threadSource: schema.MessageSource | null = emailRead ? { kind: 'read_email' } : null;
     // VIL-504 · a model that wrote nothing is answered with nothing. No fixed line
     // stands in for an empty reply (absolute-zero fixed parent copy).
     if (!experienceCard && reply.trim() === '') {
@@ -2276,6 +2297,7 @@ async function runAgentTurn(
     // A card turn stays text: the card rides beside the words (VIL-495 Design lock).
     const channelMessageId = await args.answer(
       card ? card.text : reply,
+      threadSource,
       voiceMemo === true && !card ? { voiceMemo: true } : undefined,
     );
     // AFTER the send: the shadow read adds no latency and cannot change what was sent.
@@ -2361,7 +2383,7 @@ async function runAgentTurn(
         }
       } else if (groupLeave.ifLeaveFails.trim() !== '') {
         try {
-          await args.answer(groupLeave.ifLeaveFails);
+          await args.answer(groupLeave.ifLeaveFails, threadSource);
           deps.log.info({ leave: 'stayed_said' }, 'channel router: leave refused, told the group');
         } catch (err) {
           deps.log.error(
@@ -2578,7 +2600,7 @@ async function runAgentTurn(
       throw new TurnDeferred(disposition.reason, err);
     }
     if (disposition.reply !== null) {
-      const channelMessageId = await args.answer(disposition.reply);
+      const channelMessageId = await args.answer(disposition.reply, null);
       // Only the choice sentence has one: it is the only reply on this path that asks the
       // parent a question, and a question that is not written down is the defect VIL-304
       // exists to close.
@@ -3021,7 +3043,7 @@ async function disposeOfFailedTurn(
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
-    answer: (body: string) => Promise<string>;
+    answer: (body: string, threadSource: schema.MessageSource | null) => Promise<string>;
     hasAnswered: () => boolean;
     questions: readonly OpenQuestion[];
     unplacedAnswer: UnplacedAnswer | null;
@@ -3192,6 +3214,9 @@ async function sendReply(
      * papercut digest split real answers from ANSWER_UNAVAILABLE sends; it is a closed
      * vocabulary and never a word of what was said (rule #1). */
     replySource?: ReplySource | null;
+    /** What the thread row this reply lands in is marked with (messages.source), or null.
+     * VIL-616: `read_email` on a coach reply written after reading an email. */
+    threadSource?: schema.MessageSource | null;
     /**
      * What this send does to the questions Hale has left open for this parent (migration
      * 0167). Every caller says, because it is a fact about WHICH send this is and not
@@ -3373,7 +3398,11 @@ async function sendReply(
   });
 
   if (args.conversationId) {
-    await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
+    await appendMessage(args.conversationId, 'assistant', args.body, deps.database, {
+      childId: null,
+      topic: null,
+      source: args.threadSource ?? null,
+    });
   }
 
   await settleOpenAsks(channelMessageId);

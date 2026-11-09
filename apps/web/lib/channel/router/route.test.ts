@@ -727,6 +727,35 @@ describe('threading', () => {
     expect(out[0]?.body).toBeNull();
     expect(messageRows(h.fake).some((r) => r.content === 'Mia has swim at 4')).toBe(true);
   });
+
+  // VIL-616: the nightly memory writer skips a row marked `read_email`, so a name or
+  // number the coach repeated from an email is never learned.
+  it.each([
+    { emailRead: true, source: { kind: 'read_email' } },
+    { emailRead: false, source: undefined },
+  ])(
+    'a reply written after reading an email ($emailRead) marks its thread row',
+    async ({ emailRead, source }) => {
+      const coach: ChannelCoachRuntime = {
+        async respond() {
+          return {
+            reply: 'The trip is Friday.',
+            planOffer: null,
+            activityPromise: null,
+            spotWatch: null,
+            emailRead,
+          };
+        },
+      };
+      const h = harness({ coach });
+      await routeChannelMessage(h.deps, job());
+
+      const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
+      expect(assistant.map((r) => [r.content, r.source])).toEqual([
+        ['The trip is Friday.', source],
+      ]);
+    },
+  );
 });
 
 // ── the order ────────────────────────────────────────────────────────────────

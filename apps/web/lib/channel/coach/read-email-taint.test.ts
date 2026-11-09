@@ -1,11 +1,19 @@
-import { GuardrailError, type RegisteredTool, defineTool } from '@hale/agent';
+import {
+  type AuditEntry,
+  GuardrailError,
+  type RegisteredTool,
+  defineTool,
+  invokeTool,
+} from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { READ_EMAIL_TOOL, type ReadEmailResult, taintTurnOnEmailRead } from './read-email-tool';
 
 /**
  * VIL-615 · once `read_email` hands the turn an email's text, nothing that writes or
- * sends may run for the rest of the turn. Pure: real tool objects, recording handlers.
+ * sends may run for the rest of the turn. VIL-616 · and a refused call writes no audit
+ * row, so input the email may have written never reaches the family's audit trail.
+ * Pure: real tool objects through the real `invokeTool`, recording handlers and audit.
  */
 
 const CTX = { familyId: 'family-1', actor: 'parent-1' };
@@ -40,20 +48,30 @@ function emailTool(result: ReadEmailResult, ran: string[]): RegisteredTool {
 
 const READ: ReadEmailResult = { read: true, body: 'Picture day is Friday.', truncated: false };
 
-function turnTools(result: ReadEmailResult, ran: string[]) {
-  const tools = taintTurnOnEmailRead([
+function turnTools(result: ReadEmailResult, ran: string[], audits: AuditEntry[] = []) {
+  const turn = taintTurnOnEmailRead([
     emailTool(result, ran),
     recording('propose_calendar_add', ran),
     recording('watch_for_opening', ran),
     recording('lookup_week', ran),
     recording('a_tool_added_next_year', ran),
   ]);
-  const call = (name: string) => {
-    const tool = tools.find((t) => t.name === name);
-    if (!tool) throw new Error(`no ${name}`);
-    return tool.handler(name === READ_EMAIL_TOOL ? { gmailMessageId: 'gm-1' } : {}, CTX);
+  const deps = {
+    writeAudit: async (entry: AuditEntry) => {
+      audits.push(entry);
+    },
   };
-  return { tools, call };
+  const call = (name: string, input: Record<string, unknown> = {}) => {
+    const tool = turn.tools.find((t) => t.name === name);
+    if (!tool) throw new Error(`no ${name}`);
+    return invokeTool(
+      tool,
+      name === READ_EMAIL_TOOL ? { gmailMessageId: 'gm-1' } : input,
+      CTX,
+      deps,
+    );
+  };
+  return { tools: turn.tools, emailRead: turn.emailRead, call };
 }
 
 describe('taintTurnOnEmailRead (VIL-615)', () => {
@@ -74,6 +92,40 @@ describe('taintTurnOnEmailRead (VIL-615)', () => {
       expect(refusal).toMatchObject({ toolName: name, rail: 'untrusted_content' });
     }
     expect(ran).toEqual([READ_EMAIL_TOOL]);
+  });
+
+  it('a refused call leaves no audit row, so its input never reaches the family export (VIL-616)', async () => {
+    const ran: string[] = [];
+    const audits: AuditEntry[] = [];
+    const { call } = turnTools(READ, ran, audits);
+    await call(READ_EMAIL_TOOL);
+    await call('propose_calendar_add').catch(() => {});
+    expect(audits.map((a) => a.actionTaken)).toEqual([`tool:${READ_EMAIL_TOOL}`]);
+  });
+
+  it('a write before the read is audited as usual (positive control for the row above)', async () => {
+    const ran: string[] = [];
+    const audits: AuditEntry[] = [];
+    const { call } = turnTools(READ, ran, audits);
+    await call('propose_calendar_add');
+    expect(audits.map((a) => a.actionTaken)).toEqual(['tool:propose_calendar_add']);
+  });
+
+  it('says whether this turn read an email, for the thread row the reply lands in', async () => {
+    const ran: string[] = [];
+    const { call, emailRead } = turnTools(READ, ran);
+    expect(emailRead()).toBe(false);
+    await call('lookup_week');
+    expect(emailRead()).toBe(false);
+    await call(READ_EMAIL_TOOL);
+    expect(emailRead()).toBe(true);
+  });
+
+  it('a refused read is not a read', async () => {
+    const ran: string[] = [];
+    const { call, emailRead } = turnTools({ read: false, reason: 'private' }, ran);
+    await call(READ_EMAIL_TOOL);
+    expect(emailRead()).toBe(false);
   });
 
   it('a tool nobody classified is refused too: the allow-list fails closed', async () => {
@@ -110,7 +162,7 @@ describe('taintTurnOnEmailRead (VIL-615)', () => {
   it('keeps each tool’s declared metadata', () => {
     const ran: string[] = [];
     const original = recording('promise_activity_followup', ran);
-    const [wrapped] = taintTurnOnEmailRead([{ ...original, registersOnly: true }]);
+    const [wrapped] = taintTurnOnEmailRead([{ ...original, registersOnly: true }]).tools;
     expect(wrapped).toMatchObject({
       name: 'promise_activity_followup',
       registersOnly: true,

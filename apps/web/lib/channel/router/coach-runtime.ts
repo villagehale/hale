@@ -131,6 +131,13 @@ export interface ChannelTurnResult {
    * runtime always sets it; absent means none.
    */
   draftedActionIds?: readonly string[];
+  /**
+   * VIL-616 · the reply was written after `read_email` handed this turn an email's text,
+   * so it may repeat a stranger's name, number or code. The router marks the thread row
+   * it lands in, and the nightly memory writer never learns from that row. The
+   * production runtime always sets it; absent means no email was read.
+   */
+  emailRead?: boolean;
 }
 
 export interface ChannelCoachRuntime {
