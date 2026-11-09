@@ -2136,5 +2136,215 @@
       },
       "diagnostics": null
     }
+  },
+  "df36e4d1c4e58f455fd1eff0b811614ee3e19c924eb82fd40985b89226a248dc": {
+    "key": "df36e4d1c4e58f455fd1eff0b811614ee3e19c924eb82fd40985b89226a248dc",
+    "recordedAt": "2026-11-09T08:40:17.469Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Halton Hills Gymnastics Centre runs Parent & Tot Gymnastics for 18 months - 3 years, Saturdays 9:15am, fall session from Sept 13, $142 for 12 weeks - their site says.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cgs46wzycAkmo4W59pa2d",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft is entirely a find with name, schedule, price and source; no search bookkeeping.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 90,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 849,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 47,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "f6d627b8368dc7fc132ffa012a58161996ab58a9f3239713056e9a2d9a8160c9": {
+    "key": "f6d627b8368dc7fc132ffa012a58161996ab58a9f3239713056e9a2d9a8160c9",
+    "recordedAt": "2026-11-09T08:40:21.990Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"I went through Cartwheel Gym's fall schedule and registration pages and found nothing running for fall spots right now. I'll keep watching and text you if that changes.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cgs47HksHpAef1doD4jTX",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"No find; the first sentence describes the search, the second is the next step.\",\"process_sentences\":[\"I went through Cartwheel Gym's fall schedule and registration pages and found nothing running for fall spots right now.\"]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 65,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 849,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 75,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "67e8a44b4388208e7508b3cede5e2cfb313c648672086ddefd0e3d6b9f906506": {
+    "key": "67e8a44b4388208e7508b3cede5e2cfb313c648672086ddefd0e3d6b9f906506",
+    "recordedAt": "2026-11-09T08:40:26.946Z",
+    "request": {
+      "model": "claude-sonnet-5-5",
+      "userMessage": "{\"mode\":\"followup_text\",\"subject\":\"Cartwheel Gym fall spots\",\"language\":\"en\",\"picks_empty\":true,\"searched\":{\"town\":\"Halton Hills\",\"notes\":\"Read the fall schedule and registration pages.\"},\"watch\":true,\"picks\":[],\"rejectedLastAttempt\":[\"These sentences tell the parent how Hale searched, not what it found or what happens next: \\\"I went through Cartwheel Gym's fall schedule and registration pages and found nothing running for fall spots right now.\\\". Take them out and change nothing else.\"]}"
+    },
+    "response": {
+      "model": "claude-sonnet-5-5",
+      "id": "msg_011Cgs47NVsW3YyyGN44JaWw",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "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"
+        },
+        {
+          "type": "text",
+          "text": "{\"message\":\"I found no fall spots at Cartwheel Gym in Halton Hills right now. I'll keep watching and text you if that changes.\",\"commits_to_return\":true}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 188,
+        "cache_creation_input_tokens": 6068,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 6068,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 497,
+        "output_tokens_details": {
+          "thinking_tokens": 438
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "10c4a65a7ac18b2f6be6765f274afbeaa65b0a6cf0c35225a0be0794f28d35a8": {
+    "key": "10c4a65a7ac18b2f6be6765f274afbeaa65b0a6cf0c35225a0be0794f28d35a8",
+    "recordedAt": "2026-11-09T08:40:28.132Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"I found no fall spots at Cartwheel Gym in Halton Hills right now. I'll keep watching and text you if that changes.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cgs47jgqRCuFdN8Z3kKjy",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft reports no find and a next step; no search bookkeeping.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 55,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 849,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 39,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
+  },
+  "8e1c4851ac7f8c6194ab24268d5b65c353f577ff7681d638bf2b6c5979a679a1": {
+    "key": "8e1c4851ac7f8c6194ab24268d5b65c353f577ff7681d638bf2b6c5979a679a1",
+    "recordedAt": "2026-11-09T08:40:36.910Z",
+    "request": {
+      "model": "claude-haiku-5-5",
+      "userMessage": "{\"draft\":\"Cartwheels Gym Centre's Tiny Gym (walking to 3.5, with a parent) runs Sundays 9:30-10:15, Sept 14 to Oct 26, $124 per term - their site says, and registration has been open since July 22. Kinderfun for ages 3 to 5 is Saturdays 10:30-11:15, Sept 13 to Oct 25, $124, per the same site.\"}"
+    },
+    "response": {
+      "model": "claude-haiku-5-5",
+      "id": "msg_011Cgs48NPCvW3cpr46BaVrd",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"reason\":\"Draft contains only finds (classes, days, times, prices, registration), with no search bookkeeping.\",\"process_sentences\":[]}"
+        }
+      ],
+      "container": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "stop_details": null,
+      "usage": {
+        "input_tokens": 148,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 849,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 50,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global",
+        "speed": "standard"
+      },
+      "diagnostics": null
+    }
   }
 }
