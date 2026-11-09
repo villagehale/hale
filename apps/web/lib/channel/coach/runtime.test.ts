@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RegisteredTool, Skill } from '@hale/agent';
+import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readInboundMedia } from '~/lib/channel/inbound-media';
 import {
@@ -11,7 +12,11 @@ import {
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
+import {
+  type ChannelCoachPorts,
+  channelCoachRuntime,
+  productionChannelCoachPorts,
+} from './runtime';
 
 /**
  * The runtime, with every collaborator injected — the model included, because what is
@@ -927,6 +932,154 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
     });
     const result = await channelCoachRuntime(p).respond(turn(), []);
     expect(result.experienceCard?.title).not.toContain('Nora');
+  });
+});
+
+/**
+ * VIL-495 — the model chooses voice. Dark: no verb, untouched skill, never a memo. Lit
+ * (1:1 only): the verb and the addendum ride, and calling it marks the reply as voice.
+ */
+describe('channelCoachRuntime · voice memos (VIL-495)', () => {
+  function seeing(seen: { tools: string[]; skillTools: string[]; instructions: string }[]) {
+    return (call?: boolean): ChannelCoachPorts['runAgent'] =>
+      async (args) => {
+        seen.push({
+          tools: args.tools.map((t) => t.name),
+          skillTools: [...args.skill.meta.tools],
+          instructions: args.skill.instructions,
+        });
+        if (call) {
+          const verb = args.tools.find((t) => t.name === 'reply_as_voice_memo');
+          if (!verb) throw new Error('no voice verb');
+          await verb.handler({} as never, {} as never);
+        }
+        return answering('So glad swim went well. Same time next week?')(args);
+      };
+  }
+
+  it('dark: no voice verb, the skill untouched, and never a memo', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(ports({ runAgent: seeing(seen)() })).respond(
+      turn(),
+      [],
+    );
+    expect(seen[0]?.tools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).not.toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).not.toContain('reply_as_voice_memo');
+    expect(result.voiceMemo ?? false).toBe(false);
+  });
+
+  it('lit on a group turn: still no voice verb', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    await channelCoachRuntime(
+      ports({
+        voiceMemosEnabled: () => true,
+        loadSkill: async () => SKILL,
+        runAgent: seeing(seen)(),
+      }),
+    )
+      .respond({ ...turn(), audience: 'group' }, [])
+      .catch(() => undefined);
+    expect(seen[0]?.tools ?? []).not.toContain('reply_as_voice_memo');
+  });
+
+  it('lit 1:1: the verb and the addendum ride; not calling it stays text', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(false) }),
+    ).respond(turn(), []);
+    expect(seen[0]?.tools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.skillTools).toContain('reply_as_voice_memo');
+    expect(seen[0]?.instructions).toContain('A voice memo they sent');
+    expect(result.voiceMemo).toBe(false);
+  });
+
+  it('lit 1:1: calling the verb marks the same written reply as voice', async () => {
+    const seen: { tools: string[]; skillTools: string[]; instructions: string }[] = [];
+    const result = await channelCoachRuntime(
+      ports({ voiceMemosEnabled: () => true, runAgent: seeing(seen)(true) }),
+    ).respond(turn(), []);
+    expect(result.voiceMemo).toBe(true);
+    expect(result.reply).toContain('So glad swim went well');
+  });
+
+  it('hands a heard voice memo to the model as the words the parent said', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const p = ports({
+      readInboundMedia: (parts) =>
+        readInboundMedia(
+          parts,
+          (async () => new Response(null)) as unknown as typeof fetch,
+          async () => 'is swim still on this saturday',
+        ),
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('It is.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(
+      {
+        ...turn(''),
+        inboundMedia: [{ kind: 'audio', url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' }],
+      },
+      [],
+    );
+    expect(seen[0]?.arrivedMedia).toEqual([
+      { kind: 'audio', heard: 'is swim still on this saturday' },
+    ]);
+  });
+});
+
+describe('productionChannelCoachPorts · whose voice memo is heard (VIL-495)', () => {
+  const MEMO = [
+    { kind: 'audio' as const, url: 'https://cdn.example/memo.m4a', mime: 'audio/x-m4a' },
+  ];
+
+  function lit() {
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    vi.stubEnv('AI_GATEWAY_API_KEY', 'gateway_test_key_not_a_secret');
+    return vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (url) =>
+        String(url).startsWith('https://cdn.example/')
+          ? new Response(new Uint8Array([1, 2, 3]))
+          : new Response(JSON.stringify({ text: 'is swim still on' })),
+      );
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('the runtime tells the media port who the turn is for', async () => {
+    const audiences: unknown[] = [];
+    const p = ports({
+      readInboundMedia: async (_parts, audience) => {
+        audiences.push(audience);
+        return { blocks: [], unwatched: [{ kind: 'audio' }] };
+      },
+    });
+    for (const audience of ['group', 'direct'] as const) {
+      await channelCoachRuntime(p).respond({ ...turn(''), audience, inboundMedia: MEMO }, []);
+    }
+    expect(audiences).toEqual(['group', 'direct']);
+  });
+
+  it("a group member's memo is never sent to the transcriber", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'group');
+    expect(out?.unwatched).toEqual([{ kind: 'audio' }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("the parent's own 1:1 memo is heard (positive control)", async () => {
+    const fetchSpy = lit();
+    const read = productionChannelCoachPorts({} as Database).readInboundMedia;
+    const out = await read?.(MEMO, 'direct');
+    expect(out?.unwatched).toEqual([{ kind: 'audio', heard: 'is swim still on' }]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 
