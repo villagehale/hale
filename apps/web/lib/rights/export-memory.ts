@@ -23,7 +23,10 @@ import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
  *     by source. "On record" reads history, not today's seats: a co-parent who left
  *     still counts, so their past words never pass to the parent who stayed.
  * A group-thread row and the requester's own 1:1 row are theirs to read; a workstream
- * is checked against both the message that opened it and the one that last changed it.
+ * is checked against every message that wrote it. The row keeps only the one that
+ * opened it and the one that last changed it, so a job changed more than once, or
+ * changed and then expired (expiry overwrites the last writer), has a writer that is
+ * not on record and is treated as unattributed.
  * An episode is a quick log from the family's shared log view, so it is shared by
  * source; a removed episode keeps no words. Child ids stay internal; a younger child is named.
  */
@@ -121,6 +124,38 @@ async function provenanceSources(
 /** The workstream that closed itself writes this in place of a message id. */
 const EXPIRY_PROVENANCE = 'expiry';
 
+/** The audit verbs `applyWorkstreamOp` writes, one per write: the first is the creation. */
+const WORKSTREAM_WRITE_ACTIONS = [
+  'workstream_opened',
+  'workstream_updated',
+  'workstream_closed',
+  'workstream_dropped',
+];
+
+/** How many times each of the family's workstreams was written after it was created. */
+async function workstreamLaterWrites(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, number>> {
+  const audit = schema.auditLog;
+  const rows = await database
+    .select({ targetId: audit.targetId, writes: sql<number>`count(*)::int` })
+    .from(audit)
+    .where(
+      and(
+        eq(audit.familyId, familyId),
+        eq(audit.targetTable, 'family_workstreams'),
+        inArray(audit.actionTaken, WORKSTREAM_WRITE_ACTIONS),
+      ),
+    )
+    .groupBy(audit.targetId);
+  return new Map(
+    rows.flatMap((row) =>
+      row.targetId === null ? [] : [[row.targetId, Math.max(0, row.writes - 1)] as const],
+    ),
+  );
+}
+
 /**
  * Whether any adult other than the requester was ever part of the family: a current
  * seat, anyone who texted in it (departure keeps their messages), or any user named as
@@ -166,7 +201,7 @@ export async function loadFamilyMemoryExport(
   const childName = (childId: string | null) =>
     childId === null || teenIds.has(childId) ? null : (nameById.get(childId) ?? null);
 
-  const [factRows, episodeRows, workstreamRows, commitmentRows] = await Promise.all([
+  const [factRows, episodeRows, workstreamRows, commitmentRows, laterWrites] = await Promise.all([
     database
       .select()
       .from(schema.familyMemoryFacts)
@@ -187,24 +222,34 @@ export async function loadFamilyMemoryExport(
       .from(schema.agentCommitments)
       .where(eq(schema.agentCommitments.familyId, familyId))
       .orderBy(schema.agentCommitments.createdAt),
+    workstreamLaterWrites(database, familyId),
   ]);
-  const workstreamWriters = (row: (typeof workstreamRows)[number]) =>
-    row.updatedFrom === EXPIRY_PROVENANCE ? [row.createdFrom] : [row.createdFrom, row.updatedFrom];
+  /** The message ids that wrote a workstream; null stands for a writer not on record. */
+  const workstreamWriters = (row: (typeof workstreamRows)[number]): (string | null)[] => {
+    const later = laterWrites.get(row.id) ?? 0;
+    if (row.updatedFrom === EXPIRY_PROVENANCE) {
+      return later === 0 ? [row.createdFrom] : [row.createdFrom, null];
+    }
+    return later <= 1
+      ? [row.createdFrom, row.updatedFrom]
+      : [row.createdFrom, row.updatedFrom, null];
+  };
   const [sources, otherAdult] = await Promise.all([
     provenanceSources(database, familyId, [
-      ...workstreamRows.flatMap(workstreamWriters),
+      ...workstreamRows.flatMap(workstreamWriters).filter((id): id is string => id !== null),
       ...commitmentRows.map((row) => row.createdFrom),
     ]),
     anotherAdultOnRecord(database, familyId, requester.userId),
   ]);
   const unattributed: MemoryWithheldReason | null = otherAdult ? 'source_not_recorded' : null;
-  const fromOne = (messageId: string): MemoryWithheldReason | null => {
+  const fromOne = (messageId: string | null): MemoryWithheldReason | null => {
+    if (messageId === null) return unattributed;
     const source = sources.get(messageId);
     if (!source) return unattributed;
     if (source.inGroup === true || source.parentUserId === requester.userId) return null;
     return 'another_adult';
   };
-  const bySource = (messageIds: readonly string[]): MemoryWithheldReason | null => {
+  const bySource = (messageIds: readonly (string | null)[]): MemoryWithheldReason | null => {
     const reasons = messageIds.map(fromOne);
     if (reasons.includes('another_adult')) return 'another_adult';
     return reasons.find((reason) => reason !== null) ?? null;

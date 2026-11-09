@@ -2,6 +2,11 @@ import { schema } from '@hale/db';
 import { PgTable, getTableConfig } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
+import {
+  type WorkstreamOp,
+  applyWorkstreamOp,
+  expireStaleWorkstreams,
+} from '~/lib/memory/workstreams';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
@@ -409,7 +414,6 @@ describe('family memory in the right-to-access copy', () => {
       .values([
         workstream('group plan B retitled', group, fromB),
         workstream('group plan A retitled', group, fromA),
-        workstream('A job that expired', fromA, 'expiry'),
       ]);
 
     const doc = await assembleFamilyExport(db.database, familyId, {
@@ -421,9 +425,89 @@ describe('family memory in the right-to-access copy', () => {
     expect(doc.memory.workstreams.map((w) => [w.title, w.nextStep, w.withheld])).toEqual([
       [null, null, 'another_adult'],
       ['group plan A retitled', 'group plan A retitled next', null],
-      ['A job that expired', 'A job that expired next', null],
     ]);
     expect(JSON.stringify(doc.memory)).not.toContain('B retitled');
+  });
+
+  it('withholds a job whose writers are not all on record: expired after a change, or changed twice', async () => {
+    const { familyId, parentUserId: parentA } = await seedFamily(db.database);
+    const [userB] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${familyId}:coparent`, name: 'Co-parent' })
+      .returning({ id: schema.users.id });
+    const parentB = userB?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: parentB, role: 'co_parent' });
+    const message = async (parentUserId: string, inGroup: boolean) => {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction: 'in',
+          category: 'reply',
+          status: 'sent',
+          inGroup,
+        })
+        .returning({ id: schema.channelMessages.id });
+      return row?.id as string;
+    };
+    const group = await message(parentB, true);
+    const fromA = await message(parentA, false);
+    const fromB = await message(parentB, false);
+
+    let clock = new Date('2026-11-01T10:00:00.000Z').getTime();
+    const tick = () => {
+      clock += 60_000;
+      return new Date(clock);
+    };
+    const expiresAt = '2026-11-05T00:00:00.000Z';
+    const later = '2026-12-01T00:00:00.000Z';
+    const open = async (title: string, provenance: string) => {
+      const result = await applyWorkstreamOp(db.database, {
+        familyId,
+        provenance,
+        now: tick(),
+        op: { action: 'open', title, nextStep: `${title} next`, expiresAt },
+      });
+      if (!('id' in result)) throw new Error(`open refused: ${result.outcome}`);
+      return result.id;
+    };
+    const update = (id: string, provenance: string, op: Partial<WorkstreamOp>) =>
+      applyWorkstreamOp(db.database, {
+        familyId,
+        provenance,
+        now: tick(),
+        op: { action: 'update', id, ...op },
+      });
+
+    const expiredAfterB = await open('pool plan one', group);
+    await update(expiredAfterB, fromB, { nextStep: 'B secret step one' });
+    const middleB = await open('pool plan two', group);
+    await update(middleB, fromB, { nextStep: 'B secret step two' });
+    await update(middleB, fromA, { status: 'waiting_on_parent', expiresAt: later });
+    await open('A job that expired', fromA);
+    const groupThenA = await open('group plan A changed', group);
+    await update(groupThenA, fromA, { nextStep: 'A step', expiresAt: later });
+    expect(
+      await expireStaleWorkstreams(db.database, new Date('2026-11-06T00:00:00.000Z'), familyId),
+    ).toBe(2);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+
+    expect(doc.memory.workstreams.map((w) => [w.title, w.nextStep, w.status, w.withheld])).toEqual([
+      [null, null, 'dropped', 'source_not_recorded'],
+      [null, null, 'waiting_on_parent', 'source_not_recorded'],
+      ['A job that expired', 'A job that expired next', 'dropped', null],
+      ['group plan A changed', 'A step', 'open', null],
+    ]);
+    expect(JSON.stringify(doc.memory)).not.toContain('B secret');
   });
 
   it('reads every family table, or names why not', async () => {
