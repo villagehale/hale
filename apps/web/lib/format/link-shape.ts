@@ -90,7 +90,7 @@ export function hasLinkShape(text: string): boolean {
 
 const WORD_EDGE = /^[([{<"'“‘]+|[.,;:!?)\]}>"'”’]+$/gu;
 
-function wordsAsHandsetReads(text: string): string[] {
+export function wordsAsHandsetReads(text: string): string[] {
   return asHandsetReads(text)
     .split(/\s+/)
     .map((word) => word.replace(WORD_EDGE, ''))

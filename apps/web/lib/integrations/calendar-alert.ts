@@ -23,12 +23,8 @@ import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
-import {
-  KID_NOTICE_PURPOSE,
-  kidNoticeDedupeKey,
-  kidNoticeTitle,
-  readKidNoticeGates,
-} from './calendar-kid-notice';
+import { KID_NOTICE_PURPOSE, kidNoticeDedupeKey, readKidNoticeGates } from './calendar-kid-notice';
+import { kidNoticeTitle } from './calendar-notice-title';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
@@ -173,6 +169,13 @@ export const CALENDAR_ALERT_OUTCOMES = [
   /** A teenager's event, or a kid event tied to no child in a family with a teenager. The
    * deterministic age gate keeps it from the parent (rule #1). */
   'teen_held',
+  /** VIL-633. Someone else's invite the parent has not accepted (unanswered or tentative).
+   * It stays mirrored for the week view, but its title is a stranger's words, so Hale says
+   * nothing about it. */
+  'invite_not_accepted',
+  /** VIL-633. A kid copy mirrored before Hale read where the parent stands on it. Held the
+   * same way until the next mirror sweep writes it. */
+  'standing_unknown',
   /** The writer returned no text, so nothing was sent and the key was not spent. */
   'notice_unwritten',
   /** CALENDAR_ALERT_ENABLED is not `true`. The shape is remembered and a text already
@@ -472,10 +475,14 @@ async function kidNoticeSweep(
     fresh.map((placed) => placed.change.eventId),
   );
   const cleared: KidPlaced[] = [];
+  const notTheParents = { inviteNotAccepted: 0, standingUnknown: 0 };
   for (const placed of fresh) {
     const gate = gates.get(placed.change.eventId);
     if (gate === undefined || !gate.cleared) {
-      placed.write(gate?.why ?? 'not_kid_tracked');
+      const why = gate?.why ?? 'not_kid_tracked';
+      if (why === 'invite_not_accepted') notTheParents.inviteNotAccepted += 1;
+      if (why === 'standing_unknown') notTheParents.standingUnknown += 1;
+      placed.write(why);
       remember(writes, placed, null);
       continue;
     }
@@ -485,6 +492,10 @@ async function kidNoticeSweep(
       title: own === '' ? kidNoticeTitle(gate.title) : own,
       kidName: gate.kidName,
     });
+  }
+  if (notTheParents.inviteNotAccepted + notTheParents.standingUnknown > 0) {
+    // Counts only: no family, connection, event or title (rule #1).
+    console.info(notTheParents, "calendar kid notice: not the parent's own event");
   }
 
   let language: Promise<string> | undefined;
