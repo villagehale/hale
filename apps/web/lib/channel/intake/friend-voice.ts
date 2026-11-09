@@ -150,6 +150,11 @@ export type FriendFallback =
 export interface FriendTurn {
   role: 'parent' | 'hale';
   body: string;
+  /**
+   * The model set `asks` on the outbound that produced this turn. Absent on
+   * older rows: a question mark in `body` is not a substitute.
+   */
+  asked?: boolean;
 }
 
 /** One group on the activity map, as code found it. */
@@ -257,6 +262,8 @@ export interface FriendVoiceResult {
   step: FriendStep;
   /** Shape-checked fields from the model. Empty when nothing was stored. */
   capture: OnboardingCapture;
+  /** The model's `asks` on the reply that went out. False when nothing was sent. */
+  asks: boolean;
 }
 
 export interface FriendComposeOptions {
@@ -270,6 +277,49 @@ export interface FriendComposed {
   ahaMention?: string | null;
   /** On find_show: one short lead per group, same order as facts.findGroups. */
   groupLeads?: readonly string[] | null;
+  /** This reply asks the parent something. Omitted means the model did not say. */
+  asks?: boolean;
+  /** Their message is a question, not a yes to Gmail, the calendar, or the group. */
+  parentQuestion?: boolean;
+  /** Every connector this reply asks, offers, or agrees to connect. */
+  connectorsOffered?: readonly OfferedConnector[];
+  /** How a co-parent yes points at the number and phrase code places under the reply. */
+  joinPointer?: JoinPointer | null;
+}
+
+export type OfferedConnector = 'gmail' | 'calendar';
+
+/** What the model says a co-parent yes does with the number code places under the reply. */
+export type JoinPointer = 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing';
+
+const JOIN_POINTERS = new Set<JoinPointer>([
+  'below',
+  'wrong_owner',
+  'placeholder',
+  'hale_starts',
+  'missing',
+]);
+
+/** The connector a card on this step is not for. The link under the reply connects only its own. */
+const OTHER_CONNECTOR: Partial<Record<FriendStep, OfferedConnector>> = {
+  email: 'calendar',
+  calendar: 'gmail',
+};
+
+/** The four decisions the model makes instead of a text match. Omitted is "did not say". */
+function replyMarks(composed: FriendComposed): {
+  asks: boolean;
+  parentQuestion: boolean;
+  offered: readonly OfferedConnector[];
+  joinPointer: JoinPointer | null;
+} {
+  const pointer = composed.joinPointer;
+  return {
+    asks: composed.asks === true,
+    parentQuestion: composed.parentQuestion === true,
+    offered: composed.connectorsOffered ?? [],
+    joinPointer: pointer != null && JOIN_POINTERS.has(pointer) ? pointer : null,
+  };
 }
 
 export interface FriendVoiceComposer {
@@ -415,6 +465,19 @@ const replySchema = z.object({
   calendarLater: z.boolean().optional().default(false).catch(false),
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
+  asks: z.boolean().optional().default(false).catch(false),
+  parentQuestion: z.boolean().optional().default(false).catch(false),
+  connectorsOffered: z
+    .array(z.enum(['gmail', 'calendar']))
+    .optional()
+    .default([])
+    .catch([]),
+  joinPointer: z
+    .enum(['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing'])
+    .nullable()
+    .optional()
+    .default(null)
+    .catch(null),
   ahaMention: z.string().nullable().optional().default(null).catch(null),
   // BCP-47, or null when the model omits it. A sentence is not a tag.
   language: z.string().nullable().optional().default(null).catch(null),
@@ -477,17 +540,25 @@ const replyJsonSchema = {
     calendarLater: { type: 'boolean' },
     gmailLater: { type: 'boolean' },
     stopAsking: { type: 'boolean' },
+    asks: { type: 'boolean' },
+    parentQuestion: { type: 'boolean' },
+    connectorsOffered: { type: 'array', items: { type: 'string', enum: ['gmail', 'calendar'] } },
+    joinPointer: {
+      type: ['string', 'null'],
+      enum: ['below', 'wrong_owner', 'placeholder', 'hale_starts', 'missing', null],
+    },
     ahaMention: { type: ['string', 'null'] },
     language: { type: ['string', 'null'] },
   },
-  required: ['reply'],
+  // Code reads these four instead of the reply's words, so the model always says.
+  required: ['reply', 'asks', 'parentQuestion', 'connectorsOffered', 'joinPointer'],
 } as const;
 
 /** Flag off omits the choice field, so the tool the model fills is today's. */
 export function onboardingReplyToolSchema(): {
   type: 'object';
   properties: Record<string, unknown>;
-  required: readonly ['reply'];
+  required: readonly string[];
 } {
   if (!linqGroupOnboardingV2Enabled()) {
     const { coparentGroupMode: _choice, ...properties } = replyJsonSchema.properties;
@@ -566,11 +637,12 @@ const FLEX_QUESTION_STEPS = new Set<FriendStep>(['name_reply']);
 const LINK_STEPS = new Set<FriendStep>(['calendar', 'email']);
 
 export function turnsFromTranscript(
-  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  transcript: readonly { direction: 'in' | 'out'; body: string; asked?: boolean }[],
 ): FriendTurn[] {
   return transcript.slice(-8).map((entry) => ({
     role: entry.direction === 'in' ? 'parent' : 'hale',
     body: entry.body,
+    ...(entry.asked === true ? { asked: true } : {}),
   }));
 }
 
@@ -774,9 +846,10 @@ export function parentReading(
   const words = input.parentWords.trim();
   const item = answeringItem(input);
   if (!item) return null;
-  // A plain "ok" answers a question only when Hale's last text asked one.
+  // A plain "ok" answers only when the previous reply's model field said it asked.
+  // A question mark in that text, in any script, is not the signal.
   const lastHale = [...input.recentTurns].reverse().find((turn) => turn.role === 'hale');
-  if (!lastHale?.body.includes('?')) return null;
+  if (lastHale?.asked !== true) return null;
   if (item === 'name' && LONE_NAME.test(words)) {
     const name = words.replace(/[.!]+$/u, '');
     const kids = (input.children ?? []).map((kid) => (kid.name ?? '').toLowerCase());
@@ -818,11 +891,11 @@ function withGroupMode(capture: OnboardingCapture, input: FriendVoiceInput): Onb
 }
 
 /**
- * A question is not a yes. "Do you read all my emails?" asks; it does not
- * agree to connect Gmail or to a group chat.
+ * A question is not a yes. The model says so with `parentQuestion`; a question
+ * mark in the parent's words, in any script, is not the signal.
  */
-function noYesInAQuestion(capture: OnboardingCapture, input: FriendVoiceInput): OnboardingCapture {
-  if (!input.parentWords.includes('?')) return capture;
+function noYesInAQuestion(capture: OnboardingCapture, parentQuestion: boolean): OnboardingCapture {
+  if (!parentQuestion) return capture;
   return {
     ...capture,
     connectGmail: capture.connectGmail === true ? null : capture.connectGmail,
@@ -1459,33 +1532,6 @@ export function judgeFriendReply(
     const follows = options.linkFollows === true && LINK_STEPS.has(input.step);
     if (!attached && !follows && !above) return { ok: false, reason: 'link' };
   }
-  // A card is for one connector. Prose about the other one under its link
-  // sends the parent to the wrong place.
-  if (options.linkFollows || options.link) {
-    // Naming the other connector is fine ("so I can add them to your calendar");
-    // asking to connect it under this link is not.
-    const connects = (thing: string) =>
-      new RegExp(
-        `\\b(?:connect|link|hook up|sync|access)\\w*\\b[^.?!]{0,25}\\b(?:${thing})\\b|\\b(?:${thing})\\b[^.?!]{0,15}\\b(?:connect|link|access)\\w*`,
-        'i',
-      ).test(trimmed);
-    // The ask is for this connector: a question about the other one is the wrong ask.
-    const otherAsked = (thing: RegExp) =>
-      sentencesOf(trimmed).some((sentence) => sentence.includes('?') && thing.test(sentence));
-    if (input.step === 'calendar' && otherAsked(/\b(?:gmail|inbox|e-?mails?)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && otherAsked(/\b(?:calendars?|calendrier|agenda)\b/i)) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'calendar' && connects('gmail|inbox|e-?mail')) {
-      return { ok: false, reason: 'link' };
-    }
-    if (input.step === 'email' && connects('calendar|calendrier|agenda')) {
-      return { ok: false, reason: 'link' };
-    }
-  }
-
   // Nothing is connected until they tap the link: the ask and the reply to a yes say so.
   if (LINK_STEPS.has(input.step) && CONNECTED_CLAIM.test(trimmed)) {
     return { ok: false, reason: 'premature' };
@@ -1663,6 +1709,7 @@ function unsent(reason: FriendFallback, step: FriendStep): FriendVoiceResult {
     fallback: reason,
     step,
     capture: acceptOnboardingCapture(null),
+    asks: false,
   };
 }
 
@@ -1806,6 +1853,7 @@ export async function speakFriend(
     source: FriendVoiceResult['source'],
     turnCapture: OnboardingCapture,
     step: FriendStep,
+    asks: boolean,
   ): FriendVoiceResult => {
     const capture = withPre(turnCapture);
     const body =
@@ -1820,6 +1868,7 @@ export async function speakFriend(
       fallback: null,
       step,
       capture,
+      asks,
     };
   };
 
@@ -1852,6 +1901,7 @@ export async function speakFriend(
         bubbles: string[];
         capture: OnboardingCapture;
         step: FriendStep;
+        asks: boolean;
       }
     | {
         fail: FriendFallback;
@@ -1878,6 +1928,7 @@ export async function speakFriend(
     const empty = acceptOnboardingCapture(null);
     try {
       const composed = await withTimeout(composer.compose(input, { prompt }), timeoutMs);
+      const marks = replyMarks(composed);
       const limits = scheduleLimits(input);
       // A message Hale sends on its own (a card, a receipt) answers nothing:
       // there are no parent words to read a yes or a fact from.
@@ -1890,7 +1941,7 @@ export async function speakFriend(
                   withReading(
                     noYesInAQuestion(
                       ownNameOnly(acceptOnboardingCapture(composed.capture, limits), input),
-                      input,
+                      marks.parentQuestion,
                     ),
                     input,
                   ),
@@ -1901,7 +1952,7 @@ export async function speakFriend(
           : empty;
       const draft = composed.reply.trim();
       if (options.replyDiscardedWhen?.(capture)) {
-        return { prose: '', bubbles: [], capture, step: input.step };
+        return { prose: '', bubbles: [], capture, step: input.step, asks: marks.asks };
       }
       // A refused add means the reply may confirm a reminder that was never written.
       const refusedAdds = countRejectedScheduleAdds(composed.capture, limits);
@@ -1931,37 +1982,21 @@ export async function speakFriend(
       // After a yes, the link is the next step: the reply points at it and asks nothing.
       // A turn that records reminders confirms them and asks nothing; the
       // parent's next message closes the schedule (see settleSchedule).
-      const tidied = tidyProse(
+      const prose = tidyProse(
         composed.reply,
         input,
         judgeInput.step,
         yesToLink(input, capture) || capture.scheduleAdds.length > 0,
       );
-      // Flag off: the number and phrase ride below, so a sentence that ends
-      // "send this phrase: Hale" points at them and stops there. Flag on writes
-      // the choice itself and does not get that rewrite.
+      // Under a yes to the group, code adds the number and phrase. The model
+      // says whether the reply points at them. Words are not the signal.
       const v2 = linqGroupOnboardingV2Enabled();
-      const prose =
-        !v2 && input.coparentJoin != null && capture.coparentGroup === true
-          ? tidied.replace(/:\s*[^.?!:\n]{0,24}$/u, '.')
-          : tidied;
-      // Under a yes to the group, code adds the number and phrase: the reply says they are below.
       const joinBelow = !v2 && input.coparentJoin != null && capture.coparentGroup === true;
-      // The number below is Hale's, never the other parent's.
-      const wrongOwner =
-        /\b(?:her|his|their|(?:mom|mum|dad|mother|father)['’]?s) (?:number|phone)\b/i;
-      if (
-        joinBelow &&
-        (!/\bbelow\b|\bhere\b|\bnumber\b|ci-dessous|en dessous|plus bas|num[ée]ro/i.test(prose) ||
-          wrongOwner.test(prose) ||
-          // A placeholder where the number or phrase would go ("this number: Hale's number").
-          /\b(?:number|phrase)\s*:?\s+(?:hale['’]s|the) (?:number|phrase)\b/i.test(prose) ||
-          // They start the group; Hale does not.
-          /\bI(?:['’]ll| will) (?:set up|start|create|make)\b[^.?!]{0,15}\bgroup\b|\bI(?:['’]ll| will) set (?:that|it|this) up\b/i.test(
-            prose,
-          ))
-      ) {
-        noteRefusal({ reason: 'join_not_pointed', step: input.step, prompt }, 'unusable');
+      if (joinBelow && marks.joinPointer !== 'below') {
+        noteRefusal(
+          { reason: 'join_not_pointed', joinPointer: marks.joinPointer, step: input.step, prompt },
+          'unusable',
+        );
         return {
           fail: 'unusable',
           capture,
@@ -1985,6 +2020,17 @@ export async function speakFriend(
         yesToLink: yesToLink(input, capture),
         scheduleRecorded: capture.scheduleAdds.length > 0,
       };
+      // A card is for one connector. The model lists what the reply offers to connect.
+      const linkInPlay = judgeOptions.linkFollows === true || Boolean(judgeOptions.link);
+      const other = OTHER_CONNECTOR[judgeInput.step];
+      if (linkInPlay && other && marks.offered.includes(other)) {
+        noteRefusal({ reason: 'other_connector', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('other_connector') },
+        };
+      }
       const bubblesFor = (text: string): { bubbles: string[]; judgedText: string } | null => {
         if (input.step === 'find_show') {
           const groups = input.findGroups ?? [];
@@ -1998,24 +2044,19 @@ export async function speakFriend(
           judgedText: assembleFriendBody(text, input, options.link, options.trailer),
         };
       };
-      // A good draft with one fixable slip (a second question mark) is repaired
-      // by code and judged again rather than dropped. Length is not a reason.
+      // A draft that fails the judge is not rewritten. The model is asked once
+      // more; if that also fails, nothing is sent.
       const assembled = bubblesFor(prose);
       if (!assembled) return { fail: 'unusable', capture };
       const judged = judgeFriendReply(assembled.judgedText, judgeInput, judgeOptions);
-      if (judged.ok) return { prose, bubbles: assembled.bubbles, capture, step: judgeInput.step };
-      const repaired = repairedProse(prose, judgeInput.step);
-      const again = repaired.length > 0 ? bubblesFor(repaired) : null;
-      if (
-        again &&
-        (judged.reason === 'question' || judged.reason === 'link') &&
-        judgeFriendReply(again.judgedText, judgeInput, judgeOptions).ok
-      ) {
-        console.error(
-          { repaired: judged.reason, step: input.step, prompt },
-          'onboarding-friend: draft repaired',
-        );
-        return { prose: repaired, bubbles: again.bubbles, capture, step: judgeInput.step };
+      if (judged.ok) {
+        return {
+          prose,
+          bubbles: assembled.bubbles,
+          capture,
+          step: judgeInput.step,
+          asks: marks.asks,
+        };
       }
       return reject(judged);
 
@@ -2077,6 +2118,7 @@ export async function speakFriend(
       firstPrompt === 'short' ? 'retry' : 'composed',
       first.capture,
       first.step,
+      first.asks,
     );
   }
   if (firstPrompt === 'short') return failed(first.fail, first.capture);
@@ -2101,7 +2143,7 @@ export async function speakFriend(
   if ('prose' in second) {
     console.info({ recovered: true, step: input.step }, 'onboarding-friend: retry recovered');
     const capture = advanced ? mergeCaptures(advanced.settled, second.capture) : second.capture;
-    return finish(second.prose, second.bubbles, 'retry', capture, second.step);
+    return finish(second.prose, second.bubbles, 'retry', capture, second.step, second.asks);
   }
   return failed(second.fail, mergeCaptures(first.capture, second.capture));
 }
@@ -2133,15 +2175,17 @@ function carriesJoin(prose: string, join: { line: string; phrase: string }): boo
 
 /** What the retry is told about the draft that was not sent. Plain words for the model. */
 function retryProblem(
-  reason: FriendJudgeFailure | 'schedule' | 'join',
+  reason: FriendJudgeFailure | 'schedule' | 'join' | 'other_connector',
   detail?: string,
   input?: FriendVoiceInput,
 ): string {
   switch (reason) {
     case 'join':
       return linqGroupOnboardingV2Enabled()
-        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Say it is below and do not write the digits or a phrase to text. When it is new, say you will start the group. A plain yes leaves coparentGroupMode null.'
-        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Say they are below and how to use them (coparentJoin.how), without writing them. Hale does not start the group; they do.";
+        ? 'When coparentGroupMode is existing, code places the number on its own line under the reply. Set joinPointer to below when the reply points at it. Do not write the digits or a phrase to text. When it is new, say you will start the group and set joinPointer to hale_starts. A plain yes leaves coparentGroupMode null and joinPointer null.'
+        : "Under their yes, code puts Hale's number and the phrase on their own lines right below. Set joinPointer to below when the reply points at them, wrong_owner when that number is the other parent's, placeholder when a stand-in sits where they go, hale_starts when Hale starts the group, or missing when the reply does not point at them. Do not write the number or the phrase.";
+    case 'other_connector':
+      return "The draft offered to connect the connector this step is not (Gmail on the calendar step, the calendar on the Gmail step), but the link under it connects only this step's. Ask about this step's connector only; the other one comes later.";
     case 'schedule':
       return 'A scheduleAdd pointed at a line that does not fit that child or is not on the map. Use the n of the line that matches, for a child its ages suit.';
     case 'question':
@@ -2237,42 +2281,6 @@ function factsOnly(capture: OnboardingCapture): OnboardingCapture {
 }
 
 /** Sentences, split after . ! ? or at a line break. Each keeps its punctuation. */
-/** Opens a question: "Which of these…?", "Would you…?". */
-const QUESTION_OPENER =
-  /^(?:which|what|who|when|where|how|would|could|can|do|does|did|is|are|want|should|shall|will)\b/i;
-/** A question that only points at the options a later one names: "Which of these would help?" */
-const OPTIONS_OPENER =
-  /^(?:which|what)\b[^?]{0,40}\b(?:these|those|ones?|options?|activities|programs)\b[^?]{0,40}\?$/i;
-const COPARENT_WORDS = /\b(?:group (?:chat|text)|other parent|co-?parent)\b/i;
-
-/**
- * Code's repair of a draft that broke one countable rule. Two or three
- * questions offering choices become one: an earlier question that only opens
- * ("Which of these would help?") is dropped, any other earlier one becomes a
- * statement. Empty when there is nothing safe to repair. Length is not repaired.
- */
-export function repairedProse(prose: string, step: FriendStep): string {
-  if (ZERO_QUESTION_STEPS.has(step)) return '';
-  let sentences = sentencesOf(prose);
-  const asks = sentences.filter((sentence) => sentence.includes('?'));
-  // Never fold in an ask that belongs to another step.
-  if (step !== 'coparent' && asks.some((sentence) => COPARENT_WORDS.test(sentence))) return '';
-  if (asks.length > 1) {
-    const last = sentences.lastIndexOf(asks[asks.length - 1] ?? '');
-    sentences = sentences.flatMap((sentence, index) => {
-      if (index === last || !sentence.includes('?')) return [sentence];
-      if (OPTIONS_OPENER.test(sentence)) return [];
-      // "Do you have kids? If so, …": the later question leans on it. No safe repair.
-      if (QUESTION_OPENER.test(sentence)) return ['\u0000'];
-      return [sentence.replace(/\?+/g, '.')];
-    });
-    if (sentences.includes('\u0000')) return '';
-  }
-  const repaired = sentences.join(' ');
-  if (repaired === prose.trim()) return '';
-  return repaired.includes('?') ? repaired : '';
-}
-
 function sentencesOf(text: string): string[] {
   // "Village Hale Technologies Inc. made Hale" is one sentence.
   return text
@@ -2406,6 +2414,10 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
           language: acceptReplyLanguage(value.language),
         },
         ahaMention: value.ahaMention,
+        asks: value.asks,
+        parentQuestion: value.parentQuestion,
+        connectorsOffered: value.connectorsOffered,
+        joinPointer: value.joinPointer,
       };
     },
   };
