@@ -34,7 +34,7 @@ describe('redactEventsForTeens (rule #1)', () => {
         receivedAt: '2026-06-15T00:00:00.000Z',
       },
     ];
-    expect(_internal.redactEventsForTeens(events, stages)).toEqual(events);
+    expect(_internal.redactEventsForTeens(events, stages, ['Tamsin'])).toEqual(events);
   });
 
   it('redacts a teen-scoped event: raw payload withheld and child scope dropped', () => {
@@ -48,6 +48,7 @@ describe('redactEventsForTeens (rule #1)', () => {
         },
       ],
       stages,
+      [],
     );
     const [event] = out;
     if (!event) throw new Error('expected one redacted event');
@@ -55,5 +56,18 @@ describe('redactEventsForTeens (rule #1)', () => {
     expect(event.childId).toBeNull();
     // Coarse type survives — the model still knows the family has activity.
     expect(event.eventType).toBe('message.received');
+  });
+
+  it('redacts a family-wide event whose text names the teen, and keeps one that names nobody', () => {
+    const named = {
+      childId: null,
+      eventType: 'message.received',
+      payload: { body: 'Tamsin has a secret boyfriend' },
+      receivedAt: '2026-06-16T00:00:00.000Z',
+    };
+    const unnamed = { ...named, payload: { body: 'the toddler slept eleven hours' } };
+    const out = _internal.redactEventsForTeens([named, unnamed], stages, ['Tamsin']);
+    expect(JSON.stringify(out)).not.toContain('boyfriend');
+    expect(out[1]).toEqual(unnamed);
   });
 });
