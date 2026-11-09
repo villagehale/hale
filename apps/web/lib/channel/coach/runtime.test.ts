@@ -542,6 +542,7 @@ describe('the watch a turn started', () => {
       label: 'Saturday skating',
       instant: false,
       lastState: 'full',
+      sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
     });
   });
 

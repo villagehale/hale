@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Here you go. Connecting is optional, and each link works for 15 minutes. Google may show an \"unverified app\" screen first. That's normal for this connection and safe to get past: tap Advanced, then continue.\n\nCalendar, so Hale can spot daycare and school notices:\n[[calendarLink]]\n\nGmail, so Hale can spot daycare and school notices:\n[[gmailLink]]"
+  },
+  "latencyMs": 2200
+}

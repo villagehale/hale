@@ -1,4 +1,4 @@
-import type { Database, Municipality } from '@hale/db';
+import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, deriveStage, isBeyondProductAge } from '@hale/types';
 import { eq } from 'drizzle-orm';
@@ -89,7 +89,7 @@ function stagesOf(children: readonly WeekdaySearchChild[]): FamilyStage[] {
  */
 export function buildWeekdayActivityQuery(input: {
   children: readonly WeekdaySearchChild[];
-  municipality: Municipality | null;
+  town: string | null;
   now: Date;
   timeZone: string;
   householdNames: readonly string[];
@@ -113,7 +113,7 @@ export function buildWeekdayActivityQuery(input: {
   const deidentified = deidentifyActivityQuery({
     subject,
     window,
-    municipality: input.municipality,
+    town: input.town,
     stage,
     householdNames: input.householdNames,
   });
@@ -185,7 +185,7 @@ export async function searchWeekdaysForFamily(
   },
 ): Promise<WeekdaySearchDelivery> {
   const reader = productionActivityFamilyReader();
-  const [children, municipality, householdNames, parent] = await Promise.all([
+  const [children, place, householdNames, parent] = await Promise.all([
     database
       .select({
         dateOfBirth: schema.children.dateOfBirth,
@@ -193,7 +193,7 @@ export async function searchWeekdaysForFamily(
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.familyId)),
-    reader.municipality(database, input.familyId),
+    reader.place(database, input.familyId),
     reader.householdNames(database, input.familyId),
     database
       .select({ timezone: schema.users.timezone })
@@ -209,7 +209,7 @@ export async function searchWeekdaysForFamily(
         : deriveStage(child.dateOfBirth, input.now),
       interests: child.interests,
     })),
-    municipality,
+    town: place.status === 'known' ? place.town : null,
     now: input.now,
     timeZone: parent[0]?.timezone ?? DEFAULT_TIMEZONE,
     householdNames,

@@ -63,34 +63,22 @@ the question filed as confirmed identity) must exit nonzero.
 Note: register the tsx loader ONCE (`register()` + dynamic `import()`). `tsImport()` per-module — what the older
 harnesses call — installs a fresh ESM loader each call and they stack; the fourth web module never resolves.
 
-# Village eval harness (discovery + routine)
+# Village eval harness (discovery floor)
 
-The village feature has two agents with very different testability, so the harness scores them differently.
 Run from the worker package dir (`apps/worker`):
 
 ```
-node --env-file=../../.env evals/run-village-eval.mjs                 # live pass, then caches
-node --env-file=../../.env evals/run-village-eval.mjs --routine=broken # calibration: must FAIL
-node evals/run-village-eval.mjs --cached-only                         # CI: replay only, never calls the API
+node evals/run-village-eval.mjs --cached-only   # what the weekly sweep runs; never calls the API
 ```
 
-- ROUTINE (the novel reasoning): REPLICATES the `runRoutine` request shape — same prompt (`prompts/routine.md`),
-  same model (`SONNET_MODEL` read live from `src/anthropic/client.ts`), same `submit_routine` tool-forced schema
-  and serialization. Per fixture (a family stage + a candidate set), deterministic checks gate that every proposed
-  item references a PROVIDED candidate, is not drawn from an off-stage candidate, carries the candidate's confidence
-  through unchanged, and keeps the week light (item-count bound); a cached Haiku judge then scores stage-fit 1–5
-  (must be >= 4). Cache + replicate-not-import design identical to the classifier/drafter (the stale `dist/` still
-  references the removed Mastra layer).
-- DISCOVERY (the Fake floor): the REAL `FakeDiscoveryProvider` is the subject, imported live from
-  `src/agents/discovery-providers/fake.ts` via the tsx loader (never the stale dist; copying its SEED table would be
-  a second source of truth). A reference-recall check confirms the curated items a stage/interest query should
-  surface do surface, the ranking holds, and `source`/`confidence`/`coverageNote`/`areaCoarse` are honest (rule #1:
-  no `sourceUrl` finer than the coarse area). Zero spend — no model, no key needed for this half.
+The REAL `FakeDiscoveryProvider` is the subject, imported live from `src/agents/discovery-providers/fake.ts` via the
+tsx loader (never the stale dist; copying its SEED table would be a second source of truth). A reference-recall check
+confirms the curated items a stage/interest query should surface do surface, the ranking holds, and
+`source`/`confidence`/`coverageNote`/`areaCoarse` are honest (rule #1: no `sourceUrl` finer than the coarse area).
+Zero spend: no model, no key.
 
-Calibrated BOTH directions: the real cached model must pass every fixture; the `--routine=broken` stand-in (an
-invented, off-stage, confidence-inflated item) is rejected on every routine fixture by the deterministic checks alone
-(no API call), while the deterministic discovery fixtures still pass. Gate: real mode exits 0 iff every fixture
-passes; broken mode exits 0 iff at least one is rejected. Token usage per keyed call is logged as the budget instrument.
+The routine leg this harness used to score replicated `runRoutine`, which #575 deleted with the routine agent. It
+gated an agent that no longer ships, so it is gone too.
 
 # Agent-skill eval harness (discovery)
 

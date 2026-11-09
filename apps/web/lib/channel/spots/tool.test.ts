@@ -216,6 +216,9 @@ describe('watch_for_opening — arms only on a full course page, for a consentin
         label: 'Preschool swim',
         instant: true,
         lastState: 'full',
+        // The page's own `"StartDateValue":"2026-09-21T17:00:00"`, read in the portal's
+        // registry zone (Toronto, EDT), so the watch can end when the class starts.
+        sessionStartsAt: new Date('2026-09-21T21:00:00.000Z'),
       },
     ]);
   });

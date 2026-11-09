@@ -241,6 +241,28 @@ export async function placeOf(family: {
 }
 
 /**
+ * {@link placeOf}, with the province or state ALWAYS named where the postal area gives
+ * one — the activity find's grain (VIL-590), where "Seattle, Washington" is a better
+ * search than "Seattle". The off-topic search keeps {@link placeOf}'s narrower rule.
+ * The region is the one the table has for the area the city was read from, and is left
+ * off when the city came from a stored name the area does not belong to.
+ */
+export async function searchPlaceOf(family: Parameters<typeof placeOf>[0]): Promise<FamilyPlace> {
+  const place = await placeOf(family);
+  if (place.status !== 'known' || place.provinceOrState !== undefined) return place;
+  const postalCountry = family.country === null ? undefined : postalCountryOf(family.country);
+  const postal = stored(family.postalCode) ?? stored(family.areaCoarse);
+  if (postalCountry === undefined || postal === null) return place;
+  const area = AREA_OF[postalCountry].exec(postal)?.[1]?.toUpperCase();
+  if (area === undefined) return place;
+  const table = await TABLES[postalCountry]();
+  const areaAt = table.codes.indexOf(area);
+  if (table.cities[table.cityOf[areaAt] ?? -1] !== place.city) return place;
+  const provinceOrState = table.regions[table.regionOf[areaAt] ?? -1];
+  return provinceOrState === undefined ? place : { ...place, provinceOrState };
+}
+
+/**
  * A place name the search may be told, and the nearest larger place to send instead
  * when fewer than 10,000 people live there. `city` is null when no place of 10,000 or
  * more in the same province or state is within the cap: the province or state is sent
@@ -403,7 +425,7 @@ export async function healthPlaceOf(family: {
 
 /** The columns {@link placeOf} and {@link healthPlaceOf} read: the active saved area's,
  * with the family's country, or the home row's when there is no active area. */
-async function readPlaceRow(database: Database, familyId: string) {
+export async function readPlaceRow(database: Database, familyId: string) {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,

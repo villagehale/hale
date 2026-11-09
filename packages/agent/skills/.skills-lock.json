@@ -177,7 +177,7 @@
   },
   "flood-line.md": {
     "file": "flood-line.md",
-    "sha256": "4bee428511257655a5af16235a898535d319e240b30af055c25a0941259a417f"
+    "sha256": "4aa00a1cfa59796421ef9c5c269fcba15ab9beae7a23cd5d2778aa29c096dfc5"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -462,6 +462,10 @@
   "spoken-line.md": {
     "file": "spoken-line.md",
     "sha256": "88ee93d9afa259b40535eb2770985cc793e71b872b0c34ccc740e2b8752fb28c"
+  },
+  "spot-open-voice.md": {
+    "file": "spot-open-voice.md",
+    "sha256": "6fc4f5aef16b9feaedbe5655f99da5283f3930186940dc5db8a05f20a4b6ceae"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
