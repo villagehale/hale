@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "D'accord, pas de problème. Même pas les trois premiers caractères? Ça suffit juste à savoir de quel secteur tu es, rien de plus précis. Sinon, pas grave non plus, on continue sans.",
+    "asks": true,
+    "parentQuestion": "false</parentQuestion>\n<parameter name=\"connectorsOffered\">[]",
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeDeclined": true,
+    "language": "fr"
+  },
+  "latencyMs": 1792
+}

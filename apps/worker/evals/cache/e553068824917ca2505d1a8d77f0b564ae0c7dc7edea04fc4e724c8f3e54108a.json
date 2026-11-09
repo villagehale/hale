@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is warm and answers the parent's yes, and it does not claim setup is done or that the other parent has joined. It explains the next step (start a group text with the number and phrase) and makes no claim that the group already exists. No phone number or link is written in the reply itself; the code places the number and phrase below it, which watchFor allows.",
-    "score": 5
-  }
-}

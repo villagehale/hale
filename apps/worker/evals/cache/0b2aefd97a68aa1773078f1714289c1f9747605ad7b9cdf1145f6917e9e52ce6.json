@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Totally fair. A rough area works just as well: just the first three characters of your postal code, or the first five digits of a ZIP. That's enough to find things near you, without your exact street. What's the area code?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1462
+}

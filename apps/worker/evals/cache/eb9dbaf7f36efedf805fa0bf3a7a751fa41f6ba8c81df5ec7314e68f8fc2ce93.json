@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply accepts the no warmly with 'Totally fair' and asks one question: the first three characters of the postal code, with a ZIP offered as an option, which watchFor allows. The 'enough to find things nearby' line depends on them giving the code, so it is not a promise made while no place is known. It does not ask for a town or a street, and it does not press. It is short and plain, though 'What's that?' is slightly awkward phrasing.",
+    "score": 5
+  }
+}

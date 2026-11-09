@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Pas de souci, c'est ton choix. Si tu veux, donne-moi juste les trois premiers caractères de ton code postal, ça suffit pour te situer par quartier, sans adresse précise. Sinon, dis-moi simplement quel est le prénom de ton enfant ou de tes enfants ?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "fr"
+  },
+  "latencyMs": 1549
+}

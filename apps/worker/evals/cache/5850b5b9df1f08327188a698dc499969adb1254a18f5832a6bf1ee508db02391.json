@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "No problem at all, we can skip the location. Without it I can't point you to things nearby, so I'll keep going with what you tell me. What are your kids' first names?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeDeclined": true
+  },
+  "latencyMs": 1468
+}

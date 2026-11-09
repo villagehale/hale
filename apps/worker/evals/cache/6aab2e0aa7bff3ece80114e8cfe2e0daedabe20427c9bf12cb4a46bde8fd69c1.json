@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply is warm and accepts the no. It asks once for the coarse code, five-digit ZIP or first three postal characters, which watchFor allows. 'That's enough for me to find things nearby' only holds once they give the code, so it is not a promise. It does not ask for a street or town and does not press. One small flaw: 'no need to share your address' slightly misframes their refusal, and the reply is a touch wordy.",
-    "score": 4
-  }
-}
