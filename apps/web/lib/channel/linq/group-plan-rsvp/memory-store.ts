@@ -64,6 +64,8 @@ export interface MemoryGroupPlanWorld {
   cards: Map<string, NativeCardOption[]>;
   /** Calendar consent rows, keyed by plan id + family id. */
   consents: Map<string, CalendarConsentRow>;
+  /** Household zones Hale knows, keyed by family id. Absent means unknown. */
+  householdZones: Map<string, string>;
   audits: { actionTaken: string; after: Record<string, unknown> }[];
 }
 
@@ -75,6 +77,7 @@ export function createMemoryWorld(): MemoryGroupPlanWorld {
     polls: new Map(),
     cards: new Map(),
     consents: new Map(),
+    householdZones: new Map(),
     audits: [],
   };
 }
@@ -392,6 +395,10 @@ export function createMemoryGroupPlanRsvpStore(world: MemoryGroupPlanWorld): Gro
         out.push({ plan: { ...plan }, consent: row });
       }
       return out;
+    },
+
+    async householdTimeZone(familyId) {
+      return world.householdZones.get(familyId) ?? null;
     },
 
     async deleteCalendarConsent(planId, familyId, status) {

@@ -368,6 +368,71 @@ describe('open calendar asks follow the current seat', () => {
       .where(eq(schema.linqGroupMembers.userId, priya.userId));
     expect(await store.listOpenCalendarAsks(priya.userId)).toEqual([]);
   });
+
+  it('lists only the household the seat belongs to when the parent is in two families', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA, chat: CHAT });
+    const sam = await parent({ name: 'Sam', phone: SAM });
+    const [other] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Other home', provinceOrState: 'ON', primaryLanguage: 'en' })
+      .returning({ id: schema.families.id });
+    const otherFamilyId = other?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId: otherFamilyId, userId: sam.userId, role: 'co_parent' });
+    const [consent] = await db.database
+      .insert(schema.consentRecords)
+      .values({
+        userId: sam.userId,
+        familyId: sam.familyId,
+        consentType: 'multi_family_group',
+        granted: true,
+        consentScope: CHAT,
+        policyVersion: 'test',
+      })
+      .returning({ id: schema.consentRecords.id });
+    await db.database.insert(schema.linqMultiFamilyJoins).values({
+      chatId: CHAT,
+      familyId: sam.familyId,
+      joinedByUserId: sam.userId,
+      consentRecordId: consent?.id,
+      joinedAt: NOW,
+    });
+    await db.database.insert(schema.linqMultiFamilyMembers).values({
+      chatId: CHAT,
+      familyId: sam.familyId,
+      userId: sam.userId,
+      phoneE164Encrypted: encryptString(SAM),
+      phoneE164Hash: phoneBlindIndex(SAM),
+      role: 'parent',
+      seatedAt: NOW,
+    });
+    const store = createPostgresGroupPlanRsvpStore(db.database);
+    const plan = await store.createPlan({
+      chatId: CHAT,
+      familyId: priya.familyId,
+      title: 'Saturday picnic',
+      startsAt: new Date('2026-11-01T16:00:00.000Z'),
+      location: 'the park',
+      rsvpDeadlineAt: null,
+      createdByUserId: priya.userId,
+      expected: [],
+      now: NOW,
+    });
+    for (const familyId of [sam.familyId, otherFamilyId]) {
+      await store.claimCalendarAsk({
+        planId: plan.id,
+        familyId,
+        memberKey: 'sam',
+        displayName: 'Sam',
+        householdLabel: null,
+        now: NOW,
+      });
+    }
+
+    const open = await store.listOpenCalendarAsks(sam.userId);
+    expect(open.map((item) => item.consent.familyId)).toEqual([sam.familyId]);
+  });
 });
 
 describe('the private reply and a tapback use the household language', () => {
@@ -420,6 +485,11 @@ describe('the private reply and a tapback use the household language', () => {
     );
     expect(reply.handled).toBe(true);
     expect(composer.calls.map((call) => call.input.language)).toEqual(['fr']);
+    // The primary parent's stored zone: 16:00Z on Nov 1 2026 is 11:00 AM EST.
+    const facts = composer.calls[0]?.input.facts;
+    expect(facts && 'startsAt' in facts ? facts.startsAt : 'missing').toBe(
+      'Sun, Nov 1 at 11:00 AM',
+    );
   });
 
   it('writes the tapback confirmation in the language stored for the family', async () => {
@@ -1125,3 +1195,14 @@ async function tableCounts(): Promise<Map<string, number>> {
   }
   return counts;
 }
+
+describe('migration 0210 on a database that already has it', () => {
+  it('applies a second time without throwing and keeps the consent table', async () => {
+    await db.applyMigration('0210_linq_group_plan_calendar_consent.sql');
+    await db.applyMigration('0210_linq_group_plan_calendar_consent.sql');
+    const result = await db.client.query(
+      "select to_regclass('linq_group_plan_calendar_consents')::text as consents",
+    );
+    expect(result.rows).toEqual([{ consents: 'linq_group_plan_calendar_consents' }]);
+  });
+});

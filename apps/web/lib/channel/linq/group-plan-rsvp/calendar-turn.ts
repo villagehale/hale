@@ -1,4 +1,5 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { inviteWhenLabel } from '~/lib/loop/templates/calendar-invite/sms';
 import type { LinqTapback } from '../transport';
 import {
   type CalendarAskFacts,
@@ -110,6 +111,20 @@ function askFacts(
   };
 }
 
+/**
+ * The start as this household reads it on their own clock. The writer never
+ * converts an instant itself; with no known zone it gets no clock time at all.
+ */
+function householdWhen(startsAt: Date | null, timeZone: string | null): string | null {
+  if (!startsAt || !timeZone) return null;
+  try {
+    return inviteWhenLabel(startsAt, timeZone);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+}
+
 type HouseholdLookup = HouseholdResolution | { status: 'skipped'; reason: 'not_configured' };
 
 async function resolveHousehold(
@@ -138,12 +153,16 @@ async function deliverPrivate(
     kind: CalendarPrivateKind;
   },
 ): Promise<{ status: 'sent' } | { status: 'skipped'; reason: CalendarSkipReason }> {
+  const timeZone = await ports.store.householdTimeZone(input.familyId);
   const spoken = await composeGroupPlanRsvpLine(
     groupPlanCalendarLineInput({
       kind: input.kind,
       language: input.language,
       parentWords: input.parentWords,
-      facts: askFacts(input.plan, input.displayName, input.householdLabel),
+      facts: {
+        ...askFacts(input.plan, input.displayName, input.householdLabel),
+        startsAt: householdWhen(input.plan.startsAt, timeZone),
+      },
     }),
     ports.composer ?? productionGroupPlanRsvpComposer(),
   );

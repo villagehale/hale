@@ -91,7 +91,7 @@ export const VOICE_FIXTURES = [
     language: 'fr',
     facts: {
       title: 'pique-nique de samedi',
-      startsAt: '2026-11-01T16:00:00.000Z',
+      startsAt: 'Sat, Oct 31 at 11:00 AM',
       location: 'le parc',
       displayName: 'Priya',
       householdLabel: 'les Patel',
@@ -105,7 +105,7 @@ export const VOICE_FIXTURES = [
     language: 'zh',
     facts: {
       title: '周六野餐',
-      startsAt: '2026-11-01T16:00:00.000Z',
+      startsAt: 'Sat, Oct 31 at 11:00 AM',
       location: '公园',
       displayName: 'Priya',
       householdLabel: null,
@@ -120,7 +120,7 @@ export const VOICE_FIXTURES = [
     parentWords: 'Oui, mets le pique-nique sur notre calendrier',
     facts: {
       title: 'Saturday picnic',
-      startsAt: '2026-11-01T16:00:00.000Z',
+      startsAt: 'Sat, Oct 31 at 11:00 AM',
       location: 'the park',
       displayName: 'Priya',
       householdLabel: null,

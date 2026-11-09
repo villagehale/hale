@@ -1317,6 +1317,51 @@ describe('a calendar line with no stored language', () => {
   });
 });
 
+describe('a calendar line on the household clock', () => {
+  async function askStartsAt(zone: string | null) {
+    const { world, store, texts } = await picnic();
+    if (zone) world.householdZones.set('fam-priya', zone);
+    const composer = fakeGroupPlanRsvpComposer();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'we are in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer: writerSpy(),
+        privateLines: privateSpy(),
+        consent: consentOf('not_this'),
+        composer,
+      }),
+    );
+    const voice = composer.calls.filter(
+      (call) => call.input.skill === 'group-plan-rsvp-calendar-voice',
+    );
+    expect(voice).toHaveLength(1);
+    const input = voice[0]?.input;
+    return input?.skill === 'group-plan-rsvp-calendar-voice' ? input.facts.startsAt : 'missing';
+  }
+
+  it('states the start on the household’s own clock, across a DST change', async () => {
+    // 16:00Z on Sunday Nov 1 2026 is after Pacific DST ends: 8:00 AM PST, not 9:00.
+    expect(await askStartsAt('America/Vancouver')).toBe('Sun, Nov 1 at 8:00 AM');
+    expect(await askStartsAt('America/Halifax')).toBe('Sun, Nov 1 at 12:00 PM');
+  });
+
+  it('gives the writer no clock time when the household zone is unknown', async () => {
+    expect(await askStartsAt(null)).toBeNull();
+  });
+});
+
 describe('why a calendar ask was set aside', () => {
   it('records that the ask did not send', async () => {
     const { world, store, texts } = await picnic();

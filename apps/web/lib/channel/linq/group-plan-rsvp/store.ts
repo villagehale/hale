@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { readGroupMembership } from '../group-membership';
+import { postgresGroupPlanHouseholds } from './calendar';
 import { memberKeyFromHandle, memberKeyFromName } from './member-key';
 import { type GroupPollStore, createPostgresGroupPollStore } from './poll-store';
 import {
@@ -121,6 +123,8 @@ export interface GroupPlanRsvpStore extends GroupPollStore {
   listOpenCalendarAsks(
     userId: string,
   ): Promise<{ plan: GroupPlanRecord; consent: CalendarConsentRow }[]>;
+  /** The household's own zone, or null when Hale does not know it. Never a product default. */
+  householdTimeZone(familyId: string): Promise<string | null>;
   /** Drops a declined or written row so a later yes, or a reopen, can ask again. */
   deleteCalendarConsent(
     planId: string,
@@ -227,52 +231,6 @@ export async function postgresSeatedExpected(
       haleCustomer: member?.haleCustomer ?? false,
     };
   });
-}
-
-/** Chats this person was removed from and has not rejoined. */
-async function removedSeatChatIds(
-  database: Database,
-  userId: string,
-  live: Set<string>,
-): Promise<Set<string>> {
-  const rows = await database
-    .select({ chatId: schema.linqGroupMembers.chatId })
-    .from(schema.linqGroupMembers)
-    .where(
-      and(eq(schema.linqGroupMembers.userId, userId), isNotNull(schema.linqGroupMembers.removedAt)),
-    );
-  const shared = await database
-    .select({ chatId: schema.linqMultiFamilyMembers.chatId })
-    .from(schema.linqMultiFamilyMembers)
-    .where(
-      and(
-        eq(schema.linqMultiFamilyMembers.userId, userId),
-        isNotNull(schema.linqMultiFamilyMembers.removedAt),
-      ),
-    );
-  const removed = new Set([...rows, ...shared].map((row) => row.chatId));
-  for (const chatId of live) removed.delete(chatId);
-  return removed;
-}
-
-/** Chats where this person still has a seat. A removed seat is not current. */
-async function liveSeatChatIds(database: Database, userId: string): Promise<Set<string>> {
-  const groupSeats = await database
-    .select({ chatId: schema.linqGroupMembers.chatId })
-    .from(schema.linqGroupMembers)
-    .where(
-      and(eq(schema.linqGroupMembers.userId, userId), isNull(schema.linqGroupMembers.removedAt)),
-    );
-  const sharedSeats = await database
-    .select({ chatId: schema.linqMultiFamilyMembers.chatId })
-    .from(schema.linqMultiFamilyMembers)
-    .where(
-      and(
-        eq(schema.linqMultiFamilyMembers.userId, userId),
-        isNull(schema.linqMultiFamilyMembers.removedAt),
-      ),
-    );
-  return new Set([...groupSeats, ...sharedSeats].map((row) => row.chatId));
 }
 
 export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanRsvpStore {
@@ -729,8 +687,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         .filter((row) => row.role === 'primary_parent' || row.role === 'co_parent')
         .map((row) => row.familyId);
       if (families.length === 0) return [];
-      const seated = await liveSeatChatIds(database, userId);
-      const removed = await removedSeatChatIds(database, userId, seated);
+      const homes = postgresGroupPlanHouseholds(database);
       const mine = await database
         .select()
         .from(schema.linqGroupPlanCalendarConsents)
@@ -748,16 +705,10 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           .where(eq(schema.linqGroupPlans.id, row.planId))
           .limit(1);
         if (!plan || plan.closedAt) continue;
-        const [cover] = await database
-          .select({ id: schema.families.id })
-          .from(schema.families)
-          .where(eq(schema.families.linqGroupChatId, plan.chatId))
-          .limit(1);
-        const claimed =
-          cover?.id === row.familyId &&
-          !removed.has(plan.chatId) &&
-          families.includes(row.familyId);
-        if (!seated.has(plan.chatId) && !claimed) continue;
+        // The same rule the answer uses: this sender's seat in the chat must
+        // resolve to this row's household, never just to some seat in the chat.
+        const home = await homes.resolve({ chatId: plan.chatId, userId });
+        if (home.status !== 'one' || home.familyId !== row.familyId) continue;
         out.push({
           plan: {
             id: plan.id,
@@ -782,6 +733,10 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
         });
       }
       return out;
+    },
+
+    async householdTimeZone(familyId) {
+      return knownHouseholdTimezone(database, familyId);
     },
 
     async deleteCalendarConsent(planId, familyId, status) {

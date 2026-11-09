@@ -3,15 +3,14 @@
 // Subjects are the production reader and the production voice, called the way
 // calendar.ts and voice.ts call them: the same skills, user messages, tools,
 // lanes and token caps. A judge scores meaning. Nothing in this file matches a
-// word or an enum. A cache miss in --cached-only fails the process (CI keeps
-// the step soft until a recording exists). This file does not spend.
+// word or an enum. A cache miss in --cached-only fails the process.
 //
 //   node evals/run-group-plan-rsvp-calendar-eval.mjs --estimate
 //   node evals/run-group-plan-rsvp-calendar-eval.mjs --dry
 //   node evals/run-group-plan-rsvp-calendar-eval.mjs --cached-only
 //   node --env-file=../../.env evals/run-group-plan-rsvp-calendar-eval.mjs --live --max-usd <cap>
 //
-// --live also needs HALE_SPEND_LEDGER. Do not record on this change.
+// --live also needs HALE_SPEND_LEDGER.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

@@ -254,7 +254,10 @@ describe('trail sentences stay on the receipts trail', () => {
 
   it('is rendered by the dashboard, not by a channel or calendar send', () => {
     const importers = filesUnder(join(ROOT, 'lib'))
-      .filter((path) => /from ['"][^'"]*trail\/verbs['"]/.test(readFileSync(path, 'utf8')))
+      // A type-only import (the AuditVerb union) renders no sentence.
+      .filter((path) =>
+        /import\s+(?!type\b)[^;]*from ['"][^'"]*trail\/verbs['"]/.test(readFileSync(path, 'utf8')),
+      )
       .map((path) => path.slice(ROOT.length + 1));
     expect(importers.sort()).toEqual(['lib/dashboard/mappers.ts', 'lib/dashboard/trail-query.ts']);
   });
