@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are right: both pickups named with Friday 3pm and kids, Sam suggested for Maya swim pickup, and a poll follows with the two choices. But the message adds a link (hale.example/fix) and asks the group to reply with a number, both of which are explicitly low-scoring. The poll's last option is 'Barton' repeated rather than a neutral 'we'll figure it out' option, and the message does not clearly tie the poll to 'who takes input' as one ask. Multiple asks (reply 1 or 2, vote at a link, who takes it, or skip one) break the one-ask rule.",
+    "score": 1
+  }
+}

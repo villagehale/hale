@@ -1131,7 +1131,7 @@ async function clashNotice(
       );
       return 'held';
     }
-    const poll = linqPollsEnabled() ? clashPollOffer(clash, people) : null;
+    const poll = linqPollsEnabled() ? clashPollOffer(clash, people, kids) : null;
     const alert = await sharedGroupConflictWriter().write(
       groupConflictLineInput(clash, {
         people,
