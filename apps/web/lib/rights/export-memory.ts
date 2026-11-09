@@ -96,7 +96,7 @@ interface MessageSource {
 }
 
 /** The `channel_messages` rows a workstream or commitment names as its provenance. */
-async function loadMessageSources(
+async function provenanceSources(
   database: Database,
   familyId: string,
   messageIds: readonly string[],
@@ -155,7 +155,7 @@ export async function loadFamilyMemoryExport(
       .where(eq(schema.agentCommitments.familyId, familyId))
       .orderBy(schema.agentCommitments.createdAt),
   ]);
-  const sources = await loadMessageSources(database, familyId, [
+  const sources = await provenanceSources(database, familyId, [
     ...workstreamRows.map((row) => row.createdFrom),
     ...commitmentRows.map((row) => row.createdFrom),
   ]);
