@@ -32,6 +32,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
   if (!isConnectorProvider(provider)) {
     return NextResponse.json({ error: 'unsupported_provider' }, { status: 400 });
   }
+  // Drive is not offered: its restricted scope is out of the Google verification
+  // submission (VIL-556). Existing Drive rows still sync and still disconnect.
+  if (provider === 'gdrive') {
+    console.info(
+      { provider, outcome: 'connector_not_offered' },
+      'connector consent: no consent door for this connector',
+    );
+    return NextResponse.json({ error: 'connector_not_offered' }, { status: 410 });
+  }
   const url = new URL(req.url);
   // ONE host, named when it is the wrong one (rule #11). The redirect_uri Google has
   // registered is built from appBaseUrl(), so a request arriving on any other host —

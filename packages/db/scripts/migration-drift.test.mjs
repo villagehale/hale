@@ -32,7 +32,18 @@ describe('catalog history cutover', () => {
       '0190_linq_group_polls',
       '0196_linq_group_carpools',
       '0197_family_event_notes',
-      '0201_messages_provider_message_id',
+      '0198_email_alert_occasions',
+      '0199_registration_live_watch_storage',
+      '0200_email_alert_occasion_anchors',
+      '0201_integrations_google_revoke_pending',
+      '0202_opt_out_held_messages',
+      '0203_integrations_google_account_key',
+      '0204_opt_out_held_crisis_read',
+      '0206_authorized_signup_plan',
+      '0207_family_sweep_marks',
+      '0209_agent_commitments_heard_facts',
+      '0210_watched_spots_any_page',
+      '0212_messages_provider_message_id',
     ]);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event as Swim class, which matches the summary. It states Thursday, July 23 at 10:30 AM. The start is Thursday 2026-07-23 at hour 10, minute 30 in America/Toronto. The day, weekday, hour, and minute all agree, and no different time is stated.",
+    "match": true
+  },
+  "latencyMs": 2651
+}

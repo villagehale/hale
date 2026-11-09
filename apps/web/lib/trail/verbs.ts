@@ -142,6 +142,8 @@ export const AUDIT_VERBS = [
   // ── the messaging product itself (SMS / voice / email / push) ───────────
   'channel_sms_enrolled',
   'channel_sms_revoked',
+  // VIL-553. A text whose stop check failed during a model outage, read again later.
+  'opt_out_hold_read',
   'sms_reply_received',
   'sms_reply_sent',
   // Only ever written for the synthetic canary household — but rule #6 admits no
@@ -174,6 +176,7 @@ export const AUDIT_VERBS = [
   'linq_group_held',
   'linq_group_member_seated',
   'linq_group_member_unseated',
+  'linq_group_member_presence_closed',
   'linq_group_member_refused',
   'linq_group_stranger_held',
   'linq_group_roster_fetched',
@@ -268,6 +271,8 @@ export const AUDIT_VERBS = [
   'proactive_nudge_skipped',
   // VIL-226 · the per-family proactive queue and its hourly decider.
   'proactive_nudge_queued',
+  // VIL-612 · another class's sweep handed its text to the decider.
+  'proactive_cadence_queued',
   'proactive_cadence_decision',
   'proactive_cadence_held',
   'proactive_cadence_sent',
@@ -286,18 +291,23 @@ export const AUDIT_VERBS = [
   'calendar_mirror_notes_updated',
   'calendar_mirror_removed',
   'reminder_suppressed',
+  'reminder_held_at_send',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
   'kid_relevance_reminder_cancelled',
   'kid_relevance_event_restored',
   'group_decision_sync_sent',
+  // VIL-399 · queued decision lines the sweep closed without sending them.
+  'group_decision_sync_closed_unsent',
   // VIL-443 (T17) · a plan the household group made, reported back to that group.
   'group_plan.drafted',
   'group_plan.calendar_reported',
   'group_plan.line_unsent',
   'group_plan.report_held',
   'group_plan.report_released',
+  // VIL-559 · a crisis that got no reply, paged to #ops (monitoring/failure-page.ts).
+  'crisis_unanswered',
   // ── the travel brief (v5) ───────────────────────────────────────────────
   'travel_trip_noticed',
   'travel_booking_passed_over',
@@ -443,6 +453,10 @@ export const AUDIT_VERBS = [
   'connector_link_signed_in',
   'integration_connected',
   'integration_revoked',
+  'integration_ended_for_erasure',
+  'integration_google_grant_revoked',
+  'integration_google_grant_revoke_failed',
+  'integration_google_revoke_cancelled',
   'integration.google_calendar_written',
   'integration.google_calendar_failed',
   'integration.gmail_draft_written',
@@ -466,6 +480,7 @@ export const AUDIT_VERBS = [
   'registration_evening_unwritten',
   'registration_morning_unwritten',
   'registration_heads_up_unwritten',
+  'registration_leg_unwritten',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -539,6 +554,11 @@ export const AUDIT_VERBS = [
   'workstream_followup_unsent',
   'workstream_followup_deferred',
   'workstream_followup_gave_up',
+  // ── open-loops ledger (VIL-297) ─────────────────────────────────────────
+  'commitment_recorded',
+  'commitment_fulfilled',
+  'commitment_cancelled',
+  'commitment_deferred',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -704,6 +724,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   // They were the whole reason the trail read as "Hale recorded an update".
   channel_sms_enrolled: { sentence: 'your phone was set up to text with Hale', family: 'done' },
   channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
+  opt_out_hold_read: {
+    sentence: 'Hale read a text it had held to check whether you asked it to stop',
+    family: 'note',
+  },
   sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
   sms_reply_sent: { sentence: 'Hale texted you back', family: 'note' },
   sms_canary_answered: { sentence: 'Hale answered its own service check', family: 'note' },
@@ -754,6 +778,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   linq_group_member_unseated: {
     sentence: 'Hale unseated someone from the household thread',
+    family: 'note',
+  },
+  linq_group_member_presence_closed: {
+    sentence:
+      'Someone was taken out of the household thread; their place in the family is unchanged',
     family: 'note',
   },
   linq_group_member_refused: {
@@ -1041,6 +1070,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale set something aside to decide when to text you',
     family: 'note',
   },
+  proactive_cadence_queued: {
+    sentence: 'Hale set something aside to decide when to text you',
+    family: 'note',
+  },
   proactive_cadence_decision: {
     sentence: 'Hale decided whether now was a good time to text you',
     family: 'note',
@@ -1124,6 +1157,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale skipped a reminder that no longer applied',
     family: 'note',
   },
+  // VIL-562. The row's `after` is the offset and the hold reason only — no title, no time.
+  reminder_held_at_send: {
+    sentence: 'Hale held a reminder back for quiet hours',
+    family: 'note',
+  },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
   // said a connector item is theirs, so Hale stopped tracking it.
   kid_relevance_untracked: {
@@ -1150,6 +1188,12 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale told the household group about a decision you made',
     family: 'done',
   },
+  // VIL-399. The group could not hear the queued decisions, so they were closed unsaid.
+  // `after` is the hold reason and a count only. History hides the row.
+  group_decision_sync_closed_unsent: {
+    sentence: 'Hale did not pass a decision on to the household group',
+    family: 'note',
+  },
   // VIL-443 (T17). Which drafts came from the household group, so the placement is
   // reported there. The draft itself has its own row; history hides this one.
   'group_plan.drafted': {
@@ -1175,6 +1219,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   'group_plan.report_released': {
     sentence: 'Hale finished waiting to text the household group about its plan',
     family: 'note',
+  },
+  // VIL-559. The row's `after` is kind, where, reason and writes only. History hides it:
+  // the household's shared receipts must not show one parent's crisis to the other.
+  crisis_unanswered: {
+    sentence: 'Hale could not write a reply to a crisis, so it told its team at once',
+    family: 'problem',
   },
   // A booking email said the family is going somewhere with the children. 'note', not
   // 'done': nothing was sent yet and nothing was decided - Hale read a confirmation and
@@ -1630,9 +1680,37 @@ const VERBS: Record<AuditVerb, Verb> = {
       'you connected an account - Hale keeps its keys encrypted and never hands them to another service',
     family: 'done',
   },
+  // Claims only the disconnect: one token may still wait for Google's answer (VIL-156),
+  // and the two rows below say when it is gone.
   integration_revoked: {
-    sentence: 'you disconnected an account and Hale deleted its keys',
+    sentence: 'you disconnected an account and Hale stopped using its keys',
     family: 'done',
+  },
+  // Hale's own act, so third person: erasing the family ends its connected accounts at
+  // Google first (VIL-156), and the row stands while the erasure waits on Google.
+  integration_ended_for_erasure: {
+    sentence:
+      'a connected account was disconnected because this family asked Hale to delete its data, and Hale stopped using its keys',
+    family: 'done',
+  },
+  // Third person and role-neutral: Google's answer is Hale's own record, and it also
+  // lands on the trail of a parent whose co-parent's account it was.
+  integration_google_grant_revoked: {
+    sentence:
+      'Google confirmed it removed Hale’s access to a disconnected account, and Hale deleted its last copy of the key',
+    family: 'done',
+  },
+  integration_google_grant_revoke_failed: {
+    sentence:
+      'Google did not confirm it removed Hale’s access to a disconnected account; Hale deleted its last copy of the key',
+    family: 'problem',
+  },
+  // About one adult's Google account, so History and the family copy leave it out, and
+  // it names no other household where that account was connected.
+  integration_google_revoke_cancelled: {
+    sentence:
+      'Hale stopped asking Google to remove its access to a disconnected account, because the same account was connected again',
+    family: 'note',
   },
   'integration.google_calendar_written': {
     sentence: 'added it to your Google Calendar',
@@ -1686,6 +1764,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   registration_heads_up_unwritten: {
     sentence: 'Hale did not send the registration heads-up text',
+    family: 'note',
+  },
+  registration_leg_unwritten: {
+    sentence: 'Hale did not send a registration reminder text',
     family: 'note',
   },
   registration_outcome_recorded: {
@@ -1922,6 +2004,18 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'stopped a check-back after it could not be sent',
     family: 'problem',
   },
+  commitment_recorded: { sentence: 'noted something it said it would do', family: 'note' },
+  commitment_fulfilled: { sentence: 'did something it said it would do', family: 'note' },
+  commitment_cancelled: {
+    sentence: 'stopped owing something it said it would do',
+    family: 'note',
+  },
+  // An activity watch that looked again and found nothing the parent has not already been
+  // told: nothing was sent, and the promise stays owed (commitments/ledger.ts).
+  commitment_deferred: {
+    sentence: 'looked again and had nothing new to tell you yet',
+    family: 'note',
+  },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
     sentence: 'noticed a possible stamp from something it saw',
@@ -1995,6 +2089,12 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_plan.drafted',
   'group_plan.report_released',
   'calendar_alert_debt_retired',
+  'crisis_unanswered',
+  // VIL-553. About the one parent who texted: another adult in the home never sees it.
+  'opt_out_hold_read',
+  'group_decision_sync_closed_unsent',
+  // VIL-156. About one adult's Google account, which another household may share.
+  'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {
@@ -2073,14 +2173,12 @@ export function targetNoun(targetTable: string | null): string {
 
 /**
  * A stored (`target_table`, `target_id`) → a deep link to the surface where the
- * parent can actually SEE that record — never a bare UUID. Only tables with a
- * real viewable surface link (plans → the plan page). The Approvals page is
- * gone, so an action row keeps its noun and does not link at a missing route.
- * Everything else returns null so the row shows its noun without a dead link.
+ * parent can actually SEE that record — never a bare UUID. Only a table with a
+ * real viewable surface links, and while the portal is cut down (VIL-432) no
+ * table has one: the Approvals page is gone and the plan page is retired. So
+ * every row returns null and shows its noun without a dead link.
  */
-const TARGET_ROUTES: Record<string, string> = {
-  family_plans: '/plan',
-};
+const TARGET_ROUTES: Record<string, string> = {};
 
 export function targetLink(targetTable: string | null, targetId: string | null): string | null {
   if (targetTable === null || targetId === null) return null;

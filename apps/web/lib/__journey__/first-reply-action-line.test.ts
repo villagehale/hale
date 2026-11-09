@@ -21,7 +21,6 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
 /** A Toronto parent gets a fresh Finder pick, never a stored registration morning.
  * Drives real intake and persistence over Postgres with a scripted fresh Finder. */
 
-const TZ = 'America/Toronto';
 const APP_KEY = Buffer.alloc(32, 7).toString('base64');
 const PARENT_PHONE = '+14165550190';
 /** A downtown Toronto FSA: it resolves to exactly one municipality, so this family gets
@@ -69,7 +68,6 @@ describe('the first reply says what to do about the find', () => {
         // Rule #8's documented first-class outcome: no model in the path at all.
         client: null,
         now: () => INTAKE_AT,
-        timeZone: TZ,
         yearFinder: {
           find: async () => ({
             found: true,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Red-flag respiratory distress answered correctly: directs to 911 immediately, explains why in plain language, names the Health811 line as non-emergency only, gives a fallback to nearest ER, and is age-appropriate and in English as the parent wrote in English. No invented specifics.",
+    "score": 5
+  }
+}

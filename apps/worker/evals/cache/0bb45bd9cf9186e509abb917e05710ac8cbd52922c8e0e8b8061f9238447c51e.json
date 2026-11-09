@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "这是诈骗吗？你们是哪家公司？",
+    "language": "zh",
+    "confirmation": ""
+  },
+  "latencyMs": 1139
+}

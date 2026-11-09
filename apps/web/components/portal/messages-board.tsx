@@ -29,9 +29,12 @@ const FILTERS: { id: Filter; label: string }[] = [
 export function MessagesBoard({
   items,
   approvals,
+  canExport,
 }: {
   items: ThreadItem[];
   approvals: PendingApprovalView[];
+  /** Whether the export route serves this viewer's seats (exportSeat). */
+  canExport: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
   const shown = items.filter((item) => (filter === 'hale' ? item.hale : filter !== 'waiting'));
@@ -63,7 +66,9 @@ export function MessagesBoard({
             </button>
           ))}
         </div>
-        <ExportDataButton idleLabel="Export" className={styles.export} showIcon />
+        {canExport ? (
+          <ExportDataButton idleLabel="Export" className={styles.export} showIcon />
+        ) : null}
       </div>
       <div className={styles.one}>
         <section className={`${styles.card} ${styles.span}`}>

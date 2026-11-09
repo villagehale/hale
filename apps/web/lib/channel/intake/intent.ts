@@ -5,6 +5,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
+import { type ClearanceRefusal, clearForNonAnthropic } from '~/lib/pipeline/provider-clearance';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -33,8 +34,20 @@ export interface IntentReading {
   interpretation: string;
 }
 
+/** What the caller knows about `question`: Hale wrote it, and it may restate mail or
+ * calendar content. The reader cannot tell, so the caller declares it (VIL-556). */
+export type ReplyIntentOrigin = { kind: 'parent_text' } | { kind: 'google' } | { kind: 'unproven' };
+
+/** A reading plus why a requested candidate did not run; null when none was requested or
+ * it ran. Kept off {@link IntentReading}, which is the consent record's shape. */
+export type ReplyIntentResult = IntentReading & { candidateRefusal: ClearanceRefusal | null };
+
 export interface ReplyIntentReader {
-  read(input: { question: string; reply: string }): Promise<IntentReading>;
+  read(input: {
+    question: string;
+    reply: string;
+    origin: ReplyIntentOrigin;
+  }): Promise<ReplyIntentResult>;
 }
 
 const INTENTS = ['assent', 'decline', 'ambiguous'] as const satisfies readonly ReplyIntent[];
@@ -99,19 +112,26 @@ export function createReplyIntentReader(
       const skill = await loadCronSkill('reply-intent');
       const mode =
         deps.modelMode ?? parseModelMode(process.env.HALE_REPLY_INTENT_MODEL_MODE, 'reply intent');
-      if (mode === 'candidate') {
+      const decision =
+        mode === 'candidate' ? await clearForNonAnthropic(input.origin, 'reply intent') : null;
+      const candidateRefusal = decision && 'refused' in decision ? decision.refused : null;
+      if (decision && 'cleared' in decision) {
         try {
-          const result = await (deps.evaluateChoice ?? evaluateJevChoice)({
-            state: { question: input.question, reply: input.reply },
-            question: 'intent',
-            instructions: `${skill.instructions}\n\nClassify the reply in state using exactly one of the three criteria.`,
-            criteria: JEV_CRITERIA,
-          });
+          const result = await (deps.evaluateChoice ?? evaluateJevChoice)(
+            {
+              state: { question: input.question, reply: input.reply },
+              question: 'intent',
+              instructions: `${skill.instructions}\n\nClassify the reply in state using exactly one of the three criteria.`,
+              criteria: JEV_CRITERIA,
+            },
+            decision.cleared,
+          );
           if (result.choice !== 'assent' && meetsJevConfidence(result)) {
             return {
               intent: result.choice,
               verbatim: input.reply,
               interpretation: `JEV choice: ${result.choice}`,
+              candidateRefusal,
             };
           }
           recordModelFallback('reply intent candidate', 'low_confidence');
@@ -132,7 +152,7 @@ export function createReplyIntentReader(
         maxTokens: MAX_TOKENS,
       });
 
-      return applyVerbatimGuard(
+      const reading = applyVerbatimGuard(
         {
           intent: value.intent,
           verbatim: value.verbatim,
@@ -140,6 +160,7 @@ export function createReplyIntentReader(
         },
         input.reply,
       );
+      return { ...reading, candidateRefusal };
     },
   };
 }

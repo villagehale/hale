@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text 2 is complete for the Montessori tour: Theo, 10 AM start (no AM/PM stated but 'tomorrow' and the morning context fit, though bare '10'), the end given as a duration ('about an hour', matching 10-11), venue name Little Oaks Montessori and address 41 Mill St. Text 3 gives storytime for Léa at 1:30 to 2:15, but it says only 'the library' and leaves out the given venue name 'Georgetown Branch' and the address '9 Church St'. That is a missing venue name and address, a fact failure. Bold is none, which is fine.",
+    "score": 2
+  }
+}

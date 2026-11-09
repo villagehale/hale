@@ -107,7 +107,6 @@ async function runIntakeRadar(): Promise<Intake> {
       weather: fakeWeather([]),
       client: null,
       now: () => INTAKE_AT,
-      timeZone: TZ,
     }),
     // Nothing to seed and nowhere to place it: this family's whole point is that
     // geography has nothing for them yet.
@@ -245,6 +244,10 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     // No model in this journey: the name ask cannot be written, so nothing is sent after the find.
     composeNameAsk: async () => null,
+    // REGISTRATION_DATE_CHECK is unset here, so no registration page is read.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
   };
 }
 

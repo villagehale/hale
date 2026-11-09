@@ -57,9 +57,9 @@ import {
  *
  * CONVERGENT, NOT TRANSACTIONAL, like the plan lane: the note carries its own dedupe key,
  * so a turn that sent the note and then failed to answer the founder is re-drivable — the
- * re-drive finds the note already gone, skips it, and closes the offer against the row
- * that carried it. The closure happens LAST for the same reason every MEM-10 writer closes
- * late.
+ * re-drive finds the note already gone, skips it, and closes the offer against the
+ * founder's own ack (never the note — that row belongs to another household). The closure
+ * happens LAST for the same reason every MEM-10 writer closes late.
  */
 
 /** The at-most-once key for the note, per receiving family. What makes the re-drive above
@@ -70,9 +70,8 @@ export function founderNoteDedupeKey(familyId: string): string {
 
 export type FounderReplyOutcome =
   | { status: 'declined_to_claim' }
-  /** The note is in their thread. `noteChannelMessageId` is what the offer is closed
-   * against — the message that made good, not the ack the founder gets. */
-  | { status: 'note_sent'; reply: string; noteChannelMessageId: string }
+  /** The note is in their thread. */
+  | { status: 'note_sent'; reply: string }
   /** He said no. The offer is voided with a reason, because the note was never sent and a
    * ledger that recorded it as kept would be the one lie this table must not tell. */
   | { status: 'offer_declined'; reply: string }
@@ -180,7 +179,7 @@ export async function handleFounderWelcomeReply(
   const dedupeKey = founderNoteDedupeKey(targetFamilyId);
   const already = await sentNoteId(database, dedupeKey);
   if (already !== null) {
-    return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK, noteChannelMessageId: already };
+    return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK };
   }
 
   const body = founderNote(location);
@@ -210,7 +209,7 @@ export async function handleFounderWelcomeReply(
     };
   }
 
-  const noteChannelMessageId = await recordNote(database, {
+  await recordNote(database, {
     familyId: targetFamilyId,
     parentUserId: recipient.parentUserId,
     dedupeKey,
@@ -226,7 +225,7 @@ export async function handleFounderWelcomeReply(
     parentUserId: recipient.parentUserId,
     body,
   });
-  return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK, noteChannelMessageId };
+  return { status: 'note_sent', reply: FOUNDER_NOTE_SENT_ACK };
 }
 
 /** The one closure for "there is nobody to send to". Voided rather than kept, with the

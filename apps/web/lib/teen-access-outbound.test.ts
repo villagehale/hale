@@ -47,6 +47,9 @@ const GRANT_READER_TOKENS = [
   // indirect — the grant-aware loaders themselves
   'loadPendingApprovals',
   'loadResolvedActions',
+  'readResolvedActionRows',
+  'readWhatHaleDid',
+  'loadWhatHaleDid',
   'loadTrail',
   'loadMessages',
   'planChildItems',
@@ -230,6 +233,10 @@ const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   [
     'lib/channel/reconcile/view.ts',
     'the reconcile view — titles feed a token-overlap predicate and are never emitted to a recipient',
+  ],
+  [
+    'lib/channel/reconcile/candidate-rows.ts',
+    "the claim-reader candidate loader — a 13+ child's or sensitive row reaches the claim reader model only as 'A private calendar item' plus its time, through the branded claimRowLabel (isPrivateEvent); no location is read, and nothing here is sent to a recipient",
   ],
   [
     'lib/channel/nudge/saturday-plans.ts',

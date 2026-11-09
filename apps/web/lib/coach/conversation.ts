@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
 import { isConversationVisibleToParent } from './note-key.js';
 
@@ -208,7 +209,9 @@ export interface MessageScope {
 
 /** Appends one message turn to a conversation, carrying its scope (child + topic).
  * Returns the new message id so the caller can link per-turn rows (e.g. chat
- * attachments) to the exact message that was just written. */
+ * attachments) to the exact message that was just written. A Browser Use live-view
+ * link is never stored: every later turn re-reads this thread, and the link is a
+ * credential to the parent's provider session (live-view.ts). */
 export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
@@ -221,7 +224,7 @@ export async function appendMessage(
     .values({
       conversationId,
       role,
-      content,
+      content: withoutLiveViewLinks(content),
       childId: scope.childId,
       topic: scope.topic,
       ...(scope.providerMessageId ? { providerMessageId: scope.providerMessageId } : {}),

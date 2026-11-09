@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event 'Swim class' and says 'jeudi à 10 h 30' (Thursday at 10:30), which matches the start: Thursday July 23, 2026 at 10:30 in America/New_York. It offers a link to add the event, and states no different day or time.",
+    "match": true
+  },
+  "latencyMs": 1420
+}

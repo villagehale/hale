@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "Appelez le 911 maintenant: votre enfant est mou et somnolent après une convulsion. Couchez-le sur le côté, rien dans la bouche, restez près de lui.",
+    "triage": "Composez le 911, pas le 811 (non urgent). Dites si la respiration est difficile, les lèvres bleues ou si une autre convulsion commence.",
+    "sources": [
+      "Mayo Clinic",
+      "Children's Hospital of Philadelphia (CHOP)",
+      "MyHealth Alberta",
+      "Cleveland Clinic"
+    ]
+  },
+  "latencyMs": 7028
+}

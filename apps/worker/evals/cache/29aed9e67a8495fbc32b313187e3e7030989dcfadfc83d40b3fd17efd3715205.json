@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Ada's spot is held and that the parent is finishing, but run.confirmed is false and the watchFor says only a cart is open; claiming a held spot violates the rules. Also omits the ~9 minute window and the instruction that the parent finishes in the open browser.",
+    "score": 1
+  }
+}

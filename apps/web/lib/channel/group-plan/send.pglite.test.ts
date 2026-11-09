@@ -10,7 +10,7 @@ import { recordWatchConsent } from '~/lib/channel/intake/watch-consent';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { MAX_REDRIVE_PER_RUN } from '~/lib/channel/redrive-slot';
 import { channelGroupNoteKey } from '~/lib/coach/note-key';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { linqChatBlindIndex, phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { loadEventInvite } from '~/lib/loop/ics-invite';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -47,6 +47,8 @@ const PLACE = 'Riverside Y, 120 Main St, Toronto';
 
 let db: TestDb;
 let n = 0;
+/** Who the chat's live GET lists: every roster member seeded and not gone. */
+let inChat: string[] = [];
 
 beforeAll(async () => {
   process.env.APP_ENCRYPTION_KEY = KEY;
@@ -58,6 +60,8 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  inChat = [];
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -84,6 +88,8 @@ async function seed(
     language?: string;
     childDob?: string;
     endsAt?: Date | null;
+    /** Seed the chat's confirmed roster of the two parents, for a send through the floor. */
+    roster?: boolean;
   } = {},
 ) {
   const [family] = await db.database
@@ -172,6 +178,12 @@ async function seed(
       conversationId: thread?.id as string,
     });
   }
+  if (opts.roster) {
+    await roster(familyId, 'confirmed', [
+      { status: 'known_parent', knownUserId: ana },
+      { status: 'confirmed', confirmedRole: 'co_parent', userId: sam },
+    ]);
+  }
   return { familyId, ana, sam, actionId, familyEventId, origin, payload: action?.payload };
 }
 
@@ -225,10 +237,12 @@ async function roster(
     .returning({ id: schema.linqGroupRosters.id });
   for (const member of members) {
     n += 1;
+    const phone = `+1647555${7000 + n}`;
+    if (member.status !== 'left' && member.status !== 'removed') inChat.push(phone);
     await db.database.insert(schema.linqGroupRosterMembers).values({
       rosterId: row?.id as string,
       chatId: GROUP,
-      phoneE164Hash: phoneBlindIndex(`+1647555${7000 + n}`),
+      phoneE164Hash: phoneBlindIndex(phone),
       status: member.status,
       confirmedRole: member.confirmedRole ?? null,
       knownUserId: member.knownUserId ?? null,
@@ -274,6 +288,12 @@ async function counts() {
 function linqWire(status = 200, landsFirst = 0) {
   const posted: Array<{ url: string; body: unknown }> = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    // The floor's live read of the chat: not a post.
+    if (init?.method === 'GET' && String(url).endsWith(`/chats/${GROUP}`)) {
+      return Response.json({
+        chat: { id: GROUP, is_group: true, handles: inChat.map((handle) => ({ handle })) },
+      });
+    }
     posted.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
     if (status !== 200 && posted.length > landsFirst)
       return new Response(JSON.stringify({ error: { code: status } }), { status });
@@ -312,7 +332,28 @@ describe('VIL-443 loadGroupPlan, real database', () => {
       .from(schema.auditLog)
       .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted'));
     expect(row).toMatchObject({ targetTable: 'actions', targetId: s.actionId, actor: s.ana });
-    expect(row?.after).toEqual({ chatId: GROUP });
+    // The row is immutable and exported, so it names the chat by its keyed index only.
+    expect(row?.after).toEqual({ chatKey: linqChatBlindIndex(GROUP) });
+    expect(JSON.stringify(row)).not.toContain(GROUP);
+  });
+
+  it('still reads a plan whose stamp predates the keyed chat (raw chat id)', async () => {
+    const s = await seed();
+    await db.database
+      .delete(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'group_plan.drafted'));
+    await db.database.insert(schema.auditLog).values({
+      familyId: s.familyId,
+      actor: s.ana,
+      actionTaken: 'group_plan.drafted',
+      targetTable: 'actions',
+      targetId: s.actionId,
+      after: { chatId: GROUP },
+    });
+    expect(await loadGroupPlan(db.database, request(s), MORNING)).toMatchObject({
+      chatId: GROUP,
+      placedByActionId: s.actionId,
+    });
   });
 
   it('is not a group plan when it was made in another group chat', async () => {
@@ -870,7 +911,7 @@ describe('VIL-443 production ports, real database', () => {
   it('end to end: a group plan reaches the group with its real link, and no 1:1 invite goes', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.stubEnv('GROUP_PLAN_CALENDAR_REPORT_ENABLED', 'true');
-    const s = await seed();
+    const s = await seed({ roster: true });
     const wire = linqWire();
     const production = productionGroupPlanReportPorts(db.database, {
       fetch: wire.fetch,
@@ -912,7 +953,7 @@ describe('VIL-443 production ports, real database', () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubEnv('GROUP_PLAN_CALENDAR_REPORT_ENABLED', 'true');
-    const s = await seed();
+    const s = await seed({ roster: true });
     const inner = {
       send: vi.fn(async (): Promise<CalendarInviteReport> => ({ status: 'reported', parents: [] })),
     };
@@ -1087,7 +1128,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   }
 
   it('sends the held text into the group at 08:00 with its real link, once, and closes the hold', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const plan = (await loadGroupPlan(db.database, request(s), DAWN)) as GroupPlan;
     const dawn = senderAt(DAWN);
@@ -1115,7 +1156,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('sends nothing outside the 08:00 hour, and still owes the text', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const { sender, wire, inner } = senderAt(DAWN);
     for (const at of [new Date('2026-11-07T12:12:00.000Z'), new Date('2026-11-07T14:12:00.000Z')]) {
@@ -1128,7 +1169,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('sends a plan moved overnight once, at its latest time', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     await db.database
       .update(schema.familyEvents)
@@ -1163,7 +1204,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('releases a plan already under way by its morning, unsent', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const { sender, wire, inner } = senderAt(NEXT_DAWN);
     expect(await redrive(sender, NEXT_DAWN)).toMatchObject({ open: 1, due: 1, started: 1 });
@@ -1173,7 +1214,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('drops an added plan removed overnight, and tells the group it is off', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     await db.database
       .update(schema.familyEvents)
@@ -1193,7 +1234,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('gives the parents their own invites by day when Linq refuses the group text at 08:00', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const dawn = senderAt(DAWN, { wire: linqWire(400) });
     expect(await redrive(dawn.sender, DAWN)).toMatchObject({ due: 1, toParents: 1 });
@@ -1203,7 +1244,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
 
   it('sends nothing canned when the model writes nothing at 08:00, and does not ask again', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const dawn = senderAt(DAWN, { compose: async () => null });
     expect(await redrive(dawn.sender, DAWN)).toMatchObject({ due: 1, unwritten: 1 });
@@ -1215,7 +1256,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
 
   it('keeps a hold for the next morning when the gate still reads night or the send throws', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const stillNight = {
       send: vi.fn(
@@ -1234,7 +1275,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
 
   it('keeps its place when its messages could not all be claimed, and goes once they can', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const plan = (await loadGroupPlan(db.database, request(s), DAWN)) as GroupPlan;
     const stray = `${plan.dedupeKey}#0`;
@@ -1270,7 +1311,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('stops re-driving a hold once it is a week old', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     await holdAt(NIGHT, s);
     const weekOn = new Date('2026-11-14T13:12:00.000Z'); // Sat 08:12 Toronto, a week on
     const { sender, wire } = senderAt(weekOn);
@@ -1279,7 +1320,7 @@ describe('VIL-443 the 08:00 re-drive of a group text quiet hours held', () => {
   });
 
   it('serves the longest-held first and counts what its cap defers', async () => {
-    const s = await seed();
+    const s = await seed({ roster: true });
     const over = MAX_REDRIVE_PER_RUN + 1;
     const events = await db.database
       .insert(schema.familyEvents)

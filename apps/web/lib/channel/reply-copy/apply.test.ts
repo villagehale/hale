@@ -128,7 +128,7 @@ describe('reply prose fallback', () => {
 
 describe('reply frame', () => {
   const parts = memoryRecallParts('en', [
-    { key: 'soccer', value: 'soccer', source: 'inferred', kind: 'one_off' },
+    { key: 'soccer', value: 'soccer', source: 'inferred', kind: 'one_off', seenIn: null },
   ]);
   const opening =
     "Here's what I have: Maya is 4, you're near L3R, and I think soccer is her thing for now.";

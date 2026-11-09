@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import {
@@ -78,10 +78,17 @@ const LINQ_RATE_LIMIT_CODE = '1007';
 /** The longest Retry-After a send waits out in-call; a longer one is handed back. */
 const IN_CALL_RETRY_MAX_MS = 1_000;
 
-/** Stable key for one chat and one wire message, so a retry is the same send. */
-export function linqMessageKey(chatId: string, message: unknown): string {
+/**
+ * VIL-611 · Linq's `message.idempotency_key` for one send. It names the send, never its
+ * words: Linq drops a reused key as a duplicate, so a key built from the text would drop
+ * the second of two sends that happen to say the same thing. A caller that owns the
+ * send's identity (its ledger row, or its dedupe key plus leg) passes it as `sendKey`, so
+ * a redelivered retry of that send is the same key. Without one, each call is its own
+ * send. Hashed either way: Hale's ids stay out of Linq, and the key fits Linq's 255.
+ */
+function linqSendKey(sendKey: string | undefined): string {
   return createHash('sha256')
-    .update(`${chatId}\n${JSON.stringify(message)}`)
+    .update(sendKey ?? randomUUID())
     .digest('hex');
 }
 
@@ -187,7 +194,6 @@ async function linqRequest(input: {
   path: string;
   body?: unknown;
   fetch?: typeof fetch;
-  idempotencyKey?: string;
 }): Promise<LinqHttpResult> {
   // VIL-466 · a Preview capture run never reaches Linq, whatever else is set. Every
   // partner call (1:1, group, tapback, typing, poll, contact card) passes here, so a
@@ -221,7 +227,6 @@ async function linqRequest(input: {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         ...(input.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(input.idempotencyKey ? { 'Idempotency-Key': input.idempotencyKey } : {}),
       },
       body: input.body !== undefined ? JSON.stringify(input.body) : undefined,
       signal: controller.signal,
@@ -396,6 +401,8 @@ export async function sendLinqParts(input: {
   chatId: string;
   parts: readonly LinqOutboundPart[];
   replyTo?: LinqReplyTarget;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   assertParts(input.parts);
@@ -410,13 +417,13 @@ export async function sendLinqParts(input: {
     };
   }
   const armed = cadenceArmed();
+  if (armed) message.idempotency_key = linqSendKey(input.sendKey);
   const send = () =>
     linqRequest({
       method: 'POST',
       path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
       body: { message },
       fetch: input.fetch,
-      ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
     });
   let result = await send();
   // One in-call retry of a rate limit, with the same key, when Linq's wait is short.
@@ -453,19 +460,22 @@ export interface LinqExperienceWire {
 export async function sendLinqExperience(input: {
   chatId: string;
   experience: LinqExperienceWire;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
   if (!input.experience.name || !input.experience.action) {
     throw new LinqSendError('invalid_experience', 400, true);
   }
-  const message = { experience: input.experience };
-  const armed = cadenceArmed();
+  const message = {
+    experience: input.experience,
+    ...(cadenceArmed() ? { idempotency_key: linqSendKey(input.sendKey) } : {}),
+  };
   const result = await linqRequest({
     method: 'POST',
     path: `/chats/${encodeURIComponent(input.chatId)}/messages`,
     body: { message },
     fetch: input.fetch,
-    ...(armed ? { idempotencyKey: linqMessageKey(input.chatId, message) } : {}),
   });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
@@ -489,9 +499,11 @@ export async function sendLinqChatMessage(input: {
   /** VIL-474 · iMessage styling the writer chose for ranges of `text`. */
   decorations?: readonly LinqTextDecoration[];
   replyTo?: LinqReplyTarget;
+  /** The caller's identity for this one send (see `linqSendKey`). */
+  sendKey?: string;
   fetch?: typeof fetch;
 }): Promise<{ providerMessageId: string }> {
-  const send = (replyTo?: LinqReplyTarget) =>
+  const send = (replyTo: LinqReplyTarget | undefined, sendKey: string | undefined) =>
     sendLinqParts({
       chatId: input.chatId,
       parts: [
@@ -500,10 +512,11 @@ export async function sendLinqChatMessage(input: {
           : { type: 'text', value: input.text },
       ],
       replyTo,
+      sendKey,
       fetch: input.fetch,
     });
   try {
-    return await send(input.replyTo);
+    return await send(input.replyTo, input.sendKey);
   } catch (err) {
     if (
       !input.replyTo ||
@@ -518,7 +531,11 @@ export async function sendLinqChatMessage(input: {
       { code: err.code, httpStatus: err.httpStatus },
       'linq: reply_to refused — sending the answer without a thread target',
     );
-    return await send();
+    // The plain resend is a second leg of the same send, so it carries its own key.
+    return await send(
+      undefined,
+      input.sendKey === undefined ? undefined : `${input.sendKey}:plain`,
+    );
   }
 }
 
@@ -746,8 +763,11 @@ export function readLinqPollEnvelope(
   return { messageId, options };
 }
 
-/** Non-me handles on a chat payload. Phones stay in the return value for the
- * caller to hash; this function does not log them. */
+/** Non-me handles of the people in the chat now, emails included. Linq keeps a person
+ * who left listed; only an explicit status `left` or `removed` drops them. Any other
+ * status, or none, counts as present, and `left_at` alone never drops anyone: a person
+ * added back can carry a stale one, and an audience gate must not lose them.
+ * Phones stay in the return value for the caller to hash; this function does not log them. */
 export function readLinqChatHandles(payload: unknown): string[] {
   if (!isRecord(payload)) return [];
   const chat = isRecord(payload.chat) ? payload.chat : payload;
@@ -755,6 +775,7 @@ export function readLinqChatHandles(payload: unknown): string[] {
   const out: string[] = [];
   for (const handle of handles) {
     if (!isRecord(handle) || handle.is_me === true) continue;
+    if (handle.status === 'left' || handle.status === 'removed') continue;
     if (typeof handle.handle === 'string' && handle.handle) out.push(handle.handle);
   }
   return out;
@@ -1629,7 +1650,6 @@ export async function sendLinqVoiceMemo(input: {
     path: `/chats/${encodeURIComponent(input.chatId)}/voicememo`,
     body,
     fetch: input.fetch,
-    ...(cadenceArmed() ? { idempotencyKey: linqMessageKey(input.chatId, body) } : {}),
   });
   if (!result.ok) {
     throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);

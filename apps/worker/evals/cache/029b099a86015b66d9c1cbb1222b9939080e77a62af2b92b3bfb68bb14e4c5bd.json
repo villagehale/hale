@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is a generic 'an appointment' tomorrow, Monday, 4:45-5:45 PM, with no location, no 'for', and no planLink. The text gives the correct day (tomorrow, 1365 minutes from now), the start 4:45 and the end 5:45 with PM correctly stated, stays exactly generic without guessing what it is, and invents nothing (no venue, no travel or departure time). It is in English and bold is none, which is fine.",
+    "score": 5
+  }
+}

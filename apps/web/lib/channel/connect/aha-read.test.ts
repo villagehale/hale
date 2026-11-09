@@ -9,6 +9,7 @@ import {
 } from './aha-read';
 
 const NOW = new Date('2026-09-10T15:00:00.000Z');
+const EASTERN = 'America/Toronto';
 
 describe('aha snapshot from fixture calendars and mail', () => {
   it('keeps upcoming events, a busy block, and a real overlap, and drops what is not upcoming', () => {
@@ -59,11 +60,12 @@ describe('aha snapshot from fixture calendars and mail', () => {
         },
       ],
       NOW,
+      EASTERN,
     );
 
     expect(facts.map((fact) => fact.title)).toEqual(['Swim at the rec centre', 'Dentist', 'Busy']);
     expect(facts[0]).toMatchObject({ location: 'Rec centre', declined: false, allDay: false });
-    expect(calendarOverlaps(facts)).toEqual([
+    expect(calendarOverlaps(facts, EASTERN)).toEqual([
       { earlier: 'Swim at the rec centre', later: 'Dentist' },
     ]);
     expect(JSON.stringify(facts)).not.toMatch(/kind|deadline|intent|registration/i);
@@ -104,6 +106,24 @@ describe('aha snapshot from fixture calendars and mail', () => {
     expect(facts[0]?.snippet).not.toMatch(/@|416/);
     expect(facts[1]).toMatchObject({ subject: 'Picnic', fromName: null });
     expect(JSON.stringify(facts)).not.toMatch(/"deadline"|"kind"/);
+  });
+
+  it("reads today on the family's own clock, so an all-day event today is still upcoming", () => {
+    // 05:30Z on Nov 10: still Nov 9 in Chicago, already Nov 10 in Toronto.
+    const lateEvening = new Date('2026-11-10T05:30:00.000Z');
+    const items = [
+      {
+        id: 'fair',
+        status: 'confirmed',
+        summary: 'Fall fair',
+        start: { date: '2026-11-09' },
+        end: { date: '2026-11-10' },
+      },
+    ];
+    expect(
+      calendarFactsFromItems(items, lateEvening, 'America/Chicago').map((fact) => fact.title),
+    ).toEqual(['Fall fair']);
+    expect(calendarFactsFromItems(items, lateEvening, 'America/Toronto')).toEqual([]);
   });
 
   it('withholds mailbox facts when a teenager is in the family, and keeps calendar facts', () => {
@@ -168,6 +188,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gcal',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(calendar.read).toBe('ok');
@@ -178,6 +199,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gmail',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(mail).toMatchObject({ read: 'failed', email: [] });
@@ -196,6 +218,7 @@ describe('aha snapshot from fixture calendars and mail', () => {
       provider: 'gmail',
       accessToken: 'ya29.test',
       now: NOW,
+      timeZone: EASTERN,
       googleFetch,
     });
     expect(mail.read).toBe('empty');

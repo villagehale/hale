@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrcQmnXi3CtPPEHz6npJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzgkKEAgTGAI4AUIIdGhpbmtpbmcSDLHa4OcuqhDlZxgYixoMwCD8B87fTji+ZfMjIjDhYm/uMPkswoHHvWreshuAIPwLTE+CKvSOiTTJDHTu38oNUqJKITIV20LWO8SfC2kq6wiWyAMzjBPMxMZWg6JicrOcL/ICh8L8zQeiudVCEKHrmqb2E4IwylE5OCq2fkPmYdcovYe2adXvo5+DwnFPJAkUVltlgoYGo5c+sD/7KuJrOKS0grxJdipK5JDyv7/LO5DcFnZ4C7WbKBUqFOomSP+XUyJikvUEUgH2Q4YSbUpCDHpMx3mLBYCRGVgPyvhME8zbSWIk3hDPzv37ooywd6hskdwa6+NvYq8WQWpLhRFjJNbP6CsdGPnybfgTB76eQFIKtAgO1zk6RbaPf/bryqs8XZfOQVhmkQBf62tV1fzXU/nL7CGQK+S9GwGy9Kk+pzN4XmtOM2hNfzZ9/vUA3gZ4uM0QsTqt/xWEgqoMUx9cBylWWaviaI9+H8OLyovDIkjDzkDPbbi3WUHJLCBb+x0rHmoU1XYrNhkZiKPze4yqP0iY81apgWoRdhZ4h8hxiK3eWctwoUW1+cz4dnTIYZbj2AFH1tp7MTnLB/Qb2p1LLlRQ4eMR/CRC/wFU1BErO3zJLMeKhvoC/vwtG1E4Tt6ZHLN3jxmp8Kgnk1FsLdrYGYNAHHJPf9kTRLKe6FEmJVpHwCK8n6SxSwGaI2DqT9h9JHC8m0AiQV/71dUVx4tt4K5+tMG51gnLmsk8v2AMykf+nHL+g6fi+uvk38+Dywtc50bgu+VumiFbUp4k3NyjK4gp3GoVfmiBnArCwE+Q5EuqTQ/h32wMazpDyxIgyhrVCwj5BPF9cVBN3GnJIVWd4Cx7hA608jeZh6RmFdBp21WHK3awbraiTgJJkWsQ4npAE3XiIqxD3SYGEDX2SA26GFWVGGC64ALxJTkjglPg1CmiyFZuk+XnrlLiO4qm8JiGQ1JVoNLqWs4MSfTZjb5TZlDdK2SpUp3+K3A1tWdJunozw5IndjV6ZNdxu5usWc3aUkpS8+YkT2u/8/lKdt8/HkE2BmFycyBosaq9gIwEx1zEOo4mT493e6Xd9A5vxmXu/ClEOFITjz9zh2pDQSPXRg+celoJaJbHpP9AJYMx53f4ZNZPTSpruUptgp2mJN7ofKrMwf4p8O3tyOwZH1YwZY47PXmZ8yLBGI6uj8wqRaUEVKvlMq0V6vdJN0tAmABmPHSrehZnIZJ9e48LNfcrz49w7yYOQncWRD84vFV+3sqhPFp3+fMj7UFUWSebx142zsAkYjoSDNuU74S5qFFpPkEPDICWfSkoykF4lN2D2SwPJrGnDlciHX2IP6Y/sVdhCo5T5BsL/tHpL8mhSEmjcEvRAuj3+DEpKkDHlsCEzxaenODiDvyL8RpziZYxL5GKaUj7ufUIjbmGb8hFhUkSvyuVWHtbEqwrWCr6IRVefC1kIB40rWgOJjmQcxo97hIui+i2nQZOfPZgwU+oWbsL6ZsBoLKANZ7JkRLTCe9Ba4XMSfEImZHTR0gao6xWbhhkxi7WtPL1KZvmnnlUaH0qrncv3N1MWnXArbYlGQZremnA+EpxabffNbxPAsn1PCxD6snC7c0uOYcGrogYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on your calendar today, and it's a nice one out. Indoor open play gym at Riverbend Community Centre runs until noon, $6 per child, and it fits your 26-month-old, per their program page. [link-187000] The Toddler nature walk (outdoor trail) at Cedar Park Conservancy is free, but their events page says Saturdays at 10, so it's already started. [link-0b6114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 319,
+      "cache_read_input_tokens": 20831,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 319,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 343,
+      "output_tokens_details": {
+        "thinking_tokens": 206
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

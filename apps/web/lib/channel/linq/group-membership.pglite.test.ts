@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
@@ -78,7 +79,46 @@ async function seedFamily(phone: string, name: string) {
   return { familyId, userId };
 }
 
+/**
+ * A member the removed participant.added provisioner seated: family role, the legacy
+ * group-only consent and a verified channel. A parent's add now seats only such a person.
+ */
+async function seedLegacyMember(phone: string) {
+  const [family] = await db.database
+    .select({ id: schema.families.id })
+    .from(schema.families)
+    .where(eq(schema.families.linqGroupChatId, CHAT));
+  const familyId = family?.id as string;
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: `sms:${phoneBlindIndex(phone)}` })
+    .returning({ id: schema.users.id });
+  const userId = user?.id as string;
+  await db.database.insert(schema.familyMembers).values({ familyId, userId, role: 'extended' });
+  const [consent] = await db.database
+    .insert(schema.consentRecords)
+    .values({
+      userId,
+      familyId,
+      consentType: 'sms_service_messages',
+      granted: true,
+      consentScope: 'linq_group_member',
+      policyVersion: POLICY_VERSION,
+    })
+    .returning({ id: schema.consentRecords.id });
+  await db.database.insert(schema.parentChannels).values({
+    userId,
+    familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: NOW,
+    consentRecordId: consent?.id,
+  });
+}
+
 async function seat(phone: string) {
+  await seedLegacyMember(phone);
   const wire = sender();
   return seatParticipantAdded(db.database, {
     chatId: CHAT,
@@ -146,6 +186,7 @@ describe('VIL-438 group membership read model', () => {
 describe('VIL-438 member welcome written from facts', () => {
   it('flag off sends the spoken welcome (main) and never calls the voice', async () => {
     await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember('+14165550122');
     const voice = fakeGroupOnboardingComposer();
     const wire = sender();
     await seatParticipantAdded(db.database, {
@@ -165,6 +206,7 @@ describe('VIL-438 member welcome written from facts', () => {
   it('flag on hands the T22 facts to the voice and sends what it wrote', async () => {
     vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
     await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember('+14165550122');
     const voice = fakeGroupOnboardingComposer({
       body: 'Hi from Hale, Barton added you. What should I call you?',
     });
@@ -197,6 +239,7 @@ describe('VIL-438 member welcome written from facts', () => {
   it('flag on: a welcome with a nickname and no question mark is not thrown out', async () => {
     vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
     await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember('+14165550122');
     const body = 'Bart a ajouté Hale ici, dis-moi comment tu veux que je t’appelle';
     const wire = sender();
     const result = await seatParticipantAdded(db.database, {
@@ -215,6 +258,7 @@ describe('VIL-438 member welcome written from facts', () => {
   it('flag on with a failed voice sends nothing but keeps the seat', async () => {
     vi.stubEnv('LINQ_GROUP_WELCOME_VOICE_ENABLED', 'true');
     await seedFamily(PARENT, 'Barton');
+    await seedLegacyMember('+14165550122');
     const wire = sender();
     const result = await seatParticipantAdded(db.database, {
       chatId: CHAT,

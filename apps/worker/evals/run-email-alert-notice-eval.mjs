@@ -207,6 +207,7 @@ async function dryRun({ agent, lane, skill, notice, judgeModel }) {
 function factsFor(notice, fixture) {
   const {
     now,
+    receivedAt,
     language = 'en',
     durationMinutes = null,
     recentNotices = [],
@@ -217,6 +218,7 @@ function factsFor(notice, fixture) {
     language,
     durationMinutes,
     recentNotices,
+    receivedAt: new Date(receivedAt),
     now: new Date(now),
   });
 }

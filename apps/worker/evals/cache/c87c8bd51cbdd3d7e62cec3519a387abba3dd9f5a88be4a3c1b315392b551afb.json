@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": null,
+    "region": "British Columbia",
+    "granularity": "street"
+  },
+  "latencyMs": 2215
+}

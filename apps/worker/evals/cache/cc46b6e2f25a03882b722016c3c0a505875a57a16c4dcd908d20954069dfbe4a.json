@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reason": "Parent wants to consult partner first; no go-ahead given",
+    "verdict": "unclear",
+    "choiceIds": [],
+    "maxPriceCents": null,
+    "waiverAccepted": false,
+    "question": "No problem. Do you want Hale to hold off on this plan until you've talked with your partner, or should it be taken back for now?"
+  },
+  "latencyMs": 1609
+}

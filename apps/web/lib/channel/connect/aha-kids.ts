@@ -134,6 +134,7 @@ export async function kidRelatedAha(
   snapshot: AhaSnapshot,
   context: KidContext,
   classifier: KidItemClassifier | undefined,
+  timeZone: string,
 ): Promise<AhaSnapshot & { kidFilter: KidFilterReason }> {
   if (snapshot.read === 'failed' || snapshot.read === 'withheld') {
     return { ...snapshot, kidFilter: 'kept' };
@@ -178,7 +179,7 @@ export async function kidRelatedAha(
     ...snapshot,
     calendar,
     email,
-    overlaps: calendarOverlaps(calendar),
+    overlaps: calendarOverlaps(calendar, timeZone),
     kidFilter: 'kept',
   };
 }

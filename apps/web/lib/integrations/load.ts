@@ -2,12 +2,13 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { type GoogleAccessOutcome, disconnectGoogle } from './google-disconnect';
 import { isConnectorProvider } from './google-oauth';
 import {
   type ConnectionSummary,
+  googleRevokeUnconfirmedProviders,
   listConnections,
   listUserConnections,
-  revokeConnection,
 } from './store';
 
 /**
@@ -36,6 +37,9 @@ export interface FamilyConnectorView {
    * it recovers, absent on a row that errored before we recorded reasons. */
   lastErrorCode?: string | null;
   ownedByViewer: boolean;
+  /** The viewer's own disconnected row whose Google revoke Hale stopped asking about
+   * without Google confirming it (VIL-156). Absent everywhere else. */
+  googleRevokeUnconfirmed?: true;
 }
 
 /**
@@ -53,11 +57,20 @@ export async function loadFamilyConnectors(): Promise<FamilyConnectorView[]> {
     resolveUserIdForUser(externalAuthId, database),
   ]);
   if (!familyId) return [];
-  const rows = await listConnections(database, familyId);
-  return rows.map(({ userId: ownerId, ...summary }) => ({
-    ...summary,
-    ownedByViewer: ownerId != null && ownerId === userId,
-  }));
+  const [rows, unconfirmed] = await Promise.all([
+    listConnections(database, familyId),
+    userId ? googleRevokeUnconfirmedProviders(database, { familyId, userId }) : ([] as string[]),
+  ]);
+  return rows.map(({ userId: ownerId, ...summary }) => {
+    const ownedByViewer = ownerId != null && ownerId === userId;
+    return {
+      ...summary,
+      ownedByViewer,
+      ...(ownedByViewer && summary.status === 'revoked' && unconfirmed.includes(summary.provider)
+        ? { googleRevokeUnconfirmed: true as const }
+        : {}),
+    };
+  });
 }
 
 export type ConnectorsStateResult =
@@ -90,7 +103,8 @@ export async function loadConnectorsState(): Promise<ConnectorsStateResult> {
 }
 
 export type RevokeConnectorResult =
-  | { status: 'revoked' }
+  /** `google` is what Google confirmed, so the page can say no more than that. */
+  | { status: 'revoked'; google: GoogleAccessOutcome }
   | { status: 'not_found' }
   | { status: 'preview' }
   | { status: 'unauthenticated' }
@@ -98,11 +112,12 @@ export type RevokeConnectorResult =
   | { status: 'no_family' };
 
 /**
- * Revoke one connector for the signed-in family (purges tokens + writes the rule-#6
- * audit row, both inside revokeConnection). Scoped to the caller's own
- * (family,user,provider) (rule #1). A bad provider slug is rejected here so the route
- * carries no provider knowledge. When no row matched (nothing was the caller's to
- * disconnect) the result is 'not_found' — never a false 'revoked'.
+ * Disconnect for the signed-in parent through disconnectGoogle, the one door (VIL-156):
+ * every Google connector of theirs ends, each is revoked at Google, and every push watch
+ * stops. Scoped to the caller's own (family,user), and only when the named connector
+ * holds keys (rule #1). A bad provider slug is rejected here so the route carries no
+ * provider knowledge. When the named connector was not the caller's to disconnect the
+ * result is 'not_found' — never a false 'revoked'.
  */
 export async function revokeFamilyConnector(provider: string): Promise<RevokeConnectorResult> {
   if (!process.env.DATABASE_URL || !authConfigured()) return { status: 'preview' };
@@ -120,6 +135,13 @@ export async function revokeFamilyConnector(provider: string): Promise<RevokeCon
   ]);
   if (!familyId || !userId) return { status: 'no_family' };
 
-  const revokedCount = await revokeConnection(database, familyId, userId, provider, 'settings');
-  return revokedCount > 0 ? { status: 'revoked' } : { status: 'not_found' };
+  const result = await disconnectGoogle(database, {
+    familyId,
+    userId,
+    via: 'settings',
+    named: provider,
+  });
+  return result.status === 'disconnected'
+    ? { status: 'revoked', google: result.google }
+    : { status: 'not_found' };
 }

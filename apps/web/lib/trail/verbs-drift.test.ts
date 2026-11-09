@@ -40,6 +40,8 @@ const SCAN_ROOTS = ['apps/web/lib', 'apps/web/app', 'apps/worker/src', 'packages
  * like a direct literal.
  */
 const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
+  // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
+  'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472. One recorder writes the tapback and the sticker moment.
   'apps/web/lib/channel/linq/moments.ts': ['linq_tapback', 'linq_sticker'],
   // VIL-479. One helper writes Hale's edit and a parent's edit of their own bubble.
@@ -274,7 +276,12 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'proactive_watch_granted',
     'proactive_watch_declined',
   ],
-  'apps/web/lib/integrations/store.ts': ['integration_connected', 'integration_revoked'],
+  'apps/web/lib/integrations/store.ts': ['integration_connected'],
+  // Google's answer to a disconnect's revoke: confirmed, or not (VIL-156).
+  'apps/web/lib/integrations/google-disconnect.ts': [
+    'integration_google_grant_revoked',
+    'integration_google_grant_revoke_failed',
+  ],
   // The placement and draft services forward the verb they already chose. The
   // literals above the insert are scanned directly; this line is the pass-through.
   'apps/web/lib/integrations/google-calendar-placement.ts': [

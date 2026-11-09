@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers directly: nothing for art is on this week's calendar, which matches `week`. It then recalls the Harbour Art Studio email fact about Fridays at 4:30, a real memory with a cited source. Aug 7 follows from the Sat Aug 8 date in `offerable`. The drafted calendar add is named, and the reply asks plainly whether to go ahead, with no YES keyword and only one question. Short, accurate and grounded.",
+    "score": 5
+  }
+}

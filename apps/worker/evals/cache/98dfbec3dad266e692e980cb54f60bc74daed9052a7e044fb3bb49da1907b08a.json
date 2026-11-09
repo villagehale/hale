@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrcKVwtxQmYcuZqT5CUM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwYKEAgTGAI4AUIIdGhpbmtpbmcSDEyNaGB/PAPLZcgyyxoMCCthn89/6LdyKln9IjAcHc+acSKNsWIpObFO3tKMbSHg+jNm3a1YdilMdxU5mnUcGfeqysNl8aAFizauOQ0q5AWCvGPabkXv20M1mYQCxKaoSi6rmX2xOc1aP4rXxdjDA2pPv39MEa6bYTQftnZeTulEdscDduc6HV5QWiV9NZGa/WQeIm5Kb/BgxrDBSefyaTN2BJyAR/Kz0jxN5PEn1jmvUblvkphbESlP63i0ruqaCcMFyt/cdW1xoTzxcYxHehNK/LQQuGaJ+vgBX1tFkH/5b4Gyo1hkUdTnQbPZ1/0ycqcDVCV5Kjj5Ti+sM9FoVC67gD3fXAsXEoU9dLy/t3BkY9QqA6hzie8v41M9Z4eUdIRPCrrrQcv9hrRkC8GjEZY+ieXiTbpfRLWbxqHQS2uwhmRbl+lnpA31tHvqXT+Ej3OgVyQxDjL/sZJui1ZIPKsdmF+0lfblwf4Qm9JGho+lR8gvMyLJk6e6Z30oyK5Pgewm95GNHGMTZQ7Fg10f5ukZGwRCJrV5VURr1ma5L0L0Yne1f9SbIHhn6094JMyMjuxDvoWB1rmlkGNqVEuYgt/Hh4A0jcwJDI1OtTpgch3Ww7HrjTRvAyTSVRsPCRU31oKjflv1m02phpk4yPmiLBbt1LGmI1sbzuoniCTiwSfoY1GqTvhFwdHvAetkJEyIze5SliX2iuwX8Kzo6al9phLetnS+YcsgP8ReQPAkOgpt4XTDS+ljZP4euburgehr39QaZXLdvQUYsrvn2LUyHuttWzBQcrT1TAUdEgZ7OX72wBQjEAqsF215wetf/ZIyDy/dLWWzcxAYkJKGdtYaSfiB9PMXQZFu9O7JfIwKdCKvPHbjHzIm4v2FFBaEtzuu7POJp9oCvHxrPdNIWZwB3aAvbzvk3qEky8MQrooyWGlX1R2JiSlTbxRzQl2KiuhGh+VjRZNykyva7Ztn6kuiiymX8zCybDiH0XgtrvV65XtDqTVtWjtfwePnAkA0V8VjqQ72vduRubDarJBd7jLkSyBbvMsEfDbNaXtlxV7vRr66heLKxba3kBvVT4Nn/iJ9AEKUWBgB"
+      },
+      {
+        "type": "text",
+        "text": "Today's Thanksgiving, so places may be closed or on holiday hours. Worth checking before you head out. Riverbend Community Centre's page lists Little Movers drop-in on Mondays 9:30 to 11:30 a.m., free, for ages 1 to 4. [link-c6988f] Willow Branch Library's events page has Toddler story time Mondays at 10:30 a.m., free, for 18 months to 3 years. [link-ce743d] Both are what their own sites say, so I haven't confirmed them."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 278,
+      "cache_read_input_tokens": 20379,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 278,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 241,
+      "output_tokens_details": {
+        "thinking_tokens": 67
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

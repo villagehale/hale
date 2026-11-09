@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { ExportDataButton } from '~/components/hale/export-data-button';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
-import { loadTrail } from '~/lib/dashboard/queries';
+import { loadTrail, loadViewerSeats } from '~/lib/dashboard/queries';
+import { exportSeat } from '~/lib/rights/export-seat';
 
 export const metadata: Metadata = { title: 'History' };
 
 export default async function TrailPage() {
-  const entries = await loadTrail();
+  const [entries, seats] = await Promise.all([loadTrail(), loadViewerSeats()]);
   const byHale = entries.filter((entry) => entry.actor === 'hale').length;
   const byParent = entries.length - byHale;
 
@@ -53,7 +54,7 @@ export default async function TrailPage() {
 
       <section className="rise rise-7 mt-10 pt-8 border-t border-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
         <p className="meta text-ink-3">end of trail</p>
-        <ExportDataButton />
+        {exportSeat(seats).outcome === 'export' ? <ExportDataButton /> : null}
       </section>
     </div>
   );

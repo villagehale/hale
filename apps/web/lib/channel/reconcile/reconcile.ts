@@ -1,5 +1,6 @@
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import type { ClaimKind, StateClaim } from './claims';
+import type { Span } from './sentences';
 
 /**
  * VIL-293 · THE RECONCILIATION PRIMITIVE, half two — is the claim TRUE?
@@ -178,6 +179,16 @@ function aboutTheSeason(sentence: string): boolean {
   return MUNICIPAL_OBJECT.test(sentence);
 }
 
+/** The watch row a matched window lets the send flow write. One per window, so a
+ * reading that mints it twice still writes it once. */
+export function registrationWatchMint(window: MintableWindow): RegistrationWatchMint {
+  return {
+    kind: 'registration_watch',
+    summary: `${window.town} registration: a text before it opens.`,
+    dueAt: window.opensForFamilyAt,
+  };
+}
+
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
   if (kind === 'co_parent_invite') {
@@ -213,15 +224,7 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     }
     const window = view.mintableWindow;
     if (window) {
-      return {
-        claim,
-        status: 'minted',
-        mint: {
-          kind: 'registration_watch',
-          summary: `${window.town} registration: a text before it opens.`,
-          dueAt: window.opensForFamilyAt,
-        },
-      };
+      return { claim, status: 'minted', mint: registrationWatchMint(window) };
     }
     // WHICH REFUSAL, and it decides what the model is told to do next. A family whose
     // only watch is a course page wrote a true sentence in the wrong words, and the
@@ -286,22 +289,36 @@ export function reconcile(claims: readonly StateClaim[], view: ReconcileView): R
  * appeared. Empty when nothing was refused, which is the caller's signal to send.
  */
 export function reconcileViolations(verdict: ReconcileVerdict): string[] {
-  return [...new Set(verdict.refused.map((resolution) => VIOLATION[resolution.reason]))];
+  return violationsFor(verdict.refused.map((resolution) => resolution.reason));
+}
+
+/** The same re-ask text for refusal reasons from any reading (VIL-581: the reader's). */
+export function violationsFor(reasons: readonly RefusalReason[]): string[] {
+  return [...new Set(reasons.map((reason) => VIOLATION[reason]))];
 }
 
 /**
- * The body with every refused sentence cut out — the last honest move for a lane that
- * has already re-asked and cannot refuse to reply at all.
+ * Where each refused sentence sits in the body — what a lane that has already re-asked,
+ * and cannot refuse to reply at all, cuts out (`subtractSpans`).
  *
  * It is a SUBTRACTION and never a rewrite: the spans come from the extractor, so what
- * survives is verbatim what the model wrote minus the sentences nothing backs. An empty
- * result means the whole reply was unbacked, and the caller must treat that as a failed
- * turn rather than sending a blank text.
+ * survives is verbatim what the model wrote minus the sentences nothing backs. The
+ * verdict must be this body's: a sentence that is not in it is a caller bug and throws.
  */
-export function withoutRefusedClaims(body: string, verdict: ReconcileVerdict): string {
-  let survivor = body;
+export function refusedClaimSpans(body: string, verdict: ReconcileVerdict): Span[] {
+  const spans: Span[] = [];
+  let from = 0;
+  let previous: string | null = null;
   for (const resolution of verdict.refused) {
-    survivor = survivor.replace(resolution.claim.sentence, ' ');
+    const sentence = resolution.claim.sentence;
+    const start = body.indexOf(sentence, from);
+    // A joined sentence can carry several refused claims (VIL-575), and every copy of it
+    // carries the same ones, so the extras find no later copy: that sentence is cut already.
+    if (start < 0 && sentence === previous) continue;
+    if (start < 0) throw new RangeError('reconcile: a refused sentence is not in the body');
+    spans.push({ start, end: start + sentence.length });
+    from = start + sentence.length;
+    previous = sentence;
   }
-  return survivor.replace(/\s+/g, ' ').trim();
+  return spans;
 }
