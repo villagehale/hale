@@ -563,6 +563,7 @@ export async function commitDutyUpdate(
     factValue: value,
     confidence: input.slot.confidence,
     inferredBy: 'coparent_duty',
+    heard: { in: 'family' as const, userId: input.actorUserId },
     validFrom: input.now,
   };
   if (typeof database.transaction === 'function') {
@@ -630,6 +631,7 @@ export async function commitDutyRemoval(
     factValue: value,
     confidence: 1,
     inferredBy: 'coparent_duty',
+    heard: { in: 'family' as const, userId: input.actorUserId },
     validFrom: input.now,
   };
   if (typeof database.transaction === 'function') {

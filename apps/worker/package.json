@@ -14,6 +14,8 @@
     "./gmail-send": "./src/services/gmail-send.ts",
     "./memory-writer": "./src/services/memory-writer.ts",
     "./memory-context": "./src/services/memory-context.ts",
+    "./fact-sources": "./src/services/fact-sources.ts",
+    "./sender-label": "./src/services/sender-label.ts",
     "./autonomy-gate": "./src/orchestrator/autonomy-gate.ts"
   },
   "scripts": {

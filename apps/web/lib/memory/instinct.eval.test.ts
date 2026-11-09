@@ -42,6 +42,7 @@ describe('instinct memory evals', () => {
       factValue: 'pasta',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -52,6 +53,7 @@ describe('instinct memory evals', () => {
       factValue: 'BETA_ONLY',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -62,9 +64,10 @@ describe('instinct memory evals', () => {
       factValue: 'SECRET_TEEN',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
-    const brief = await assembleMemoryBrief(db.database, alpha.familyId, NOW);
+    const brief = await assembleMemoryBrief(db.database, alpha.familyId, 'every_adult', NOW);
     expect(brief.text).toContain('pasta');
     expect(brief.text).not.toContain('BETA_ONLY');
     expect(brief.text).not.toContain('SECRET_TEEN');
@@ -81,6 +84,7 @@ describe('instinct memory evals', () => {
       factValue: '8pm',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: new Date('2026-09-20T00:00:00Z'),
     });
 
@@ -91,7 +95,7 @@ describe('instinct memory evals', () => {
       now: NOW,
     });
     expect(forgotten.forgotten).toBe(1);
-    const brief = await assembleMemoryBrief(db.database, familyId, NOW);
+    const brief = await assembleMemoryBrief(db.database, familyId, 'every_adult', NOW);
     expect(brief.text).not.toContain('8pm');
 
     const receipt = await writeFact(db.database, {
@@ -102,6 +106,7 @@ describe('instinct memory evals', () => {
       factValue: 'done',
       confidence: 1,
       inferredBy: 'health-nudge-reply',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     const refused = await forgetFamilyFact(db.database, {
@@ -173,6 +178,7 @@ describe('instinct memory evals', () => {
       factValue: '7pm',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -183,6 +189,7 @@ describe('instinct memory evals', () => {
       factValue: '7:30pm',
       confidence: 0.9,
       inferredBy: 'chat_distiller',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -193,6 +200,7 @@ describe('instinct memory evals', () => {
       factValue: 'temporary',
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: new Date('2026-08-01T00:00:00Z'),
     });
 
