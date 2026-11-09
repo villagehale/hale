@@ -184,6 +184,7 @@ async function alertLane(fixture, client, modules) {
     durationMinutes: null,
     recentNotices: [],
     timeZone: fixture.timeZone,
+    receivedAt: now,
     now,
   });
   const notice = await modules.notice.composeEmailAlertNotice(client, facts, FAMILY.familyId);
