@@ -7,7 +7,9 @@ import {
   companionForChild,
   deriveStage,
 } from '@hale/types';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { episodesForContext, factsForContext } from '@hale/worker/memory-context';
+import { and, eq } from 'drizzle-orm';
+import type { HouseholdGroupFact } from '../channel/intake/household-group';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
@@ -25,11 +27,9 @@ import type { TranscriptMessage } from './conversation';
  * model that asks for a teen's profile is refused there too.
  *
  * The memory slice (currently-valid facts + recent episodes) gives the agent its
- * longitudinal recall; the running transcript gives it the multi-turn thread. A
- * recent episode OR currently-valid fact attributed to a 13+ child is redacted at
- * the source too — neither table carries a teen flag, so the summary / factKey /
- * factValue is withheld and child scope dropped before the slice reaches the model
- * (rule #1).
+ * longitudinal recall; the running transcript gives it the multi-turn thread. Both
+ * come from the shared read (`@hale/worker/memory-context`), which leaves out every
+ * row about a 13+ child before the slice reaches the model (rule #1).
  */
 
 const RECENT_EPISODE_LIMIT = 10;
@@ -97,63 +97,6 @@ export interface MemoryEpisodeContext {
   occurredAt: string;
   episodeType: string;
   summary: string;
-}
-
-/** Marker swapped in for a 13+ child's episode summary before the agent sees it —
- * only the coarse episodeType survives, the raw summary is withheld (rule #1). */
-const TEEN_EPISODE_PLACEHOLDER = '[teen content — summary withheld from agent (rule #1)]';
-
-/**
- * Redact any recent episode attributed to a 13+ child before it reaches the agent
- * (rule #1): the episode's child scope is dropped to null and its raw summary is
- * replaced with a marker, so no teen-specific detail can be surfaced. Non-teen and
- * family-wide (childId null) episodes pass through unchanged. The teen set is
- * derived LIVE from each child's DOB (deriveStage) — the episodes table carries no
- * teen flag. Pure, no I/O — mirrors the inferencer's snapshot redaction.
- */
-function redactEpisodesForTeens(
-  episodes: readonly MemoryEpisodeContext[],
-  stageByChild: ReadonlyMap<string, FamilyStage>,
-): MemoryEpisodeContext[] {
-  return episodes.map((e) =>
-    e.childId !== null && stageByChild.get(e.childId) === 'teenager'
-      ? {
-          childId: null,
-          occurredAt: e.occurredAt,
-          episodeType: e.episodeType,
-          summary: TEEN_EPISODE_PLACEHOLDER,
-        }
-      : e,
-  );
-}
-
-/** Marker swapped in for a 13+ child's fact key and value before the agent sees it —
- * only the coarse factType survives, the raw key/value is withheld (rule #1). */
-const TEEN_FACT_PLACEHOLDER = '[teen content — fact withheld from agent (rule #1)]';
-
-/**
- * Redact any currently-valid fact attributed to a 13+ child before it reaches the
- * agent (rule #1): the fact's child scope is dropped to null and BOTH its free-text
- * factKey and raw jsonb factValue are replaced with a marker, so no teen-specific
- * detail can be surfaced. Non-teen and family-wide (childId null) facts pass through
- * unchanged. The teen set is derived LIVE from each child's DOB (deriveStage) — the
- * facts table carries no teen flag. Pure, no I/O — mirrors redactEpisodesForTeens.
- */
-function redactFactsForTeens(
-  facts: readonly MemoryFactContext[],
-  stageByChild: ReadonlyMap<string, FamilyStage>,
-): MemoryFactContext[] {
-  return facts.map((f) =>
-    f.childId !== null && stageByChild.get(f.childId) === 'teenager'
-      ? {
-          childId: null,
-          factType: f.factType,
-          factKey: TEEN_FACT_PLACEHOLDER,
-          factValue: TEEN_FACT_PLACEHOLDER,
-          confidence: f.confidence,
-        }
-      : f,
-  );
 }
 
 /** Collapse whitespace and clip to `max` characters, marking the cut. */
@@ -267,6 +210,12 @@ export interface AgentContext {
   intent: string | null;
   /** The Hale note this reply is grounding on, or null for the general thread. */
   sourceNote: SourceNoteContext | null;
+  /**
+   * VIL-566 — they said yes to a group with the other parent: `claimed` once Hale is in
+   * it, `pending` until then. Absent when they never said yes, so that turn's prompt
+   * bytes are unchanged. Set by the channel coach's production `loadContext`.
+   */
+  householdGroup?: HouseholdGroupFact;
 }
 
 function toChildContext(
@@ -367,17 +316,7 @@ export async function loadAgentContext(
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, input.familyId)),
-    database
-      .select({
-        childId: schema.familyMemoryEpisodes.childId,
-        occurredAt: schema.familyMemoryEpisodes.occurredAt,
-        episodeType: schema.familyMemoryEpisodes.episodeType,
-        summary: schema.familyMemoryEpisodes.summary,
-      })
-      .from(schema.familyMemoryEpisodes)
-      .where(eq(schema.familyMemoryEpisodes.familyId, input.familyId))
-      .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
-      .limit(RECENT_EPISODE_LIMIT),
+    episodesForContext(database, input.familyId, { now, limit: RECENT_EPISODE_LIMIT }),
   ]);
 
   const family = familyRows[0];
@@ -395,41 +334,14 @@ export async function loadAgentContext(
 
   const thread = compactTranscript(input.transcript);
 
-  const factRows = await database
-    .select({
-      childId: schema.familyMemoryFacts.childId,
-      factType: schema.familyMemoryFacts.factType,
-      factKey: schema.familyMemoryFacts.factKey,
-      factValue: schema.familyMemoryFacts.factValue,
-      confidence: schema.familyMemoryFacts.confidence,
-    })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, input.familyId),
-        isNull(schema.familyMemoryFacts.validUntil),
-        // Narrow to the focused child, family-wide facts included: "where do we
-        // live" belongs in a conversation about Ella. Keyed on the RESOLVED child
-        // (never the raw input) so an id that names nobody in this family falls
-        // back to the whole family rather than filtering everything away.
-        focusedChild
-          ? or(
-              isNull(schema.familyMemoryFacts.childId),
-              eq(schema.familyMemoryFacts.childId, focusedChild.id),
-            )
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(schema.familyMemoryFacts.confidence),
-      desc(schema.familyMemoryFacts.validFrom),
-      schema.familyMemoryFacts.id,
-    )
-    .limit(RELEVANT_FACT_LIMIT);
-
-  const stageByChild = new Map<string, FamilyStage>(
-    childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
-  );
+  // Narrowed to the focused child, family-wide facts included: "where do we live"
+  // belongs in a conversation about Ella. Keyed on the RESOLVED child (never the raw
+  // input) so an id that names nobody in this family falls back to the whole family.
+  const factRows = await factsForContext(database, input.familyId, {
+    now,
+    limit: RELEVANT_FACT_LIMIT,
+    scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
+  });
 
   const memoryBrief = briefWithActiveWorkstreams(
     await assembleMemoryBrief(database, input.familyId, now),
@@ -443,26 +355,20 @@ export async function loadAgentContext(
     children,
     focusedChild,
     stages,
-    memoryFacts: redactFactsForTeens(
-      factRows.map((r) => ({
-        childId: r.childId,
-        factType: r.factType,
-        factKey: r.factKey,
-        factValue: r.factValue,
-        confidence: r.confidence,
-      })),
-      stageByChild,
-    ),
+    memoryFacts: factRows.map((r) => ({
+      childId: r.childId,
+      factType: r.factType,
+      factKey: r.factKey,
+      factValue: r.factValue,
+      confidence: r.confidence,
+    })),
     memoryBrief,
-    recentEpisodes: redactEpisodesForTeens(
-      episodeRows.map((r) => ({
-        childId: r.childId,
-        occurredAt: r.occurredAt.toISOString(),
-        episodeType: r.episodeType,
-        summary: r.summary,
-      })),
-      stageByChild,
-    ),
+    recentEpisodes: episodeRows.map((r) => ({
+      childId: r.childId,
+      occurredAt: r.occurredAt.toISOString(),
+      episodeType: r.episodeType,
+      summary: r.summary,
+    })),
     transcript: thread.transcript,
     transcriptSummary: thread.transcriptSummary,
     question: input.question,
@@ -495,8 +401,6 @@ function briefWithActiveWorkstreams(brief: MemoryBrief, block: string | null): M
 export const _internal = {
   toChildContext,
   toFocusedChild,
-  redactEpisodesForTeens,
-  redactFactsForTeens,
   compactTranscript,
   TRANSCRIPT_VERBATIM_TURNS,
 };

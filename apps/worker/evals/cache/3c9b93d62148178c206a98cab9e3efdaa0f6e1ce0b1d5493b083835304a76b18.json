@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event's title (PD Day), the correct day from now (tomorrow, Monday), and that it is all day, with no clock time invented. It draws no unstated inference (no claim about school being closed or who is affected), invents no plans, and is in English as requested. No location, start, end, or planLink was given, so nothing is missing.",
+    "score": 5
+  }
+}

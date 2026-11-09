@@ -3,16 +3,16 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { disconnectGoogle } from '~/lib/integrations/google-disconnect';
 import { isConnectorProvider } from '~/lib/integrations/google-oauth';
-import { stopGooglePushOnDisconnect } from '~/lib/integrations/google-push-runtime';
-import { revokeConnection } from '~/lib/integrations/store';
 
 export const runtime = 'nodejs';
 
 /**
- * POST /api/integrations/[provider]/disconnect — purge the connector's encrypted
- * tokens and mark the connection revoked (which also stops sync). Family-scoped
- * (rule #1): only the caller's own connection is touched.
+ * POST /api/integrations/[provider]/disconnect — through disconnectGoogle, the one door
+ * (VIL-156): every Google connector of the caller ends, its push watches stop, and the
+ * grant is revoked at Google. Family-scoped (rule #1): only the caller's own
+ * connections are touched, and only when the named one holds keys.
  */
 export async function POST(_req: NextRequest, ctx: { params: Promise<{ provider: string }> }) {
   if (!authConfigured()) {
@@ -35,16 +35,21 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ provider:
   if (!familyId || !userId) {
     return NextResponse.json({ error: 'no_family' }, { status: 403 });
   }
-  // Flag off returns before any read, so a disconnect with the flag dark is the
-  // revoke it was before push channels existed. A Google stop that fails is logged
-  // and does not block the revoke — the tokens are what "connected" means.
-  const stop = await stopGooglePushOnDisconnect(database, familyId, userId, provider);
-  console.info({ provider, push: stop.outcome }, 'google push: disconnect');
-  const revokedCount = await revokeConnection(database, familyId, userId, provider, 'settings');
-  if (revokedCount === 0) {
+  const result = await disconnectGoogle(database, {
+    familyId,
+    userId,
+    via: 'settings',
+    named: provider,
+  });
+  if (result.status === 'not_connected') {
     // Nothing was the caller's to disconnect (e.g. a co-parent's connection) —
     // never a false 'revoked'.
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
-  return NextResponse.json({ status: 'revoked', provider });
+  return NextResponse.json({
+    status: 'revoked',
+    provider,
+    providers: result.providers,
+    google: result.google,
+  });
 }

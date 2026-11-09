@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Call 911 now - fever with purple spots that don't fade when pressed needs emergency care, even if your child seems okay. Don't wait to see if it spreads.",
+    "triage": "Call 911 now. Don't wait for a callback from Health811 (811) - this is not an 811 situation. Tell the operator if your child is floppy, very drowsy, breathing fast, or has cold hands and feet.",
+    "sources": [
+      "Meningitis Now (glass test guidance)",
+      "GPnotebook (non-blanching rash with fever)"
+    ]
+  },
+  "latencyMs": 4069
+}

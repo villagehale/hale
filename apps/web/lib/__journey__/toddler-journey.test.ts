@@ -35,7 +35,6 @@ import {
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { roleAllows } from '~/lib/channel/role-scope';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
-import { approvedReceipt } from '~/lib/channel/router/copy';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { threadProactiveMessage } from '~/lib/channel/thread';
@@ -47,6 +46,7 @@ import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { windowPhrase } from '~/lib/registration/sequence/copy';
+import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -319,6 +319,8 @@ interface Journey {
   /** The four gate ports consulted for the nudge, in call order. */
   gateCalls: string[];
   propose: SequenceRunResult;
+  /** VIL-543 · the facts every registration note was written from, in order. */
+  notes: RegistrationNoteFacts[];
   readiness: SequenceRunResult;
   battlePlan: SequenceRunResult;
   /** The action row the shortlist minted, as persisted. */
@@ -396,7 +398,6 @@ async function runToddlerJourney(): Promise<Journey> {
       weather: fakeWeather([]),
       client: null,
       now: () => INTAKE_AT,
-      timeZone: TZ,
       yearFinder: JOURNEY_FINDER,
     }),
     // Same discipline as the radar above: the REAL composer on the REAL production
@@ -610,6 +611,7 @@ async function runToddlerJourney(): Promise<Journey> {
 
   // ── STAGE 6 · the registration sequence ───────────────────────────────────
   const claimed = new Set<string>();
+  const notes: RegistrationNoteFacts[] = [];
   const sequenceDeps: SequenceRunDeps = {
     refuseUnbackedSend: async () => [],
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
@@ -742,6 +744,23 @@ async function runToddlerJourney(): Promise<Journey> {
       throw new Error(`journey: unexpected course read ${url}`);
     },
     refreshCourseAnchor: async () => false,
+    client: {
+      messages: {
+        create: async () => {
+          throw new Error('journey: compose is injected');
+        },
+      },
+    } as never,
+    loadLanguage: async () => 'en',
+    composeMorning: async () => null,
+    composeHeadsUp: async (_client, facts) =>
+      `${facts.window} opens ${facts.opensOn} for ${facts.who}.`,
+    composeEvening: async () => 'Richmond Hill opens in the morning. Have the page open.',
+    // The composer seam: what the model writes is the eval's (vil543-note-eval.mjs).
+    writeNote: async (_db, _familyId, facts) => {
+      notes.push(facts);
+      return `Hale note: ${facts.kind}`;
+    },
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
@@ -862,6 +881,7 @@ async function runToddlerJourney(): Promise<Journey> {
     nudgeSends,
     gateCalls,
     propose,
+    notes,
     readiness,
     battlePlan,
     draftedAction,
@@ -1117,20 +1137,15 @@ describe('6 · the registration sequence claims the window and prepares the morn
     ]);
   });
 
-  it('asks the four-item checklist without ever claiming Hale did any of it', () => {
-    // VIL-338's rung, and the one sentence in this ladder whose whole content is a
-    // question. Every item is Markham's own published prerequisite restated, the ask is
-    // ONE (D14), and nothing here says Hale opened the portal, checked the account or
-    // filled anything in — the class of lie a parent would discover at 6:31 with the
-    // seat gone. No course is bound in this journey, so no leg reached the network at
-    // all (the deps' fetcher throws).
-    const checklist = journey.transport
-      .bodies()
-      .find((body) => body.includes('a Markham portal account')) as string;
-    expect(checklist).toContain('added with their birthday(s)');
-    expect(checklist).toContain('a card saved');
-    expect(checklist).toContain('Want me to know when that is done?');
-    expect(checklist).not.toMatch(/filled in|staged|held for you|all set/i);
+  it('sends the checklist the model wrote from Markham facts, and reads no page', () => {
+    // VIL-338's rung. VIL-543 · the text is the model's (the skill holds the four items
+    // and the one ask); what the journey pins is that the checklist leg went out, on
+    // Markham's own portal facts, and that no leg reached the network (the deps'
+    // fetcher throws).
+    expect(journey.notes.find((note) => note.kind === 'readiness_checklist')).toMatchObject({
+      account: 'a Markham portal account',
+    });
+    expect(journey.transport.bodies()).toContain('Hale note: readiness_checklist');
     expect(journey.readiness.read).toBe(0);
   });
 
@@ -1181,13 +1196,21 @@ describe('6 · the registration sequence claims the window and prepares the morn
     // this ladder fires FOUR legs (['heads_up','readiness','battle_plan'] above, plus
     // the go leg), and a card that enumerated three would have the household consent to
     // one thing and receive another.
+    // VIL-543 · the model writes the card from facts, so what is pinned is that the
+    // card's text is the written note and the facts enumerate the four legs.
     const summary = String((journey.draftedAction.payload as Record<string, unknown>).summary);
-    expect(summary).toContain('I never register for you');
-    expect(summary).toContain(
-      'a week ahead, a checklist a few days out, the evening before, and 15 minutes before it opens',
-    );
-    // The one place a parent learns how to bind a course, and it is read on a screen.
-    expect(summary).toContain('the morning text will carry it');
+    expect(summary).toBe('Hale note: approval_card');
+    const card = journey.notes.find((note) => note.kind === 'approval_card');
+    expect(card).toMatchObject({
+      texts: [
+        { text: 'week_ahead' },
+        { text: 'checklist' },
+        { text: 'evening_before' },
+        { text: 'just_before_open' },
+      ],
+      // The one place a parent learns how to bind a course, and it is read on a screen.
+      courseLinkTip: true,
+    });
   });
 });
 
@@ -1196,7 +1219,8 @@ describe('6 · the registration sequence claims the window and prepares the morn
 describe('7 · the parent approves in their own words and the receipt is theirs', () => {
   it('reads "sounds good" as consent and approves the one drafted action', () => {
     expect(journey.approval).toMatchObject({ claimed: true, outcome: 'approved' });
-    expect(journey.approval.reply).toBe(approvedReceipt('add_to_digest_only'));
+    // VIL-504 · no fixed receipt: the approval is the answer.
+    expect(journey.approval.reply).toBeNull();
   });
 
   it('stamps the INTERNAL users.id as the approver, which is the id the family owns (WS3 P0)', () => {

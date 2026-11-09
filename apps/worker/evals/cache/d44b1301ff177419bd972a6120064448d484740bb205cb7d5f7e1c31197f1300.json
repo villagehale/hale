@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Chinese as required and states the start, end, full place and address. It says the event is on no one's calendar, which matches onCalendarOf being empty, and gives the link to the people not yet on it. It does not claim everyone has it, asks nothing of the group, and uses only facts from the input. Minor issue: the first message is a little more than the facts need, but nothing is invented.",
+    "score": 5
+  }
+}

@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AGE_TOLERANCE_MONTHS,
   OPEN_NOW_MAX_AGE_DAYS,
+  type RegistrationMatch,
   inBand,
   latestPastCycle,
   matchRegistrationWindows,
-  type RegistrationMatch,
   resolveFamilyOpen,
   resolveMunicipalities,
   stillOpenCycle,
@@ -506,8 +506,16 @@ describe('latestPastCycle', () => {
   const AFTER_FALL = new Date('2026-09-10T00:00:00.000Z');
 
   it('names the most recent cycle this town has already opened', () => {
-    const summer = win({ id: 'w-summer', cycleLabel: 'Summer 2026', openAt: new Date('2026-05-05T11:00:00.000Z') });
-    const fall = win({ id: 'w-fall', cycleLabel: 'Fall 2026', openAt: new Date('2026-09-01T11:00:00.000Z') });
+    const summer = win({
+      id: 'w-summer',
+      cycleLabel: 'Summer 2026',
+      openAt: new Date('2026-05-05T11:00:00.000Z'),
+    });
+    const fall = win({
+      id: 'w-fall',
+      cycleLabel: 'Fall 2026',
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
     const past = latestPastCycle({ windows: [summer, fall], postal: 'L3R 0B4', now: AFTER_FALL });
     expect(past?.window.cycleLabel).toBe('Fall 2026');
     expect(past?.openedForFamilyAt).toEqual(fall.openAt);
@@ -519,11 +527,16 @@ describe('latestPastCycle', () => {
   });
 
   it('never reaches into a town the family does not live in', () => {
-    const elsewhere = win({ municipality: 'burlington' as Municipality, openAt: new Date('2026-09-01T11:00:00.000Z') });
-    expect(latestPastCycle({ windows: [elsewhere], postal: 'L3R 0B4', now: AFTER_FALL })).toBeNull();
+    const elsewhere = win({
+      municipality: 'burlington' as Municipality,
+      openAt: new Date('2026-09-01T11:00:00.000Z'),
+    });
+    expect(
+      latestPastCycle({ windows: [elsewhere], postal: 'L3R 0B4', now: AFTER_FALL }),
+    ).toBeNull();
   });
 
-  it("uses the date THIS family could act on, so a resident head start is the one that already went", () => {
+  it('uses the date THIS family could act on, so a resident head start is the one that already went', () => {
     const resident = win({
       openAt: new Date('2026-09-15T11:00:00.000Z'),
       residentOpenAt: new Date('2026-09-01T11:00:00.000Z'),
@@ -552,7 +565,11 @@ describe('latestPastCycle', () => {
       ageMinMonths: 144,
       ageMaxMonths: 216,
     });
-    const otherDomain = win({ id: 'w-swim', programDomain: 'swim' as ProgramDomain, cycleLabel: 'Swim Fall 2026' });
+    const otherDomain = win({
+      id: 'w-swim',
+      programDomain: 'swim' as ProgramDomain,
+      cycleLabel: 'Swim Fall 2026',
+    });
     const otherTown = win({
       id: 'w-else',
       municipality: 'burlington' as Municipality,

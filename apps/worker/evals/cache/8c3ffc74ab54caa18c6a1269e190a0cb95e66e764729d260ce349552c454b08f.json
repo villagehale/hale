@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately says registration stalled at a captcha that only the parent can complete, gives the live browser link, names the session, states not yet confirmed and no spot yet; no invented time limit, no personal details, no retry promise. Language is zh and tone is plain and warm.",
+    "score": 5
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event 'Pottery for kids' and says it is on Saturday 1 August at 9h00, offering a calendar link. The start is Saturday, Aug 1, 2026 at 9:00 in America/Chicago, so the day, weekday and hour all match, and 9h00 names minute zero, which matches the start's minute of 0.",
+    "match": true
+  },
+  "latencyMs": 1941
+}

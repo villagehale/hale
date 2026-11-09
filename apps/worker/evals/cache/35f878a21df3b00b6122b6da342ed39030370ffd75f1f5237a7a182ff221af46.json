@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text is in English though facts.language is fr, so the French requirement fails; it also omits the mustSay items about Jacqueline, picking up Léo from swimming, and Thursday at 4 PM."
+  }
+}

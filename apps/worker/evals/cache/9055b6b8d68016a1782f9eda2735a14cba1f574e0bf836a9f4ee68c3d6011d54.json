@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgZUvoTqDnJ9PTDELfvDu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSqAkKEAgTGAI4AUIIdGhpbmtpbmcSDPx1A0GWZ6tbTHTn+hoM+tnhSxIykzcNMVVYIjDD0dqPRKUxgEzCWtxxhwEkznOeNt3E59HRkoRLBQsqWjQCsmDVYI31jg5IbbKt8owqxQi+IWKzl6RqnLDbZeK38q9nqsT7Z8qG9TFgXwmzz8M6qLcso+9PmlzOWplpnEfBcUKOL4/xTzYJJhMv30FTVQoQkJ9EJ+VU6TDOSw6u+4y5V7bu07HGSyrkug+acCKljZfMdoAnekjeCSNB67ddAJ0tiphSIli8r/kd/FOGQ/lLQhsw4lX1uMODx99+xonYBd0XdVuO4xWN8qhYCP/SXT++bU65jwmpyCCC8J76GRbJ1+IDF3zMqJXPhlayj6AWpHj41lZweL2KTmC0m8//w+8PORf6YLvUQY6VmezLmZZv7ZYehT6cYqFIsKc56gVPS51J9kI6GqXQabE9PAW4mgYKmGK9L3Kyx0eXq2LTxME+yzXwULuZv1lbPvW3r8N7Ce3rHw5PypCqHSLSIEKLyoAQXdlPBPNyBe+cHwogzE38q+j0xKCy7aYGIbTCeQ/DgLBt5OHNiWSLGM3TOUtf013fgyPd8G7FxFt63se1dJT62nXkwc8M+4LEh2Flq889W87fNUf2ulBrtsQw5TwyaKLQRK6/IjYRz8lzROwaUORzAwub3pYwlMdbOuzhsWkP2fubdL79JNOZA2FolnbxAxIaSMH2+ahughkXKEtFt3f1srFjWEPyQaL9cvAEKRqIQxrcwnML0YaZEjkvnvuUbgNhwt/MMPcKnAJk3wiBQXRRRN8xfkIZZR5TXgCI3UVsU81vNGOPhea4+ydlvDH7kY/hWwBmTI2njOicgSM+u5fvoRf+aI1RcgzF1vXsHRkYjjh1vhBnXjFSccqdj+VvBdShsebUwu0jNUAi8ZqHY5u9ZDJ89tov0ohp56/KQgpm3UJcGBESBdW0UzoPYqHvCwLMV9P4GE1kUVSaDlM1orKRDEbvriPLqZG55bqYSRFf5GfOEQtN5v/51uX/OufOMlBwrW+9AfAtxhRDbUr0Nn44b2itfbG/EeSKYX/hsWJD1c6i1e5V73rXFCKYqk/CfuPvGWT7AeqXym6vvTlAooJBwxZZbGgiwZEWxl0LkujOsT26fz/ghbkqJ5pzoRFYeXk/pBcPg1/cxt0eWETYavxzF8J5TTQEC9+GvFsiRlNqoGV0oeKpiwvsFvD7KIg2t8SaAwqxO4XDhW5XWN5onY/9fRsqqUsURtPg3Pa1sOMlnZxk+rIUttU0X8UojgpemCTQEtg2h2ZMD8/Rjy/DI383eHrPMv2bVjSH02CqF+BWqP9TCIZvQackXVHSUvqUrfJSgY/ZYWZj0ZuGCWFHPVEKfhv1e0lA8LHJO1y3FLerC52ALVXkIx9gjxjib9M4H4t/slozQJ2Q3k8h+KLaJs/iURyNxDrb4KSHv+dlLcYGRvYt4JUAg8/bPa4lZ9VWPUdF4AF2pPjMUHvAetejL3rXJqHObb1BbVKRDARL9MtG2JhuCIU2V0wIY3GTxiBMZm3jMNDpYO9NiDZs3VvPyxXNtG3NqqSCGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014i2iUWVsZGqMo3tty9VD9o",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1321,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21833,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 283
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3209
+}

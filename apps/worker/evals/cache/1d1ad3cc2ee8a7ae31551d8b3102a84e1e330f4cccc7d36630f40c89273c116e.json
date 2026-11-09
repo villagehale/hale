@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: both events are described as tomorrow, story time at 11:00 AM is morning (上午11点), soccer 5:30-6:30 PM is afternoon (下午5:30到6:30). The text is short and in Chinese. However, it states '踢足球' as the event name rather than the title 'Soccer' exactly, which is an acceptable rendering. Main concern is the phrasing '两件事' and '明天有' reads somewhat like a notification list, but a native speaker would plausibly text this. Plan link is not included, which is acceptable since it was optional per watchFor (may appear once). Overall accurate and natural enough for a high score.",
+    "score": 4
+  }
+}

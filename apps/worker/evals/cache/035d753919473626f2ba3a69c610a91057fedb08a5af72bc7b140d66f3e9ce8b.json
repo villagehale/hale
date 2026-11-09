@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgYwroh1LQuZ2sSnp4reR",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShQkKEAgTGAI4AUIIdGhpbmtpbmcSDHWf9O2ko2JwebndHRoM+zl74Z6UC25M+mZZIjDBZcK3yle4bQI6ayy4PFGLlVHa0yJTnleczixvnscunI96ML1DVP2C0omPxopdMFkqoggA7MbZE3a5LstcOhh9N69QEgtRp6XSG01gRii27t97vQu5q7HOm5Zw1qwE8KrPxEy5tkL/gwlxmlGWPL7/KkcYBim3on5E4EspgVC9pw4q8HXfbJBjDxK/TiYVP0Ib7LG5xuWcVmn8BGs9i4le0osVgbI/zIGtJJicAZn0G+ZL8JMEB0euNZlSyg5UeigiDyFrvs+wMqaMWs/AdrsWKTf9JAoi1vVnlQaKnwGOyQ5hziTikoIPHKYucbawJ8sJlkiFSdoLUPyn0EKhGw2HIaPOIfRa/2Ok6IAjeokmms7DKL+iP3Ldf7qyu+0tMNFb/EzNg2/I7VwMFrMXQWDyOE3hmCMGTzRJmlOB0TaCalCPKNqxYUppqjEiMQeEiHUwdrOfsKiMEfD52uMgFcB/q5QMSafg3Ch1rQVpSRdUF1FDE9YrGqH91JFrPCqzu5mBBcWmIyBJG08UC7w6vJMvneH1XZY2MHzSBglgf9e8vzJIugc2XGQacEreMsoxYAzMZKmDU7amirjttZpWo7FzwlTryAsF7Re3bRjJxPhXdtyXEGQPXcyLGanVFfad/Wy/vfjDiWfWVwK2zgPkIlKc9trV3o6pGPR3rYq/2OFsdLRKc9JgVbW1BSeHxituk0tIuOVl4YmLCf/qqqxoYLVxWoRJiPnGCJrfA1HXVYZu2szNy46NSvy6Q+wFM3F3b61tw1fqIA5WpnU/cTuIa3xn1uO3cepb2JLXHeRXyq7eAEXPwOkPdEa0jafQQNmokiIifN+7In6QOBxDDWLUwF/GN3fpL3D5JwnbjTmSNyFgD5d2I67fByK92feAFqsciTKyKqFOCoqtVgd0o47BK5bBeG2o72E+luk8ds91gwP5OCAx4PhRT/jaFV7SofsA2SjU9iL+z+0x31Fa/7Es5S62cG6KUmKsst5AvhgYPIThWawlRLVqDzmz7VFa1USVk2emR6zMJLFN3fyZyoY0PPB858Z1sIhNiBAJPz6rZ6Gf3bkhHZf+8cdW9wighMuHSI0CTjS12s/xHWC/fHvKkl3Ft2M9jn7UtOzYImwsvKn6QxP+1qdSQ5BiGT5f3Grl4Jiwe52xBOkfq0ncXpkjoFXKLyUq8bQVelPr3S624vMY8I0vxg0CU+qpCwKd5hrCKB+RdGJgcTXI1qB77V3OA2TnyOpwps+/RncnYMPGW45r/AqiItf2FsPi1zv/HGlziC2gxDNxxIyaVMxNfpyYDUfQc0v2GfinnaO0xL4Br4Y+QZEPrY3oCbjMCqnuIDsrH4feuWdQFZgFdD++WXd2mlWEdZFlZAK0vRRyxeU9u3skcC3yYF7B26CHGN5afl3dH1o7wRvcz9AoSFLnpho1yM6QP8GIz9D/gOIEWN2Po6KAvfJ851TMONGsstynsq1IUH2TXSdyARgB"
+      },
+      {
+        "type": "text",
+        "text": "I don't have anything on file from Priya about a school thing, so I can't say what it was. Best to ask her directly."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18186,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 228,
+      "output_tokens_details": {
+        "thinking_tokens": 190
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

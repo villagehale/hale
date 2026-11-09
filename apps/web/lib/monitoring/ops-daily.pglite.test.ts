@@ -362,6 +362,7 @@ describe('aggregateOpsDaily', () => {
     expect(text).toContain('Medical (7d): no medical answers');
     expect(text).toContain('Re-verify (7d): did not run');
     expect(text).toContain('Linq chat IDs (DB): 1 of 200');
+    expect(text).toContain('Inbound queue: unreadable');
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 });

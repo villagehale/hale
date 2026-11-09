@@ -1,9 +1,9 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { linkRef } from '~/lib/channel/coach/activity-links';
 import { z } from 'zod';
+import { linkRef } from '~/lib/channel/coach/activity-links';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
-import { deidentifyActivityQuery, refusalSentence } from './deidentify';
+import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
 import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
 import type { BoundActivityReader } from './reader';
 
@@ -64,7 +64,7 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
   return defineTool({
     name: 'find_activities',
     description:
-      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
+      "Look on the LIVE WEB, right now, for real programs, classes, camps or drop-ins a child could actually do — the second source alongside `search_village`, and the one to use when the radar has nothing or the parent names a place you have no find for. `subject` is the activity in a short phrase and NOTHING ELSE: no name, no address, no postal code — the child's age band and the family's town are attached for you from their record and are the only location and age that ever leave the building. Returns at most three picks, each with a name, an age fit and `sourceName` — whose page the facts were read off — plus `when` and `price` WHERE THAT PAGE PUBLISHED THEM. A null `when` or `price` means it had not (fall times not up yet, schedule behind a registration login); the program is still real, so hand it over and say what the site did not say, and never fill the gap with a day or a figure of your own. Every pick is `source: 'web'`: these are things their own site says, NOT finds we have verified, and saying so is the honest way to hand them over. Never claim a web find is confirmed, and never withhold one because it is not. Never hand over a pick that does not fit the children's ages. A found result carries `family`: the children (age and stage; a teen is a stage only), the home area searched around, and the family's durable preferences (indoor/outdoor, not scary, stroller, language and the like). Rank by it and let it shape who you say a pick is for, in your own words — never recite it back as a profile, and treat an empty field as unknown, not as something to guess. Rank by fit only; free and paid are equal. If none fit, call this once more with the age band and the interest in `subject`, then stop. Quote each pick's name as given, and use only that pick's own `when`. `found: false` with `reason: 'no_picks'` means the search ran and there is genuinely nothing — say so plainly. `reason: 'over_budget'` means the search is still running and you ran out of time to wait (a CALL only): it is NOT nothing, so never say there is nothing — say you are still looking and will text them what you find. Any other reason means the search itself could not run. When the parent asked you to find activities, or what is going on or who is around, call `search_village` first. Call this in the same turn only when that returned nothing you can hand over — do not stop to ask which child, which day, or what kind before you have looked, and do not call this beside a checked find. When they asked about a day or a place, call `lookup_week` in that same turn: their own week comes first, and a checked find follows it. The age band and the town are attached from their record.",
     inputSchema: z.object({
       subject: z.string().min(1),
       /** The season or window the parent asked about, in their own general terms. */
@@ -94,8 +94,8 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       callsThisTurn += 1;
 
       const childId = input.childId ?? null;
-      const [municipality, stage, householdNames] = await Promise.all([
-        args.reader.municipality(ctx.familyId),
+      const [place, stage, householdNames] = await Promise.all([
+        args.reader.place(ctx.familyId),
         args.reader.stage(ctx.familyId, childId),
         args.reader.householdNames(ctx.familyId),
       ]);
@@ -103,10 +103,14 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       const deidentified = deidentifyActivityQuery({
         subject: input.subject,
         window: input.window ?? null,
-        municipality,
+        town: place.status === 'known' ? place.town : null,
         stage,
         householdNames,
       });
+      // No place is an outcome, not a subject to recompose: nothing was searched.
+      if (!deidentified.ok && deidentified.refusal === 'no_place') {
+        return { found: false as const, reason: 'no_place' as const };
+      }
       if (!deidentified.ok) {
         // The recompose loop, exactly as `offer_full_plan` runs it: the refusal is a
         // sentence the model answers by calling again with a subject that is about the
@@ -161,7 +165,15 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       const picks = result.picks.map(({ url, ...pick }) =>
         url ? { ...pick, ref: linkRef(url) } : pick,
       );
-      return { found: true as const, picks };
+      // VIL-518. The family slice the picks are ranked and opened on, read off the record
+      // (never the model's arguments) and handed back beside them — so "fits Zephyrina at
+      // 4, near home, indoors" is a fact the model holds at composition, not a hope in a
+      // skill. It never reaches the search. Absent reader or a failed read: the find
+      // still lands, without a slice, and nothing is invented to fill it.
+      const family = args.reader.familyFit
+        ? await args.reader.familyFit(ctx.familyId).catch(() => null)
+        : null;
+      return family ? { found: true as const, picks, family } : { found: true as const, picks };
     },
   });
 }
@@ -208,15 +220,10 @@ export function promiseActivityFollowUpTool(args: {
       // — so it has to clear the same de-identification the live search does, HERE, where
       // there is still a model to hand the refusal back to (rule #1).
       const householdNames = await args.reader.householdNames(ctx.familyId);
-      const deidentified = deidentifyActivityQuery({
-        subject: input.subject,
-        municipality: null,
-        stage: null,
-        householdNames,
-      });
-      if (!deidentified.ok) throw new Error(refusalSentence(deidentified.refusal));
+      const subject = deidentifyActivitySubject(input.subject, householdNames);
+      if (!subject.ok) throw new Error(refusalSentence(subject.refusal));
 
-      args.onPromise({ subject: deidentified.query.subject, childId: input.childId ?? null });
+      args.onPromise({ subject: subject.value, childId: input.childId ?? null });
       return { promised: true as const };
     },
   });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores the actual event entirely. The facts give one event, \"Natation\" (swim) tomorrow 5:00-5:45 PM at Piscine Centennial, 5 Lake Rd, with the venue changed from Mold-Masters SportsPlex, 221 Guelph St. The text instead mentions \"Jour de congé at 3:00\" (an event not in the facts, with an invented time), says tomorrow is a day off with \"breathing room\" (implying a free day when a timed event exists), omits the swim, start/end times, new venue name and address, and the venue change. It is also in English, not French, and has no bold on the new venue.",
+    "score": 1
+  }
+}

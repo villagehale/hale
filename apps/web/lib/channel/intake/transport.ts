@@ -1,4 +1,5 @@
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
+import type { LinqTextDecoration } from '~/lib/channel/linq/transport';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 
 /**
@@ -80,6 +81,13 @@ export interface OutboundMessage {
    * attachment was intended and is missing, so it is refused rather than downgraded.
    */
   mediaUrls?: string[];
+  /**
+   * VIL-474 · styling for ranges of `body`, chosen by Hale's AI (usually the one
+   * fact that matters, like the time or the venue). Absent is plain text. Only the
+   * iMessage leg renders it; SMS sends the same `body` unchanged, which is the
+   * correct downgrade because the words are identical either way.
+   */
+  decorations?: readonly LinqTextDecoration[];
 }
 
 /** The native iMessage location-request card. SMS transports do not implement it. */

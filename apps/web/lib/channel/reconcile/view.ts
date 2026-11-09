@@ -41,17 +41,16 @@ export async function loadReconcileView(
   input: { familyId: string; now: Date },
 ): Promise<ReconcileView> {
   const { familyId, now } = input;
-  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] =
-    await Promise.all([
-      loadOpenCommitments(database, familyId, now),
-      hasLiveSequence(database, familyId),
-      loadScheduledTitles(database, familyId, now),
-      loadMintableWindow(database, familyId, now),
-      // VIL-294. The parent's own statements, read from the SAME rows the health sweep
-      // reads to decide whether to raise a checkpoint again — one reader per question, so
-      // a turn cannot acknowledge a booking the sweep is about to ask about.
-      loadStatedBookings(database, familyId, now),
-    ]);
+  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] = await Promise.all([
+    loadOpenCommitments(database, familyId, now),
+    hasLiveSequence(database, familyId),
+    loadScheduledTitles(database, familyId, now),
+    loadMintableWindow(database, familyId, now),
+    // VIL-294. The parent's own statements, read from the SAME rows the health sweep
+    // reads to decide whether to raise a checkpoint again — one reader per question, so
+    // a turn cannot acknowledge a booking the sweep is about to ask about.
+    loadStatedBookings(database, familyId, now),
+  ]);
   return {
     openKinds: new Set(openCommitments.map((commitment) => commitment.kind)),
     // Nothing is pending from a background lane: a sweep composes one message and the

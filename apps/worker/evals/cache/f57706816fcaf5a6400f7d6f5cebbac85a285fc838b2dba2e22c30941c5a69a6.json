@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give a timed event 'PD Day' tomorrow 9:30 AM to 12:00 PM at Northside community centre. The text says 'Jour de congé at 3:00', which is a wrong time (3:00 instead of 9:30 AM, with no AM/PM), omits the end time and the venue name, retitles the event in French while the language is English, and says 'a day off... breathing room', implying the family has nothing to be at despite a timed event. Multiple fact failures.",
+    "score": 1
+  }
+}

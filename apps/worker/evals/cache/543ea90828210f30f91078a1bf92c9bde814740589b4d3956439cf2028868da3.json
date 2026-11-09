@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is Swim class today, Monday Oct 26, 10:00 to 11:00 AM, but the text names a different event (Parent & Tot Skate), a different day (Tuesday, Oct 27), and a different time (10:30 a.m.). Wrong title, date, and time with no end time given; fails the facts entirely.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says the day is a day off with breathing room, implying the day is free, which is a LOW-score error since a timed 3:00-4:00 PM event exists. It also gives the time as '3:00' without AM/PM (the event is in the afternoon but the English format is used), omits the end time 4:00 PM, omits the location Georgetown library, and is in English, not French, with an unnatural 'Mon, Oct 26:' template format.",
+    "score": 1
+  }
+}

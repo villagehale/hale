@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Reply is in French, calm, tells parent to call 911 immediately, and the only number is 911, matching the given facts. It lacks the 'ma fille' context and no check-in question, which is acceptable. Minor deduction: it does not explicitly name the service (e.g., emergency services) or add the instruction to stay with the child or mention poison control, though the facts only specify 911."
+  }
+}

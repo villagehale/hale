@@ -1,22 +1,23 @@
-import { cache } from 'react';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
+import { cache } from 'react';
 import { db as defaultDb } from '~/lib/db';
+import { type FamilySeat, currentFamilyId, currentUserId, listSeatsForUser } from '~/lib/family';
 import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
-import { currentFamilyId, currentUserId } from '~/lib/family';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import {
   NO_TEEN_UNLOCKS,
   type TeenAccessUnlocks,
   loadTeenAccessUnlocks,
   redactsTeenContent,
 } from '~/lib/teen-access';
+import { type PendingApprovalView, toPendingApprovalView } from './approvals';
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
-import { type PendingApprovalView, toPendingApprovalView } from './approvals';
-import { type HistoryActionRow, type HistoryView, toHistoryView } from './history';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { type HistoryView, toHistoryView } from './history';
 import { type TrailView, effectiveTeenContent } from './mappers';
+import { readResolvedActionRows } from './resolved-actions';
 import { NO_AUDIT_FACTS, loadActionAuditFacts } from './reviewer-notes';
 import {
   buildActorResolver,
@@ -24,6 +25,7 @@ import {
   loadTrailForFamily,
   readFamilyTimezone,
 } from './trail-query';
+import { type WhatHaleDidItem, readWhatHaleDid } from './what-hale-did';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
@@ -175,11 +177,7 @@ export function loadViewerTeenUnlocks(): Promise<TeenAccessUnlocks> {
 
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
-    const unlocks = await loadTeenAccessUnlocks(
-      database,
-      familyId,
-      await currentUserId(database),
-    );
+    const unlocks = await loadTeenAccessUnlocks(database, familyId, await currentUserId(database));
     return loadTrailForFamily(database, familyId, unlocks);
   }, []);
 }
@@ -301,71 +299,37 @@ export function loadResolvedActions(): Promise<HistoryView[]> {
       readFamilyTimezone(database, familyId),
       loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
     ]);
-    const rows = await database
-      .select({
-        id: schema.actions.id,
-        actionType: schema.actions.actionType,
-        payload: schema.actions.payload,
-        reviewerVerdict: schema.actions.reviewerVerdict,
-        reviewerVerdictAt: schema.actions.reviewerVerdictAt,
-        draftedAt: schema.actions.draftedAt,
-        userVisibleState: schema.actions.userVisibleState,
-        executedAt: schema.actions.executedAt,
-        revertedAt: schema.actions.revertedAt,
-        revertedReason: schema.actions.revertedReason,
-        teenContent: schema.events.teenContent,
-        contentProvenance: schema.events.contentProvenance,
-        childId: schema.events.childId,
-        childName: schema.children.name,
-        childDob: schema.children.dateOfBirth,
-      })
-      .from(schema.actions)
-      .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
-      .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
-      .where(
-        and(
-          eq(schema.actions.familyId, familyId),
-          ne(schema.actions.userVisibleState, 'drafted_for_approval'),
-        ),
-      )
-      .orderBy(desc(schema.actions.draftedAt))
-      .limit(50);
-    return rows
-      .map((row) => {
-        // The "when" stamp is the terminal instant: executed / reverted / reviewer
-        // verdict, falling back to draftedAt (always present) — a display default at
-        // an explicit boundary, not a masked null.
-        const resolvedAt =
-          row.revertedAt ?? row.executedAt ?? row.reviewerVerdictAt ?? row.draftedAt;
-        const historyRow: HistoryActionRow = {
-          id: row.id,
-          actionType: row.actionType,
-          payload: row.payload,
-          reviewerVerdict: row.reviewerVerdict,
-          draftedAt: row.draftedAt,
-          teenContent: redactsTeenContent(
-            effectiveTeenContent(
-              row.teenContent,
-              row.childDob ?? null,
-              familyHasTeen,
-              row.contentProvenance,
-            ),
-            row.childId ?? null,
-            'message_content',
-            unlocks,
-          ),
-          childId: row.childId ?? null,
-          childLabel: row.childName ?? null,
-          userVisibleState: row.userVisibleState as HistoryActionRow['userVisibleState'],
-          executedAt: row.executedAt,
-          revertedReason: row.revertedReason,
-          resolvedAt,
-        };
-        return { view: toHistoryView(historyRow, timeZone), resolvedAt };
-      })
-      // Newest RESOLVED first — the query orders by draftedAt (indexed), but the
-      // resolved instant is what the list reads by, so re-sort on it here.
-      .sort((a, b) => b.resolvedAt.getTime() - a.resolvedAt.getTime())
-      .map((r) => r.view);
+    const rows = await readResolvedActionRows(database, {
+      familyId,
+      scope: ne(schema.actions.userVisibleState, 'drafted_for_approval'),
+      unlocks,
+      familyHasTeen,
+    });
+    return rows.map(({ row }) => toHistoryView(row, timeZone));
   }, []);
+}
+
+/**
+ * The /privacy "What Hale did" list for the signed-in viewer: the emails Hale sent and
+ * the calendar changes it made, newest first, in the family's own zone. Same
+ * empty-state degradation: no DB or no resolved family → empty list.
+ */
+export function loadWhatHaleDid(): Promise<WhatHaleDidItem[]> {
+  return readForFamily(
+    async (database, familyId) =>
+      readWhatHaleDid(database, familyId, await currentUserId(database)),
+    [],
+  );
+}
+
+/**
+ * Every seat the signed-in viewer holds, for a control gated on them (the export, by
+ * exportSeat). The same expected boundary: no DB (preview) or no viewer → no seats, so
+ * nothing seat-gated is offered.
+ */
+export async function loadViewerSeats(): Promise<FamilySeat[]> {
+  if (!process.env.DATABASE_URL) return [];
+  const database = defaultDb();
+  const userId = await currentUserId(database);
+  return userId ? listSeatsForUser(userId, database) : [];
 }

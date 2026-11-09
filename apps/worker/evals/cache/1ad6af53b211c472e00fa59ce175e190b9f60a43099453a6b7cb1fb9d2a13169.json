@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgUtDkLC7SiVPLtVAyz2u",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpwoKEAgTGAI4AUIIdGhpbmtpbmcSDK98mdepUQfLZnELYRoMpDYDSWJx/G/ZW0J/IjCJqB/sI+ADzvpo4niNuo0Wy6aM4vJJkIF8fCWmeze4szhPQ25MSrzMM5svKxANpQQqxAlKsKqW2oLjq7mjs2bwf/i/nFfd0Trc8ZuDIJrTPjlvXlrJjUfJTOLusvUharVImykSubwQ4NQ/4P+uZtV/Txl30VsDihpLJGNE25wZSmGlmV3Ug7iNTNbzaZFkxOvh8epono28+HuV15IPbTUSyh6je8soiGbawqiSzEgLky0th8V786PKtm8twpJEVo7sY8jbeq++K8qIvQVtLC9gAnt3f7vSGTGPVSjdxZASXtjti11T+o0L3sa2ljsPWD8aXHV758Ae/4uqKCZksWugoHDEprVWFVRxPkQbjdykAIjwAy60Eod0ITSi3uA0l0bdPmM8d3dz8m0AOzCLrTzuVZK39Y1HZKCZlk/f1pO7fu4P0H45vmJsXIlVArqkH+Cof6BeFFlCdVPE+BcJiBKrh+GTMSIQiOXxAhe2dUmcsBREX7IGVfyblMJoGr5Cgy84ipNm5FP7jbwPrplIDFHk8nlJoejzuv9bGf/03a4ieeNYcK/s957nB1xiE4tyVhnbiLvg7xgoju5ISitJfvsuPUshm0BqhzJqCkaX8uO9UUtMHrH+N4Ct2zL+qjoIwn9OgnqzxfTwtQZhfpfQadnrpaQmk7Ia3jlT868+kkrfpE35fPY3vEs2Dtg+QTKs4qYEgTKEbsdc4IqJSwr53DO4GzYWDBfniiUYrQ79I9UjbLZzmO6dfNZOiNc/4aBBqT3fClfYvJJRlEKaTl4RNY12pjzNB0XAkTNdVUKIm5ili6qzhUtWjs5wKtlOwCfkeGx0yRGWsUt2yoZq58lKe9pm4/2FS3LMRUJeBRI2DGdUQzWetcBQSM3I/G/gr2LBdVnmJHSLwdU9wotJfZYlQr6DyTRX3Ua01lPgbpwl1w3DwYLrh2SrWY+zV+exLEVA9lMyGMmncK9Y4BiEno4tn6w6tAj2bKJ1dUu5Sak2dTIABkSVst1ls/XTcQ2Ckd9+rcOtswkcV7ZLEyjGfQQHi4FfBrj9zwnM4sh264LRvk5axR27QiXY3ZsSDlET9YA04LG2KcDBTdHehw0UxeKph65ObpLdhrzPUz3VYFwbhYxeaKogJ210q00TER2q5QiWg47Uzs8njIbMDyuBohgRxafh5f2DuLl8eLXJqlF4ugqygmlRTGaggRgHsw3UW6JE77oht1/ZRddvWDsGCmniVTr25gpwk42BP7aqtdIUvdVXV48RuBVjFvR+5JdJxdCB9x7iR4JAbIVcthlirQSbiEuvPYma/Z3AMBzkuDwBiO5/ftzL7P1059TB3lbjXb0y/xjxgjdky63CtUjXQJMF4koyLFkyQjwQPBsqH2sjmHMVNmCLiWiW7gIgfjRwcpELM20jbPM2r+WboPpHgbbUrRrww0dABFGS8r9k3kmDxYZVWFSOfP0CtTnaXD2vgCTXhCovBj8nCmeGcW1EqkpusdKRT4fhdn/Hzt31XzlgmOu7I781763Vo0TGH7lKJLzhMDdV1XmtgwkeSZTznjCU94pAL/f+zFyV1kjD29xJrY5LaozcH/LvGtBtHzLBgLTv6uAw2RKsqSCFuqyKnVR/QW5TCEACd/myEt3Rts0YWP7n2j4aWFT19AiR0Ch3eSrwIz8W2RY7F0W8Q4QiULWhttMiJhcLAGQPRhgB"
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. For after that, High Park in the west end (Bloor St W / Parkside Dr) is free and open daily. It has the Jamie Bell Adventure Playground, a free animal display with bison, llamas and peacocks, and trails. The wading pool and splash pads are seasonal."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1185,
+      "cache_read_input_tokens": 21045,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1185,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 336,
+      "output_tokens_details": {
+        "thinking_tokens": 218
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4936
+}

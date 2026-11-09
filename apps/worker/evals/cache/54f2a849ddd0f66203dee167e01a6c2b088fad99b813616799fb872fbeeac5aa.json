@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text names the all-day PD Day correctly as tomorrow with no clock time, and it is in English. However, 'so school is closed for students' is an unstated inference: the facts only say a PD Day is on tomorrow, not that school is closed or who it affects. Stating that consequence as fact is a fact failure.",
+    "score": 2
+  }
+}

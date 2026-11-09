@@ -4,6 +4,8 @@ import { type Database, type Municipality, type ProgramDomain, schema } from '@h
 import { and, asc, eq, gte, lt, lte } from 'drizzle-orm';
 import { type ProviderAbort, providerPreflight } from '~/lib/monitoring/provider-health';
 import { DISCOVERY_TARGETS, type DiscoveryTarget } from './discovery-targets';
+import { type FetchPage, createFetchPage, pageCache } from './fetch';
+import { inferredFieldsFor } from './registration-windows';
 import {
   type CycleIdentity,
   type ExtractedWindow,
@@ -15,7 +17,6 @@ import {
   isTrustworthyFind,
   withoutInferredEvidence,
 } from './verify-window';
-import { inferredFieldsFor } from './registration-windows';
 
 /**
  * VIL-259 — the weekly registration re-verify sweep. M1 (VIL-236) specified this
@@ -61,123 +62,15 @@ export const REGISTRATION_VERIFY_ROUTE = 'ops:registration-verify';
  */
 export const MAX_WINDOWS_PER_RUN = 24;
 
-/** Per-URL network budget. Municipal sites are slow; 15s is generous for a page
- * read and short enough that a hung host cannot eat the function's 300s. */
-export const PAGE_FETCH_TIMEOUT_MS = 15_000;
-
-/**
- * A response bigger than this is not a municipal page, and is REFUSED rather than
- * trimmed. The distinction is the whole of VIL-261: the previous code sliced the raw
- * html at 500 KB before stripping it, and vaughan.ca is ~890 KB of markup whose "Key
- * Dates" block starts at offset ~837 K — so a successful fetch became a page that
- * appears to publish nothing. A truncation that silently removes the answer is worse
- * than a failure, because "this town has not announced its dates" is a plausible,
- * unquestionable thing for the sweep to conclude. A refusal is a `fetch_failed` line
- * a human reads.
- */
-export const MAX_PAGE_BYTES = 4_000_000;
-
-/**
- * How much READABLE text one page may contribute to a model call. Markup is most of
- * a municipal page: the largest in the dataset (Vaughan) strips 890 KB of html down
- * to 44 K of text, and the smallest (Oakville) to 2.5 K. This ceiling therefore
- * bounds context and cost without being reachable by anything real.
- */
-export const MAX_PAGE_TEXT_CHARS = 200_000;
-
-/** The network seam, injected so no test reaches a municipal site. */
-export type FetchPage = (url: string) => Promise<string>;
-
-/** Crude tag strip — good enough for a model read, not a rendering surface.
- * Same approach as the sentinel's html fallback. */
-function stripHtml(html: string): string {
-  return html
-    .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * DO NOT ADD A DESCRIPTIVE User-Agent HERE. It is the obvious "identify yourself
- * politely" change and it costs us a municipality. Measured against the live sites
- * on 2026-08-02: vaughan.ca sits behind an Akamai bot manager that answers 403 to
- * `Mozilla/5.0 (compatible; HaleRegistrationVerifier/1.0; +https://villagehale.com)`
- * and 200 to the very same request under Node's default `user-agent: node`. It also
- * 403s curl and its own /robots.txt, so there is no stated policy to read and no
- * identified client it will accept. The failure that change causes is invisible —
- * one more `fetch_failed` row that reads like a flaky network.
- */
-const PAGE_FETCH_HEADERS = { Accept: 'text/html,application/xhtml+xml' } as const;
-
-/**
- * The bytes as the server sent them — the timeout, the status throw, the 4 MB refusal
- * and the redirect refusal, and nothing else.
- *
- * IT IS THE PRIMITIVE BECAUSE THE STRIP IS NOT UNIVERSAL (VIL-337). A PerfectMind
- * course page says nothing readable about availability — its visible text strips to
- * ~500 characters of "Course Dates ... Load more..." — and carries the whole record as
- * a JSON object literal inside a `<script>` block, which `stripHtml` deletes. A watcher
- * built on `createFetchPage` could therefore never see a spot open. Both callers must
- * still inherit the refusals, so they live down here rather than beside the strip.
- *
- * A REDIRECT IS A FAILURE, NOT A HOP. The caller checked one host against a registry
- * before it ever got here — the spot watcher's sanitizer (channel/spots/url.ts) is the
- * strict case — and then polls that one URL every ten minutes for sixty days. Following
- * a 302 would keep answering 200 from an origin nobody approved, so the standing poll
- * would move hosts and go on looking healthy. `redirect: 'error'` makes that a named
- * fetch failure the sweep already knows how to report.
- */
-export function createFetchBody(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
-  return async (url: string) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, {
-        headers: PAGE_FETCH_HEADERS,
-        redirect: 'error',
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        throw new Error(`page fetch ${url} → HTTP ${res.status}`);
-      }
-      // THE DECLARED LENGTH FIRST, so a body too large to be a page is refused before it
-      // is buffered. This primitive runs inside an inbound SMS turn on a URL a parent
-      // pasted, and an origin that answers with a video would otherwise pull the whole
-      // thing into memory to be told it was too big. The read below stays as the ceiling
-      // for every origin that declares no length at all — most of them, under chunked
-      // transfer encoding — so nothing here is a substitute for it.
-      const declared = Number(res.headers.get('content-length'));
-      if (Number.isFinite(declared) && declared > MAX_PAGE_BYTES) {
-        throw new Error(
-          `page fetch ${url} → ${declared} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
-        );
-      }
-      const body = await res.text();
-      if (body.length > MAX_PAGE_BYTES) {
-        throw new Error(
-          `page fetch ${url} → ${body.length} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
-        );
-      }
-      return body;
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-}
-
-export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
-  const fetchBody = createFetchBody(timeoutMs);
-  return async (url: string) => {
-    // Strip FIRST, then bound. Bounding the markup throws away the dates it was
-    // wrapped in; bounding the text bounds what the model actually reads.
-    const text = stripHtml(await fetchBody(url));
-    return text.length > MAX_PAGE_TEXT_CHARS ? text.slice(0, MAX_PAGE_TEXT_CHARS) : text;
-  };
-}
+export {
+  type FetchPage,
+  MAX_PAGE_BYTES,
+  MAX_PAGE_TEXT_CHARS,
+  PAGE_FETCH_TIMEOUT_MS,
+  createFetchBody,
+  createFetchPage,
+  pageCache,
+} from './fetch';
 
 // ── the known gaps ───────────────────────────────────────────────────────────
 // The list itself lives in discovery-targets.ts, a leaf the radar can read without
@@ -487,20 +380,6 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Fetch each distinct page ONCE per run, failures included. Four Burlington rows
- * share one table; re-reading it four times would spend four times as long and
- * lean four times as hard on a public body's server for the same bytes. */
-export function pageCache(fetchPage: FetchPage) {
-  const cache = new Map<string, Promise<string>>();
-  return (url: string): Promise<string> => {
-    const existing = cache.get(url);
-    if (existing) return existing;
-    const pending = fetchPage(url);
-    cache.set(url, pending);
-    return pending;
-  };
-}
-
 async function verifyRow(
   row: StoredWindow,
   getPage: (url: string) => Promise<string>,
@@ -544,7 +423,7 @@ async function verifyRow(
   const failure = corroborationFailure(pageText, reading);
   if (failure !== null) {
     console.error(
-      { windowId: row.id, evidence: reading.evidence },
+      { windowId: row.id, reason: failure },
       'registration verify: reading not corroborated by the page — DISCARDED',
     );
     return { ...base, outcome: { kind: 'unverified', reason: failure } };

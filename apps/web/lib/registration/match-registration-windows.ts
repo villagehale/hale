@@ -1,5 +1,9 @@
 import type { Municipality, RegistrationWindow } from '@hale/db';
-import { districtForFsa, municipalitiesForFsa, type TorontoDistrict } from './fsa-municipalities.js';
+import {
+  type TorontoDistrict,
+  districtForFsa,
+  municipalitiesForFsa,
+} from './fsa-municipalities.js';
 
 /**
  * The registration radar's matcher (VIL-236 · M1): given where a family lives and how
@@ -125,8 +129,7 @@ export function resolveFamilyOpen(
   postal: string | null,
 ): { isResidentWindow: boolean; opensForFamilyAt: Date } {
   const municipalities = postal === null ? [] : resolveMunicipalities(postal);
-  const isResidentWindow =
-    municipalities.length === 1 && municipalities[0] === window.municipality;
+  const isResidentWindow = municipalities.length === 1 && municipalities[0] === window.municipality;
   return {
     isResidentWindow,
     opensForFamilyAt:

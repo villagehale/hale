@@ -178,6 +178,16 @@ function aboutTheSeason(sentence: string): boolean {
   return MUNICIPAL_OBJECT.test(sentence);
 }
 
+/** The watch row a matched window lets the send flow write. One per window, so a
+ * reading that mints it twice still writes it once. */
+export function registrationWatchMint(window: MintableWindow): RegistrationWatchMint {
+  return {
+    kind: 'registration_watch',
+    summary: `${window.town} registration: a text before it opens.`,
+    dueAt: window.opensForFamilyAt,
+  };
+}
+
 function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
   const kind: ClaimKind = claim.kind;
   if (kind === 'co_parent_invite') {
@@ -213,15 +223,7 @@ function resolveOne(claim: StateClaim, view: ReconcileView): ClaimResolution {
     }
     const window = view.mintableWindow;
     if (window) {
-      return {
-        claim,
-        status: 'minted',
-        mint: {
-          kind: 'registration_watch',
-          summary: `${window.town} registration: a text before it opens.`,
-          dueAt: window.opensForFamilyAt,
-        },
-      };
+      return { claim, status: 'minted', mint: registrationWatchMint(window) };
     }
     // WHICH REFUSAL, and it decides what the model is told to do next. A family whose
     // only watch is a course page wrote a true sentence in the wrong words, and the
@@ -286,7 +288,12 @@ export function reconcile(claims: readonly StateClaim[], view: ReconcileView): R
  * appeared. Empty when nothing was refused, which is the caller's signal to send.
  */
 export function reconcileViolations(verdict: ReconcileVerdict): string[] {
-  return [...new Set(verdict.refused.map((resolution) => VIOLATION[resolution.reason]))];
+  return violationsFor(verdict.refused.map((resolution) => resolution.reason));
+}
+
+/** The same re-ask text for refusal reasons from any reading (VIL-581: the reader's). */
+export function violationsFor(reasons: readonly RefusalReason[]): string[] {
+  return [...new Set(reasons.map((reason) => VIOLATION[reason]))];
 }
 
 /**

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event (钢琴课 = Piano lesson), the correct day (今晚, today evening), start 7 PM and end 8 PM (correctly evening), and the venue name 'Ms. Chen studio' as given. No address was provided in the facts, so none is missing. Nothing is invented, no link is added, and it is entirely in Chinese. All given facts are present and correct.",
+    "score": 5
+  }
+}

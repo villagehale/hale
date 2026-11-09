@@ -1,0 +1,15 @@
+{
+  "value": {
+    "intent": "start_tracking",
+    "planTitle": "Picnic",
+    "startsAt": "Saturday",
+    "location": null,
+    "deadline": null,
+    "response": null,
+    "headcount": 1,
+    "householdLabel": null,
+    "coversNames": [],
+    "confidence": "high"
+  },
+  "latencyMs": 2928
+}

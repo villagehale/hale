@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the event as a day off at the library, which turns the title 'Jour de congé' into a claim about the day rather than the event's name, and it says '15 h' and '16 h' correctly with tomorrow and the place. Keeping the title as a day off changes what the event is; the facts say only it is a timed event titled 'Jour de congé' at the library, so framing it as a day off at the library is an unstated inference. Also 'il y a un jour de congé à la bibliothèque' reads like a notification rather than how a friend would text, and the title is dropped in without the article or quotation a native speaker would use for a named event. Times, date and place are otherwise correct and no link or emoji appears.",
+    "score": 2
+  }
+}

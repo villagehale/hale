@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the given facts. It mentions 'Jour de congé at 3:00', which is not one of the events (Montessori tour for Theo, 10-11 AM at Little Oaks Montessori, 41 Mill St; Storytime for LÃ©a, 1:30-2:15 PM at Georgetown Branch, 9 Church St). Both real events are missing entirely, along with their times, ends, venues and addresses. It invents an event and a 3:00 time with no AM/PM, and it wrongly says the day is a day off with breathing room even though two timed events exist. Bold is none, which is fine, but the facts fail completely.",
+    "score": 1
+  }
+}

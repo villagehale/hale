@@ -122,8 +122,8 @@ export function landingCopy(provider: TextConnectProvider): LandingCopy {
   };
 }
 
-export const FALLBACK_HEADING = 'Connect';
-export const FALLBACK_LEDE = 'One tap signs you in and opens your connected apps.';
+export const FALLBACK_HEADING = 'Sign in';
+export const FALLBACK_LEDE = 'One tap signs you in.';
 export const GOOGLE_BUTTON_LABEL = 'Continue with Google';
 export const CONTINUE_LABEL = 'Continue';
 export const SIGNING_IN = 'Signing you in…';
@@ -153,7 +153,7 @@ export function connectPageMeta(provider: TextConnectProvider | null): {
       description: 'So Hale can catch class invites and trip dates for the kids.',
     };
   }
-  return { tabTitle: 'Connect', description: FALLBACK_LEDE };
+  return { tabTitle: FALLBACK_HEADING, description: FALLBACK_LEDE };
 }
 
 /** Visible heading and aria for a link with no token. The tab title is shorter. */

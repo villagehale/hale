@@ -52,8 +52,8 @@ import { pageSource } from '~/lib/page-source';
  * the merge date. The Canada hosting sentence, the cookie banner, and the Speed
  * Insights wording all landed in that same edit. Counsel should read the diff.
  *
- * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
- * the only copy. Still noindexed by choice — whether a privacy policy should be
+ * app.villagehale.com/privacy is the signed-in data-rights page (VIL-432), which
+ * links here, so this is the only copy of the policy. Still noindexed by choice — whether a privacy policy should be
  * findable in search on a product whose moat is privacy is a founder call.
  * Reachable by direct link either way — the footer, the app, the mobile listing
  * and every consent surface point straight at it.
@@ -528,10 +528,10 @@ export default async function PrivacyPage({
           <li>
             <strong>PostHog</strong> — product analytics, session replay, and error tracking. Event
             data is coarse and non-identifying (no child data, no message content) — we capture only
-            a few key product steps. Session replay is on so we can understand and fix problems, but
-            every typed value (names, dates of birth, email, address) and all personal data shown on
-            screen — child names and ages, care logs, and Hale conversations — is{' '}
-            <strong>masked</strong> before the recording leaves your browser. Product analytics and
+            a few key product steps. Session replay runs only on the marketing site
+            (villagehale.com), only after the visitor taps Accept in the cookie banner, and every
+            typed value is <strong>masked</strong> before the recording leaves the browser. The Hale
+            app at app.villagehale.com does not record session replays. Product analytics and
             session replay are kept for 30 days. Error tracking captures unhandled errors (a stack
             trace, not your data) so we can fix them. Autocapture stays off, and we identify you by
             an opaque account id, never your name or email. Processed in the United States. On the

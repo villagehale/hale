@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reply": "Nice, thanks. What should I call you?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null
+  },
+  "latencyMs": 1844
+}

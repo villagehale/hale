@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "who_i_am",
+    "role": "parent",
+    "familyLabel": null,
+    "kidName": "Leo",
+    "confidence": "high"
+  },
+  "latencyMs": 1788
+}

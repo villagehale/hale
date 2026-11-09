@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday), both times 15 h and 16 h (PM correctly rendered in 24-hour format), the place, and the title kept as the event's name in quotation marks. Nothing is invented: no closure claim, no guess at what the activity is, no free-day implication. The language is entirely French. However, the form is a calendar readout: a fragment that is essentially title, then day, then time range, then place, with no verb. A friend would write something like \"Demain, lundi, tu as « Jour de congé » de 15 h à 16 h à la bibliothèque de Georgetown\" or \"« Jour de congé » est demain à 15 h, à la bibliothèque de Georgetown\". Per the notification-style rule, this reads as an automated alert rather than a friend's text, so it is capped at 3.",
+    "score": 3
+  }
+}

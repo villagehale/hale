@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep every given fact. Montessori tour: Theo, tomorrow morning, 10:00 to 11:00 AM, Little Oaks Montessori, 41 Mill St. Storytime: Léa, tomorrow afternoon, 1:30 to 2:15 PM, Georgetown Branch, 9 Church St. AM/PM is correct, 'tomorrow' is true from Sunday evening, and the titles keep their meaning as event names. Nothing is invented (no departure time, no travel or bring-along details), no link was added, and the text is in English. Bold is none, which is fine.",
+    "score": 5
+  }
+}

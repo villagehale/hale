@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores the actual event (Natation, today 5:00-5:45 PM at Mold-Masters SportsPlex, 221 Guelph St) and instead describes an unrelated invented event \"Jour de congé at 3:00\", with a wrong time, no venue or address, and no end. It invents that tomorrow is a day off, implies breathing room when a timed event exists, and is in English rather than French.",
+    "score": 1
+  }
+}

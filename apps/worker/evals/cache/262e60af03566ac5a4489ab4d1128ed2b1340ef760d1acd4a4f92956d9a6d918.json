@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgYZb9z874rfm3wpknzRN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlwkKEAgTGAI4AUIIdGhpbmtpbmcSDEUfAK168YTCm4ncYRoM8l4TBMGgUZCS7uZzIjDxx2ht+NSm74aTdbJIyIqiFmNnfoXKTLVuK6adMhTbu4dm0wwcym313w/nMP21ircqtAhQZXbhFSgthXKVY1G2I+dtRq5msLUm6pie4iX18dWIM880iY5e79EiF+TBoRiQdSApGcC9lb9A1mZKKNvog5muCDn/PkNJwV85GGfU71g033uIcCT59SnNAdvYR6DEmemlUgZuT/Ca3EvI54NWmSLRMl7DLvYHK0i1j+pTwzB5x0R2TKG4gxusbblFvJ31lm+ogd9Zsd37ESxRHmMePlwyGPOu3lBVT/9Cs7W1V2j9vDl3ODabb2o32R4TPieswrZSg65kf43EpAIfuA/2+pRq4XBHWsTcTzaQHvtaBAa7PZ3+2J+03bpcpM6CFrxMs+f6poGqWM1gQKxRsAUkbiUsG9/3KYMJsEIQDKwmqX7Xmq3pJ6cuGHvJ/CaXT9uBTId5GGZOmOS5lu0tChPLwA3Wji9+0zWmfkLsRU/YCG6c6NNwCLJ21jaBiws6BmCphtA2Q4IuqkTHLEj8ffS2rSG94vcU5eDrHB/pLPcFQkheY6Wv1aQbLccUqdabLbA2ZubHlvJDsRP/i7E0dwPQ76JXRLGEV2rUCZvNPEIkK9JhLptNsUjgakyirO3qSA9mgtyGFZMnJcB5g8SNIC2BC+RUMkLr7dVIm82p4Ewg9u8CwGxtbtegm7/7NUdSXbx+48Bf5S0LYjk23RW/NJIodtqRH/R84QoDy28Ljt3D9l9xp+4vVvhT8OlmgEbkfI/HoB6xNH7PLbYVfccHPw8YDq/kPqtr8ZEzM/zp+a5byKgiQq/dyRhemVllSINDkLeD9B2Ln7obW/wg32KOWXbvJpzksZcxsd2voy20zSRrZf/QkZbhAMVXkMFckECREjiwQQ9vAqGI3fqLkE5Qi1ELAcn16Mu3U4gZTzQT8AtGPMof/Zs3GlEQnG/S3DGHIvfT5D3ehNrxNIjkkq/Ka/aNczDr2pGa7wBgkFV9Y5gMRcDnX3l8YvkAqdsES3OreHSlUvALzlhsky846mVDNdXRq8UQkQBvizcJIPmGM1Y0zs8jkrZ4ZzTQwsxo7SwiT4I0Qhd3Ljevfp0qS6PdYdHfK8U39k3y1K3MVb5pEeE4xNgSCYk35kUeFi2VFcaiT5ybpl6u39akTEjVKw+cDoUfVLZJtsV1JUw6AZTb1+3Pyx3LVX5bT5ZGmGXuMj8vA7LbNjNuO4EMO3tfdp94z64WoRrrw/tpGM1ye73B5d1baFhPAlzyEREc0eRYrXjxxK/luxd3IKajQdr7040GQ/JTp6xOgLRYUWZUMAXuyEteaYl++W2urGZBzMOFkviSaK/CeH0geg1x0AIqgYXZFZ76BOb2WUra7KcS1rNIoaWFHhbbqnfqj9lVJZJducnr2aOfHWRbFzirKf46tY8Xw2Bn98X3WgHpdDhysMxDWvJY1v7vHq5h8hWvvb/G+yGPiQMITJBVVopvLloxNhFNBeL1MDk+0KLupRgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014RLw5hsXU14fuLQi3EMTqg",
+        "name": "promise_activity_followup",
+        "input": {
+          "subject": "Cartwheels Tiny Gym fall session dates",
+          "childId": "kid-remy"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 539,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21173,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 288,
+      "output_tokens_details": {
+        "thinking_tokens": 191
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 4074
+}

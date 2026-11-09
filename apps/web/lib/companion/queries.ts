@@ -1,9 +1,9 @@
-import { type CompanionView, companionForChild } from '@hale/types';
 import { type Database, schema } from '@hale/db';
+import { type CompanionView, companionForChild } from '@hale/types';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
-import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
 import { currentFamilyId } from '~/lib/family';
+import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
 import { buildDoneByChild, doneForChild } from './done-markers.js';
 import { HEALTH_DONE_EPISODE, MILESTONE_EPISODE } from './log-types.js';
 

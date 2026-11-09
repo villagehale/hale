@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is correct and present: Natation (title kept as the event name), tomorrow (Monday, true from Sunday 6 PM), 17 h to 17 h 45 (matches 5:00-5:45 PM, unambiguous in 24h format), and the new venue Piscine Centennial, 5 Lake Rd with its address. The text clearly says the venue changed and names the old venue, so the old value is not presented as current. Nothing invented, no extra logistics, all in French, no link. Bold is on the new venue name and address, which is exactly the changed fact the parent must act on, so the bold fits.",
+    "score": 5
+  }
+}

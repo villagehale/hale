@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Language matches parentLanguage (English), no other family hinted, no invented facts, no apology, and the next step (\"keeps an eye out for another match\") is given by facts.next. Tone is friendly and plain. Minor issue: \"Okay, I won't go ahead\" is slightly odd as a reply since the parent's message is absent, and it says \"a good match\" which is close to the given idea but acceptable. Nothing else breaks the rules."
+  }
+}

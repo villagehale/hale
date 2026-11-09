@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Several fact failures: the text is in English, not the requested French. It omits the end time (4:00 PM) and the venue name and address (Georgetown library, 9 Church St). It also turns the title into an inference (\"Tomorrow's a day off\") and calls the day \"a bit of breathing room\" even though a timed event exists, which is an invented claim. Bold is none, which is fine, but the facts fail badly.",
+    "score": 1
+  }
+}

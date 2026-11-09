@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Preschool Levels A - E, Town of Oakville",
+        "age_fit": "All Preschool Levels A - E; child must be the age required for the level by the program start date",
+        "when": "Fall registration is open online; winter registration opens Tuesday, December 1 at 7 a.m.",
+        "source_name": "Town of Oakville"
+      },
+      {
+        "name": "Preschool Swim Lessons, YMCA of Oakville",
+        "age_fit": "3-5 years",
+        "when": "12-week sessions with a one-week break between sessions; registration required each session",
+        "source_name": "YMCA of Oakville"
+      },
+      {
+        "name": "Little Waves, Making Waves Swim School Oakville",
+        "age_fit": "Little Waves (2-5 yr.)",
+        "when": "Fall session September 8 to December 22",
+        "source_name": "Making Waves Swim School"
+      }
+    ]
+  },
+  "latencyMs": 6009
+}

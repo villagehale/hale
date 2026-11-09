@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with correct facts. Swim: Theo, tomorrow (Monday, true from Sunday evening), 9:00 to 9:45 in the morning, Mold-Masters SportsPlex, 221 Guelph St. Dentist: Léa, 11:00 a.m., Bright Smiles Dental, 12 Main St, no end invented. Piano: Léa, 5:00 in the evening, a half hour (matches 5:00-5:30, a true duration), Halton Music, 5 Queen St. AM/PM is correct throughout. No invented logistics, no wrong link, nothing inferred about titles. Bold is none, which is fine.",
+    "score": 5
+  }
+}

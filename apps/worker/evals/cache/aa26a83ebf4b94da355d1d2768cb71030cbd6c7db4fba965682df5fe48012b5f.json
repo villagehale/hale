@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present: tomorrow is correctly named, the all-day congé is stated as the day's nature, Léa's swimming 10 h à 11 h at Piscine Main is correct with morning time (10 h, not 22 h), and the text is entirely in French with no invented details or extra filler. The phrasing 'Léa a natation' is slightly clipped; a native speaker would more naturally write 'Léa a natation' with a preposition like 'Léa a son cours de natation' or 'Léa a natation' is acceptable in casual texting, so the native check is borderline but the facts are complete and correct.",
+    "score": 4
+  }
+}

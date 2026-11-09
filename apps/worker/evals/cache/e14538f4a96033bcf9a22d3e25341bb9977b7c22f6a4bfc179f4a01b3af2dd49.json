@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give one all-day event, \"PD Day\", tomorrow (Monday, Oct 26), with no start time, no end, and no location. The text invents a clock time (\"at 3:00\") for an all-day event. It also changes the title: \"PD Day\" becomes \"Jour de congé\" (a translation into French, but presented as the event's name in an English reminder) and then recast as \"Tomorrow's a day off\", an inference not stated in the facts. It also implies \"breathing room\", i.e. a free day, which is not in the facts. Invented time, an unstated inference, and an altered title are each a fact failure.",
+    "score": 1
+  }
+}

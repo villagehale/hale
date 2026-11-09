@@ -1,5 +1,6 @@
 import type { Database } from '@hale/db';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import { boldDecorations } from '~/lib/channel/bold';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { copyLanguage } from '~/lib/channel/language';
 import { linqPhoneOutboundConfigured } from '~/lib/channel/linq/config';
@@ -125,7 +126,12 @@ export function createSmsChannel(deps: SmsChannelDeps): Channel {
             providerChatId: delivered.chatId,
           };
         }
-        const sent = await sendResolvingNewChat(transport, { to, body: rendered.text });
+        const decorations = boldDecorations(rendered.text, rendered.bold);
+        const sent = await sendResolvingNewChat(transport, {
+          to,
+          body: rendered.text,
+          ...(decorations ? { decorations } : {}),
+        });
         return {
           status: 'sent',
           providerMessageId: sent.providerMessageId,

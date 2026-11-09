@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French ('Jour de congé') while the requested language is English, so it is the wrong language and mixed. It also invents a clock time ('at 3:00') for an all-day event, and says the day is open with 'breathing room', which implies nothing is scheduled.",
+    "score": 1
+  }
+}

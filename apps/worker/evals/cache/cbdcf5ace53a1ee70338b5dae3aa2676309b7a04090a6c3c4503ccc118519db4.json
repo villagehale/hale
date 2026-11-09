@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the event name (PD Day), the correct day from now (tomorrow, Monday), and no clock time for the all-day event. It adds no invented details, no inferred consequences such as school being closed, and no link. All given facts are present and accurate.",
+    "score": 5
+  }
+}

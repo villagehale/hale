@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct day (tomorrow), correct AM/PM (上午 for story time, 下午 for soccer), start and end times, venue names, and street addresses. Titles keep their meaning (图书馆故事时间 = Library story time, 足球 = Soccer). Nothing is invented, no travel or departure claims, no extra link (the plan link is optional), and the text is entirely in Chinese.",
+    "score": 5
+  }
+}

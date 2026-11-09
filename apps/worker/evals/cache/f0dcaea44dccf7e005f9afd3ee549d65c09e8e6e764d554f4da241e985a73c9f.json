@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgYZopRGN7fjsnTLSmi1y",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS0AcKEAgTGAI4AUIIdGhpbmtpbmcSDBh1u0g2gdMYsecjXxoMcLI/2luu4k4pLampIjBXVC4qkJbdNV+rPbRHK7xfEo/gNWAIqxRljJFuyIy8Ox48dzzaOrOHjWgDcC1cfBcq7QZJjNC9NDq/9rSl8w1/d/ze3g88jlmQjn4zcin0nMY8kgNuZ79iGrgiof8ZkbCg8cmE7Rcjra2iiJv7BZhhSwfyeYxOijgjxi8VIQs2G3LjsrKq2nbTJoBlmiDoIJkIzICd5aoxBaNSAvBLlOAH05uq1VWrnDbtiBd/tvMF7GGwA22lsypmg/Q5KXGJ3v7WXQVrNxLQemP6id2xIjt5w2h1K6oS0eKGbL3fGoDjMB9T1YjKn5Y4fQlhepOCAOcSaoMaUY7jMHCcBBE9OpRzExtu7b+DypVAT3KxXg/SPWNQWELCRjibznnzTsO5ZG6QiRH4KQY81Zzik7x+yZEh/BvsH5iL4BYi0QoMgZQcJGKoZKBwfRnl7hNLYOJ7KCXaA49M9zikfa+Ub57LbV6Q9qwLoFr1i58Gpnmj1kW9EGrLoB1y5E3AAKbDt8724ndxCETCEqpvADwz6u81MjhCeQAdTF37lj30U2ROGqKoWmgdzJcaIWrnCsEFyTJcZvgdq30+BslUm21IdBzJ9/D431pcuFsGo41RFH3PvePMpXSy4viMjYpQkd0eq/mijFov3FU9MBv1CABaeL62wr38nXfIOzSNMwBKzR/imnBnwblU/OL44V0QfAdcZPSzFLsrUWrcmgF5s3dwBTIGUhZ1OhK/CIR1QilJJyfMqfF+6HcbwhoZbLUu4v+VZKwde800/OHB+mzLMxgDBJsIWQOpXWq6Shu+YCDgktECc36/Zp8UD3qiKofzXbFmrS0XAdMDnOFnWWz339pSnwFXzdm0Vs9iAb9guiM5wLF0AFaDRahZpJrbm366rTgKhpTDhBrWyKSl1iJ52T3HaA/Zj7O77nyhNoQAy+w78EiyX6YZUGMtX1m4sPRHPLK0EtfuiWFFCN816Fk+Y6Ky+QWGDczqgLehi9zNrnl5pvJRt080zeLcigI14VMgwXRL+NcwGw2ZI5oOa0w3ipuv+hwbjYygBSOhlx5EKYbCOyL/vHYr4QHjFC6K6LEvyceNCd9dWu7UP8HhihH7p6XAMXa9lAFomSMg1JfOdyO4QPLU2/XS570k4oavVROeis8L8BehEoyctMwCW7TLCfKlhdD+MnVs/tf34rXTPpy+XIBD9tETMHya2VRf68xAzzm/Od8MM43DvgDasIgLLJVhY1fhZn+xGAE="
+      },
+      {
+        "type": "text",
+        "text": "Remy would be in Tiny Gym. He's 19 months, and it's the one for under 3.5s with a parent. Mini Gym is for kids who are 3.5 and going solo, so that's a ways off for him."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21173,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 234,
+      "output_tokens_details": {
+        "thinking_tokens": 162
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3216
+}

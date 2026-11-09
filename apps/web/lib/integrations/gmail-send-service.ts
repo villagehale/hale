@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import type { EmailSender } from '@hale/worker/executor';
 import { sendGmailMessage } from '@hale/worker/gmail-send';
+import { previewCaptureRequested } from '~/lib/channel/preview-capture-transport';
 import {
   type GmailDraftDeps,
   productionGmailDraftDeps,
@@ -20,6 +21,8 @@ import { googleWriteScopesEnabledFor } from './google-write-flag';
 export type GmailSendReaders = Pick<GmailDraftDeps, 'listGmail' | 'accessToken'> & {
   flagOn: (actorUserId: string | null) => boolean;
   send: typeof sendGmailMessage;
+  /** VIL-466 · a Preview capture run. Email is refused, never sent, while it is on. */
+  previewCapture?: () => boolean;
 };
 
 function notConfigured(reason: string): Error {
@@ -32,6 +35,9 @@ export function gmailEmailSender(readers: GmailSendReaders): EmailSender {
   return async (payload, context) => {
     if (!payload.to || !payload.subject || !payload.body) {
       throw new Error('send_email payload missing required fields (to, subject, body)');
+    }
+    if (readers.previewCapture?.()) {
+      throw notConfigured('email is not sent during a Preview capture run.');
     }
     const actorUserId = context.actorUserId;
     if (!actorUserId) {
@@ -70,5 +76,6 @@ export function createGmailEmailSender(database: Database): EmailSender {
     accessToken: deps.accessToken,
     flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
     send: sendGmailMessage,
+    previewCapture: () => previewCaptureRequested(),
   });
 }

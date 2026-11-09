@@ -171,9 +171,11 @@ export function plainText(text: string): string {
  * tool-supplied facts and links. No character or segment cap. Code never truncates what
  * the model wrote, including at an abbreviation such as "St." or "p.m.".
  *
- * An empty body THROWS rather than sending whitespace: the router reads a throw as a
- * failed turn and answers with the honesty template, which is the correct outcome for a
- * model that returned nothing (rule #8 — no silent no-op).
+ * An empty body THROWS rather than sending whitespace (rule #8 — no silent no-op).
+ * The router treats that throw as a failed turn. The words the parent may then get
+ * are composed by the turn-apology model (`apology.ts`); if that composer cannot
+ * speak, the turn is deferred and the parent is sent nothing. There is no fixed
+ * honesty sentence on this path.
  */
 export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   const flattened = plainText(raw);

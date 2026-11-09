@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reply": "Nice to meet you, Dana. Next up: want me to check your inbox for kids' school and activity emails, so I can flag the things that matter? It only reads what's needed to find those.",
+    "parentName": "Dana",
+    "nameConfirmed": true,
+    "parentRole": "unknown",
+    "parentRoleBasis": "guessed"
+  },
+  "latencyMs": 1464
+}

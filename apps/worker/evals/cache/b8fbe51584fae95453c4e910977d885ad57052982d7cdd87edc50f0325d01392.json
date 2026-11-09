@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: the day (tomorrow, Monday), the start (15 h) and end (16 h), the venue name (Georgetown library) and the address (9 Church St). The title \"Jour de congé\" is quoted as-is with no inferred meaning (no closure or free-day claim), nothing is invented, no travel or departure details are added, and the text is entirely in French with no link.",
+    "score": 5
+  }
+}

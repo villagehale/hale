@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fails on several facts. The text is in English, not the requested French. It omits Léa's swimming (Natation) entirely: no 10:00-11:00 AM start/end, no Piscine Main, no 120 Main St, no mention it is for Léa. It invents a clock time ('at 3:00') for the all-day Jour de congé. It also calls the day 'a bit of breathing room' even though a timed event exists, and it recasts the title as 'a day off' with an inferred consequence.",
+    "score": 1
+  }
+}

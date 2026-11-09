@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "subject addresses someone not among the children; dental cleaning looks like the parent's own appointment",
+    "about_the_kids": "no",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

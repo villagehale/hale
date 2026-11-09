@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the event as 'an appointment' without guessing its nature, gives the correct day (tomorrow, Monday) and the correct start and end (4:45 to 5:45 PM, PM stated). No location or 'for' was given, so none is missing, and nothing is invented (no travel, departure, or other details). Bold is none, which is fine.",
+    "score": 5
+  }
+}

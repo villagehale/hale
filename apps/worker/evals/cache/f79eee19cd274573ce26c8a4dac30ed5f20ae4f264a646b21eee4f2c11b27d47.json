@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow, 15 h to 16 h, Georgetown library, title kept as 'jour de congé'. However, the text says 'Demain, lundi 26 octobre, à 15 h 00 à la bibliothèque de Georgetown : jour de congé.' which recasts the event title as a statement about the day (that it is a day off), a claim the title does not make; the watchFor says the title names an activity at the library, not a closure. A native French speaker would also write 'Ça se termine à 16 h 00' awkwardly versus 'Fin à 16 h'. The title is presented as a day-status fact rather than the event's name, which changes the fact.",
+    "score": 2
+  }
+}

@@ -1,4 +1,5 @@
-import { LinqSendError, type LinqTapback, reactToLinqMessage } from './transport';
+import { reactToLinqMessage } from '~/lib/channel/outbound-transport';
+import { LinqSendError, type LinqTapback } from './transport';
 
 /**
  * VIL-335 — a tapback instead of a throwaway text ack.

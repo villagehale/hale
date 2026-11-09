@@ -3,8 +3,8 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { eq, inArray } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
+import type { ActivityPlace } from '~/lib/channel/activity/place';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
@@ -130,6 +130,10 @@ export interface RadarInput {
   children: readonly ExtractedChild[];
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
+  /** Where the finds search (activity/place.ts). Unknown: nothing is searched. */
+  place: ActivityPlace;
+  /** The family's own zone, from the postal code they gave. Never a Toronto default. */
+  timeZone: string;
   /** The kids-and-postal text. The empty year-find has a French twin. */
   language?: ReplyLanguage | null;
   /**
@@ -234,7 +238,6 @@ export interface RadarDeps {
    */
   yearFinder?: ActivityFinder | null;
   now?: () => Date;
-  timeZone?: string;
 }
 
 /**
@@ -355,10 +358,11 @@ export async function readWindows(database: Database, areaCoarse: string) {
 }
 
 export function createRadarComposer(deps: RadarDeps): RadarComposer {
-  const timeZone = deps.timeZone ?? DEFAULT_TIMEZONE;
   return {
     async compose(input) {
       const now = deps.now?.() ?? new Date();
+      const timeZone = input.timeZone;
+      const town = input.place.status === 'known' ? input.place.town : null;
       const children = toRadarChildren(input.children).filter(
         (child) => child.ageMonths === null || child.ageMonths < 156,
       );
@@ -412,7 +416,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
               }
             : null,
           children,
-          areaCoarse: area,
+          town,
           civic,
           familyId: input.familyId,
         });
@@ -435,7 +439,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const opened = await collectYearOpenLines({
         civic,
         children,
-        areaCoarse: area,
+        town,
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
       });

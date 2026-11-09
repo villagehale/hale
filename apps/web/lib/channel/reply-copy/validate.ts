@@ -119,35 +119,6 @@ const BANNED: RegExp[] = [
 const POSTAL = /\b[A-Z]\d[A-Z](?:\s?\d[A-Z]\d)?\b/g;
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
 
-function sentences(text: string): string[] {
-  const parts = text
-    .split(/(?<=[.!])\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-  return parts.length > 0 ? parts : [text.trim()];
-}
-
-function isNextStep(sentence: string): boolean {
-  const trimmed = sentence.trim();
-  if (/^nothing to do\.$/i.test(trimmed)) return true;
-  if (/^rien a faire\.$/i.test(trimmed)) return true;
-  if (trimmed.endsWith('?')) return true;
-  if (/^(say|text|dites|dis)\b/i.test(trimmed)) return true;
-  const questions = trimmed.match(/\?/g)?.length ?? 0;
-  return questions === 1 && /\b(say|text|dites|dis)\b/i.test(trimmed);
-}
-
-function endsInOneNextStep(text: string, role: ReplyCopyRole): boolean {
-  if (/[\r\n]/.test(text)) return false;
-  const parts = sentences(text);
-  const cap = role === 'prose' ? 2 : 1;
-  if (parts.length < 1 || parts.length > cap) return false;
-  if (role === 'opening') return true;
-  const nexts = parts.filter(isNextStep);
-  if (nexts.length !== 1) return false;
-  return isNextStep(parts[parts.length - 1] ?? '');
-}
-
 function stem(raw: string): string {
   return raw.replace(/'(s)?$/i, '');
 }
@@ -212,7 +183,7 @@ export function validateReplyCopy(text: string, check: ReplyCopyCheck): ReplyCop
   if (questions > 1) return 'question';
   if (!check.questionAllowed && questions > 0) return 'question';
   if (check.role === 'opening' && questions > 0) return 'question';
-  if (!endsInOneNextStep(trimmed, check.role)) return 'next_step';
+  // Design (#973): no sentence cap and no required closing phrase. Tone is the skill's.
   const allowedDigits = new Set(check.facts.flatMap((fact) => digitRuns(fact)));
   if (digitRuns(trimmed).some((run) => !allowedDigits.has(run))) return 'digit';
   if (inventedPlace(trimmed, check.facts)) return 'place';

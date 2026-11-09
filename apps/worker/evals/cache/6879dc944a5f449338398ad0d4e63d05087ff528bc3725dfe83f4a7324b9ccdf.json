@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All given facts are present and correct: tomorrow (Monday), start 15 h, end 16 h, venue name Georgetown library, address 9 Church St. Nothing invented (no closure claim, no guess at the activity, no free-day framing). However, the title \"Jour de congé\" is not presented as the event's name but as a plain description ('il y a un jour de congé'), which recasts it as what the day is rather than naming the event the family attends. Per the title rule, this changes the meaning and is a fact failure.",
+    "score": 2
+  }
+}

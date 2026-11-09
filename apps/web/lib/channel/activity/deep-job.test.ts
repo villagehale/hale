@@ -172,7 +172,7 @@ function harness(
       language: 'en-CA',
     }),
     reader: {
-      municipality: async () => 'halton_hills',
+      place: async () => ({ status: 'known', town: 'Halton Hills' }),
       stage: async () => 'toddler',
       householdNames: async () => ['Noah'],
     },
@@ -241,9 +241,7 @@ describe('runDeepResearchJob', () => {
     expect(h.transport.sent).toHaveLength(1);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds
     // above it (#531).
-    expect(h.threaded).toEqual([
-      `Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`,
-    ]);
+    expect(h.threaded).toEqual([`Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`]);
     // KEPT, against the message that kept it.
     expect(h.fulfilled).toEqual([
       { familyId: FAMILY, kind: 'activity_followup', channelMessageId: 'msg-out-1', now: NOW },

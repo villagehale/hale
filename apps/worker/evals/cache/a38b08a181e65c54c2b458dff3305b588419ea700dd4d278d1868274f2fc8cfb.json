@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: Léa's swim, tomorrow (Monday, true from Sunday evening), new start 4:30 PM, end 5:15 PM, venue Mold-Masters SportsPlex and address 221 Guelph St. The text makes clear the time changed (moved to 4:30 PM, it was 5:00) and does not present the old time as current. Nothing invented, no AM/PM errors, no link, English throughout. Bold is on the new time \"4:30 PM\", the single changed fact the parent must act on, which fits exactly.",
+    "score": 5
+  }
+}

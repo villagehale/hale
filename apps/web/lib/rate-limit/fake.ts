@@ -1,4 +1,4 @@
-import type { RateLimiter, RateLimitOptions, RateLimitResult } from './limiter';
+import type { RateLimitOptions, RateLimitResult, RateLimiter } from './limiter';
 
 /**
  * In-memory fixed-window limiter for tests. Mirrors the Postgres impl's window
@@ -21,6 +21,10 @@ export class FakeRateLimiter implements RateLimiter {
     this.counts.set(mapKey, { windowStart, count });
 
     const retryAfterSec = Math.ceil((windowStart + windowMs - this.now()) / 1000);
-    return { allowed: count <= opts.limit, retryAfterSec };
+    return {
+      allowed: count <= opts.limit,
+      retryAfterSec,
+      firstDenied: count === opts.limit + 1,
+    };
   }
 }

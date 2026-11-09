@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: today (今晚), 7 to 8 in the evening (晚上7点到8点, clearly PM), piano lesson, and the location 'Ms. Chen studio' as given. Nothing is invented, no link, no filler, and it is entirely in Chinese apart from the proper-noun location, which is kept as given. It reads like a short friendly text rather than a notification. The only minor nit is 今晚晚上 being slightly redundant, which a native speaker might shorten, but it is not unnatural enough to fail.",
+    "score": 5
+  }
+}

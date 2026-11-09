@@ -1,21 +1,34 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, notInArray } from 'drizzle-orm';
+import {
+  SeatGrantChangedError,
+  closeInviteOnGroupSeat,
+  recordedSeatGrant,
+  unlessSeatGrantChanged,
+} from '~/lib/channel/caregiver/invites';
 import { householdTimezone } from '~/lib/channel/household-timezone';
 import { storeParentRole } from '~/lib/channel/identity/parent-role';
+import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { POLICY_VERSION } from '~/lib/consent';
 import { decryptString } from '~/lib/crypto/string-cipher';
 import type { RosterParentRole } from './roster-reading';
 
 /**
- * Group onboarding v2 — a seat in the family, written only on the person's own reply.
+ * Group onboarding v2 — a seat in the family, written only on the person's own reply AND
+ * a household parent's recorded grant for that phone and that role (VIL-582).
  *
- * The reply is the consent: it is stored verbatim beside Hale's reading of it. A parent
- * is a `co_parent` (scope `linq_group_role_reply`); a grandparent, nanny or babysitter
- * gets that scoped role and the caregiver consent `caregiver:<role>`. `extended` and
- * `service` are never written. A phone already verified in another family is refused
- * and named; nothing about this family is written for it. So is someone this family
- * already seated in another role: a reply never changes a role the family gave.
+ * The reply is the person's consent: it is stored verbatim beside Hale's reading of it.
+ * It is never the household's. Without a grant from the 1:1 invite the reply only labels
+ * the person, on the `linq_group_member_refused` audit row, and nothing is seated. With
+ * one, a parent is a `co_parent` (scope `linq_group_role_reply`); a grandparent, nanny or
+ * babysitter gets that scoped role and the caregiver consent `caregiver:<role>`, and the
+ * invite closes `accepted`. `extended` has no grant door, so it is never seated here. A
+ * phone already verified in another family is refused and named; nothing about this
+ * family is written for it. So is someone this family already seated in another role: a
+ * reply never changes a role the family gave. So is a number whose channel was revoked
+ * and not re-opened, before or during the seat (VIL-596): a STOP is the person's no, it
+ * outranks any grant, and nothing is written for them until they opt back in themselves.
  */
 
 export type SeatRole = 'co_parent' | 'grandparent' | 'nanny' | 'babysitter' | 'extended';
@@ -26,11 +39,18 @@ export type SeatReading =
   | { role: 'parent'; parentRole: RosterParentRole }
   | { role: CaregiverRole; parentRole: null };
 
-export type SeatRefusal = 'other_family' | 'other_chat' | 'co_parent_seat_taken' | 'role_conflict';
+export type SeatRefusal =
+  | 'other_family'
+  | 'other_chat'
+  | 'co_parent_seat_taken'
+  | 'role_conflict'
+  | 'opted_out';
 
 export type SeatOutcome =
   | { outcome: 'seated'; userId: string; role: SeatRole; groupRole: GroupSeatRole }
   | { outcome: 'seat_refused'; reason: SeatRefusal }
+  | { outcome: 'seat_needs_parent_grant' }
+  | { outcome: 'grant_changed_during_seat' }
   | { outcome: 'member_not_asked' };
 
 /** A member nobody needs to hear from again; a roster of only these is `confirmed`. */
@@ -50,6 +70,14 @@ const OPEN_ROSTER: readonly schema.LinqGroupRosterStatus[] = [
   'partial',
   'confirmed',
 ];
+
+/** The live channel the seat read before its transaction was revoked inside it; it rolls back. */
+class SeatChannelRevokedError extends Error {
+  constructor() {
+    super('seat_channel_revoked');
+    this.name = 'SeatChannelRevokedError';
+  }
+}
 
 const GROUP_ROLE: Record<SeatRole, GroupSeatRole> = {
   co_parent: 'co_parent',
@@ -162,10 +190,34 @@ async function refuse(
   return { outcome: 'seat_refused', reason };
 }
 
+/** The claim is kept as a label on the audit row; no identity, role, consent or seat. */
+async function labelWithoutSeat(
+  database: Database,
+  member: AskedMember,
+  claimedRole: SeatRole,
+  now: Date,
+): Promise<SeatOutcome> {
+  await database
+    .update(schema.linqGroupRosterMembers)
+    .set({ status: 'refused', updatedAt: now })
+    .where(eq(schema.linqGroupRosterMembers.id, member.id));
+  await database.insert(schema.auditLog).values({
+    familyId: member.familyId,
+    actor: 'system',
+    actionTaken: 'linq_group_member_refused',
+    targetTable: 'linq_group_roster_members',
+    targetId: member.id,
+    after: { reason: 'seat_needs_parent_grant', claimedRole, via: 'own_reply' },
+  });
+  await settleRosterStatus(database, member.rosterId, now);
+  console.info({ outcome: 'seat_needs_parent_grant' }, 'linq roster: label kept, not seated');
+  return { outcome: 'seat_needs_parent_grant' };
+}
+
 /**
  * One transaction: identity, family role, consent with the verbatim reply, a verified
- * channel, the group seat, the roster member, and the audit rows. Only a member Hale
- * asked can be seated.
+ * channel, the group seat, the roster member, the granting invite's close, and the audit
+ * rows. Only a member Hale asked, and a household parent granted, can be seated.
  */
 export async function seatConfirmedMember(
   database: Database,
@@ -179,6 +231,9 @@ export async function seatConfirmedMember(
   const existing = await resolveVerifiedChannelByPhone(database, member.phone);
   if (existing && existing.familyId !== member.familyId) {
     return refuse(database, member, 'other_family', input.now);
+  }
+  if (!existing && (await findRevokedChannelOwner(database, member.phone))) {
+    return refuse(database, member, 'opted_out', input.now);
   }
   if (existing) {
     const [held] = await database
@@ -218,9 +273,41 @@ export async function seatConfirmedMember(
       return refuse(database, member, 'co_parent_seat_taken', input.now);
     }
   }
+  if (role === 'extended') return labelWithoutSeat(database, member, role, input.now);
+  const grant = await recordedSeatGrant(database, {
+    familyId: member.familyId,
+    phoneE164Hash: member.phoneE164Hash,
+    role,
+    now: input.now,
+  });
+  if (!grant) return labelWithoutSeat(database, member, role, input.now);
 
-  const userId = await database.transaction(async (rawTx) => {
+  const seat = database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    const held = await recordedSeatGrant(tx, {
+      familyId: member.familyId,
+      phoneE164Hash: member.phoneE164Hash,
+      role,
+      now: input.now,
+    });
+    if (held?.inviteId !== grant.inviteId || held.open !== grant.open) {
+      throw new SeatGrantChangedError();
+    }
+    if (existing) {
+      // Holds the channel against a STOP until the seat commits; a STOP already in
+      // flight commits first, and the re-check then finds the row revoked.
+      const [live] = await tx
+        .select({ id: schema.parentChannels.id })
+        .from(schema.parentChannels)
+        .where(
+          and(
+            eq(schema.parentChannels.id, existing.channelId),
+            isNull(schema.parentChannels.revokedAt),
+          ),
+        )
+        .for('share');
+      if (!live) throw new SeatChannelRevokedError();
+    }
     const externalAuthId = `sms:${member.phoneE164Hash}`;
     await tx
       .insert(schema.users)
@@ -241,7 +328,12 @@ export async function seatConfirmedMember(
 
     await tx
       .insert(schema.familyMembers)
-      .values({ familyId: member.familyId, userId: seatedUserId, role })
+      .values({
+        familyId: member.familyId,
+        userId: seatedUserId,
+        role,
+        invitedByUserId: held.grantedByUserId,
+      })
       .onConflictDoUpdate({
         target: [schema.familyMembers.familyId, schema.familyMembers.userId],
         set: { role },
@@ -295,6 +387,18 @@ export async function seatConfirmedMember(
         verifiedAt: input.now,
         consentRecordId: consent.id,
       });
+    }
+    if (
+      held.open &&
+      !(await closeInviteOnGroupSeat(tx, {
+        inviteId: held.inviteId,
+        role,
+        familyId: member.familyId,
+        seatedUserId,
+        now: input.now,
+      }))
+    ) {
+      throw new SeatGrantChangedError();
     }
 
     let seatId: string | undefined;
@@ -356,6 +460,19 @@ export async function seatConfirmedMember(
     await settleRosterStatus(tx, member.rosterId, input.now);
     return seatedUserId;
   });
+  let userId: string | null;
+  try {
+    userId = await unlessSeatGrantChanged(seat);
+  } catch (error) {
+    if (error instanceof SeatChannelRevokedError) {
+      return refuse(database, member, 'opted_out', input.now);
+    }
+    throw error;
+  }
+  if (!userId) {
+    console.info({ outcome: 'grant_changed_during_seat' }, 'linq roster: not seated');
+    return { outcome: 'grant_changed_during_seat' };
+  }
 
   console.info({ outcome: 'seated', role }, 'linq roster: member seated on their own reply');
   return { outcome: 'seated', userId, role, groupRole };

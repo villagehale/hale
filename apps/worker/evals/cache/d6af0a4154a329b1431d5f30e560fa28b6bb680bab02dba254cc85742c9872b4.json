@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct: piano lesson tonight at 7 PM, ends 8 PM, at Ms. Chen's studio (陈老师的琴室). The text says 今晚7点开始 and 8点结束, which is evening-correct. Minor issue: 8点结束 is fine but a native speaker might more naturally say 晚上8点结束 for clarity; the phrasing 陈老师的琴室 is natural. No invented details, no filler, no departure timing. Overall natural and friendly, though the 8点 without 晚上 is slightly less explicit about AM/PM than ideal.",
+    "score": 4
+  }
+}

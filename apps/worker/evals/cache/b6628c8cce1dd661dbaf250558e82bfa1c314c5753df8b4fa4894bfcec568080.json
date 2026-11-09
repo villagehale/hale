@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does both required jobs in one tight line: \"I watch your dates\" tells the parent Hale keeps watching their family's dates on its own, and \"text me a question anytime\" tells them they can ask a parenting question whenever they have one, then it asks \"Your name?\" containing the word name. It does not re-thank, re-confirm coverage, mention STOP, greet, or explain why the name is needed, so it fits the tail-of-confirmation brief within about seventy characters.",
+    "score": 5
+  }
+}

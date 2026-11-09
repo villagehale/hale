@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import type { SendRefusalReason } from '~/lib/channel/reconcile/gate';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import type { SpotOpenFacts } from './copy';
 import { recordSpotWatchPromise } from './promise';
 import {
   MAX_EXPIRED_SPOTS_PER_RUN,
@@ -112,6 +113,20 @@ interface Harness {
   /** Milliseconds the fake wall clock advances per fetch — the run's own budget. */
   msPerFetch: number;
   randomValue: number;
+  /** Every fact set the writer was handed, in order. */
+  written: SpotOpenFacts[];
+  /** The writer's answer. The model's own words are judged by the eval
+   * (run-spot-open-voice-eval.mjs); here the writer is a seam, the way the email-alert
+   * notice writer is (testing/email-alert-notice.ts). */
+  writer: (facts: SpotOpenFacts) => string | null;
+  language: string;
+}
+
+/** A stand-in written text that says what the facts say. */
+function scriptedSpotText(facts: SpotOpenFacts): string {
+  const n = facts.spotsLeft;
+  const what = n === null ? 'room on the waitlist' : `${n} spot${n === 1 ? '' : 's'} left`;
+  return `${facts.source} shows ${what} for ${facts.label}.`;
 }
 
 function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>> = {}): Harness {
@@ -126,6 +141,9 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
     phone: '+15550001111',
     msPerFetch: 0,
     randomValue: 0.5,
+    written: [],
+    writer: scriptedSpotText,
+    language: 'en',
     ...overrides,
     deps: undefined as unknown as WatchedSpotsSweepDeps,
   };
@@ -182,6 +200,11 @@ function harness(overrides: Partial<Pick<Harness, 'randomValue' | 'msPerFetch'>>
     threadMessage: async (_database, input) => {
       state.threaded.push(input.body);
       return 'conversation-1';
+    },
+    loadLanguage: async () => state.language,
+    writeSpotOpen: async (facts) => {
+      state.written.push(facts);
+      return state.writer(facts);
     },
     random: () => state.randomValue,
     sleep: async (ms) => {
@@ -243,6 +266,15 @@ async function seedWatch(
     channelMessageId: 'CM-ack',
     expiresAt,
   });
+  // The seed's own mint row is setup, not the sweep's trail (store.pglite.test.ts proves it).
+  await database
+    .delete(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, family.familyId),
+        eq(schema.auditLog.actionTaken, 'commitment_recorded'),
+      ),
+    );
   return row.id;
 }
 
@@ -944,7 +976,8 @@ describe('runWatchedSpotsSweep — a page nobody could read is never a state', (
     expect(summary.released.unreadable_streak).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('unreadable_streak');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((r) => r.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((r) => r.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });
@@ -1022,7 +1055,9 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(summary.released.registration_closed).toBe(1);
     expect(summary.sent).toBe(0);
     expect((await readWatch(spotId)).releasedReason).toBe('registration_closed');
-    const [trail] = await auditVerbs(family.familyId);
+    const trail = (await auditVerbs(family.familyId)).find(
+      (entry) => entry.verb === 'watched_spot_released',
+    );
     expect(trail?.verb).toBe('watched_spot_released');
     expect(trail?.after).toMatchObject({ reason: 'registration_closed', readingReason: 'closed' });
     // Rule #1: the trail names the portal, never the page or the parent's own label.
@@ -1050,7 +1085,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const row = await readWatch(spotId);
     expect(row.releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
 
@@ -1058,7 +1094,7 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     const again = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
 
     expect(again.released.expired).toBe(0);
-    expect((await auditVerbs(family.familyId)).length).toBe(1);
+    expect((await auditVerbs(family.familyId)).length).toBe(2);
   });
 
   it('leaves an expired watch to the fire that holds the slot, and ends it exactly once', async () => {
@@ -1095,7 +1131,8 @@ describe('runWatchedSpotsSweep — households and seasons that ended', () => {
     expect(third.released.expired).toBe(1);
     expect((await readWatch(spotId)).releasedReason).toBe('expired');
     expect((await commitment(family.familyId))?.cancelledReason).toBe('spot_watch_ended');
-    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb)).toEqual([
+    expect((await auditVerbs(family.familyId)).map((entry) => entry.verb).sort()).toEqual([
+      'commitment_cancelled',
       'watched_spot_released',
     ]);
   });
@@ -1359,6 +1396,68 @@ describe('runWatchedSpotsSweep — bounded, spaced and source-respectful', () =>
   });
 });
 
+describe('runWatchedSpotsSweep — the model writes the text, code adds the link', () => {
+  it("sends the writer's text with the course link on its own line, and never hands it the link", async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.language = 'fr';
+    test.writer = () => 'Le portail montre 2 places pour Milliken swim.';
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    await seedWatch(db.database, family, { lastState: 'full' });
+
+    const summary = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(summary.sent).toBe(1);
+    expect(test.written).toEqual([
+      {
+        kind: 'seat_opened',
+        source: "Markham's portal",
+        label: 'Milliken swim',
+        spotsLeft: 2,
+        schedule: 'Monday 05:00 PM',
+        language: 'fr',
+      },
+    ]);
+    expect(JSON.stringify(test.written)).not.toContain(COURSE_ID);
+    expect(
+      test.sent[0]?.body.startsWith(
+        `Le portail montre 2 places pour Milliken swim.\n${SOURCE_URL}`,
+      ),
+    ).toBe(true);
+    // The thread keeps the composed text and link, without the wire's CASL line.
+    expect(test.threaded).toEqual([
+      `Le portail montre 2 places pour Milliken swim.\n${SOURCE_URL}`,
+    ]);
+  });
+
+  it('sends nothing when no draft was written, spends no attempt, and asks again next tick', async () => {
+    const family = await seedFamily(db.database);
+    const test = harness();
+    test.writer = () => null;
+    test.pages.set(SOURCE_URL, OPEN_PAGE);
+    const spotId = await seedWatch(db.database, family, { lastState: 'full' });
+
+    const first = await runWatchedSpotsSweep(db.database, test.deps, MIDDAY);
+
+    expect(first.unwritten).toBe(1);
+    expect(first.sent).toBe(0);
+    expect(test.sent).toEqual([]);
+    let row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(0);
+    expect(row.pendingKind).toBe('seat_opened');
+    expect(row.releasedAt).toBeNull();
+
+    // The positive control: the same held opening, a writer that answers, one text.
+    test.writer = (facts) => `${facts.source} shows ${facts.spotsLeft} spots left.`;
+    const next = await runWatchedSpotsSweep(db.database, test.deps, later(MIDDAY, TEN_MINUTES));
+
+    expect(next.sent).toBe(1);
+    expect(test.sent).toHaveLength(1);
+    row = await readWatch(spotId);
+    expect(row.sendAttempts).toBe(1);
+  });
+});
+
 describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
   it('counts a wire body the family ledger does not back, and spends no attempt', async () => {
     const family = await seedFamily(db.database);
@@ -1551,8 +1650,15 @@ describe('runWatchedSpotsSweep — every non-send is a named outcome', () => {
       closedBeforeSend: 0,
       awaitingReceipt: 0,
       refused: 0,
+      unwritten: 0,
       failed: 0,
-      held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0, coparent_ask: 0 },
+      held: {
+        not_enrolled: 0,
+        opt_out_unread: 0,
+        no_watch_consent: 0,
+        quiet_hours: 0,
+        coparent_ask: 0,
+      },
       released: {
         notified: 0,
         expired: 0,

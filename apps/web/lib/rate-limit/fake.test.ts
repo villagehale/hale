@@ -49,3 +49,13 @@ describe('FakeRateLimiter — fixed-window contract', () => {
     expect((await rl.check('user-a', 'ingest', OPTS)).allowed).toBe(true);
   });
 });
+
+describe('FakeRateLimiter — firstDenied', () => {
+  it('is true only on the first refused request of a window', async () => {
+    const limiter = new FakeRateLimiter(() => 0);
+    const opts = { limit: 2, windowSec: 60 };
+    const seen = [];
+    for (let i = 0; i < 4; i += 1) seen.push((await limiter.check('k', 'r', opts)).firstDenied);
+    expect(seen).toEqual([false, false, true, false]);
+  });
+});

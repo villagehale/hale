@@ -27,6 +27,16 @@ describe('identityChallengeReply · the turn reader decides, in any language (#8
     });
   });
 
+  it('takes the intent-only reading the router shares, with no reader text in it', async () => {
+    const reply = await identityChallengeReply('who is this', scriptedSaidLine(), {
+      intent: 'identity',
+    });
+    expect(reply.challenge).toBe(true);
+    expect(
+      await identityChallengeReply('who is this', scriptedSaidLine(), { intent: 'none' }),
+    ).toEqual({ challenge: false });
+  });
+
   it('no reading (reader down) is not a challenge: nothing is guessed from words', async () => {
     expect(await identityChallengeReply('who are you?', scriptedSaidLine(), null)).toEqual({
       challenge: false,
@@ -36,5 +46,42 @@ describe('identityChallengeReply · the turn reader decides, in any language (#8
   it('a failed write sends nothing', async () => {
     const reply = await identityChallengeReply('你是谁？', { write: async () => null }, identity);
     expect(reply).toEqual({ challenge: true, body: null });
+  });
+
+  it('#919: how Hale has the number is a fact from the record, read only for a challenge', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const writer = {
+      write: async (input: { facts: Record<string, unknown> }) => {
+        seen.push(input.facts);
+        return 'ok villagehale.com aloha@villagehale.com';
+      },
+    };
+    let reads = 0;
+    const origin = async () => {
+      reads += 1;
+      return { kind: 'added_by_family' as const, byName: 'Priya' };
+    };
+    await identityChallengeReply('hi', writer, none, origin);
+    expect(reads).toBe(0);
+    await identityChallengeReply('how did you get my number', writer, identity, origin);
+    expect(reads).toBe(1);
+    expect(seen[0]?.howWeGotYourNumber).toMatchObject({ who: 'Priya' });
+    expect(seen[0]).not.toHaveProperty('stop');
+  });
+
+  it('#919: no record (or a failed read) hands no number fact, so nothing is guessed', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const writer = {
+      write: async (input: { facts: Record<string, unknown> }) => {
+        seen.push(input.facts);
+        return 'ok villagehale.com aloha@villagehale.com';
+      },
+    };
+    await identityChallengeReply('who is this', writer, identity, async () => null);
+    await identityChallengeReply('who is this', writer, identity, async () => {
+      throw new Error('db down');
+    });
+    expect(seen).toHaveLength(2);
+    for (const facts of seen) expect(facts).not.toHaveProperty('howWeGotYourNumber');
   });
 });

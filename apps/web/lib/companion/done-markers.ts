@@ -50,9 +50,6 @@ export function buildDoneByChild(episodes: DoneEpisodeRow[]): Map<string, Compan
 const EMPTY_DONE: CompanionDone = { milestones: new Set(), health: new Set() };
 
 /** The done set for one child, or an empty set when nothing's been marked. */
-export function doneForChild(
-  byChild: Map<string, CompanionDone>,
-  childId: string,
-): CompanionDone {
+export function doneForChild(byChild: Map<string, CompanionDone>, childId: string): CompanionDone {
   return byChild.get(childId) ?? EMPTY_DONE;
 }

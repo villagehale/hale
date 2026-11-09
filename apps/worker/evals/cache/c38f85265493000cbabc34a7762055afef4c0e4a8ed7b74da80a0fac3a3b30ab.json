@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "sáquenme de esta lista, no quiero recibir nada más",
+    "language": "es",
+    "situation": "none",
+    "confirmation": "Listo, no te voy a escribir más. Si quieres volver a recibir mensajes, solo dime 'quiero volver' y te agrego de nuevo."
+  },
+  "latencyMs": 5699
+}

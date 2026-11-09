@@ -92,6 +92,44 @@ export const linqMultiFamilyLedger = pgTable(
   }),
 );
 
+/**
+ * VIL-456 — everyone Hale has placed in a shared group, including people who
+ * are not Hale customers. `family_id` is set only from a known number, never
+ * from a guess, and is never moved onto another family. `stopped_at` is that
+ * person opting out; the rest of the chat keeps Hale.
+ */
+export const linqSharedGroupPeople = pgTable(
+  'linq_shared_group_people',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chatId: text('chat_id').notNull(),
+    phoneE164Encrypted: text('phone_e164_encrypted').notNull(),
+    phoneE164Hash: text('phone_e164_hash').notNull(),
+    familyId: uuid('family_id').references(() => families.id, { onDelete: 'set null' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    inferredRole: text('inferred_role'),
+    inferredFamilyLabel: text('inferred_family_label'),
+    inferredKidName: text('inferred_kid_name'),
+    firstName: text('first_name'),
+    stoppedAt: timestamp('stopped_at', { withTimezone: true }),
+    seatedAt: timestamp('seated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    roleCheck: check(
+      'linq_shared_group_people_role_check',
+      sql`${table.inferredRole} is null or ${table.inferredRole} in ('parent', 'co_parent', 'grandparent', 'nanny', 'caregiver', 'other_family', 'guest', 'unclear')`,
+    ),
+    liveChatPhone: uniqueIndex('linq_shared_group_people_live_chat_phone_uniq').on(
+      table.chatId,
+      table.phoneE164Hash,
+    ),
+    familyIdx: index('linq_shared_group_people_family_idx').on(table.familyId),
+  }),
+);
+
 export type LinqMultiFamilyJoin = typeof linqMultiFamilyJoins.$inferSelect;
 export type LinqMultiFamilyMember = typeof linqMultiFamilyMembers.$inferSelect;
 export type LinqMultiFamilyLedgerRow = typeof linqMultiFamilyLedger.$inferSelect;
+export type LinqSharedGroupPerson = typeof linqSharedGroupPeople.$inferSelect;

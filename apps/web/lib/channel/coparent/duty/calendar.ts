@@ -213,3 +213,30 @@ export function dutyFeedDescription(input: {
   // the model writes who has the event.
   return null;
 }
+
+/**
+ * VIL-484 · the calendar event id each household `family_events` row was placed as,
+ * so a booking can attach its venue to its OWN event. Ids only, never a title or a
+ * location, and only household rows: a teen's row lends no booking a venue.
+ */
+export async function householdEventCalendarIds(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, string[]>> {
+  const rows = await database
+    .select({
+      id: schema.familyEvents.id,
+      familyId: schema.familyEvents.familyId,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+    })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()));
+  const ids = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.familyId !== familyId) continue;
+    // The household row's own copy on a parent's calendar. Mirrored rows (a
+    // `google_event_id`) are outside the household scope, so they never link.
+    if (row.placedGoogleEventId) ids.set(row.id, [row.placedGoogleEventId]);
+  }
+  return ids;
+}

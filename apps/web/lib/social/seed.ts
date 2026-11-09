@@ -2331,7 +2331,7 @@ export const SOCIAL_SEED: readonly SocialSeedSource[] = [
   {
     platform: 'instagram',
     handle: 'pinglesfarm',
-    displayName: 'Pingle\'s Farm',
+    displayName: "Pingle's Farm",
     city: 'Hampton',
     region: 'durham',
     category: 'T2',

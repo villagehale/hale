@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple fact failures. The text is in English, not French as requested. It gives only the start (3:00) and omits the end (4:00 PM), the venue name (Georgetown library) and the address (9 Church St). It also recasts the title \"Jour de congé\" as a claim that tomorrow is a day off and calls the day breathing room, which is exactly the prod bug: the event is a timed activity at a venue, not a day off or free time. Bold is none, which is fine.",
+    "score": 1
+  }
+}

@@ -1,20 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
 import { referralReply } from '~/lib/channel/off-domain/copy';
-import {
-  approvedReceipt,
-  declinedReceipt,
-  failureReply,
-  whichOneReply,
-} from '~/lib/channel/router/copy';
 import { smsEncoding, smsSegments } from './sms-segments';
+
+/** The province whose verified provider paths these lines are (VIL-589). */
+const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
 
 /**
  * VIL-265 — the structural tripwire under every word Hale texts.
@@ -213,73 +208,9 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
   });
 });
 
-/**
- * THE DISCONNECT RECEIPTS, both twins, all three outcomes.
- *
- * Two gates in one suite. The alphabet, because the French twins carry the accents
- * GSM-7 does have and one circumflex would halve the segment (70 characters instead of
- * 160) on the longest sentence Hale sends about custody. And the CONTENT, because the
- * removal URL is the only defence against the failure this copy exists for: a parent
- * who disconnects by text, checks their Google account, sees Hale still listed and
- * concludes nothing happened. Hale does not call Google's revoke endpoint, so a receipt
- * that dropped that clause would be claiming something untrue.
- *
- * The French 'revoked' twin has SIX characters of headroom at the longest provider
- * noun. That is not slack — it is the reason this suite renders the copy rather than
- * scanning the file: a word added in review is a second segment on every French
- * disconnect, forever.
- */
-describe('the disconnect receipts stay GSM-7 and say what Google still holds', () => {
-  const OUTCOMES = ['revoked', 'not_connected', 'revoke_failed'] as const;
-  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
-  const CASES = (['en', 'fr'] as const).flatMap((language) =>
-    OUTCOMES.flatMap((outcome) =>
-      PROVIDERS.map(
-        (provider) => [`${language}/${outcome}/${provider}`, language, provider, outcome] as const,
-      ),
-    ),
-  );
-
-  it.each(CASES)('%s', async (_name, language, provider, outcome) => {
-    const body = (await connectorRevokeReply(language, provider, outcome)) ?? '';
-    expect(smsEncoding(body)).toBe('gsm7');
-    expect(body.length).toBeGreaterThan(0);
-  });
-
-  it.each(['en', 'fr'] as const)(
-    'the %s revoked twin carries the removal URL',
-    async (language) => {
-      for (const provider of PROVIDERS) {
-        expect((await connectorRevokeReply(language, provider, 'revoked')) ?? '').toContain(
-          'myaccount.google.com/permissions',
-        );
-      }
-      // Positive control for the absence below: the revoked twin really is the one that
-      // carries it, so "the others do not" is a fact about them.
-      expect((await connectorRevokeReply(language, 'gcal', 'not_connected')) ?? '').not.toContain(
-        'myaccount.google.com',
-      );
-    },
-  );
-
-  /** The failure twin exists in French, and is not the English one. `failureReply()`
-   * takes no language, so without a local twin the French parent would read an English
-   * sentence at the worst moment of the turn. */
-  it('answers a failed disconnect in the language the parent wrote in', async () => {
-    const en = await connectorRevokeReply('en', 'gcal', 'revoke_failed');
-    const fr = await connectorRevokeReply('fr', 'gcal', 'revoke_failed');
-    expect(fr).not.toBe(en);
-    expect(fr).toContain('rien');
-    expect(en).toContain('nothing was changed');
-  });
-
-  /** The trust line is not a command. A parent can still disconnect by saying so. */
-  it('does not teach a disconnect phrase on the connect card', () => {
-    expect(CONNECTOR_TRUST_LINE.gcal).toBe(
-      'I never see your password. You can disconnect any time.',
-    );
-    expect(CONNECTOR_TRUST_LINE.gmail).toBe(CONNECTOR_TRUST_LINE.gcal);
-    expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
+describe('the texted disconnect', () => {
+  /** VIL-509: no fixed trust line remains. A parent can still disconnect by saying so. */
+  it("reads a disconnect request from the parent's own words", () => {
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
     expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
   });
@@ -306,7 +237,7 @@ describe('the French script stays GSM-7', () => {
   ] as const;
 
   it.each(ASKS)('%s', async (_name, ask) => {
-    const body = (await referralReply(ask, 'fr')) ?? '';
+    const body = (await referralReply(ask, 'fr', ONTARIO)) ?? '';
     expect(smsEncoding(body)).toBe('gsm7');
     expect(body.length).toBeGreaterThan(0);
   });
@@ -319,7 +250,9 @@ describe('the French script stays GSM-7', () => {
   it('names the characters French copy may not use here', async () => {
     const forbidden = [...'âêîôûçœ«»’—'];
     const rendered = await Promise.all(
-      ASKS.map(async ([name, ask]) => [name, (await referralReply(ask, 'fr')) ?? ''] as const),
+      ASKS.map(
+        async ([name, ask]) => [name, (await referralReply(ask, 'fr', ONTARIO)) ?? ''] as const,
+      ),
     );
     const offenders = rendered.flatMap(([name, body]) =>
       forbidden.filter((char) => body.includes(char)).map((char) => `${name}: ${char}`),
@@ -350,7 +283,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   ] as const;
 
   it.each(ASKS)('%s', async (_name, ask) => {
-    const body = (await referralReply(ask, 'en')) ?? '';
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(smsEncoding(body)).toBe('gsm7');
     expect(body.length).toBeGreaterThan(0);
   });
@@ -367,7 +300,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * pinned to exactly one so the exception cannot quietly widen.
    */
   it('allows the eye-care reply exactly one bare address and no more', async () => {
-    const reply = (await referralReply('find me an optometrist', 'en')) ?? '';
+    const reply = (await referralReply('find me an optometrist', 'en', ONTARIO)) ?? '';
     expect(reply).toContain('FindAnEyeDoctor.ca');
     expect(reply).not.toContain('811');
     expect(reply.match(/[\w-]+\.(?:ca|com|org|net)\b/g)).toEqual(['FindAnEyeDoctor.ca']);
@@ -383,7 +316,7 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * than on the one line that broke it.
    */
   it.each(ASKS)('%s points at no app and no scheme', async (_name, ask) => {
-    const body = (await referralReply(ask, 'en')) ?? '';
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(body).not.toMatch(/\bthe app\b/i);
     expect(body).not.toMatch(/https?:/i);
   });
@@ -406,18 +339,6 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
  */
 describe('nothing Hale texts sends a parent to the app', () => {
   const RENDERED: Record<string, string> = {
-    failureReply: failureReply(),
-    'whichOneReply (overflow)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
-      true,
-    ),
-    // The same sentence with no menu behind it (VIL-304 verifier): it must be GSM-7 and
-    // inside the budget too, since it is what a parent gets whenever the polarity could
-    // not be read for free.
-    'whichOneReply (unnumbered)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
-      false,
-    ),
     CO_PARENT_REDIRECT,
   };
 
@@ -428,55 +349,5 @@ describe('nothing Hale texts sends a parent to the app', () => {
     // apostrophe or a third segment gets in.
     expect(smsEncoding(body)).toBe('gsm7');
     expect(smsSegments(body)).toBeLessThanOrEqual(2);
-  });
-
-  /** The overflow is disclosed either way — what changed is that the rest are reachable
-   * by answering the three in front of them, rather than on another surface. */
-  it('discloses the approvals it could not list, without a destination', () => {
-    const reply = whichOneReply(
-      Array.from({ length: 8 }, () => 'calendar_move'),
-      true,
-    );
-
-    expect(reply).toMatch(/5 more behind those/i);
-    // Disclosed WITHOUT a destination, and without a menu: the choices are named, the
-    // rest are reachable by answering the ones in front (2026-08-13).
-    expect(reply).not.toMatch(/\bthe app\b|https?:/i);
-    expect(reply).not.toMatch(/\bYES \d|^\d\./m);
-  });
-});
-
-/**
- * The composition the file scan cannot see: `labels.ts` is clean on its own, but the
- * receipt is only GSM-7 if the label it splices in is too, and the label set is keyed
- * by an enum that grows. Every member is exercised, plus the unknown-token fallback.
- */
-describe('router receipts stay one GSM-7 segment for every action type', () => {
-  const ACTION_TYPES = [
-    'send_email',
-    'reply_to_email',
-    'create_calendar_event',
-    'update_calendar_event',
-    'place_supply_order',
-    'cancel_supply_order',
-    'fill_pdf_form',
-    'submit_government_form',
-    'book_clinic_portal',
-    'cancel_clinic_appointment',
-    'share_photos_with_family',
-    'add_to_digest_only',
-    'add_to_routine',
-    'calendar_add',
-    'calendar_move',
-    'calendar_cancel',
-  ] as const satisfies readonly ActionType[];
-
-  it.each([...ACTION_TYPES, 'a_type_nobody_has_added_yet'])('%s', (actionType) => {
-    for (const receipt of [approvedReceipt(actionType), declinedReceipt(actionType)]) {
-      expect({ encoding: smsEncoding(receipt), segments: smsSegments(receipt) }).toEqual({
-        encoding: 'gsm7',
-        segments: 1,
-      });
-    }
   });
 });

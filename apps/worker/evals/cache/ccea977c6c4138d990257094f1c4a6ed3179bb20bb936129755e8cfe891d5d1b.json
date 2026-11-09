@@ -1,0 +1,16 @@
+{
+  "value": {
+    "kind": "unclear",
+    "event": {
+      "title": "Update in Leo's room",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": null,
+      "location": null
+    },
+    "source_confidence": 0.3,
+    "quote_evidence": "Just wanted to give you a heads up about something happening in Leo's room this week — we'll share more details soon.",
+    "teen_content": false
+  },
+  "latencyMs": 3031
+}

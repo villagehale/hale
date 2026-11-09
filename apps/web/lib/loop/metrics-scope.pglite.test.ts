@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { SYNTHETIC_PROBE_PREFIX } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { createTestDb, seedFamily, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { resolveOpsExclusions } from './metrics-scope';
 
 const TEST_KEY = Buffer.alloc(32, 7).toString('base64');

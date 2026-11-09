@@ -31,9 +31,25 @@ export type RecHelloCity =
   | 'uxbridge'
   | 'milton';
 
+/**
+ * The place a family has on file: the families row's city and postal code, and the
+ * family's own zone, which says what day "today" is for a dated fact. Null when no zone
+ * is known.
+ */
+export type RecMorningPlace = {
+  city: string | null;
+  postal: string | null;
+  timeZone: string | null;
+};
+
+/**
+ * A family's stored place, resolved to the one GTA municipality it is in. Every fact
+ * this lane holds is a GTA fact, so a family without one is never a rec-morning family.
+ */
 export type RecMorningWhere = {
-  city?: string | null;
-  postal?: string | null;
+  municipality: RecHelloCity;
+  postal: string | null;
+  timeZone: string | null;
 };
 
 export type RecMorningTopic =
@@ -125,9 +141,14 @@ export function postalMentioned(body: string): string | null {
   return fold(body).match(POSTAL_IN_TEXT)?.[1] ?? null;
 }
 
-function helloCityFromPostal(postal: string): RecHelloCity | null {
+function fsaOf(postal: string): string | null {
   const fsa = postal.replace(/\s+/g, '').toUpperCase().slice(0, 3);
-  if (!/^[A-Z]\d[A-Z]$/.test(fsa)) return null;
+  return /^[A-Z]\d[A-Z]$/.test(fsa) ? fsa : null;
+}
+
+function helloCityFromPostal(postal: string): RecHelloCity | null {
+  const fsa = fsaOf(postal);
+  if (fsa === null) return null;
   const towns = municipalitiesForFsa(fsa);
   if (towns.length !== 1) return null;
   const only = towns[0];
@@ -136,14 +157,25 @@ function helloCityFromPostal(postal: string): RecHelloCity | null {
 }
 
 /**
- * City for a first-hello: named in the ask, then a postal in the ask, then a
- * city/postal already on the intake or family. Ambiguous or unverified FSAs
- * resolve to nothing — no guessed town, no invented clock.
+ * The family's stored place as a GTA municipality: the city on file, then the postal on
+ * file. Null for anywhere else, and for an ambiguous or unverified FSA - no guessed town.
+ * A stored code that is not a Canadian FSA (a US ZIP) is never in the GTA, whatever
+ * town name sits beside it: Richmond Hill and Burlington are US towns too.
  */
-export function resolveHelloCity(
-  body: string,
-  where?: RecMorningWhere | null,
-): RecHelloCity | null {
+export function resolveRecMorningWhere(place: RecMorningPlace | null): RecMorningWhere | null {
+  if (place === null) return null;
+  if (place.postal && fsaOf(place.postal) === null) return null;
+  const fromCity = place.city ? namedHelloCity(fold(place.city)) : null;
+  const municipality = fromCity ?? (place.postal ? helloCityFromPostal(place.postal) : null);
+  if (municipality === null) return null;
+  return { municipality, postal: place.postal, timeZone: place.timeZone };
+}
+
+/**
+ * City for a first-hello: named in the ask, then a postal in the ask, then the family's
+ * own GTA municipality.
+ */
+export function resolveHelloCity(body: string, where: RecMorningWhere | null): RecHelloCity | null {
   const text = fold(body);
   const named = namedHelloCity(text);
   if (named) return named;
@@ -154,21 +186,11 @@ export function resolveHelloCity(
     if (fromText) return fromText;
   }
 
-  if (where?.city) {
-    const fromCity = namedHelloCity(fold(where.city));
-    if (fromCity) return fromCity;
-  }
-
-  if (where?.postal) {
-    const fromPostal = helloCityFromPostal(where.postal);
-    if (fromPostal) return fromPostal;
-  }
-
-  return null;
+  return where === null ? null : where.municipality;
 }
 
 function isCityRecAsk(text: string): boolean {
-  return /\b(rec|recreation|swim|skate|aquatics?|camps?|fall registration|waitlists?|winter-?break)\b/.test(
+  return /\b(rec|recreation|swim|skate|aquatics?|camps?|fall registration|winter-?break)\b/.test(
     text,
   );
 }
@@ -194,31 +216,30 @@ function isYmca(text: string): boolean {
 }
 
 /**
- * True when a known city/postal on file could turn this text into a first-hello.
- * False for a watch ask, a report, YMCA, or any ask the text already decides.
- */
-export function recMorningCouldUseWhere(body: string): boolean {
-  const text = fold(body);
-  if (text === '' || isNotOurs(text)) return false;
-  if (matchRecMorning(text) !== null) return false;
-  return isCityRecAsk(text);
-}
-
-/**
  * The rec-morning topic this text is asking about, or null when it is not one.
  *
- * First match wins, most specific first: Jack of Sports before "swim", YMCA follow
- * before YMCA clock, a named or known city before the Toronto waitlist/rec clock.
+ * First match wins, most specific first: Jack of Sports before "swim", a waitlist ask
+ * before everything it mentions, YMCA follow before YMCA clock, a named or known city
+ * before the Toronto rec clock.
  * ActiveTO is routed to the first Toronto rec answer so the reply never names it.
  */
 export function matchRecMorning(
   body: string,
-  where?: RecMorningWhere | null,
+  where: RecMorningWhere | null,
 ): RecMorningTopic | null {
+  // VIL-591: no GTA place on file, no topic - whatever the text names. The coach answers.
+  if (where === null) return null;
   const text = fold(body);
   if (text === '' || isNotOurs(text)) return null;
 
   if (/\bjack of sports\b/.test(text)) return 'jack_of_sports';
+
+  const city = resolveHelloCity(text, where);
+  // The only waitlist fact this lane holds is Toronto's. Any other town's waitlist, or
+  // the Y's, is the coach's: a registration date is not an answer to a waitlist ask.
+  if (/\bwaitlists?\b/.test(text)) {
+    return city === 'toronto' && !isYmca(text) ? 'toronto_waitlist' : null;
+  }
 
   if (
     /\b(two phones|two logins|both parents|one login|one phone)\b/.test(text) ||
@@ -234,12 +255,9 @@ export function matchRecMorning(
     return 'ymca_gta_swim';
   }
 
-  const city = resolveHelloCity(text, where);
   if (city !== null && city !== 'toronto' && isCityRecAsk(text)) {
     return cityTopic(city, text);
   }
-
-  if (/\bwaitlists?\b/.test(text)) return 'toronto_waitlist';
 
   if (
     /\bwish\s*lists?\b/.test(text) ||

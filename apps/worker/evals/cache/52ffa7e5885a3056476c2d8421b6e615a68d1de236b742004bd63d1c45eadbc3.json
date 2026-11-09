@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position, town, 36-hour window and deadline (Wednesday at 11:00 p.m., correctly 'tomorrow' relative to Tuesday) are all right. The reminder promise is handed, and the message asks nothing. However, it says the 36 hours start 'when an offer comes through.' Hale's clock starts from the parent's own message, not from a future offer, so this is a claim the facts don't make. It also contradicts the fixed Wednesday deadline in the same sentence. 'Sorry it didn't work out' also frames a waitlist spot slightly too negatively.",
+    "score": 2
+  }
+}

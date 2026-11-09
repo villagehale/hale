@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "Saint-Jérôme",
+    "region": "Quebec",
+    "granularity": "locality"
+  },
+  "latencyMs": 1089
+}

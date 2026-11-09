@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events carry every given fact: day (tomorrow, Monday), correct AM/PM start and end times, venue names and street addresses, and who each is for (Theo, Lea). Nothing is invented: no departure or travel times, no extra details, and no end or duration beyond what the facts gave. The titles are kept as the event names. The language is English throughout. The accent drop on Léa is not a fact failure.",
+    "score": 5
+  }
+}

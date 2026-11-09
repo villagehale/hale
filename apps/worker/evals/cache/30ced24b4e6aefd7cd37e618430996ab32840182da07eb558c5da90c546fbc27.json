@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The text says \"Reminder set!\" but omits that Ruth will be reminded Thursday at 9 AM to call the dentist about Maya, and it never says the reminder will be posted in the group chat rather than sent privately. The private-text request is not addressed, so the mustSay items are missing."
+  }
+}

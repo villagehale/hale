@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct (dates, 11:00 AM, 5:30-6:30 PM, am/pm right), but the text reads as a calendar readout in label-then-date-then-time form: 'Library story time:10月26日 上午11:00'. A friend would say 明天上午11点有图书馆故事时间, 下午5点半到6点半有足球训练. It uses the formal date 10月26日 instead of saying 'tomorrow' from now, and uses clock-style '11:00' and '5:30-6:30'. Titles are left in English ('Library story time', 'Soccer') inside a Chinese text, which is unnatural and arguably mixed-language. This fails the friend-not-notification and native speaker checks, capping the score low.",
+    "score": 2
+  }
+}

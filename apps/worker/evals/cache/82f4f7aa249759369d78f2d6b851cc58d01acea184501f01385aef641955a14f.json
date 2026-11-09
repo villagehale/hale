@@ -1,0 +1,10 @@
+{
+  "value": {
+    "families": [
+      "f1",
+      "f2",
+      "f3"
+    ]
+  },
+  "latencyMs": 2646
+}

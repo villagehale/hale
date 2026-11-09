@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give an all-day event \"PD Day\" tomorrow with no start time. The text invents a clock time (\"at 3:00\"), which is not allowed for an all-day event. It also changes the title to \"Jour de congé\" (a different title and language, mixed with English). Finally, it adds unstated inferences (\"a day off\", \"a bit of breathing room\") that the facts do not support.",
+    "score": 1
+  }
+}

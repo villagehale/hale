@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text drops several given facts. Library story time gives only the start (11:00 AM) and omits the end (11:45 AM), the venue name (Georgetown library), and the street address (9 Church St). Soccer gives the 5:30-6:30 PM range but omits the venue name (Riverside Field) and the address (22 Park Rd). The dates and AM/PM are correct, nothing is invented, and bold is none, but the missing end, venue names and addresses are fact failures.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The French text states tomorrow, 15 h, the event title, and the Georgetown library location, but omits the end time of 16 h (4 PM), which is given in the facts. Per the rules, dropping the end time is a fact failure, so the score is low.",
+    "score": 2
+  }
+}

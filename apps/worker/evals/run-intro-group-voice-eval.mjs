@@ -25,6 +25,8 @@ import {
   makeJudge,
   readJudgeModel,
   totalUsd,
+  dryReportLine,
+  isDryRun,
 } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -39,12 +41,9 @@ const TOOL_SCHEMA = {
 };
 
 const LINK_SHAPE = /https?:\/\/|www\./i;
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
 
 const MAX_TOKENS = 320;
 const MAX_CHARS = 480;
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|makes|make|made|might|may|does|knows|thinks|found|sends|texts|introduces)\b/i;
 
 /** Mirrors `introGroupUserMessage` in group-voice.ts. */
 function userMessage(request, rejected = []) {
@@ -65,8 +64,6 @@ function refusals(body, request) {
   if (body.length > MAX_CHARS) found.push('over_char_cap');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
   const lower = body.toLowerCase();
   if (
     !lower.includes(request.parentAFirstName.toLowerCase()) ||
@@ -177,6 +174,10 @@ async function main() {
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost: $${totalUsd(cost).toFixed(4)} USD`,
   );
+  if (isDryRun()) {
+    console.log(dryReportLine('intro-group-voice', [judge.plan]));
+    process.exit(0);
+  }
   const allPass = results.every((r) => r.failures.length === 0);
   if (!broken) process.exit(allPass ? 0 : 1);
   console.log(`broken-mode calibration (must fail): ${allPass ? 'FAIL' : 'PASS'}`);

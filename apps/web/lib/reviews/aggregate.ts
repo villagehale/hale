@@ -158,10 +158,7 @@ export function offeredSubject(offer: OfferedCandidate): ReviewSubjectRef | null
  * you" means. Null when the family's area is not FSA-shaped, which is the honest answer
  * for a household whose `area_coarse` fell back to a city of three million.
  */
-export async function familyAreaKey(
-  database: Database,
-  familyId: string,
-): Promise<string | null> {
+export async function familyAreaKey(database: Database, familyId: string): Promise<string | null> {
   const [family] = await database
     .select({ areaCoarse: schema.families.areaCoarse })
     .from(schema.families)

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Intent ask_tally matches a request for the live yes/no/waiting picture; no spurious response or headcount fields were set for a read-only question."
+  }
+}

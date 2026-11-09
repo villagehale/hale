@@ -1,0 +1,25 @@
+{
+  "value": {
+    "cycle_on_page": "After-School Recreation Care (ARC); The program runs September 8, 2026 to June 18, 2027",
+    "evidence": "After-School Recreation Care (ARC) Registration starts on June 5, 2026, at 7 a.m. The program runs September 8, 2026 to June 18, 2027, Monday to Friday",
+    "year_evidence": "Registration starts on June 5, 2026, at 7 a.m.",
+    "time_zone_evidence": "Non-Toronto residents can register for a recreation activity 10 days after registration starts",
+    "time_zone": "America/Toronto",
+    "eligibility_evidence": "The page gives the registration opening no resident or non-resident label: \"Registration starts on June 5, 2026, at 7 a.m.\" The sentence \"Non-Toronto residents can register for a recreation activity 10 days after registration starts for that activity\" is a prose rule, not a labelled date, so the opening is unclassified.",
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "unclassified_open": {
+      "quote": "June 5, 2026, at 7 a.m.",
+      "date_text": "June 5, 2026",
+      "time_text": "7 a.m.",
+      "date": "2026-06-05",
+      "time": "07:00"
+    },
+    "note": "The page does not name the cycle as 2026/2027; it is tied to it by the program span September 8, 2026 to June 18, 2027. The non-resident 10-day rule is prose and no separate non-resident date is printed.",
+    "found": true,
+    "reason": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 8552
+}

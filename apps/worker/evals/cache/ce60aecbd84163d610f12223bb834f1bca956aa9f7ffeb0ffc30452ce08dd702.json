@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), start 15 h and end 16 h, the venue name Georgetown library, and keeps the title « Jour de congé » quoted as the event's name without recasting it as a closure or free day. However, the street address \"9 Church St\" was given in the facts and is missing from the text, which is a dropped fact. Bold is none, which is fine.",
+    "score": 2
+  }
+}

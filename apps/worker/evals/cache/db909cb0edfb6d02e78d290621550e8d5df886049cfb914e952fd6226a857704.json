@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts at all. It mentions 'Jour de congé at 3:00', an event that does not exist in the facts, and calls tomorrow a day off with 'breathing room' even though three timed events are scheduled (Theo's swim at 9:00 AM, Léa's dentist at 11:00 AM, Léa's piano at 5:00 PM). All three real events are missing, along with their venues, addresses, times and ends. It also invents a 3:00 time with no AM/PM and implies the day is free.",
+    "score": 1
+  }
+}

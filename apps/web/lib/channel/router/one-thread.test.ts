@@ -108,6 +108,7 @@ describe('one parent, two doors, one conversation', () => {
       turns: auditTurnLedger(db.database),
       apology: { compose: async () => ({ status: 'composed', reply: 'sorry' }) },
       holdingLine: { compose: async () => ({ status: 'composed', line: 'on it' }) },
+      floodLine: { compose: async () => ({ status: 'composed', line: 'busy' }) },
       recordPlanOffer: async () => ({ status: 'recorded' }),
       recordActivityPromise: async () => ({
         status: 'recorded',
@@ -124,6 +125,13 @@ describe('one parent, two doors, one conversation', () => {
       weekdayCareReader: { read: async () => ({ status: 'nothing_stated' as const }) },
       disambiguation: createDisambiguationStore(),
       reconcileView: loadReconcileView,
+      claimShadow: { coachTurn: () => 'off', sweep: () => 'off', dispatch: () => 'off' },
+      claimEnforcer: {
+        enforces: () => false,
+        read: async () => {
+          throw new Error('the claim reader is not enforced here');
+        },
+      },
       recordStatedState: async () => ({ status: 'nothing_stated' }),
       weekdayCareAnswerTarget: async () => ({ status: 'no_open_ask' as const }),
       recordWeekdayCare: async (_db, input) => ({
@@ -170,6 +178,7 @@ describe('one parent, two doors, one conversation', () => {
       channel_message_id: row.id,
       provider_message_id: providerMessageId,
       received_at: NOW.toISOString(),
+      in_group: false,
     };
   }
 

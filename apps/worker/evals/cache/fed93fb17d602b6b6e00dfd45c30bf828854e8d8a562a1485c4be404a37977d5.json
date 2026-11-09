@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gets the deadline wrong. The facts give tonight, Wednesday at 11:00 p.m., two hours after now, but the text says it runs out tomorrow at 9 a.m. That wrong day and time also contradicts its own \"about 2 hours left\". It also never explains that the clock is Springfield's 36-hour response window, started from the parent's own message, which waitlist_final requires. The email and portal instruction is correct, but the wrong deadline is disqualifying.",
+    "score": 1
+  }
+}

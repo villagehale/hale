@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text offers a link to add an event on Thu, Jul 23 at 10:30 AM, but it never names the event 'Swim class'; it only refers to 'your plans', which does not name this event. Since the text does not name the event, it cannot match.",
+    "match": false
+  },
+  "latencyMs": 1051
+}

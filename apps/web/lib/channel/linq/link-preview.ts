@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { LinqSendError, sendLinqParts } from './transport';
+import { sendLinqParts } from '~/lib/channel/outbound-transport';
+import { LinqSendError } from './transport';
 
 /**
  * VIL-335 — a rich link preview beside a locked text, never instead of it.

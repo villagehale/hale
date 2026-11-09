@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct times and AM/PM (上午11点, 下午5:30到6:30), day phrased correctly as 明天, no invented details, no link, plain tone. Chinese is natural and concise. Missing plan link is acceptable since it was optional and the text did not include the wrong link. Minor: 踢足球 is a natural phrasing; overall a faithful, idiomatic reminder.",
+    "score": 5
+  }
+}

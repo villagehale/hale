@@ -1,0 +1,27 @@
+{
+  "value": {
+    "voters": [
+      {
+        "key": "v1",
+        "choice": "o1"
+      },
+      {
+        "key": "v2",
+        "choice": "o1"
+      },
+      {
+        "key": "v3",
+        "choice": null
+      },
+      {
+        "key": "v4",
+        "choice": null
+      },
+      {
+        "key": "v5",
+        "choice": null
+      }
+    ]
+  },
+  "latencyMs": 2458
+}

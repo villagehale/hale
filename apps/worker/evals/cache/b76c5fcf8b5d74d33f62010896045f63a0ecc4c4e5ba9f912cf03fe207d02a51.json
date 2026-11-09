@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is present and correct: all three events are tomorrow (Monday, true from Sunday evening), with correct start and end times and correct AM/PM, venue names and street addresses, and the right child for each. Nothing is invented, no link is added, and bold is none. However, the VOICE CHECK applies: the three texts reuse the same frame (\"[Child] has [event] at [place], [address], T1 to T2 in the [period]\") with only the facts swapped, so it reads like a filled-in form rather than a person texting, which caps the score at 3.",
+    "score": 3
+  }
+}

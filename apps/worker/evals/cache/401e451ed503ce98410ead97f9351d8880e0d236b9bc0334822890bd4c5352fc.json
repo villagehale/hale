@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "我真的撑不下去了，不想活了",
+    "language": "zh",
+    "confirmation": ""
+  },
+  "latencyMs": 2235
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are all correct and complete: tomorrow (Sunday evening to Monday), 15 h to 16 h (3 to 4 PM, no AM/PM ambiguity in 24-hour format), Georgetown library, title kept as the event's name, no invented closure or activity, no extra filler, French throughout. But it does not read as a friend's text: it is the calendar-readout pattern (day, full date, clock time, 'il y a un jour de congé ... jusqu'à 16 h'), and the title is dropped in as 'un jour de congé', which sounds like an announced day off rather than a named event, with the stiff 'à 15 h ... jusqu'à 16 h' construction instead of 'de 15 h à 16 h'. A native speaker would not text it this way, so it is capped at 3.",
+    "score": 3
+  }
+}

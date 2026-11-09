@@ -1,5 +1,5 @@
+import { startLinqTyping, stopLinqTyping } from '~/lib/channel/outbound-transport';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
-import { startLinqTyping, stopLinqTyping } from './transport';
 
 /**
  * VIL-335 — the typing bubble on an iMessage turn.

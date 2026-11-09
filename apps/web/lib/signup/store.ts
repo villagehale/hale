@@ -118,18 +118,46 @@ export async function markOffer(
   } = { status: input.status, updatedAt: input.now };
   if (input.sessionId !== undefined) patch.authorizedSessionId = input.sessionId;
   if (input.messageId !== undefined) patch.authorizingMessageId = input.messageId;
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set(patch)
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, input.offerId),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, input.from),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  return rows.length > 0;
+  try {
+    const rows = await database
+      .update(schema.authorizedSignupOffers)
+      .set(patch)
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, input.offerId),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, input.from),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+    return rows.length > 0;
+  } catch (err) {
+    // Another registration of this family is already running: not moved.
+    if (isOneSubmittingViolation(err)) return false;
+    throw err;
+  }
+}
+
+const ONE_SUBMITTING_INDEX = 'authorized_signup_offers_one_submitting';
+
+/** The database refused a second running registration for one family (0206's index). */
+export function isOneSubmittingViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const pg = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+    if (
+      pg.code === '23505' &&
+      (pg.constraint === ONE_SUBMITTING_INDEX ||
+        pg.constraint_name === ONE_SUBMITTING_INDEX ||
+        current.message.includes(ONE_SUBMITTING_INDEX))
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export async function loadSignupIdentity(

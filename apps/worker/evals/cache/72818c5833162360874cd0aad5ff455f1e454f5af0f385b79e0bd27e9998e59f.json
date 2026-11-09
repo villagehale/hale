@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy was turned off this turn for send_email and reply_to_email, so the confirmation is true. It answers in Spanish, matching the parent, with one short line and nothing to draft. Addressing Sam by name is recall, not a greeting problem. Clean and complete.",
+    "score": 5
+  }
+}

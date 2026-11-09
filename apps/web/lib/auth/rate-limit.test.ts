@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { setRateLimiterForTesting } from '~/lib/rate-limit/apply';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
+import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 
 // authRateLimited reads the request IP via next/headers; stub it so the test
 // controls the caller IP. db() is never reached (the limiter is injected).

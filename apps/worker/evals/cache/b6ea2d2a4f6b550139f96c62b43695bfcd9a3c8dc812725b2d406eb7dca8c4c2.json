@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "An empty pick list is correct here, and the message makes the right call for a non-existent program. It is honest and specific about what was searched and what turned up: only novelty and joke results. It invents no venue, time or price, contains no question and no link, and with watch=true it correctly makes a first-person continuation promise. Two small weaknesses. First, pageEvidence is no_page_read, yet the message says Hale 'went through Halton Hills' fall 2026 recreation pages' and asserts 'nothing running for that age'. This implies pages were read today when none were opened, so the claim is slightly overstated. Second, the notes surfaced real nearby toddler options (Town swim lessons at Gellert, Tiny Dancers, the Gymnastics Centre's Parent and Tot), but the message never mentions them. Leaving them as non-picks is defensible, but the parent loses useful context.",
+    "score": 4
+  }
+}

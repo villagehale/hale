@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "leave",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidName": null,
+    "confidence": "high"
+  },
+  "latencyMs": 3565
+}

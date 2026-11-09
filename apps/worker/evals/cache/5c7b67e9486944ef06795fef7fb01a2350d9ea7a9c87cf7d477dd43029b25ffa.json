@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact: the all-day \"Jour de congé\" has no clock time, and the title is quoted as-is without recasting it. Natation for Léa is tomorrow (Monday) from 10 h to 11 h at Piscine Main, 120 Main St, with correct morning times. Nothing is invented (no travel or departure details), the language is French, and no link is included (planLink is null).",
+    "score": 5
+  }
+}
