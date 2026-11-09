@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -2129,13 +2129,19 @@ async function loadFamilyBlocks(database: Database, familyId: string): Promise<B
 }
 
 /**
- * VIL-459: a family's free/busy, or null when no parent has a Google Calendar syncing
- * now (Hale cannot see their time and asks them instead). Spans only, from live syncs.
+ * VIL-459: a family's free/busy from the calendars of `userIds` only (each parent who
+ * said Hale may use their own calendar here), or null when none of them has a Google
+ * Calendar syncing now (Hale cannot see their time and asks them instead). Spans only.
+ * A private plan's calendar copy (sensitive, or a teen's) and a block about a teen are
+ * left out, the same rows the household slice keeps private.
  */
 export async function familyFreeBusy(
   database: Database,
   familyId: string,
+  userIds: readonly string[],
+  now: Date,
 ): Promise<{ start: Date; end: Date }[] | null> {
+  if (userIds.length === 0) return null;
   const live = await database
     .select({ id: schema.integrations.id })
     .from(schema.integrations)
@@ -2144,12 +2150,58 @@ export async function familyFreeBusy(
         eq(schema.integrations.familyId, familyId),
         eq(schema.integrations.provider, 'gcal'),
         eq(schema.integrations.status, 'active'),
+        inArray(schema.integrations.userId, [...userIds]),
       ),
     );
   if (live.length === 0) return null;
   const syncing = new Set(live.map((row) => row.id));
-  const blocks = await loadFamilyBlocks(database, familyId);
-  return freeBusyOnly(blocks.filter((block) => syncing.has(block.integrationId)));
+  const [blocks, children, placed] = await Promise.all([
+    loadFamilyBlocks(database, familyId),
+    database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId)),
+    database
+      .select({
+        placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+        title: schema.familyEvents.title,
+        childId: schema.familyEvents.childId,
+        sensitive: schema.familyEvents.sensitive,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, familyId),
+          isNotNull(schema.familyEvents.placedGoogleEventId),
+        ),
+      ),
+  ]);
+  const teens = teenChildIds(children, now);
+  const childNames = children.map((child) => child.name);
+  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const aboutTeen = (title: string) =>
+    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+  const privateCopies = new Set(
+    placed
+      .filter(
+        (row) =>
+          row.sensitive || (row.childId !== null && teens.has(row.childId)) || aboutTeen(row.title),
+      )
+      .map((row) => row.placedGoogleEventId),
+  );
+  return freeBusyOnly(
+    blocks.filter(
+      (block) =>
+        syncing.has(block.integrationId) &&
+        userIds.includes(block.userId) &&
+        !privateCopies.has(block.eventId) &&
+        !(block.title && aboutTeen(block.title)),
+    ),
+  );
 }
 
 export async function familyHasTwoCalendars(

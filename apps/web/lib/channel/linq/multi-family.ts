@@ -1007,6 +1007,9 @@ async function proposeCommonTime(
     language: string;
     host: { familyId: string; parentUserId: string };
     askerFamilyId: string;
+    /** The asking parent, when the sender is a known Hale parent; null for a guest. */
+    asker: { familyId: string; userId: string } | null;
+    verbatim: string;
     people: readonly PersonRow[];
     ruledOut: readonly RuledOutSpan[];
     ports: MultiFamilyTurnPorts;
@@ -1016,25 +1019,36 @@ async function proposeCommonTime(
     (a, b) =>
       Number(b.familyId === input.askerFamilyId) - Number(a.familyId === input.askerFamilyId),
   );
+  if (input.asker) {
+    await recordFreeBusyConsent(database, {
+      chatId: input.chatId,
+      familyId: input.asker.familyId,
+      userId: input.asker.userId,
+      verbatim: input.verbatim,
+    });
+  }
   const seen = new Set<string>();
   const loaded: { family: Omit<FamilyAvailability, 'timeZone'>; timeZone: string | null }[] = [];
   for (const join of joins) {
     if (seen.has(join.familyId)) continue;
     seen.add(join.familyId);
-    const parentUserId = join.joinedByUserId ?? (await primaryParentId(database, join.familyId));
-    const clock = await familyClock(database, join.familyId, parentUserId);
+    const label = familyLabel(input.people, join.familyId, loaded.length);
     const consent = await joinConsent(database, input.chatId, join.familyId);
+    const sharing = consent.allowed
+      ? await freeBusyConsenters(database, input.chatId, join.familyId)
+      : [];
+    const [first] = sharing;
+    if (!first) {
+      // Nothing of this family's is read: no zone, no quiet hours, no calendar.
+      loaded.push({ timeZone: null, family: { label, busy: null } });
+      continue;
+    }
+    const clock = await familyClock(database, join.familyId, first);
     loaded.push({
       timeZone: clock.timeZone,
       family: {
-        label: await familyLabel(
-          database,
-          input.people,
-          join.familyId,
-          parentUserId,
-          loaded.length,
-        ),
-        busy: consent.allowed ? await familyFreeBusy(database, join.familyId) : null,
+        label,
+        busy: await familyFreeBusy(database, join.familyId, sharing, input.now),
         quietStartHour: clock.quietStartHour,
         quietEndHour: clock.quietEndHour,
       },
@@ -1094,24 +1108,97 @@ async function proposeCommonTime(
   return { handled: true, outcome: 'common_time_proposed', count: 'intake', notice };
 }
 
-/** How the group knows a family: the first name of the parent who joined it. */
-async function familyLabel(
-  database: Database,
-  people: readonly PersonRow[],
-  familyId: string,
-  parentUserId: string | null,
-  index: number,
-): Promise<string> {
+/**
+ * How the group knows a family: a first name the group itself uses for someone in it,
+ * else a neutral `family N`. An account name never reaches the group or the writer.
+ */
+function familyLabel(people: readonly PersonRow[], familyId: string, index: number): string {
   const named = people.find((row) => row.familyId === familyId && row.firstName?.trim());
-  if (named?.firstName) return named.firstName.trim();
-  const [user] = parentUserId
-    ? await database
-        .select({ name: schema.users.name })
-        .from(schema.users)
-        .where(eq(schema.users.id, parentUserId))
-        .limit(1)
-    : [];
-  return user?.name?.trim().split(/\s+/)[0] || `family ${index + 1}`;
+  return named?.firstName?.trim() || `family ${index + 1}`;
+}
+
+const FREE_BUSY_CONSENT = 'integration_specific' as const;
+
+function freeBusyScope(chatId: string): string {
+  return `linq_free_busy:${chatId}`;
+}
+
+/**
+ * The parents of this family whose own latest say-so in this chat lets Hale use their
+ * calendar's busy times here. Per parent: one parent's word never opens a co-parent's
+ * calendar (rule #5). Latest row wins, so a later withdrawal or revoke closes it.
+ */
+async function freeBusyConsenters(
+  database: Database,
+  chatId: string,
+  familyId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({
+      userId: schema.consentRecords.userId,
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+      grantedAt: schema.consentRecords.grantedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.familyId, familyId),
+        eq(schema.consentRecords.consentType, FREE_BUSY_CONSENT),
+        eq(schema.consentRecords.consentScope, freeBusyScope(chatId)),
+      ),
+    );
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const prior = latest.get(row.userId);
+    if (!prior || row.grantedAt.getTime() >= prior.grantedAt.getTime()) latest.set(row.userId, row);
+  }
+  return [...latest.values()]
+    .filter((row) => row.granted && row.revokedAt == null)
+    .map((row) => row.userId);
+}
+
+/**
+ * A parent's own ask for a common time is their say-so for Hale to use their own
+ * calendar's busy times in this chat. Recorded once, with their words. A family linked
+ * only by its number, and a co-parent who has not asked, gives none.
+ */
+async function recordFreeBusyConsent(
+  database: Database,
+  input: { chatId: string; familyId: string; userId: string; verbatim: string },
+): Promise<void> {
+  const role = await familyRoleOf(database, input.familyId, input.userId);
+  if (!role || !isParentRole(role)) return;
+  const current = await freeBusyConsenters(database, input.chatId, input.familyId);
+  if (current.includes(input.userId)) return;
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const [consent] = await tx
+      .insert(schema.consentRecords)
+      .values({
+        userId: input.userId,
+        familyId: input.familyId,
+        consentType: FREE_BUSY_CONSENT,
+        granted: true,
+        consentScope: freeBusyScope(input.chatId),
+        policyVersion: POLICY_VERSION,
+        evidence: {
+          verbatim: input.verbatim,
+          interpretation:
+            'this parent asked Hale to find a time in this shared chat, so Hale may use the busy times on their own calendar here',
+          channel: 'imessage',
+        },
+      })
+      .returning({ id: schema.consentRecords.id });
+    if (!consent) throw new Error('linq multi-family: free/busy consent insert returned no row');
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.userId,
+      actionTaken: 'linq_multi_family_free_busy_shared',
+      targetTable: 'consent_records',
+      targetId: consent.id,
+    });
+  });
 }
 
 /**
@@ -1391,6 +1478,8 @@ export async function takeMultiFamilyTurn(
       language,
       host,
       askerFamilyId: familyId,
+      asker: channel,
+      verbatim: input.text,
       people: live,
       ruledOut: reading.ruledOut ?? [],
       ports: wired,

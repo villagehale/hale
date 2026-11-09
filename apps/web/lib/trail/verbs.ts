@@ -220,6 +220,7 @@ export const AUDIT_VERBS = [
   'linq_multi_family_reply_sent',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
+  'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
   'linq_multi_family_send_capped',
@@ -961,6 +962,11 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence:
       'Hale held its suggested times for a shared thread because it could not write them well',
     family: 'problem',
+  },
+  linq_multi_family_free_busy_shared: {
+    sentence:
+      'A parent let Hale use the busy times on their own calendar to find a time in a shared thread',
+    family: 'note',
   },
   linq_multi_family_ask_sent: {
     sentence: 'Hale asked one family in a shared thread',
