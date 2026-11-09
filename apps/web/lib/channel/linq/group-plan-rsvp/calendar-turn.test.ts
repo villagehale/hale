@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { CalendarConsentReader, GroupPlanCalendarWriter } from './calendar';
 import { calendarConsentUserMessage } from './calendar';
-import { memberKeyFromHandle } from './member-key';
+import { memberKeyFromHandle, senderMemberKey } from './member-key';
 import { createMemoryGroupPlanRsvpStore, createMemoryWorld } from './memory-store';
 import type { GroupPlanRsvpReader, GroupPlanRsvpReading } from './reading';
 import { takeGroupPlanRsvpTurn } from './turn';
@@ -1414,6 +1414,33 @@ describe('a calendar line on the household clock', () => {
 
   it('gives the writer no clock time when the household zone is unknown', async () => {
     expect(await askStartsAt(null)).toBeNull();
+  });
+});
+
+describe('the key a calendar ask is kept under', () => {
+  it('is the sender key the RSVP rows use, never a nameless handle in plain text', async () => {
+    const handle = 'apple-id-parent@example.invalid';
+    const { store, texts } = await picnic();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: handle,
+        senderName: null,
+        senderUserId: 'u-priya',
+        text: 'we are in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({ store, texts, reader: readerOf(rsvp('yes')), writer: writerSpy() }),
+    );
+    const plan = await store.loadLivePlan(CHAT);
+    const ask = await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya');
+    const rsvpKeys = (await store.loadTally(plan?.id ?? '')).rows.map((row) => row.memberKey);
+    expect(ask?.status).toBe('asked');
+    expect(ask?.memberKey).toBe(await senderMemberKey({ handle, name: null }, async () => []));
+    expect(rsvpKeys).toContain(ask?.memberKey);
+    expect(ask?.memberKey).not.toContain(handle);
   });
 });
 

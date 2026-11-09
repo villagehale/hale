@@ -97,6 +97,8 @@ const NOT_IN_EXPORT: Record<string, string> = {
     'a capability key and two message ids; each no and correction is an exported audit row',
   family_memory_aliases: 'derived search tokens of facts already exported',
   agent_runs: 'model usage accounting, no family content',
+  linq_group_plan_calendar_consents:
+    'per-plan calendar ask state; each ask, answer, write, removal and set-aside is an exported audit row, and the copy Hale wrote is an exported calendar event',
   caregiver_invites: 'unreviewed',
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
@@ -123,7 +125,6 @@ const NOT_IN_EXPORT: Record<string, string> = {
   linq_group_carpools: 'unreviewed',
   linq_group_members: 'unreviewed',
   linq_group_onboarding: 'unreviewed',
-  linq_group_plan_calendar_consents: 'unreviewed',
   linq_group_plans: 'unreviewed',
   linq_group_polls: 'unreviewed',
   linq_group_rosters: 'unreviewed',

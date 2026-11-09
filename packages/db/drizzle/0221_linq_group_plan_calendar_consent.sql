@@ -4,7 +4,7 @@
 -- Re-runnable: IF NOT EXISTS. Reversible:
 --   DROP TABLE IF EXISTS linq_group_plan_calendar_consents;
 --
--- Numbered 0215: 0210, 0212 and 0213 are taken on main, and 0211 is reserved by open PRs.
+-- Numbered 0221: main's highest is 0220 (0216, 0217 and 0220 landed while this was open).
 --
 -- A household that said yes to a tracked plan gets one row per plan. The
 -- calendar copy is written only after that row is `written`, and only for

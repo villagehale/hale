@@ -2,10 +2,11 @@ import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
+import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-destination';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { GroupPlanCalendarLineInput } from './calendar';
+import { GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL, type GroupPlanCalendarLineInput } from './calendar';
 import type { GroupPlanRsvpLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
@@ -60,9 +61,23 @@ const voiceAnswerSchema = z.object({
   why: z.string().optional(),
 });
 
+/**
+ * A private calendar line is handed its start as a spoken label ("Sun, Nov 1 at
+ * 11:00 AM"), never a numeric date, so no date excuses a run of digits in it.
+ */
+const NO_HANDED_DATE: EventDate = { year: 0, month: 0, day: 0 };
+
 function lineUsable(line: string, input: GroupLineInput): boolean {
   if (!line.trim()) return false;
   if (hasLinkShape(line)) return false;
+  // A 1:1 line goes to one parent's own phone: no number to dial or address to mail,
+  // whatever the plan title or their own words held.
+  if (
+    input.skill === GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL &&
+    textDestination(line, NO_HANDED_DATE) !== null
+  ) {
+    return false;
+  }
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
   return true;

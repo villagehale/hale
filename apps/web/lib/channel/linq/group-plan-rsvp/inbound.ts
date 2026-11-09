@@ -8,6 +8,7 @@ import {
 } from '../config';
 import { type OneToOneSend, sendHouseholdPrivateLine } from '../connect-link-1to1';
 import { familySpeechLanguage } from '../family-outbound';
+import { lastOneToOneLineId } from '../last-1to1-line';
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
@@ -319,14 +320,37 @@ async function pickPrivateCalendarAsk(
  * A 1:1 reply to the private calendar ask. The group chat is not this message's
  * chat. One open ask for this parent is answered here; anything else is left
  * for the normal 1:1 door.
+ *
+ * An open ask is answerable only while Hale's last 1:1 line is one of the asks.
+ * Once Hale has asked something else, a yes answers that, not the calendar. A
+ * decline stays readable: only the reader's `reopen` (they brought the calendar
+ * up themselves) changes it.
  */
 export async function considerPrivateCalendarReply(
   ports: GroupPlanRsvpInboundPorts,
-  input: { senderUserId: string; senderName: string | null; text: string },
+  input: { senderUserId: string; senderName: string | null; chatId: string; text: string },
 ): Promise<GroupPlanRsvpTurnOutcome | { handled: false }> {
   if (!linqGroupPlanRsvpCalendarEnabled()) return { handled: false };
   const store = createPostgresGroupPlanRsvpStore(ports.database);
-  const open = await store.listOpenCalendarAsks(input.senderUserId);
+  const listed = await store.listOpenCalendarAsks(input.senderUserId);
+  const lastLine = listed.some((item) => item.consent.status === 'asked')
+    ? await lastOneToOneLineId(ports.database, {
+        parentUserId: input.senderUserId,
+        chatId: input.chatId,
+      })
+    : null;
+  const askIsLastLine =
+    lastLine !== null &&
+    listed.some(
+      (item) => item.consent.status === 'asked' && item.consent.askProviderMessageId === lastLine,
+    );
+  const open = listed.filter((item) => item.consent.status === 'declined' || askIsLastLine);
+  if (open.length < listed.length) {
+    console.info(
+      { outcome: 'group_plan_calendar_ask_not_last_line', count: listed.length - open.length },
+      'group plan calendar: 1:1 reply left to the 1:1 door',
+    );
+  }
   const picked = await pickPrivateCalendarAsk(ports, input, open);
   if (picked.kind === 'none') return { handled: false };
   if (picked.kind === 'ambiguous') {

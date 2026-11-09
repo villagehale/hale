@@ -552,6 +552,7 @@ async function privateCalendarReply(
     {
       senderUserId: mapped.userId,
       senderName: null,
+      chatId: message.chatId,
       text: message.text,
     },
   );
