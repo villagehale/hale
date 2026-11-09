@@ -14,6 +14,7 @@
     "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "live:onboarding": "LIVE=1 HALE_LLM_NO_STREAM=1 vitest run lib/channel/intake/onboarding-live.test.ts",
     "booked-detection:dry-run": "tsx scripts/booked-detection-dry-run.ts",
+    "probe:drain-load": "tsx scripts/drain-load-probe.ts",
     "probe:ics-feed": "tsx scripts/probe-ics-feed.ts",
     "probe:linq-capacity": "tsx scripts/probe-linq-capacity.ts",
     "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",

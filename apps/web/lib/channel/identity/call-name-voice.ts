@@ -6,6 +6,7 @@ import {
   nameAskVoiceInput,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
+import type { OnboardingChecklist } from '~/lib/channel/intake/onboarding-turn';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import type { ParentCallNameAsk, ParentCallNameVoice } from './parent-call-name';
@@ -93,14 +94,21 @@ export function parentCallNameVoice(
  */
 export async function readModelParentName(
   composer: FriendVoiceComposer | undefined,
-  input: { parentWords: string; language: ReplyLanguage | null },
+  input: {
+    parentWords: string;
+    language: ReplyLanguage | null;
+    stored: OnboardingChecklist | null;
+  },
 ): Promise<{
   parentName: string | null;
   nameDeclined: boolean;
   nameTakenBack: boolean;
   reply: string | null;
 }> {
-  const spoken = await speakFriend(composer, nameAskVoiceInput(input.parentWords, input.language));
+  const spoken = await speakFriend(
+    composer,
+    nameAskVoiceInput(input.parentWords, input.language, input.stored),
+  );
   const reply = spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
   return {
     parentName: spoken.capture.parentName,

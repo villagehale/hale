@@ -198,7 +198,7 @@ async function fetchIcs(url: string): Promise<Response> {
 beforeEach(async () => {
   db = await createTestDb();
   routeDb.current = db.database;
-  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1' });
+  sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'linq-1', transport: 'sms' });
   cancelCalls = [];
   cancelOutcome = {
     status: 'composed',

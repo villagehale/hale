@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is present and correct: both events, who each is for, tomorrow/Thursday, start and end times, venue names and addresses, and AM (morning). Nothing is invented. But the facts mark the two events as overlapping, and the text never says their times run into each other; it only says both are on Thursday morning and to 'plan around them', which is exactly the hint-only case. It also gives no concrete next step (such as who takes which child). That drops the required clash fact, so it is a low score.",
+    "score": 2
+  }
+}

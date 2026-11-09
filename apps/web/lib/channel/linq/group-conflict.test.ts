@@ -452,7 +452,7 @@ describe('clashCalendar', () => {
       kids: ['Maya'],
       timeZone: 'America/Toronto',
       language: 'en',
-      poll: clashPollOffer(clash as NonNullable<typeof clash>, [barton, sam]),
+      poll: clashPollOffer(clash as NonNullable<typeof clash>, [barton, sam], ['Maya']),
     });
     expect(line.items[1]).toEqual({ kind: 'busy', who: 'Barton' });
     expect(line.poll).toEqual({ takes: 'Maya swim pickup', choices: ['Barton', 'Sam'] });
@@ -700,6 +700,7 @@ describe('groupConflictLineInput', () => {
           has: 'Barton',
         },
       ],
+      sameKid: null,
       suggested: { name: 'Sam', takes: 'Leo daycare pickup' },
       alsoFree: [],
       busy: [],
@@ -718,7 +719,7 @@ describe('groupConflictLineInput', () => {
       people: [barton, sam, rosa],
       now: NOW,
     });
-    const offer = clashPollOffer(clash as GroupClash, [barton, sam, rosa]);
+    const offer = clashPollOffer(clash as GroupClash, [barton, sam, rosa], ['Maya', 'Leo']);
     const line = groupConflictLineInput(clash as GroupClash, {
       people: [barton, sam, rosa],
       kids: ['Maya', 'Leo'],
@@ -727,6 +728,51 @@ describe('groupConflictLineInput', () => {
       poll: offer,
     });
     expect(line.poll).toEqual({ takes: 'Leo daycare pickup', choices: ['Barton', 'Sam', 'Rosa'] });
+  });
+
+  it("hands nobody a plan when both are one child's: a second driver cannot fix that", () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Maya swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: "Maya's dentist", holders: ['barton'], end: AT_4 }),
+      ],
+      busy: [],
+      people: [barton, sam, rosa],
+      now: NOW,
+    });
+    expect(clash?.suggested?.personId).toBe('sam');
+    const line = groupConflictLineInput(clash as GroupClash, {
+      people: [barton, sam, rosa],
+      kids: ['Maya', 'Leo'],
+      timeZone: 'America/Toronto',
+      language: 'en',
+      poll: clashPollOffer(clash as GroupClash, [barton, sam, rosa], ['Maya', 'Leo']),
+    });
+    expect(line.sameKid).toBe('Maya');
+    expect(line.suggested).toBeNull();
+    expect(line.alsoFree).toEqual([]);
+    expect(line.poll).toBeNull();
+  });
+
+  it("names no shared child for two children's plans, or a name that is only part of a word", () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Leonie swim pickup', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Leo daycare pickup', holders: ['barton'] }),
+      ],
+      busy: [],
+      people: [barton, sam],
+      now: NOW,
+    });
+    const line = groupConflictLineInput(clash as GroupClash, {
+      people: [barton, sam],
+      kids: ['Leonie', 'Leo'],
+      timeZone: 'America/Toronto',
+      language: 'en',
+      poll: null,
+    });
+    expect(line.sameKid).toBeNull();
+    expect(line.suggested).toEqual({ name: 'Sam', takes: 'Leo daycare pickup' });
   });
 });
 
@@ -763,7 +809,7 @@ describe('clashPollOffer', () => {
     })[0] as GroupClash;
 
   it('asks who takes the plan the alert hands over, with everyone in the chat by name', () => {
-    const offer = clashPollOffer(twoOnBarton(), [barton, sam, rosa]);
+    const offer = clashPollOffer(twoOnBarton(), [barton, sam, rosa], ['Maya', 'Leo']);
     expect(offer?.plan.key).toBe('b');
     expect(offer?.people).toEqual([
       { id: 'barton', name: 'Barton' },
@@ -783,7 +829,7 @@ describe('clashPollOffer', () => {
       now: NOW,
     });
     expect(clash?.suggested).toBeNull();
-    expect(clashPollOffer(clash as GroupClash, [barton, sam])?.plan.key).toBe('a');
+    expect(clashPollOffer(clash as GroupClash, [barton, sam], ['Maya'])?.plan.key).toBe('a');
   });
 
   it('offers no poll for two plans with nobody to hand one to', () => {
@@ -797,19 +843,35 @@ describe('clashPollOffer', () => {
       now: NOW,
     });
     expect(clash?.suggested).toBeNull();
-    expect(clashPollOffer(clash as GroupClash, [barton, sam, rosa])).toBeNull();
+    expect(clashPollOffer(clash as GroupClash, [barton, sam, rosa], ['Maya', 'Leo'])).toBeNull();
+  });
+
+  it("offers no poll for one child's two plans, where a name does not answer which one", () => {
+    const [clash] = findGroupClashes({
+      plans: [
+        plan({ key: 'a', title: 'Entraînement de soccer de Léa', holders: ['barton'] }),
+        plan({ key: 'b', title: 'Récital de piano de Léa', holders: ['barton'] }),
+      ],
+      busy: [],
+      people: [barton, sam, rosa],
+      now: NOW,
+    });
+    expect(clash?.suggested).not.toBeNull();
+    expect(clashPollOffer(clash as GroupClash, [barton, sam, rosa], ['Léa', 'Chloé'])).toBeNull();
+    expect(clashPollOffer(clash as GroupClash, [barton, sam, rosa], ['Chloé'])?.plan.key).toBe('b');
   });
 
   it('never puts a taker with no account on it, and needs two names told apart', () => {
     const clash = twoOnBarton();
     const grandma: ClashPerson = { id: 'named:Grandma', name: 'Grandma', calendar: false };
-    expect(clashPollOffer(clash, [barton, sam, grandma])?.people.map((row) => row.id)).toEqual([
-      'barton',
-      'sam',
-    ]);
-    expect(clashPollOffer(clash, [barton, grandma])).toBeNull();
-    expect(clashPollOffer(clash, [barton, { ...sam, name: '' }])).toBeNull();
-    expect(clashPollOffer(clash, [barton, sam, { ...rosa, name: ' sam ' }])).toBeNull();
+    expect(
+      clashPollOffer(clash, [barton, sam, grandma], ['Maya', 'Leo'])?.people.map((row) => row.id),
+    ).toEqual(['barton', 'sam']);
+    expect(clashPollOffer(clash, [barton, grandma], ['Maya', 'Leo'])).toBeNull();
+    expect(clashPollOffer(clash, [barton, { ...sam, name: '' }], ['Maya', 'Leo'])).toBeNull();
+    expect(
+      clashPollOffer(clash, [barton, sam, { ...rosa, name: ' sam ' }], ['Maya', 'Leo']),
+    ).toBeNull();
   });
 });
 

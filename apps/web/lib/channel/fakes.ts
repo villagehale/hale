@@ -18,7 +18,11 @@ export interface FakeChannel extends Channel {
 /** A programmable Channel: records every send + returns a scripted outcome. */
 export function fakeChannel(
   kind: ChannelKind,
-  outcome: ChannelSendOutcome = { status: 'sent', providerMessageId: `${kind}-msg-1` },
+  outcome: ChannelSendOutcome = {
+    status: 'sent',
+    providerMessageId: `${kind}-msg-1`,
+    transport: kind,
+  },
 ): FakeChannel {
   const calls: { userId: string; rendered: RenderedContent }[] = [];
   return {

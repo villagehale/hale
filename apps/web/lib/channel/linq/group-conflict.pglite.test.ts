@@ -372,6 +372,7 @@ describe('group clash alerts (VIL-444)', () => {
           has: 'Barton',
         },
       ],
+      sameKid: null,
       suggested: { name: 'Sam', takes: 'Maya swim pickup' },
       alsoFree: [],
       busy: [],
@@ -1448,6 +1449,25 @@ describe('the who-takes poll on a clash alert (VIL-444, LINQ_POLLS on)', () => {
     });
     expect(writer.calls).toHaveLength(1);
     expect(line.urls()).toEqual([GROUP_MESSAGES, GROUP_POLLS]);
+  });
+
+  it("offers no poll and hands nobody a plan when both are one child's", async () => {
+    const seeded = await seedFamily();
+    await calendarItem(seeded, 'barton', { eventId: 'swim', title: 'Maya swim pickup' });
+    await calendarItem(seeded, 'barton', { eventId: 'dentist', title: 'Maya dentist' });
+    const writer = fakeWriter(FAKE_LINE, FAKE_PASS);
+    const line = wire();
+
+    await narrateHouseholdCalendar(db.database, {
+      familyId: seeded.familyId,
+      now: DAY,
+      fetch: line.fetch,
+    });
+
+    expect(writer.calls).toHaveLength(1);
+    expect(writer.calls[0]).toMatchObject({ sameKid: 'Maya', suggested: null, poll: null });
+    expect(line.urls()).toEqual([GROUP_MESSAGES]);
+    expect(await pollOptionRows()).toEqual([]);
   });
 
   it('sends the alert alone when the model leaves the poll out', async () => {
