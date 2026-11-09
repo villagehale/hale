@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
-import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
+import { factsForContext } from '@hale/worker/memory-context';
+import { eq } from 'drizzle-orm';
 import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
@@ -157,39 +158,15 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
       const teenIds = new Set(
         children.filter((child) => child.stage === 'teenager').map((child) => child.childId),
       );
-      const factRows = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          key: schema.familyMemoryFacts.factKey,
-          value: schema.familyMemoryFacts.factValue,
+      // A passing question (`one_off`) is not a family preference (Devin, #980).
+      const factRows = (
+        await factsForContext(database, familyId, {
+          now,
+          limit: FAMILY_FIT_PREFERENCE_LIMIT,
+          factTypes: FIT_FACT_TYPES,
+          excludeKinds: ['one_off'],
         })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            inArray(schema.familyMemoryFacts.factType, [...FIT_FACT_TYPES]),
-            isNull(schema.familyMemoryFacts.validUntil),
-            // A passing question (`one_off`) is not a family preference (Devin, #980).
-            ne(schema.familyMemoryFacts.memoryKind, 'one_off'),
-            or(
-              isNull(schema.familyMemoryFacts.expiresAt),
-              gt(schema.familyMemoryFacts.expiresAt, now),
-            ),
-            // Teen facts are dropped in SQL so they never eat the LIMIT (Devin, #980).
-            teenIds.size > 0
-              ? or(
-                  isNull(schema.familyMemoryFacts.childId),
-                  notInArray(schema.familyMemoryFacts.childId, [...teenIds]),
-                )
-              : undefined,
-          ),
-        )
-        .orderBy(
-          desc(schema.familyMemoryFacts.confidence),
-          desc(schema.familyMemoryFacts.validFrom),
-          schema.familyMemoryFacts.id,
-        )
-        .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
+      ).map((row) => ({ childId: row.childId, key: row.factKey, value: row.factValue }));
       return {
         children,
         homeArea: place.status === 'known' ? place.town : null,

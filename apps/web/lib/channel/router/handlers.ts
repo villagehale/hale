@@ -56,7 +56,6 @@ import {
 } from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
-import { SHORTLIST_ALREADY_APPROVED_ACK } from '~/lib/registration/sequence/copy';
 import {
   type PrepareReplyDeps,
   handleCourseBind,
@@ -835,10 +834,9 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
 /**
  * M7's registration check-in replies — "we got in", "waitlisted #3", "missed it".
  *
- * Unlike the two above, this one renders its own copy (the outcome shapes carry a
- * `reply`), so the adapter passes it through untouched: the 36-hour waitlist clock and
- * the sentence describing it are set in the same call, and a second copy here could
- * disagree with the deadline actually stored.
+ * The outcome shapes carry a `reply` the model wrote from the stored facts (VIL-543),
+ * so the adapter passes it through untouched: the 36-hour waitlist clock and the
+ * sentence describing it come from the same call. A null reply sends nothing.
  *
  * THE RE-ASK IS THE COACH'S NOW (VIL-221 · C2), which is what M7's own module note said
  * should happen the moment a conversational layer existed. Until C2 the check-in menu
@@ -923,7 +921,9 @@ async function alreadyApprovedReply(
     ctx.now,
   );
   if (approved === null) return null;
-  return { claimed: true, outcome: 'already_approved', reply: SHORTLIST_ALREADY_APPROVED_ACK };
+  // VIL-543 · written from facts; a null reply sends nothing.
+  const reply = await deps.writeNote(database, ctx.familyId, { kind: 'already_approved' });
+  return { claimed: true, outcome: 'already_approved', reply };
 }
 
 /**

@@ -189,6 +189,10 @@ function ports(): Ports {
     },
     composeEvening: composeEvening as unknown as SequenceRunDeps['composeEvening'],
     composeMorning: composeMorning as unknown as SequenceRunDeps['composeMorning'],
+    // No leg here is a registration note; a write would be a real model call.
+    writeNote: async (_db, _familyId, facts) => {
+      throw new Error(`unexpected registration note: ${facts.kind}`);
+    },
     fetchBody: fetchBody as unknown as FetchPage,
     refreshCourseAnchor: async () => {
       throw new Error('unexpected anchor refresh');
