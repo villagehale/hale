@@ -24,7 +24,6 @@ const NOT_IN_EXPORT: Record<string, string> = {
   family_memory_aliases: 'derived search tokens of facts already exported',
   agent_runs: 'model usage accounting, no family content',
   caregiver_invites: 'unreviewed',
-  channel_messages: 'unreviewed',
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
   consent_records: 'unreviewed',
@@ -317,6 +316,114 @@ describe('family memory in the right-to-access copy', () => {
       [null, null, 'source_not_recorded'],
     ]);
     expect(JSON.stringify(doc.memory)).not.toContain('B private');
+  });
+
+  it('withholds unattributed memory once a co-parent has left the household', async () => {
+    const departed = async (trace: 'texted' | 'audit_only') => {
+      const { familyId, parentUserId: parentA } = await seedFamily(db.database);
+      const [userB] = await db.database
+        .insert(schema.users)
+        .values({ externalAuthId: `sms:${familyId}:departed`, name: 'Departed' })
+        .returning({ id: schema.users.id });
+      const parentB = userB?.id as string;
+      if (trace === 'texted') {
+        await db.database.insert(schema.channelMessages).values({
+          familyId,
+          parentUserId: parentB,
+          channel: 'sms',
+          direction: 'in',
+          category: 'reply',
+          status: 'sent',
+          inGroup: false,
+        });
+      } else {
+        await db.database.insert(schema.auditLog).values({
+          familyId,
+          actor: parentB,
+          actionTaken: 'co_parent_access_withdrawn',
+          targetTable: 'family_members',
+          targetId: parentB,
+        });
+      }
+      await db.database.insert(schema.familyMemoryFacts).values([
+        { familyId, factType: 'logistic', factKey: 'pickup', factValue: 'pickup at three' },
+        { familyId, factType: 'preference', factKey: 'b_private', factValue: 'B private feeling' },
+      ]);
+      return assembleFamilyExport(db.database, familyId, {
+        actorUserId: parentA,
+        loadTrail: async () => [],
+        now: NOW,
+      });
+    };
+
+    for (const trace of ['texted', 'audit_only'] as const) {
+      const doc = await departed(trace);
+      expect(doc.members.coParent).toBeNull();
+      expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
+        ['pickup', 'pickup at three', null],
+        [null, null, 'source_not_recorded'],
+      ]);
+      expect(JSON.stringify(doc.memory)).not.toContain('B private');
+    }
+  });
+
+  it('withholds a job another adult last rewrote, even when the group opened it', async () => {
+    const { familyId, parentUserId: parentA } = await seedFamily(db.database);
+    const [userB] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${familyId}:coparent`, name: 'Co-parent' })
+      .returning({ id: schema.users.id });
+    const parentB = userB?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: parentB, role: 'co_parent' });
+    const message = async (parentUserId: string, inGroup: boolean) => {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction: 'in',
+          category: 'reply',
+          status: 'sent',
+          inGroup,
+        })
+        .returning({ id: schema.channelMessages.id });
+      return row?.id as string;
+    };
+    const group = await message(parentB, true);
+    const fromA = await message(parentA, false);
+    const fromB = await message(parentB, false);
+    const workstream = (title: string, createdFrom: string, updatedFrom: string) => ({
+      familyId,
+      title,
+      nextStep: `${title} next`,
+      status: 'open' as const,
+      createdFrom,
+      updatedFrom,
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+    });
+    await db.database
+      .insert(schema.familyWorkstreams)
+      .values([
+        workstream('group plan B retitled', group, fromB),
+        workstream('group plan A retitled', group, fromA),
+        workstream('A job that expired', fromA, 'expiry'),
+      ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+
+    expect(doc.memory.workstreams.map((w) => [w.title, w.nextStep, w.withheld])).toEqual([
+      [null, null, 'another_adult'],
+      ['group plan A retitled', 'group plan A retitled next', null],
+      ['A job that expired', 'A job that expired next', null],
+    ]);
+    expect(JSON.stringify(doc.memory)).not.toContain('B retitled');
   });
 
   it('reads every family table, or names why not', async () => {

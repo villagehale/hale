@@ -17,13 +17,15 @@ import { toFamilyMemoryExportFact } from '~/lib/memory/kinds';
  *     trail; the words become the trail's placeholder);
  *   - `another_adult`: it came from another adult's one-to-one thread. Decision R7:
  *     co-parents share logistics; anything else said in one adult's 1:1 stays theirs;
- *   - `source_not_recorded`: the household has more than one adult and the row does
- *     not record which one it came from. A fact records no adult, so only a
+ *   - `source_not_recorded`: another adult is on record for the family and the row
+ *     does not record which one it came from. A fact records no adult, so only a
  *     logistics or routine fact, or one read from a calendar or a receipt, is shared
- *     by source.
- * A group-thread row and the requester's own 1:1 row are theirs to read. An episode is
- * a quick log from the family's shared log view, so it is shared by source; a removed
- * episode keeps no words. Child ids stay internal; a younger child is named.
+ *     by source. "On record" reads history, not today's seats: a co-parent who left
+ *     still counts, so their past words never pass to the parent who stayed.
+ * A group-thread row and the requester's own 1:1 row are theirs to read; a workstream
+ * is checked against both the message that opened it and the one that last changed it.
+ * An episode is a quick log from the family's shared log view, so it is shared by
+ * source; a removed episode keeps no words. Child ids stay internal; a younger child is named.
  */
 export type MemoryWithheldReason = 'teen' | 'another_adult' | 'source_not_recorded';
 
@@ -116,11 +118,42 @@ async function provenanceSources(
   return new Map(rows.map((row) => [row.id, row]));
 }
 
+/** The workstream that closed itself writes this in place of a message id. */
+const EXPIRY_PROVENANCE = 'expiry';
+
+/**
+ * Whether any adult other than the requester was ever part of the family: a current
+ * seat, anyone who texted in it (departure keeps their messages), or any user named as
+ * an actor on its immutable audit trail (departure writes one).
+ */
+async function anotherAdultOnRecord(
+  database: Database,
+  familyId: string,
+  requesterUserId: string,
+): Promise<boolean> {
+  const rows = (await database.execute(sql`
+    select 1 from (
+      select ${schema.familyMembers.userId} as user_id from ${schema.familyMembers}
+        where ${schema.familyMembers.familyId} = ${familyId}
+      union
+      select ${schema.channelMessages.parentUserId} from ${schema.channelMessages}
+        where ${schema.channelMessages.familyId} = ${familyId}
+      union
+      select ${schema.users.id} from ${schema.auditLog}
+        join ${schema.users} on ${schema.users.id}::text = ${schema.auditLog.actor}
+        where ${schema.auditLog.familyId} = ${familyId}
+    ) adults
+    where adults.user_id <> ${requesterUserId}
+    limit 1
+  `)) as unknown as { rows?: unknown[] } | unknown[];
+  return (Array.isArray(rows) ? rows : (rows.rows ?? [])).length > 0;
+}
+
 export async function loadFamilyMemoryExport(
   database: Database,
   familyId: string,
   children: readonly ExportChild[],
-  requester: { userId: string; householdAdults: number },
+  requester: { userId: string },
   now: Date,
 ): Promise<FamilyMemoryExport> {
   const teens = children.filter((child) => deriveStage(child.dateOfBirth, now) === 'teenager');
@@ -155,17 +188,26 @@ export async function loadFamilyMemoryExport(
       .where(eq(schema.agentCommitments.familyId, familyId))
       .orderBy(schema.agentCommitments.createdAt),
   ]);
-  const sources = await provenanceSources(database, familyId, [
-    ...workstreamRows.map((row) => row.createdFrom),
-    ...commitmentRows.map((row) => row.createdFrom),
+  const workstreamWriters = (row: (typeof workstreamRows)[number]) =>
+    row.updatedFrom === EXPIRY_PROVENANCE ? [row.createdFrom] : [row.createdFrom, row.updatedFrom];
+  const [sources, otherAdult] = await Promise.all([
+    provenanceSources(database, familyId, [
+      ...workstreamRows.flatMap(workstreamWriters),
+      ...commitmentRows.map((row) => row.createdFrom),
+    ]),
+    anotherAdultOnRecord(database, familyId, requester.userId),
   ]);
-  const unattributed: MemoryWithheldReason | null =
-    requester.householdAdults <= 1 ? null : 'source_not_recorded';
-  const bySource = (messageId: string): MemoryWithheldReason | null => {
+  const unattributed: MemoryWithheldReason | null = otherAdult ? 'source_not_recorded' : null;
+  const fromOne = (messageId: string): MemoryWithheldReason | null => {
     const source = sources.get(messageId);
     if (!source) return unattributed;
     if (source.inGroup === true || source.parentUserId === requester.userId) return null;
     return 'another_adult';
+  };
+  const bySource = (messageIds: readonly string[]): MemoryWithheldReason | null => {
+    const reasons = messageIds.map(fromOne);
+    if (reasons.includes('another_adult')) return 'another_adult';
+    return reasons.find((reason) => reason !== null) ?? null;
   };
   const withheldFor = (
     childIds: readonly (string | null)[],
@@ -216,7 +258,7 @@ export async function loadFamilyMemoryExport(
       const withheld = withheldFor(
         row.childIds,
         [row.title, row.nextStep ?? ''],
-        bySource(row.createdFrom),
+        bySource(workstreamWriters(row)),
       );
       return {
         title: words(withheld, row.title),
@@ -230,7 +272,11 @@ export async function loadFamilyMemoryExport(
       };
     }),
     commitments: commitmentRows.map((row) => {
-      const withheld = withheldFor([row.subjectChildId], [row.summary], bySource(row.createdFrom));
+      const withheld = withheldFor(
+        [row.subjectChildId],
+        [row.summary],
+        bySource([row.createdFrom]),
+      );
       return {
         kind: row.commitmentKind,
         summary: words(withheld, row.summary),
