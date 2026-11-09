@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { redactInShape, scrubPlaceTokens } from '../place-token';
+import { redactInShape, scrubPlaceTokens } from '@hale/types';
 import type { ReplyLanguage } from './medical';
 
 /**
@@ -7,7 +7,7 @@ import type { ReplyLanguage } from './medical';
  * deterministic scrub that runs under the sanitizer (see answer.ts for the lane).
  *
  * This file imports nothing from behind the web app's `~/` alias at runtime, on purpose
- * (place-token.ts is relative and imports nothing). The eval
+ * (the place matcher is in @hale/types). The eval
  * (apps/worker/evals/run-general-answer-eval.mjs) cannot resolve the app's `~/` alias,
  * and it used to keep its own copy of every shape here. It loads this file instead, so a
  * recording is the request production sends and not a copy that can drift from it.

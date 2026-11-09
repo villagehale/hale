@@ -1,8 +1,8 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
+import { scrubContactTokens, scrubPlaceTokens } from '@hale/types';
 import { readEvidence } from '~/lib/channel/activity/evidence';
 import { type ChildNameScrub, scrubChildNames } from '~/lib/channel/child-name-scrub';
 import { regionOfPostal } from '~/lib/channel/off-domain/place';
-import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
@@ -102,10 +102,7 @@ export function deidentifyLiveQuery(
   const names = children.flatMap((child) => (child.name ? [child.name] : []));
   const scrub = scrubChildNames(parentWords.replace(/\s+/g, ' ').trim(), names);
   if (!scrub.ok) return scrub;
-  const withoutContacts = scrub.text
-    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '');
-  const query = scrubPlaceTokens(withoutContacts, ' ')
+  const query = scrubPlaceTokens(scrubContactTokens(scrub.text, ' '), ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return { ok: true, text: query === '' ? 'current official reputable source' : query };

@@ -15,22 +15,37 @@
  * figure grouped by spaces with five digits in one group ("123 456 78901", "99999 0000")
  * goes whole, never cut in two.
  *
+ * A COMMA BETWEEN TWO FIVE-DIGIT RUNS IS A LIST ("98101,98102"), not a figure: a decimal
+ * comma has at most four digits after it, and a thousands group has three on each side.
+ *
  * EVERY PATTERN READS ONE SHAPE OF THE TEXT ({@link oneShape}): a full-width or other
  * script's digit is the digit, any dash is a hyphen, and a zero-width character is not
  * there at all. A ZIP typed one digit at a time with one space, dot or dash between
- * ("9 8 1 0 1") is still a ZIP, and so is one glued to a word ("near98101"). What is
- * handed on is the text as it was typed, less what a pattern took out.
+ * ("9 8 1 0 1") is still a ZIP, so is one split once by a space into three and two or two
+ * and three ("981 01"; one and four is a date, "March 3 2027"), and so is one
+ * glued to a word ("near98101"). A whole Canadian code is the same: glued to a word on
+ * either side ("nearK7L 3N6", "K7L3N6please") or typed one character at a time ("K 7 L 3
+ * N 6"). A bare forward sortation area is three characters, which ordinary words and ids
+ * hold, so it is read only standing alone. What is handed on is the text as it was typed,
+ * less what a pattern took out.
  *
- * No imports, so the eval runners can load it as-is (see off-domain/answer-request.ts).
+ * An email address and a phone number are read the same way ({@link CONTACT_TOKENS}).
+ *
+ * Here and not in apps/web, so the worker's redactor uses the same matcher.
  */
 
 const CURRENCY_BEFORE = '(?<![$€£¥¢]\\s?)';
-const NOT_A_FIGURE_BEFORE = '(?<!\\d[.,]?)';
-const NOT_A_FIGURE_AFTER = '(?![.,]?\\d)';
+const NOT_A_FIGURE_BEFORE = '(?<!\\d)(?<!(?<!\\d)\\d{1,4}[.,])';
+const NOT_A_FIGURE_AFTER = '(?!\\d)(?![.,]\\d{1,4}(?!\\d))';
 const CURRENCY_AFTER = '(?!\\s*(?:dollars?|bucks|usd|cad)\\b)';
 const ONE_DIGIT_GAP = '[ .-]';
 
-export const CANADIAN_POSTAL = /(?<![\p{L}\p{N}])[a-z]\d[a-z][ -]?\d[a-z]\d(?![\p{L}\p{N}])/giu;
+const CHARACTER_GAP = '[ .-]?';
+
+export const CANADIAN_POSTAL = new RegExp(
+  `(?<!\\p{N}${CHARACTER_GAP})[a-z]${CHARACTER_GAP}\\d${CHARACTER_GAP}[a-z]${CHARACTER_GAP}\\d${CHARACTER_GAP}[a-z]${CHARACTER_GAP}\\d(?!${CHARACTER_GAP}\\p{N})`,
+  'giu',
+);
 
 export const PLACE_TOKENS: readonly RegExp[] = [
   CANADIAN_POSTAL,
@@ -43,6 +58,20 @@ export const PLACE_TOKENS: readonly RegExp[] = [
     `${CURRENCY_BEFORE}(?<!\\d${ONE_DIGIT_GAP}?)\\d(?:${ONE_DIGIT_GAP}\\d){4}(?!${ONE_DIGIT_GAP}?\\d)${CURRENCY_AFTER}`,
     'gi',
   ), // US ZIP, one digit at a time
+  new RegExp(
+    `${CURRENCY_BEFORE}(?<!\\d${ONE_DIGIT_GAP}?)(?:\\d{3} \\d{2}|\\d{2} \\d{3})(?!${ONE_DIGIT_GAP}?\\d)${CURRENCY_AFTER}`,
+    'gi',
+  ), // US ZIP split once by a space, three and two or two and three
+];
+
+/**
+ * An email address, and a phone number or any long run of digits (an account or a health
+ * card number), on the same shape as a place: a full-width @ is an @, and a digit of any
+ * script is a digit.
+ */
+export const CONTACT_TOKENS: readonly RegExp[] = [
+  /[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,
+  /\+?\d[\d\s.-]{7,}\d/g,
 ];
 
 const ANY_DASH = /[\p{Dash_Punctuation}−]/gu;
@@ -127,6 +156,11 @@ export function redactInShape(text: string, pattern: RegExp, replacement: string
 /** `text` with every postal code and ZIP replaced by `replacement`. */
 export function scrubPlaceTokens(text: string, replacement: string): string {
   return PLACE_TOKENS.reduce((acc, pattern) => redactInShape(acc, pattern, replacement), text);
+}
+
+/** `text` with every email address and phone number replaced by `replacement`. */
+export function scrubContactTokens(text: string, replacement: string): string {
+  return CONTACT_TOKENS.reduce((acc, pattern) => redactInShape(acc, pattern, replacement), text);
 }
 
 /** Every postal code and ZIP in `text`, as it was typed, in the order typed. */

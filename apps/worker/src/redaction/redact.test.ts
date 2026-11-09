@@ -32,6 +32,21 @@ describe('redactText', () => {
     expect(out).toContain('[PHONE]');
   });
 
+  it('redacts a US ZIP and a ZIP+4 by the matcher every search shares', () => {
+    const out = redactText('swim near 99999, or 99999-0000', []);
+    expect(out).not.toContain('99999');
+    expect(out).not.toContain('0000');
+    expect(out).toBe('swim near [POSTAL], or [POSTAL]');
+  });
+
+  it('redacts a postal code typed in full-width characters', () => {
+    expect(redactText('swim near Ｚ９Ｚ ９Ｚ９', [])).toBe('swim near [POSTAL]');
+  });
+
+  it('keeps a price, which is not a place (positive control)', () => {
+    expect(redactText('a $12345 budget', [])).toBe('a $12345 budget');
+  });
+
   it('redacts every known name, not just the first', () => {
     const out = redactText('Liam and Ava played', ['Liam', 'Ava']);
     expect(out).toBe('[CHILD] and [CHILD] played');
@@ -51,6 +66,10 @@ describe('assertNoPII (fail-closed)', () => {
     expect(() => assertNoPII('born 2023-04-01', [])).toThrow(/PII/i);
     expect(() => assertNoPII('at M5V 2T6', [])).toThrow(/PII/i);
     expect(() => assertNoPII('a@b.ca', [])).toThrow(/PII/i);
+  });
+
+  it('THROWS if a raw US ZIP survived', () => {
+    expect(() => assertNoPII('swim near 99999', [])).toThrow(/postal/);
   });
 });
 
