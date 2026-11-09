@@ -28,3 +28,28 @@ export async function householdTimezone(tx: Database, familyId: string): Promise
     .limit(1);
   return row?.timezone ?? DEFAULT_TIMEZONE;
 }
+
+/**
+ * The household's zone when Hale actually knows it, else null. Unlike
+ * {@link householdTimezone} there is no product default: a fact handed to a model
+ * ("today is Monday") must be the family's own clock or absent, never Toronto's.
+ * UTC is the column default and means "never set" (migration 0178).
+ */
+export async function knownHouseholdTimezone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  const zone = row?.timezone?.trim();
+  return zone && zone !== 'UTC' ? zone : null;
+}

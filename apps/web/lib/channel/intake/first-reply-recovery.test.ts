@@ -201,7 +201,7 @@ describe('runFirstReplyRecoveryCron', () => {
 
     // Positive control: the same row with no hold standing is owed and sent its reply.
     const unheld = makeFakeDb();
-    seedSession(unheld);
+    seedSession(unheld, { areaCoarse: EASTERN_FSA });
     const owed = await runFirstReplyRecoveryCron(unheld.db, deps(transport), SAME_DAY_NOON_ET);
     expect(owed).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
     expect(transport.sent[0]?.to).toBe(PHONE);
@@ -210,7 +210,7 @@ describe('runFirstReplyRecoveryCron', () => {
   it('sends the locked first-hello once for a session with SID and no outbound', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();
-    seedSession(fake);
+    seedSession(fake, { areaCoarse: EASTERN_FSA });
 
     const first = await runFirstReplyRecoveryCron(fake.db, deps(transport), SAME_DAY_NOON_ET);
     expect(first).toEqual({ evaluated: 1, sent: 1, skipped: 0, failed: 0, deferred: 0 });
@@ -397,7 +397,15 @@ describe('runFirstReplyRecoveryCron', () => {
 
     const result = await runFirstReplyRecoveryCron(fake.db, deps(transport), tick);
 
-    expect(result).toMatchObject({ evaluated: 2, sent: 2, quietHeld: 1 });
+    expect(result).toEqual({
+      evaluated: 2,
+      sent: 2,
+      skipped: 0,
+      failed: 0,
+      deferred: 0,
+      quietHeld: 1,
+      zoneUnknownAnswered: 1,
+    });
     const rows = fake.rows(schema.smsIntakeSessions);
     const recovered = (id: string) => rows.find((row) => row.id === id)?.firstReplyRecoveredAt;
     expect(recovered(eastern)).toBeNull();

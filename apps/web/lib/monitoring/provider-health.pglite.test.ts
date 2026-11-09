@@ -51,7 +51,7 @@ describe('providerPreflight on a usage-limit 400', () => {
       sender: {
         send: async (subject) => {
           sent.push(subject);
-          return true;
+          return 'sent' as const;
         },
       },
     };

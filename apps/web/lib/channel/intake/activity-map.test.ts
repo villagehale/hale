@@ -19,6 +19,7 @@ import type { WeekendPick } from './radar-decide';
  */
 
 const FAMILY = 'family-1';
+const TODAY = '2026-10-01';
 
 function pick(name: string, overrides: Partial<ActivityPick> = {}): ActivityPick {
   return {
@@ -138,6 +139,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.titles).toEqual(['Workshop']);
   });
@@ -151,6 +153,7 @@ describe('collectActivityMap', () => {
       town: null,
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(subjects).toEqual([]);
     expect(map.finder).toBe('refused');
@@ -173,6 +176,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.finder).toBe('used');
     expect(subjects).toHaveLength(MAX_MAP_GROUPS);
@@ -203,6 +207,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.groups.map((group) => group.category)).toEqual(['learning_sports_arts']);
     expect(map.lines).toEqual(['Swim (ages 3-5) - Saturdays 10am - $12']);
@@ -222,6 +227,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [civic('Story time'), civic('Baby rhyme time'), civic('Lego club')],
       familyId: FAMILY,
+      today: TODAY,
     });
     const free = map.groups.find((group) => group.category === 'free_public');
     expect(free?.lines).toHaveLength(MAX_MAP_ITEMS_PER_GROUP);
@@ -236,6 +242,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [civic('Story time')],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.finder).toBe('not_configured');
     expect(map.groups).toEqual([
@@ -261,6 +268,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.finder).toBe('used');
     expect(map.lines).toEqual(['Swim (ages 3-5) - Saturdays 10am - $12']);
@@ -276,6 +284,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(none.finder).toBe('failed');
     expect(none.lines).toEqual([]);
@@ -289,15 +298,17 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(map.finder).toBe('empty');
     expect(map.groups).toEqual([]);
   });
 
-  it('leaves out picks outside every child age before filling a group, and drops a group they emptied', async () => {
+  it('leaves out past-dated picks and picks outside every child age before filling a group, and drops a group they emptied', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const { finder } = finderWith({
       parent_baby: [
+        pick('Spring fair', { ageFit: 'All ages', when: 'March 2026', sourceName: 'Town' }),
         pick('Baby rhyme circle', { ageFit: 'Ages 0-1', sourceName: 'Town' }),
         pick('Toddler gym', { ageFit: '18 months - 3 years', sourceName: 'Town' }),
         pick('Family fair', { ageFit: 'All ages', sourceName: 'Town' }),
@@ -311,8 +322,9 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
-    // Ages 0-1 is 0..12 months and 18 > 12; the swim group had nothing else.
+    // Ages 0-1 is 0..12 months and 18 > 12; March 2026 is over; the swim group had nothing else.
     expect(map.groups.map((group) => group.category)).toEqual(['parent_baby']);
     expect(map.titles).toEqual(['Toddler gym', 'Family fair', 'Library play']);
     const logged = info.mock.calls.find((call) => call[1] === 'intake activity map');
@@ -322,6 +334,7 @@ describe('collectActivityMap', () => {
       groups: 1,
       lines: 3,
       droppedAge: 2,
+      droppedPast: 1,
     });
     info.mockRestore();
   });
@@ -340,6 +353,7 @@ describe('collectActivityMap', () => {
       town: 'Toronto',
       civic: [],
       familyId: FAMILY,
+      today: TODAY,
     });
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.join(' ')).not.toMatch(/maya/i);
