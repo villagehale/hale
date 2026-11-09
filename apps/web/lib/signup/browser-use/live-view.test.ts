@@ -24,7 +24,36 @@ describe('liveViewUrl', () => {
   });
 });
 
+// Each form below passes the host pin: the URL parser maps it to the live-view host.
+const PIN_ACCEPTED_FORMS = [
+  ['a fullwidth host', `https://\uFF4C\uFF49\uFF56\uFF45.browser-use.com/s/${TOKEN}`],
+  ['a percent-encoded dot', `https://live%2Ebrowser-use.com/s/${TOKEN}`],
+  ['a tab inside the host', `https://live.brow\tser-use.com/s/${TOKEN}`],
+  ['a newline inside the host', `https://live.brow\nser-use.com/s/${TOKEN}`],
+  ['backslash separators', `https:\\\\live.browser-use.com\\s\\${TOKEN}`],
+  ['a zero-width space in the host', `https://live.\u200Bbrowser-use.com/s/${TOKEN}`],
+  ['an ideographic full stop', `https://live\u3002browser-use.com/s/${TOKEN}`],
+  ['percent-encoded letters', `https://%6C%69ve.browser-use.com/s/${TOKEN}`],
+  ['a variation selector in the host', `https://live.b\uFE0Frowser-use.com/s/${TOKEN}`],
+] as const;
+
+describe('a pin-accepted link never reaches history with its token', () => {
+  it.each(PIN_ACCEPTED_FORMS)('%s comes back canonical and is redacted', (_label, form) => {
+    const pinned = liveViewUrl(form);
+    expect(pinned).toBe(LIVE);
+    const stored = withoutLiveViewLinks(`Finish here: ${pinned}`);
+    expect(stored).not.toContain(TOKEN);
+    expect(stored).toContain(LIVE_VIEW_LINK_WITHHELD);
+  });
+});
+
 describe('withoutLiveViewLinks', () => {
+  it.each(PIN_ACCEPTED_FORMS)('removes %s written straight into the text', (_label, form) => {
+    const stored = withoutLiveViewLinks(`Finish here: ${form}`);
+    expect(stored).not.toContain(TOKEN);
+    expect(stored).toContain(LIVE_VIEW_LINK_WITHHELD);
+  });
+
   it.each([
     ['the exact link', `Finish here: ${LIVE}`],
     ['an upper-case host', `Finish here: HTTPS://LIVE.BROWSER-USE.COM/s/${TOKEN}`],
@@ -46,7 +75,7 @@ describe('withoutLiveViewLinks', () => {
   });
 
   it('leaves a text with no live-view link exactly as it was', () => {
-    const text = `Sign up on their page: ${REC} (browser-use.com is not in this one)`;
+    const text = `Sign up on their page:\n\t${REC}?q=a%2Eb （ｆｕｌｌｗｉｄｔｈ） a\u200Bb C:\\path (browser-use.com is not in this one)`;
     expect(withoutLiveViewLinks(text)).toBe(text);
   });
 });
