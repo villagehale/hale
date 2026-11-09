@@ -732,6 +732,16 @@ export const COACH_CHANNEL_FIXTURES = [
     },
   },
   {
+    id: 'connector-drive-ask',
+    text: 'connect my google drive',
+    note: 'Hale offers no Drive connect link (#1011), and the connector_link handler logs connector_not_offered and lets a plain Drive ask fall through (#1056), so this exact text DOES reach the coach. The failure to prevent is the loop: telling the parent that texting "connect my Google Drive" sends a link, when that text is the one that just reached the coach with nothing sent. The reply says, in its own words, that Drive is not something Hale connects.',
+    expect: {
+      mustNotDraft: true,
+      mustMention: ['drive'],
+      forbidden: ['connect my google drive', 'http', 'drive link'],
+    },
+  },
+  {
     id: 'registration-watch-asked',
     text: 'can you watch swim registration for Milo this fall?',
     // The one fixture whose family is not in Toronto: the window below is a real Halton
