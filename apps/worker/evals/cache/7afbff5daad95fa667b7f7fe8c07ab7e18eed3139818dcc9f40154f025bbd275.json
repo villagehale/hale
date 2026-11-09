@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "child-safety",
+    "reason": "missing child reported as ongoing for an hour",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 880
+}

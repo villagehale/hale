@@ -35,6 +35,8 @@ const NOT_IN_FAMILY_EXPORT = [
   'crisis_unanswered',
   // That Hale re-read one parent's held text to see whether they asked it to stop.
   'opt_out_hold_read',
+  // Which language one parent texts Hale in.
+  'parent_language_changed',
   // That one adult connected their Google account again, possibly in another household.
   'integration_google_revoke_cancelled',
 ] as const satisfies readonly AuditVerb[];

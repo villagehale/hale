@@ -10,6 +10,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { parentLanguage } from '~/lib/channel/parent-language';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -497,20 +498,21 @@ export async function resolveFollowUpRecipient(
     .select({
       parentUserId: schema.channelMessages.parentUserId,
       conversationId: schema.channelMessages.relatedConversationId,
-      language: schema.users.locale,
+      proactiveLanguage: schema.users.proactiveLanguage,
+      familyLanguage: schema.families.primaryLanguage,
     })
     .from(schema.channelMessages)
     .innerJoin(schema.users, eq(schema.users.id, schema.channelMessages.parentUserId))
+    .innerJoin(schema.families, eq(schema.families.id, schema.channelMessages.familyId))
     .where(eq(schema.channelMessages.id, channelMessageId))
     .limit(1);
-  // No user row means there is nobody to write to, and no locale means there is no
-  // language to write in. Both are the same outcome the sweep already names: the
-  // recipient no longer resolves. A default language here would be a language nobody stored.
-  if (!row?.parentUserId || row.language.trim() === '') return null;
+  // No user row means there is nobody to write to: the outcome the sweep already names.
+  if (!row?.parentUserId) return null;
   return {
     parentUserId: row.parentUserId,
     conversationId: row.conversationId ?? null,
-    language: row.language,
+    // VIL-572 · the one proactive language, never the last text's.
+    language: parentLanguage(row.proactiveLanguage, row.familyLanguage),
   };
 }
 

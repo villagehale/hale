@@ -1,6 +1,6 @@
-import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import type { Database } from '@hale/db';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import type { SameActivityChoice } from './choice';
 import {
   type SameActivityReply,
@@ -29,15 +29,15 @@ export interface SameActivityDisclosure {
 
 async function languageFor(
   database: Database,
-  input: { language?: ReplyLanguage; parentUserId?: string },
+  input: { familyId: string; language?: ReplyLanguage; parentUserId?: string },
 ): Promise<ReplyLanguage> {
   if (input.language === 'en' || input.language === 'fr') return input.language;
   if (!input.parentUserId) return 'en';
-  const rows = await database
-    .select({ locale: schema.users.locale })
-    .from(schema.users)
-    .where(eq(schema.users.id, input.parentUserId));
-  return rows[0]?.locale.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  const stored = await readParentLanguage(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+  });
+  return copyLanguage(stored) === 'fr' ? 'fr' : 'en';
 }
 
 /**
@@ -177,6 +177,7 @@ export async function answerSameActivity(
   if (!sameActivityMeetEnabled()) return { status: 'skipped', reason: 'flag_off' };
   if (choice === null) {
     const language = await languageFor(database, {
+      familyId: input.familyId,
       language: input.language,
       parentUserId: input.parentUserId,
     });

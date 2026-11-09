@@ -14,6 +14,7 @@ import {
 } from '~/lib/channel/linq/household-calendar';
 import { assertProactiveSendAllowed, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import {
@@ -45,7 +46,6 @@ import {
 } from '~/lib/integrations/event-notes';
 import { type GoingCounts, emptyGoingCounts } from '~/lib/integrations/going';
 import { refreshAccessToken } from '~/lib/integrations/google-oauth';
-import { readNoticeLanguage } from '~/lib/integrations/notice-language';
 import {
   type ActiveConnectorConnection,
   type SweepableConnectorConnection,
@@ -521,7 +521,7 @@ function proactiveSendPorts(database: Database): CalendarAlertPorts {
 /** The real ports. The family's children and known occasions are read ONCE per
  * connection rather than once per message: ten messages would otherwise be twenty
  * queries answering the same two questions. */
-function emailAlertPorts(
+export function emailAlertPorts(
   database: Database,
   familyId: string,
   accessToken: string,
@@ -559,8 +559,7 @@ function emailAlertPorts(
       });
     },
     familyChildren: async () => (await loadContext()).children,
-    parentLanguage: (parentUserId, now) =>
-      readNoticeLanguage(database, { familyId, parentUserId, now }),
+    parentLanguage: (parentUserId) => readParentLanguage(database, { familyId, parentUserId }),
     writeNotice: (facts, family) => composeEmailAlertNotice(pipelineClient(), facts, family),
   };
 }
