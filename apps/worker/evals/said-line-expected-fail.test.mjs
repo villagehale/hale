@@ -34,8 +34,14 @@ describe('said-line cached-only expected-fail gate (VIL-467)', () => {
     expect(expectedFailGate([r('a', true)], []).ok).toBe(false);
     expect(expectedFailGate([r('a', false)], []).ok).toBe(true);
   });
-  it('lists only intro-no-open-fr, a real fixture', () => {
-    expect([...EXPECTED_FAIL]).toEqual(['intro-no-open-fr']);
-    expect(SAID_LINE_FIXTURES.map((f) => f.id)).toContain('intro-no-open-fr');
+  it('lists the four VIL-608 cases, each a real fixture', () => {
+    expect([...EXPECTED_FAIL]).toEqual([
+      'identity-fr',
+      'intro-no-es',
+      'intro-soft-close-es-no-tag',
+      'health-unknown-en',
+    ]);
+    const ids = SAID_LINE_FIXTURES.map((f) => f.id);
+    for (const id of EXPECTED_FAIL) expect(ids).toContain(id);
   });
 });

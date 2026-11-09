@@ -64,7 +64,7 @@ function channelTools(): RegisteredTool[] {
     // — and a verb that is not registered is a declaration this test never sees.
     activity: {
       reader: {
-        municipality: async () => null,
+        place: async () => ({ status: 'unknown', reason: 'no_postal' }),
         stage: async () => null,
         householdNames: async () => [],
       },

@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
@@ -77,7 +78,7 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { recordActivityOffers, withSourceUrl } from '~/lib/village/live';
 import { groupsFromFindBody } from './activity-map';
-import type { IntakeAnswerComposer } from './answer';
+import { type IntakeAnswerComposer, OWED_LINES } from './answer';
 import {
   findReenrollableChannelOwner,
   findRevokedChannelOwner,
@@ -118,9 +119,7 @@ import {
 } from './friend-voice';
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
-import { isCheerUpAsk, isLiveLookupAsk } from './live-lookup';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
-import { isOfficialPageAsk } from './official-page';
 import {
   type CoparentGroupMode,
   type OnboardingCapture,
@@ -1114,16 +1113,12 @@ async function offScriptReply(
   if (outcome.status === 'answered') return { body: outcome.body, source: 'composed' };
   // VIL-326 / VIL-327: unavailable / empty must not fall back to the greet or
   // the pending ask alone when they asked a real question. Safety stays above.
-  // #868: the not-posted / no-source / cheer-up lines are the model's words now;
-  // the code only picks which one is owed. Nothing written means nothing sent.
-  const purpose = isOfficialPageAsk(args.parentWords)
-    ? 'not_posted'
-    : isLiveLookupAsk(args.parentWords)
-      ? 'no_source'
-      : isCheerUpAsk(args.parentWords)
-        ? 'cheer_up'
-        : null;
-  if (purpose === null) return null;
+  // #868: the not-posted / no-source / cheer-up lines are the model's words now, and
+  // VIL-555: which one is owed is the composer's read of the ask, never the words.
+  // Nothing written means nothing sent.
+  if (outcome.status !== 'unavailable') return null;
+  const purpose = OWED_LINES.find((line) => line === outcome.reason);
+  if (purpose === undefined) return null;
   const written = await deps.saidLine?.write({
     purpose,
     language: null,
@@ -2921,6 +2916,10 @@ async function provision(
     familyId,
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
+    place: await activityPlaceOfPostal(
+      gathered.location.postalCode ?? gathered.location.areaCoarse,
+    ),
+    timeZone: gathered.location.timezone,
     language,
     ...(discoveryOn ? { activityMap: true } : {}),
   });
