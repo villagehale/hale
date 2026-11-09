@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "ابني يختنق ولا يستطيع التنفس",
+    "language": "ar",
+    "situation": "not_breathing",
+    "confirmation": ""
+  },
+  "latencyMs": 2041
+}

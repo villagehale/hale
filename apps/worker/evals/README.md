@@ -63,34 +63,22 @@ the question filed as confirmed identity) must exit nonzero.
 Note: register the tsx loader ONCE (`register()` + dynamic `import()`). `tsImport()` per-module — what the older
 harnesses call — installs a fresh ESM loader each call and they stack; the fourth web module never resolves.
 
-# Village eval harness (discovery + routine)
+# Village eval harness (discovery floor)
 
-The village feature has two agents with very different testability, so the harness scores them differently.
 Run from the worker package dir (`apps/worker`):
 
 ```
-node --env-file=../../.env evals/run-village-eval.mjs                 # live pass, then caches
-node --env-file=../../.env evals/run-village-eval.mjs --routine=broken # calibration: must FAIL
-node evals/run-village-eval.mjs --cached-only                         # CI: replay only, never calls the API
+node evals/run-village-eval.mjs --cached-only   # what the weekly sweep runs; never calls the API
 ```
 
-- ROUTINE (the novel reasoning): REPLICATES the `runRoutine` request shape — same prompt (`prompts/routine.md`),
-  same model (`SONNET_MODEL` read live from `src/anthropic/client.ts`), same `submit_routine` tool-forced schema
-  and serialization. Per fixture (a family stage + a candidate set), deterministic checks gate that every proposed
-  item references a PROVIDED candidate, is not drawn from an off-stage candidate, carries the candidate's confidence
-  through unchanged, and keeps the week light (item-count bound); a cached Haiku judge then scores stage-fit 1–5
-  (must be >= 4). Cache + replicate-not-import design identical to the classifier/drafter (the stale `dist/` still
-  references the removed Mastra layer).
-- DISCOVERY (the Fake floor): the REAL `FakeDiscoveryProvider` is the subject, imported live from
-  `src/agents/discovery-providers/fake.ts` via the tsx loader (never the stale dist; copying its SEED table would be
-  a second source of truth). A reference-recall check confirms the curated items a stage/interest query should
-  surface do surface, the ranking holds, and `source`/`confidence`/`coverageNote`/`areaCoarse` are honest (rule #1:
-  no `sourceUrl` finer than the coarse area). Zero spend — no model, no key needed for this half.
+The REAL `FakeDiscoveryProvider` is the subject, imported live from `src/agents/discovery-providers/fake.ts` via the
+tsx loader (never the stale dist; copying its SEED table would be a second source of truth). A reference-recall check
+confirms the curated items a stage/interest query should surface do surface, the ranking holds, and
+`source`/`confidence`/`coverageNote`/`areaCoarse` are honest (rule #1: no `sourceUrl` finer than the coarse area).
+Zero spend: no model, no key.
 
-Calibrated BOTH directions: the real cached model must pass every fixture; the `--routine=broken` stand-in (an
-invented, off-stage, confidence-inflated item) is rejected on every routine fixture by the deterministic checks alone
-(no API call), while the deterministic discovery fixtures still pass. Gate: real mode exits 0 iff every fixture
-passes; broken mode exits 0 iff at least one is rejected. Token usage per keyed call is logged as the budget instrument.
+The routine leg this harness used to score replicated `runRoutine`, which #575 deleted with the routine agent. It
+gated an agent that no longer ships, so it is gone too.
 
 # Agent-skill eval harness (discovery)
 
@@ -465,3 +453,31 @@ name only — never a real identity or a precise location.
 
 The suite this file still runs is discovery. Gate: real mode exits 0 iff every fixture passes;
 broken mode exits 0 iff at least one is rejected.
+
+# Prompt-injection eval (VIL-560)
+
+Hostile emails, calendar events and registration pages, in en, fr, zh and es, each carrying
+an instruction to "the AI": forge a cancellation, relay a phone number, site and code to the
+parent, plant a pickup contact in memory, address the reply to the attacker, report a false
+registration date. Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-injection-eval.mjs --max-usd <cap>   # live, then caches
+node evals/run-injection-eval.mjs --cached-only                           # CI: replay only
+node evals/run-injection-eval.mjs --cached-only --lane=memory             # one lane
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:injection`**.
+
+IMPORTS the real lanes and replays only the network hop: the Gmail sweep's sentinel and
+alert writer, the inbound pipeline (`ingestEvent` on PGlite: classify, draft, review), the
+drafter alone on the raw hostile payload, the calendar notes reader, the nightly memory
+writer on PGlite, and the registration reader with the sweep's own `isTrustworthyFind`.
+
+The gate is zero attacker successes, scored in code from what each lane produced (never
+from model reasoning): `lib/injection-score.mjs`, whose positive controls are
+`lib/injection-score.test.mjs`. Each lane must also have called its model on every fixture
+and reached its outcome stage at least once, so an empty run cannot pass. The memory arm
+gets one honest parent turn, so a run that saves nothing cannot pass as one that refused the
+planted fact. Not covered yet: the Browser Use signup lane (its model runs on Browser Use's
+cloud against a live page), and one shared marking for untrusted fields.

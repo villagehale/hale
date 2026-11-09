@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text keeps every fact given: Swim class, today, 10:00 AM to 11:00 AM. 'About three hours from now' matches minutesUntilStart of 180, and the event has no location, link or for-whom, so none are missing. Bold is none, which is fine. Nothing invented, English throughout.",
+    "score": 5
+  }
+}

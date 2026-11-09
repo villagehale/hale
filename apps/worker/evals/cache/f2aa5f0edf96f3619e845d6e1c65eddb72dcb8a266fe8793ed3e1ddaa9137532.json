@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?' which is a direct question asking the parent for a reply, duplicating the shell question. It also includes a privacy link, but the core issue is the ask itself, so the message asks the parent something of its own and the parent is asked twice.",
+    "score": 1
+  }
+}

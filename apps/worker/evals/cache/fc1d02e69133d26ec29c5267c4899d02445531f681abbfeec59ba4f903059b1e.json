@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "subject addresses a name that is not the only child; likely the parent's own dental appointment, no sign it is the child's",
+    "about_the_kids": "no",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

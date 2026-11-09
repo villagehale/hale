@@ -157,6 +157,7 @@ export const FRIEND_CONVERSATIONS: readonly FriendFixtureConversation[] = [
           day: 'Saturdays 10am',
           findLines: [SWIM, STORY, EARLYON],
           now: new Date('2026-10-05T14:00:00.000Z'),
+          timeZone: 'America/Toronto',
         }),
       },
       {

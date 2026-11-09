@@ -117,6 +117,10 @@ export async function recordActivityPromise(
      * sweep's continuation passes {@link ACTIVITY_WATCH_DUE_HOURS}, because a watch on
      * somebody else's publishing schedule is not a parent waiting on a reply. */
     dueInHours?: number;
+    /** What the parent has been told on this subject — the sweep's continuation passes it
+     * so its next look can tell news from a repeat. Absent on the coach's own promise,
+     * which nobody has answered yet. */
+    heardFacts?: readonly string[];
     now: Date;
   },
   ports: ActivityPromisePorts,
@@ -142,6 +146,7 @@ export async function recordActivityPromise(
     summary: activityFollowUpSummary(input.promise.subject),
     topic: input.promise.subject,
     subjectChildId: input.promise.childId,
+    heardFacts: input.heardFacts ?? null,
     dueAt: new Date(
       input.now.getTime() + (input.dueInHours ?? ACTIVITY_FOLLOWUP_DUE_HOURS) * 3_600_000,
     ),

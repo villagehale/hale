@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is about the wrong event and in the wrong language. The facts give a piano lesson today 7:00-8:00 PM at Ms. Chen studio, in Chinese, but the text is in English and mentions \"Jour de congé at 3:00\", which is not in the facts. The piano lesson, its start, end, and venue are all missing. It also invents \"Tomorrow's a day off\" and \"breathing room\", implying the family has nothing to attend when a timed event is today.",
+    "score": 1
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "named child, library storytime fits a 3-year-old, clear cancellation of known date and time, no offer",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, Maplewood Library emailed Tuesday that Robin's Storytime this Saturday (Sept 19) at 1:00 PM is cancelled. No new date in the email.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

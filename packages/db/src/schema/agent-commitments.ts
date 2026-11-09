@@ -99,6 +99,19 @@ export const agentCommitments = pgTable(
     subjectFamilyId: uuid('subject_family_id').references(() => families.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The schedule facts the parent has already been told on this subject — normalised
+     * anchors keyed by the field they came from (`when:time:9:15`, `price:money:$142`,
+     * `registration:date:sep-13`, `price:free`), never a
+     * venue, a URL or the parent's words. Written only on an activity WATCH, the row a
+     * follow-up mints when it still owes the parent a day or a price.
+     *
+     * NULL and EMPTY mean different things, and the sweep reads the difference: null is
+     * a promise nobody has followed up on yet (the coach's own "I'll come back to you"),
+     * so its first answer always goes out; an empty array is a follow-up that already
+     * went out carrying no fact at all, so the next one must carry one or stay silent.
+     */
+    heardFacts: text('heard_facts').array(),
     /** When the promise stops being kept-in-time and starts being late. */
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),

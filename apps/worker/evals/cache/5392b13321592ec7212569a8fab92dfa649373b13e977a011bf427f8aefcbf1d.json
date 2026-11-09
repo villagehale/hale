@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message asks the parent to reply YES so Hale will book, which is a direct request for a reply, and it also includes an opt-out reply prompt. This is an ask, so the score is low.",
+    "score": 1
+  }
+}

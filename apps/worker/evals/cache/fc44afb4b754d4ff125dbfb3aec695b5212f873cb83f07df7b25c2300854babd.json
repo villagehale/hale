@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text asks a question even though offer is false: \"Want me to keep trying and text you tomorrow?\" That alone caps the score at 2 or lower. It also never asks the parent to check the page and leaves out \"your teen.\" It does correctly say Hale couldn't open the page, gives no opening date, and includes the handed link.",
+    "score": 2
+  }
+}

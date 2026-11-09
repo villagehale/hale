@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence states that the visit is booked, with a tag question, which still claims a placement. No rows are on record, so no row backs it.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1705
+}

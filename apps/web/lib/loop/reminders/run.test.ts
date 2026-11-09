@@ -1,14 +1,17 @@
 import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ReminderDraft } from './compose';
+import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
+import type { ReminderCompose } from './compose';
 import type { ReminderStatus, SuppressReason } from './schedule';
 
 // The model-written text is an injected port (deps.composeText): these tests drive the
-// WIRING (what facts it gets, nothing sent when it returns null), not the writing (that
-// is compose.test.ts + the cached eval).
-const composeText = vi.fn(
-  async () => ({ texts: ['Reminder text.'], bold: null }) as ReminderDraft | null,
-);
+// WIRING (what facts it gets, what each named outcome does), not the writing (that is
+// compose.test.ts + the cached eval).
+const written = (texts: string[], bold: string | null = null): ReminderCompose => ({
+  status: 'written',
+  draft: { texts, bold },
+});
+const composeText = vi.fn(async (): Promise<ReminderCompose> => written(['Reminder text.']));
 import {
   type ChannelSendJob,
   type DueReminder,
@@ -65,6 +68,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     location: null,
     googleEventId: null,
     createdBy: null,
+    kidVerdict: null,
     ...over,
   };
 }
@@ -121,6 +125,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     loadLanguage: async () => 'en',
     composeText: composeText as unknown as ReminderRunDeps['composeText'],
     loadNameLevel: async () => 'generic',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
+    recordAgentRun: async () => {},
     ...over,
   };
   return { deps, enqueued, marked, reanchored, upserts, captured, audited };
@@ -128,7 +135,7 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
 
 afterEach(() => {
   composeText.mockReset();
-  composeText.mockImplementation(async () => ({ texts: ['Reminder text.'], bold: null }));
+  composeText.mockImplementation(async () => written(['Reminder text.']));
 });
 
 describe('runReminderCron — Phase A converge', () => {
@@ -169,6 +176,7 @@ describe('runReminderCron — Phase A converge', () => {
       googleEventId: 'ev-swim',
       createdBy: 'p1',
       childId: null,
+      kidVerdict: 'kid',
     });
     const hale = liveEvent({ id: 'hale-1', title: 'Checkup', childId: 'c1' });
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
@@ -306,7 +314,17 @@ describe('runReminderCron — batching + compose-not-send', () => {
     });
     const payload = job?.payload as Record<string, unknown>;
     expect(payload.offset).toBe('-P1D');
-    expect(payload.deepLink).toMatch(/\/plan$/);
+    // /plan is retired, so the evening-before writer is handed no link. It is still asked
+    // once for the batch, and what it wrote is what is sent.
+    expect(composeText).toHaveBeenCalledTimes(1);
+    expect(composeText).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ offset: '-P1D', planLink: null }),
+      'fam-1',
+      expect.any(Function),
+    );
+    expect(payload.texts).toEqual(['Reminder text.']);
+    expect(payload.deepLink).toBeNull();
     expect((payload.events as { eventRef: string }[]).map((e) => e.eventRef)).toEqual(['e1', 'e2']);
     // Both merged rows are marked sent; telemetry is coarse (offset + count).
     expect(marked).toEqual([
@@ -393,6 +411,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     childId: null,
     googleEventId: 'ev-swim',
     createdBy: 'p1',
+    kidVerdict: 'kid',
   });
   const placement = liveEvent();
   const events = new Map<string, LiveEvent>([
@@ -479,9 +498,9 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const client = {} as AgentClient;
-    // 07:00 EDT on the event's own day: the evening slot passed 13 h ago, the 10:00 event
-    // is 3 h off.
-    const relightAt = new Date('2026-07-25T11:00:00Z');
+    // 08:12 EDT on the event's own day, the first tick after the quiet floor opens: the
+    // evening slot passed 14 h ago, the 10:00 event is under 2 h off.
+    const relightAt = new Date('2026-07-25T12:12:00Z');
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [
         dueRow({ id: 'r-day-before', eventRef: 'gcal-1', offset: '-P1D', fireAt: T1D_FIRE }),
@@ -501,11 +520,12 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
       client,
       expect.objectContaining({
         offset: '-P1D',
-        now: { date: 'Saturday, July 25, 2026', time: '7:00 AM' },
+        now: { date: 'Saturday, July 25, 2026', time: '8:12 AM' },
         events: [expect.objectContaining({ date: 'Saturday, July 25, 2026', start: '10:00 AM' })],
         language: 'en',
       }),
       'fam-1',
+      expect.any(Function),
     );
     info.mockRestore();
   });
@@ -517,6 +537,7 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     childId: null,
     googleEventId: 'ev-late',
     createdBy: 'p1',
+    kidVerdict: 'kid',
     startsAt: new Date('2026-07-25T05:00:00Z'),
   });
   const heldRow = () =>
@@ -526,8 +547,8 @@ describe('runReminderCron — the parent_calendar_mirror lane', () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    // 21:00 EDT: the slot passed 3 h ago and the event starts in 4 h.
-    const relightAt = new Date('2026-07-25T01:00:00Z');
+    // 20:00 EDT, before the quiet floor: the slot passed 2 h ago and the event starts in 5 h.
+    const relightAt = new Date('2026-07-25T00:00:00Z');
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [heldRow()],
       loadEvent: async () => lateNight,
@@ -571,10 +592,7 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
 
   it('puts the written text on the payload, byte for byte', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
-    composeText.mockResolvedValue({
-      texts: ['heads up for tomorrow', 'Swim is at 10, until 11.'],
-      bold: null,
-    });
+    composeText.mockResolvedValue(written(['heads up for tomorrow', 'Swim is at 10, until 11.']));
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
@@ -607,12 +625,13 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
         ],
       }),
       expect.anything(),
+      expect.any(Function),
     );
   });
 
   it('VIL-474: carries the writer’s bold words onto the payload untouched', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
-    composeText.mockResolvedValue({ texts: ['Swim moved to 4:30 today.'], bold: '4:30' });
+    composeText.mockResolvedValue(written(['Swim moved to 4:30 today.'], '4:30'));
     const { deps, enqueued } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent({ endsAt: new Date('2026-07-25T15:00:00Z') }),
@@ -654,14 +673,15 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
         ],
       }),
       'fam-1',
+      expect.any(Function),
     );
   });
 
-  it('sends NOTHING when the text could not be written: suppressed unwritten, audited, logged', async () => {
+  it('sends NOTHING when the model refused to write it: suppressed unwritten, audited, logged', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    composeText.mockResolvedValue(null);
+    composeText.mockResolvedValue({ status: 'refused', refusals: ['empty'] });
     const { deps, enqueued, marked, audited } = makeDeps({
       loadDueReminders: async () => [dueRow()],
       loadEvent: async () => liveEvent(),
@@ -710,5 +730,236 @@ describe('runReminderCron — the model writes the whole reminder; no text, noth
 
     expect(loadNameLevel).not.toHaveBeenCalled();
     expect(composeText).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * VIL-562 · a reminder is an unprompted text, so it meets the SAME proactive floor
+ * (21:00 to 08:00 local) every other one does, BEFORE anything is written or sent. Denver
+ * in November is MST (UTC-7); every instant below is hand-derived from that.
+ */
+describe('runReminderCron — the reminder meets the quiet floor (VIL-562)', () => {
+  const DENVER = 'America/Denver';
+  afterEach(() => vi.unstubAllEnvs());
+
+  function armed() {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  }
+
+  function t1h(startsAt: string, over: Partial<ReminderRunDeps> = {}) {
+    const start = new Date(startsAt);
+    return makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ timezone: DENVER, fireAt: new Date(start.getTime() - 60 * 60_000) }),
+      ],
+      loadEvent: async () => liveEvent({ startsAt: start }),
+      ...over,
+    });
+  }
+
+  it('drops, with an audit row, a T-1h due at 21:12 for a 22:00 event: the floor opens after it starts', async () => {
+    armed();
+    const { deps, enqueued, marked, audited } = t1h('2026-11-11T05:00:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T04:12:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(composeText).not.toHaveBeenCalled();
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'quiet_hours' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'quiet_hours' },
+    ]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldQuietHours: 0 });
+  });
+
+  it('holds, untouched, a T-1h due at 07:40 for an 08:30 event: the floor opens first', async () => {
+    armed();
+    const { deps, enqueued, marked, audited } = t1h('2026-11-11T15:30:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T14:40:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(composeText).not.toHaveBeenCalled();
+    expect(marked).toEqual([]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldQuietHours: 1 });
+  });
+
+  it('positive control: sends a T-1h due at 20:12 for a 21:00 event, the floor still open', async () => {
+    armed();
+    const { deps, enqueued, marked } = t1h('2026-11-11T04:00:00Z');
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T03:12:00Z'));
+
+    expect(enqueued).toHaveLength(1);
+    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(result).toMatchObject({ fired: 1, suppressed: 0, heldQuietHours: 0 });
+  });
+
+  it("starts the floor at 20:00 for the recipient's Florida number, read for that recipient", async () => {
+    armed();
+    vi.stubEnv('PROACTIVE_CADENCE', 'shadow');
+    const phones: string[] = [];
+    const run = (number: string) => {
+      const made = t1h('2026-11-11T04:00:00Z', {
+        parentPhone: async (_db, userId) => {
+          phones.push(userId);
+          return number;
+        },
+      });
+      return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
+        (result) => ({ result, enqueued: made.enqueued, marked: made.marked, audited: made.audited }),
+      );
+    };
+
+    // 20:12 for a 21:00 event: inside a Florida number's floor, which opens after it starts.
+    const florida = await run('+14075550100');
+    expect(florida.enqueued).toEqual([]);
+    expect(florida.marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'quiet_hours' }]);
+    expect(florida.audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'quiet_hours' },
+    ]);
+    expect(florida.result).toMatchObject({ fired: 0, suppressed: 1 });
+    expect(phones).toEqual(['p1']);
+
+    // Positive control: the same slot for a number elsewhere is outside the 21:00 floor.
+    const elsewhere = await run('+12065550100');
+    expect(elsewhere.enqueued).toHaveLength(1);
+    expect(elsewhere.result).toMatchObject({ fired: 1, suppressed: 0 });
+  });
+});
+
+describe("runReminderCron — the parent's own window only narrows (VIL-562)", () => {
+  const DENVER = 'America/Denver';
+  afterEach(() => vi.unstubAllEnvs());
+
+  function armed() {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    vi.stubEnv('PROACTIVE_CADENCE', 'off');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  }
+
+  it('holds an evening-before reminder at 18:12 when their window starts at 17:30, bypass or not', async () => {
+    armed();
+    // A 10:00 MST event on the 11th: its evening-before slot is 18:00 MST on the 10th.
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => [
+        dueRow({ timezone: DENVER, offset: '-P1D', fireAt: new Date('2026-11-11T01:00:00Z') }),
+      ],
+      loadEvent: async () => liveEvent({ startsAt: new Date('2026-11-11T17:00:00Z') }),
+      loadPrefs: async () => ({
+        ...DEFAULT_LOOP_PREFS,
+        quietHoursStart: '17:30:00',
+        quietHoursEnd: '07:30:00',
+        urgentBypassQuietHours: true,
+      }),
+    });
+    const result = await runReminderCron({} as never, deps, new Date('2026-11-11T01:12:00Z'));
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldQuietHours: 1 });
+  });
+
+  it('lets their urgent-bypass toggle cross their own 20:00 window for a T-1h, and holds it when off', async () => {
+    armed();
+    // A 21:00 MST event; the T-1h is due at 20:00 and runs at 20:12, before the floor.
+    const run = (urgentBypassQuietHours: boolean) => {
+      const made = makeDeps({
+        loadDueReminders: async () => [
+          dueRow({ timezone: DENVER, fireAt: new Date('2026-11-11T03:00:00Z') }),
+        ],
+        loadEvent: async () => liveEvent({ startsAt: new Date('2026-11-11T04:00:00Z') }),
+        loadPrefs: async () => ({
+          ...DEFAULT_LOOP_PREFS,
+          quietHoursStart: '20:00:00',
+          quietHoursEnd: '07:30:00',
+          urgentBypassQuietHours,
+        }),
+      });
+      return runReminderCron({} as never, made.deps, new Date('2026-11-11T03:12:00Z')).then(
+        (result) => ({ result, enqueued: made.enqueued }),
+      );
+    };
+
+    const bypass = await run(true);
+    expect(bypass.enqueued).toHaveLength(1);
+    expect(bypass.result).toMatchObject({ fired: 1, heldQuietHours: 0 });
+
+    const noBypass = await run(false);
+    expect(noBypass.enqueued).toEqual([]);
+    expect(noBypass.result).toMatchObject({ fired: 0, heldQuietHours: 1 });
+  });
+});
+
+describe('runReminderCron — a provider outage holds; a refusal drops (VIL-563)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('leaves the reminder scheduled when the writer could not be reached, and counts it', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    composeText.mockResolvedValue({
+      status: 'unavailable',
+      cause: 'transient',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toEqual([]);
+    // Still scheduled, marked so the drain can ask again before the event (VIL-586).
+    expect(marked).toEqual([{ id: 'r1', status: 'scheduled', reason: 'compose_unavailable' }]);
+    expect(audited).toEqual([]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 0, heldComposeUnavailable: 1 });
+    expect(error).toHaveBeenCalledWith(
+      // The provider's status and type, so one line tells a 400 Hale caused from an outage.
+      expect.objectContaining({
+        familyId: 'fam-1',
+        cause: 'transient',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
+      'reminder: compose unavailable, held for the next slot',
+    );
+    error.mockRestore();
+  });
+
+  it('drops the reminder once when Hale’s own request was rejected: suppressed compose_rejected, audited', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    composeText.mockResolvedValue({
+      status: 'rejected',
+      cause: 'bad_request',
+      httpStatus: 400,
+      errorType: 'invalid_request_error',
+    });
+    const { deps, enqueued, marked, audited } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toEqual([]);
+    expect(marked).toEqual([{ id: 'r1', status: 'suppressed', reason: 'compose_rejected' }]);
+    expect(audited).toEqual([
+      { familyId: 'fam-1', reminderId: 'r1', offset: '-PT1H', reason: 'compose_rejected' },
+    ]);
+    expect(result).toMatchObject({ fired: 0, suppressed: 1, heldComposeUnavailable: 0 });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        familyId: 'fam-1',
+        offset: '-PT1H',
+        cause: 'bad_request',
+        httpStatus: 400,
+        errorType: 'invalid_request_error',
+      }),
+      'reminder: compose rejected, dropped',
+    );
+    error.mockRestore();
+    info.mockRestore();
   });
 });

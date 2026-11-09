@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "chatter",
+    "pickupRefs": [],
+    "confidence": "high"
+  },
+  "latencyMs": 1026
+}

@@ -29,6 +29,10 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * retired. */
 export type ChannelKind = 'sms';
 
+/** The pipe a leg actually rode, which is what its ledger row records: the SMS leg
+ * leaves on Linq as iMessage, and only a transport that names no pipe is plain SMS. */
+export type DeliveredChannel = ChannelKind | 'imessage';
+
 /** Outbound loop taxonomy (mirrors loop_prefs categories; inbound 'reply' is A3). */
 export type LoopCategory = 'reminder' | 'approval' | 'alert';
 
@@ -101,6 +105,12 @@ export type VoiceOutcome =
 export type RenderedContent = {
   kind: 'sms';
   text: string;
+  /**
+   * VIL-581 · the whole text is the model's (composed from facts), not a template's.
+   * Required, so a new renderer cannot forget it: the dispatch's claim shadow reads only
+   * model-written bodies, since a template's claims are a template bug, not a misread.
+   */
+  modelWritten: boolean;
   voice?: VoiceOutcome;
   /** Keep the sent text on the outbound channel_messages row. Set only by a template
    * whose whole text is model-written from the parent's own facts (the reminder). */
@@ -134,8 +144,9 @@ export type ChannelSendOutcome =
   | {
       status: 'sent';
       providerMessageId: string | null;
-      /** Set when a claimed Linq group carried a loop SMS leg. The ledger
-       * channel stays `sms` so the per-channel cap still sees the send. */
+      /** The pipe that carried it; the ledger row records this, not the leg. */
+      transport: DeliveredChannel;
+      /** Set when the send landed in a Linq chat (a claimed group or a 1:1). */
       providerChatId?: string | null;
     }
   | { status: 'skipped'; reason: 'not_configured' | 'no_address' | 'disabled' }

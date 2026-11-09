@@ -1,9 +1,10 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   type SpotWatchIntent,
+  WATCH_TTL_DAYS,
   type WatchedSpotArmOutcome,
   armWatchedSpot,
   claimOpenTransition,
@@ -12,9 +13,11 @@ import {
   closeBeforeSend,
   findLedgerRowByDedupeKey,
   loadDueSpots,
+  loadParentLiveWatches,
   markNotifiedAndRelease,
   readLedgerStatus,
   recordPoll,
+  releaseWatchByParent,
   releaseWatchedSpot,
   setNotifiedMessage,
 } from './store';
@@ -48,6 +51,7 @@ function intent(overrides: Partial<SpotWatchIntent> = {}): SpotWatchIntent {
     label: 'Milliken preschool swim',
     instant: false,
     lastState: 'full',
+    sessionStartsAt: null,
     ...overrides,
   };
 }
@@ -86,6 +90,40 @@ async function readSpot(spotId: string) {
     .where(eq(schema.watchedSpots.id, spotId));
   return row ?? null;
 }
+
+describe('armWatchedSpot — the watch ends when the class starts', () => {
+  async function expiryOf(spotId: string) {
+    const [row] = await db.database
+      .select({ expiresAt: schema.watchedSpots.expiresAt })
+      .from(schema.watchedSpots)
+      .where(eq(schema.watchedSpots.id, spotId));
+    return row?.expiresAt ?? null;
+  }
+
+  it('expires at the session start the page published', async () => {
+    const family = await seedFamily(db.database, 'Session Family');
+    const start = new Date('2026-10-05T21:00:00.000Z');
+
+    const armed = await arm(family.familyId, family.parentUserId, { sessionStartsAt: start });
+
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+    expect(await expiryOf(armed.spotId)).toEqual(start);
+  });
+
+  it.each([
+    ['publishes no start', null],
+    ['starts in the past (a class already running)', new Date('2026-09-01T13:00:00.000Z')],
+  ])('falls back to the season ceiling when the page %s', async (_name, sessionStartsAt) => {
+    const family = await seedFamily(db.database, 'Ceiling Family');
+
+    const armed = await arm(family.familyId, family.parentUserId, { sessionStartsAt });
+
+    if (armed.status !== 'armed') throw new Error('unreachable: the arm was refused');
+    expect(await expiryOf(armed.spotId)).toEqual(
+      new Date(NOW.getTime() + WATCH_TTL_DAYS * 86_400_000),
+    );
+  });
+});
 
 describe('armWatchedSpot', () => {
   /** Catches a SELECT-then-INSERT guard, and a unique index that is not partial (the
@@ -624,5 +662,100 @@ describe('the constraints themselves', () => {
       .from(schema.watchedSpots)
       .where(eq(schema.watchedSpots.familyId, family.familyId));
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('releaseWatchByParent — the parent asked Hale to stop', () => {
+  const OTHER_COURSE =
+    'https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=11111111-1111-1111-1111-111111111111&courseId=33333333-3333-3333-3333-333333333333';
+
+  async function coParent(familyId: string): Promise<string> {
+    const inserted = (await db.database.execute(
+      sql`insert into users (email, name) values (${`co-${familyId}@example.test`}, 'Co Parent') returning id`,
+    )) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>;
+    const user = (Array.isArray(inserted) ? inserted : (inserted.rows ?? []))[0];
+    if (!user) throw new Error('coParent: no user');
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: user.id, role: 'co_parent' });
+    return user.id;
+  }
+
+  it("lists only the asking parent's live watches", async () => {
+    const family = await seedFamily(db.database, 'Scope Family');
+    const other = await coParent(family.familyId);
+    const mine = await arm(family.familyId, family.parentUserId);
+    await arm(family.familyId, other, { url: OTHER_COURSE, label: 'Their class' });
+    const released = await arm(family.familyId, family.parentUserId, {
+      url: OTHER_COURSE.replace('33333333-3333', '44444444-4444'),
+      label: 'Old class',
+    });
+    if (mine.status !== 'armed' || released.status !== 'armed') throw new Error('unreachable');
+    await releaseWatchedSpot(db.database, { spotId: released.spotId, reason: 'expired', now: NOW });
+
+    expect(
+      await loadParentLiveWatches(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+      }),
+    ).toEqual([
+      { id: mine.spotId, label: 'Milliken preschool swim', host: 'cityofmarkham.perfectmind.com' },
+    ]);
+  });
+
+  it('ends the watch once, as parent_stopped, on a trail that says the parent asked', async () => {
+    const family = await seedFamily(db.database, 'Stop Family');
+    const armed = await arm(family.familyId, family.parentUserId);
+    if (armed.status !== 'armed') throw new Error('unreachable');
+    const spot = {
+      id: armed.spotId,
+      label: 'Milliken preschool swim',
+      host: 'cityofmarkham.perfectmind.com',
+    };
+    const later = new Date(NOW.getTime() + 60_000);
+
+    const first = await releaseWatchByParent(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      spot,
+      now: later,
+    });
+    const again = await releaseWatchByParent(db.database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      spot,
+      now: new Date(later.getTime() + 60_000),
+    });
+
+    expect(first).toBe(true);
+    expect(again).toBe(false);
+    const row = await readSpot(armed.spotId);
+    expect(row?.releasedReason).toBe('parent_stopped');
+    expect(row?.releasedAt).toEqual(later);
+    const trail = await db.database
+      .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, family.familyId),
+          eq(schema.auditLog.actionTaken, 'watched_spot_released'),
+        ),
+      );
+    expect(trail).toEqual([
+      {
+        actor: family.parentUserId,
+        after: { reason: 'parent_stopped', via: 'asked', host: 'cityofmarkham.perfectmind.com' },
+      },
+    ]);
+    const [promise] = await db.database
+      .select({ cancelledAt: schema.agentCommitments.cancelledAt })
+      .from(schema.agentCommitments)
+      .where(
+        and(
+          eq(schema.agentCommitments.familyId, family.familyId),
+          eq(schema.agentCommitments.commitmentKind, 'spot_watch'),
+        ),
+      );
+    expect(promise?.cancelledAt).toEqual(later);
   });
 });

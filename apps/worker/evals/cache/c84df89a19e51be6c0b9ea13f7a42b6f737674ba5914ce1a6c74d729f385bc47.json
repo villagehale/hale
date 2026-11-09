@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both items, day and times correctly, and says nobody looks free on calendars, asking couldAsk people without calling them free. Single ask, no poll mentioned, correct French register. Minor issue: it asks 'qui s'en occupe et lequel' which is fine. Facts all match input.",
+    "score": 5
+  }
+}

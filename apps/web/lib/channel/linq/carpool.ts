@@ -34,6 +34,7 @@ import { type CarpoolComposer, createCarpoolComposer } from './carpool-voice';
 import { linqGroupCarpoolEnabled } from './config';
 import { deliverLinqGroupNotice } from './group';
 import { groupMemberByPhone, readGroupMembership } from './group-membership';
+import type { ListChatHandles } from './roster';
 
 /**
  * VIL-445 (T16) — persist who is driving and send the night-before reminder.
@@ -90,6 +91,7 @@ export interface CarpoolTurnInput {
   messageId?: string | null;
   /** Test seam; production reads the chat's recent inbound lines. */
   recent?: readonly { from: 'hale' | 'member'; text: string }[];
+  listChatHandles?: ListChatHandles;
 }
 
 function defaultGroupSend(notice: { chatId: string; text: string }) {
@@ -467,6 +469,9 @@ export async function considerCarpoolTurn(
         providerMessageId = result.providerMessageId;
         return result;
       },
+      // Names the kids, the pickup time and place: household content, not a reply.
+      lineClass: 'pickup_duty',
+      listChatHandles: input.listChatHandles,
     });
     notice = sent === 'sent' ? 'sent' : 'not_sent';
     if (sent === 'sent') {
@@ -511,6 +516,7 @@ export async function considerCarpoolTapback(
     now: Date;
     send?: CarpoolGroupSend;
     voice?: CarpoolComposer;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<CarpoolTurnOutcome> {
   if (!linqGroupCarpoolEnabled()) return { handled: false, outcome: 'flag_off' };
@@ -547,6 +553,7 @@ export async function considerCarpoolTapback(
     voice: input.voice,
     recent: [],
     reader: { read: async () => keyed },
+    listChatHandles: input.listChatHandles,
   });
 }
 
@@ -557,6 +564,7 @@ export async function runCarpoolReminders(
     send?: CarpoolGroupSend;
     sendDriver?: CarpoolDriverSend;
     voice?: CarpoolComposer;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<CarpoolReminderRun> {
   const summary: CarpoolReminderRun = {
@@ -719,6 +727,7 @@ export async function runCarpoolReminders(
       // Devin #936 (security) — a proactive ride reminder is schedule content,
       // never a reply: an incomplete roster holds it.
       lineClass: 'schedule',
+      listChatHandles: input.listChatHandles,
     });
     if (groupSent !== 'sent') {
       await release();

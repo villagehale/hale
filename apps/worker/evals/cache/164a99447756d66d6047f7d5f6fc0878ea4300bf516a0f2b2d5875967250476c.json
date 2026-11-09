@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says 'Cours de natation' (swim class) on Thursday 23 July at 10 h 30, which is 10:30. The summary 'Swim class' matches the event name. The start is Thursday, July 23, 2026 at 10:30 in America/Chicago, so the day, weekday, and minute all agree with the text. The text does not state a year, which is not a mismatch.",
+    "match": true
+  },
+  "latencyMs": 1722
+}

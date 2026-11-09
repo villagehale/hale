@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message is in English, names the event (Ada - soccer practice), gives the time (Mon, Sep 14 at 5:30 PM), conveys that Hale has noted it, and uses the [[link]] placeholder to add to calendar. It adds nothing extra about the child beyond the name in the summary. Minor concern: 'I've got it in your plans' is loose but not a claim of existing phone calendar entry, and the link tells them to add it, so it fits the requirements.",
+    "score": 5
+  }
+}
