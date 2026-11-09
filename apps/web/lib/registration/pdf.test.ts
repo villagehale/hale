@@ -281,7 +281,9 @@ describe('local registration PDF text extraction', () => {
       await expect(registrationPdfText(memoryBomb, budget)).resolves.toEqual(
         refused('pdf_read_budget', 'memory'),
       );
-      expect(performance.now() - started).toBeLessThan(5_000);
+      // The 'memory' limit is the proof: the deadline refuses with 'time'. A wall-clock
+      // bound tighter than the deadline only measures how busy the runner is.
+      expect(performance.now() - started).toBeLessThan(budget.timeoutMs);
       await readersExited();
 
       // The largest read the page and text ceilings allow, sampled every millisecond, so the
