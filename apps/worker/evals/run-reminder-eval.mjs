@@ -9,7 +9,8 @@
 // Nothing matches words.
 //
 // Recorded 2026-10-27 (8/8, ledger 914-evals); re-recorded 2026-11-03 (17/17, VIL-550,
-// ledger reminders-bundle). CI replays it cached-only:
+// ledger reminders-bundle); re-recorded 2026-11-08 (VIL-551, voice and overlaps, ledger
+// vil551-evals). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -85,7 +86,8 @@ export function readTexts(value) {
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE reminder text Hale sends a parent about what is on',
   'their calendar. The model wrote the whole text; nothing is added around it. You are given',
-  'the facts (offset, now, events with date, allDay, start, end, minutesUntilStart, location;',
+  'the facts (offset, now, events with date, allDay, start, end, minutesUntilStart, location,',
+  'and overlaps when present;',
   'planLink; language),',
   'the text and watchFor notes. Score 1-5 on FACTS only: whether every event keeps the facts',
   'it was given, and whether anything was invented. Do not score phrasing, sentence shape,',
@@ -120,7 +122,8 @@ const JUDGE_SYSTEM = [
   "the facts against the text. Each event's day (said truly from now, such as tomorrow or",
   'today, or as a date), its start time and, when the facts give one, its end (as a clock',
   'time or as a duration from the start), its venue name and its street address must all be',
-  'in the text, in any natural form for the language. When the facts give no end, inventing',
+  'in the text, in any natural form for the language. A town, province or state, or postal',
+  'code after the street may be left out: that is not a missing address. When the facts give no end, inventing',
   'one is a fact failure and a LOW score (1-2). A text that drops any given fact, such as',
   'giving only the start when an end is given, or a venue name with no address when an',
   'address was given, leaves out a fact the parent needs: that is a fact failure and a LOW',
@@ -159,11 +162,22 @@ const JUDGE_SYSTEM = [
   'out that it changed, or presenting the old value as current, is a fact failure and a LOW',
   'score (1-2). On such an event, bold on its new value is exactly what bold is for and fits;',
   'with no bold at all, the score is at most 3.',
+  'CLASH CHECK (VIL-551), always: an event with `overlaps` runs into the events it names.',
+  'Then the text must say plainly that those things overlap (their times run into each',
+  'other), not only that they are on the same day or morning, and must give one next step',
+  'that settles it: which one to go to when the same child is on both, or who takes which',
+  'when they are different children. Leaving out that they overlap, or only hinting at it',
+  '(to plan around the day, a busy morning), drops a fact: a LOW score (1-2). Saying they',
+  'overlap with no next step, or with more than one ask, scores at most 3. When no event has',
+  '`overlaps`, saying or hinting that anything clashes or overlaps is an invented detail and',
+  'a LOW score (1-2). On an overlap, bold on the overlap fits, and no bold is fine too.',
   'VOICE CHECK, ONLY when watchFor asks for it: then also judge, by meaning, whether the',
-  'texts read like a person texting or like a form filled in, such as every event poured',
-  'into the same sentence frame with only the facts swapped, or several events packed into',
-  'one long block. A text that reads like a filled-in frame or one long block scores at most',
-  '3 even with every fact right. With no VOICE CHECK in watchFor, phrasing is never scored.',
+  'texts read like a friend texting, casual, or like a form filled in or a notice: every',
+  'event poured into the same sentence frame with only the facts swapped, several events',
+  'packed into one long block, or the facts recited in stiff full sentences the way a',
+  'report or an announcement states them. A text that reads like a filled-in frame, one',
+  'long block, or a notice or report scores at most 3 even with every fact right. With no',
+  'VOICE CHECK in watchFor, phrasing is never scored.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -279,6 +293,30 @@ export const BROKEN_CASES = [
       "Theo's Montessori tour is at 10 at Little Oaks Montessori, 41 Mill St, about an hour",
       'then storytime for Léa at the library, 1:30 to 2:15',
     ].join('\n'),
+  },
+  // VIL-551 · the reported notice, every fact right: it must fail on the voice alone.
+  {
+    fixtureId: 'en-voice-single-today',
+    tag: 'en-voice-single-today:notice',
+    body: "Léa's Toddler Storytime starts at 1:30 PM today at the Maple Branch Library, 9 Elm Street, Riverton, Ontario. It runs until 2:00 PM.",
+  },
+  // VIL-551 · the reported clash text: both events right, but it never says they overlap.
+  {
+    fixtureId: 'en-overlap-two-kids',
+    tag: 'en-overlap-two-kids:plan-around',
+    body: "Tomorrow Léa has her swim lesson 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo has music class 10 to 10:45 at Brightside Music, 7 Oak Ave. Both are on Thursday morning, so you'll want to plan around them.",
+  },
+  // VIL-551 · says they overlap, but leaves the parent with no next step.
+  {
+    fixtureId: 'en-overlap-two-kids',
+    tag: 'en-overlap-two-kids:no-next-step',
+    body: "Tomorrow Léa's swim lesson is 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo's music class is 10 to 10:45 at Brightside Music, 7 Oak Ave, so the two overlap.",
+  },
+  // VIL-551 · nothing overlaps here (10-11 AM and 1:30-2:15 PM); the clash is invented.
+  {
+    fixtureId: 'en-next-day-multi-event',
+    tag: 'en-next-day-multi-event:invented-clash',
+    body: "Tomorrow Theo's Montessori tour is 10 to 11 at Little Oaks Montessori, 41 Mill St, and Léa's storytime is 1:30 to 2:15 at Georgetown Branch, 9 Church St. Those two clash, so who's taking which?",
   },
   // VIL-550 · the reported wording: every fact right, but "in about an hour" for an event 18
   // minutes away. Must fail on the wrong relative time alone.

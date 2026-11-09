@@ -62,6 +62,9 @@ export interface ReminderEventFacts {
   parking?: string;
   /** VIL-468. What to bring as the source stated it. Absent when unstated or private. */
   bring?: string;
+  /** VIL-551 · the `what` of each other event in this reminder whose time runs into this
+   * one's. Absent when none, so a reminder with no clash sends the same request as before. */
+  overlaps?: string[];
 }
 
 export interface ReminderFacts {
@@ -191,6 +194,24 @@ function logisticsFacts(
   return { ...(parking ? { parking } : {}), ...(bring ? { bring } : {}) };
 }
 
+interface TimedSpan {
+  start: number;
+  end: number;
+}
+
+/** A timed event's span; an event with no end is the instant it starts. Null all-day. */
+function timedSpan(event: ReminderFactEvent, timeZone: string): TimedSpan | null {
+  const start = new Date(event.startsAt);
+  const end = event.endsAt ? new Date(event.endsAt) : null;
+  if (isAllDay(start, end, timeZone)) return null;
+  return { start: start.getTime(), end: (end ?? start).getTime() };
+}
+
+/** Back-to-back is not an overlap; two that start together always are. */
+function spansOverlap(a: TimedSpan, b: TimedSpan): boolean {
+  return a.start === b.start || (a.start < b.end && b.start < a.end);
+}
+
 export function reminderFacts(args: {
   events: readonly ReminderFactEvent[];
   children: readonly ReminderChild[];
@@ -202,26 +223,37 @@ export function reminderFacts(args: {
   language: ReplyLanguage;
 }): ReminderFacts {
   const { timeZone, now } = args;
+  const events = args.events.map((event): ReminderEventFacts => {
+    const start = new Date(event.startsAt);
+    const end = event.endsAt ? new Date(event.endsAt) : null;
+    const allDay = isAllDay(start, end, timeZone);
+    const hidden = isPrivateEvent(event, args.children, now);
+    return {
+      ...nameAndChild(event, eventDescriptor(event, args.children, args.level, now), hidden),
+      day: relativeDay(start, now, timeZone),
+      date: localDateFact(start, timeZone),
+      allDay,
+      start: allDay ? null : localClockFact(start, timeZone),
+      end: allDay || !end ? null : localClockFact(end, timeZone),
+      minutesUntilStart: allDay ? null : Math.round((start.getTime() - now.getTime()) / 60_000),
+      location: hidden ? null : event.location?.trim() || null,
+      changed: changedFact(event.change, timeZone, hidden),
+      ...logisticsFacts(hidden ? null : event.notes),
+    };
+  });
+  const spans = args.events.map((event) => timedSpan(event, timeZone));
   return {
     offset: args.offset,
     now: { date: localDateFact(now, timeZone), time: localClockFact(now, timeZone) },
-    events: args.events.map((event) => {
-      const start = new Date(event.startsAt);
-      const end = event.endsAt ? new Date(event.endsAt) : null;
-      const allDay = isAllDay(start, end, timeZone);
-      const hidden = isPrivateEvent(event, args.children, now);
-      return {
-        ...nameAndChild(event, eventDescriptor(event, args.children, args.level, now), hidden),
-        day: relativeDay(start, now, timeZone),
-        date: localDateFact(start, timeZone),
-        allDay,
-        start: allDay ? null : localClockFact(start, timeZone),
-        end: allDay || !end ? null : localClockFact(end, timeZone),
-        minutesUntilStart: allDay ? null : Math.round((start.getTime() - now.getTime()) / 60_000),
-        location: hidden ? null : event.location?.trim() || null,
-        changed: changedFact(event.change, timeZone, hidden),
-        ...logisticsFacts(hidden ? null : event.notes),
-      };
+    events: events.map((fact, i) => {
+      const own = spans[i];
+      const overlaps = own
+        ? events.filter((_, j) => {
+            const other = spans[j];
+            return j !== i && other != null && spansOverlap(own, other);
+          })
+        : [];
+      return overlaps.length > 0 ? { ...fact, overlaps: overlaps.map((o) => o.what) } : fact;
     }),
     planLink: args.planLink,
     language: args.language,

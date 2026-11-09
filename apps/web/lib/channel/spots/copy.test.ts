@@ -136,10 +136,19 @@ describe('spotOpenRefusals', () => {
     expect(spotOpenRefusals(draft, facts({ label: 'Swimmer 3' }))).toEqual([]);
   });
 
+  it('passes clock abbreviations and sentence ends, which are not links', () => {
+    const draft = "Riverton's portal shows room in Tue swim, Saturdays at 9:30 a.m. Book it today.";
+    expect(spotOpenRefusals(draft, facts())).toEqual([]);
+  });
+
   it.each([
     ['a count the page did not publish', "Riverton's portal shows 3 spots left.", 'unbacked_digit'],
     ['a link', "Riverton's portal has room: https://example.com/x", 'link'],
     ['a bare web address', "Book at riverton.ca, there's room.", 'link'],
+    ['a host on any other TLD', 'A spot opened at evil.io - book at bit.ly/x', 'link'],
+    ['a host in capitals', 'Room now at EVIL.IO', 'link'],
+    ['a host on a two-part country TLD', 'Book at riverton.co.uk now.', 'link'],
+    ['a host on a non-Latin TLD', 'Book at riverton.рф now.', 'link'],
     ['a question', "Riverton's portal shows 2 spots. Want me to grab one?", 'asks_a_question'],
     ['nothing', '   ', 'empty'],
   ])('refuses %s', (_name, draft, refusal) => {
