@@ -179,6 +179,15 @@ export function linqGroupLeaveEnabled(): boolean {
 }
 
 /**
+ * VIL-459 — in a group several families share, "when can we all do it?" gets times read
+ * from each consenting family's free/busy. Exactly `true` enables it. Default off: off,
+ * the ask is an ordinary shared-group answer and no family's calendar is read.
+ */
+export function linqGroupCommonTimeEnabled(): boolean {
+  return trimmed('LINQ_GROUP_COMMON_TIME_ENABLED') === 'true';
+}
+
+/**
  * VIL-475 — iMessage @mentions in Linq group chats. On only when the value is
  * exactly `true` and `VERCEL_ENV` is exactly `preview`. Unset, empty, `on`,
  * `false`, and any other environment — including production — stay dark.

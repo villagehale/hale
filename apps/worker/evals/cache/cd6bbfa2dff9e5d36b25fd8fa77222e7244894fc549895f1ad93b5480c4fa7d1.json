@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Good, I'm glad it would help. Whenever you want to set it up, the number and a short phrase are right below, and you start a group text with the other parent and send the phrase in it.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1494
+}

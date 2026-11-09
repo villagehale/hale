@@ -18,7 +18,7 @@ import {
   settleCalendarAfterAnswer,
 } from './calendar-turn';
 import { groupPlanRsvpLineInput } from './facts';
-import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { memberKeyFromName, senderMemberKey } from './member-key';
 import type { GroupPollTally } from './poll-tally';
 import {
   type GroupPollCardPort,
@@ -175,9 +175,13 @@ export async function takeGroupPlanRsvpTurn(
   const calendarOn = rsvpOn && (deps.calendarEnabled ?? linqGroupPlanRsvpCalendarEnabled)();
   const calendarLanguage =
     input.calendarLanguage === undefined ? input.language : input.calendarLanguage;
-  const senderKey =
-    memberKeyFromHandle(input.senderHandle) ??
-    memberKeyFromName(input.senderName ?? input.senderHandle);
+  const senderKey = await senderMemberKey(
+    { handle: input.senderHandle, name: input.senderName },
+    async () => [
+      ...(liveTally ? [...liveTally.rows, ...liveTally.expected].map((row) => row.memberKey) : []),
+      ...(livePoll ? await deps.store.pollVoterKeys(livePoll.id) : []),
+    ],
+  );
   const senderSeat = seated.find((person) => person.memberKey === senderKey);
   const displayName = input.senderName?.trim() || senderSeat?.displayName || 'someone';
   const calendarUserId = input.senderUserId ?? senderSeat?.userId ?? null;

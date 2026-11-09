@@ -18,9 +18,10 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
+import { asHandsetReads, linksOutside } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { HouseholdGroupFact } from './household-group';
@@ -62,11 +63,11 @@ import {
 /**
  * The reply plus the capture fields, as one forced tool call. The map turn
  * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
- * is a failed attempt, so the budget is well over what a good reply uses.
+ * is a failed attempt, so the budget is well over what a good reply uses. The short
+ * retry has the same budget: its prompt is smaller, its answer is not. A reply that
+ * fills every optional field ran past 600 tokens live (VIL-617).
  */
 const MAX_TOKENS = 1000;
-const SHORT_MAX_TOKENS = 600;
-export const ONBOARDING_REPLY_SHORT_MAX_TOKENS = SHORT_MAX_TOKENS;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -487,7 +488,9 @@ const replySchema = z.object({
   gmailLater: z.boolean().optional().default(false).catch(false),
   stopAsking: z.boolean().optional().default(false).catch(false),
   asks: z.boolean().optional().default(false).catch(false),
-  parentQuestion: z.boolean().optional().default(false).catch(false),
+  // Fails closed: a value that is there but not a boolean may hide a question, and a
+  // question must never stand as a yes.
+  parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
   claimsSaved: z.boolean().optional().default(false).catch(false),
   connectorsOffered: z
     .array(z.enum(['gmail', 'calendar']))
@@ -1325,8 +1328,7 @@ function weekdaysOutsideSlots(text: string, slots: readonly string[]): string[] 
 
 /** A phone number in prose: code puts the real one under the reply, never the model. */
 const PHONE = /\+?\d[\d\s().-]{8,}\d/u;
-/** A web address without its scheme ("hale.app/join"). Only the site in the facts may be named. */
-const BARE_DOMAIN = /\b[\w-]+\.(?:app|com|ca|io|org|net|co)(?:\/[^\s,)]*)?/giu;
+
 /** Capitalised words any reply may use: Hale's own names and the services it talks about. */
 const ALLOWED_NAMES = new Set([
   'hale',
@@ -1513,6 +1515,35 @@ function trailerFacts(options: JudgeOptions): string[] {
 }
 
 /**
+ * The link allow-list: the only words a reply's links may be. The fact slots ground names,
+ * dates and places, but they hold third-party text (synced calendar titles and locations,
+ * email subjects and snippets, listing lines, Hale's own earlier turns that repeated
+ * them), so a link is never grounded by one. A link may be the one code handed this
+ * bubble, Hale's own site, a line code appends under the prose, or a bare domain the
+ * parent wrote. A scheme link from the parent's words is still refused: scheme words are
+ * found in the handset reading, so a full-width ':' or '/' is a scheme too.
+ */
+function linkAllowList(input: FriendVoiceInput, options: JudgeOptions): string[] {
+  const theirs = [
+    input.parentWords,
+    ...input.recentTurns.filter((turn) => turn.role === 'parent').map((turn) => turn.body),
+  ].map((words) =>
+    asHandsetReads(words)
+      .split(/\s+/)
+      .filter((word) => !word.includes('://'))
+      .join(' '),
+  );
+  return [
+    ...theirs,
+    ...(options.link ? [options.link] : []),
+    ...trailerFacts(options),
+    HALE_IDENTITY.site,
+    `https://${HALE_IDENTITY.site}`,
+    HALE_IDENTITY.contact,
+  ];
+}
+
+/**
  * `detail` is for the retry and may quote the draft. `kinds` is what a log may
  * carry: fixed codes, never the draft's words.
  */
@@ -1586,7 +1617,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['domain', linksOutside(trimmed, linkAllowList(input, options))],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1598,10 +1629,6 @@ export function judgeFriendReply(
       count: invented.length,
       kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
     };
-  }
-  if (/https?:\/\//i.test(trimmed)) {
-    const allowed = options.link && trimmed.includes(options.link);
-    if (!allowed) return { ok: false, reason: 'invented' };
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is
@@ -2221,6 +2248,9 @@ export async function speakFriend(
       noteRefusal(
         {
           err: err instanceof Error ? err.name : 'unknown',
+          ...(err instanceof StructuredOutputError
+            ? { outcome: err.outcome, stopReason: err.stopReason }
+            : {}),
           ...(err instanceof z.ZodError
             ? {
                 issues: err.issues
@@ -2368,7 +2398,7 @@ export function retryProblem(
   }
 }
 
-function askInWords(step: FriendStep | undefined): string {
+export function askInWords(step: FriendStep | undefined): string {
   switch (step) {
     case 'email':
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
@@ -2386,7 +2416,7 @@ function askInWords(step: FriendStep | undefined): string {
     case 'ages':
       return 'ask how old each kid is';
     case 'place':
-      return 'ask their postal code';
+      return 'ask their postal code or ZIP, or, when they just declined it, ask `next` instead';
     default:
       return 'ask the open item';
   }
@@ -2574,7 +2604,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
-        maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
+        maxTokens: MAX_TOKENS,
         transport: llmTransport(),
       });
       return {

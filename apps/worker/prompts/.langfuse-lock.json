@@ -59,6 +59,11 @@
     "version": null,
     "sha256": "f1eb94c2038186bee935497dfd777a9291c17c2d0e42bdc85bb3702f682a2f89"
   },
+  "judges/calendar-kid-notice": {
+    "name": "judges/calendar-kid-notice",
+    "version": null,
+    "sha256": "57b23f58a39c590c3352b0c8c311bb457b1e3cb6ae269596dc35654c7e02874e"
+  },
   "judges/calendar-write-notice": {
     "name": "judges/calendar-write-notice",
     "version": null,
@@ -69,10 +74,15 @@
     "version": null,
     "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
   },
+  "judges/coach-capability-correction": {
+    "name": "judges/coach-capability-correction",
+    "version": null,
+    "sha256": "9c1d6c00d4faada2598333cdaf2764287e2283be2dd34853f422b69ceb08d396"
+  },
   "judges/coach-channel": {
     "name": "judges/coach-channel",
     "version": null,
-    "sha256": "9845bab7eb83d47115786551f380d402045724a37160efcd772156579716a512"
+    "sha256": "d849f9d328cbdce1e20ac9ba3969ebf179344c7935a5113ec895cb5700890593"
   },
   "judges/coach-clash": {
     "name": "judges/coach-clash",
@@ -93,6 +103,11 @@
     "name": "judges/coach-plan-note",
     "version": null,
     "sha256": "da8049cfc09c90ecab0993bc41cc1806ce46de5b725173e5caa2948d93b5fbc9"
+  },
+  "judges/common-time": {
+    "name": "judges/common-time",
+    "version": null,
+    "sha256": "2038293c899ebab80aefedf25dac090c11945264e8d375f23a3f51fce30806b1"
   },
   "judges/crisis-reply": {
     "name": "judges/crisis-reply",
@@ -134,6 +149,11 @@
     "version": null,
     "sha256": "83c8909fd6b63c19fffde0ae605ae4fe8e59b97109f0b77c434b6590b9e4de77"
   },
+  "judges/group-lists": {
+    "name": "judges/group-lists",
+    "version": null,
+    "sha256": "b2c8a1d7dde629b691f3db0d951457593ad4750ec9eaa984d7c72215b35f9877"
+  },
   "judges/group-plan-calendar-report": {
     "name": "judges/group-plan-calendar-report",
     "version": null,
@@ -156,8 +176,8 @@
   },
   "judges/group-plan-rsvp-read": {
     "name": "judges/group-plan-rsvp-read",
-    "version": null,
-    "sha256": "65e7ce5abc3f224656218497b40b717cdf53b8015186e4a3876c0f8dd5be877b"
+    "version": 2,
+    "sha256": "7f7905488ee7842366e876ecce7f58f1e19e610a8df6dabf3bd9f1bfeb0426d7"
   },
   "judges/group-plan-rsvp-voice": {
     "name": "judges/group-plan-rsvp-voice",
@@ -177,7 +197,7 @@
   "judges/group-privacy": {
     "name": "judges/group-privacy",
     "version": null,
-    "sha256": "881df70f431c1dd985a763922bccbc2d1c4e2b6a781e4781efef89642fcd39d1"
+    "sha256": "4b4863ef6eb9fe206cc6032fe1c43198b0f06b084ca60bcdef2fe183a865bd3b"
   },
   "judges/group-private-aside": {
     "name": "judges/group-private-aside",

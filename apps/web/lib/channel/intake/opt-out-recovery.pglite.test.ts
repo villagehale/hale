@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { type OffDomainPorts, crisisMarkingLane } from '~/lib/channel/off-domain/lane';
 import type { Moment } from '~/lib/channel/off-domain/moment-reply';
+import type { LaneReading } from '~/lib/channel/off-domain/screen';
 import { threadIfParent } from '~/lib/channel/thread';
 import {
+  type CrisisUnanswered,
   type SaidLineWriter,
   createSaidLineWriter,
   crisisReplyViolation,
@@ -19,6 +20,8 @@ import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import {
   CRISIS_ANSWERED_ROUTE,
   CRISIS_UNANSWERED_PAGE_ROUTE,
+  claimCrisisReply,
+  crisisClaimFor,
   crisisReplyState,
   failurePageCrisisPager,
   noteCrisisReplySent,
@@ -82,6 +85,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   await db.exec(
     'truncate table opt_out_held_messages, opt_out_read_holds, channel_messages, parent_channels, consent_records, audit_log, sms_intake_sessions, caregiver_invites, rate_limits, family_members, families, users cascade',
   );
@@ -321,6 +325,37 @@ async function rowsNaming(word: string): Promise<string[]> {
      union all select 'audit_log', row_to_json(a)::text from audit_log a`,
   );
   return rows.filter((row) => row.row.includes(word)).map((row) => row.source);
+}
+
+const keyOf = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 32);
+
+/** Every crisis claim and reply mark, by route and inbound key. */
+async function crisisMarks(): Promise<{ route: string; key: string | undefined }[]> {
+  const rows = await db.database
+    .select({ route: schema.rateLimits.route, identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(inArray(schema.rateLimits.route, [CRISIS_UNANSWERED_PAGE_ROUTE, CRISIS_ANSWERED_ROUTE]))
+    .orderBy(desc(schema.rateLimits.route));
+  return rows.map((row) => ({ route: row.route, key: row.identifier.split(':')[0] }));
+}
+
+/** An emergency read for a child, recorded against `inboundId`. */
+function keptCrisis(
+  inboundId: string,
+  owner: { familyId: string; parentUserId: string } | null,
+): CrisisUnanswered {
+  return {
+    kind: 'emergency',
+    where: 'late read',
+    reason: 'write_failed',
+    writes: 2,
+    inboundId,
+    familyId: owner?.familyId ?? null,
+    parentUserId: owner?.parentUserId ?? null,
+    language: 'en',
+    situation: 'poisoning_or_overdose',
+    who: 'child',
+  };
 }
 
 async function crisisClaimIds(): Promise<string[]> {
@@ -1040,6 +1075,7 @@ describe('recoverHeldOptOutReads', () => {
       crisisLanguage: null,
       crisisSituation: null,
       crisisWho: null,
+      crisisReadEncrypted: null,
     });
 
     expect((await resolveHeldText(db.database, row('pm-us', PHONE_A)))?.region).toBe('US');
@@ -1734,8 +1770,22 @@ describe('recoverHeldOptOutReads', () => {
       }),
     );
     expect(read.outcomes.crisis_unanswered).toBe(1);
-    // Positive control: while the text is held for its retry, its facts are kept somewhere.
-    expect(await rowsNaming('poisoning_or_overdose')).not.toEqual([]);
+    // While the text is held for its retry, what it was read as is kept, sealed: no row
+    // names it in the clear, and the next tick still reads it back.
+    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+    expect(await rowsNaming(':child')).toEqual([]);
+    expect(await crisisClaimFor(db.database, 'pm-od')).toMatchObject({
+      kind: 'emergency',
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+    // The kept family's own crisis, and its reply mark: an erasure of the other never
+    // reaches them.
+    await inboundRow(kept, 'pm-kept', OVERDOSE_TEXT, ago(15));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-kept', kept));
+    expect(await claimCrisisReply(db.database, 'pm-kept', NOW)).toBe('claimed');
+    expect(await claimCrisisReply(db.database, 'pm-od', ago(60))).toBe('claimed');
 
     await db.database
       .update(schema.families)
@@ -1745,8 +1795,194 @@ describe('recoverHeldOptOutReads', () => {
 
     expect(summary.erased).toBe(1);
     expect(await heldRow('pm-od')).not.toBeNull();
-    expect(await crisisClaimIds()).toHaveLength(1);
-    expect(await rowsNaming('poisoning_or_overdose')).toEqual([]);
+    expect(await heldRow('pm-od')).toMatchObject({ crisisReadEncrypted: null });
+    // The erased family's crisis claim and reply mark go with it; the kept family's stay.
+    expect(await crisisMarks()).toEqual([
+      { route: CRISIS_UNANSWERED_PAGE_ROUTE, key: keyOf('pm-kept') },
+      { route: CRISIS_ANSWERED_ROUTE, key: keyOf('pm-kept') },
+    ]);
+  }, 30_000);
+
+  async function eraseFamily(familyId: string) {
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, familyId));
+    return runDeletionSweep(db.database, NOW, async () => {});
+  }
+
+  it("an erasure keeps the crisis read on the number's next holder's own held text", async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    const holder = await seedFamily(db.database, 'Second Family');
+    await channel(holder, PHONE_A, { verifiedAt: ago(60), revokedAt: null });
+    // The holder's own text: it came after the erased family's channel was revoked, and
+    // neither the erased family's ledger nor its intake names it.
+    await hold(PHONE_A, 'pm-holder-own', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-holder-own', null));
+    // The erased family's own texts on the same number, while it held it: one its ledger
+    // names, one only its intake transcript names.
+    await inboundRow(erased, 'pm-erased-ledger', OVERDOSE_TEXT, ago(60 * 24 * 3));
+    await hold(PHONE_A, 'pm-erased-ledger', ago(60 * 24 * 3));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-erased-ledger', erased));
+    await intake(
+      PHONE_A,
+      [{ providerId: 'pm-erased-intake', body: OVERDOSE_TEXT, at: ago(60 * 24 * 29) }],
+      { owner: erased, closedAt: ago(60 * 24 * 28) },
+    );
+    await hold(PHONE_A, 'pm-erased-intake', ago(60 * 24 * 29));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-erased-intake', null));
+    for (const id of ['pm-holder-own', 'pm-erased-ledger', 'pm-erased-intake']) {
+      expect((await heldRow(id))?.crisisReadEncrypted).not.toBeNull();
+    }
+
+    expect((await eraseFamily(erased.familyId)).erased).toBe(1);
+
+    // The number is still held, so every row on it stays.
+    expect(await heldRow('pm-erased-ledger')).toMatchObject({ crisisReadEncrypted: null });
+    expect(await heldRow('pm-erased-intake')).toMatchObject({ crisisReadEncrypted: null });
+    expect((await heldRow('pm-holder-own'))?.crisisReadEncrypted).not.toBeNull();
+    expect(await crisisClaimFor(db.database, 'pm-holder-own')).toMatchObject({
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+  }, 30_000);
+
+  it('an erasure takes the held crisis rows on a number nobody holds now', async () => {
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    await hold(PHONE_A, 'pm-unheld', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-unheld', null));
+    expect((await heldRow('pm-unheld'))?.crisisReadEncrypted).not.toBeNull();
+
+    expect((await eraseFamily(erased.familyId)).erased).toBe(1);
+
+    expect(await heldRow('pm-unheld')).toBeNull();
+  }, 30_000);
+
+  const WEBHOOK = 'https://hooks.example.test/ops';
+
+  /** The webhook the production pager posts to, faked at fetch. */
+  function stubWebhook(): void {
+    vi.stubEnv('OPS_SLACK_WEBHOOK_URL', WEBHOOK);
+    vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+      if (url === WEBHOOK) posted.push(JSON.parse(init?.body ?? '{}').text);
+      return new Response('ok', { status: 200 });
+    });
+  }
+
+  async function corrupt(sessionId: string): Promise<void> {
+    await db.database
+      .update(schema.smsIntakeSessions)
+      .set({ dataEncrypted: 'not-a-sealed-blob' })
+      .where(eq(schema.smsIntakeSessions.id, sessionId));
+  }
+
+  async function scheduleErasure(familyId: string): Promise<void> {
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: ago(1) })
+      .where(eq(schema.families.id, familyId));
+  }
+
+  it('an intake session that will not decode never stops the erasure of any family in the batch', async () => {
+    stubWebhook();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const first = await seedFamily(db.database, 'First Family');
+    await channel(first, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    const unreadable = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-unreadable', body: OVERDOSE_TEXT, at: ago(60 * 24 * 31) }],
+      { owner: first, closedAt: ago(60 * 24 * 30) },
+    );
+    await corrupt(unreadable);
+    await hold(PHONE_A, 'pm-unreadable', ago(60 * 24 * 31));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-unreadable', null));
+    const second = await seedFamily(db.database, 'Second Family');
+    await channel(second, PHONE_B, { verifiedAt: ago(60 * 24 * 30), revokedAt: null });
+    await inboundRow(second, 'pm-second', OVERDOSE_TEXT, ago(20));
+    await hold(PHONE_B, 'pm-second', ago(20));
+    await scheduleErasure(first.familyId);
+    await scheduleErasure(second.familyId);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(2);
+    expect(await db.database.select({ id: schema.families.id }).from(schema.families)).toEqual([]);
+    // Nobody holds either number now, so every row on them goes, the unreadable one's too.
+    expect(await heldRow('pm-unreadable')).toBeNull();
+    expect(await heldRow('pm-second')).toBeNull();
+    expect(summary.undecodableIntake).toEqual({ sessions: 1, page: 'paged' });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('erasure_intake_undecodable');
+    expect(posted[0]).toContain('number released');
+    // The log names the session by id and the reason by code: never what it held.
+    expect(errors).toHaveBeenCalledWith(
+      { session: unreadable, reason: 'intake_session_undecodable' },
+      expect.any(String),
+    );
+  }, 30_000);
+
+  it('an unreadable intake session on a number someone holds now leaves their rows and pages', async () => {
+    stubWebhook();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    const unreadable = await intake(
+      PHONE_A,
+      [{ providerId: 'pm-unreadable', body: OVERDOSE_TEXT, at: ago(60 * 24 * 31) }],
+      { owner: erased, closedAt: ago(60 * 24 * 30) },
+    );
+    await corrupt(unreadable);
+    const holder = await seedFamily(db.database, 'Second Family');
+    await channel(holder, PHONE_A, { verifiedAt: ago(60), revokedAt: null });
+    await hold(PHONE_A, 'pm-holder-own', ago(20));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-holder-own', null));
+    await scheduleErasure(erased.familyId);
+
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+
+    expect(summary.erased).toBe(1);
+    expect((await heldRow('pm-holder-own'))?.crisisReadEncrypted).not.toBeNull();
+    expect(summary.undecodableIntake).toEqual({ sessions: 1, page: 'paged' });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('number still_held');
+  }, 30_000);
+
+  it("an erasure takes the crisis read of its pre-signup intake text, never the number's next holder's", async () => {
+    stubWebhook();
+    const erased = await seedFamily(db.database, 'First Family');
+    await channel(erased, PHONE_A, { verifiedAt: ago(60 * 24 * 30), revokedAt: ago(60 * 24) });
+    // Before the family existed: an intake session on its number with no family yet.
+    await intake(
+      PHONE_A,
+      [{ providerId: 'pm-presignup', body: OVERDOSE_TEXT, at: ago(60 * 24 * 32) }],
+      { closedAt: ago(60 * 24 * 31) },
+    );
+    await hold(PHONE_A, 'pm-presignup', ago(60 * 24 * 32));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-presignup', null));
+    // The number's next holder, mid-intake after the family let it go: their own text.
+    await intake(PHONE_A, [{ providerId: 'pm-next-holder', body: OVERDOSE_TEXT, at: ago(30) }]);
+    await hold(PHONE_A, 'pm-next-holder', ago(30));
+    await failurePageCrisisPager(db.database).record(keptCrisis('pm-next-holder', null));
+    for (const id of ['pm-presignup', 'pm-next-holder']) {
+      expect((await heldRow(id))?.crisisReadEncrypted).not.toBeNull();
+    }
+
+    const summary = await eraseFamily(erased.familyId);
+
+    expect(summary.erased).toBe(1);
+    expect(await heldRow('pm-presignup')).toMatchObject({ crisisReadEncrypted: null });
+    expect((await heldRow('pm-next-holder'))?.crisisReadEncrypted).not.toBeNull();
+    expect(await crisisClaimFor(db.database, 'pm-next-holder')).toMatchObject({
+      language: 'en',
+      situation: 'poisoning_or_overdose',
+      who: 'child',
+    });
+    // Positive control for the pages above: every session decoded, so nothing pages.
+    expect(summary.undecodableIntake).toEqual({ sessions: 0, page: 'nothing_to_page' });
+    expect(posted).toEqual([]);
   }, 30_000);
 
   it('a held crisis row released takes what it was read as with it', async () => {

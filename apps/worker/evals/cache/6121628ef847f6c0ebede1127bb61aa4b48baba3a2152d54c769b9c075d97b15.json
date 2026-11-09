@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "好的，那就先不说了。我还是可以叫你一个你喜欢的称呼，之后想说的时候再告诉我？",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false,
+    "language": "zh"
+  },
+  "latencyMs": 1734
+}

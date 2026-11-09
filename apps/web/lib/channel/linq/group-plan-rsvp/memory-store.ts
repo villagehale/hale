@@ -157,6 +157,10 @@ export function createMemoryGroupPollStore(world: MemoryGroupPlanWorld): GroupPo
       return tallyGroupPoll(poll.options, [...poll.votes.values()], poll.expected);
     },
 
+    async pollVoterKeys(pollId) {
+      return [...(world.polls.get(pollId)?.votes.keys() ?? [])];
+    },
+
     async recordPollVote(input) {
       const poll = world.polls.get(input.pollId);
       if (!poll) throw new Error('recordPollVote: poll missing');

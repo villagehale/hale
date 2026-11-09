@@ -1070,7 +1070,8 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
  * what grounds it.
  */
 function recordingFrameworkTool(frameworkGuidanceTool, calls, grounding) {
-  const real = frameworkGuidanceTool();
+  // Canada, as every fixture's context says (channelContext `location.country`).
+  const real = frameworkGuidanceTool('CA');
   return {
     ...real,
     handler: async (input) => {
@@ -1362,6 +1363,13 @@ function cityFor(fixture) {
   return fixture.city ?? CONTEXT_CITY;
 }
 
+/**
+ * What the coach skill says Hale connects. Naming one is a claim about Hale, stated in
+ * the skill the model was handed, not about this family: a Drive ask is answered by
+ * saying which of these Hale does connect, and the name gate read "Gmail" as invented.
+ */
+const CONNECTABLE_SERVICES = ['Google Calendar', 'Gmail'];
+
 function groundedHay(fixture, toolResults) {
   // The app URL is NOT grounding. The model is handed no URL, so a link in a reply is
   // an invention and the fabrication gate should say so. The ONE exception is passed in
@@ -1385,6 +1393,7 @@ function groundedHay(fixture, toolResults) {
   // The parent's own name and town ride on the same context object (loadAgentContext
   // parentName / location), so addressing them by name is recall, not invention.
   parts.push(CONTEXT_PARENT_NAME, cityFor(fixture));
+  parts.push(...CONNECTABLE_SERVICES);
   // THE THREAD GROUNDS TOO. A venue Hale itself named two messages ago is recall — and
   // on a fixture whose whole subject is a "yes" to that message, every noun in it would
   // otherwise be read as an invention by the gate that exists to catch inventions.

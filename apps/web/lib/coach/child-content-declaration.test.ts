@@ -43,6 +43,7 @@ const MIN_REGISTERED_TOOLS = 15;
 function channelTools(): RegisteredTool[] {
   return buildChannelCoachTools({
     familyId: '11111111-1111-4111-8111-111111111111',
+    familyCountry: 'CA',
     reader: {
       timeZone: async () => 'America/Toronto',
       weekPlanSummary: async () => null,

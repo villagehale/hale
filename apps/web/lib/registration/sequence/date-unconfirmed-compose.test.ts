@@ -18,6 +18,20 @@ describe('VIL-423 · dateUnconfirmedRefusals: the writer is handed no link, so a
     'See www.example.org',
     'Details at evil．app',
     'Details at ev​il.app',
+    // VIL-613 · the shared check's evasion table.
+    'Details at evil。app/x',
+    'Details at evil｡app/x',
+    'Details at evil﹒app/x',
+    'see 203.0.113.9/x',
+    'Details at evil.рф',
+    'Details at evil[.]app',
+    'Details at bit . ly/x',
+    // The format character sits before the dot, so only the \p{Cf} strip makes a host of it.
+    'Details at bit\u200B.ly/x',
+    'Details at evil.Com',
+    // Fails closed: glued prose reads as a host, and the writer re-drafts.
+    'I could not confirm it on the page.Check it below.',
+    'The St.Mary pool page did not show it. Mr.Smith may know.',
   ])('refuses a link shape: %s', (text) => {
     expect(dateUnconfirmedRefusals(text)).toEqual(['link']);
   });

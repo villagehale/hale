@@ -223,6 +223,9 @@ export const AUDIT_VERBS = [
   'linq_multi_family_member_stopped',
   'linq_multi_family_refused',
   'linq_multi_family_reply_sent',
+  'linq_multi_family_common_time_proposed',
+  'linq_multi_family_common_time_unsent',
+  'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
   'linq_multi_family_send_capped',
@@ -285,6 +288,8 @@ export const AUDIT_VERBS = [
   'weekday_care_recorded',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-619 · the one-time scrub of the email previews older alerts kept.
+  'email_alert_snippets_scrubbed',
   'email_alert_event_added',
   'activity_booking_recorded',
   'activity_booking_cancelled',
@@ -564,6 +569,9 @@ export const AUDIT_VERBS = [
   'commitment_fulfilled',
   'commitment_cancelled',
   'commitment_deferred',
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  'capability_denial_recorded',
+  'capability_denial_corrected',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -976,6 +984,20 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale replied in a shared thread from what was already said',
     family: 'done',
   },
+  linq_multi_family_common_time_proposed: {
+    sentence: 'Hale suggested times that work for the families in a shared thread',
+    family: 'done',
+  },
+  linq_multi_family_common_time_unsent: {
+    sentence:
+      'Hale held its suggested times for a shared thread because it could not write them well',
+    family: 'problem',
+  },
+  linq_multi_family_free_busy_shared: {
+    sentence:
+      'A parent let Hale use the busy times on their own calendar to find a time in a shared thread',
+    family: 'note',
+  },
   linq_multi_family_ask_sent: {
     sentence: 'Hale asked one family in a shared thread',
     family: 'note',
@@ -1124,6 +1146,11 @@ const VERBS: Record<AuditVerb, Verb> = {
   // Hale having looked at their email at all.
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
+    family: 'done',
+  },
+  // A count only, across the family's threads: no row says which adult had alerts.
+  email_alert_snippets_scrubbed: {
+    sentence: 'Hale deleted the email previews it had kept from earlier alerts',
     family: 'done',
   },
   // The parent's YES to the sentence at the end of that text. YOU, not Hale: this is the
@@ -2043,6 +2070,17 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'looked again and had nothing new to tell you yet',
     family: 'note',
   },
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  // The no was said to one parent, so History hides both (INTERNAL_TRAIL_VERBS). The
+  // sentences stay for the access export, which still lists every family audit row.
+  capability_denial_recorded: {
+    sentence: 'told a parent it could not do something yet, and noted it to follow up',
+    family: 'note',
+  },
+  capability_denial_corrected: {
+    sentence: 'let a parent know it can now do something it had said it could not',
+    family: 'done',
+  },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {
     sentence: 'noticed a possible stamp from something it saw',
@@ -2146,6 +2184,9 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',
+  // VIL-303. A no Hale said to one parent, and its correction to that same parent.
+  'capability_denial_recorded',
+  'capability_denial_corrected',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

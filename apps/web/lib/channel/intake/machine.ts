@@ -47,7 +47,7 @@ import {
 } from '~/lib/channel/linq/contact-card';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
 import { LINQ_GROUP_TRIGGER_PHRASE, formatLinqLineForParent } from '~/lib/channel/linq/group';
-import { linkPreviewUrl, sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { liftPreviewLink, sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { openChosenHouseholdGroup } from '~/lib/channel/linq/open-chosen-group';
 import { provinceOfPostal } from '~/lib/channel/off-domain/place';
 import {
@@ -70,6 +70,8 @@ import { recordCheckpointTold } from '~/lib/health/told';
 import { writeFact } from '~/lib/memory/facts';
 import {
   failurePageCrisisPager,
+  noteCrisisReplyLeaving,
+  noteCrisisReplySent,
   pageOps,
   reportFirstHelloFailure,
 } from '~/lib/monitoring/failure-page';
@@ -289,10 +291,10 @@ export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused' | 'vo
 
 export type IntakeOutcome =
   /**
-   * A new parent's opening turn sent nothing: the model could not write it. Never a
-   * step, because a step says Hale replied (rule #11). The session stays recoverable —
-   * awaiting_details with an inbound and no outbound — so the parent's own re-text
-   * re-runs the opening and the first-reply sweep owes it one reply.
+   * A pre-family turn sent nothing: the model could not write it. Never a step,
+   * because a step says Hale replied (rule #11). The parent's own re-text re-runs the
+   * turn. On the opening the session stays awaiting_details with an inbound and no
+   * outbound, so the first-reply sweep also owes it one reply.
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
@@ -896,8 +898,14 @@ async function sendAndRecord(
     return { transcript, channelMessageId: null };
   }
   await quietStopTyping(deps);
-  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body });
-  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
+  // VIL-573 · on iMessage a link goes once, after the text, as its own bubble.
+  const lifted =
+    ctx.session.familyId && ctx.session.userId && ctx.pipe.channel === 'imessage' && ctx.pipe.chatId
+      ? liftPreviewLink(body)
+      : null;
+  const text = lifted ? lifted.text : body;
+  const sent = await sendResolvingNewChat(deps.transport, { to: ctx.phoneE164, body: text });
+  const wireBody = sent.linkOmitted ? plainTextWithoutLinks(text) : text;
   const channel = sent.transport === 'imessage' ? 'imessage' : ctx.pipe.channel;
   const chatId = sent.transport === 'imessage' ? (sent.chatId ?? ctx.pipe.chatId) : ctx.pipe.chatId;
   await finishCardWithinReplyBudget(
@@ -919,27 +927,28 @@ async function sendAndRecord(
       ctx.now,
       templateKey,
     );
+    let threaded = wireBody;
+    if (lifted) {
+      const link = await sendLinkOnce({
+        transport: deps.transport,
+        to: ctx.phoneE164,
+        channel,
+        chatId,
+        url: lifted.url,
+        database,
+        familyId: ctx.session.familyId,
+        parentUserId: ctx.session.userId,
+        now: ctx.now,
+      });
+      if (link.status !== 'not_sent') threaded = `${wireBody}\n${lifted.url}`;
+    }
     // What the parent reads back, and what the coach re-reads next turn. The body as
     // SENT: intake appends no CASL footer, so the wire and the thread are one string.
     await deps.threadMessage(database, {
       familyId: ctx.session.familyId,
       parentUserId: ctx.session.userId,
-      body: wireBody,
+      body: threaded,
     });
-    if (channel === 'imessage' && chatId && !sent.linkOmitted) {
-      const preview = linkPreviewUrl(wireBody);
-      if (preview) {
-        await sendLinqLinkPreview({
-          channel: 'imessage',
-          chatId,
-          url: preview,
-          database,
-          familyId: ctx.session.familyId,
-          parentUserId: ctx.session.userId,
-          now: ctx.now,
-        });
-      }
-    }
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };
@@ -1089,6 +1098,8 @@ async function offScriptReply(
   body: string;
   source: 'composed' | 'safety' | 'identity';
   held?: HealthHeld;
+  /** A crisis reply: its send takes the reply mark, so a held copy is not answered again. */
+  crisis?: true;
 } | null> {
   // A crisis was already routed by the turn's reader before this seam (#868). The
   // identity disclosure is the whole turn, written by the model from the facts.
@@ -1132,7 +1143,9 @@ async function offScriptReply(
       ...crisisPage(page.database, deps, turn, page.familyId, page.parentUserId),
       writer: deps.saidLine,
     });
-    return crisis.status === 'sent' ? { body: crisis.body, source: 'safety' } : HELD_SILENT;
+    return crisis.status === 'sent'
+      ? { body: crisis.body, source: 'safety', crisis: true }
+      : HELD_SILENT;
   }
   if (outcome.status === 'safety') {
     // #868, VIL-589: the model words the line for where this family is; the code checks
@@ -1928,12 +1941,14 @@ async function friendOnboardingTurn(
     );
   }
   const voiced = friendOutbound(spoken);
-  if (!voiced && opening) {
+  // Nothing went out, on the opening or a later turn: never a step (rule #11). The
+  // parent's next text re-runs this turn.
+  if (!voiced) {
     await saveSession(
       database,
       session,
       {
-        state: 'awaiting_details',
+        state: opening ? 'awaiting_details' : nextPlace ? 'awaiting_ages' : 'awaiting_place',
         transcript,
         collected,
         lastProviderId: inbound.providerId,
@@ -1942,12 +1957,10 @@ async function friendOnboardingTurn(
       },
       now,
     );
-    await reportOpening(deps, session, inbound, language);
+    if (opening) await reportOpening(deps, session, inbound, language);
     return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
   }
-  if (voiced) {
-    ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
-  }
+  ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
   const waitingAges = nextPlace != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
@@ -3371,7 +3384,11 @@ async function handleLadder(
     );
     if (offScript) {
       if (offScript.body) {
+        // A crisis reply is answered once the transport accepted it, never before (VIL-602):
+        // the recovery pass then releases a held copy of this text with no second reply.
+        if (offScript.crisis) await noteCrisisReplyLeaving(database, inbound.providerId, now);
         await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+        if (offScript.crisis) await noteCrisisReplySent(database, inbound.providerId, now);
       }
       held = offScript.held;
       heldForQuestion = true;
@@ -3701,7 +3718,8 @@ async function settleOptOutHold(
     // did not land leaves a possibly unread stop with no row for the sweep, so it pages.
     const name = err instanceof Error ? err.name : 'unknown';
     if (reading === null) {
-      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: { err: name } });
+      console.error({ err: name }, 'opt-out hold: write failed');
+      await pageOps(database, { site: 'opt_out_hold_unwritten', facts: {} });
     } else {
       console.warn({ err: name }, 'opt-out hold: release failed - the row is read again');
     }

@@ -19,7 +19,7 @@ import {
   sharedCalendarConsentReader,
 } from './calendar';
 import { answerPendingCalendarAsk } from './calendar-turn';
-import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
   GROUP_POLL_KIND,
@@ -409,8 +409,13 @@ export async function considerGroupPollCardVote(
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const seated = await store.seatedExpected(input.chatId);
   const senderName = await senderNameOf(ports.database, input.senderUserId ?? null);
-  const memberKey =
-    memberKeyFromHandle(input.senderHandle) ?? memberKeyFromName(senderName ?? input.senderHandle);
+  const memberKey = await senderMemberKey(
+    { handle: input.senderHandle, name: senderName },
+    async () => {
+      const poll = await store.pollForCard(input.chatId, input.card.providerMessageId);
+      return poll ? store.pollVoterKeys(poll.id) : [];
+    },
+  );
   const seat = seated.find((person) => person.memberKey === memberKey);
   return takeGroupPollCardVote(
     {

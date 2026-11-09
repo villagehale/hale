@@ -1,6 +1,7 @@
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -61,7 +62,7 @@ const voiceAnswerSchema = z.object({
 
 function lineUsable(line: string, input: GroupLineInput): boolean {
   if (!line.trim()) return false;
-  if (/https?:\/\//i.test(line)) return false;
+  if (hasLinkShape(line)) return false;
   if (input.questions === 1 && !line.includes('?')) return false;
   if (input.questions === 0 && line.includes('?')) return false;
   return true;

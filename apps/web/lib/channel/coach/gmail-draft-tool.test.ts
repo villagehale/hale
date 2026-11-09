@@ -22,6 +22,7 @@ describe('prepare_gmail_draft — flag gate', () => {
   const built = (parentUserId?: string) =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: null,

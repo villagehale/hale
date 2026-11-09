@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The reply says plainly it cannot open or share the email's details, and only mentions an appointment in general terms as a guess-avoidance remark. It does not name a provider, day, time, or other content. However, it does reference 'an appointment' as the email's subject, which the rule allows as the kind of email; the wording is slightly speculative ('I'd only be guessing') but avoids inventing details. Short, warm, and plain.",
-    "score": 4
-  }
-}

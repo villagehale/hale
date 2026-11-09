@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "I don't have the storytime times in front of me, so I can't say what time it starts. Before I go on, what should I call you?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1418
+}

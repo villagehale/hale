@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
@@ -7,6 +10,7 @@ import {
 import {
   type FriendVoiceInput,
   assembleFriendBody,
+  createFriendVoiceComposer,
   friendVoiceContext,
   friendVoiceSystem,
   friendWeekAction,
@@ -444,7 +448,10 @@ describe('onboarding friend fixtures', () => {
     const skill = await loadOnboardingFriendSkill();
     const words = skill.instructions.split(/\s+/).filter(Boolean).length;
     const ruleWords = skill.instructions.match(/\b(never|do not|don't|always)\b/gi) ?? [];
-    expect(words).toBeLessThan(2400);
+    expect(words).toBeLessThan(2450);
+    expect(skill.instructions).toContain(
+      'A take-back is not a name: letting go of what was just said, including casual shorthand for letting go, is not an answer to what to call them.',
+    );
     expect(ruleWords.length).toBeLessThan(20);
     expect(skill.instructions).toContain('## Facts');
     expect(skill.instructions).toContain('## Output');
@@ -593,6 +600,215 @@ describe('friend-voice judge', () => {
     expect(
       judgeFriendReply("What's your postal code? It's a text for your kids' year.", place),
     ).toEqual({ ok: true });
+  });
+
+  it('lets a host through only as a whole word the parent wrote, never a piece of one', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. club.ca it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+    expect(judgeFriendReply('Done. kidsclub.ca.evil.app it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+  });
+
+  it('reads a link once: a full-width colon or slash in a scheme is still a link', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    for (const reply of [
+      'Done. https：//evil.app it is.',
+      'Done. hxxps：//evil.app/x it is.',
+      'Done. https:／／evil.app it is.',
+      'Done. https：／／evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, yes), reply).toMatchObject({ ok: false, reason: 'invented' });
+    }
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(
+      judgeFriendReply(`${prose}\n${link}\nhttps：//evil.app/x`, calendar, { link }),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+  });
+
+  it('holds a scheme link to the handed link even when a page or the parent wrote it', () => {
+    const listed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, we use kidsclub.ca',
+      findLines: ['Swim Tuesdays https://evil.app/x', 'Art Fridays https：//evil.app/y'],
+    });
+    for (const reply of [
+      'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
+      'Done. Art Fridays, sign up at https：//evil.app/y it is.',
+      'Done. Swim Tuesdays, sign up at https：//evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, listed), reply).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: ['domain'],
+      });
+    }
+    const echoed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, sign up at https://evil.app/x',
+    });
+    expect(judgeFriendReply('Done. https://evil.app/x it is.', echoed)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', listed)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. See https://villagehale.com for more.', listed)).toEqual({
+      ok: true,
+    });
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+  });
+
+  describe('a link may be only the handed link, Hale’s site or the parent’s own words (VIL-632)', () => {
+    const synced = (over: { title?: string; location?: string | null; snippet?: string }) =>
+      blank({
+        step: 'connected',
+        connector: over.snippet === undefined ? 'gcal' : 'gmail',
+        timeZone: EASTERN,
+        synced: {
+          provider: over.snippet === undefined ? 'gcal' : 'gmail',
+          read: 'ok',
+          calendar:
+            over.snippet === undefined
+              ? [
+                  {
+                    title: over.title ?? 'Mia swim',
+                    start: '2026-10-17T14:00:00.000Z',
+                    end: '2026-10-17T14:45:00.000Z',
+                    allDay: false,
+                    location: over.location ?? null,
+                    declined: false,
+                  },
+                ]
+              : [],
+          email:
+            over.snippet === undefined
+              ? []
+              : [
+                  {
+                    subject: 'Picture day',
+                    fromName: 'Park Public School',
+                    receivedAt: '2026-10-05T14:00:00.000Z',
+                    snippet: over.snippet,
+                  },
+                ],
+          overlaps: [],
+        },
+      });
+
+    it('refuses a link a synced calendar title carries, scheme or bare', () => {
+      const input = synced({ title: 'Verify at https://evil.app/login' });
+      for (const reply of [
+        'Your calendar is in. Saturday: https://evil.app/login',
+        'Your calendar is in. Saturday: evil.app/login',
+      ]) {
+        expect(judgeFriendReply(reply, input), reply).toMatchObject({
+          ok: false,
+          reason: 'invented',
+          kinds: expect.arrayContaining(['domain']),
+        });
+      }
+      const bareTitle = synced({ title: 'Verify at evil.app/login' });
+      expect(
+        judgeFriendReply('Your calendar is in. Saturday: evil.app/login', bareTitle),
+      ).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: expect.arrayContaining(['domain']),
+      });
+    });
+
+    it('refuses a link an email snippet carries, scheme or bare', () => {
+      for (const snippet of ['Order at https://evil.app/pay', 'Order at evil.app/pay']) {
+        const input = synced({ snippet });
+        for (const reply of [
+          'Your inbox is in. Picture day: https://evil.app/pay',
+          'Your inbox is in. Picture day: evil.app/pay',
+        ]) {
+          expect(judgeFriendReply(reply, input), `${snippet} / ${reply}`).toMatchObject({
+            ok: false,
+            reason: 'invented',
+            kinds: expect.arrayContaining(['domain']),
+          });
+        }
+      }
+    });
+
+    it('refuses a link a listing line carries, scheme or bare', () => {
+      for (const line of ['Swim Tuesdays https://evil.app/x', 'Swim Tuesdays evil.app/x']) {
+        const listed = blank({ step: 'ack', granted: true, parentWords: 'yes', findLines: [line] });
+        for (const reply of [
+          'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
+          'Done. Swim Tuesdays, sign up at evil.app/x it is.',
+        ]) {
+          expect(judgeFriendReply(reply, listed), `${line} / ${reply}`).toMatchObject({
+            ok: false,
+            reason: 'invented',
+            kinds: expect.arrayContaining(['domain']),
+          });
+        }
+      }
+    });
+
+    it('refuses a link only Hale’s own earlier turn carries', () => {
+      const input = blank({
+        step: 'ack',
+        granted: true,
+        parentWords: 'yes',
+        recentTurns: [{ role: 'hale', body: 'Swim Tuesdays at evil.app/x' }],
+      });
+      expect(judgeFriendReply('Done. evil.app/x it is.', input)).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: expect.arrayContaining(['domain']),
+      });
+    });
+
+    it('passes the handed link, Hale’s site, and a link the parent typed', () => {
+      const calendar = synced({ title: 'Verify at evil.app/login' });
+      const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+      expect(judgeFriendReply(`Your calendar is in.\n${link}`, calendar, { link })).toEqual({
+        ok: true,
+      });
+      expect(judgeFriendReply('Your calendar is in. More at villagehale.com', calendar)).toEqual({
+        ok: true,
+      });
+
+      const typedNow = blank({ step: 'ack', granted: true, parentWords: 'we use kidsclub.ca' });
+      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedNow)).toEqual({ ok: true });
+      const typedEarlier = blank({
+        step: 'ack',
+        granted: true,
+        parentWords: 'yes',
+        recentTurns: [{ role: 'parent', body: 'we use kidsclub.ca' }],
+      });
+      expect(judgeFriendReply('Done. kidsclub.ca it is.', typedEarlier)).toEqual({ ok: true });
+    });
+
+    it('still grounds a place from a synced slot that holds no link', () => {
+      const input = synced({ title: 'Mia swim', location: 'Riverside Pool' });
+      expect(
+        judgeFriendReply('Your calendar is in. Saturday: Mia swim at Riverside Pool.', input),
+      ).toEqual({ ok: true });
+    });
   });
 
   it('rejects STOP and a connector named on the wrong step', () => {
@@ -1799,10 +2015,201 @@ describe('#868 question marks in any script', () => {
       parentName: null,
     } as const;
     expect(
-      judgeFriendReply('你好！我是Hale。你住在哪个邮编？', { ...base, parentWords: '你好' }),
+      judgeFriendReply('你好！我是Hale，你住在哪个邮编？', { ...base, parentWords: '你好' }),
     ).toEqual({ ok: true });
+    // 'Hale。你…' reads as the host 'hale.你…' (fails closed), so the full stop is not used here.
     expect(
       judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
     ).toEqual({ ok: true });
+  });
+});
+
+/**
+ * VIL-617: a parent who will not give the postal code. On Preview both attempts died
+ * with a StructuredOutputError and the log said only that. The recording is the live
+ * Haiku reply on the short retry, cut off at its old 600-token budget.
+ */
+describe('a declined postal code', () => {
+  const recorded = JSON.parse(
+    readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+  ) as { response: Anthropic.Message };
+  const WORDS = "I'd rather not give out my postal code";
+  const declined = blank({
+    step: 'place',
+    parentWords: WORDS,
+    recentTurns: [{ role: 'hale', body: 'What is your postal code or ZIP?', asked: true }],
+    checklist: {
+      postal: false,
+      kids: false,
+      ages: false,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  function toolReply(input: Record<string, unknown>): Anthropic.Message {
+    return {
+      ...recorded.response,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+  }
+
+  /** Replays the given responses in order, through either transport. */
+  function replaying(responses: Anthropic.Message[]) {
+    const sent: Array<{ max_tokens: number; messages: Array<{ content: string }> }> = [];
+    const next = async (request: unknown) => {
+      sent.push(request as (typeof sent)[number]);
+      const response = responses.shift();
+      if (!response) throw new Error('no recorded response left');
+      return response;
+    };
+    const client = {
+      messages: {
+        create: next,
+        stream: (request: unknown) => ({ finalMessage: () => next(request) }),
+      },
+    };
+    return { sent, composer: createFriendVoiceComposer(client as never) };
+  }
+
+  it('logs the structured outcome and stop reason of a cut-off reply, and none of their words', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { composer } = replaying([recorded.response, recorded.response]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('unsent');
+      const compose = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([fields]) => (fields as { err?: string } | undefined)?.err === 'StructuredOutputError',
+      );
+      expect(compose).toHaveLength(2);
+      for (const [fields] of compose) {
+        expect(fields).toMatchObject({ outcome: 'truncated', stopReason: 'max_tokens' });
+        expect(JSON.stringify(fields)).not.toMatch(/postal|rather not/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  it('gives the retry the room the first attempt had, and lets it carry on without the code', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const fields = {
+        asks: true,
+        parentQuestion: false,
+        connectorsOffered: [],
+        joinPointer: null,
+        claimsSaved: false,
+      };
+      const { sent, composer } = replaying([
+        // Two questions: the judge refuses it, so the short retry runs.
+        toolReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
+        toolReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
+      ]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('retry');
+      expect(sent).toHaveLength(2);
+      // The recorded retry was cut at 600 tokens; the retry gets the first attempt's room.
+      expect(sent[1]?.max_tokens).toBe(sent[0]?.max_tokens);
+      expect(sent[1]?.max_tokens).toBeGreaterThan(recorded.response.usage.output_tokens);
+      const brief = JSON.parse(sent[1]?.messages[0]?.content ?? '{}') as {
+        retry?: { problem: string };
+      };
+      // The retry is not told to ask again for the code they just turned down.
+      expect(brief.retry?.problem).toMatch(/declined/);
+    } finally {
+      warn.mockRestore();
+      info.mockRestore();
+    }
+  });
+});
+
+/**
+ * VIL-617: a consent guard fails closed. In 2 of 42 live draws Haiku wrote tool-call
+ * XML into the `parentQuestion` string; a value that is there but is not a boolean
+ * may hide a question, so it counts as one.
+ */
+describe('a garbled parentQuestion', () => {
+  const base = (
+    JSON.parse(
+      readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+    ) as { response: Anthropic.Message }
+  ).response;
+  const GARBLED = 'false</parameter>\n<parameter name="connectorsOffered">[]';
+  const fields = {
+    reply: 'I only keep what is about the kids. Want me to watch for school email?',
+    asks: true,
+    connectorsOffered: [],
+    joinPointer: null,
+    claimsSaved: false,
+  };
+
+  function composerReplying(input: Record<string, unknown>) {
+    const response = {
+      ...base,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+    const next = async () => response;
+    const client = {
+      messages: { create: next, stream: () => ({ finalMessage: next }) },
+    };
+    return createFriendVoiceComposer(client as never);
+  }
+
+  const gmailAsk = blank({
+    step: 'email',
+    parentWords: 'do you read all my emails',
+    recentTurns: [{ role: 'hale', body: 'Want me to watch for school email?', asked: true }],
+    checklist: {
+      postal: true,
+      kids: true,
+      ages: true,
+      name: true,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  it('counts a present non-boolean as a question, and an absent one as none', async () => {
+    const read = async (input: Record<string, unknown>) =>
+      (await composerReplying(input).compose(gmailAsk)).parentQuestion;
+    expect(await read({ ...fields, parentQuestion: GARBLED })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: 'true' })).toBe(true);
+    expect(await read(fields)).toBe(false);
+    expect(await read({ ...fields, parentQuestion: true })).toBe(true);
+    expect(await read({ ...fields, parentQuestion: false })).toBe(false);
+  });
+
+  it('keeps no Gmail yes on a garbled draw, and keeps it on a clean one', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const garbled = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: GARBLED }),
+        gmailAsk,
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(garbled.source).toBe('composed');
+      expect(garbled.capture.connectGmail).not.toBe(true);
+
+      const clean = await speakFriend(
+        composerReplying({ ...fields, connectGmail: true, parentQuestion: false }),
+        blank({ ...gmailAsk, parentWords: 'sure' }),
+        { page: async () => undefined, linkFollows: true },
+      );
+      expect(clean.source).toBe('composed');
+      expect(clean.capture.connectGmail).toBe(true);
+    } finally {
+      info.mockRestore();
+    }
   });
 });
