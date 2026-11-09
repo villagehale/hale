@@ -621,17 +621,18 @@ export function founderWelcomeHandler(deps: FounderReplyDeps): DeterministicHand
         claimed: true,
         outcome: outcome.status,
         reply: outcome.reply,
-        // Closed by the NOTE, not by the ack — `fulfilled_by` has to point at the message
-        // that made good on the promise, and that message is in the other family's thread.
+        // Closed by the founder's own ack, NOT by the note: the note is a row in another
+        // household, and this offer row and its audit row are on the founder's access
+        // export (rule #1). The note's own audit row lives on the family it reached.
         // Closed AFTER the ack has actually gone, for the reason every MEM-10 writer closes
         // late: a turn that sent the note and then failed to answer must be re-drivable
         // against an offer that is still standing (the note's dedupe key makes the redrive
         // free).
-        afterSend: () =>
+        afterSend: (ackChannelMessageId) =>
           deps.fulfillCommitment(database, {
             familyId: ctx.familyId,
             kind: 'founder_welcome_offer',
-            channelMessageId: outcome.noteChannelMessageId,
+            channelMessageId: ackChannelMessageId,
             now: ctx.now,
           }),
       };
