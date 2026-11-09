@@ -295,6 +295,60 @@ describe('group plan calendar consent', () => {
     expect(await store.loadCalendarConsent(plan?.id ?? '', 'fam-covering')).toBeNull();
   });
 
+  it('writes nothing on an ok the reader is not sure of, and keeps the ask open', async () => {
+    const { store, texts } = await picnic();
+    const writer = writerSpy();
+    const priv = privateSpy();
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'the Patels are in',
+        tapback: null,
+        language: 'en',
+        now: LATER,
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes', { householdLabel: 'the Patels', headcount: 3 })),
+        writer,
+        consent: consentOf('ok'),
+        privateLines: priv,
+      }),
+    );
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
+
+    const unsure = consentOf('ok', 'low');
+    await takeGroupPlanRsvpTurn(
+      {
+        chatId: CHAT,
+        senderHandle: PRIYA,
+        senderName: 'Priya',
+        senderUserId: 'u-priya',
+        text: 'hmm maybe, let me think',
+        tapback: null,
+        language: 'en',
+        now: new Date(LATER.getTime() + 60_000),
+      },
+      calendarDeps({
+        store,
+        texts,
+        reader: readerOf(rsvp('yes')),
+        writer,
+        consent: unsure,
+        privateLines: priv,
+      }),
+    );
+    expect(unsure.texts).toEqual(['hmm maybe, let me think']);
+    expect(writer.familyIds).toEqual([]);
+    expect(priv.lines.map((line) => line.kind)).toEqual(['calendar_ask']);
+    const plan = await store.loadLivePlan(CHAT);
+    expect((await store.loadCalendarConsent(plan?.id ?? '', 'fam-priya'))?.status).toBe('asked');
+  });
+
   it('does not treat the words yes or ok as consent — the reader decides', async () => {
     const { store, texts } = await picnic();
     const writer = writerSpy();
