@@ -18,11 +18,10 @@ export const maxDuration = 300;
  * and 51 (vercel.json), so median detection is about five minutes and the ack promises
  * "within about ten minutes of the page showing it", never "the moment".
  *
- * NO ANTHROPIC CLIENT, deliberately. Nothing on this path is a judgement call: a
- * PerfectMind course page carries its availability as typed integers and booleans in an
- * embedded JSON model, and the sentence that goes out is a template with an evidence
- * gate. A model here would only add a way to be wrong, and it would put a family's
- * course page in front of one (rule #1).
+ * The page READ is deterministic: a PerfectMind course page carries its availability as
+ * typed integers and booleans in an embedded JSON model. Only the text is model-written,
+ * from facts checked against the page; the course url is appended by code and never
+ * shown to the model (rule #1).
  *
  * Cron auth is the gate: without the matching `Authorization: Bearer <CRON_SECRET>` the
  * request gets 401 and nothing runs — no fetch, no send, no writes. `cronRoute` stamps

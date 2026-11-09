@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message makes claims the facts do not support. It says Hale registered Max and paid the fee, but Hale never registers or pays; the parent did. It also names a child, Max, who is not in the facts. An outcome_registered message should acknowledge what the parent reported.",
+    "score": 1
+  }
+}

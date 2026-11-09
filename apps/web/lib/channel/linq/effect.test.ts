@@ -5,13 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { runTurn } from '~/lib/channel/router/deadline';
 import {
-  LINQ_EFFECT_REPEAT_MS,
   LINQ_EFFECT_TOOL_SCHEMA,
   type LinqEffectDecider,
   type LinqEffectDecision,
+  type LinqEffectInput,
   applyLinqEffect,
   createLinqEffectDecider,
-  linqEffectHold,
   linqEffectRefusals,
   linqEffectUserMessage,
   linqEffectsEnabled,
@@ -38,19 +37,24 @@ const NOW = new Date('2026-10-28T12:00:00.000Z');
 const FAMILY = '00000000-0000-4000-8000-0000000000f1';
 const USER = '00000000-0000-4000-8000-0000000000u1';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
-const READ = {
-  audience: 'direct' as const,
+const READ: LinqEffectInput = {
+  audience: 'direct',
   parentText: 'we got in for swim',
   reply: 'You are in for swim.',
+  parentLocalTime: 'Wednesday 8:00 AM America/Toronto',
+  lastEffectHoursAgo: null,
 };
 
 function decider(decision: LinqEffectDecision | null): LinqEffectDecider & {
   calls: number;
+  reads: LinqEffectInput[];
 } {
   const fake = {
     calls: 0,
-    async decide() {
+    reads: [] as LinqEffectInput[],
+    async decide(input: LinqEffectInput) {
       fake.calls += 1;
+      fake.reads.push(input);
       return decision;
     },
   };
@@ -72,7 +76,7 @@ function moment(
   extra: {
     now?: Date;
     lastEffectAt?: Date | null;
-    timeZone?: string;
+    timeZone?: string | null;
     templateKey?: string | null;
     medicalReplySource?: 'fixed' | 'web_grounded' | null;
     replySource?: 'composed' | 'fixed' | null;
@@ -94,10 +98,27 @@ function moment(
     effect: {
       decider: d,
       audience: 'direct',
-      timeZone: extra.timeZone ?? 'America/Toronto',
+      timeZone: extra.timeZone === undefined ? 'America/Toronto' : extra.timeZone,
       lastEffectAt: extra.lastEffectAt ?? null,
     },
   });
+}
+
+/** The fake's transaction hands its callback a handle; make one insert on it throw. */
+function failInsertInside(fake: ReturnType<typeof makeFakeDb>, target: unknown) {
+  const transaction = fake.db.transaction.bind(fake.db);
+  type Tx = Parameters<Parameters<typeof fake.db.transaction>[0]>[0];
+  fake.db.transaction = ((cb: (tx: Tx) => Promise<unknown>) =>
+    transaction(async (tx) => {
+      const insert = tx.insert.bind(tx);
+      const failing = Object.assign(Object.create(tx), {
+        insert: (table: Parameters<typeof insert>[0]) => {
+          if (table === target) throw new Error('bad row');
+          return insert(table);
+        },
+      });
+      return cb(failing);
+    })) as unknown as typeof fake.db.transaction;
 }
 
 afterEach(() => {
@@ -144,14 +165,16 @@ describe('VIL-473 Linq message effects', () => {
     expect(linqEffectsEnabled()).toBe(true);
   });
 
-  it('hands the model the audience, the parent message and the reply', () => {
+  it('hands the model the audience, both bodies, the wall clock and the last effect', () => {
     const payload = JSON.parse(
-      linqEffectUserMessage({ ...READ, audience: 'group', parentText: READ.parentText }),
+      linqEffectUserMessage({ ...READ, audience: 'group', lastEffectHoursAgo: 3 }),
     );
     expect(payload).toEqual({
       audience: 'group',
       parent: { text: READ.parentText },
       reply: READ.reply,
+      parentLocalTime: 'Wednesday 8:00 AM America/Toronto',
+      lastEffectHoursAgo: 3,
     });
   });
 
@@ -303,61 +326,41 @@ describe('VIL-473 Linq message effects', () => {
     expect(missingId).toHaveBeenCalledTimes(1);
   });
 
-  it('does not play an effect during quiet hours or again in the same chat within 24h', async () => {
-    const torontoAfternoon = new Date('2026-10-28T16:00:00.000Z');
-    const torontoNight = new Date('2026-10-29T03:00:00.000Z');
-    expect(
-      linqEffectHold({
-        now: torontoAfternoon,
-        timeZone: 'America/Toronto',
-        lastEffectAt: null,
-      }),
-    ).toBeNull();
-    expect(
-      linqEffectHold({
-        now: torontoNight,
-        timeZone: 'America/Toronto',
-        lastEffectAt: null,
-      }),
-    ).toBe('quiet_hours');
-    expect(
-      linqEffectHold({
-        now: torontoAfternoon,
-        timeZone: 'America/Toronto',
-        lastEffectAt: new Date(torontoAfternoon.getTime() - 60 * 60 * 1000),
-      }),
-    ).toBe('recent_in_chat');
-    expect(
-      linqEffectHold({
-        now: torontoAfternoon,
-        timeZone: 'America/Toronto',
-        lastEffectAt: new Date(torontoAfternoon.getTime() - LINQ_EFFECT_REPEAT_MS),
-      }),
-    ).toBeNull();
-
+  it('holds no clock window and no per-chat quota: the model reads both facts and decides', async () => {
     vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
     vi.stubEnv('VERCEL_ENV', 'preview');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    const quiet = makeFakeDb();
-    const quietDecider = decider({ effect: { type: 'screen', name: 'confetti' } });
-    const quietFetch = linqFetch();
-    expect(await moment(quiet, quietDecider, quietFetch, { now: torontoNight })).toEqual({
-      handled: false,
+    // 23:00 in New York, one hour after the last effect in this chat: the two holds this
+    // PR used to have would both have kept the model from being asked.
+    const lateNight = new Date('2026-10-29T03:00:00.000Z');
+    const fake = makeFakeDb();
+    const chosen = decider({ effect: { type: 'bubble', name: 'gentle' } });
+    const posted = linqFetch();
+    const sent = await moment(fake, chosen, posted, {
+      now: lateNight,
+      timeZone: 'America/New_York',
+      lastEffectAt: new Date(lateNight.getTime() - 90 * 60 * 1000),
     });
-    expect(quietDecider.calls).toBe(0);
-    expect(quietFetch).not.toHaveBeenCalled();
+    expect(chosen.reads).toEqual([
+      {
+        audience: 'direct',
+        parentText: READ.parentText,
+        reply: READ.reply,
+        parentLocalTime: 'Wednesday 11:00 PM America/New_York',
+        lastEffectHoursAgo: 1,
+      },
+    ]);
+    expect(sent).toMatchObject({ handled: true, threadBody: READ.reply });
+    expect(posted).toHaveBeenCalledTimes(1);
+  });
 
-    const recent = makeFakeDb();
-    const recentDecider = decider({ effect: { type: 'screen', name: 'confetti' } });
-    const recentFetch = linqFetch();
-    expect(
-      await moment(recent, recentDecider, recentFetch, {
-        now: torontoAfternoon,
-        lastEffectAt: new Date(torontoAfternoon.getTime() - 60 * 60 * 1000),
-      }),
-    ).toEqual({ handled: false });
-    expect(recentDecider.calls).toBe(0);
-    expect(recentFetch).not.toHaveBeenCalled();
+  it('shows no wall clock for a parent with no stored zone, and none for a chat with no effect', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const chosen = decider({ effect: null });
+    await moment(makeFakeDb(), chosen, linqFetch(), { timeZone: null, lastEffectAt: null });
+    expect(chosen.reads[0]).toMatchObject({ parentLocalTime: null, lastEffectHoursAgo: null });
   });
 
   it('is never consulted while the flag is off', async () => {
@@ -476,17 +479,44 @@ describe('VIL-473 Linq message effects', () => {
     });
 
     const broken = makeFakeDb();
-    const insert = broken.db.insert.bind(broken.db);
-    broken.db.insert = ((table: Parameters<typeof insert>[0]) => {
-      if (table === schema.channelMessages) throw new Error('bad row');
-      return insert(table);
-    }) as typeof broken.db.insert;
+    failInsertInside(broken, schema.channelMessages);
     const posted = linqFetch();
     await expect(
       moment(broken, decider({ effect: { type: 'screen', name: 'confetti' } }), posted),
     ).rejects.toBeInstanceOf(LinqMomentDeliveredError);
     expect(posted).toHaveBeenCalledTimes(1);
     expect(broken.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
+  it('never leaves an effect row without its audit row', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    failInsertInside(fake, schema.auditLog);
+    const posted = linqFetch();
+    await expect(
+      moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), posted),
+    ).rejects.toBeInstanceOf(LinqMomentDeliveredError);
+    expect(posted).toHaveBeenCalledTimes(1);
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(fake.rows(schema.auditLog)).toHaveLength(0);
+  });
+
+  it('lets the reply go plain when the effect POST never reached Linq', async () => {
+    vi.stubEnv('LINQ_EFFECTS_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    const unreachable = vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    });
+    expect(
+      await moment(fake, decider({ effect: { type: 'screen', name: 'confetti' } }), unreachable),
+    ).toEqual({ handled: false });
+    expect(unreachable).toHaveBeenCalledTimes(1);
+    expect(fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(fake.rows(schema.auditLog)).toHaveLength(0);
   });
 
   it('lets the reply go out and writes nothing when the model fails or the send is refused', async () => {

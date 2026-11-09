@@ -69,7 +69,8 @@ import {
   writeLogisticsDecision,
 } from './logistics-poll';
 import { type PollOptionWrite, sendChoicePoll } from './poll';
-import { LinqSendError } from './transport';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * Both parents' calendars, read together, spoken into the claimed Linq group.
@@ -949,6 +950,8 @@ export async function narrateHouseholdCalendar(
   if (!linqGroupCoparentEnabled()) return;
   const context = await loadFamilyCalendarContext(database, input.familyId);
   if (!context.parentUserIds || !context.chatId) return;
+  const listChatHandles: ListChatHandles = (i) =>
+    listLinqParticipantHandles({ ...i, fetch: input.fetch });
   const { blocks, teens } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const parentNames = await loadParentNames(database, context.parentUserIds);
   const statements = await loadHandoffStatements(
@@ -972,20 +975,24 @@ export async function narrateHouseholdCalendar(
   const clashAlerts = linqGroupConflictAlertsEnabled();
   let notice: HouseholdNotice | null = null;
   if (clashAlerts) {
-    const clash = await clashNotice(database, {
-      familyId: input.familyId,
-      chatId: context.chatId,
-      now: input.now,
-      timeZone: context.timeZone,
-      language: context.language,
-      parentUserIds: context.parentUserIds,
-      parentNames,
-      calendarUserIds: context.calendarUserIds,
-      blocks,
-      remembered,
-      children: context.children,
-      teens,
-    });
+    const clash = await clashNotice(
+      database,
+      {
+        familyId: input.familyId,
+        chatId: context.chatId,
+        now: input.now,
+        timeZone: context.timeZone,
+        language: context.language,
+        parentUserIds: context.parentUserIds,
+        parentNames,
+        calendarUserIds: context.calendarUserIds,
+        blocks,
+        remembered,
+        children: context.children,
+        teens,
+      },
+      listChatHandles,
+    );
     if (clash === 'unsent' || clash === 'held') return;
     notice = clash;
   }
@@ -1004,7 +1011,12 @@ export async function narrateHouseholdCalendar(
     const prompt = await whoTakesPrompt(context.language, notice.whoTakes);
     if (prompt) notice = { ...notice, text: prompt };
   }
-  const audience = await groupAudienceAllows(database, context.chatId, NOTICE_CLASS[notice.kind]);
+  const audience = await groupAudienceAllows(
+    database,
+    context.chatId,
+    NOTICE_CLASS[notice.kind],
+    listChatHandles,
+  );
   if (!audience.allowed) {
     console.warn(
       { familyId: input.familyId, kind: notice.kind, reason: audience.reason },
@@ -1078,8 +1090,14 @@ export async function narrateHouseholdCalendar(
 async function clashNotice(
   database: Database,
   input: ClashPlanningInput,
+  listChatHandles: ListChatHandles,
 ): Promise<HouseholdNotice | 'held' | 'unsent' | null> {
-  const audience = await groupAudienceAllows(database, input.chatId, NOTICE_CLASS.clash);
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    NOTICE_CLASS.clash,
+    listChatHandles,
+  );
   if (!audience.allowed) {
     console.warn(
       { familyId: input.familyId, kind: 'clash', reason: audience.reason },
@@ -1113,7 +1131,7 @@ async function clashNotice(
       );
       return 'held';
     }
-    const poll = linqPollsEnabled() ? clashPollOffer(clash, people) : null;
+    const poll = linqPollsEnabled() ? clashPollOffer(clash, people, kids) : null;
     const alert = await sharedGroupConflictWriter().write(
       groupConflictLineInput(clash, {
         people,
@@ -1399,14 +1417,19 @@ export async function takeGroupPickupClaim(
     sentAt: Date;
     now: Date;
   },
-  ports: { reader?: GroupPickupClaimReader } = {},
+  ports: { reader?: GroupPickupClaimReader; listChatHandles?: ListChatHandles } = {},
 ): Promise<GroupPickupClaimOutcome> {
   if (!linqGroupCoparentEnabled() || !linqGroupConflictAlertsEnabled()) return 'flag_off';
   const text = input.text.trim();
   if (!text) return 'no_text';
   const context = await loadFamilyCalendarContext(database, input.familyId);
   if (!context.parentUserIds || context.chatId !== input.chatId) return 'not_household_group';
-  const audience = await groupAudienceAllows(database, input.chatId, NOTICE_CLASS.clash);
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    NOTICE_CLASS.clash,
+    ports.listChatHandles ?? listLinqParticipantHandles,
+  );
   if (!audience.allowed) return 'not_for_this_group';
   const { blocks, teens } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const remembered = await loadRememberedLogistics(database, input.familyId);

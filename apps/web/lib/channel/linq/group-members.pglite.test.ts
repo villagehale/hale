@@ -96,10 +96,62 @@ async function liveRoles(familyId: string): Promise<string[]> {
     .map((row) => row.role);
 }
 
+/** A person this family already holds: a verified channel and a family role here. */
+async function seedMember(
+  familyId: string,
+  phone: string,
+  role: 'co_parent' | 'grandparent' | 'extended' | null,
+) {
+  const [user] = await db.database
+    .insert(schema.users)
+    .values({ externalAuthId: `sms:${phoneBlindIndex(phone)}` })
+    .returning({ id: schema.users.id });
+  const userId = user?.id as string;
+  if (role) await db.database.insert(schema.familyMembers).values({ familyId, userId, role });
+  await db.database.insert(schema.parentChannels).values({
+    userId,
+    familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: NOW,
+  });
+  return userId;
+}
+
+async function rowsFor(familyId: string, phone: string) {
+  const hash = phoneBlindIndex(phone);
+  return {
+    users: await db.database
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.externalAuthId, `sms:${hash}`)),
+    familyMembers: await db.database
+      .select({ role: schema.familyMembers.role })
+      .from(schema.familyMembers)
+      .where(eq(schema.familyMembers.familyId, familyId)),
+    consents: await db.database
+      .select({ id: schema.consentRecords.id })
+      .from(schema.consentRecords)
+      .where(eq(schema.consentRecords.consentScope, 'linq_group_member')),
+    channels: await db.database
+      .select({ id: schema.parentChannels.id })
+      .from(schema.parentChannels)
+      .where(eq(schema.parentChannels.phoneE164Hash, hash)),
+    seats: await db.database
+      .select({ id: schema.linqGroupMembers.id })
+      .from(schema.linqGroupMembers)
+      .where(eq(schema.linqGroupMembers.phoneE164Hash, hash)),
+  };
+}
+
+const NOTHING_WRITTEN = { users: [], consents: [], channels: [], seats: [] };
+
 describe('linq group members', () => {
-  it('seats a parent add with one welcome, then more people with no cap', async () => {
+  it('seats a parent add of a person the family holds with one welcome, with no cap', async () => {
     const seeded = await seedFamily(PARENT, 'Barton');
     const wire = sender();
+    await seedMember(seeded.familyId, '+14165550122', 'grandparent');
     const first = await seatParticipantAdded(db.database, {
       chatId: CHAT,
       participantHandle: '+14165550122',
@@ -110,7 +162,7 @@ describe('linq group members', () => {
     });
     expect(first).toMatchObject({
       outcome: 'group_member_seated',
-      role: 'co_parent',
+      role: 'other_family',
       notice: 'sent',
     });
     expect(wire.texts).toEqual([await groupMemberWelcome('en', 'Barton')]);
@@ -126,7 +178,23 @@ describe('linq group members', () => {
     expect(again.outcome).toBe('group_member_already');
     expect(wire.texts).toHaveLength(1);
 
-    for (const phone of ['+14165550133', '+14165550144', '+14165550155']) {
+    await seedMember(seeded.familyId, '+14165550133', 'co_parent');
+    const coParent = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550133',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(coParent).toMatchObject({
+      outcome: 'group_member_seated',
+      role: 'co_parent',
+      notice: 'skipped',
+    });
+
+    for (const phone of ['+14165550144', '+14165550155']) {
+      await seedMember(seeded.familyId, phone, 'extended');
       const seated = await seatParticipantAdded(db.database, {
         chatId: CHAT,
         participantHandle: phone,
@@ -156,8 +224,8 @@ describe('linq group members', () => {
     expect(new Set(outbound.map((row) => row.dedupeKey)).size).toBe(outbound.length);
   });
 
-  it('welcomes when Linq names no actor and seats Hale without a second welcome line', async () => {
-    await seedFamily(PARENT, 'Barton');
+  it('seats nobody when Linq names no actor or Hale is the actor', async () => {
+    const { familyId } = await seedFamily(PARENT, 'Barton');
     const wire = sender();
     const unnamed = await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -167,7 +235,11 @@ describe('linq group members', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(unnamed).toMatchObject({ outcome: 'group_member_seated', notice: 'sent' });
+    expect(unnamed).toEqual({ outcome: 'group_member_refused', reason: 'actor' });
+    expect(await rowsFor(familyId, '+14165550166')).toEqual({
+      ...NOTHING_WRITTEN,
+      familyMembers: [{ role: 'primary_parent' }],
+    });
 
     const hale = await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -177,8 +249,69 @@ describe('linq group members', () => {
       now: NOW,
       send: wire.send,
     });
-    expect(hale).toMatchObject({ outcome: 'group_member_seated', notice: 'skipped' });
-    expect(wire.texts).toEqual([await groupMemberWelcome('en', null)]);
+    expect(hale).toEqual({ outcome: 'group_member_refused', reason: 'actor' });
+    expect(await rowsFor(familyId, '+14165550177')).toEqual({
+      ...NOTHING_WRITTEN,
+      familyMembers: [{ role: 'primary_parent' }],
+    });
+    expect(wire.texts).toEqual([]);
+  });
+
+  it('seats nobody a named parent adds when the family does not hold them', async () => {
+    const { familyId } = await seedFamily(PARENT, 'Barton');
+    const wire = sender();
+    const added = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550166',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(added).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect(await rowsFor(familyId, '+14165550166')).toEqual({
+      ...NOTHING_WRITTEN,
+      familyMembers: [{ role: 'primary_parent' }],
+    });
+    const refused = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_member_refused'));
+    expect(refused).toEqual([{ after: { reason: 'seat_needs_parent_grant' } }]);
+    expect(wire.texts).toEqual([]);
+  });
+
+  it('seats nobody whose channel is in this family without a family role, and seats one with a role', async () => {
+    const { familyId } = await seedFamily(PARENT, 'Barton');
+    const wire = sender();
+    await seedMember(familyId, '+14165550166', null);
+    const roleless = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550166',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(roleless).toEqual({ outcome: 'seat_needs_parent_grant' });
+    expect((await rowsFor(familyId, '+14165550166')).seats).toEqual([]);
+
+    await seedMember(familyId, '+14165550177', 'grandparent');
+    const held = await seatParticipantAdded(db.database, {
+      chatId: CHAT,
+      participantHandle: '+14165550177',
+      actorHandle: PARENT,
+      isFromMe: false,
+      now: NOW,
+      send: wire.send,
+    });
+    expect(held).toMatchObject({
+      outcome: 'group_member_seated',
+      role: 'other_family',
+      notice: 'sent',
+    });
+    expect((await rowsFor(familyId, '+14165550177')).seats).toHaveLength(1);
+    expect(wire.texts).toEqual([await groupMemberWelcome('en', 'Barton')]);
   });
 
   it('welcomes in French when that is the household language', async () => {
@@ -187,6 +320,7 @@ describe('linq group members', () => {
       .update(schema.families)
       .set({ primaryLanguage: 'fr' })
       .where(eq(schema.families.id, seeded.familyId));
+    await seedMember(seeded.familyId, '+14165550122', 'grandparent');
     const wire = sender();
     await seatParticipantAdded(db.database, {
       chatId: CHAT,
@@ -227,14 +361,15 @@ describe('linq group members', () => {
     expect(wire.texts).toEqual([]);
   });
 
-  it('unseats on removal, including a seat Hale added', async () => {
-    await seedFamily(PARENT, 'Barton');
+  it('unseats on removal', async () => {
+    const { familyId } = await seedFamily(PARENT, 'Barton');
+    await seedMember(familyId, '+14165550199', 'grandparent');
     const wire = sender();
     await seatParticipantAdded(db.database, {
       chatId: CHAT,
       participantHandle: '+14165550199',
-      actorHandle: FROM,
-      isFromMe: true,
+      actorHandle: PARENT,
+      isFromMe: false,
       now: NOW,
       send: wire.send,
     });
@@ -292,6 +427,8 @@ describe('linq group members', () => {
 
   it('lets any live member take a duty and blocks privileged actions for the others', async () => {
     const seeded = await seedFamily(PARENT, 'Barton');
+    await seedMember(seeded.familyId, '+14165550122', 'co_parent');
+    await seedMember(seeded.familyId, '+14165550133', 'grandparent');
     const wire = sender();
     await seatParticipantAdded(db.database, {
       chatId: CHAT,

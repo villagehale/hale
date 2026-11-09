@@ -11,7 +11,7 @@ import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { type GroupAudienceVerdict, groupAudienceAllows } from '~/lib/channel/linq/group-audience';
 import { readGroupMembership } from '~/lib/channel/linq/group-membership';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
   PROACTIVE_CATEGORY,
@@ -22,13 +22,14 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import { type ContentClass, classifyFamilyEvent } from '~/lib/channel/role-scope';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import {
   icsSequence,
   loadInviteEventRow,
   mintEventInviteLink,
   toInviteEvent,
 } from '~/lib/loop/ics-invite';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { recordGroupPlanHold } from './redrive';
 import {
@@ -42,7 +43,7 @@ import {
   planEndLabel,
   planWhenLabel,
 } from './report';
-import { groupPlanChatId } from './stamp';
+import { groupPlanChatKey } from './stamp';
 
 /**
  * VIL-443 (T17) 2/2 — a group's plan, reported back to the group.
@@ -379,7 +380,7 @@ export async function loadGroupPlan(
   const placedByActionId = placement?.placedByActionId;
   if (!placement || !placedByActionId) return null;
 
-  const draftedIn = await groupPlanChatId(database, row.familyId, placedByActionId);
+  const draftedIn = await groupPlanChatKey(database, row.familyId, placedByActionId);
   if (!draftedIn) return null;
 
   const [family] = await database
@@ -389,7 +390,7 @@ export async function loadGroupPlan(
     })
     .from(schema.families)
     .where(eq(schema.families.id, row.familyId));
-  if (!family?.chatId || family.chatId !== draftedIn) return null;
+  if (!family?.chatId || linqChatBlindIndex(family.chatId) !== draftedIn) return null;
   const chatId = family.chatId;
 
   const parents = await database
@@ -538,7 +539,10 @@ export function productionGroupPlanReportPorts(
     enabled: () => groupPlanReportEnabled(),
     now: clock,
     loadPlan: (request) => loadGroupPlan(database, request, clock()),
-    audience: (chatId, contentClass) => groupAudienceAllows(database, chatId, contentClass),
+    audience: (chatId, contentClass) =>
+      groupAudienceAllows(database, chatId, contentClass, (i) =>
+        listLinqParticipantHandles({ ...i, fetch: options.fetch }),
+      ),
     alreadySent: (dedupeKey) => dedupeActive(dedupeKey, database),
     gate: (familyId, parentUserId, now) =>
       assertProactiveSendAllowed(
@@ -648,18 +652,10 @@ export function productionGroupPlanReportPorts(
         targetId: plan.placedByActionId,
         after: { familyEventId: plan.familyEventId, change: plan.change },
       });
-      console.error(
-        {
-          urgent: true,
-          familyId: plan.familyId,
-          familyEventId: plan.familyEventId,
-          change: plan.change,
-        },
-        'URGENT: group plan text unwritten after a smaller model - page #ops now',
-      );
-      const page = await postOpsSlack(
-        `Hale group plan: the ${plan.change} text for a family group could not be written, so nothing was sent to the group.`,
-      );
+      const page = await pageOps(database, {
+        site: 'group_plan_unwritten',
+        facts: { change: plan.change },
+      });
       console.warn({ page }, 'group plan report: ops paged');
     },
     hold: (plan) => recordGroupPlanHold(database, plan, clock()),

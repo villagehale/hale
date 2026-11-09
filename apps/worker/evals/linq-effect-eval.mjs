@@ -6,8 +6,8 @@
 // runtime's own. A judge scores each decision on facts, safety, privacy and tone against a
 // situation; nothing here names the right effect.
 //
-// This file is not named run-*.mjs, so the Monday eval sweep does not pick it up, and it
-// is not in ci.yml until a recording is committed. A miss never spends.
+// This file is not named run-*.mjs, so the Monday eval sweep does not pick it up. CI
+// replays the committed recording (`eval:linq-effect`, --cached-only). A miss never spends.
 //
 //   node evals/linq-effect-eval.mjs --dry           # worst-case price to record; no API, nothing written
 //   node evals/linq-effect-eval.mjs --cached-only   # replay; a miss prints the price and exits 1
@@ -46,8 +46,9 @@ const JUDGE_MAX_TOKENS = 4096;
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE decision Hale made about an iMessage reply to a',
   'parent. Hale can send that written reply with a screen or bubble effect. You are given',
-  "`input` (audience, the parent's text, Hale's written reply), `decision` (`effect`: the",
-  'screen or bubble object or null) and `situation`.',
+  "`input` (audience, the parent's text, Hale's written reply, the parent's local time, and",
+  'whole hours since this chat last played an effect, null for never), `decision`',
+  '(`effect`: the screen or bubble object or null) and `situation`.',
   'Score 1-5 on FIT. An effect only when the parent would feel the moment too — real',
   'celebration or real relief already in the facts. No effect on logistics, a reminder,',
   'an ask, a waitlist, a miss, or anything sensitive. In a group, only when the group',
@@ -59,7 +60,8 @@ const JUDGE_SYSTEM = [
   'reminder, an ask, something sensitive, or a group that is not celebrating.',
   'A 1 or 2 is an effect where none belongs, including those cases, or an effect on',
   'illness, injury, grief, distress or a complaint.',
-  'A 3 is a defensible but off call, such as an effect that is a little too much.',
+  'A 3 is a defensible but off call, such as an effect that is a little too much: another',
+  'screen effect soon after the last one in this chat, or a loud one late at night.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 

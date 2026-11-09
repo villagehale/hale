@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgrcPKHZYk5kcaXkrPSzB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSwAYKEAgTGAI4AUIIdGhpbmtpbmcSDPnBYrG9PgOjPQULXBoMx/iuyE2rgj7l7wrUIjDeJGTU7ngkPCBTvJyNlYtQ+oaf8qB4Hi776lV35IPQPv0lIihdYrPkBrUxvslnZLEq3QVEY0hB69cxKKOxW+sLicGyw7rVlXsoBxTuhExEj4bkRu/M6uV2prUiZOAWh/kMuxnRu8Ikq0HvScEvqfUE3dpGApXVPKqQU00dR0loH9G6cTpTY5XLEQrOP9yJ+1GUFG1q/5kZFV8gmZCyXd01inO6BHX4ffj3ShYvZZw11sOnFJcmm5A6wgWAQNEcTnz4vOr+OFbDrjQ5tfP5oCCcRES5R1Cwfr7fYnygDATDg5I6DRytU56aOXrAWkZLOFV+6UC776mYJfE64UyXop/9lc7iEJHcHi/XuVRLGTQOCgrNhZv6Mp6ZdKAdd646YFWByUCPYJOLrmuAFSwsFyEZVFUIZq/vrsjXOUOG6b5NL9aHNUNAsISKv3H//WlqFJLMX8xma57mmRUw5VFTv7qk4h0dLBZ6CkikwIGsce23Ionygj3gKG6VwNiTQoAQN6Fa4yLhzc8Ln6aolZjW2g8oNcri7TzcEkk9OCwubQ5q4WXlrR3QloOaUfADnea6kGL9oC5WC/PByegc1fdwZ/DfDTsOXsopOwa/DkPaeHjdy61n5iuqn1rYssn3KqE49ObxXhiUrPb2cXgSzytmZKdHlnFQP0sFofRIQmSFPdo30/kvGHb70xcdk6xdYrRojp6GclY/7wpvCvuxy2jFYEeTSgSc3Xnj2o2N4siUJ/C3fZobYERFkkZdgAT01WZrVNB1B5ACGgqFf8J/f3blKgrlDHNgUjL/bB1tvQ/XXZ+qhKr1igbCvAsM3+bNGuRL7LJh7KKgUX9oK1zsvyCM7rsG5YXqAgymzTSVcI6vAM2iI9/gL8YVLxm5OE9VzH+QqWhChkMVeLwniGHC7+0cGAfjsJGE7MUrUskX/eNtyZ1ACQRIW7D3kupwD2Ikp3ONT5ufND2gSKD9bNeHaiXeRrP+DCtqJSSkv2E+smlSvpCrwJXwc6m5xelbnMJmBJ04M74Lk5iI+7s1B4l0jT80Vu7LGAE="
+      },
+      {
+        "type": "text",
+        "text": "Nothing's on your calendar today, and it's a wet one. Riverbend Community Centre has an indoor open play gym Saturdays 9 a.m. to noon, $6 per child, and it fits a 2-year-old. That's per their program page, so I haven't confirmed it myself. [link-187000]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 321,
+      "cache_read_input_tokens": 20750,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 321,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 170,
+      "output_tokens_details": {
+        "thinking_tokens": 69
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

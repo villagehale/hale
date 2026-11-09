@@ -4,10 +4,10 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { sendLinqEffect } from '~/lib/channel/outbound-transport';
 import { assertTurnLive } from '~/lib/channel/router/deadline';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { formatSnapshotLocalNow } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqEffectsEnabled } from './config';
@@ -30,36 +30,12 @@ import {
  * failed or unusable read, or a provider that refused the effect, sends the
  * reply as a plain bubble. A send that may already have landed does not.
  *
- * Two facts sit in front of the model: no effect during the parent's quiet
- * hours, and at most one effect per conversation stretch — no repeat in this
- * chat within 24 hours, read from send history.
+ * Code holds no clock window and no per-chat quota (decision 2026-11-04: the
+ * model decides when an effect fits). It hands the model two facts instead:
+ * the parent's wall clock, and how long ago this chat last played an effect.
  */
 
 export { linqEffectsEnabled };
-
-/** One effect per chat per stretch. A later send in the same chat waits this out. */
-export const LINQ_EFFECT_REPEAT_MS = 24 * 60 * 60 * 1000;
-
-export type LinqEffectHold = 'quiet_hours' | 'recent_in_chat';
-
-/**
- * Whether an effect may play, from the clock and this chat's send history.
- * A hold is named; the reply still goes out as a plain bubble.
- */
-export function linqEffectHold(input: {
-  now: Date;
-  timeZone: string;
-  lastEffectAt: Date | null;
-}): LinqEffectHold | null {
-  if (inProactiveQuietHours(input.now, input.timeZone)) return 'quiet_hours';
-  if (
-    input.lastEffectAt &&
-    input.now.getTime() - input.lastEffectAt.getTime() < LINQ_EFFECT_REPEAT_MS
-  ) {
-    return 'recent_in_chat';
-  }
-  return null;
-}
 
 /** Latest `linq:effect` send in this chat, from the outbound ledger. */
 export async function lastLinqEffectAt(database: Database, chatId: string): Promise<Date | null> {
@@ -94,10 +70,45 @@ export async function lastLinqEffectAt(database: Database, chatId: string): Prom
   return row.sentAt ?? row.createdAt ?? null;
 }
 
+/**
+ * The parent's stored zone, or null. No default zone stands in: a parent whose
+ * zone Hale does not know is shown no wall clock rather than another city's.
+ */
+export async function parentStoredTimeZone(
+  database: Database,
+  parentUserId: string,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.users.id, timezone: schema.users.timezone })
+    .from(schema.users)
+    .where(eq(schema.users.id, parentUserId));
+  return rows.find((row) => row.id === parentUserId)?.timezone ?? null;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** The two facts the model reads beside the bodies. */
+export function linqEffectClockFacts(input: {
+  now: Date;
+  timeZone: string | null;
+  lastEffectAt: Date | null;
+}): Pick<LinqEffectInput, 'parentLocalTime' | 'lastEffectHoursAgo'> {
+  return {
+    parentLocalTime: input.timeZone ? formatSnapshotLocalNow(input.now, input.timeZone) : null,
+    lastEffectHoursAgo: input.lastEffectAt
+      ? Math.max(0, Math.floor((input.now.getTime() - input.lastEffectAt.getTime()) / HOUR_MS))
+      : null,
+  };
+}
+
 export interface LinqEffectInput {
   audience: 'direct' | 'group';
   parentText: string;
   reply: string;
+  /** The parent's wall clock, already in their zone. Null: no zone is stored. */
+  parentLocalTime: string | null;
+  /** Whole hours since this chat last played an effect. Null: it never has. */
+  lastEffectHoursAgo: number | null;
 }
 
 export interface LinqEffectDecision {
@@ -159,6 +170,8 @@ export function linqEffectUserMessage(input: LinqEffectInput): string {
     audience: input.audience,
     parent: { text: input.parentText },
     reply: input.reply,
+    parentLocalTime: input.parentLocalTime,
+    lastEffectHoursAgo: input.lastEffectHoursAgo,
   });
 }
 
@@ -231,9 +244,9 @@ export type LinqEffectOutcome =
   | { status: 'declined' }
   | {
       /**
-       * The POST may already be on the phone: the wait expired, the connection
-       * dropped, or Linq accepted and sent no message id. A second POST would
-       * be a second copy of the reply.
+       * The POST may already be on the phone: the wait expired, or Linq
+       * accepted and sent no message id. A second POST would be a second copy
+       * of the reply.
        */
       status: 'uncertain';
       code: string;
@@ -241,16 +254,17 @@ export type LinqEffectOutcome =
     }
   | {
       status: 'not_sent';
-      reason: 'model_failed' | 'refused' | 'not_configured';
+      reason: 'model_failed' | 'refused' | 'unreachable' | 'not_configured';
       code?: string;
       httpStatus?: number;
     };
 
 /**
  * Provider outcomes that cannot prove the effect did not go out. A named
- * refusal (a 4xx Linq answered with) is not in this set.
+ * refusal (a 4xx Linq answered with) is not in this set, and neither is
+ * `network` (see below).
  */
-const AMBIGUOUS_EFFECT_SEND = new Set(['timeout', 'network', 'missing_message_id']);
+const AMBIGUOUS_EFFECT_SEND = new Set(['timeout', 'missing_message_id']);
 
 /**
  * Ask the model, then send the reply with the effect it chose.
@@ -293,6 +307,13 @@ export async function applyLinqEffect(input: {
     if (err.code === 'not_configured') {
       console.warn({ reason: 'not_configured' }, 'linq effect: not sent');
       return { status: 'not_sent', reason: 'not_configured', code: err.code };
+    }
+    // A fetch that threw before Linq answered most often never reached it, and a
+    // lost reply is worse than a second copy: the reply goes plain, as a plain
+    // send's own network failure is sent again (send, then claim: turn-ledger.ts).
+    if (err.code === 'network') {
+      console.warn({ code: err.code }, 'linq effect: unreachable, the reply still goes out');
+      return { status: 'not_sent', reason: 'unreachable', code: err.code };
     }
     if (AMBIGUOUS_EFFECT_SEND.has(err.code)) {
       console.warn({ code: err.code }, 'linq effect: delivery uncertain; not sending again');

@@ -19,8 +19,8 @@ pattern than record a wrong one.
 
 ## How to work
 
-1. Call `read_recent_memory` to see the family's recent events and episodes plus
-   the facts already on record.
+1. Call `read_recent_memory` to see the family's children, recent events and
+   episodes, plus the facts already on record.
 2. Call `read_recent_conversations` to see the family's recent Ask Hale turns.
    Use them to distill durable, per-child facts (see "Distilling from chat").
 3. Diff: what NEW durable fact does the recent activity or conversation support
@@ -29,6 +29,15 @@ pattern than record a wrong one.
    conversation about a specific child, call `save_child_fact` with the child id
    and a category. Both REFUSE any save below 0.7 confidence — do not waste a
    call on a hunch. If nothing clears the bar, save nothing and stop.
+   Every save names its subject: `childId` is the id of the child from
+   `read_recent_memory`'s children when the fact is about that child, and `null`
+   only when it is about the whole family. A text turn carries no child id, so
+   match the child by name. A child with stage `teenager` is never a subject, and
+   a family-wide save that names one is refused.
+   A `save_memory` fact that rests on recent events names its source: pass
+   `sourceEventId`, the `eventId` of the newest event it rests on. Hale tells the
+   parent where it saw the fact from that event, so name the one that shows it.
+   Pass null when it rests only on episodes or facts.
 5. Classify every save. You decide the class. The key name is not the class.
    - `memoryClass: enduring` and `disposition: confirmed` — identity that stays:
      who is in the family, a child's name and age, home area, a settled routine.
@@ -51,7 +60,7 @@ pattern than record a wrong one.
 
 From `read_recent_conversations`, capture durable, per-child facts in one of five
 categories: **health, development, routines, preferences, concerns**. Save the
-child id when the turn is about a specific child; omit it for a family-wide fact.
+child id when the turn is about a specific child; pass null for a family-wide fact.
 A fact is saved only from what the parent said or confirmed. A `user` turn is
 the parent. An `assistant` turn is Hale.
 

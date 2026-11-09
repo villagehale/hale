@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
+import { recordSeatGrant } from '~/lib/testing/seat-grant';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
@@ -24,13 +25,13 @@ import type { RosterReading } from './roster-reading';
  */
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
-const HALE = '+14165550100';
-const PARENT = '+14165550111';
-const COPARENT = '+14165550112';
-const NANNY = '+14165550113';
-const OTHER_PARENT = '+14165550121';
-const UNKNOWN_A = '+14165550131';
-const UNKNOWN_B = '+14165550132';
+const HALE = '+15555550100';
+const PARENT = '+15555550111';
+const COPARENT = '+15555550112';
+const NANNY = '+15555550113';
+const OTHER_PARENT = '+15555550121';
+const UNKNOWN_A = '+15555550131';
+const UNKNOWN_B = '+15555550132';
 const NOW = new Date('2026-10-06T18:00:00.000Z');
 const CHAT = 'chat-family-group';
 
@@ -889,7 +890,14 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
   });
 
   it('seats a member on their own reply in the group, and does not hand that reply to the coach', async () => {
-    const { familyId } = await seedHousehold(PARENT, 'Parent');
+    const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: UNKNOWN_A,
+      role: 'grandparent',
+      now: NOW,
+    });
     const { deps, sends, jobs } = door(handlesOk([PARENT, UNKNOWN_A]).list);
     await handleLinqInboundRequest(signed(addedMe()), deps);
 
@@ -905,6 +913,31 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
       .from(schema.familyMembers)
       .where(eq(schema.familyMembers.familyId, familyId));
     expect(roles.map((row) => row.role).sort()).toEqual(['grandparent', 'primary_parent']);
+  });
+
+  it("records the seated member's reply with Linq's own is_group, so it can never read as a 1:1", async () => {
+    const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+    await recordSeatGrant(db.database, {
+      familyId,
+      parentUserId: userId,
+      phoneE164: UNKNOWN_A,
+      role: 'grandparent',
+      now: NOW,
+    });
+    const { deps } = door(handlesOk([PARENT, UNKNOWN_A]).list);
+    await handleLinqInboundRequest(signed(addedMe()), deps);
+
+    const reply = await handleLinqInboundRequest(
+      signed(groupMessage(UNKNOWN_A, 'grandma here!', 'in-gran')),
+      deps,
+    );
+
+    expect(await reply.json()).toMatchObject({ outcome: 'role_confirmed' });
+    const rows = await db.database
+      .select({ inGroup: schema.channelMessages.inGroup })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.providerMessageId, 'in-gran'));
+    expect(rows).toEqual([{ inGroup: true }]);
   });
 
   it('asks, and does not seat, someone added to a claimed group, whatever the co-parent flag says', async () => {
@@ -923,20 +956,160 @@ describe('the Linq door hands Hale’s own add to the roster', () => {
     expect(roles).toEqual([{ role: 'primary_parent' }]);
     expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
 
+    // VIL-582: with V2 off, an add that names no actor and carries no parent grant
+    // still seats nobody.
     vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
     const dark = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
-    expect(await dark.json()).toMatchObject({ outcome: 'group_coparent_seated' });
+    expect((await dark.json()).outcome).not.toBe('group_coparent_seated');
     expect(
-      (
-        await db.database
-          .select({ role: schema.familyMembers.role })
-          .from(schema.familyMembers)
-          .where(eq(schema.familyMembers.familyId, familyId))
-      )
-        .map((row) => row.role)
-        .sort(),
-    ).toEqual(['co_parent', 'primary_parent']);
-    expect(sends).toHaveLength(2);
+      await db.database
+        .select({ role: schema.familyMembers.role })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId)),
+    ).toEqual([{ role: 'primary_parent' }]);
+    expect(
+      await db.database
+        .select()
+        .from(schema.parentChannels)
+        .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(UNKNOWN_B))),
+    ).toEqual([]);
+    expect(await db.database.select().from(schema.consentRecords)).toEqual([]);
+    expect(sends).toHaveLength(1);
+  });
+
+  /**
+   * VIL-582 security P2 (dark, V2 off): the parent's grant is one key. The other is the
+   * person's own words, from their own handle. A Linq add carries no words, and a claim
+   * carries the claiming parent's, so neither seats; the person's own message does.
+   */
+  describe('with V2 off and a parent grant held for the added number', () => {
+    async function seatRowsFor(phone: string, familyId: string) {
+      return {
+        roles: (
+          await db.database
+            .select({ role: schema.familyMembers.role })
+            .from(schema.familyMembers)
+            .where(eq(schema.familyMembers.familyId, familyId))
+        ).map((row) => row.role),
+        channels: await db.database
+          .select({ id: schema.parentChannels.id })
+          .from(schema.parentChannels)
+          .where(eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(phone))),
+        consents: await db.database
+          .select({ id: schema.consentRecords.id })
+          .from(schema.consentRecords)
+          .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply')),
+      };
+    }
+
+    async function labels(familyId: string) {
+      return (await auditVerbs(familyId))
+        .filter((row) => row.actionTaken === 'linq_group_member_refused')
+        .map((row) => row.after);
+    }
+
+    beforeEach(() => {
+      vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
+      vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', '');
+    });
+
+    it('labels a participant.added and seats nobody, then seats that person on their own words', async () => {
+      const { familyId, userId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: CHAT });
+      await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId: userId,
+        phoneE164: UNKNOWN_B,
+        role: 'co_parent',
+        now: NOW,
+      });
+      const { deps } = door();
+
+      const added = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
+      expect(await added.json()).toEqual({ outcome: 'seat_needs_own_reply' });
+      expect(await seatRowsFor(UNKNOWN_B, familyId)).toEqual({
+        roles: ['primary_parent'],
+        channels: [],
+        consents: [],
+      });
+      expect(await labels(familyId)).toEqual([
+        { reason: 'seat_needs_own_reply', via: 'participant_added', chatId: CHAT },
+      ]);
+
+      const own = await handleLinqInboundRequest(
+        signed(groupMessage(UNKNOWN_B, 'hi all, it is me', 'in-own')),
+        deps,
+      );
+      expect(await own.json()).toMatchObject({ outcome: 'group_coparent_seated' });
+      const [member] = await db.database
+        .select({
+          role: schema.familyMembers.role,
+          invitedByUserId: schema.familyMembers.invitedByUserId,
+        })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.role, 'co_parent'));
+      expect(member).toEqual({ role: 'co_parent', invitedByUserId: userId });
+      const [consent] = await db.database
+        .select({ evidence: schema.consentRecords.evidence })
+        .from(schema.consentRecords)
+        .where(eq(schema.consentRecords.consentScope, 'sms_coparent_invite_reply'));
+      expect((consent?.evidence as { verbatimReply?: string }).verbatimReply).toBe(
+        'hi all, it is me',
+      );
+    });
+
+    it('claims the chat for the parent and seats nobody from the second handle', async () => {
+      const { familyId, userId } = await seedHousehold(PARENT, 'Parent');
+      await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId: userId,
+        phoneE164: UNKNOWN_B,
+        role: 'co_parent',
+        now: NOW,
+      });
+      const { deps } = door();
+      const body = groupMessage(PARENT, 'this is our year', 'in-claim');
+      (body.data.chat as Record<string, unknown>).handles = [
+        { handle: PARENT, is_me: false },
+        { handle: UNKNOWN_B, is_me: false },
+      ];
+
+      const response = await handleLinqInboundRequest(signed(body), deps);
+      expect((await response.json()).claim).toBe('claimed');
+      expect(await chatOf(familyId)).toBe(CHAT);
+      expect(await seatRowsFor(UNKNOWN_B, familyId)).toEqual({
+        roles: ['primary_parent'],
+        channels: [],
+        consents: [],
+      });
+      expect(await labels(familyId)).toEqual([
+        { reason: 'seat_needs_own_reply', via: 'second_handle', chatId: CHAT },
+      ]);
+    });
+
+    it('labels nobody for an add that could never be the co-parent seat', async () => {
+      const { familyId, userId } = await seedHousehold(PARENT, 'Parent', { linqGroupChatId: CHAT });
+      await recordSeatGrant(db.database, {
+        familyId,
+        parentUserId: userId,
+        phoneE164: UNKNOWN_B,
+        role: 'co_parent',
+        now: NOW,
+      });
+      const { deps } = door();
+
+      for (const handle of [HALE, PARENT, OTHER_PARENT]) {
+        if (handle === OTHER_PARENT) {
+          await seedHousehold(OTHER_PARENT, 'Other');
+        }
+        const added = await handleLinqInboundRequest(signed(addedSomeone(handle)), deps);
+        expect((await added.json()).outcome).not.toBe('seat_needs_own_reply');
+      }
+      await seedPerson(familyId, COPARENT, 'Coparent', 'co_parent');
+      const taken = await handleLinqInboundRequest(signed(addedSomeone(UNKNOWN_B)), deps);
+      expect((await taken.json()).outcome).not.toBe('seat_needs_own_reply');
+
+      expect(await labels(familyId)).toEqual([]);
+    });
   });
 
   it('claims a new group from the phrase and asks who is who instead of seating the first phone', async () => {

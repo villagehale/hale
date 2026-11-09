@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. Story time: tomorrow (明天), 上午11:00 to 11:45, Georgetown library, 9 Church St. Soccer: tomorrow evening, 下午5:30 to 6:30, Riverside Field, 22 Park Rd. AM/PM is correct for both. Titles keep their meaning (图书馆讲故事时间 = Library story time, 足球 = Soccer). The only link is the exact planLink. Nothing invented (no travel or departure time, no extra details). 傍晚 for 5:30 PM is a natural time-of-day word, consistent with the facts. Written in Chinese. Bold is none, which is fine.",
+    "score": 5
+  }
+}

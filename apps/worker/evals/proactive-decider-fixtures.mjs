@@ -12,11 +12,25 @@ const TZ = 'America/New_York';
 const THURSDAY_EVENING = '2026-10-08T22:00:00.000Z';
 const HOUSE = { areaCoarse: null, childAgesYears: [8] };
 const LIBRARY = 'https://library.example.test/programs';
+/** A week of home calendar with no free window in it. */
+const FULL_WEEK = [
+  { day: '2026-10-08', label: 'piano', allDay: false, start: '16:00', end: '18:30' },
+  { day: '2026-10-09', label: 'school', allDay: false, start: '09:00', end: '15:30' },
+  { day: '2026-10-09', label: 'swim practice', allDay: false, start: '16:00', end: '19:30' },
+  { day: '2026-10-10', label: 'family visit', allDay: true, start: null, end: null },
+  { day: '2026-10-11', label: 'soccer tournament', allDay: true, start: null, end: null },
+];
+/** Three texts in a row with no reply. */
+const UNANSWERED = [
+  { at: '2026-10-02T15:00:00.000Z', replied: false },
+  { at: '2026-10-05T15:00:00.000Z', replied: false },
+  { at: '2026-10-07T15:00:00.000Z', replied: false },
+];
 
 function candidate(over) {
   return {
     id: over.id,
-    kind: 'nudge',
+    kind: over.kind ?? 'nudge',
     why: over.why,
     sourceUrl: over.sourceUrl ?? null,
     worthlessAfter: over.worthlessAfter ?? null,
@@ -191,6 +205,50 @@ export const PROACTIVE_DECIDER_FIXTURES = [
           why: 'the window closes this week',
           sourceUrl: 'https://rec.example.test/swim-registration',
           worthlessAfter: '2026-10-09T23:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  // VIL-612 · kinds that are news about the family, as their sweeps queue them: the
+  // `why` is the class code the sweep writes, never the composed text.
+  {
+    id: 'coparent-left-quiet-parent',
+    expect: { action: 'send_now', includes: ['departed'], frequency: null },
+    snapshot: snapshot({
+      candidates: [
+        candidate({ id: 'departed', kind: 'co_parent_departed', why: 'co_parent_departed' }),
+      ],
+      recentSends: UNANSWERED,
+      unansweredStreak: 3,
+    }),
+  },
+  {
+    id: 'travel-brief-busy-home',
+    expect: { action: 'send_now', includes: ['trip'] },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [
+        candidate({
+          id: 'trip',
+          kind: 'travel_brief',
+          why: 'travel_brief',
+          worthlessAfter: '2026-10-15T04:00:00.000Z',
+        }),
+      ],
+    }),
+  },
+  {
+    id: 'coparent-left-beside-busy-find',
+    expect: { action: 'send_now', includes: ['departed'], excludes: ['market'] },
+    snapshot: snapshot({
+      calendar: FULL_WEEK,
+      candidates: [
+        candidate({ id: 'departed', kind: 'co_parent_departed', why: 'co_parent_departed' }),
+        candidate({
+          id: 'market',
+          why: 'a nearby Saturday listing',
+          sourceUrl: 'https://market.example.test/saturday',
+          worthlessAfter: '2026-10-10T20:00:00.000Z',
         }),
       ],
     }),

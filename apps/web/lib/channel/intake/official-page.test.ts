@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   deidentifyOfficialQuery,
   extractOfficialAnswer,
-  isOfficialPageAsk,
   notesGroundADate,
   officialPageReplyFromNotes,
   officialPageReturnLine,
@@ -12,26 +11,6 @@ import {
 const COLD_START_ASK = 'cold start ask (test fixture)';
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
-
-describe('official-page · which inbound is a real rec/camp clock question', () => {
-  it('matches a first-text rec/camp ask that misses the city pins', () => {
-    expect(isOfficialPageAsk('When does swim registration open near me?')).toBe(true);
-    expect(isOfficialPageAsk('When do winter-break camps open?')).toBe(true);
-    expect(isOfficialPageAsk('Hamilton fall rec dates?')).toBe(true);
-    expect(isOfficialPageAsk('Newmarket swim registration?')).toBe(true);
-  });
-
-  it('leaves Hale-itself, hedges, details, and adult-learn to their own paths', () => {
-    expect(isOfficialPageAsk('who is this exactly?')).toBe(false);
-    expect(isOfficialPageAsk('can you book the swimming lessons for us')).toBe(false);
-    expect(isOfficialPageAsk('hmm maybe, let me ask my husband')).toBe(false);
-    expect(isOfficialPageAsk('thanks')).toBe(false);
-    expect(isOfficialPageAsk('Maya is 4, Theo is 18 months, L3R')).toBe(false);
-    expect(isOfficialPageAsk('I wanna learn swimming')).toBe(false);
-    expect(isOfficialPageAsk("she's not breathing")).toBe(false);
-    expect(isOfficialPageAsk('hi')).toBe(false);
-  });
-});
 
 describe('official-page · the return ask is never COLD_START_ASK', () => {
   it('paraphrases the watch offer without copying it', () => {
@@ -69,11 +48,13 @@ describe('official-page · not posted yet when search cannot ground a date', () 
 
 describe('official-page · what may be searched', () => {
   it('strips household names and a postal so they never cross the border', () => {
-    const query = deidentifyOfficialQuery('When does swim open for Maya in L3R 2T6?', [
+    const scrub = deidentifyOfficialQuery('When does swim open for Maya in L3R 2T6?', [
       { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
     ]);
-    expect(query.toLowerCase()).not.toContain('maya');
-    expect(query).not.toMatch(/L3R/i);
-    expect(query.toLowerCase()).toContain('swim');
+    expect(scrub.ok).toBe(true);
+    if (!scrub.ok) return;
+    expect(scrub.text.toLowerCase()).not.toContain('maya');
+    expect(scrub.text).not.toMatch(/L3R/i);
+    expect(scrub.text.toLowerCase()).toContain('swim');
   });
 });

@@ -49,14 +49,12 @@ describe('VIL-473 linq-effect eval modes never spend', () => {
     expect(readdirSync(CACHE_DIR).length).toBe(before);
   }, 120_000);
 
-  it('--cached-only: a miss prints the price and exits 1 without writing', () => {
+  it('--cached-only: replays the committed recording with no live call and writes nothing', () => {
     const before = readdirSync(CACHE_DIR).length;
     const out = run('--cached-only');
-    expect(out.status).toBe(1);
-    expect(`${out.stdout}\n${out.stderr}`).toMatch(
-      /worst case to record \d+ fixtures.*\$\d+\.\d{4} USD/,
-    );
-    expect(`${out.stdout}\n${out.stderr}`).toMatch(/cache miss in --cached-only mode/);
+    expect(out.status).toBe(0);
+    expect(out.stdout).toContain('live API calls this run: 0');
+    expect(out.stdout).not.toContain('FAIL');
     expect(readdirSync(CACHE_DIR).length).toBe(before);
   }, 120_000);
 

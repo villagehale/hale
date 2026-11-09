@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message says both items collide and asks who takes it, but sameKid is Maya and both items are hers, so a driver handoff is the wrong fix; it should say Maya is double-booked and ask which one. It also invents a link and asks for a reply number, both forbidden. No poll goes, and none is mentioned, which is correct.",
+    "score": 1
+  }
+}

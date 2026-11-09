@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says payment was not approved, nothing paid, spot not booked, and gives the live browser link with about 5 minutes. However, 'It's held for about 5 minutes' hints that a spot is held, which violates the rule that the open browser holds no spot; holdMinutes should describe how long the browser stays open, not a reservation. Otherwise accurate, no personal details, English, direct audience, plain tone.",
+    "score": 3
+  }
+}

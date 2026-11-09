@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "立即带宝宝去急诊。3个月以下的婴儿发烧,需要医生今天就亲自检查,不能在家观察等待。",
+    "triage": "现在就去急诊。如果宝宝很难叫醒、软绵无力、呼吸急促或费力、嘴唇发紫,马上拨打911。需要帮忙找最近的急诊,可随时拨打811(Health811)。医生检查前,请先不要给退烧药。",
+    "sources": [
+      "Canadian Paediatric Society (Caring for Kids)",
+      "AboutKidsHealth (SickKids)"
+    ]
+  },
+  "latencyMs": 5153
+}

@@ -4,13 +4,13 @@ import { and, eq } from 'drizzle-orm';
 import type { InboundMediaKind } from '~/lib/channel/inbound-media';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import type { ReplyRoute } from '~/lib/channel/router/reply-route';
-import { parentTimeZoneForOffer } from '~/lib/integrations/email-alert-offer';
 import {
   type LinqEffectDecider,
   applyLinqEffect,
   lastLinqEffectAt,
-  linqEffectHold,
+  linqEffectClockFacts,
   linqEffectsEnabled,
+  parentStoredTimeZone,
 } from './effect';
 import { type LinqStickerDecider, applyLinqSticker, linqStickersEnabled } from './sticker';
 import { applyLinqTapback } from './tapback';
@@ -31,24 +31,18 @@ export type LinqMoment =
 
 /**
  * Linq already accepted this moment (or the POST's outcome is unknowable).
- * The ledger write failed afterwards. The caller must not send the reply again.
+ * The ledger write failed afterwards, so neither the outbound row nor its audit
+ * row exists: they are one transaction. The caller must not send the reply again.
  */
 export class LinqMomentDeliveredError extends Error {
   readonly providerMessageId: string | null;
   readonly threadBody: string | null;
-  /** Set when the outbound row landed and only the audit write failed. */
-  readonly channelMessageId: string | null;
 
-  constructor(
-    providerMessageId: string | null,
-    threadBody: string | null,
-    channelMessageId: string | null,
-  ) {
+  constructor(providerMessageId: string | null, threadBody: string | null) {
     super('linq moment delivered');
     this.name = 'LinqMomentDeliveredError';
     this.providerMessageId = providerMessageId;
     this.threadBody = threadBody;
-    this.channelMessageId = channelMessageId;
   }
 }
 
@@ -79,8 +73,9 @@ export async function considerLinqReply(
     effect?: {
       decider: LinqEffectDecider;
       audience: 'direct' | 'group';
-      /** Parent-local zone for the quiet-hours fact. Absent: loaded from the user. */
-      timeZone?: string;
+      /** Parent-local zone for the wall-clock fact. `undefined` reads the user row;
+       * `null` means none is stored. */
+      timeZone?: string | null;
       /** Prior effect in this chat. `undefined` reads send history; `null` means none. */
       lastEffectAt?: Date | null;
     };
@@ -177,16 +172,13 @@ export async function considerLinqReply(
     return { handled: false };
   }
   const timeZone =
-    args.effect.timeZone ?? (await parentTimeZoneForOffer(database, args.parentUserId));
+    args.effect.timeZone !== undefined
+      ? args.effect.timeZone
+      : await parentStoredTimeZone(database, args.parentUserId);
   const lastEffectAt =
     args.effect.lastEffectAt !== undefined
       ? args.effect.lastEffectAt
       : await lastLinqEffectAt(database, args.route.chatId);
-  const hold = linqEffectHold({ now: args.now, timeZone, lastEffectAt });
-  if (hold) {
-    console.info({ reason: hold }, 'linq effect: held, reply goes plain');
-    return { handled: false };
-  }
   const sent = await applyLinqEffect({
     decider: args.effect.decider,
     chatId: args.route.chatId,
@@ -196,21 +188,20 @@ export async function considerLinqReply(
       audience: args.effect.audience,
       parentText: args.inboundBody,
       reply: args.outboundBody,
+      ...linqEffectClockFacts({ now: args.now, timeZone, lastEffectAt }),
     },
     fetch: args.fetch,
   });
   // A decline or a definite refusal did not land. An uncertain POST may have.
   if (sent.status === 'declined' || sent.status === 'not_sent') return { handled: false };
   const providerMessageId = sent.status === 'sent' ? sent.providerMessageId : null;
-  const moment = {
-    templateKey: 'linq:effect',
-    actionTaken: 'linq_effect',
-    providerMessageId,
-  };
-  let channelMessageId: string | null = null;
+  let channelMessageId: string;
   try {
-    channelMessageId = await writeMomentRow(database, args, moment);
-    await writeMomentAudit(database, args, channelMessageId, moment.actionTaken);
+    channelMessageId = await recordMoment(database, args, {
+      templateKey: 'linq:effect',
+      actionTaken: 'linq_effect',
+      providerMessageId,
+    });
   } catch (err) {
     console.error(
       {
@@ -219,30 +210,38 @@ export async function considerLinqReply(
       },
       'linq effect: delivered; ledger write failed',
     );
-    throw new LinqMomentDeliveredError(providerMessageId, args.outboundBody, channelMessageId);
+    throw new LinqMomentDeliveredError(providerMessageId, args.outboundBody);
   }
   return { handled: true, channelMessageId, threadBody: args.outboundBody };
 }
 
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * The outbound row and its audit row, in one transaction (rule #6): a moment is
+ * never on the ledger without its audit row.
+ */
 async function recordMoment(
   database: Database,
   args: Parameters<typeof writeMomentRow>[1],
   moment: { templateKey: string; actionTaken: string; providerMessageId: string | null },
 ): Promise<string> {
-  const id = await writeMomentRow(database, args, moment);
-  await writeMomentAudit(database, args, id, moment.actionTaken);
-  return id;
+  return database.transaction(async (tx) => {
+    const id = await writeMomentRow(tx, args, moment);
+    await writeMomentAudit(tx, args, id, moment.actionTaken);
+    return id;
+  });
 }
 
 /**
  * The outbound row. `templateKey` on an effect is `linq:effect`: that marker is
- * what the 24h cap reads, one column, no join. The reply's own template key,
+ * how the next effect read finds this chat's last effect, one column, no join. The reply's own template key,
  * when it had one, is on the audit so it is not discarded. Medical source,
  * deflection source and the conversation stay on this row — the safety and
  * papercut counts read those columns, and an effect must not erase them.
  */
 async function writeMomentRow(
-  database: Database,
+  database: Tx,
   args: {
     familyId: string;
     parentUserId: string;
@@ -284,7 +283,7 @@ async function writeMomentRow(
 }
 
 async function writeMomentAudit(
-  database: Database,
+  database: Tx,
   args: {
     familyId: string;
     parentUserId: string;

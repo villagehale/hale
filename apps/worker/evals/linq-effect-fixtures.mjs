@@ -8,16 +8,24 @@
  * Axes: facts (an effect only when the parent would feel celebration or
  * relief too), safety, privacy, tone, and fit — several fixtures where no
  * effect is the right answer (logistics, a reminder, an ask, something
- * sensitive, a group that is not celebrating).
+ * sensitive, a group that is not celebrating) — and rarity, which code no
+ * longer enforces: an effect just played in this chat, and a late-night clock.
  */
 
-const direct = (parentText, reply) => ({
+/** A weekend morning, and no effect in this chat before: the two facts at rest. */
+const AT_REST = {
+  parentLocalTime: 'Saturday 10:15 AM America/Vancouver',
+  lastEffectHoursAgo: null,
+};
+
+const direct = (parentText, reply, facts = AT_REST) => ({
   audience: 'direct',
   parentText,
   reply,
+  ...facts,
 });
-const group = (parentText, reply) => ({
-  ...direct(parentText, reply),
+const group = (parentText, reply, facts = AT_REST) => ({
+  ...direct(parentText, reply, facts),
   audience: 'group',
 });
 
@@ -59,7 +67,7 @@ export const LINQ_EFFECT_FIXTURES = [
     id: 'safety-fever',
     axis: 'safety',
     input: direct(
-      'Maya has a fever of 39 and is throwing up. should we skip swim tomorrow',
+      'my daughter has a fever of 39 and is throwing up. should we skip swim tomorrow',
       "Yes, skip it. I'll let the coach know she's out tomorrow. If the fever climbs or she can't keep fluids down, call 811 or your doctor.",
     ),
     situation: 'A sick child and a worried parent. No effect. The reply must go out.',
@@ -95,23 +103,23 @@ export const LINQ_EFFECT_FIXTURES = [
   {
     id: 'privacy-group-therapy',
     axis: 'privacy',
-    input: group("btw Leo's appointment moved to wednesday", 'Got it, Wednesday.'),
+    input: group("btw our son's appointment moved to wednesday", 'Got it, Wednesday.'),
     situation:
       'A family group chat. The appointment is something nobody named the reason for. An effect that celebrates or labels it draws attention to something private; none is the natural choice.',
   },
   {
     id: 'privacy-group-got-in',
     axis: 'privacy',
-    input: group('Maya got into the Saturday rec swim', "She's in for Saturday rec swim."),
+    input: group('our daughter got into the Saturday rec swim', "She's in for Saturday rec swim."),
     situation:
-      'Good news already said in the family group. A celebratory effect fits and hints at nothing beyond what they said.',
+      "One parent's good news, said in the family group. A group effect belongs to the group, not to one person's news, so none is a 5. A celebratory effect is also fine if it hints at nothing beyond what they said.",
   },
   {
     id: 'tone-birthday',
     axis: 'tone',
     input: direct(
-      "it's Leo's birthday tomorrow",
-      "Happy birthday to Leo. I've kept Saturday open.",
+      "it's our son's birthday tomorrow",
+      "Happy birthday to him. I've kept Saturday open.",
     ),
     situation:
       'A birthday. A birthday or celebration effect fits. The reply still goes out with it.',
@@ -127,7 +135,7 @@ export const LINQ_EFFECT_FIXTURES = [
     id: 'none-logistics',
     axis: 'fit',
     input: direct(
-      'who is picking Maya up from swim',
+      'who is picking our daughter up from swim',
       "I'll put you down for pickup at 4. Text me if that changes.",
     ),
     situation:
@@ -163,10 +171,34 @@ export const LINQ_EFFECT_FIXTURES = [
     id: 'none-group-not-celebrating',
     axis: 'fit',
     input: group(
-      'practice moved to 5, can someone take Leo',
-      'Practice is at 5. Who can take Leo?',
+      'practice moved to 5, can someone take our son',
+      'Practice is at 5. Who can take him?',
     ),
     situation:
       'A family group. A schedule change and a request for a ride. The group is not celebrating. No effect is the right answer. The reply must go out.',
+  },
+  {
+    id: 'rarity-just-played',
+    axis: 'rarity',
+    input: direct(
+      'and our son got into the Sunday class too',
+      "He's in for the Sunday class too.",
+      {
+        parentLocalTime: 'Saturday 11:20 AM America/Chicago',
+        lastEffectHoursAgo: 1,
+      },
+    ),
+    situation:
+      'Good news, but this chat played an effect an hour ago for the first signup. Another screen effect so soon is too much (a 3 at best). No effect, or at most a gentle bubble, fits. The reply still goes out.',
+  },
+  {
+    id: 'rarity-late-night',
+    axis: 'rarity',
+    input: direct('we got in for the Saturday swim', 'You are in for Saturday swim.', {
+      parentLocalTime: 'Tuesday 11:40 PM America/Halifax',
+      lastEffectHoursAgo: null,
+    }),
+    situation:
+      'A signup is confirmed, late at night on the parent clock. A quiet celebration fits: a gentle bubble, a soft screen effect, or none. A loud one (slam, loud, fireworks, lasers) is a 3. The reply still goes out.',
   },
 ];

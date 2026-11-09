@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import type { HealthPlace } from '../health-line';
 import type { FamilyPlace, PlaceUnknown } from './answer';
 
 /**
@@ -80,6 +81,11 @@ const TABLE_FOR_COUNTRY: ReadonlyMap<string, PostalCountry> = new Map([
   ['us', 'US'],
 ]);
 
+/** The postal table a stored country selects, or undefined for one Hale has no table for. */
+export function postalCountryOf(country: string): PostalCountry | undefined {
+  return TABLE_FOR_COUNTRY.get(country.trim().toLowerCase());
+}
+
 /** The country as the search is told it. */
 const COUNTRY_NAME: Record<PostalCountry, string> = { CA: 'Canada', US: 'United States' };
 
@@ -142,6 +148,38 @@ const TABLES: Record<PostalCountry, () => Promise<PostalTable>> = {
   CA: async () => (await import('./postal-cities/ca.json')).default,
   US: async () => (await import('./postal-cities/us.json')).default,
 };
+
+/**
+ * The province a Canadian postal token is in, by the table's own name (VIL-589: the
+ * health line differs by province). Null for a US or other token, which opens no table:
+ * nothing Hale says by state differs, and the US file is the large one. Null too for an
+ * FSA the table does not have. Never a guess.
+ */
+export async function provinceOfPostal(raw: string): Promise<string | null> {
+  const matched = matchPostalToken(raw);
+  if (matched?.country !== 'CA') return null;
+  const table = await TABLES.CA();
+  return table.regions[table.regionOf[table.codes.indexOf(matched.areaKey)] ?? -1] ?? null;
+}
+
+/**
+ * The country a Canadian or US postal token is in, and the table's name for its province
+ * or state (VIL-592: the intake searches look for that country's sources). Null for a
+ * token that is neither; the province or state is null for an area the table does not
+ * have. Never a guess, and the code itself is not returned.
+ */
+export async function regionOfPostal(
+  raw: string,
+): Promise<{ countryName: string; provinceOrState: string | null } | null> {
+  const matched = matchPostalToken(raw);
+  if (matched === null) return null;
+  const table = await TABLES[matched.country]();
+  const region = table.regionOf[table.codes.indexOf(matched.areaKey)];
+  return {
+    countryName: matched.countryName,
+    provinceOrState: region === undefined ? null : (table.regions[region] ?? null),
+  };
+}
 
 function stored(value: string | null): string | null {
   const trimmed = value?.trim();
@@ -219,6 +257,28 @@ export async function placeOf(family: {
   // A shared name in an area whose province the source does not give names two places.
   if (provinceOrState === undefined) return unknown('ambiguous');
   return { status: 'known', city: town, provinceOrState, country };
+}
+
+/**
+ * {@link placeOf}, with the province or state ALWAYS named where the postal area gives
+ * one — the activity find's grain (VIL-590), where "Seattle, Washington" is a better
+ * search than "Seattle". The off-topic search keeps {@link placeOf}'s narrower rule.
+ * The region is the one the table has for the area the city was read from, and is left
+ * off when the city came from a stored name the area does not belong to.
+ */
+export async function searchPlaceOf(family: Parameters<typeof placeOf>[0]): Promise<FamilyPlace> {
+  const place = await placeOf(family);
+  if (place.status !== 'known' || place.provinceOrState !== undefined) return place;
+  const postalCountry = family.country === null ? undefined : postalCountryOf(family.country);
+  const postal = stored(family.postalCode) ?? stored(family.areaCoarse);
+  if (postalCountry === undefined || postal === null) return place;
+  const area = AREA_OF[postalCountry].exec(postal)?.[1]?.toUpperCase();
+  if (area === undefined) return place;
+  const table = await TABLES[postalCountry]();
+  const areaAt = table.codes.indexOf(area);
+  if (table.cities[table.cityOf[areaAt] ?? -1] !== place.city) return place;
+  const provinceOrState = table.regions[table.regionOf[areaAt] ?? -1];
+  return provinceOrState === undefined ? place : { ...place, provinceOrState };
 }
 
 /**
@@ -356,11 +416,35 @@ export async function coarsenPlace(
 }
 
 /**
- * Reads what {@link placeOf} needs and no other column: the family's country, and the
- * city, province and postal code of its active saved area, or of its home row when it has
- * no active area.
+ * Where a family is for the health line (VIL-589): the country on the row, and for Canada
+ * the province its postal area is in. A stored province counts only when it is the
+ * table's own name or abbreviation, and only when no postal area names one. A US
+ * family carries no state: nothing Hale says by state differs. Null when the row has no
+ * country Hale has a table for. Never a guess, and nothing from it leaves as stored.
  */
-export async function readFamilyPlace(database: Database, familyId: string): Promise<FamilyPlace> {
+export async function healthPlaceOf(family: {
+  country: string | null;
+  province: string | null;
+  postalCode: string | null;
+  areaCoarse: string | null;
+}): Promise<HealthPlace | null> {
+  const storedCountry = stored(family.country);
+  const country = storedCountry === null ? undefined : postalCountryOf(storedCountry);
+  if (country === undefined) return null;
+  if (country === 'US') return { country, provinceOrState: null };
+  const postal = stored(family.postalCode) ?? stored(family.areaCoarse);
+  const fromPostal = postal === null ? null : await provinceOfPostal(postal);
+  if (fromPostal !== null) return { country, provinceOrState: fromPostal };
+  const table = await TABLES.CA();
+  return {
+    country,
+    provinceOrState: table.regions[regionNamed(table, stored(family.province))] ?? null,
+  };
+}
+
+/** The columns {@link placeOf} and {@link healthPlaceOf} read: the active saved area's,
+ * with the family's country, or the home row's when there is no active area. */
+export async function readPlaceRow(database: Database, familyId: string) {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,
@@ -382,5 +466,22 @@ export async function readFamilyPlace(database: Database, familyId: string): Pro
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
-  return placeOf(active ? { ...active, country: family.country, areaCoarse: null } : family);
+  return active ? { ...active, country: family.country, areaCoarse: null } : family;
+}
+
+/**
+ * Reads what {@link placeOf} needs and no other column: the family's country, and the
+ * city, province and postal code of its active saved area, or of its home row when it has
+ * no active area.
+ */
+export async function readFamilyPlace(database: Database, familyId: string): Promise<FamilyPlace> {
+  return placeOf(await readPlaceRow(database, familyId));
+}
+
+/** The health line's place for this family, read like {@link readFamilyPlace}. */
+export async function readHealthPlace(
+  database: Database,
+  familyId: string,
+): Promise<HealthPlace | null> {
+  return healthPlaceOf(await readPlaceRow(database, familyId));
 }

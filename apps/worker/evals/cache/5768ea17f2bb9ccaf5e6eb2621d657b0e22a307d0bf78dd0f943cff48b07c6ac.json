@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message ends with 'Want me to keep an eye on all of this for you?', which is a direct question asking the parent to reply, and it duplicates the shell question. That is an ask of its own, so the score is the lowest.",
+    "score": 1
+  }
+}

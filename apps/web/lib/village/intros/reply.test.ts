@@ -739,6 +739,14 @@ describe("#919: standing is the parent's own state, and an open parent knows Hal
       expect(['matchText' in facts, name]).toEqual([open, name]);
     }
   });
+  it('standing never describes the parent: in French or Spanish that word would mark a gender', () => {
+    const describesParent = /^the parent is\b/;
+    expect('the parent is still open to other introductions').toMatch(describesParent);
+    const described = situations
+      .filter(([, facts]) => describesParent.test(facts.standing ?? ''))
+      .map(([name]) => name);
+    expect(described).toEqual([]);
+  });
   it('the switched-off situations promise no match text', () => {
     expect('matchText' in INTRO_REPLY_FACTS.discoverability_off).toBe(false);
     expect('matchText' in INTRO_REPLY_FACTS.discoverability_already_off).toBe(false);

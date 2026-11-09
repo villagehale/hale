@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a price. The facts give price as null, but the text says the class is $120, which is a claim the facts do not make. It also never says the course details could not be read, since name, day and time are all null. The date, time and prerequisite warning are right, there is no link and no question.",
+    "score": 1
+  }
+}

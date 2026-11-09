@@ -1,0 +1,13 @@
+{
+  "value": {
+    "answer": "立即去急诊,不要等。孩子发烧伴颈部僵硬、怕光,需要医生马上检查,越早治疗越好。如果不能很快赶到,马上拨打911。",
+    "triage": "马上去急诊或拨打911,尤其是孩子嗜睡、意识模糊、叫不醒、呕吐、抽搐,或出现按压不褪色的皮疹时。健康热线811只用于不紧急的问题,这次不要观察等待。",
+    "sources": [
+      "Raising Children Network",
+      "KidsHealth",
+      "Cleveland Clinic",
+      "Penn Medicine"
+    ]
+  },
+  "latencyMs": 4716
+}

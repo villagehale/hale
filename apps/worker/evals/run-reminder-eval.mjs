@@ -8,7 +8,8 @@
 // sentence shape, an untranslated place name, and a title quoted as-is are not faults.
 // Nothing matches words.
 //
-// Recorded 2026-10-27 (8/8, ledger 914-evals). CI replays it cached-only:
+// Recorded 2026-10-27 (8/8, ledger 914-evals); re-recorded 2026-11-03 (17/17, VIL-550,
+// ledger reminders-bundle). CI replays it cached-only:
 //   node evals/run-reminder-eval.mjs --max-usd <ledger total + allowance>   # live, then caches
 //   node evals/run-reminder-eval.mjs --broken                               # calibration: must FAIL
 //   node evals/run-reminder-eval.mjs --cached-only                          # CI: replay only
@@ -84,7 +85,8 @@ export function readTexts(value) {
 const JUDGE_SYSTEM = [
   'You are a strict reviewer scoring ONE reminder text Hale sends a parent about what is on',
   'their calendar. The model wrote the whole text; nothing is added around it. You are given',
-  'the facts (offset, now, events with date, allDay, start, end, location; planLink; language),',
+  'the facts (offset, now, events with date, allDay, start, end, minutesUntilStart, location;',
+  'planLink; language),',
   'the text and watchFor notes. Score 1-5 on FACTS only: whether every event keeps the facts',
   'it was given, and whether anything was invented. Do not score phrasing, sentence shape,',
   'register, whether a place name is translated or left as given, or whether a title is quoted',
@@ -110,8 +112,10 @@ const JUDGE_SYSTEM = [
   'other timing or travel detail. If the facts do not contain it (there is never a travel',
   'time or departure time in these facts), stating it as fact is an invented detail and a',
   'LOW score (1-2), in any language, however it is phrased. Saying how far away the event',
-  'is from now (in about an hour, tomorrow afternoon) is a true fact from now and start, and',
-  'fine; turning that into when to leave is not.',
+  'is from now (tomorrow afternoon, in twenty minutes) is fine only when it matches the time',
+  'from now to start, which minutesUntilStart gives in minutes: a relative time that does not',
+  'match it, such as about an hour for an event 18 minutes away, is a wrong time and a LOW',
+  'score (1-2). Turning how far away it is into when to leave is an invented detail.',
   'NOTHING GIVEN MAY BE LEFT OUT: check every date, start, end, venue name and address in',
   "the facts against the text. Each event's day (said truly from now, such as tomorrow or",
   'today, or as a date), its start time and, when the facts give one, its end (as a clock',
@@ -275,6 +279,13 @@ export const BROKEN_CASES = [
       "Theo's Montessori tour is at 10 at Little Oaks Montessori, 41 Mill St, about an hour",
       'then storytime for Léa at the library, 1:30 to 2:15',
     ].join('\n'),
+  },
+  // VIL-550 · the reported wording: every fact right, but "in about an hour" for an event 18
+  // minutes away. Must fail on the wrong relative time alone.
+  {
+    fixtureId: 'en-near-term-18-min',
+    tag: 'en-near-term-18-min:about-an-hour',
+    body: 'Toddler gym starts in about an hour, at 10:30 AM, at Birchwood Rec Centre, 14 Alder Ave (until 11:15 AM).',
   },
 ];
 

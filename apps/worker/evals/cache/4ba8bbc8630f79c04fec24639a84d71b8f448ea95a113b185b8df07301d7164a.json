@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h), the venue name (Georgetown library) and the address (9 Church St), and keeps the title quoted as the event's name. However, the facts give an end time of 4:00 PM (16 h) and the text omits it, giving only the start. That is a missing given fact, which is a fact failure. Nothing is invented, and bold is none, which is fine.",
+    "score": 2
+  }
+}

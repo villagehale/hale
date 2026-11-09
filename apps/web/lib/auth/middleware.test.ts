@@ -109,6 +109,31 @@ describe('middleware session auth', () => {
     expect(target.searchParams.get('callbackUrl')).toBe('/messages');
   });
 
+  it('sends a signed-out /privacy to /sign-in?callbackUrl=%2Fprivacy', async () => {
+    const middleware = await loadMiddleware();
+    const { NextResponse } = await import('next/server');
+    const redirectSpy = vi.spyOn(NextResponse, 'redirect');
+
+    await middleware(fakeReq({ pathname: '/privacy', auth: null }));
+
+    expect(redirectSpy).toHaveBeenCalledTimes(1);
+    const target = redirectSpy.mock.calls[0]?.[0] as URL;
+    expect(target.pathname).toBe('/sign-in');
+    expect(target.search).toBe('?callbackUrl=%2Fprivacy');
+  });
+
+  it('lets a signed-in /privacy through with no redirect', async () => {
+    const middleware = await loadMiddleware();
+    const { NextResponse } = await import('next/server');
+    const redirectSpy = vi.spyOn(NextResponse, 'redirect');
+    const nextSpy = vi.spyOn(NextResponse, 'next');
+
+    await middleware(fakeReq({ pathname: '/privacy', auth: { user: { id: 'u' } } }));
+
+    expect(redirectSpy).not.toHaveBeenCalled();
+    expect(nextSpy).toHaveBeenCalled();
+  });
+
   it('keeps the deep link query on the return param', async () => {
     const middleware = await loadMiddleware();
     const { NextResponse } = await import('next/server');

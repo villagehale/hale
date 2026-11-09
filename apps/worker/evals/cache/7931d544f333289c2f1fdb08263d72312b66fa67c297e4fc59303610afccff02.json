@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Stop request in English; reply plainly confirms no more texts and explains how to come back (text \"start\"). Same language, short, warm, no question, no selling. No readLate field, so the lateness rule does not apply."
+  }
+}

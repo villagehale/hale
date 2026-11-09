@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Call 911 now. A toddler who is floppy, hard to wake, with sunken eyes and no wet diaper in 12 hours needs emergency care - do not wait or try fluids at home first.",
+    "triage": "Call 911 now, or go to the nearest ER right away if you can get there fast. Health811 (call 811) is for non-emergencies, so do not wait on a nurse call for this.",
+    "sources": [
+      "Seattle Children's",
+      "KidsHealth"
+    ]
+  },
+  "latencyMs": 1609
+}

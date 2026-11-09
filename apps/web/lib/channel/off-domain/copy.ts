@@ -21,6 +21,7 @@
  * alphabet — é è à ù are in it, â ê î ô û ç are not. See the same note at the top of
  * intake/copy.ts.
  */
+import { type HealthPlace, healthLineFacts, healthNumbersIn } from '~/lib/channel/health-line';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
 
@@ -49,11 +50,10 @@ export function reachesForTheHealthLine(body: string): boolean {
  * (skill audit 2026-08-12). What is left is the two things Hale can actually stand
  * behind: the program's name and the number that registers you for it.
  *
- * REGIONAL ASSUMPTION, stated so it is reviewable: Health Care Connect is an Ontario
- * program. Hale's compliance baseline is Canada, and every family on the live gate is in
- * the GTA, so this line is correct for all of them today and wrong the day the first
- * family signs up outside Ontario. It is not gated on province because families have no
- * province field to gate on; adding one is the follow-up, not a silent guess here.
+ * ONTARIO ONLY (VIL-589). Health Care Connect, OHIP and FindAnEyeDoctor are Ontario's,
+ * so they go only to a family the health line places in Ontario. Everyone else, a family
+ * Hale cannot place included, is told for every ask that Hale has no verified way to place
+ * that practitioner where they are.
  */
 const EYE_DIRECTORY = 'FindAnEyeDoctor.ca';
 
@@ -106,19 +106,33 @@ const PRIMARY_CARE_TOKENS = [
 
 const PRIMARY_CARE_PATTERN = new RegExp(`\\b(?:${PRIMARY_CARE_TOKENS.join('|')})`, 'i');
 
-/** The fixed answer for one provider-access text: the verified path for a service Hale
- * has one for, and an honest "I don't know" for every service it does not. */
-export function referralReply(
+/** The answer for one provider-access text: the verified path for a service Hale has one
+ * for where the family is, and an honest "I don't know" for every service it does not.
+ * Null when nothing may be sent: the writer failed, or a line for a family outside
+ * Ontario still named a health number. */
+export async function referralReply(
   body: string,
   language: ReplyLanguage | null,
+  place: HealthPlace | null,
 ): Promise<string | null> {
+  if (healthLineFacts(place).basis !== 'ontario') {
+    const line = await speak({
+      purpose: 'provider_access',
+      language,
+      facts: { body, verified_paths: 'none' },
+      verbatim: [],
+    });
+    if (line === null || healthNumbersIn(line).length === 0) return line;
+    console.info({ provider: 'not_sent', reason: 'named_a_number' }, 'off-domain provider line');
+    return null;
+  }
   const eye = asksAboutEyeCare(body);
   const primary = !eye && PRIMARY_CARE_PATTERN.test(body);
   const verbatim = eye ? [EYE_DIRECTORY] : primary ? ['811'] : [];
   return speak({
     purpose: 'provider_access',
     language,
-    facts: { body },
+    facts: { body, verified_paths: 'ontario' },
     verbatim,
   });
 }

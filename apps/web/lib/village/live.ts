@@ -1,4 +1,4 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
@@ -7,10 +7,9 @@ import {
   type ActivityPick,
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
+import { readActivityPlace } from '~/lib/channel/activity/place';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { activityClient } from '~/lib/pipeline/client';
-import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
-import { resolveActiveAreaCoarse } from './areas';
 
 /**
  * VIL-452 · the Finder's link field is `url`; receipts and dedupe read `sourceUrl`.
@@ -157,12 +156,12 @@ export async function findFamilyActivities(
   reason: string | null;
 }> {
   const now = options.now ?? new Date();
-  const [children, area, parents] = await Promise.all([
+  const [children, place, parents] = await Promise.all([
     database
       .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId)),
-    resolveActiveAreaCoarse(database, familyId),
+    readActivityPlace(database, familyId),
     database
       .select({ name: schema.users.name })
       .from(schema.familyMembers)
@@ -171,17 +170,13 @@ export async function findFamilyActivities(
   ]);
   const eligible = children.filter((child) => deriveStage(child.dateOfBirth, now) !== 'teenager');
   if (eligible.length === 0) return { picks: [], reason: 'no_non_teen_children' };
-  const towns = area
-    ? municipalitiesForFsa(area.replace(/\s+/g, '').toUpperCase().slice(0, 3))
-    : [];
-  if (towns.length !== 1) return { picks: [], reason: 'no_area' };
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
   const query = deidentifyActivityQuery({
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
-    municipality: towns.length === 1 ? (towns[0]! as Municipality) : null,
+    town: place.status === 'known' ? place.town : null,
     stage: deriveStage(youngest.dateOfBirth, now),
     householdNames: [...children, ...parents].flatMap(({ name }) =>
       name ? [name, name.trim().split(/\s+/)[0]!] : [],

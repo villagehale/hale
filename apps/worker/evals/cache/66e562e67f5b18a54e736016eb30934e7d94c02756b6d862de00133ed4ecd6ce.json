@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (tomorrow), the start (15 h), the venue name (Georgetown library) and the address (9 Church St), and quotes the title as-is as the event's name. But the facts give an end time of 4:00 PM (16 h) and the text omits it, which is a missing given fact. Nothing is invented, the language is French, and there is no bold.",
+    "score": 2
+  }
+}

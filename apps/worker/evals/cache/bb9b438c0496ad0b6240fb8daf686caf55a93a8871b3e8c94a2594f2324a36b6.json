@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "language": "fr",
+    "situation": "self_harm",
+    "who": "self",
+    "confirmation": ""
+  },
+  "latencyMs": 2144
+}
