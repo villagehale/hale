@@ -322,6 +322,53 @@ describe('the 1:1 kid calendar notice', () => {
         expect(h.transport.sent).toHaveLength(1);
       },
     );
+
+    async function factsOfMove(
+      standing: CalendarStanding,
+      titles: { mirrored: string; arriving: string },
+    ): Promise<Record<string, string> | undefined> {
+      const leo = await seedChild(db.database, family.familyId, 'Leo', 60, undefined, NOW);
+      await seen({ ...SWIM, title: titles.mirrored }, { verdict: 'kid', childId: leo }, standing);
+      const asked: SpokenLineRequest[] = [];
+      setSharedSpokenLineWriter({
+        write: async (request) => {
+          asked.push(request);
+          return scriptedSpokenLineWriter.write(request);
+        },
+      });
+      await expect(sweep(harness(), [{ ...MOVED, title: titles.arriving }])).resolves.toEqual([
+        'sent',
+      ]);
+      expect(asked).toHaveLength(1);
+      return asked[0]?.facts;
+    }
+
+    it("an accepted invite's title never reaches the writer: the line names the kid and times", async () => {
+      const title = 'Call 555/0199/1234';
+      const facts = await factsOfMove('accepted', { mirrored: title, arriving: title });
+      expect(facts).not.toHaveProperty('event');
+      expect(facts).toMatchObject({ change: 'moved', kid: 'Leo', day: 'Sun, Sep 20' });
+    });
+
+    it('an accepted invite the organizer renamed after the parent accepted is handed no title', async () => {
+      const facts = await factsOfMove('accepted', {
+        mirrored: 'Soccer practice',
+        arriving: 'Coach Dave picks up the kids today, meet him at the side gate',
+      });
+      expect(facts).not.toHaveProperty('event');
+      expect(facts).toMatchObject({ change: 'moved', kid: 'Leo', was_day: 'Sat, Sep 19' });
+    });
+
+    it.each(['own', 'organizer'] as const)(
+      "the parent's %s Swim lesson keeps its title (control)",
+      async (standing) => {
+        const facts = await factsOfMove(standing, {
+          mirrored: 'Swim lesson',
+          arriving: 'Swim lesson',
+        });
+        expect(facts).toMatchObject({ event: 'Swim lesson', kid: 'Leo' });
+      },
+    );
   });
 
   it('a first sighting of a kid event is not a notice', async () => {

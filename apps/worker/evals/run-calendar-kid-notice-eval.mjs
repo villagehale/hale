@@ -98,12 +98,12 @@ async function main() {
     `calendar-kid-notice eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | write=${model} judge=${judgeModel}`,
   );
   // VIL-633 · the REAL title cleaner and the REAL contact check acceptSpokenLine applies.
-  const { kidNoticeTitle } = await tsImport(NOTICE_TITLE, import.meta.url);
+  const { noticeTitleFor } = await tsImport(NOTICE_TITLE, import.meta.url);
   const { contactsOutside } = await tsImport(CONTACT_SHAPE, import.meta.url);
   const fixtures = [
     ...CALENDAR_KID_NOTICE_FIXTURES,
     ...CALENDAR_KID_NOTICE_HOSTILE_FIXTURES.map((fixture) => {
-      const event = kidNoticeTitle(fixture.rawTitle);
+      const event = noticeTitleFor(fixture.standing, fixture.rawTitle);
       // In kidNoticeFacts' order: change, day, event, then the rest.
       const { change, day, ...rest } = fixture.request.facts;
       const facts = { change, day, ...(event === '' ? {} : { event }), ...rest };

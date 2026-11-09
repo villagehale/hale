@@ -1,11 +1,11 @@
-import { inShape, redactInShape } from '../channel/place-token';
-import { asHandsetReads, hasLinkShape, linksOutside, wordsAsHandsetReads } from './link-shape';
+import { inShape } from '../channel/place-token';
+import { asHandsetReads, linksOutside, wordsAsHandsetReads } from './link-shape';
 
 /**
  * VIL-633 · The one check for "this text tells the parent how to reach someone": a link, a
  * phone number or an email address. A model-written line never carries one it was not
  * handed (code adds links on their own line), and a third party's words (a calendar title)
- * lose theirs before a writer sees them. Links are read by link-shape.ts; this file adds
+ * are dropped before a writer sees them when they hold one. Links are read by link-shape.ts; this file adds
  * phones and emails on the same readings, and writes no link pattern of its own.
  *
  * Relative imports only, so the eval runners can load it as-is.
@@ -23,8 +23,14 @@ const PHONE = /\+?\(?\d(?:[\s.()-]{0,3}\d){6,}/g;
 /** A word with a letter or digit on each side of an `@` (NFKC reads '＠' as '@'). */
 const EMAIL = /[\p{L}\p{N}._%+-]@[\p{L}\p{N}]/u;
 const PHONE_DIGITS = 7;
+/**
+ * An address spelled out: "(at)" or "[dot]", an "at" a few words before a "dot", a
+ * standalone "@", or "dot" / "point" / "punkt" before a common ending. The endings are a
+ * short list on purpose: "Polka dot party" keeps its words, and a real host is read by
+ * link-shape.ts, which needs no list.
+ */
 const SPELLED_AT_OR_DOT =
-  /[([{<]\s*(?:at|dot)\s*[)\]}>]|\bat\s+[\p{L}\p{N}-]+\s+dot\s+[\p{L}\p{N}]/iu;
+  /[([{<]\s*(?:at|dot)\s*[)\]}>]|\bat\s+(?:[\p{L}\p{N}-]+\s+){1,3}dot\s+[\p{L}\p{N}]|(?:^|\s)@(?:\s|$)|\b(?:dot|point|punkt)\s+(?:com|net|org|app|io|co|ca|us|uk|de|fr|info|biz|me|ly|xyz|link|site|online)\b/iu;
 
 export type ContactKind = 'link' | 'phone' | 'email';
 
@@ -62,17 +68,4 @@ export function contactsOutside(text: string, handed: readonly string[]): Contac
 export function mayHideContact(text: string): boolean {
   const digits = inShape(text).replace(/\D/g, '').length;
   return digits >= PHONE_DIGITS || SPELLED_AT_OR_DOT.test(asHandsetReads(text));
-}
-
-/**
- * `text` less every phone run and every link- or email-shaped word, in the words as typed.
- * What is left is read again, and when the words that remain still close into a contact
- * ("evil . app" once a word between them is gone) nothing is kept.
- */
-export function withoutContacts(text: string): string {
-  const kept = redactInShape(text, PHONE, ' ')
-    .split(/\s+/)
-    .filter((word) => word !== '' && !hasLinkShape(word) && !EMAIL.test(asHandsetReads(word)))
-    .join(' ');
-  return contactsOutside(kept, []).length === 0 ? kept : '';
 }

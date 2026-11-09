@@ -24,7 +24,6 @@ import { speak } from '~/lib/channel/spoken-line';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { dayKeyOf, formatDayHeading } from '~/lib/format/datetime';
 import { KID_NOTICE_PURPOSE, kidNoticeDedupeKey, readKidNoticeGates } from './calendar-kid-notice';
-import { kidNoticeTitle } from './calendar-notice-title';
 
 /**
  * A change on a connected Google Calendar becomes ONE text to the parent.
@@ -358,7 +357,8 @@ type KidNews =
 
 interface KidPlaced extends Placed {
   news: KidNews;
-  /** The event's name for the writer: Google's, or the kid copy's for a bare tombstone. */
+  /** The event's name for the writer, '' unless the parent organized it or it is their own
+   * (readKidNoticeGates): Google's, or the kid copy's for a bare tombstone. */
   title: string;
   kidName: string | null;
 }
@@ -472,7 +472,7 @@ async function kidNoticeSweep(
   const gates = await readKidNoticeGates(
     database,
     { familyId, integrationId, now },
-    fresh.map((placed) => placed.change.eventId),
+    fresh.map((placed) => placed.change),
   );
   const cleared: KidPlaced[] = [];
   const notTheParents = { inviteNotAccepted: 0, standingUnknown: 0 };
@@ -486,12 +486,7 @@ async function kidNoticeSweep(
       remember(writes, placed, null);
       continue;
     }
-    const own = kidNoticeTitle(placed.change.title);
-    cleared.push({
-      ...placed,
-      title: own === '' ? kidNoticeTitle(gate.title) : own,
-      kidName: gate.kidName,
-    });
+    cleared.push({ ...placed, title: gate.title, kidName: gate.kidName });
   }
   if (notTheParents.inviteNotAccepted + notTheParents.standingUnknown > 0) {
     // Counts only: no family, connection, event or title (rule #1).

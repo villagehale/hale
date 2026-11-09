@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactsOutside, withoutContacts } from './contact-shape';
-import { hasLinkShape } from './link-shape';
+import { contactsOutside } from './contact-shape';
 
 describe('contactsOutside: the evasion table', () => {
   it.each([
@@ -51,30 +50,5 @@ describe('contactsOutside: the evasion table', () => {
 
   it('a host built around a handed word is another link', () => {
     expect(contactsOutside('see evilexample.test', ['example.test'])).toEqual(['link']);
-  });
-});
-
-describe('withoutContacts', () => {
-  it('strips the link, phone and email words and keeps the rest', () => {
-    expect(
-      withoutContacts("Kids' soccer pickup moved, call 555-0199 or see evil.app/x or a@b.example"),
-    ).toBe("Kids' soccer pickup moved, call or see or");
-  });
-
-  it('leaves nothing when what is left still reads as a link', () => {
-    // Each word alone is clean; together they close into "evil.app".
-    expect(withoutContacts('Swim evil . app')).toBe('');
-  });
-
-  it('keeps a plain title whole (positive control)', () => {
-    expect(withoutContacts('Swim lesson, 10:00-10:45 @ the pool')).toBe(
-      'Swim lesson, 10:00-10:45 @ the pool',
-    );
-  });
-
-  it('a stripped title has no link shape left', () => {
-    const out = withoutContacts('Recital ｅｖｉｌ．ａｐｐ evil(.)app www.example');
-    expect(out).toBe('Recital');
-    expect(hasLinkShape(out)).toBe(false);
   });
 });
