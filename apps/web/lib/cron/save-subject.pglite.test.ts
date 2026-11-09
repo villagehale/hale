@@ -73,6 +73,23 @@ describe('save_memory names its subject', () => {
     expect(await facts(familyId)).toEqual([{ childId: kidId, factKey: 'afternoon_nap' }]);
   });
 
+  it('refuses a fact filed under a younger child that names a 13+ child', async () => {
+    const { familyId, kidId } = await seed();
+    const result = await tool('save_memory').handler(
+      {
+        childId: kidId,
+        factType: 'relationship',
+        factKey: 'sibling_news',
+        factValue: `${TEEN_NAME} has a secret boyfriend`,
+        confidence: 0.9,
+        ...CLASS,
+      },
+      { familyId, actor: 'system' },
+    );
+    expect(result).toEqual({ saved: false, reason: 'names_teen' });
+    expect(await facts(familyId)).toEqual([]);
+  });
+
   it('refuses a family-wide fact that names a 13+ child, and keeps one that does not', async () => {
     const { familyId } = await seed();
     const refused = await tool('save_memory').handler(
@@ -113,6 +130,23 @@ describe('save_child_fact names its subject', () => {
         category: 'concerns',
         factKey: 'school_worry',
         summary: `worried about ${TEEN_NAME} at school`,
+        confidence: 0.9,
+        ...CLASS,
+      },
+      { familyId, actor: 'system' },
+    );
+    expect(result).toEqual({ saved: false, reason: 'names_teen' });
+    expect(await facts(familyId)).toEqual([]);
+  });
+
+  it('refuses a fact filed under a younger child that names a 13+ child', async () => {
+    const { familyId, kidId } = await seed();
+    const result = await tool('save_child_fact').handler(
+      {
+        childId: kidId,
+        category: 'concerns',
+        factKey: 'sibling_worry',
+        summary: `Pip misses ${TEEN_NAME} since the breakup`,
         confidence: 0.9,
         ...CLASS,
       },

@@ -242,7 +242,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
       if (
-        await familyFactNamesTeen(database, ctx.familyId, now, input.childId, [
+        await factNamesTeen(database, ctx.familyId, now, [
           input.factKey,
           flattenFactValue(input.factValue),
         ])
@@ -430,19 +430,17 @@ async function loadDistillReceipts(
 }
 
 /**
- * A family-wide save whose text names a 13+ child is refused (rule #1). A text turn
- * carries no child id, so this is what keeps a teen's content, told by SMS, from
- * becoming a fact every later reader treats as the whole family's. A child-scoped
- * save has already passed the guarded invoker's age gate.
+ * A save whose text names a 13+ child is refused (rule #1), whoever it is filed
+ * under. A text turn carries no child id, and a model can file a teen's news under a
+ * younger sibling, so the name is checked on every save. The guarded invoker's age
+ * gate has already refused a save filed under the teen.
  */
-async function familyFactNamesTeen(
+async function factNamesTeen(
   database: Database,
   familyId: string,
   now: Date,
-  childId: string | null,
   texts: readonly string[],
 ): Promise<boolean> {
-  if (childId !== null) return false;
   const { names } = await teenRoster(database, familyId, now);
   return names.length > 0 && texts.some((text) => namesAny(text, names));
 }
@@ -487,8 +485,9 @@ async function decideDistilledFact(
  * Reduce a conversation timeline to what the distiller may see. A turn focused on
  * a 13+ child is stripped to its topic/category and a redaction marker, and its
  * child scope is dropped to null so no teen-specific fact can be derived (rule #1).
- * A turn with no child that names a 13+ child is treated the same way: a text turn
- * never carries a child id, so the name is the only sign it is about the teen.
+ * A turn that names a 13+ child is treated the same way, whatever child it is filed
+ * under: a text turn never carries a child id, so the name is the only sign it is
+ * about the teen.
  * Other turns pass through unchanged.
  */
 function redactTimelineForDistill(
@@ -498,9 +497,8 @@ function redactTimelineForDistill(
 ): DistillTurn[] {
   return turns.map((turn) => {
     const isTeen =
-      turn.childId !== null
-        ? stageByChild.get(turn.childId) === 'teenager'
-        : namesAny(turn.content, teenNames);
+      (turn.childId !== null && stageByChild.get(turn.childId) === 'teenager') ||
+      namesAny(turn.content, teenNames);
     if (isTeen) {
       return {
         childId: null,
@@ -589,12 +587,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
-      if (
-        await familyFactNamesTeen(database, ctx.familyId, now, input.childId, [
-          input.factKey,
-          input.summary,
-        ])
-      ) {
+      if (await factNamesTeen(database, ctx.familyId, now, [input.factKey, input.summary])) {
         return { saved: false as const, reason: 'names_teen' };
       }
 

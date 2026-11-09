@@ -29,6 +29,7 @@ const HIDDEN_KEYS = [
   'maybe_pref',
   'action_override:email_reply',
   'old_pref',
+  'sibling_news',
 ];
 const LIVE_EPISODE = 'went to the library together';
 
@@ -63,6 +64,7 @@ beforeAll(async () => {
     fact('kid_swim', 'Pip likes the pool', { childId: kidId }),
     fact('teen_pref', 'teen detail', { childId: teenId }),
     fact('weekend_plan', `${TEEN_NAME} has debate club on Saturdays`),
+    fact('sibling_news', `${TEEN_NAME} has a secret boyfriend`, { childId: kidId }),
     fact('pickup_this_week', 'grandma does pickup', {
       memoryKind: 'temporary',
       expiresAt: new Date('2026-11-01T00:00:00.000Z'),
@@ -89,6 +91,7 @@ beforeAll(async () => {
       episode('deleted outing', { deletedAt: new Date('2026-11-06T00:00:00.000Z') }),
       episode('teen outing', { childId: teenId }),
       episode(`${TEEN_NAME} started a new job`),
+      episode(`Pip cried when ${TEEN_NAME} left`, { childId: kidId }),
     ]);
   await db.database.insert(schema.events).values({
     familyId,

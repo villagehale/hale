@@ -667,7 +667,13 @@ export async function assembleFamilyExport(
     ];
   });
 
-  const memory = await loadFamilyMemoryExport(database, familyId, childRows, now);
+  const memory = await loadFamilyMemoryExport(
+    database,
+    familyId,
+    childRows,
+    { userId: deps.actorUserId, householdAdults: memberRows.length },
+    now,
+  );
 
   await database.insert(schema.auditLog).values({
     familyId,

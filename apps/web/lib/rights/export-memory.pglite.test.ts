@@ -110,8 +110,7 @@ async function seedParent(familyId: string) {
 
 describe('family memory in the right-to-access copy', () => {
   it('exports facts, episodes, jobs and promises, with a 13+ child withheld', async () => {
-    const { familyId } = await seedFamily(db.database);
-    const actorUserId = await seedParent(familyId);
+    const { familyId, parentUserId: actorUserId } = await seedFamily(db.database);
     const [kid, teen] = await db.database
       .insert(schema.children)
       .values([
@@ -200,7 +199,8 @@ describe('family memory in the right-to-access copy', () => {
     expect(doc.memory.facts.filter((f) => f.factKey === TEEN_REDACTED_PLACEHOLDER)).toHaveLength(2);
     expect(doc.memory.episodes).toEqual([
       expect.objectContaining({
-        summary: 'library morning',
+        episodeType: 'outing',
+        summary: null,
         deletedAt: '2026-11-02T00:00:00.000Z',
       }),
       expect.objectContaining({ summary: TEEN_REDACTED_PLACEHOLDER, child: null }),
@@ -220,6 +220,103 @@ describe('family memory in the right-to-access copy', () => {
     expect(text).not.toContain(TEEN_NAME);
     expect(text).not.toContain('raw');
     expect(text).not.toContain(teenId);
+    // A removed episode keeps its dates and type, never its words.
+    expect(text).not.toContain('library morning');
+  });
+
+  it("withholds another adult's one-to-one memory, and keeps the requester's and the shared", async () => {
+    const { familyId, parentUserId: parentA } = await seedFamily(db.database);
+    const [userB] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${familyId}:coparent`, name: 'Co-parent' })
+      .returning({ id: schema.users.id });
+    const parentB = userB?.id as string;
+    await db.database
+      .insert(schema.familyMembers)
+      .values({ familyId, userId: parentB, role: 'co_parent' });
+
+    const message = async (
+      parentUserId: string,
+      direction: 'in' | 'out',
+      inGroup: boolean | null,
+    ) => {
+      const [row] = await db.database
+        .insert(schema.channelMessages)
+        .values({
+          familyId,
+          parentUserId,
+          channel: 'sms',
+          direction,
+          category: 'reply',
+          status: 'sent',
+          inGroup,
+        })
+        .returning({ id: schema.channelMessages.id });
+      return row?.id as string;
+    };
+    const fromA = await message(parentA, 'in', false);
+    const fromB = await message(parentB, 'in', false);
+    const inGroup = await message(parentB, 'in', true);
+    const toA = await message(parentA, 'out', null);
+    const toB = await message(parentB, 'out', null);
+
+    const workstream = (title: string, createdFrom: string) => ({
+      familyId,
+      title,
+      status: 'open' as const,
+      createdFrom,
+      updatedFrom: createdFrom,
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+    });
+    await db.database
+      .insert(schema.familyWorkstreams)
+      .values([
+        workstream('A asked for a swim class', fromA),
+        workstream('B private job', fromB),
+        workstream('group carpool plan', inGroup),
+      ]);
+    const commitment = (
+      kind: 'first_find' | 'plan_offer',
+      summary: string,
+      createdFrom: string,
+    ) => ({
+      familyId,
+      commitmentKind: kind,
+      createdFrom,
+      summary,
+      dueAt: new Date('2026-11-10T00:00:00.000Z'),
+    });
+    await db.database
+      .insert(schema.agentCommitments)
+      .values([
+        commitment('first_find', 'a find for A', toA),
+        commitment('plan_offer', 'B private promise', toB),
+      ]);
+    await db.database.insert(schema.familyMemoryFacts).values([
+      { familyId, factType: 'logistic', factKey: 'pickup', factValue: 'pickup at three' },
+      { familyId, factType: 'preference', factKey: 'b_private', factValue: 'B private feeling' },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentA,
+      loadTrail: async () => [],
+      now: NOW,
+    });
+
+    expect(doc.memory.workstreams.map((w) => [w.title, w.withheld])).toEqual([
+      ['A asked for a swim class', null],
+      [null, 'another_adult'],
+      ['group carpool plan', null],
+    ]);
+    expect(doc.memory.commitments.map((c) => [c.summary, c.withheld])).toEqual([
+      ['a find for A', null],
+      [null, 'another_adult'],
+    ]);
+    expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
+      ['pickup', 'pickup at three', null],
+      [null, null, 'source_not_recorded'],
+    ]);
+    expect(JSON.stringify(doc.memory)).not.toContain('B private');
   });
 
   it('reads every family table, or names why not', async () => {

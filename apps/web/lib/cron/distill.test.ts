@@ -56,6 +56,19 @@ describe('redactTimelineForDistill (rule #1)', () => {
     });
   });
 
+  it('reduces a turn filed under a younger child that names a 13+ child', () => {
+    const out = _internal.redactTimelineForDistill(
+      [{ childId: TOT, role: 'user', content: 'Rowan has a secret boyfriend', topic: null }],
+      new Map([
+        [TOT, 'toddler'],
+        [TEEN, 'teenager'],
+      ]),
+      ['Rowan'],
+    );
+    expect(out).toEqual([expect.objectContaining({ childId: null, redacted: true })]);
+    expect(out[0]?.content).not.toContain('boyfriend');
+  });
+
   it('reduces a teen turn to category/summary only and drops the child scope', () => {
     const out = _internal.redactTimelineForDistill(
       [
@@ -111,7 +124,9 @@ describe('save_child_fact tool', () => {
       }
       throw new Error('unexpected insert target');
     });
-    return { insert, update } as never;
+    // Every save reads the roster for the teen-name check; this family has no teen.
+    const select = () => ({ from: () => ({ where: async () => [] }) });
+    return { insert, update, select } as never;
   }
 
   it('writes a per-child categorized fact through the guarded invoker', async () => {

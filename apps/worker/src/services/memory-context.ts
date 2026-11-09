@@ -37,9 +37,9 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
  *   - anything about a 13+ child (rule #1). The age gate is deterministic: a row whose
  *     child is 13+ by date of birth TODAY is dropped in SQL, so it never eats the limit
  *     and a fact written when the child was 12 leaves every prompt on their birthday.
- *     A family-wide row whose text names a 13+ child is dropped too, so content a
- *     parent texted about a teen (SMS turns carry no child id) cannot ride as a
- *     family fact.
+ *     A row whose text names a 13+ child is dropped too, whatever child it is filed
+ *     under, so content a parent texted about a teen (SMS turns carry no child id)
+ *     cannot ride as a family fact or a younger sibling's.
  */
 
 /** The precision bar for a stored belief. Below it, a fact is never written or read. */
@@ -161,7 +161,7 @@ export async function factsForContext(
     .orderBy(desc(facts.confidence), desc(facts.validFrom), facts.id)
     .limit(options.limit);
   if (teens.names.length === 0) return rows;
-  return rows.filter((row) => row.childId !== null || !namesAny(factText(row), teens.names));
+  return rows.filter((row) => !namesAny(factText(row), teens.names));
 }
 
 export async function episodesForContext(
@@ -184,5 +184,5 @@ export async function episodesForContext(
     .orderBy(desc(episodes.occurredAt), episodes.id)
     .limit(options.limit);
   if (teens.names.length === 0) return rows;
-  return rows.filter((row) => row.childId !== null || !namesAny(row.summary, teens.names));
+  return rows.filter((row) => !namesAny(row.summary, teens.names));
 }
