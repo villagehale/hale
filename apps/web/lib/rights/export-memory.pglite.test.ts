@@ -34,7 +34,6 @@ const NOT_IN_EXPORT: Record<string, string> = {
   channel_pending_asks: 'unreviewed',
   chat_attachments: 'unreviewed',
   consent_records: 'unreviewed',
-  conversations: 'unreviewed',
   email_alert_offers: 'unreviewed',
   email_forwards_pending: 'unreviewed',
   email_sends: 'unreviewed',
@@ -186,13 +185,25 @@ describe('family memory in the right-to-access copy', () => {
         expiresAt: new Date('2026-12-01T00:00:00.000Z'),
       },
     ]);
-    await db.database.insert(schema.agentCommitments).values({
-      familyId,
-      commitmentKind: 'first_find',
-      createdFrom: 'msg-3',
-      summary: 'your first weekend find lands in a day or two',
-      dueAt: new Date('2026-11-10T00:00:00.000Z'),
-    });
+    await db.database.insert(schema.agentCommitments).values([
+      {
+        familyId,
+        commitmentKind: 'first_find',
+        createdFrom: 'msg-3',
+        summary: 'your first weekend find lands in a day or two',
+        heardFacts: ['when:time:9:15', 'price:free'],
+        dueAt: new Date('2026-11-10T00:00:00.000Z'),
+      },
+      {
+        familyId,
+        commitmentKind: 'plan_offer',
+        createdFrom: 'msg-4',
+        subjectChildId: teenId,
+        summary: 'teen raw promise',
+        heardFacts: ['when:time:teen-raw-anchor'],
+        dueAt: new Date('2026-11-11T00:00:00.000Z'),
+      },
+    ]);
 
     const doc = await assembleFamilyExport(db.database, familyId, {
       actorUserId,
@@ -220,6 +231,13 @@ describe('family memory in the right-to-access copy', () => {
       expect.objectContaining({
         kind: 'first_find',
         summary: 'your first weekend find lands in a day or two',
+        heardFacts: ['when:time:9:15', 'price:free'],
+      }),
+      expect.objectContaining({
+        kind: 'plan_offer',
+        summary: TEEN_REDACTED_PLACEHOLDER,
+        heardFacts: null,
+        withheld: 'teen',
       }),
     ]);
 
@@ -291,6 +309,7 @@ describe('family memory in the right-to-access copy', () => {
       commitmentKind: kind,
       createdFrom,
       summary,
+      heardFacts: [`price:money:${summary}`],
       dueAt: new Date('2026-11-10T00:00:00.000Z'),
     });
     await db.database
@@ -315,9 +334,9 @@ describe('family memory in the right-to-access copy', () => {
       [null, 'another_adult'],
       ['group carpool plan', null],
     ]);
-    expect(doc.memory.commitments.map((c) => [c.summary, c.withheld])).toEqual([
-      ['a find for A', null],
-      [null, 'another_adult'],
+    expect(doc.memory.commitments.map((c) => [c.summary, c.heardFacts, c.withheld])).toEqual([
+      ['a find for A', ['price:money:a find for A'], null],
+      [null, null, 'another_adult'],
     ]);
     expect(doc.memory.facts.map((f) => [f.factKey, f.value, f.withheld])).toEqual([
       ['pickup', 'pickup at three', null],
