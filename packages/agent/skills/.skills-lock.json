@@ -3,6 +3,10 @@
     "file": "activity-deep.md",
     "sha256": "b74ca280ef2ad8e0a28fe840c8e9fa77559ff09a1c6a33d29fb660eacc264dca"
   },
+  "activity-finder-day.md": {
+    "file": "activity-finder-day.md",
+    "sha256": "356e9446d1c90d97cc5372deb550daa0cebf85506e46280ad76a4a880c529d32"
+  },
   "activity-finder-events.md": {
     "file": "activity-finder-events.md",
     "sha256": "ed21d26ed46009fa0c26ee1a6fc4e868f046781e02a76f55e4216d9e8edd7a3e"
@@ -106,6 +110,10 @@
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
+  },
+  "coach-local-day.md": {
+    "file": "coach-local-day.md",
+    "sha256": "2623acdeda6865fb09415b2074c259774232016b10be4b8c014af31e48b9e9f4"
   },
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
