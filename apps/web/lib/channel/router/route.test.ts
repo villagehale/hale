@@ -1117,6 +1117,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -1210,6 +1211,7 @@ describe('the off-domain lane', () => {
       answer: createGeneralAnswer(client),
       today: async () => 'monday, oct 12, 2026',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
@@ -6408,6 +6410,7 @@ describe('a live crisis reply is marked answered only once it is sent', () => {
       moment: { write: async () => ({ status: 'written', reply: 'a written crisis reply' }) },
       today: async () => '2026-10-20',
       place: async () => ({ status: 'unknown', reason: 'no_postal' }),
+      healthPlace: async () => null,
       pendingAsk: async () => ({ status: 'none' }),
       medical: {
         answer: async () => {
