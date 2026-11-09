@@ -21,7 +21,7 @@ export interface DiscoverOptions {
 }
 export type DiscoverResult =
   | { status: 'discovered'; insertedCount: number; offeredIds: string[] }
-  | { status: 'no_area' }
+  | { status: 'no_place' }
   | { status: 'no_non_teen_children' }
   | { status: 'unavailable'; reason: string };
 
@@ -41,7 +41,7 @@ export async function discoverForFamily(
     // (readCandidates), not here.
     excludePreviouslyOffered: false,
   });
-  if (found.reason === 'no_area' || found.reason === 'no_non_teen_children')
+  if (found.reason === 'no_place' || found.reason === 'no_non_teen_children')
     return { status: found.reason };
   if (found.reason) return { status: 'unavailable', reason: found.reason };
   // VIL-451 · reuse the existing receipt for an activity already offered (saved

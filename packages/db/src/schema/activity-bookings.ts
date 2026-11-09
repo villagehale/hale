@@ -120,6 +120,13 @@ export const activityBookings = pgTable(
      */
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     /**
+     * The received time of the newest email that recorded or refreshed this booking
+     * (migration 0200). A cancellation older than it does not close the row: a cancellation
+     * read late must not undo a booking the provider confirmed after it. NULL on rows
+     * written before 0200, which any cancellation may close, as before.
+     */
+    sourceReceivedAt: timestamp('source_received_at', { withTimezone: true }),
+    /**
      * The `family_events` row this booking is ON. ONE meaning, two writers: the
      * correlation stamps it at detection when the class is already on the calendar, and
      * the offer stamps it when the parent says yes. They cannot race — a booking that

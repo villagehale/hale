@@ -1,0 +1,14 @@
+{
+  "value": {
+    "reply": "Oui, Google partage toute la boîte avec moi, donc je vois tout. Ce que je garde, c'est seulement ce qui concerne les enfants, et je n'envoie jamais de courriel. Tu peux te déconnecter quand tu veux. Tu veux que je regarde ta boîte mail pour repérer les trucs des enfants ?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "connectGmail": null,
+    "language": "fr"
+  },
+  "latencyMs": 1675
+}

@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveRepoFile } from '~/lib/coach/resolve-repo-file';
+import { readActivityPlace } from '~/lib/channel/activity/place';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { loadAgentContext } from './context';
@@ -75,10 +74,10 @@ describe('coach context — stale facts and the current postal code (VIL-519)', 
       factValue: 'Lin loves swimming lessons',
       confidence: 0.9,
       inferredBy: 'preview-seed',
-      validFrom: DAYS(120),
+      validFrom: DAYS(400),
       memoryKind: 'lasting',
       memorySource: 'inferred',
-      sourcedAt: DAYS(120),
+      sourcedAt: DAYS(400),
     });
     await writeFact(db.database, {
       familyId,
@@ -121,11 +120,56 @@ describe('coach context — stale facts and the current postal code (VIL-519)', 
   });
 });
 
-describe('nearby-find skill — recheck is not a pick and not a template', () => {
-  const skill = readFileSync(resolveRepoFile('packages/agent/skills/coach-nearby-find.md'), 'utf8');
+describe('coach context — the coach names the town the find searches (Devin #981)', () => {
+  let db: TestDb;
 
-  it('tells the model a missing guess must not choose the pick, with no set sentence', () => {
-    expect(skill).toContain('must not choose');
-    expect(skill).toContain('no set sentence');
+  beforeEach(async () => {
+    db = await createTestDb();
+  }, 30_000);
+  afterEach(async () => {
+    await db?.close();
+  });
+
+  async function coachCity(familyId: string): Promise<string | null> {
+    const context = await loadAgentContext(
+      {
+        familyId,
+        question: 'anything on this weekend?',
+        intent: null,
+        focusedChildId: null,
+        transcript: [],
+        sourceNote: null,
+      },
+      db.database,
+      NOW,
+    );
+    return context.location.city;
+  }
+
+  it('a postal code and a coarse area that disagree: the coach and the find name the same town', async () => {
+    const { familyId } = await seedFamily(db.database, 'Mixed Area');
+    await db.database
+      .update(schema.families)
+      .set({ city: null, country: 'Canada', postalCode: 'M5V 2T6', areaCoarse: 'L3P' })
+      .where(eq(schema.families.id, familyId));
+
+    const find = await readActivityPlace(db.database, familyId);
+    expect(find).toEqual({ status: 'known', town: 'Toronto' });
+    expect(await coachCity(familyId)).toBe('Toronto');
+  });
+
+  it('an active saved area: the coach and the find both use it, not the home row', async () => {
+    const { familyId } = await seedFamily(db.database, 'Away Area');
+    await db.database
+      .update(schema.families)
+      .set({ city: 'Toronto', country: 'Canada', postalCode: 'M5V 2T6', areaCoarse: 'M5V' })
+      .where(eq(schema.families.id, familyId));
+    await db.database
+      .insert(schema.familyAreas)
+      .values({ familyId, city: 'Markham', postalCode: 'L3P', isActive: true });
+
+    const find = await readActivityPlace(db.database, familyId);
+    expect(find).toEqual({ status: 'known', town: 'Markham' });
+    expect(await coachCity(familyId)).toBe('Markham');
   });
 });

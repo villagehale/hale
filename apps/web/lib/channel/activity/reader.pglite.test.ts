@@ -4,14 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadAgentContext } from '~/lib/coach/context';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
-import {
-  FAMILY_FIT_PREFERENCE_LIMIT,
-  FAMILY_FIT_READ_LIMIT,
-  productionActivityFamilyReader,
-} from './reader';
+import { FAMILY_FIT_PREFERENCE_LIMIT, productionActivityFamilyReader } from './reader';
 
 const NOW = new Date('2026-10-30T12:00:00Z');
 const DAYS = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+/** More rows than any read limit, so ordering before the LIMIT is what decides. */
+const MANY = 40;
 
 describe('family fit provenance + freshness (VIL-519, pglite)', () => {
   let db: TestDb;
@@ -84,7 +82,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
       .where(eq(schema.families.id, familyId));
 
     const fit = await reader.familyFit!(db.database, familyId, NOW);
-    expect(fit.homeArea).toBe('markham');
+    expect(fit.homeArea).toBe('Markham');
     expect(fit.preferences.map((p) => p.key)).toEqual(['ville_market']);
     expect(JSON.stringify(fit)).not.toContain('Georgetown');
   });
@@ -130,7 +128,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     for (let i = 0; i < 40; i++) {
       await fact(familyId, null, `old_${i}`, i, {
         source: 'inferred',
-        seenDaysAgo: 200,
+        seenDaysAgo: 400,
         confidence: 1,
       });
     }
@@ -143,7 +141,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
   it('a parent-stated fact survives 32+ newer inferred guesses filling the read cap (Devin #981)', async () => {
     const { familyId } = await seedFamily(db.database);
     await fact(familyId, null, 'not_scary', true, { source: 'parent_message', seenDaysAgo: 60 });
-    for (let i = 0; i < FAMILY_FIT_READ_LIMIT + 8; i++) {
+    for (let i = 0; i < MANY; i++) {
       await fact(familyId, null, `guess_${i}`, i, {
         source: 'inferred',
         seenDaysAgo: 1,
@@ -158,12 +156,12 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
 
   it('a stale guess is absent from the find result even when fresh facts fill the cap', async () => {
     const { familyId } = await seedFamily(db.database);
-    for (let i = 0; i < FAMILY_FIT_READ_LIMIT; i++) {
+    for (let i = 0; i < MANY; i++) {
       await fact(familyId, null, `said_${i}`, i, { source: 'parent_message', seenDaysAgo: 300 });
     }
     await fact(familyId, null, 'loves_swimming', 'Lin loves swimming lessons', {
       source: 'inferred',
-      seenDaysAgo: 120,
+      seenDaysAgo: 400,
     });
 
     const fit = await reader.familyFit!(db.database, familyId, NOW);
@@ -173,7 +171,7 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
 
   it('a stale fact is omitted entirely, never ranked and never named', async () => {
     const { familyId } = await seedFamily(db.database);
-    await fact(familyId, null, 'scary', 'avoid', { source: 'inferred', seenDaysAgo: 120 });
+    await fact(familyId, null, 'scary', 'avoid', { source: 'inferred', seenDaysAgo: 400 });
     await fact(familyId, null, 'stroller', true, { source: 'inferred', seenDaysAgo: 30 });
     await fact(familyId, null, 'language', 'french', { source: 'legacy', seenDaysAgo: 400 });
 
@@ -224,6 +222,29 @@ describe('family fit provenance + freshness (VIL-519, pglite)', () => {
     });
     expect(shown).not.toContain('Georgetown');
     expect(shown).toContain('indoor');
+  });
+
+  it('a newer marked fact under the same key does not erase an older unmarked preference (Devin #981)', async () => {
+    const { familyId } = await seedFamily(db.database);
+    await fact(familyId, null, 'school', 'likes the after-school club', { seenDaysAgo: 5 });
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: 'school',
+      factValue: { record: 'place', text: 'Georgetown' },
+      confidence: 0.9,
+      inferredBy: 'test',
+      validFrom: DAYS(1),
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: DAYS(1),
+    });
+
+    const fit = await reader.familyFit!(db.database, familyId, NOW);
+    expect(fit.preferences.map((p) => [p.key, p.value])).toEqual([
+      ['school', 'likes the after-school club'],
+    ]);
   });
 
   it('expired and closed facts are not used at all', async () => {

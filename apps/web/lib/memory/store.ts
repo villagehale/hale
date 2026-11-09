@@ -31,7 +31,6 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
-import { recordFieldOf, withRecordField } from './record-field';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
@@ -664,7 +663,6 @@ async function correctFamilyFact(
       childId: schema.familyMemoryFacts.childId,
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
-      factValue: schema.familyMemoryFacts.factValue,
       inferredBy: schema.familyMemoryFacts.inferredBy,
     })
     .from(schema.familyMemoryFacts)
@@ -680,15 +678,10 @@ async function correctFamilyFact(
   const subjects: Array<{
     childId: string | null;
     factType: 'preference' | 'routine' | 'medical' | 'logistic' | 'relationship' | 'voice';
-    priorValue: unknown;
   }> =
     live.length > 0
-      ? live.map((row) => ({
-          childId: row.childId,
-          factType: row.factType,
-          priorValue: row.factValue,
-        }))
-      : [{ childId: null, factType: factTypeFor(input.factKey), priorValue: null }];
+      ? live.map((row) => ({ childId: row.childId, factType: row.factType }))
+      : [{ childId: null, factType: factTypeFor(input.factKey) }];
 
   await database.transaction(async (tx) => {
     let superseded = 0;
@@ -699,7 +692,7 @@ async function correctFamilyFact(
         childId: subject.childId,
         factType: subject.factType,
         factKey: input.factKey,
-        factValue: withRecordField(input.value, recordFieldOf(subject.priorValue)),
+        factValue: input.value,
         confidence: 1,
         inferredBy: 'ask-hale',
         validFrom: input.now,

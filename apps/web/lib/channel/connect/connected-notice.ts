@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { groupsFromFindBody } from '~/lib/channel/intake/activity-map';
 import { sendYearConnectorCards } from '~/lib/channel/intake/connector-offer';
@@ -10,6 +11,10 @@ import {
   pageOncePerDay,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
+import {
+  type HouseholdGroupFact,
+  loadHouseholdGroupFact,
+} from '~/lib/channel/intake/household-group';
 import {
   type OnboardingChecklist,
   agesAreComplete,
@@ -161,6 +166,10 @@ export async function connectedReceiptBody(
     session?: IntakeSession | null;
     /** The parent's name is already on their row. */
     nameStored?: boolean;
+    /** The family's IANA zone, required when `aha` has items: their times on their clock. */
+    timeZone?: string;
+    /** VIL-566 — the household group, when they said yes to one: claimed or still pending. */
+    householdGroup?: HouseholdGroupFact | null;
   },
 ): Promise<string> {
   const spoken = await speakFriend(
@@ -176,6 +185,8 @@ export async function connectedReceiptBody(
       connector: provider,
       granted: null,
       synced: aha ?? failedAha(provider),
+      ...(options?.timeZone ? { timeZone: options.timeZone } : {}),
+      ...(options?.householdGroup ? { householdGroup: options.householdGroup } : {}),
     },
     options?.page ? { page: options.page } : {},
   );
@@ -296,8 +307,14 @@ async function sendReceipt(
   // classifier does not read as about a child or a kid activity never reach
   // the model. A mailbox or calendar with nothing kid-related yields no mention.
   const session = await openOnboarding(database, familyId);
+  const timeZone = await householdTimezone(database, familyId);
   const aha = args.aha
-    ? await kidRelatedAha(args.aha, await loadKidContext(database, familyId, now), ports.kidItems)
+    ? await kidRelatedAha(
+        args.aha,
+        await loadKidContext(database, familyId, now),
+        ports.kidItems,
+        timeZone,
+      )
     : args.aha;
   if (aha && aha.read === 'none_for_kids') {
     console.info({ familyId, provider }, 'connector connected: nothing kid-related to mention');
@@ -309,7 +326,9 @@ async function sendReceipt(
     aha,
     {
       session,
+      timeZone,
       nameStored: await parentNameStored(database, parentUserId),
+      householdGroup: await loadHouseholdGroupFact(database, familyId),
       page: pageOncePerDay(new PostgresRateLimiter(database), familyId),
     },
   );
@@ -608,6 +627,7 @@ async function askAfterCalendarReceipt(
         findLines: lines,
         findGroups: progress ? groupsFromFindBody(progress.findBody) : [],
         now: args.now,
+        timeZone: await householdTimezone(database, args.familyId),
         coparentJoin: null,
       },
       { page: pageOncePerDay(new PostgresRateLimiter(database), args.familyId) },

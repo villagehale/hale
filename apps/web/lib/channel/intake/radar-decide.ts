@@ -61,7 +61,7 @@ export interface RadarChild {
   dobPrecision: 'exact' | 'derived';
 }
 
-/** The village_candidates fields a decision can rest on. Titles and venues are PUBLIC
+/** The live activity fields a decision can rest on. Titles and venues are PUBLIC
  * places; nothing here is a family's own location. */
 export interface RadarCandidate {
   id: string;
@@ -83,7 +83,7 @@ export interface RadarCandidate {
   /** The page the live search read this off, or null. Rendered only on a web find
    * that also carries its date — see {@link WeekendPick.verifiedUrl}. */
   sourceUrl: string | null;
-  /** What a parent DOES about this one (village_candidates.access, a
+  /** What a parent DOES about this one (access, a
    * {@link CandidateAccess}), or null on a row whose source was never asked. */
   access: string | null;
   /** When it runs, in the source's own words, already ASCII-folded. Null on every

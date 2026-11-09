@@ -58,10 +58,10 @@ describe('find_activities with a stale swimming guess (VIL-519)', () => {
       factValue: 'Lin loves swimming lessons',
       confidence: 0.9,
       inferredBy: 'preview-seed',
-      validFrom: DAYS(120),
+      validFrom: DAYS(400),
       memoryKind: 'lasting',
       memorySource: 'inferred',
-      sourcedAt: DAYS(120),
+      sourcedAt: DAYS(400),
     });
     await writeFact(db.database, {
       familyId,
@@ -98,7 +98,7 @@ describe('find_activities with a stale swimming guess (VIL-519)', () => {
     const fit = await readFit(familyId);
     expect(fit.preferences.map((p) => p.key)).toEqual(['indoor']);
     expect(fit.recheck).toEqual([]);
-    expect(fit.homeArea).toBe('markham');
+    expect(fit.homeArea).toBe('Markham');
 
     const seen: ActivityQuery[] = [];
     const tool = findActivitiesTool({
@@ -142,6 +142,6 @@ describe('find_activities with a stale swimming guess (VIL-519)', () => {
     expect(serialized).not.toContain('quartier');
     expect(serialized).not.toContain('lives_in');
     expect(serialized).toContain('indoor');
-    expect(serialized).toContain('markham');
+    expect(serialized).toContain('Markham');
   });
 });

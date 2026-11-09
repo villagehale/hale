@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Reply is in French, says it will not text again, and explains how to resume (write simply). It is short, asks nothing, sells nothing. It says it is answering late and \"deux jours\" matches the receivedAt to readAt gap of two days, so the lateness is stated close to the actual gap."
+  }
+}

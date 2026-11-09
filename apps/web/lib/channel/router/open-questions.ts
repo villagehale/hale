@@ -1,9 +1,10 @@
 import type { Database } from '@hale/db';
-import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
-import { actionTypeLabel } from '~/lib/format/labels';
 // Type-only, so the cycle with approval.ts (which imports `approvalSubjects` from here)
 // is erased at build time. One shape for a drafted action, owned by the spine that reads
 // them, rather than a structural copy the two files could drift apart on.
+import { matchApprovedCalendarAdd, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
+import { CALL_TIMEOUT_MS, READER_TIMEOUT } from '~/lib/channel/config';
+import { actionTypeLabel } from '~/lib/format/labels';
 import type { PendingAction } from './approval';
 import { isCallTimeout, withTimeout } from './deadline';
 import { MAX_LISTED_APPROVALS } from './fast-path';
@@ -378,6 +379,22 @@ export interface OpenQuestion {
   /** True when this class's ask PRINTS an explicit keyword instruction ("Reply YES ...")
    * — see {@link SOLICITED}. */
   solicited: boolean;
+  /**
+   * VIL-513. Set on a calendar offer that is the parent's question about one
+   * reviewer-approved `calendar_add`. A YES on this offer approves that action.
+   * Not shown to the resolver — the offer's own description is.
+   * A YES reads this. An unapproved draft must not be placed here.
+   */
+  approvesActionId?: string;
+  /**
+   * VIL-525. The unapproved draft this offer hid. A NO declines it so the next
+   * turn does not list it again. A YES does not read it and does not approve it.
+   * When several unapproved drafts share the occasion, this is the first and
+   * {@link declinesActionIds} is every one of them.
+   */
+  declinesActionId?: string;
+  /** Every unapproved draft a NO to this offer declines. A YES does not read it. */
+  declinesActionIds?: readonly string[];
 }
 
 /**
@@ -549,7 +566,19 @@ export function soleOpenKind(
 export interface OpenQuestionReader {
   open(
     database: Database,
-    input: { familyId: string; parentUserId: string; now: Date; channelMessageId?: string },
+    input: {
+      familyId: string;
+      parentUserId: string;
+      now: Date;
+      channelMessageId?: string;
+      /**
+       * Where the reply is being read. A draft is hidden behind a calendar offer
+       * only on the direct thread, which is where that offer was made. A group
+       * turn keeps the draft: the offer is private, and the group still has to
+       * be able to approve the plan it was asked.
+       */
+      surface?: 'direct' | 'group';
+    },
   ): Promise<OpenQuestion[]>;
 }
 
@@ -661,7 +690,17 @@ export interface OpenQuestionSources {
   emailAlertOffers(
     database: Database,
     input: { familyId: string; parentUserId: string; now: Date },
-  ): Promise<ReadonlyArray<{ id: string; summary: string; subject: string; askedAt: Date }>>;
+  ): Promise<
+    ReadonlyArray<{
+      id: string;
+      summary: string;
+      subject: string;
+      askedAt: Date;
+      /** The occasion, so a matching calendar draft is the same question. */
+      title?: string;
+      startsAt?: string;
+    }>
+  >;
   /**
    * The evening check-in, while its ask is Hale's last word to this parent and the
    * morning has not come — or null (VIL-353, channel/checkin/reply.ts).
@@ -885,7 +924,63 @@ export function createOpenQuestionReader(
         }
       });
 
-      const questions: OpenQuestion[] = namedApprovals(approvals).slice(0, MAX_LISTED_APPROVALS);
+      // VIL-513. A reviewer-approved calendar add that a standing coach offer already
+      // asks about is that offer, not a second question. Leaving both up makes a bare
+      // YES ambiguous, the approval handler declines to claim, and the coach drafts
+      // the same add again.
+      //
+      // VIL-525. Every unapproved draft of that same occasion (a close clock, not
+      // merely the same day) is hidden. Only private drafts: a household-group add of
+      // the same start is the group's own plan. A NO declines every private one. A YES does not approve
+      // any of them: they are not `approvesActionId`.
+      //
+      // Only on the thread where the offer was made. A group-plan draft with the same
+      // title stays on the group list, or the group's YES has nothing to approve.
+      const approvesByOffer = new Map<string, string>();
+      const declinesByOffer = new Map<string, readonly string[]>();
+      const hiddenDrafts = new Set<string>();
+      // A private offer never pairs with a household-group add (VIL-525): that draft is
+      // the group's question, answered in the group.
+      const privateApprovals = approvals.filter((action) => !action.groupPlan);
+      if (input.surface !== 'group') {
+        for (const offer of emailOffers) {
+          if (!offer.title || !offer.startsAt) continue;
+          const match = matchApprovedCalendarAdd(privateApprovals, {
+            title: offer.title,
+            startsAt: offer.startsAt,
+          });
+          if (match.outcome === 'paired' && !hiddenDrafts.has(match.action.actionId)) {
+            hiddenDrafts.add(match.action.actionId);
+            approvesByOffer.set(offer.id, match.action.actionId);
+          }
+          if (match.outcome === 'ambiguous') {
+            console.info(
+              { offerId: offer.id, actionIds: match.actionIds, outcome: match.outcome },
+              'open questions: a calendar offer matches more than one approved add, so it approves neither',
+            );
+          }
+          const unapprovedIds = unapprovedCalendarAddIds(
+            privateApprovals.map((action) => ({
+              id: action.actionId,
+              actionType: action.actionType,
+              reviewerApproved: action.reviewerApproved,
+              occasion: action.occasion ?? null,
+            })),
+            { title: offer.title, startsAt: offer.startsAt },
+          );
+          if (unapprovedIds.length > 0) {
+            for (const id of unapprovedIds) hiddenDrafts.add(id);
+            declinesByOffer.set(offer.id, unapprovedIds);
+          }
+        }
+      }
+      const questions: OpenQuestion[] = namedApprovals(
+        // A household-group add is the group's question: never listed on a private
+        // thread, so a private YES/NO cannot approve or decline it (VIL-525).
+        (input.surface === 'group' ? approvals : privateApprovals).filter(
+          (action) => !hiddenDrafts.has(action.actionId),
+        ),
+      ).slice(0, MAX_LISTED_APPROVALS);
 
       if (optIn) {
         questions.push({
@@ -987,6 +1082,8 @@ export function createOpenQuestionReader(
       for (const [index, emailOffer] of orderedOffers.entries()) {
         // The offer row's own one-line summary: the title Hale already texted this parent
         // and nothing else — never the subject line, never the snippet (rule #1).
+        const approvesActionId = approvesByOffer.get(emailOffer.id);
+        const declinesActionIds = declinesByOffer.get(emailOffer.id);
         questions.push({
           id: emailOffer.id,
           kind: 'email_alert_add',
@@ -997,6 +1094,10 @@ export function createOpenQuestionReader(
           answerable: KIND_ANSWERABLE.email_alert_add,
           askedAt: emailOffer.askedAt,
           solicited: SOLICITED.email_alert_add,
+          ...(approvesActionId ? { approvesActionId } : {}),
+          ...(declinesActionIds && declinesActionIds.length > 0
+            ? { declinesActionId: declinesActionIds[0], declinesActionIds }
+            : {}),
         });
       }
       if (evening) {

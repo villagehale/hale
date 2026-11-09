@@ -41,6 +41,30 @@ export type MomentWrite =
   | { status: 'written'; reply: string }
   | { status: 'unwritten'; reason: MomentUnwrittenReason };
 
+/** Writes tried before the reply was given up on: none when the call could not start. */
+const WRITES_TRIED: Record<MomentUnwrittenReason, 0 | typeof MAX_ATTEMPTS> = {
+  client_unavailable: 0,
+  skill_unavailable: 0,
+  model_failed: MAX_ATTEMPTS,
+  unsendable: MAX_ATTEMPTS,
+};
+
+/**
+ * An unwritten reply's reason, read back from a verdict that carries it as text, with
+ * the writes it tried. Text that is not one of the named reasons reads as a write that
+ * failed after every attempt.
+ */
+export function momentUnwritten(reason: string): {
+  reason: MomentUnwrittenReason | 'write_failed';
+  writes: 0 | typeof MAX_ATTEMPTS;
+} {
+  if (!Object.hasOwn(WRITES_TRIED, reason)) {
+    return { reason: 'write_failed', writes: MAX_ATTEMPTS };
+  }
+  const named = reason as MomentUnwrittenReason;
+  return { reason: named, writes: WRITES_TRIED[named] };
+}
+
 export interface MomentWriter {
   write(text: string, moment: Moment, place?: MomentPlace): Promise<MomentWrite>;
 }

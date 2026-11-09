@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with 'Reply YES and I'll book it for you', an explicit request for the parent to reply, which is an ask. It also includes 'Reply STOP to opt out', a standard opt-out instruction that is not really a request for a favour, but the YES prompt clearly asks the parent to respond, so the message is not ask-free.",
+    "score": 1
+  }
+}

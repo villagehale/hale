@@ -1,0 +1,6 @@
+{
+  "value": {
+    "text": "Voilà les deux liens, c'est facultatif.\nCelui-ci relie ton agenda, pour que Hale repère les avis de crèche et d'école :\n[[calendarLink]]\nEt celui-là relie ton Gmail, pour la même raison :\n[[gmailLink]]\nChaque lien marche pendant 15 minutes. Google peut afficher un écran qui parle d'application non vérifiée : c'est normal pour cette connexion, rien ne cloche. Il suffit de toucher « Avancé », puis de continuer."
+  },
+  "latencyMs": 2628
+}

@@ -18,11 +18,11 @@ import { register } from 'tsx/esm/api';
 import { z } from 'zod';
 import { GROUP_PRIVACY_FIXTURES } from './group-privacy-fixtures.mjs';
 import {
+  DRY_SUBJECT_PLAN,
   JUDGE_MIN,
   cacheGet,
   cacheKey,
   cachePut,
-  DRY_SUBJECT_PLAN,
   dryReportLine,
   dryRequestPlanEntry,
   dryStandInText,
@@ -151,7 +151,7 @@ function toolsFor(agent, fixture, calls, listed) {
     stub('search_village', { found: false }),
     stub('propose_calendar_move', { ok: false }),
     stub('propose_calendar_cancel', { ok: false }),
-    stub('propose_calendar_add', { ok: false }),
+    stub('propose_calendar_add', fixture.addResult ?? { ok: false }),
     stub('get_framework_guidance', { found: false }),
     stub('find_activities', { found: false, reason: 'no_picks' }),
     stub('prepare_gmail_draft', { ok: true }),

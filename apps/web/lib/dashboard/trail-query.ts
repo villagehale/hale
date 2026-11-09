@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, notInArray, notLike, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '../format/datetime';
 import { NO_TEEN_UNLOCKS, type TeenAccessUnlocks, redactsTeenContent } from '../teen-access';
 import {
+  type AuditVerb,
   INTERNAL_TRAIL_VERBS,
   SHADOW_ONLY_VERBS,
   isInternalTrailVerb,
@@ -32,11 +33,13 @@ function isAgentToolStep(actionTaken: string): boolean {
  */
 
 /**
- * The family's display timezone — the primary parent's `users.timezone` — so every
- * stored instant renders in the family's zone rather than the server's (Vercel =
- * UTC). Falls back to DEFAULT_TIMEZONE when there's no primary parent yet.
+ * The primary parent's `users.timezone`, or null when the family has no primary parent
+ * yet. A caller that acts on what day it is reads this, so no zone is never a guess.
  */
-export async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+export async function readStoredFamilyTimezone(
+  database: Database,
+  familyId: string,
+): Promise<string | null> {
   const [row] = await database
     .select({ timezone: schema.users.timezone })
     .from(schema.familyMembers)
@@ -48,7 +51,16 @@ export async function readFamilyTimezone(database: Database, familyId: string): 
       ),
     )
     .limit(1);
-  return row?.timezone ?? DEFAULT_TIMEZONE;
+  return row?.timezone ?? null;
+}
+
+/**
+ * The family's display timezone — the primary parent's `users.timezone` — so every
+ * stored instant renders in the family's zone rather than the server's (Vercel =
+ * UTC). Falls back to DEFAULT_TIMEZONE when there's no primary parent yet.
+ */
+export async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+  return (await readStoredFamilyTimezone(database, familyId)) ?? DEFAULT_TIMEZONE;
 }
 
 /**
@@ -105,6 +117,8 @@ export interface LoadTrailOptions {
    * the aged-out audit row stays in the file.
    */
   includeInternal?: boolean;
+  /** Verbs this surface never shows, internal or not (rights/export.ts). */
+  exclude?: readonly AuditVerb[];
 }
 
 export async function loadTrailForFamily(
@@ -175,6 +189,9 @@ export async function loadTrailForFamily(
         options.includeInternal
           ? undefined
           : notInArray(schema.auditLog.actionTaken, [...INTERNAL_TRAIL_VERBS]),
+        options.exclude?.length
+          ? notInArray(schema.auditLog.actionTaken, [...options.exclude])
+          : undefined,
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -184,7 +201,8 @@ export async function loadTrailForFamily(
       (row) =>
         !isAgentToolStep(row.entry.actionTaken) &&
         !isShadowOnlyRow(row.entry.actionTaken, row.entry.after) &&
-        (options.includeInternal || !isInternalTrailVerb(row.entry.actionTaken)),
+        (options.includeInternal || !isInternalTrailVerb(row.entry.actionTaken)) &&
+        !(options.exclude as readonly string[] | undefined)?.includes(row.entry.actionTaken),
     )
     .map((row) => {
       const resolvedToEvent = row.teenContent !== null;

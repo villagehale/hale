@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says the child is not signed up yet, gives the opening time from rush.opensAt, carries the registration link exactly, lists pack details only as provided, is in English for a direct audience, and makes no retry or follow-up promise.",
+    "score": 5
+  }
+}

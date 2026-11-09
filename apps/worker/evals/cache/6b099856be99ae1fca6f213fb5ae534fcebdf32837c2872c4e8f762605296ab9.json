@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "No problem, I'll drop that. What should I call you? You can tell me whenever you like.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1560
+}

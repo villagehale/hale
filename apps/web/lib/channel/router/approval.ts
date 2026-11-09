@@ -44,6 +44,20 @@ export interface PendingAction {
    * is the one failure the oldest-first ordering exists to prevent.
    */
   reviewerApproved: boolean;
+  /**
+   * The occasion a calendar draft would place. Present only for `calendar_add`
+   * (and move/cancel) rows whose payload names a title and a start. The open-question
+   * reader uses it to see that a coach offer of the same occasion is this draft, not
+   * a second question (VIL-513). Never rendered to a parent from here.
+   */
+  occasion?: { title: string; startsAt: string };
+  /**
+   * VIL-525. Its approval surface is a household group: it was asked in the
+   * family's own group chat. A draft asked in a shared chat is not this; it waits on
+   * the private threads. A private 1:1 calendar offer is never this draft: its NO
+   * must not cancel the group's plan and its YES must not approve it.
+   */
+  groupPlan?: true;
 }
 
 /**

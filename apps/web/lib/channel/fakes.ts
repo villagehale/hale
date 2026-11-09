@@ -34,6 +34,6 @@ export function fakeChannel(
 /** A trivial renderer — real per-template content lives with B2/D1/E3. */
 export const fakeRenderer: TemplateRenderer = {
   render(message) {
-    return { kind: 'sms', text: message.templateKey };
+    return { kind: 'sms', text: message.templateKey, modelWritten: false };
   },
 };

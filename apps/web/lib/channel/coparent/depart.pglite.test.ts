@@ -8,6 +8,8 @@ import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { GoogleDisconnectPorts } from '~/lib/integrations/google-disconnect';
+import { encryptTokens } from '~/lib/integrations/token-vault';
 import { revokeMcpGrant } from '~/lib/mcp/oauth-store';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { CO_PARENT_INVITE_CONSENT_SCOPE, acceptCoParentInvite } from './accept';
@@ -590,10 +592,34 @@ describe('departCoParent — every standing read into the household ends with th
         userId,
         provider: 'gmail',
         status: 'active',
-        oauthTokensEncrypted: encryptString('{"access_token":"tok"}'),
+        oauthTokensEncrypted: encryptTokens({ accessToken: 'tok', refreshToken: '1//dep-r' }),
       })
       .returning({ id: schema.integrations.id });
     return row?.id as string;
+  }
+
+  /** Google, faked at its port: departure revokes the leaver's grant there too. */
+  function googlePorts(): GoogleDisconnectPorts & { revoked: string[] } {
+    const revoked: string[] = [];
+    return {
+      revoked,
+      revoker: {
+        async revoke(token) {
+          revoked.push(token);
+          return { outcome: 'revoked' };
+        },
+      },
+      google: {
+        async request() {
+          throw new Error('push is off in this suite');
+        },
+      },
+      tokenFetch: async () => {
+        throw new Error('push is off in this suite');
+      },
+      env: {},
+      now: () => DEPARTED_AT,
+    };
   }
 
   async function grantTeenRead(household: Household, userId: string, childName: string) {
@@ -650,12 +676,17 @@ describe('departCoParent — every standing read into the household ends with th
     const stayerGmail = await connectGmail(household, household.parentUserId);
     const leaverTeen = await grantTeenRead(household, household.coParentUserId, 'Robin');
     const stayerTeen = await grantTeenRead(household, household.parentUserId, 'Robin');
+    const google = googlePorts();
 
-    const result = await departCoParent(db.database, {
-      familyId: household.familyId,
-      actorUserId: household.coParentUserId,
-      now: DEPARTED_AT,
-    });
+    const result = await departCoParent(
+      db.database,
+      {
+        familyId: household.familyId,
+        actorUserId: household.coParentUserId,
+        now: DEPARTED_AT,
+      },
+      google,
+    );
 
     expect(result).toMatchObject({
       outcome: 'departed',
@@ -665,6 +696,8 @@ describe('departCoParent — every standing read into the household ends with th
     });
     expect(await mcpGrant(leaverMcp)).toEqual([{ revokedAt: DEPARTED_AT }]);
     expect(await connector(leaverGmail)).toEqual([{ status: 'revoked', enc: null }]);
+    // Leaving revokes the leaver's grant at Google, and only theirs.
+    expect(google.revoked).toEqual(['1//dep-r']);
     expect(await teenGrant(leaverTeen)).toEqual([{ revokedAt: DEPARTED_AT }]);
 
     // THE PARENT WHO STAYED KEEPS EVERYTHING — the positive control.
@@ -683,11 +716,15 @@ describe('departCoParent — every standing read into the household ends with th
       .delete(schema.auditLog)
       .where(eq(schema.auditLog.familyId, household.familyId));
 
-    await departCoParent(db.database, {
-      familyId: household.familyId,
-      actorUserId: household.coParentUserId,
-      now: DEPARTED_AT,
-    });
+    await departCoParent(
+      db.database,
+      {
+        familyId: household.familyId,
+        actorUserId: household.coParentUserId,
+        now: DEPARTED_AT,
+      },
+      googlePorts(),
+    );
 
     const rows = await auditRows(household.familyId);
     expect(rows.map((r) => r.actionTaken).sort()).toEqual([
@@ -696,10 +733,16 @@ describe('departCoParent — every standing read into the household ends with th
       'co_parent_departed',
       'co_parent_integration_revoked',
       'co_parent_mcp_grant_revoked',
+      'integration_google_grant_revoked',
       'teen_content_access.revoked',
     ]);
+    // Google's answer is Hale's record, not the leaver's act.
     for (const row of rows) {
-      expect(row.actor).toBe(household.coParentUserId);
+      expect(row.actor).toBe(
+        row.actionTaken === 'integration_google_grant_revoked'
+          ? 'system'
+          : household.coParentUserId,
+      );
     }
   });
 

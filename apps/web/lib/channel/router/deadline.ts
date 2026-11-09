@@ -56,6 +56,24 @@ export function withTimeout<T>(work: Promise<T>, ms: number, reason: string): Pr
 }
 
 const turnScope = new AsyncLocalStorage<AbortSignal>();
+const deadlineAt = new WeakMap<AbortSignal, number>();
+
+/** The turn's deadline signal, remembering when it fires so a step can ask how much of
+ * the turn is left before it starts (VIL-581: a claim read the turn cannot finish is
+ * never started). */
+export function turnDeadlineSignal(ms: number): AbortSignal {
+  const signal = AbortSignal.timeout(ms);
+  deadlineAt.set(signal, Date.now() + ms);
+  return signal;
+}
+
+/** Milliseconds left in this turn, or undefined outside a turn made by
+ * {@link turnDeadlineSignal}. */
+export function turnRemainingMs(): number | undefined {
+  const signal = turnScope.getStore();
+  const at = signal ? deadlineAt.get(signal) : undefined;
+  return at === undefined ? undefined : at - Date.now();
+}
 
 export function currentTurnSignal(): AbortSignal | undefined {
   return turnScope.getStore();

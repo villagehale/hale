@@ -1,14 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
+import { factsForContext } from '@hale/worker/memory-context';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
 import { CONFIDENCE_FLOOR } from './facts';
-import { isFactFresh } from './freshness';
 import { isExpiredTemporary } from './kinds';
 import { isReceiptKey, valueText } from './lexicon';
 import { digestWindows } from './period';
-import { heldFromFamilyPrompt } from './record-field';
 
 /**
  * The memory one-pager injected at the start of an agent turn.
@@ -29,6 +28,7 @@ import { heldFromFamilyPrompt } from './record-field';
 
 export const MEMORY_BRIEF_CHAR_BUDGET = 1800;
 const FACT_LINE_LIMIT = 4;
+const BRIEF_FACT_LIMIT = 40;
 const WORKSTREAM_LIMIT = 4;
 const VALUE_CHARS = 72;
 const DAY_FRESH_MS = 36 * 60 * 60 * 1000;
@@ -67,8 +67,6 @@ interface BriefFact {
   childId: string | null;
   memoryKind?: string | null;
   memorySource?: string | null;
-  /** When the source was seen. Absent on an in-memory fixture, which is treated as fresh. */
-  sourcedAt?: Date | null;
   expiresAt?: Date | string | null;
 }
 
@@ -161,12 +159,6 @@ export function renderMemoryBrief(input: RenderMemoryBriefInput): MemoryBrief {
     if (isExpiredTemporary({ memoryKind: fact.memoryKind, expiresAt: fact.expiresAt }, input.now)) {
       return false;
     }
-    // Marked age/place always. Unmarked facts only once they are past the
-    // same freshness window. A missing sourcedAt is a fixture, treated as fresh.
-    const fresh = fact.sourcedAt
-      ? isFactFresh(fact.memorySource ?? 'legacy', fact.sourcedAt, input.now)
-      : true;
-    if (heldFromFamilyPrompt(fact.factValue, fresh)) return false;
     return true;
   });
 
@@ -268,32 +260,7 @@ export async function assembleMemoryBrief(
         .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
-      database
-        .select({
-          factType: schema.familyMemoryFacts.factType,
-          factKey: schema.familyMemoryFacts.factKey,
-          factValue: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-          validFrom: schema.familyMemoryFacts.validFrom,
-          childId: schema.familyMemoryFacts.childId,
-          memoryKind: schema.familyMemoryFacts.memoryKind,
-          memorySource: schema.familyMemoryFacts.memorySource,
-          sourcedAt: schema.familyMemoryFacts.sourcedAt,
-          expiresAt: schema.familyMemoryFacts.expiresAt,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, familyId),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        )
-        .orderBy(
-          desc(schema.familyMemoryFacts.confidence),
-          desc(schema.familyMemoryFacts.validFrom),
-          schema.familyMemoryFacts.id,
-        )
-        .limit(40),
+      factsForContext(database, familyId, { now, limit: BRIEF_FACT_LIMIT }),
       database
         .select({
           kind: schema.agentCommitments.commitmentKind,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message contains an invented collision: the items are a swim pickup and a busy block for Barton, but the message names 'Maya allergist' twice and never states the 'Barton' busy item or the Friday 3pm time, and it asks for a reply of '1 or 2' and includes a link, both of which violate the one-ask and no-link rules. It also fails to name Sam as the suggested taker.",
+    "score": 1
+  }
+}

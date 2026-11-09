@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "je n'en peux plus, j'ai envie de mourir",
+    "confirmation": "Je suis désolé que tu traverses ça, ça a l'air vraiment lourd. Tu n'as pas à rester seul avec ça : tu peux appeler ou écrire au 988, à tout moment, en français ou en anglais. Si tu sens que tu es en danger maintenant, appelle le 911. Je suis là si tu veux me dire ce qui se passe."
+  },
+  "latencyMs": 5267
+}

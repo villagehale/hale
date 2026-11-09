@@ -1,5 +1,5 @@
-import { type Database, schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
+import { schema } from '@hale/db';
+import { sql } from 'drizzle-orm';
 import { answerParentDutyAsk } from '~/lib/channel/coparent/duty/asks';
 import { coparentDutyAsksArmed } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
@@ -79,10 +79,9 @@ import {
   type GroupCoparentPorts,
   considerGroupCoparent,
   firstSeatableHandle,
-  seatAppearingCoparent,
+  labelAppearingCoparent,
   steerNotedCoparentOneToOne,
 } from './group-coparent';
-import { groupWelcome } from './group-coparent-copy';
 import {
   holdTrueStrangerOnce,
   seatParticipantAdded,
@@ -99,7 +98,6 @@ import { parseLinqTapback } from './group-plan-rsvp/reading';
 import { groupPlanRsvpTakesTheTurn } from './group-plan-rsvp/turn';
 import type { GroupPlanRsvpComposer } from './group-plan-rsvp/voice';
 import { type PrivateAsideModel, sharedPrivateAsideModel } from './group-private-aside';
-import { decideGroupTurn } from './group-turn-policy';
 import {
   type GroupTurnReader,
   groupTurnFromReading,
@@ -130,7 +128,7 @@ import { ejectWithGroupSeats, removeRosterParticipant, stopInGroup } from './ros
 import { type RosterTurnPorts, takeRosterTurn } from './roster-turn';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { LINQ_WEBHOOK_VERSION, verifyLinqWebhookSignature } from './signature';
-import type { LinqEffectResult, LinqTapback } from './transport';
+import { type LinqEffectResult, type LinqTapback, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 — POST /api/channels/linq/inbound.
@@ -438,7 +436,9 @@ async function handleLinqLocation(
     providerId,
     receivedAt: deps.now?.() ?? new Date(),
     chatId: location.chatId,
-    isGroup: false,
+    // A location share carries no is_group, and only Linq's own is_group may record a
+    // chat as a 1:1 (`channel_messages.in_group`): unknown is recorded as unknown.
+    isGroup: undefined,
   });
   deps.log.info({ outcome }, 'linq inbound: location share continued the ladder');
   await deps.countOutcome(outcome);
@@ -844,7 +844,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           sentAt: message.receivedAt,
           now: deps.now?.() ?? new Date(),
         },
-        { reader: deps.groupPickupClaimReader },
+        { reader: deps.groupPickupClaimReader, listChatHandles: deps.listChatHandles },
       );
       if (claim !== 'flag_off') {
         deps.log.info(
@@ -878,6 +878,7 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
           send: deps.sendGroupText,
           reader: deps.carpoolReader,
           voice: deps.carpoolVoice,
+          listChatHandles: deps.listChatHandles,
         });
         if (carpool.handled && carpool.outcome === 'carpool_asked') {
           deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool ask');
@@ -898,29 +899,37 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
   let budget: 'sender' | 'chat' = 'sender';
   if (linqGroupOnboardingV2Enabled()) {
     const optOut = await optOutIntentOf(message.text);
-    const turn = linqGroupTurnAiEnabled()
-      ? groupTurnFromReading(
-          optOut
-            ? null
-            : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
-                text: message.text,
-                haleNames: ['Hale'],
-                ...(await groupTurnReadContext(deps.database, {
-                  familyId: mapped.status === 'same_family' ? mapped.familyId : null,
-                  chatId: message.chatId,
-                  senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
-                })),
-              }),
-          optOut,
-        )
-      : decideGroupTurn({
+    // Items 5 (groups split): the model reads whether this is Hale's turn. There is no
+    // name or keyword matching behind it. With the reader dark, or a failed read, Hale
+    // stays silent in the group: nothing is recorded and nothing is sent.
+    if (!optOut && !linqGroupTurnAiEnabled()) {
+      deps.log.info(
+        { outcome: 'group_turn_reader_off', providerMessageId: message.messageId },
+        'linq inbound: group turn',
+      );
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_turn_reader_off' });
+    }
+    const reading = optOut
+      ? null
+      : await (deps.groupTurnReader ?? sharedGroupTurnReader()).read({
           text: message.text,
-          optOut,
-          kidNames:
-            mapped.status === 'same_family'
-              ? await kidFirstNames(deps.database, mapped.familyId)
-              : [],
+          haleNames: ['Hale'],
+          ...(await groupTurnReadContext(deps.database, {
+            familyId: mapped.status === 'same_family' ? mapped.familyId : null,
+            chatId: message.chatId,
+            senderUserId: mapped.status === 'same_family' ? mapped.userId : null,
+          })),
         });
+    if (!optOut && reading === null) {
+      deps.log.info(
+        { outcome: 'group_turn_unread', providerMessageId: message.messageId },
+        'linq inbound: group turn',
+      );
+      await deps.countOutcome('ignored');
+      return json({ outcome: 'group_turn_unread' });
+    }
+    const turn = groupTurnFromReading(reading, optOut);
     if (turn.route === 'duty' || turn.route === 'ignore') {
       const outcome = turn.route === 'duty' ? 'group_duty_statement' : turn.outcome;
       deps.log.info({ outcome, providerMessageId: message.messageId }, 'linq inbound: group turn');
@@ -928,7 +937,12 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
       return json({ outcome });
     }
     if (turn.route === 'coach') {
-      const audience = await groupAudienceAllows(deps.database, message.chatId, GROUP_COACH_LINE);
+      const audience = await groupAudienceAllows(
+        deps.database,
+        message.chatId,
+        GROUP_COACH_LINE,
+        deps.listChatHandles ?? listLinqParticipantHandles,
+      );
       if (!audience.allowed) {
         if (mapped.status === 'same_family') {
           await deps.database.insert(schema.auditLog).values({
@@ -1016,6 +1030,7 @@ async function groupReminderTurn(
           : sharedGroupReminderVoice(),
       send: deps.sendGroupText,
       recordInbound: (inbound, owner) => recordHandledInbound(deps, inbound, owner),
+      listChatHandles: deps.listChatHandles,
     });
     return turn.handled ? turn.outcome : null;
   } catch (err) {
@@ -1047,16 +1062,6 @@ const GROUP_INBOUND_ROUTE = 'linq-group-inbound';
  * empty. Every scoped role holds all of `GROUP_CONTENT`, so the class chosen among them
  * does not change the verdict. */
 const GROUP_COACH_LINE: GroupLineClass = 'schedule';
-
-/** The family's kids' first names, read only to tell a question about one of them from
- * chatter. Never logged and never sent. */
-async function kidFirstNames(database: Database, familyId: string): Promise<string[]> {
-  const rows = await database
-    .select({ name: schema.children.name })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  return rows.map((row) => row.name);
-}
 
 async function claimGroupFromTrigger(
   deps: LinqDoorDeps,
@@ -1115,42 +1120,18 @@ async function claimGroupFromTrigger(
     });
   }
 
+  // VIL-582: the claiming parent's words are not the other handle's, so it is labelled only.
   const appearing =
     accepted && linqGroupCoparentEnabled()
       ? firstSeatableHandle(message.otherHandles, message.senderHandle)
       : null;
   if (appearing) {
-    const seated = await seatAppearingCoparent(deps.database, {
+    await labelAppearingCoparent(deps.database, {
       familyId: mapped.familyId,
-      invitedByUserId: mapped.userId,
-      phoneE164: appearing,
       chatId: message.chatId,
-      verbatim: message.text,
-      now,
+      handle: appearing,
+      via: 'second_handle',
     });
-    if (seated.status === 'seated') {
-      const welcome = await groupWelcome(language);
-      if (!welcome) {
-        deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
-        await deps.countOutcome('intake');
-        return json({ outcome: 'group_claimed', claim: claim.status, notice: 'not_sent' });
-      }
-      const notice = await deliverLinqGroupNotice(deps.database, {
-        familyId: mapped.familyId,
-        parentUserId: seated.userId,
-        chatId: message.chatId,
-        text: welcome,
-        templateKey: 'linq:coparent_welcome',
-        now,
-        send: deps.sendGroupText,
-      });
-      deps.log.info(
-        { outcome: 'group_claimed', claim: claim.status, notice },
-        'linq inbound: group claim',
-      );
-      await deps.countOutcome('intake');
-      return json({ outcome: 'group_claimed', claim: claim.status, notice });
-    }
   }
 
   const claimReply = accepted
@@ -1169,6 +1150,7 @@ async function claimGroupFromTrigger(
     templateKey: accepted ? LINQ_GROUP_CLAIMED_TEMPLATE_KEY : LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY,
     now,
     send: deps.sendGroupText,
+    lineClass: 'reply',
   });
   const outcome = accepted ? 'group_claimed' : 'group_claim_refused';
   deps.log.info({ outcome, claim: claim.status, notice }, 'linq inbound: group claim');
@@ -1205,6 +1187,7 @@ async function answerGroupTriggerInOneToOne(
     templateKey: LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY,
     now: deps.now?.() ?? new Date(),
     send: deps.sendGroupText,
+    lineClass: 'reply',
   });
   return { count: 'intake', body: { outcome: 'group_trigger_in_1to1', notice } };
 }
@@ -1232,6 +1215,7 @@ async function recordHandledInbound(
       providerChatId: message.chatId,
       status: 'delivered',
       body: message.text,
+      inGroup: message.isGroup ?? null,
       sentAt: message.receivedAt,
       handedOffAt: now,
     })
@@ -1626,33 +1610,16 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
   ) {
     const familyId = await familyIdForClaimedChat(deps.database, signal.chatId);
     if (familyId) {
-      const now = deps.now?.() ?? new Date();
-      const seated = await seatAppearingCoparent(deps.database, {
+      // VIL-582: an add carries none of the person's own words, so it is labelled only.
+      const label = await labelAppearingCoparent(deps.database, {
         familyId,
-        invitedByUserId: null,
-        phoneE164: signal.participantHandle,
         chatId: signal.chatId,
-        verbatim: '',
-        now,
+        handle: signal.participantHandle,
+        via: 'participant_added',
       });
-      if (seated.status === 'seated') {
-        const welcome = await groupWelcome(await familySpeechLanguage(deps.database, familyId));
-        if (!welcome) {
-          deps.log.info({ reason: 'model_unreachable' }, 'linq inbound: welcome unreachable');
-          await deps.countOutcome('intake');
-          return json({ outcome: 'group_coparent_seated', notice: 'not_sent' });
-        }
-        const notice = await deliverLinqGroupNotice(deps.database, {
-          familyId,
-          parentUserId: seated.userId,
-          chatId: signal.chatId,
-          text: welcome,
-          templateKey: 'linq:coparent_welcome',
-          now,
-          send: deps.sendGroupText,
-        });
-        await deps.countOutcome('intake');
-        return json({ outcome: 'group_coparent_seated', notice });
+      if (label.status === 'needs_own_reply') {
+        await deps.countOutcome('ignored');
+        return json({ outcome: 'seat_needs_own_reply' });
       }
     }
   }
@@ -1755,6 +1722,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
           now: deps.now?.() ?? new Date(),
           send: deps.sendGroupText,
           voice: deps.carpoolVoice,
+          listChatHandles: deps.listChatHandles,
         });
         if (carpool.handled) {
           deps.log.info({ outcome: carpool.outcome }, 'linq inbound: carpool tapback');

@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { factsForContext } from '@hale/worker/memory-context';
 import { writeFact } from './facts';
 import { familyMemoryKindsHandler } from './handler';
 import {
@@ -512,5 +513,50 @@ describe('family memory kinds', () => {
       inboundChannelMessageId: null,
     });
     expect(verdict).toEqual({ claimed: false });
+  });
+});
+
+describe('a parent correction of a remembered home (Devin #981)', () => {
+  let db: TestDb;
+
+  beforeEach(async () => {
+    db = await createTestDb();
+  }, 30_000);
+
+  afterEach(async () => {
+    await db?.close();
+  });
+
+  it('lands as what the parent just said and reaches the prompt read, not hidden behind the old mark', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    await writeFact(db.database, {
+      familyId,
+      childId: null,
+      factType: 'logistic',
+      factKey: 'home_city',
+      factValue: { text: 'Georgetown', record: 'place' },
+      confidence: 1,
+      inferredBy: 'nightly',
+      validFrom: NOW,
+      memoryKind: 'lasting',
+      memorySource: 'parent_message',
+      sourcedAt: NOW,
+    });
+    const before = await factsForContext(db.database, familyId, { now: NOW, limit: 20 });
+    expect(before.map((row) => row.factKey)).not.toContain('home_city');
+
+    const result = await handleParentMemory(db.database, {
+      familyId,
+      parentUserId,
+      body: 'correct home_city: Markham',
+      now: NOW,
+      inboundChannelMessageId: null,
+      env: LOCKED,
+      replyClient: scriptedReply({ text: 'Got it.' }),
+    });
+
+    expect(result.corrected).toBe(1);
+    const after = await factsForContext(db.database, familyId, { now: NOW, limit: 20 });
+    expect(after.map((row) => [row.factKey, row.factValue])).toEqual([['home_city', 'Markham']]);
   });
 });

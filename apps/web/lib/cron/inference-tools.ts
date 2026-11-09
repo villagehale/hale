@@ -1,6 +1,12 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
+import {
+  episodesForContext,
+  factsForContext,
+  namesAny,
+  teenRoster,
+} from '@hale/worker/memory-context';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
@@ -37,6 +43,8 @@ const WINDOW_DAYS = 7;
 
 /** How many recent rows the snapshot carries — bounded so the prompt stays small. */
 const RECENT_LIMIT = 30;
+/** How many current facts the snapshot carries to diff against. */
+const CURRENT_FACT_LIMIT = 100;
 
 const memoryFactType = z.enum([
   'preference',
@@ -52,6 +60,8 @@ const memoryFactType = z.enum([
 const TEEN_MEMORY_PLACEHOLDER = '[teen content — withheld from inferencer (rule #1)]';
 
 interface MemorySnapshot {
+  /** Who a save may name as its subject. A 13+ child carries no name and is never one. */
+  children: { childId: string; name: string | null; stage: FamilyStage }[];
   recentEvents: {
     childId: string | null;
     eventType: string;
@@ -79,63 +89,51 @@ interface MemorySnapshot {
 }
 
 /**
- * Strip raw content from any snapshot row scoped to a 13+ child before the
- * memory-inferencer sees it (rule #1): the row's child scope is dropped to null
- * and its raw payload/summary/value — and a fact's free-text factKey — is replaced
- * with a marker, so no teen-specific fact can be inferred or stored. Non-teen and
- * family-wide (childId null) rows pass
- * through unchanged. Pure, no I/O — mirrors redactTimelineForDistill.
+ * Strip raw content from any recent event scoped to a 13+ child before the
+ * memory-inferencer sees it (rule #1): the child scope is dropped to null and the raw
+ * payload replaced with a marker, so no teen-specific fact can be inferred or stored.
+ * An event whose payload names a 13+ child is treated the same way, whatever child it
+ * is filed under: an inbound text carries no child id, so the name is the only sign it
+ * is about the teen (VIL-598 leg A found this one).
+ * Facts and episodes need no pass here: the shared prompt read never returns a teen's.
  */
-function redactMemorySnapshotForTeens(
-  snapshot: MemorySnapshot,
+function redactEventsForTeens(
+  events: MemorySnapshot['recentEvents'],
   stageByChild: ReadonlyMap<string, FamilyStage>,
-): MemorySnapshot {
-  const isTeen = (childId: string | null) =>
-    childId !== null && stageByChild.get(childId) === 'teenager';
-  return {
-    recentEvents: snapshot.recentEvents.map((e) =>
-      isTeen(e.childId)
-        ? {
-            childId: null,
-            eventType: e.eventType,
-            payload: TEEN_MEMORY_PLACEHOLDER,
-            receivedAt: e.receivedAt,
-          }
-        : e,
-    ),
-    recentEpisodes: snapshot.recentEpisodes.map((e) =>
-      isTeen(e.childId)
-        ? {
-            childId: null,
-            episodeType: e.episodeType,
-            summary: TEEN_MEMORY_PLACEHOLDER,
-            occurredAt: e.occurredAt,
-          }
-        : e,
-    ),
-    currentFacts: snapshot.currentFacts.map((f) =>
-      isTeen(f.childId)
-        ? {
-            childId: null,
-            factType: f.factType,
-            factKey: TEEN_MEMORY_PLACEHOLDER,
-            factValue: TEEN_MEMORY_PLACEHOLDER,
-            confidence: f.confidence,
-            ...(f.kind ? { kind: f.kind } : {}),
-            ...(f.disposition ? { disposition: f.disposition } : {}),
-            ...(f.source ? { source: f.source } : {}),
-            ...(f.expiresAt ? { expiresAt: f.expiresAt } : {}),
-          }
-        : f,
-    ),
-  };
+  teenNames: readonly string[],
+): MemorySnapshot['recentEvents'] {
+  return events.map((e) =>
+    (e.childId !== null && stageByChild.get(e.childId) === 'teenager') ||
+    stringLeaves(e.payload).some((text) => namesAny(text, teenNames))
+      ? {
+          childId: null,
+          eventType: e.eventType,
+          payload: TEEN_MEMORY_PLACEHOLDER,
+          receivedAt: e.receivedAt,
+        }
+      : e,
+  );
+}
+
+/**
+ * Every string value and object key in a payload. A name match runs on these, never on
+ * JSON text: JSON writes a newline as `\n`, so the escape's letter would touch the name
+ * and hide it from a word-boundary match.
+ */
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, v]) => [key, ...stringLeaves(v)]);
+  }
+  return [];
 }
 
 export function buildInferenceTools(database: Database, now: Date = new Date()): RegisteredTool[] {
   const readRecentMemory = defineTool({
     name: 'read_recent_memory',
     description:
-      "Read THIS family's recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts. Each fact includes kind, disposition, source, and expiry so a declined or passing fact is not saved again as identity.",
+      "Read THIS family's children, recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts. Each fact includes kind, disposition, source, and expiry so a declined or passing fact is not saved again as identity. A child with stage teenager has no name and is never the subject of a save.",
     inputSchema: z.object({}),
     monetary: false,
     touchesChildContent: false,
@@ -143,7 +141,11 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
       const childRows = await database
-        .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+        .select({
+          id: schema.children.id,
+          name: schema.children.name,
+          dateOfBirth: schema.children.dateOfBirth,
+        })
         .from(schema.children)
         .where(eq(schema.children.familyId, ctx.familyId));
       const stageByChild = new Map<string, FamilyStage>(
@@ -162,44 +164,26 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         .orderBy(desc(schema.events.receivedAt))
         .limit(RECENT_LIMIT);
 
-      const recentEpisodes = await database
-        .select({
-          childId: schema.familyMemoryEpisodes.childId,
-          episodeType: schema.familyMemoryEpisodes.episodeType,
-          summary: schema.familyMemoryEpisodes.summary,
-          occurredAt: schema.familyMemoryEpisodes.occurredAt,
-        })
-        .from(schema.familyMemoryEpisodes)
-        .where(eq(schema.familyMemoryEpisodes.familyId, ctx.familyId))
-        .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
-        .limit(RECENT_LIMIT);
-
-      const currentFacts = await database
-        .select({
-          childId: schema.familyMemoryFacts.childId,
-          factType: schema.familyMemoryFacts.factType,
-          factKey: schema.familyMemoryFacts.factKey,
-          factValue: schema.familyMemoryFacts.factValue,
-          confidence: schema.familyMemoryFacts.confidence,
-          memoryKind: schema.familyMemoryFacts.memoryKind,
-          memorySource: schema.familyMemoryFacts.memorySource,
-          expiresAt: schema.familyMemoryFacts.expiresAt,
-        })
-        .from(schema.familyMemoryFacts)
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        );
+      const [recentEpisodes, currentFacts] = await Promise.all([
+        episodesForContext(database, ctx.familyId, { now, limit: RECENT_LIMIT }),
+        factsForContext(database, ctx.familyId, { now, limit: CURRENT_FACT_LIMIT }),
+      ]);
 
       const snapshot: MemorySnapshot = {
-        recentEvents: recentEvents.map((e) => ({
-          childId: e.childId,
-          eventType: e.eventType,
-          payload: e.payload,
-          receivedAt: e.receivedAt.toISOString(),
-        })),
+        children: childRows.map((c) => {
+          const stage = stageByChild.get(c.id) as FamilyStage;
+          return { childId: c.id, name: stage === 'teenager' ? null : c.name, stage };
+        }),
+        recentEvents: redactEventsForTeens(
+          recentEvents.map((e) => ({
+            childId: e.childId,
+            eventType: e.eventType,
+            payload: e.payload,
+            receivedAt: e.receivedAt.toISOString(),
+          })),
+          stageByChild,
+          childRows.filter((c) => stageByChild.get(c.id) === 'teenager').map((c) => c.name),
+        ),
         recentEpisodes: recentEpisodes.map((e) => ({
           childId: e.childId,
           episodeType: e.episodeType,
@@ -219,15 +203,16 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         })),
       };
 
-      return redactMemorySnapshotForTeens(snapshot, stageByChild);
+      return snapshot;
     },
   });
 
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
+      "Persist ONE fact inferred about THIS family, with a confidence in [0,1]. Name its subject: childId is a childId from read_recent_memory's children when the fact is about that child, or null when it is about the whole family. Facts below 0.7 confidence are REFUSED. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies the same fact as enduring. Upserts on (factType, factKey). Pass correctsKey when this replaces a different key. Pass observedAt (ISO-8601) for WHEN it became true, not when you read it. Omit it if the source carries no time; never guess. Save only what the parent said or confirmed. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not write enrolled, enrollment, signed up, booked, or registered unless a booking or family event already records that activity.",
     inputSchema: z.object({
+      childId: z.string().uuid().nullable(),
       factType: memoryFactType,
       factKey: z.string().min(1),
       factValue: z.unknown(),
@@ -238,6 +223,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
     // Invented values only: examples are cached outside message protections (rule #1).
     inputExamples: [
       {
+        childId: EXAMPLE_CHILD_ID,
         factType: 'routine',
         factKey: 'afternoon_nap',
         factValue: 'one nap, 1pm to 3pm, most days for a month',
@@ -246,6 +232,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         disposition: 'confirmed',
       },
       {
+        childId: null,
         factType: 'preference',
         factKey: 'saturday_swim_trial',
         factValue: 'declined the Saturday swim trial',
@@ -255,6 +242,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
         disposition: 'declined',
       },
       {
+        childId: EXAMPLE_CHILD_ID,
         factType: 'preference',
         factKey: 'toddler_pottery',
         factValue: 'asked once about a toddler pottery class',
@@ -264,12 +252,22 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
       },
     ],
     monetary: false,
-    touchesChildContent: false,
+    // The input names a child, so the guarded invoker refuses a childId outside this
+    // family or a 13+ child's before the handler runs (rule #1), as for save_child_fact.
+    touchesChildContent: true,
     handler: async (input, ctx) => {
       // The 0.7 floor is a code-level invariant, not just a prompt rule: a fact
       // below it is dropped here, never written (mirrors the worker inferencer).
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
+      }
+      if (
+        await factNamesTeen(database, ctx.familyId, now, [
+          input.factKey,
+          flattenFactValue(input.factValue),
+        ])
+      ) {
+        return { saved: false as const, reason: 'names_teen' };
       }
 
       const decision = await decideDistilledFact(
@@ -286,7 +284,7 @@ export function buildInferenceTools(database: Database, now: Date = new Date()):
 
       const { factId } = await commitClassifiedMemory(database, {
         familyId: ctx.familyId,
-        childId: null,
+        childId: input.childId,
         factType: input.factType,
         factKey: input.factKey,
         factValue: input.factValue,
@@ -373,12 +371,19 @@ async function loadDistillTurns(
   const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   const childRows = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const stageByChild = new Map<string, FamilyStage>(
     childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
   );
+  const teenNames = childRows
+    .filter((c) => stageByChild.get(c.id) === 'teenager')
+    .map((c) => c.name);
 
   const familyConversations = await database
     .select({ id: schema.conversations.id })
@@ -399,6 +404,7 @@ async function loadDistillTurns(
       and(
         inArray(schema.messages.conversationId, conversationIds),
         gte(schema.messages.createdAt, since),
+        isNull(schema.messages.deletedAt),
       ),
     )
     .orderBy(desc(schema.messages.createdAt))
@@ -412,6 +418,7 @@ async function loadDistillTurns(
       topic: row.topic,
     })),
     stageByChild,
+    teenNames,
   );
 }
 
@@ -441,6 +448,22 @@ async function loadDistillReceipts(
       .limit(RECEIPT_LIMIT),
   ]);
   return [...bookings, ...events];
+}
+
+/**
+ * A save whose text names a 13+ child is refused (rule #1), whoever it is filed
+ * under. A text turn carries no child id, and a model can file a teen's news under a
+ * younger sibling, so the name is checked on every save. The guarded invoker's age
+ * gate has already refused a save filed under the teen.
+ */
+async function factNamesTeen(
+  database: Database,
+  familyId: string,
+  now: Date,
+  texts: readonly string[],
+): Promise<boolean> {
+  const { names } = await teenRoster(database, familyId, now);
+  return names.length > 0 && texts.some((text) => namesAny(text, names));
 }
 
 function flattenFactValue(factValue: unknown): string {
@@ -483,14 +506,20 @@ async function decideDistilledFact(
  * Reduce a conversation timeline to what the distiller may see. A turn focused on
  * a 13+ child is stripped to its topic/category and a redaction marker, and its
  * child scope is dropped to null so no teen-specific fact can be derived (rule #1).
- * Non-teen and family-wide turns pass through unchanged.
+ * A turn that names a 13+ child is treated the same way, whatever child it is filed
+ * under: a text turn never carries a child id, so the name is the only sign it is
+ * about the teen.
+ * Other turns pass through unchanged.
  */
 function redactTimelineForDistill(
   turns: readonly RawTimelineTurn[],
   stageByChild: ReadonlyMap<string, FamilyStage>,
+  teenNames: readonly string[],
 ): DistillTurn[] {
   return turns.map((turn) => {
-    const isTeen = turn.childId !== null && stageByChild.get(turn.childId) === 'teenager';
+    const isTeen =
+      (turn.childId !== null && stageByChild.get(turn.childId) === 'teenager') ||
+      namesAny(turn.content, teenNames);
     if (isTeen) {
       return {
         childId: null,
@@ -526,9 +555,9 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   const saveChildFact = defineTool({
     name: 'save_child_fact',
     description:
-      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
+      "Persist ONE categorized fact distilled from what the PARENT said or confirmed about a specific child (or family-wide with childId null), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Classify it: memoryClass enduring, obligation, or curiosity, and disposition confirmed, declined, or asked. Set record to age when the fact is the child's age or birth, or place when it is where the family lives; omit record otherwise. The key's spelling is not that signal. A declined or rejected activity is declined, never confirmed, and observedAt is the event's own time. A passing question is curiosity and asked, not a preference, until a later save classifies it as enduring. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary. Pass correctsKey when this replaces a different key. A suggested or found activity, and anything Hale proposed, is not enrollment, registration, signup, or the family's pick. Do not put enrolled, enrollment, signed up, booked, or registered in the summary unless a booking or family event already records that activity.",
     inputSchema: z.object({
-      childId: z.string().uuid().nullish(),
+      childId: z.string().uuid().nullable(),
       category: distillCategory,
       factKey: z.string().min(1),
       summary: z.string().min(1),
@@ -558,6 +587,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         disposition: 'declined',
       },
       {
+        childId: null,
         category: 'preferences',
         factKey: 'toddler_pottery',
         summary: 'parent asked once about a toddler pottery class',
@@ -578,6 +608,9 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
+      if (await factNamesTeen(database, ctx.familyId, now, [input.factKey, input.summary])) {
+        return { saved: false as const, reason: 'names_teen' };
+      }
 
       const decision = await decideDistilledFact(
         database,
@@ -595,7 +628,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         logDistillRefusal(ctx.familyId, input.factKey, decision);
       }
 
-      const childId = input.childId ?? null;
+      const childId = input.childId;
       const factType = CATEGORY_TO_FACT_TYPE[input.category];
       const { factId } = await commitClassifiedMemory(database, {
         familyId: ctx.familyId,
@@ -621,4 +654,4 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   return [readRecentConversations, saveChildFact];
 }
 
-export const _internal = { redactTimelineForDistill, redactMemorySnapshotForTeens };
+export const _internal = { redactTimelineForDistill, redactEventsForTeens };

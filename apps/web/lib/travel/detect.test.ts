@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOME_METRO, isAwayDestination } from './away';
+import { HOME_METRO, type TravelHome, isAwayDestination, travelHomeOf } from './away';
 import { destinationShape, localCalendarDay, looksLikeBooking } from './detect';
 
 /**
@@ -125,6 +125,8 @@ describe('destinationShape', () => {
   });
 });
 
+const GTA: TravelHome = { status: 'gta' };
+
 describe('isAwayDestination', () => {
   it('reads all 25 GTA municipalities as home, not just the 21 with a verified calendar', () => {
     for (const town of [
@@ -156,7 +158,7 @@ describe('isAwayDestination', () => {
       'Brock',
       'Scugog',
     ]) {
-      expect(isAwayDestination(town), town).toBe(false);
+      expect(isAwayDestination(town, GTA), town).toBe(false);
     }
     expect(HOME_METRO.length).toBeGreaterThanOrEqual(25);
   });
@@ -198,21 +200,98 @@ describe('isAwayDestination', () => {
       'Acton',
     ];
     for (const district of districts) {
-      expect(isAwayDestination(district), district).toBe(false);
+      expect(isAwayDestination(district, GTA), district).toBe(false);
     }
     expect(districts).toHaveLength(24);
   });
 
   it('reads a real destination as away — the positive control the two lists above need', () => {
     for (const city of ['New York', 'Ottawa', 'Montreal', 'Vancouver', 'Québec', 'Blue Mountain']) {
-      expect(isAwayDestination(city), city).toBe(true);
+      expect(isAwayDestination(city, GTA), city).toBe(true);
     }
   });
 
   it('normalises case, accents and punctuation, so one spelling is one place', () => {
-    expect(isAwayDestination('TORONTO')).toBe(false);
-    expect(isAwayDestination('north  york')).toBe(false);
-    expect(isAwayDestination('Richmond-Hill')).toBe(false);
+    expect(isAwayDestination('TORONTO', GTA)).toBe(false);
+    expect(isAwayDestination('north  york', GTA)).toBe(false);
+    expect(isAwayDestination('Richmond-Hill', GTA)).toBe(false);
+  });
+
+  /**
+   * THE HOME IS THE FAMILY'S OWN. A Seattle family's Seattle hotel is not a trip, and their
+   * flight to Toronto is — the two answers the GTA-for-everyone rule got backwards.
+   */
+  it('judges a non-GTA family from its own home city', () => {
+    const seattle: TravelHome = { status: 'city', city: 'Seattle' };
+    expect(isAwayDestination('Seattle', seattle)).toBe(false);
+    expect(isAwayDestination('SEATTLE', seattle)).toBe(false);
+    // Positive control: the comparison is not simply saying "home".
+    expect(isAwayDestination('Toronto', seattle)).toBe(true);
+    expect(isAwayDestination('Scarborough', seattle)).toBe(true);
+  });
+});
+
+describe('travelHomeOf', () => {
+  const row = {
+    country: null,
+    province: null,
+    city: null,
+    postalCode: null,
+    areaCoarse: null,
+  };
+
+  it('names a US family by the city its ZIP belongs to', async () => {
+    expect(await travelHomeOf({ ...row, country: 'United States', postalCode: '98103' })).toEqual({
+      status: 'city',
+      city: 'Seattle',
+    });
+  });
+
+  it('names a Canadian family outside the GTA by its own city', async () => {
+    expect(await travelHomeOf({ ...row, country: 'Canada', postalCode: 'K1A' })).toEqual({
+      status: 'city',
+      city: 'Ottawa',
+    });
+  });
+
+  /** Today's cohort: a GTA area on the row, with or without a stored country. */
+  it('reads a GTA postal area as the GTA, district aliases and all', async () => {
+    expect(await travelHomeOf({ ...row, areaCoarse: 'M1B' })).toEqual(GTA);
+    // An FSA that straddles two GTA towns is still the GTA.
+    expect(await travelHomeOf({ ...row, country: 'Canada', areaCoarse: 'L3T' })).toEqual(GTA);
+  });
+
+  /** A GTA-shaped code on a row whose country says otherwise is not the GTA: the stored
+   * country chooses the table, as it does in {@link placeOf}. */
+  it('does not read a GTA-shaped code as the GTA when the row says another country', async () => {
+    expect(
+      await travelHomeOf({ ...row, country: 'United States', city: 'Seattle', postalCode: 'M4K' }),
+    ).toEqual({ status: 'city', city: 'Seattle' });
+    expect(await travelHomeOf({ ...row, country: 'United States', areaCoarse: 'M4K' })).toEqual({
+      status: 'unknown',
+      reason: 'unmapped',
+    });
+    // Positive control: the same code with Canada stated is the GTA.
+    expect(await travelHomeOf({ ...row, country: 'Canada', areaCoarse: 'M4K' })).toEqual(GTA);
+  });
+
+  /** The four GTA towns with no verified registration calendar have no FSA entry; the
+   * city the postal table gives them is what makes them the GTA. */
+  it('reads a GTA town outside the FSA table as the GTA by its city', async () => {
+    expect(await travelHomeOf({ ...row, country: 'Canada', postalCode: 'L9T' })).toEqual(GTA);
+  });
+
+  it('names the reason when there is no home to judge from', async () => {
+    expect(await travelHomeOf(row)).toEqual({ status: 'unknown', reason: 'no_country' });
+    expect(await travelHomeOf({ ...row, country: 'Canada' })).toEqual({
+      status: 'unknown',
+      reason: 'no_postal',
+    });
+    // A rural area that spans towns inside and outside the GTA is not guessed at.
+    expect(await travelHomeOf({ ...row, country: 'Canada', postalCode: 'L0P' })).toEqual({
+      status: 'unknown',
+      reason: 'ambiguous',
+    });
   });
 });
 

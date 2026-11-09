@@ -1,0 +1,11 @@
+{
+  "value": {
+    "answer": "Suele ser un resfriado común, que mejora en 3 a 7 días. Ayudan los líquidos, el descanso y el suero salino nasal.",
+    "triage": "Llame al 811 si hay dolor de oído o empeora. Llame al 911 o vaya a urgencias ya si respira rápido o con dificultad, tiene labios azules o está muy somnoliento.",
+    "sources": [
+      "Canadian Paediatric Society (Caring for Kids)",
+      "American Academy of Pediatrics (HealthyChildren.org)"
+    ]
+  },
+  "latencyMs": 6608
+}

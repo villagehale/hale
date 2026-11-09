@@ -8,7 +8,11 @@ export type {
   WeekPlanVoice,
   NewWeekPlan,
 } from './schema/week-plans.js';
-export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export type {
+  FamilyEvent,
+  FamilyEventNotes,
+  NewFamilyEvent,
+} from './schema/family-events.js';
 export { householdFamilyEvent } from './family-event-scope.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
@@ -73,3 +77,4 @@ export {
   WATCHED_SPOT_RELEASE_REASONS,
   WATCHED_SPOT_STATES,
 } from './schema/watched-spots.js';
+export { REGISTRATION_COURSE_URL_MAX_CHARS } from './schema/registration-sequences.js';

@@ -1,6 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { PrivacyPageView } from '~/components/portal/privacy-page-view';
 import type { ActionReview } from '~/lib/dashboard/action-review';
 import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
@@ -225,6 +226,46 @@ function visibleText(html: string): string {
 function attributeValues(html: string): string[] {
   return [...html.matchAll(/\s[a-zA-Z-]+="([^"]*)"/g)].flatMap((m) => m.slice(1));
 }
+
+describe('the privacy page masks each "What Hale did" row', () => {
+  const render = () =>
+    renderToStaticMarkup(
+      h(PrivacyPageView, {
+        household: {
+          activity: [
+            {
+              id: 'act-a',
+              kind: 'email',
+              what: 'Emailed coach@example.test about Practice moved',
+              when: 'Sent Jun 19, 8:30 a.m.',
+              calendars: [],
+              teenRedacted: false,
+            },
+          ],
+          connections: { gmail: 'not_connected', gcal: 'connected', gdrive: 'not_connected' },
+        },
+        seated: true,
+        role: 'primary_parent',
+        canExport: true,
+        holdDays: 7,
+      }),
+    );
+
+  it('leaves neither the recipient, the subject nor the time outside a masked subtree', () => {
+    const residue = visibleText(stripMaskedSubtrees(render()));
+    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 8:30 a.m.']) {
+      expect(residue, `${value} must not survive the mask`).not.toContain(value);
+    }
+    expect(residue).toContain('What Hale did');
+  });
+
+  it('is a real check — the same values ARE in the unmasked render', () => {
+    const html = render();
+    for (const value of ['coach@example.test', 'Practice moved', 'Jun 19, 8:30 a.m.']) {
+      expect(html).toContain(value);
+    }
+  });
+});
 
 describe('the approvals row body is masked for replay', () => {
   const PREVIEW = 'Reply to Dr. Chen — confirm Maya’s Tuesday 3pm';

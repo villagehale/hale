@@ -1,3 +1,4 @@
+import type { GroupAudienceVerdict } from '~/lib/channel/linq/group-audience';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
@@ -198,7 +199,11 @@ export type GroupReminderDropReason =
   | 'quiet_hours'
   | 'direct_unreachable';
 
-export type FireDecision = { kind: 'send' } | { kind: 'drop'; reason: GroupReminderDropReason };
+export type FireDecision =
+  | { kind: 'send' }
+  | { kind: 'drop'; reason: GroupReminderDropReason }
+  /** Who is in the chat could not be read now: the reminder stays due for a later tick. */
+  | { kind: 'defer'; reason: 'participants_unverified' };
 
 export interface FireState {
   now: Date;
@@ -207,8 +212,8 @@ export interface FireState {
   askerSeated: boolean;
   /** Whether the person it is for is still in the chat. Null when it is not for someone else. */
   recipientSeated: boolean | null;
-  /** The group may hear this line now. Read for a group delivery only. */
-  audienceAllowed: boolean;
+  /** Whether the group may hear this line now. Read for a group delivery only, else null. */
+  audience: GroupAudienceVerdict | null;
   /**
    * The asker still counts as a Hale customer, by the rule the reminder was set with.
    * Read for a direct delivery only.
@@ -222,7 +227,9 @@ export interface FireState {
 /**
  * Whether a due reminder goes out. A STOP or a removal already cancelled it; this is the
  * check at the moment of sending, so a change since it was set still wins. A reminder is
- * never deferred into a stale one: a quiet-hours hit or a late tick drops it, by name.
+ * never deferred into a stale one: a quiet-hours hit or a late tick drops it, by name. A
+ * participant read that could not be made is no answer about the audience, so it defers
+ * the reminder, never drops it, until it is too late to send.
  * A 1:1 reminder whose asker no longer counts as a Hale customer is dropped, not posted
  * in the group instead: they were told it would come privately.
  */
@@ -236,7 +243,10 @@ export function fireDecision(
   if (state.now.getTime() - row.deliverAt.getTime() > LATE_LIMIT_MS) {
     return { kind: 'drop', reason: 'missed' };
   }
-  if (row.delivery === 'group' && !state.audienceAllowed) {
+  if (row.delivery === 'group' && !state.audience?.allowed) {
+    if (state.audience?.reason === 'participants_unverified') {
+      return { kind: 'defer', reason: 'participants_unverified' };
+    }
     return { kind: 'drop', reason: 'audience_held' };
   }
   if (row.delivery === 'direct' && !state.askerCustomer) {

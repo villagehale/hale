@@ -31,7 +31,7 @@ function scripted(routes: Array<{ match: string; status?: number; body: unknown 
 function deps(over: Partial<EnsureWatchDeps> = {}): EnsureWatchDeps {
   return {
     loadWatch: async () => null,
-    saveWatch: async () => undefined,
+    saveWatch: async () => 'saved',
     google: scripted([]).google,
     newChannelId: () => 'chan-new',
     newToken: () => 'token-new',
@@ -130,6 +130,7 @@ describe('ensureGooglePushWatch', () => {
         }),
         saveWatch: async (_id, watch) => {
           saved.push(watch);
+          return 'saved';
         },
       }),
     });
@@ -169,6 +170,7 @@ describe('ensureGooglePushWatch', () => {
         google,
         saveWatch: async (_id, watch) => {
           saved.push(watch);
+          return 'saved';
         },
       }),
     });

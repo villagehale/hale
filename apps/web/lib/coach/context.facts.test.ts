@@ -58,7 +58,8 @@ describe('coach context — ranking past the cap', () => {
         factType: 'routine' as const,
         factKey: `family_fact_${i}`,
         factValue: { i },
-        confidence: 0.5 + i / 100,
+        // All above the 0.7 floor the shared read applies, so only the ranking chooses.
+        confidence: 0.7 + i / 200,
         validFrom: new Date(Date.UTC(2026, 0, 1 + i)),
       })),
     );

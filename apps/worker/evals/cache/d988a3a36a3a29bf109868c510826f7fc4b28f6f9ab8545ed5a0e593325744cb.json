@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific Calgary venues sourced from the operators' own sites (YMCA Calgary, Families Matter), fit a toddler, and there are only two. The message leads with the YMCA Family Play by name and attributes each fact ('YMCA Calgary's site says', 'Families Matter's site says') without claiming confirmation. Times and price match the picks exactly, with nothing invented. Under no_page_read it correctly says 'I couldn't get into their pages today' rather than 'not posted yet'. With watch true, it gives the first-person commitment 'I'll keep watching and text you'. It is plain text with no link and no question.",
+    "score": 5
+  }
+}
