@@ -19,6 +19,7 @@ import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
@@ -845,36 +846,41 @@ describe('VIL-333 identity challenge', () => {
 });
 
 describe('the language the inbound screen read', () => {
-  async function parentAt(fake: FakeDb, locale: string) {
+  async function parentAt(fake: FakeDb) {
     await fake.db.insert(schema.users).values({
       id: PARENT,
       email: 'parent-locale@example.test',
-      locale,
+      proactiveLanguage: null,
+      languageStreakTag: null,
+      languageStreakCount: 0,
     });
   }
 
-  const localeUpdates = (fake: FakeDb) =>
-    fake.writes.filter((write) => write.op === 'update' && write.table === schema.users);
+  const languageChanges = (fake: FakeDb) =>
+    fake
+      .rows(schema.auditLog)
+      .filter((row) => row.actionTaken === 'parent_language_changed')
+      .map((row) => row.after);
 
-  it('stores zh when an in-domain verdict carries it, and does not write the same tag again', async () => {
+  it('one Chinese text does not change the language Hale writes to the parent in', async () => {
     const h = harness({
       offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh' }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
     await routeChannelMessage(h.deps, job());
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ id: PARENT, locale: 'zh' });
-    expect(localeUpdates(h.fake)).toHaveLength(1);
 
-    await routeChannelMessage(h.deps, nthJob(2));
-    expect(localeUpdates(h.fake)).toHaveLength(1);
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({
+      id: PARENT,
+      proactiveLanguage: null,
+      languageStreakTag: 'zh',
+      languageStreakCount: 1,
+    });
+    expect(languageChanges(h.fake)).toEqual([]);
   });
 
-  it('stores ar from a deflection, and the coach is not woken', async () => {
-    const coach = fakeCoach();
+  it('three in a row, on either door, do', async () => {
     const h = harness({
-      coach,
       offDomain: fakeLane({
         status: 'deflected',
         lane: 'off_domain_general',
@@ -887,44 +893,36 @@ describe('the language the inbound screen read', () => {
         pendingAsk: null,
       }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
-    const result = await routeChannelMessage(h.deps, job());
+    for (const n of [1, 2, 3]) await routeChannelMessage(h.deps, nthJob(n));
 
-    expect(result.status).toBe('deflected');
-    expect(coach.calls).toBe(0);
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ proactiveLanguage: 'ar' });
+    expect(languageChanges(h.fake)).toEqual([{ language: 'ar', why: 'sustained' }]);
   });
 
-  it('leaves the stored locale alone when the verdict has no tag or a blank one', async () => {
-    const untouched = harness({ offDomain: fakeLane({ status: 'in_domain', fallback: null }) });
-    await parentAt(untouched.fake, 'en-CA');
-    await routeChannelMessage(untouched.deps, job());
-    expect(localeUpdates(untouched.fake)).toEqual([]);
-    expect(untouched.fake.rows(schema.users)[0]).toMatchObject({ locale: 'en-CA' });
-
-    const blank = harness({
-      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: '   ' }),
-    });
-    await blank.fake.db.insert(schema.users).values({
-      id: PARENT,
-      email: 'blank-locale@example.test',
-      locale: 'ar',
-    });
-    await routeChannelMessage(blank.deps, job());
-    expect(localeUpdates(blank.fake)).toEqual([]);
-    expect(blank.fake.rows(schema.users)[0]).toMatchObject({ locale: 'ar' });
-  });
-
-  it('stores zh-Hant exactly', async () => {
+  it('an explicit ask changes it on the one text', async () => {
     const h = harness({
-      offDomain: fakeLane({ status: 'in_domain', fallback: null, language: 'zh-Hant' }),
+      offDomain: fakeLane({
+        status: 'in_domain',
+        fallback: null,
+        language: 'en',
+        languageRequest: 'fr',
+      }),
     });
-    await parentAt(h.fake, 'en-CA');
+    await parentAt(h.fake);
 
     await routeChannelMessage(h.deps, job());
 
-    expect(h.fake.rows(schema.users)[0]).toMatchObject({ locale: 'zh-Hant' });
+    expect(h.fake.rows(schema.users)[0]).toMatchObject({ proactiveLanguage: 'fr' });
+    expect(languageChanges(h.fake)).toEqual([{ language: 'fr', why: 'asked' }]);
+  });
+
+  it('leaves everything alone when the verdict has no tag', async () => {
+    const h = harness({ offDomain: fakeLane({ status: 'in_domain', fallback: null }) });
+    await parentAt(h.fake);
+    await routeChannelMessage(h.deps, job());
+    expect(h.fake.writes.filter((w) => w.op === 'update' && w.table === schema.users)).toEqual([]);
   });
 });
 
@@ -3666,6 +3664,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     instant: false,
     lastState: 'full' as const,
     sessionStartsAt: null,
+    sessionAnchor: null,
   };
 
   it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {
@@ -5148,6 +5147,104 @@ describe('turn deadline (VIL-400)', () => {
 });
 
 // ── a slow answer: the typing bubble stays up and one holding line goes first ──
+
+// ── VIL-495 · the model chose voice: the same reply goes as a memo, or as text ──
+
+describe('a reply the model chose to say as a voice memo (VIL-495)', () => {
+  const IM_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-voice',
+    replyToMessageId: null,
+  };
+  const SPOKEN = 'So glad swim went well. Same time next week?';
+
+  function voiceCoach(chose: boolean): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: SPOKEN,
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          voiceMemo: chose,
+        };
+      },
+    };
+  }
+
+  function voiceHarness(chose: boolean, outcome: VoiceReplyOutcome) {
+    const h = harness({ coach: voiceCoach(chose), context: { reply: IM_ROUTE } });
+    const calls: Array<{ input: unknown; familyId: string }> = [];
+    h.deps.sendVoiceReply = async (input, familyId) => {
+      calls.push({ input, familyId });
+      return outcome;
+    };
+    return { h, calls };
+  }
+
+  it('sent as a memo: no text goes out, and the ledger, audit and thread record it', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.sent).toEqual([]);
+    expect(calls).toEqual([
+      {
+        input: {
+          text: SPOKEN,
+          modelChoseVoice: true,
+          isGroup: false,
+          textOnly: false,
+          chatId: 'chat-voice',
+          address: PHONE,
+        },
+        familyId: FAMILY,
+      },
+    ]);
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({ channel: 'imessage', providerMessageId: 'vm-1', body: null }),
+    ]);
+    expect(auditRows(h.fake)).toContainEqual(
+      expect.objectContaining({ actionTaken: 'sms_reply_sent', after: { form: 'voice_memo' } }),
+    );
+    expect(messageRows(h.fake)).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: SPOKEN }),
+    );
+  });
+
+  it('a memo that cannot go sends the same reply as text, once', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'capability' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+    expect(auditRows(h.fake)).not.toContainEqual(
+      expect.objectContaining({ after: { form: 'voice_memo' } }),
+    );
+  });
+
+  it('a group chat is told it is a group, and gets the text', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'not_one_to_one' });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(calls[0]?.input).toMatchObject({ isGroup: true });
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+
+  it('the model did not choose voice: the voice send is never asked', async () => {
+    const { h, calls } = voiceHarness(false, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toEqual([]);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+});
 
 describe('a slow answer gets one holding line first', () => {
   const IMESSAGE_ROUTE: ReplyRoute = {

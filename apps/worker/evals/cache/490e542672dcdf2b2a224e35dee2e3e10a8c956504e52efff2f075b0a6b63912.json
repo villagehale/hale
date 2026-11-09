@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep their day (tomorrow), start, end, venue name and address, and who each is for (Theo, Léa). Titles keep their meaning. No invented details, no planLink needed, bold is none. However, the text says the two events 'clash', but the facts have no `overlaps` and the times (10-11 AM and 1:30-2:15 PM) do not overlap at all. Saying they clash is an invented detail, and it also asks a needless question.",
+    "score": 1
+  }
+}

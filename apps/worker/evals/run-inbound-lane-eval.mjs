@@ -25,8 +25,8 @@
 // context-free fragments), and the rest are the off-domain, safety and provider asks the
 // stage exists to catch — so neither "deflect everything" nor "deflect nothing" can pass.
 // In the STAND-IN: `--broken` answers off_domain_general/crypto-prices to everything,
-// which trips the in-domain gate, the safety gate, the provider recall, the accuracy bar
-// AND the closed-vocabulary gate.
+// which trips the in-domain gate, the safety gate, the provider recall, the accuracy bar,
+// the closed-vocabulary gate AND the false-language-request gate.
 //
 // THE TWO HARD ZEROS, and why they are not symmetric:
 //   · in-domain leaks — a real family-week question answered with "not my department".
@@ -66,8 +66,9 @@ const LANE_TOOL_SCHEMA = {
     category: { type: 'string', enum: ALLOWED_CATEGORIES },
     reason: { type: 'string' },
     language: { type: 'string' },
+    language_request: { type: ['string', 'null'] },
   },
-  required: ['lane', 'category', 'reason', 'language'],
+  required: ['lane', 'category', 'reason', 'language', 'language_request'],
 };
 
 /** Mirrors `laneUserMessage` in screen.ts — the model sees the text and nothing else. */
@@ -77,6 +78,7 @@ function laneUserMessage(fixture) {
 
 /** A screen that deflects everything, into a bucket that does not exist. */
 const BROKEN_READING = {
+  language_request: 'fr',
   lane: 'off_domain_general',
   category: 'crypto-prices',
   reason: 'stand-in: everything is somebody else’s problem',
@@ -884,6 +886,20 @@ async function runLegacy() {
     (r) => r.fixture.expectCategory && r.value.category !== r.fixture.expectCategory,
   );
 
+  // VIL-572. An explicit language ask switches every unprompted message to that parent
+  // on one text, so a request read off a text that is not one is a hard zero, and every
+  // real ask must be read, naming the language it asked for.
+  const requestOf = (r) =>
+    typeof r.value.language_request === 'string' && r.value.language_request.trim() !== ''
+      ? r.value.language_request.trim().toLowerCase().split('-')[0]
+      : null;
+  const falseLanguageRequests = results.filter(
+    (r) => !r.fixture.expectLanguageRequest && requestOf(r) !== null,
+  );
+  const missedLanguageRequests = results.filter(
+    (r) => r.fixture.expectLanguageRequest && requestOf(r) !== r.fixture.expectLanguageRequest,
+  );
+
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- lane readings ---');
   for (const r of results) {
@@ -913,6 +929,12 @@ async function runLegacy() {
   );
   console.log(`in-domain carrying a bucket: ${inDomainWithCategory.length}  (0 required)`);
   console.log(`unarguable bucket misses:    ${categoryMisses.length}  (0 required)`);
+  console.log(
+    `FALSE LANGUAGE REQUESTS:     ${falseLanguageRequests.length}  (0 required)${falseLanguageRequests.length ? ` ${falseLanguageRequests.map((r) => r.fixture.id).join(', ')}` : ''}`,
+  );
+  console.log(
+    `missed language requests:    ${missedLanguageRequests.length}  (0 required)${missedLanguageRequests.length ? ` ${missedLanguageRequests.map((r) => r.fixture.id).join(', ')}` : ''}`,
+  );
 
   console.log('\n--- cost telemetry ---');
   console.log(
@@ -927,7 +949,9 @@ async function runLegacy() {
     providerRecall >= 0.75 &&
     invalidCategories.length === 0 &&
     inDomainWithCategory.length === 0 &&
-    categoryMisses.length === 0;
+    categoryMisses.length === 0 &&
+    falseLanguageRequests.length === 0 &&
+    missedLanguageRequests.length === 0;
 
   console.log('\n--- gate ---');
   if (!broken) {

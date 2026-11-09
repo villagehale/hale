@@ -43,6 +43,8 @@ const ALLOWLIST: Record<string, string> = {
     'clearance-gated: assertClearance runs before key read and egress',
   'apps/web/lib/pipeline/client.ts':
     'clearance-gated: assertClearance runs before key read and egress',
+  'apps/web/lib/channel/linq/voice-speech.ts':
+    'clearance-gated: assertClearance runs before key read and egress (VIL-495 TTS + transcription)',
   'apps/web/lib/signup/browser-use/client.ts':
     'UNGATED: owned by #1009; §11.2 open decision blocks the privacy sentence',
 };

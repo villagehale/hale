@@ -270,21 +270,6 @@ function render(
         "I don't have a number for you to add to a group yet.",
         "Je n'ai pas encore de numero a ajouter a un groupe.",
       );
-    case 'group_member_welcome':
-      return facts.adder
-        ? fill(
-            pick(
-              language,
-              "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-              "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-            ),
-            facts,
-          )
-        : pick(
-            language,
-            "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-            "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-          );
     case 'group_stranger_hold':
       return fill(
         pick(

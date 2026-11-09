@@ -110,6 +110,9 @@ export interface SpotWatchIntent {
    * publishes no start Hale can read. The watch ends then: past it, a freed spot is in a
    * class that is already running. */
   sessionStartsAt: Date | null;
+  /** A page outside the registry only: the page text naming the session, which every
+   * later read must find again. Null on a registry course page. */
+  sessionAnchor: string | null;
 }
 
 /**
@@ -141,6 +144,8 @@ export interface LiveWatchedSpot {
   sendAttempts: number;
   notifiedMessageId: string | null;
   expiresAt: Date;
+  sessionAnchor: string | null;
+  pageDigest: string | null;
 }
 
 const LIVE_SPOT_COLUMNS = {
@@ -158,6 +163,8 @@ const LIVE_SPOT_COLUMNS = {
   sendAttempts: schema.watchedSpots.sendAttempts,
   notifiedMessageId: schema.watchedSpots.notifiedMessageId,
   expiresAt: schema.watchedSpots.expiresAt,
+  sessionAnchor: schema.watchedSpots.sessionAnchor,
+  pageDigest: schema.watchedSpots.pageDigest,
 };
 
 /**
@@ -203,6 +210,7 @@ export async function armWatchedSpot(
         instant: input.intent.instant,
         lastState: input.intent.lastState,
         expiresAt: watchExpiry(input.intent.sessionStartsAt, input.now),
+        sessionAnchor: input.intent.sessionAnchor,
         createdFrom: input.channelMessageId,
         createdAt: input.now,
         updatedAt: input.now,
@@ -343,6 +351,8 @@ export async function recordPoll(
     lastState: WatchedSpotState | null;
     consecutiveFailures: number;
     nextPollAt: Date | null;
+    /** A page outside the registry: the text this quiet read was of. */
+    pageDigest?: string;
     now: Date;
   },
 ): Promise<void> {
@@ -350,6 +360,7 @@ export async function recordPoll(
     .update(schema.watchedSpots)
     .set({
       ...(input.lastState === null ? {} : { lastState: input.lastState }),
+      ...(input.pageDigest === undefined ? {} : { pageDigest: input.pageDigest }),
       ...(input.nextPollAt === null ? {} : { nextPollAt: input.nextPollAt }),
       consecutiveFailures: input.consecutiveFailures,
       lastPolledAt: input.now,

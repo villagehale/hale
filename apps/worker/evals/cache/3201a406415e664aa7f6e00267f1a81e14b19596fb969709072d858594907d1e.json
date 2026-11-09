@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three events are present with correct day (tomorrow), start, venue name and address, and the right child. Swim 9:00 to 9:45 a.m. and piano 5:00 to 5:30 p.m. both carry their given ends with correct AM/PM. The dentist gives only the 11:00 a.m. start, with no invented end. No invented logistics, no overlap claims (none in the facts, none stated), and no link used. Bold is none, which is fine. Titles keep their meaning (swim, dentist, piano).",
+    "score": 5
+  }
+}

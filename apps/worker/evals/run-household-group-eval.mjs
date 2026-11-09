@@ -30,6 +30,8 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_ROOT = join(REPO_ROOT, 'apps', 'web');
@@ -42,30 +44,14 @@ const LINE = '+1 555-555-0100';
 register({ tsconfig: join(WEB_ROOT, 'tsconfig.json') });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE onboarding text Hale (a kids-year planner that lives',
-  'in iMessage and SMS) sends a parent. You get the facts Hale was given, the reply, and',
-  'watchFor - fixture-specific notes on what right and wrong look like.',
-  '`facts.householdGroup` is where the group chat with the other parent stands: `unclaimed`',
-  '(no group yet; a yes in this message leaves it pending), `pending` (they said yes; no group',
-  'exists yet), `claimed` (the group exists).',
-  'A LOW score (1-2) is any of: while the group is unclaimed or pending, saying or suggesting',
-  'that setup is done, finished, complete, all set, everything is in place, or the like, in any',
-  'language; saying the other parent has joined, is in the group, or can see anything; when',
-  'claimed, saying the group still has to be made or set up; a phone number or link written in',
-  'the reply; anything watchFor says must not happen.',
-  'Saying Hale has what it needs for the kids, or will text when something matters, is NOT a',
-  'claim that setup is done.',
-  'A 5 is short, plain and warm, answers what they said, and makes none of those claims.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('household-group');
 
 // Deterministic broken stand-in: the completion claim this ticket forbids.
 const BROKEN_REPLY = "Perfect, you're all set up and everything is in place. Mia's other parent is in.";
 
 function inputFor(voice, phrase, fixture) {
   const { join: wantsJoin, ...over } = fixture.over;
-  const base = voice.nameAskVoiceInput(over.parentWords, over.language ?? 'en');
+  const base = voice.nameAskVoiceInput(over.parentWords, over.language ?? 'en', NAME_ASK_STORED);
   const coparentJoin = wantsJoin ? { line: LINE, phrase } : null;
   return { ...base, ...over, coparentJoin };
 }

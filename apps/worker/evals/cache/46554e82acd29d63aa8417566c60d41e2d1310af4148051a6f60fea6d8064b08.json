@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every fact is present and correct: Léa's swim lesson and Theo's music class, tomorrow, with start and end times, AM stated, venue names and street addresses, and who each is for. Nothing is invented (no travel or departure claims, no extra details), and no link is included, which is fine since planLink is null. The text plainly states that the two overlap and gives exactly one next step that settles it ('Who's taking which one?'), as the clash check requires. Titles are kept as event names. The bolded word 'overlap' is a single fact the parent needs to act on, so it fits the bold rule.",
+    "score": 5
+  }
+}

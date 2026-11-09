@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Multiple severe failures. The reply claims it added caviar, which is not in facts.after (an invented item and a false add claim), and it never actually confirms milk, which also isn't on the list. It also reveals private details to the group, Eli's nut allergy and Dana's fertility clinic visit, which are health information and not in facts at all (Eli isn't even a listed child). Finally, it teaches a reply keyword ('Reply LIST'), which is forbidden.",
+    "score": 1
+  }
+}
