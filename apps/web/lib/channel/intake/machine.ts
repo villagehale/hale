@@ -291,10 +291,10 @@ export type KeywordAck = 'sent' | 'provider_answered' | 'provider_refused' | 'vo
 
 export type IntakeOutcome =
   /**
-   * A new parent's opening turn sent nothing: the model could not write it. Never a
-   * step, because a step says Hale replied (rule #11). The session stays recoverable —
-   * awaiting_details with an inbound and no outbound — so the parent's own re-text
-   * re-runs the opening and the first-reply sweep owes it one reply.
+   * A pre-family turn sent nothing: the model could not write it. Never a step,
+   * because a step says Hale replied (rule #11). The parent's own re-text re-runs the
+   * turn. On the opening the session stays awaiting_details with an inbound and no
+   * outbound, so the first-reply sweep also owes it one reply.
    */
   | { status: 'first_touch_unsent'; reason: FriendFallback }
   | { status: 'greeted' }
@@ -1941,12 +1941,14 @@ async function friendOnboardingTurn(
     );
   }
   const voiced = friendOutbound(spoken);
-  if (!voiced && opening) {
+  // Nothing went out, on the opening or a later turn: never a step (rule #11). The
+  // parent's next text re-runs this turn.
+  if (!voiced) {
     await saveSession(
       database,
       session,
       {
-        state: 'awaiting_details',
+        state: opening ? 'awaiting_details' : nextPlace ? 'awaiting_ages' : 'awaiting_place',
         transcript,
         collected,
         lastProviderId: inbound.providerId,
@@ -1955,12 +1957,10 @@ async function friendOnboardingTurn(
       },
       now,
     );
-    await reportOpening(deps, session, inbound, language);
+    if (opening) await reportOpening(deps, session, inbound, language);
     return { status: 'first_touch_unsent', reason: unsentReason(spoken) };
   }
-  if (voiced) {
-    ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
-  }
+  ({ transcript } = await sendAndRecord(database, ctx, voiced, deps, transcript));
   const waitingAges = nextPlace != null;
   const clarifyKey = waitingAges ? 'ages' : 'place';
   const priorCount = session.firstTouch?.clarify?.[clarifyKey] ?? 0;
