@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message invents a second item ('Maya allergist') that is not in the input, which has only the swim pickup and a busy Barton block. It also fails to name the day and time correctly and asks for a reply by number and a link, both forbidden. It asks Sam by implication is not made clearly; the single ask is muddled. Multiple facts are wrong or invented.",
+    "score": 1
+  }
+}

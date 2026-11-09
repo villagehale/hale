@@ -304,8 +304,8 @@ async function keepOne(
   // Searched only AFTER the gate and the dedupe: a family who is over their budget or has
   // already been answered must not cost a web search (the per-search provider bill is the
   // reason this ordering is not merely tidy).
-  const [municipality, stage, householdNames] = await Promise.all([
-    deps.reader.municipality(database, commitment.familyId),
+  const [place, stage, householdNames] = await Promise.all([
+    deps.reader.place(database, commitment.familyId),
     deps.reader.stage(database, commitment.familyId, commitment.subjectChildId),
     deps.reader.householdNames(database, commitment.familyId),
   ]);
@@ -315,7 +315,7 @@ async function keepOne(
   // searched and the promise stays open for a human to see in the overdue count.
   const deidentified = deidentifyActivityQuery({
     subject,
-    municipality,
+    town: place.status === 'known' ? place.town : null,
     stage,
     householdNames,
   });
@@ -323,7 +323,7 @@ async function keepOne(
     result.unsendable += 1;
     console.error(
       { commitmentId: commitment.id, refusal: deidentified.refusal },
-      'activity follow-up: the stored subject no longer clears de-identification',
+      'activity follow-up: the stored subject or the family place no longer clears de-identification',
     );
     return;
   }

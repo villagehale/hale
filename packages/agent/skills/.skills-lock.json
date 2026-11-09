@@ -185,7 +185,7 @@
   },
   "flood-line.md": {
     "file": "flood-line.md",
-    "sha256": "4bee428511257655a5af16235a898535d319e240b30af055c25a0941259a417f"
+    "sha256": "4aa00a1cfa59796421ef9c5c269fcba15ab9beae7a23cd5d2778aa29c096dfc5"
   },
   "followup-voice.md": {
     "file": "followup-voice.md",
@@ -395,6 +395,10 @@
     "file": "radar-voice.md",
     "sha256": "6202ed7974df9ae9367f529bda403195721a28a5531a1d7ecc94cd1114fef138"
   },
+  "rec-morning-read.md": {
+    "file": "rec-morning-read.md",
+    "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
+  },
   "registration-evening.md": {
     "file": "registration-evening.md",
     "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
@@ -406,6 +410,10 @@
   "registration-morning.md": {
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
+  },
+  "registration-note.md": {
+    "file": "registration-note.md",
+    "sha256": "3ff9e76330bcbd0d9386738d7d926e83e2983a4ac1f45e69077536c02c1e8b81"
   },
   "registration-text-check.md": {
     "file": "registration-text-check.md",
@@ -462,6 +470,10 @@
   "spoken-line.md": {
     "file": "spoken-line.md",
     "sha256": "88ee93d9afa259b40535eb2770985cc793e71b872b0c34ccc740e2b8752fb28c"
+  },
+  "spot-open-voice.md": {
+    "file": "spot-open-voice.md",
+    "sha256": "6fc4f5aef16b9feaedbe5655f99da5283f3930186940dc5db8a05f20a4b6ceae"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

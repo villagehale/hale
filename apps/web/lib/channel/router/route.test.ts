@@ -2890,6 +2890,9 @@ describe('the shipped chain, end to end', () => {
         recorded.push({ outcome: input.outcome, position: input.position });
       },
       recordReask: async () => {},
+      // The composer seam (VIL-543): the note's kind stands in for the model's text.
+      writeNote: async (_db: unknown, _familyId: string, facts: { kind: string }) =>
+        `note:${facts.kind}`,
     };
     return {
       recorded,
@@ -2916,9 +2919,8 @@ describe('the shipped chain, end to end', () => {
     expect(result.handler).toBe('registration');
     expect(coach.calls).toBe(0);
     expect(chain.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
-    // The parent is told the clock started — M7's copy, not the stub's boundary line.
-    expect(h.transport.bodies()).toHaveLength(1);
-    expect(h.transport.bodies()[0]!.length).toBeGreaterThan(0);
+    // The parent is told the clock started — the written note, not the stub's boundary line.
+    expect(h.transport.bodies()).toEqual(['note:outcome_waitlisted']);
   });
 
   it('answers "done" from the health handler, not the registration re-ask', async () => {
@@ -3662,6 +3664,7 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     label: 'Tuesday preschool swim',
     instant: false,
     lastState: 'full' as const,
+    sessionStartsAt: null,
   };
 
   it('(a3) VIL-337 — the watch verb backs its own sentence, and the row is armed after the send', async () => {

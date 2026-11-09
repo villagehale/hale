@@ -1,12 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import {
-  AHA_TIME_ZONE,
-  type AhaSnapshot,
-  ahaClockLabel,
-  ahaWhenLabel,
-} from '~/lib/channel/connect/aha-read';
+import { type AhaSnapshot, ahaClockLabel, ahaWhenLabel } from '~/lib/channel/connect/aha-read';
 import { type ParentRoleGuess, likelyCoParentRole } from '~/lib/channel/identity/parent-role';
 import {
   type ReplyLanguage,
@@ -219,8 +214,14 @@ export interface FriendVoiceInput {
    * the connected step. The model chooses at most one. Code does not rank them.
    */
   synced?: AhaSnapshot | null;
-  /** The reference instant for today, used on the schedule step. */
+  /** The reference instant for today, used on the schedule step. Needs {@link timeZone}. */
   now?: Date;
+  /**
+   * The family's own IANA zone, from their place. Today, the dates the model may
+   * name, and every synced time are read in it. Required with `now` or synced items:
+   * without it they would be said on someone else's clock.
+   */
+  timeZone?: string;
   /** What is already on the calendar from this onboarding. */
   scheduled?: readonly FriendScheduled[];
   /** Hale's iMessage line and the group trigger phrase, when the co-parent ask is on iMessage. */
@@ -244,12 +245,13 @@ export interface FriendVoiceInput {
 /**
  * Facts about the parent's last inbound, for a reply that is no longer instant.
  * `minutesAgo` is the wait. `overnight` means that text landed inside proactive
- * quiet hours. `yesterday` means its Toronto calendar day is already over.
+ * quiet hours. `yesterday` means its calendar day is already over. Both are read on
+ * the family's own clock, and are null when no zone is known: none is guessed.
  */
 export interface LastInboundFact {
   minutesAgo: number;
-  overnight: boolean;
-  yesterday: boolean;
+  overnight: boolean | null;
+  yesterday: boolean | null;
 }
 
 export interface FriendVoiceResult {
@@ -671,8 +673,12 @@ function dayLabel(dayKey: string, language: ReplyLanguage | null): string {
 }
 
 /** Today and the next three weeks, as the only dates the model may name. */
-export function upcomingDays(now: Date, language: ReplyLanguage | null): DayLabel[] {
-  const today = dayKeyIn(now, AHA_TIME_ZONE);
+export function upcomingDays(
+  now: Date,
+  timeZone: string,
+  language: ReplyLanguage | null,
+): DayLabel[] {
+  const today = dayKeyIn(now, timeZone);
   const days: DayLabel[] = [];
   for (let offset = 0; offset <= SCHEDULE_DAYS_AHEAD; offset += 1) {
     const date = addDaysToKey(today, offset);
@@ -692,12 +698,13 @@ const LAST_INBOUND_MARK_MINUTES = 60;
 export function lastInboundFact(
   inboundAt: Date,
   now: Date,
-  timeZone: string = AHA_TIME_ZONE,
+  timeZone: string | null,
 ): LastInboundFact | null {
   const elapsedMs = now.getTime() - inboundAt.getTime();
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
   const minutesAgo = Math.floor(elapsedMs / 60_000);
   if (minutesAgo < LAST_INBOUND_MARK_MINUTES) return null;
+  if (timeZone === null) return { minutesAgo, overnight: null, yesterday: null };
   return {
     minutesAgo,
     overnight: inProactiveQuietHours(inboundAt, timeZone),
@@ -709,7 +716,7 @@ export function lastInboundFact(
 export function friendVoiceContext(input: FriendVoiceInput): unknown {
   const checklist = input.checklist ?? null;
   const now = input.now ?? null;
-  const today = now ? dayKeyIn(now, AHA_TIME_ZONE) : null;
+  const today = now ? dayKeyIn(now, familyZone(input)) : null;
   const missing = checklist ? onboardingMissing(checklist) : null;
   // Lines carry their number, so an add points at the line the parent meant and
   // not at a zero-based array position.
@@ -771,7 +778,10 @@ export function friendVoiceContext(input: FriendVoiceInput): unknown {
       granted: input.granted ?? null,
       synced: syncedForModel(input),
       today: today ? { date: today, label: dayLabel(today, input.language) } : null,
-      upcomingDays: input.step === 'schedule' && now ? upcomingDays(now, input.language) : null,
+      upcomingDays:
+        input.step === 'schedule' && now
+          ? upcomingDays(now, familyZone(input), input.language)
+          : null,
       scheduled: input.scheduled ?? [],
       // Code puts the join data under the reply; the model only knows it is there.
       // Flag off is today's phrase. Flag on names the choice and never a phrase to text.
@@ -948,6 +958,15 @@ function withReading(capture: OnboardingCapture, input: FriendVoiceInput): Onboa
   return { ...capture, coparentGroup: true };
 }
 
+/**
+ * The family's zone, for a dated fact. A dated fact with no zone would be said on
+ * someone else's clock: a caller bug, not a reply to write.
+ */
+function familyZone(input: FriendVoiceInput): string {
+  if (!input.timeZone) throw new Error('friend voice: dated facts need the family time zone');
+  return input.timeZone;
+}
+
 /** Labels the model may quote. Both languages are slots, so a French reply can name samedi. */
 function syncedForModel(input: FriendVoiceInput): unknown {
   const synced = input.synced;
@@ -956,8 +975,8 @@ function syncedForModel(input: FriendVoiceInput): unknown {
     read: synced.read,
     calendar: synced.calendar.map((item) => ({
       title: item.title,
-      when: ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, input.language),
-      clock: item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE),
+      when: ahaWhenLabel(item.start, item.allDay, familyZone(input), input.language),
+      clock: item.allDay ? null : ahaClockLabel(item.start, familyZone(input)),
       location: item.location,
       declined: item.declined,
     })),
@@ -965,7 +984,7 @@ function syncedForModel(input: FriendVoiceInput): unknown {
       subject: item.subject,
       fromName: item.fromName,
       when: item.receivedAt
-        ? ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, input.language)
+        ? ahaWhenLabel(item.receivedAt, false, familyZone(input), input.language)
         : null,
       snippet: item.snippet,
     })),
@@ -998,8 +1017,9 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
   if (input.coparentJoin) slots.push(input.coparentJoin.line, input.coparentJoin.phrase);
   for (const item of input.scheduled ?? []) slots.push(item.title, item.when);
   if (input.now) {
-    for (const day of upcomingDays(input.now, 'en')) slots.push(day.label);
-    for (const day of upcomingDays(input.now, 'fr')) slots.push(day.label);
+    const zone = familyZone(input);
+    for (const day of upcomingDays(input.now, zone, 'en')) slots.push(day.label);
+    for (const day of upcomingDays(input.now, zone, 'fr')) slots.push(day.label);
   }
   for (const slot of syncedFactSlots(input)) slots.push(slot);
   slots.push(
@@ -1018,11 +1038,11 @@ export function friendFactSlots(input: FriendVoiceInput, link?: string | null): 
  * the month, and the clock as "10:00", "10 am", "10am" and "10 h". The
  * judge is checking the fact, not the model's phrasing of it.
  */
-export function instantFactSlots(start: string, allDay: boolean): string[] {
+export function instantFactSlots(start: string, allDay: boolean, timeZone: string): string[] {
   const slots: string[] = [];
   const instant = allDay ? new Date(`${start}T12:00:00Z`) : new Date(start);
   if (Number.isNaN(instant.getTime())) return slots;
-  const zone = allDay ? 'UTC' : AHA_TIME_ZONE;
+  const zone = allDay ? 'UTC' : timeZone;
   for (const locale of ['en-CA', 'fr-CA']) {
     const parts = new Intl.DateTimeFormat(locale, {
       weekday: 'long',
@@ -1060,7 +1080,7 @@ export function instantFactSlots(start: string, allDay: boolean): string[] {
       hour: 'numeric',
       minute: '2-digit',
       hour12: false,
-      timeZone: AHA_TIME_ZONE,
+      timeZone,
     }).formatToParts(instant);
     const hour24 = Number(parts.find((part) => part.type === 'hour')?.value ?? Number.NaN);
     const minute = parts.find((part) => part.type === 'minute')?.value ?? '';
@@ -1092,24 +1112,26 @@ function syncedFactSlots(input: FriendVoiceInput): string[] {
   if (!synced) return [];
   const slots: string[] = [];
   for (const item of synced.calendar) {
+    const zone = familyZone(input);
     slots.push(item.title);
     if (item.location) slots.push(item.location);
-    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'en'));
-    slots.push(ahaWhenLabel(item.start, item.allDay, AHA_TIME_ZONE, 'fr'));
-    const clock = item.allDay ? null : ahaClockLabel(item.start, AHA_TIME_ZONE);
+    slots.push(ahaWhenLabel(item.start, item.allDay, zone, 'en'));
+    slots.push(ahaWhenLabel(item.start, item.allDay, zone, 'fr'));
+    const clock = item.allDay ? null : ahaClockLabel(item.start, zone);
     if (clock) slots.push(clock);
-    slots.push(...instantFactSlots(item.start, item.allDay));
+    slots.push(...instantFactSlots(item.start, item.allDay, zone));
   }
   for (const item of synced.email) {
     slots.push(item.subject);
     if (item.fromName) slots.push(item.fromName);
     if (item.snippet) slots.push(item.snippet);
     if (item.receivedAt) {
-      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'en'));
-      slots.push(ahaWhenLabel(item.receivedAt, false, AHA_TIME_ZONE, 'fr'));
-      const clock = ahaClockLabel(item.receivedAt, AHA_TIME_ZONE);
+      const zone = familyZone(input);
+      slots.push(ahaWhenLabel(item.receivedAt, false, zone, 'en'));
+      slots.push(ahaWhenLabel(item.receivedAt, false, zone, 'fr'));
+      const clock = ahaClockLabel(item.receivedAt, zone);
       if (clock) slots.push(clock);
-      slots.push(...instantFactSlots(item.receivedAt, false));
+      slots.push(...instantFactSlots(item.receivedAt, false, zone));
     }
   }
   return slots;
@@ -1824,7 +1846,7 @@ function unsentPage(step: FriendStep, reason: FriendFallback): string {
 function scheduleLimits(input: FriendVoiceInput): ScheduleLimits {
   return {
     findLineCount: input.findLines.length,
-    today: input.now ? dayKeyIn(input.now, AHA_TIME_ZONE) : null,
+    today: input.now ? dayKeyIn(input.now, familyZone(input)) : null,
     lines: input.findLines,
     children: input.children ?? [],
     scheduledLines: (input.scheduled ?? []).flatMap((row) => (row.line ? [row.line] : [])),

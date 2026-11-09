@@ -1,7 +1,6 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
 import { fitsHouseholdAges } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
@@ -51,7 +50,7 @@ const EIGHTEEN = 18 * 12;
 export const ACTIVITY_CATEGORIES: readonly ActivityCategory[] = [
   {
     id: 'parent_baby',
-    subject: 'parent and baby toddler groups earlyon library story time drop-in play groups',
+    subject: 'parent and baby toddler groups family centre library story time drop-in play groups',
     minMonths: 0,
     maxMonths: PRESCHOOL + 11,
     rank: { newborn: 0, toddler: 0, preschool: 3, child: 9, teenager: 9 },
@@ -175,7 +174,7 @@ function categoryQuery(
   category: ActivityCategory,
   input: {
     children: readonly { name: string | null; ageMonths: number | null }[];
-    areaCoarse: string | null;
+    town: string | null;
   },
 ): ActivityQuery | null {
   const ages = input.children
@@ -183,15 +182,13 @@ function categoryQuery(
     .filter((age): age is number => age !== null);
   if (ages.length === 0) return null;
   const stages = [...new Set(ages.map((age) => stageFromAgeInMonths(age)))];
-  const municipalities = input.areaCoarse ? resolveMunicipalities(input.areaCoarse) : [];
-  const municipality = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   const householdNames = input.children
     .map((child) => child.name)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
     subject: category.subject,
     window: 'this year',
-    municipality,
+    town: input.town,
     stage: stageFromAgeInMonths(Math.min(...ages)),
     householdNames,
   });
@@ -220,7 +217,8 @@ function flatten(groups: ActivityMapGroup[], finder: ActivityMapFinder): Activit
 export async function collectActivityMap(input: {
   finder: ActivityFinder | null;
   children: readonly Pick<RadarChild, 'name' | 'ageMonths' | 'dobPrecision'>[];
-  areaCoarse: string | null;
+  /** From place.ts. Null: no category is searched. */
+  town: string | null;
   civic: readonly WeekendPick[];
   familyId: string;
 }): Promise<ActivityMap> {
@@ -241,6 +239,10 @@ export async function collectActivityMap(input: {
   if (!input.finder) {
     console.info({ familyId: input.familyId }, 'intake activity map: skipped: not_configured');
     return flatten(civicGroup ? [civicGroup] : [], 'not_configured');
+  }
+  if (input.town === null) {
+    console.info({ familyId: input.familyId, reason: 'no_place' }, 'intake activity map: refused');
+    return flatten(civicGroup ? [civicGroup] : [], 'refused');
   }
   if (categories.length === 0) {
     return flatten(civicGroup ? [civicGroup] : [], 'refused');

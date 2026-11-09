@@ -13,6 +13,8 @@ import {
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
 
+const EASTERN = 'America/Toronto';
+
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
     language: 'en',
@@ -63,7 +65,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(hoursOld, now),
+        lastInbound: lastInboundFact(hoursOld, now, EASTERN),
       }),
     );
     expect(brief).toMatchObject({
@@ -76,7 +78,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now),
+        lastInbound: lastInboundFact(new Date(now.getTime() - 2 * 60_000), now, EASTERN),
       }),
     );
     expect(justNow).not.toHaveProperty('lastInbound');
@@ -89,7 +91,7 @@ describe('friend voice brief', () => {
         step: 'place',
         introduce: true,
         parentWords: 'hi',
-        lastInbound: lastInboundFact(late, morning),
+        lastInbound: lastInboundFact(late, morning, EASTERN),
       }),
     );
     expect(pickedUp).toMatchObject({
@@ -120,6 +122,7 @@ describe('a delayed undo during name capture', () => {
     lastInbound: lastInboundFact(
       new Date('2026-08-28T12:00:00.000Z'),
       new Date('2026-08-28T18:00:00.000Z'),
+      EASTERN,
     ),
     recentTurns: [{ role: 'hale', body: 'What should I call you?', asked: true }],
     checklist: {
@@ -524,6 +527,7 @@ describe('friend-voice judge', () => {
       parentWords: 'yes',
       findLines: ['Swim Kids 3 (ages 6-8) - Saturdays 11:00'],
       now: new Date('2026-10-05T14:00:00Z'),
+      timeZone: EASTERN,
     });
     for (const claim of [
       "Done, she's signed up for Swim Kids. Anything else?",
@@ -590,7 +594,13 @@ describe('friend-voice judge', () => {
       email: [],
       overlaps: [],
     };
-    const input = blank({ step: 'connected', connector: 'gcal', parentWords: '', synced });
+    const input = blank({
+      step: 'connected',
+      connector: 'gcal',
+      parentWords: '',
+      synced,
+      timeZone: EASTERN,
+    });
     expect(
       judgeFriendReply('Swim at the rec centre is on your calendar.', input, {
         ahaMention: 'Swim at the rec centre',
@@ -604,6 +614,49 @@ describe('friend-voice judge', () => {
     });
     expect(
       judgeFriendReply('Hockey is on Thursday at 4:00.', input, { ahaMention: 'Hockey' }),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+  });
+
+  it("says a synced time and today on the family's own clock, not Toronto's", () => {
+    // 05:30Z on Nov 10 is 11:30 p.m. Nov 9 in Chicago and already Nov 10 in Toronto.
+    const now = new Date('2026-11-10T05:30:00.000Z');
+    const synced = {
+      provider: 'gcal' as const,
+      read: 'ok' as const,
+      calendar: [
+        {
+          title: 'Swim at the rec centre',
+          // 9:00 a.m. Chicago (CST, UTC-6); 10:00 a.m. in Toronto.
+          start: '2026-11-12T15:00:00.000Z',
+          end: '2026-11-12T16:00:00.000Z',
+          allDay: false,
+          location: null,
+          declined: false,
+        },
+      ],
+      email: [],
+      overlaps: [],
+    };
+    const input = blank({
+      step: 'connected',
+      connector: 'gcal',
+      parentWords: '',
+      synced,
+      now,
+      timeZone: 'America/Chicago',
+    });
+    expect(friendVoiceContext(input)).toMatchObject({
+      facts: { today: { date: '2026-11-09' }, synced: { calendar: [{ clock: '9:00' }] } },
+    });
+    expect(
+      judgeFriendReply('Swim at the rec centre is Thursday at 9:00.', input, {
+        ahaMention: 'Swim at the rec centre',
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      judgeFriendReply('Swim at the rec centre is Thursday at 10:00.', input, {
+        ahaMention: 'Swim at the rec centre',
+      }),
     ).toMatchObject({ ok: false, reason: 'invented' });
   });
 });
@@ -746,6 +799,7 @@ describe('speakFriend', () => {
         'Family Storytime drop-in (ages 0-5) - Thursdays 10:30',
       ],
       now: new Date('2026-10-05T14:00:00Z'),
+      timeZone: EASTERN,
     });
     const seen: Array<{ prompt: string; children: unknown }> = [];
     const spoken = await speakFriend(
@@ -793,6 +847,7 @@ describe('speakFriend', () => {
       parentWords:
         "No calendar for now. Just save Mia's carpool, tomorrow Saturday 8am, and tell me what day and time you saved.",
       now: new Date('2026-11-02T03:28:00Z'),
+      timeZone: EASTERN,
       checklist: {
         postal: true,
         kids: true,
@@ -1069,6 +1124,7 @@ describe('speakFriend', () => {
     const input = blank({
       step: 'connected',
       connector: 'gmail',
+      timeZone: EASTERN,
       synced: {
         provider: 'gmail',
         read: 'ok',
@@ -1110,6 +1166,7 @@ describe('speakFriend', () => {
     const clash = blank({
       step: 'connected',
       connector: 'gcal',
+      timeZone: EASTERN,
       synced: {
         provider: 'gcal',
         read: 'ok',

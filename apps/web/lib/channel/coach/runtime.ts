@@ -39,7 +39,12 @@ import {
   ChannelTurnFailed,
   type ChannelTurnResult,
 } from '~/lib/channel/router/coach-runtime';
-import type { SpotWatchIntent } from '~/lib/channel/spots/store';
+import { augmentCoachSkillForStopWatching } from '~/lib/channel/spots/stop-tool';
+import {
+  type SpotWatchIntent,
+  loadParentLiveWatches,
+  releaseWatchByParent,
+} from '~/lib/channel/spots/store';
 import { MINT_FETCH_TIMEOUT_MS } from '~/lib/channel/spots/tool';
 import {
   type AgentContext,
@@ -702,18 +707,21 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     groupLeaveEnabled: linqGroupLeaveEnabled,
     groupLeaveCheck: (chatId) => groupLeaveEligibility({ chatId, explicitAsk: true }),
     loadSkill: async (parentUserId, familyId) =>
-      augmentCoachSkillForSignupOffer(
-        augmentCoachSkillForProviderWatch(
-          augmentCoachSkillForAutonomySwitchOff(
-            await augmentCoachSkillForGoogleDrafts(
-              await loadCronSkill('coach-channel-sms'),
-              parentUserId,
+      augmentCoachSkillForStopWatching(
+        augmentCoachSkillForSignupOffer(
+          augmentCoachSkillForProviderWatch(
+            augmentCoachSkillForAutonomySwitchOff(
+              await augmentCoachSkillForGoogleDrafts(
+                await loadCronSkill('coach-channel-sms'),
+                parentUserId,
+              ),
+              await familyHasAutonomyGrant(familyId, database),
             ),
-            await familyHasAutonomyGrant(familyId, database),
+            browserUseWatchEnabled(),
           ),
-          browserUseWatchEnabled(),
+          signupOfferToolEnabled(),
         ),
-        signupOfferToolEnabled(),
+        (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
@@ -784,6 +792,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         onWatch,
         gmailDrafts: productionGmailDraftPorts(database, anthropicClient),
         onGmailNotice,
+        spotRelease: {
+          liveWatches: (scope) => loadParentLiveWatches(database, scope),
+          release: (input) => releaseWatchByParent(database, { ...input, now: turn.now }),
+        },
         autonomySwitchOff: {
           parentWords: turn.body,
           revoke: (input) =>
