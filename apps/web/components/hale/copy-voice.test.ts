@@ -34,6 +34,8 @@ const SURFACES = [
   'components/portal/texts-editor.tsx',
   'components/portal/plan-cards.tsx',
   'components/portal/privacy-view.tsx',
+  'components/portal/privacy-page-view.tsx',
+  'app/(authed)/privacy/page.tsx',
   'components/hale/claim-by-phone-form.tsx',
   'app/sign-in/page.tsx',
   'app/sign-up/page.tsx',

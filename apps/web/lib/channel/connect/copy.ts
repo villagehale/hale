@@ -1,5 +1,8 @@
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
+// Type-only: voice/said-line.ts imports connectorNoun from here at runtime.
+import type { SaidLineInput, SaidLineWriter } from '~/lib/channel/voice/said-line';
+import type { GoogleAccessOutcome } from '~/lib/integrations/google-disconnect';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import type { ConnectorRevokeOutcome } from './revoke';
 
@@ -11,41 +14,74 @@ export function connectorNoun(
   return speak({ purpose: 'connector_noun', language, facts: { provider } });
 }
 
-/**
- * THE DISCONNECT RECEIPTS — the other half of the same promise.
- *
- * Three things every one of them keeps:
- *
- *  1. It never claims more than happened. `revoked` says Hale deleted ITS keys and, in
- *     the same breath, that Google keeps its own record until the parent removes it at
- *     myaccount.google.com/permissions — the same truth the Settings surface already
- *     tells (settings/connector-actions.ts). Hale does not call Google's revoke
- *     endpoint, so a receipt that said "disconnected from Google" would be the one lie
- *     this flow cannot afford: a parent who checks and sees Hale still listed would be
- *     right to conclude nothing happened.
- *  2. `not_connected` is not a false success. Nothing of theirs matched, and the reply
- *     says so and hands back the words that connect one.
- *  3. The failure twin exists in BOTH languages. `failureReply()` is English-only by
- *     signature, so the French parent gets a French failure here rather than an English
- *     sentence at the worst moment of the turn.
- *
- * GSM-7 and one segment, both twins, asserted in sms-copy-encoding.test.ts — including
- * that the removal URL survives any later edit.
- */
-const REMOVAL_URL = 'myaccount.google.com/permissions';
+/** Google's own product names: proper nouns, handed to the writer as data. */
+const PRODUCT_NAME: Record<ConnectorProvider, string> = {
+  gcal: 'Google Calendar',
+  gmail: 'Gmail',
+  gdrive: 'Google Drive',
+};
 
-/** The whole disconnect reply. The removal URL, when this outcome names it, is verbatim. */
-export async function connectorRevokeReply(
-  language: ReplyLanguage | null,
-  provider: ConnectorProvider,
-  outcome: ConnectorRevokeOutcome['status'],
-): Promise<string | null> {
-  const noun = await connectorNoun(language, provider);
-  if (!noun) return null;
-  return speak({
+/**
+ * What Hale may say about Google's side, one fact per outcome (VIL-156). Each claims
+ * exactly what Google answered: never "Google removed access" on an unanswered or
+ * unconfirmed revoke.
+ */
+const GOOGLE_ACCESS_FACT: Record<GoogleAccessOutcome, string> = {
+  revoked: "Google has removed Hale's access to their Google account",
+  pending_retry:
+    'Hale asked Google to remove its access; Google has not confirmed yet, and Hale keeps asking',
+  not_confirmed:
+    "Hale deleted its keys, but Google did not confirm that it removed Hale's access, and Hale cannot ask again; their Google account settings show whether Hale is still listed",
+};
+
+function revokeFacts(outcome: ConnectorRevokeOutcome): Pick<SaidLineInput, 'facts' | 'mustConvey'> {
+  switch (outcome.status) {
+    case 'revoked':
+      return {
+        facts: {
+          turnedOff: outcome.providers.map((provider) => PRODUCT_NAME[provider]),
+          // Google revokes per project, so both are off whichever one they named.
+          bothOff: "Hale can no longer read this parent's Gmail or Google Calendar",
+          googleAccess: GOOGLE_ACCESS_FACT[outcome.google],
+          reconnect: 'they can ask Hale here to connect either service again',
+        },
+        mustConvey: ['bothOff', 'googleAccess'],
+      };
+    case 'not_connected':
+      return {
+        facts: { outcome: 'nothing of theirs was connected to that service, so nothing changed' },
+      };
+    case 'revoke_failed':
+      return {
+        facts: {
+          outcome: 'the disconnect did not go through and nothing changed; asking again retries it',
+        },
+      };
+  }
+}
+
+/** The writer's whole request for a disconnect reply. The said-line eval replays it. */
+export function connectorRevokeLineInput(input: {
+  language: ReplyLanguage | null;
+  parentWords: string;
+  outcome: ConnectorRevokeOutcome;
+}): SaidLineInput {
+  return {
     purpose: 'connector_revoke',
-    language,
-    facts: { noun, outcome, provider },
-    verbatim: outcome === 'revoked' ? [REMOVAL_URL, noun] : [noun],
-  });
+    language: input.language,
+    parentWords: input.parentWords,
+    ...revokeFacts(input.outcome),
+  };
+}
+
+/**
+ * THE DISCONNECT REPLY, written by the model from facts (no fixed copy). No link and no
+ * token reach the writer: the way back is to ask, and the connect handler mints the link
+ * in the right thread when they do. Null: the caller sends nothing and logs why.
+ */
+export function writeConnectorRevokeReply(
+  writer: SaidLineWriter,
+  input: { language: ReplyLanguage | null; parentWords: string; outcome: ConnectorRevokeOutcome },
+): Promise<string | null> {
+  return writer.write(connectorRevokeLineInput(input));
 }

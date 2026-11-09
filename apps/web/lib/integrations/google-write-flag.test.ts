@@ -7,13 +7,12 @@ import {
   GOOGLE_WRITE_SCOPES_ENABLED_ENV,
   googleWriteScopesEnabled,
   googleWriteScopesEnabledFor,
-  grantedWriteScopesAllowed,
 } from './google-write-flag';
 
 const REDIRECT = 'https://app.villagehale.com/api/integrations/callback';
 
 function scopeParam(
-  provider: 'gcal' | 'gmail' | 'gdrive',
+  provider: 'gcal' | 'gmail',
   env: Record<string, string | undefined>,
 ): string | null {
   const previous = process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV];
@@ -45,38 +44,28 @@ describe('GOOGLE_WRITE_SCOPES_ENABLED', () => {
   it('leaves the requested scopes byte-for-byte unchanged when the flag is off', () => {
     const off = {};
     expect(scopeParam('gcal', off)).toBe(
-      'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
     );
     expect(scopeParam('gmail', off)).toBe(
       'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.profile',
     );
-    expect(scopeParam('gdrive', off)).toBe(
-      'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
-    );
-    expect(grantedWriteScopesAllowed(off)).toEqual([]);
     for (const scopes of Object.values(CONNECTOR_SCOPES)) {
       for (const scope of scopes) expect(scope).toMatch(/\.readonly$/);
     }
   });
 
-  it('adds calendar.events and gmail.compose when the flag is on, and does not touch Drive or gmail.send', () => {
+  it('adds calendar.events and gmail.compose when the flag is on, and never gmail.send', () => {
     const on = { GOOGLE_WRITE_SCOPES_ENABLED: 'true' };
     const gcal = scopeParam('gcal', on);
     const gmail = scopeParam('gmail', on);
-    const gdrive = scopeParam('gdrive', on);
     expect(gcal).toBe(
       `${CONNECTOR_SCOPES.gcal[0]} ${CALENDAR_EVENTS_SCOPE} https://www.googleapis.com/auth/userinfo.profile`,
     );
     expect(gmail).toBe(
       `${CONNECTOR_SCOPES.gmail[0]} ${GMAIL_COMPOSE_SCOPE} https://www.googleapis.com/auth/userinfo.profile`,
     );
-    expect(gdrive).toBe(
-      'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
-    );
     expect(gcal).not.toContain('gmail.send');
     expect(gmail).not.toContain('gmail.send');
-    expect(gdrive).not.toContain('gmail.send');
-    expect(grantedWriteScopesAllowed(on)).toEqual([CALENDAR_EVENTS_SCOPE, GMAIL_COMPOSE_SCOPE]);
     process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV] = 'true';
     process.env.GOOGLE_OAUTH_CLIENT_ID ??= 'client-123.apps.googleusercontent.com';
     const url = new URL(
@@ -93,8 +82,6 @@ describe('GOOGLE_WRITE_SCOPES_ENABLED', () => {
     const env = { [GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV]: 'user-allow' };
     expect(requestedConnectorScopes('gcal', env, 'user-other')).toBe(CONNECTOR_SCOPES.gcal);
     expect(requestedConnectorScopes('gmail', env, 'user-other')).toBe(CONNECTOR_SCOPES.gmail);
-    expect(requestedConnectorScopes('gdrive', env, 'user-allow')).toBe(CONNECTOR_SCOPES.gdrive);
-    expect(grantedWriteScopesAllowed(env, 'user-other')).toEqual([]);
     expect(googleWriteScopesEnabledFor(null, env)).toBe(false);
     expect(googleWriteScopesEnabledFor(undefined, env)).toBe(false);
   });
@@ -115,10 +102,6 @@ describe('GOOGLE_WRITE_SCOPES_ENABLED', () => {
     expect(requestedConnectorScopes('gmail', env, 'user-two').join(' ')).not.toContain(
       'gmail.send',
     );
-    expect(grantedWriteScopesAllowed(env, 'user-allow')).toEqual([
-      CALENDAR_EVENTS_SCOPE,
-      GMAIL_COMPOSE_SCOPE,
-    ]);
     const previous = process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV];
     process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV] = 'user-allow';
     delete process.env[GOOGLE_WRITE_SCOPES_ENABLED_ENV];
@@ -144,7 +127,7 @@ describe('GOOGLE_WRITE_SCOPES_ENABLED', () => {
         }),
       );
       expect(other.searchParams.get('scope')).toBe(
-        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/calendar.events.owned.readonly https://www.googleapis.com/auth/userinfo.profile',
       );
     } finally {
       if (previous === undefined) delete process.env[GOOGLE_WRITE_SCOPES_ALLOWLIST_ENV];

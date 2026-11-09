@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
-import { calendarInstantsClose, unapprovedCalendarAddIds } from '~/lib/channel/calendar-ask';
+import {
+  calendarInstantsClose,
+  matchingCalendarAddId,
+  unapprovedCalendarAddIds,
+} from '~/lib/channel/calendar-ask';
+import { calendarDraftApprovalSurfaces } from '~/lib/channel/coach/draft';
 import { DEFAULT_TIMEZONE, formatDayHeading } from '~/lib/format/datetime';
 import type { ExtractionKind } from '~/lib/sentinel';
 import { stampBookingEvent } from './booking';
@@ -357,16 +362,25 @@ async function supersedeUnapprovedCalendarAdds(
         eq(schema.actions.actionType, 'calendar_add'),
       ),
     )
+    .orderBy(desc(schema.actions.draftedAt))
     .limit(20);
-  const timeZone = await parentTimeZone(database, input.parentUserId);
+  // A private YES retires only private-surface drafts: a household group's draft is that
+  // group's question, answered in the group (VIL-525).
+  const surfaces = await calendarDraftApprovalSurfaces(
+    database,
+    input.familyId,
+    rows.map((row) => row.id),
+  );
   const ids = unapprovedCalendarAddIds(
-    rows.map((row) => ({
-      id: row.id,
-      actionType: row.actionType,
-      reviewerApproved: row.reviewerVerdict === 'approved',
-      occasion: occasionFromPayload(row.payload),
-    })),
-    { title: input.title, startsAt: input.startsAt.toISOString(), timeZone },
+    rows
+      .filter((row) => surfaces.get(row.id)?.surface === 'private')
+      .map((row) => ({
+        id: row.id,
+        actionType: row.actionType,
+        reviewerApproved: row.reviewerVerdict === 'approved',
+        occasion: occasionFromPayload(row.payload),
+      })),
+    { title: input.title, startsAt: input.startsAt.toISOString() },
   );
   for (const id of ids) {
     await database.transaction(async (tx) => {
@@ -657,15 +671,50 @@ export type CoachCalendarOfferOutcome =
   | 'recorded'
   | 'event_started'
   | 'already_held'
+  | 'already_asked'
   | 'unreadable';
+
+/**
+ * The open offer that already asks about this occasion, or null.
+ *
+ * One offer whose start is a close clock to this ask. Saturday morning is not
+ * Saturday afternoon. A minute off the sentence still matches.
+ */
+export async function standingCalendarOfferId(
+  database: Database,
+  input: {
+    familyId: string;
+    parentUserId: string;
+    title: string;
+    startsAt: string;
+    now: Date;
+  },
+): Promise<string | null> {
+  const open = await loadOpenEmailAlertOffers(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    now: input.now,
+  });
+  return matchingCalendarAddId(
+    open.map((offer) => ({
+      id: offer.id,
+      actionType: 'calendar_add' as const,
+      occasion: { title: offer.title, startsAt: offer.startsAt.toISOString() },
+    })),
+    { title: input.title, startsAt: input.startsAt },
+  );
+}
 
 /**
  * Write the offer a coach sentence named, after the send.
  *
  * The model supplied the title and the instant. This function does not read the
  * sentence. A start that has passed is not an offer. An occasion already on the
- * calendar is not an offer. Older open offers for this parent expire, because the
- * sentence the parent is holding is the question now.
+ * calendar is not an offer. An offer that already asks about this occasion is
+ * that ask: nothing new is written, so the pending add is not asked twice
+ * (VIL-525). Older open offers for this parent expire only when this sentence
+ * is a new question, because the sentence the parent is holding is the question
+ * now.
  */
 export async function recordCoachCalendarOffer(
   database: Database,
@@ -692,6 +741,15 @@ export async function recordCoachCalendarOffer(
   ) {
     return 'already_held';
   }
+
+  const standing = await standingCalendarOfferId(database, {
+    familyId: input.familyId,
+    parentUserId: input.parentUserId,
+    title,
+    startsAt: input.startsAt.toISOString(),
+    now: input.now,
+  });
+  if (standing) return 'already_asked';
 
   await database
     .update(schema.emailAlertOffers)

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message reports findings (registration date, climbing session) and asks nothing itself; the only ask is the shell question appended afterward.",
+    "score": 5
+  }
+}

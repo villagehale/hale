@@ -1,3 +1,5 @@
+import { RECEIPT_KEY_PREFIXES } from '@hale/worker/memory-context';
+
 /**
  * Closed synonym lexicon for lexical memory search.
  *
@@ -61,7 +63,7 @@ for (const group of LEXICON_GROUPS) {
 }
 
 /** Receipt namespaces the control plane reads back. Never forgotten, never briefed. */
-export const RECEIPT_KEY_PREFIXES = ['health_checkpoint:', 'registration_outcome:'] as const;
+export { RECEIPT_KEY_PREFIXES };
 
 /** Temporary beliefs a digest may retire. Writers opt in by key; messages cannot. */
 export const EPHEMERAL_KEY_PREFIX = 'ephemeral.';

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gives a wrong deadline. The facts put it tonight, Wednesday, at 11:00 p.m., two hours from now. The message says 'tomorrow at 9 a.m.', which contradicts the handed date and time and its own '2 hours left'. It also never says the clock is the town's response window, counted from the parent's own message. It does tell them to check email and the portal.",
+    "score": 1
+  }
+}

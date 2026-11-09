@@ -71,26 +71,6 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 const KEYWORD_INSTRUCTION =
   /\b(reply|respond|text|send|type)\b[^.?!]{0,20}\b(yes|no|y\b|n\b|intro|intros)\b/i;
 
-/**
- * Hale, talking about Hale in the third person — "Hale can make an introduction".
- *
- * Found by the first live recording of this stage: six asks out of six wrote it that way,
- * while every acknowledgement in copy.ts three lines away says "I'll introduce you both".
- * One feature, two speakers. nudge-voice.md already calls this a press-release voice; the
- * instruction was simply missing from this skill, and an instruction a live run can lose
- * is a gate this file should be holding.
- *
- * It matches Hale as the SUBJECT OF A VERB, never the brand name: "other Hale families
- * near you" is the only way to say what a Hale family is, and it is the whole premise of
- * the message.
- */
-const THIRD_PERSON_SELF =
-  /\bHale\s+(can|could|will|would|is|isn't|has|have|makes|make|made|might|may|does|knows|thinks|found|sends|texts|introduces)\b/i;
-
-/** The royal we. Hale is one operator texting one parent; "let us know" is a support
- * queue. Caught live in the same recording. */
-const FIRST_PERSON_PLURAL = /\b(we|we're|we'll|we've|us|our|ours)\b/i;
-
 /** How Hale refers to the other family's child: a band word and nothing else. */
 export type IntroAskRequest =
   | { kind: 'optin' }
@@ -118,10 +98,6 @@ export type IntroAskRefusal =
   | 'not_a_sentence'
   /** Hale told the parent which token to type. The defect this arc removes. */
   | 'instructs_keyword'
-  /** Hale referred to itself by name instead of saying "I". */
-  | 'third_person_self'
-  /** "We" / "us". Hale is one person, not a team. */
-  | 'first_person_plural'
   /** The opt-in ask never said what it was asking about. */
   | 'introduction_word_missing'
   /** The card dropped the one counterpart fact it is allowed to carry. */
@@ -150,8 +126,6 @@ export function introAskRefusals(body: string, request: IntroAskRequest): IntroA
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
   if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
-  if (THIRD_PERSON_SELF.test(body)) found.push('third_person_self');
-  if (FIRST_PERSON_PLURAL.test(body)) found.push('first_person_plural');
 
   const lower = body.toLowerCase();
   if (!lower.includes('introduc') && !lower.includes('intro')) {

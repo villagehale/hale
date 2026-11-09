@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text says Library storytime on Wed, Jul 22 at 10:30 AM is cancelled. It names the event by its summary, states the same weekday and date, and the time 10:30 AM matches the start hour 10 and minute 30 in America/New_York. The cancellation names this event at this start, so it matches.",
+    "match": true
+  },
+  "latencyMs": 1916
+}

@@ -8,18 +8,25 @@ import { channelGroupNoteKey } from '~/lib/coach/note-key';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { GroupTurnDecision } from './group-turn-policy';
 
 /**
  * VIL-440 (T27) — the model reads whether a group message is Hale's turn.
  *
- * Replaces name and keyword matching (`decideGroupTurn`) when
- * `LINQ_GROUP_TURN_AI_ENABLED` is exactly `true` (default off). Code owns the routing;
+ * The only group turn path: there is no name or keyword fallback. It runs when
+ * `LINQ_GROUP_TURN_AI_ENABLED` is exactly `true` (default off; dark means silent in the
+ * group). Code owns the routing;
  * the `group-turn-read` skill reads the words in any language. No echo of the text is
  * asked for, so a long message is never dropped for not fitting the output. A failed
  * read keeps Hale silent (one unasked reply in a family chat is worse than one missed
  * turn) and logs.
  */
+
+/** Whether a group message is Hale's to answer. Opt-out (read by the model, #868) wins. */
+export type GroupTurnDecision =
+  | { route: 'keyword'; keyword: 'stop' | 'start' }
+  | { route: 'coach'; reason: 'addressed' | 'question' }
+  | { route: 'duty' }
+  | { route: 'ignore'; outcome: 'group_chatter_ignored' };
 
 export const GROUP_TURNS = ['addressed', 'question_for_hale', 'duty', 'chatter'] as const;
 export type GroupTurnReading = (typeof GROUP_TURNS)[number];

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names the collision wrongly: it says Maya swim pickup collides with Maya allergist, but the input has no allergist item; the only other item is Barton busy. It invents a second item, asks for a numeric reply and includes a link, all forbidden. It also fails to ask Sam to take the plan clearly, and it does not state the Friday 3pm time correctly or mention Barton as busy.",
+    "score": 1
+  }
+}

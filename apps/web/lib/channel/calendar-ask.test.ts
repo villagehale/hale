@@ -5,7 +5,9 @@ import {
   approvalForCalendarYes,
   calendarInstantsClose,
   matchApprovedCalendarAdd,
+  matchingCalendarAddId,
   pairedDraftForCalendarNo,
+  pairedDraftsForCalendarNo,
   questionsForCalendarReader,
   unapprovedCalendarAddIds,
 } from './calendar-ask';
@@ -55,8 +57,8 @@ describe('matchApprovedCalendarAdd', () => {
       matchApprovedCalendarAdd([matched, draft({ actionId: 'a-2', reviewerApproved: false })], {
         title: '  trunk or treat ',
         startsAt: '2026-10-31T19:01:00.000Z',
-      })?.actionId,
-    ).toBe('a-1');
+      }),
+    ).toEqual({ outcome: 'paired', action: matched });
   });
 
   it('does not pick between two approved drafts that share a title unless the instant matches', () => {
@@ -74,14 +76,40 @@ describe('matchApprovedCalendarAdd', () => {
       matchApprovedCalendarAdd([early, late], {
         title: 'Gymnastics',
         startsAt: '2026-10-04T18:00:00.000Z',
-      })?.actionId,
-    ).toBe('late');
+      }),
+    ).toEqual({ outcome: 'paired', action: late });
     expect(
       matchApprovedCalendarAdd([early, late], {
         title: 'Gymnastics',
         startsAt: '2026-10-04T12:00:00.000Z',
       }),
-    ).toBeNull();
+    ).toEqual({ outcome: 'unpaired' });
+  });
+
+  it('does not pair the only approved draft of that title when it is hours from the offer', () => {
+    const afternoon = draft({
+      actionId: 'afternoon',
+      reviewerApproved: true,
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-04T20:00:00.000Z' },
+    });
+    expect(
+      matchApprovedCalendarAdd([afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-04T13:00:00.000Z',
+      }),
+    ).toEqual({ outcome: 'unpaired' });
+  });
+
+  it('names two approved drafts of the same occasion as ambiguous rather than picking one', () => {
+    const exact = draft({ actionId: 'exact', reviewerApproved: true });
+    const minuteOff = draft({
+      actionId: 'minute-off',
+      reviewerApproved: true,
+      occasion: { title: 'Trunk or Treat', startsAt: '2026-10-31T19:01:00.000Z' },
+    });
+    expect(
+      matchApprovedCalendarAdd([exact, minuteOff], { title: 'Trunk or Treat', startsAt: START }),
+    ).toEqual({ outcome: 'ambiguous', actionIds: ['exact', 'minute-off'] });
   });
 
   it('ignores an unrelated approved draft', () => {
@@ -96,7 +124,7 @@ describe('matchApprovedCalendarAdd', () => {
         ],
         { title: 'Picture day', startsAt: START },
       ),
-    ).toBeNull();
+    ).toEqual({ outcome: 'unpaired' });
   });
 });
 
@@ -184,12 +212,99 @@ describe('pairedDraftForCalendarNo', () => {
     ).toBeNull();
     expect(pairedDraftForCalendarNo([offer('offer-1')], reading)).toBeNull();
   });
+
+  it('names the hidden unapproved draft, and a YES does not approve it', () => {
+    const reading = {
+      status: 'resolved' as const,
+      questionId: 'offer-1',
+      kind: 'email_alert_add' as const,
+      polarity: 'no' as const,
+      confidence: 'high' as const,
+    };
+    const hidden = offer('offer-1', { declinesActionId: 'a-unapproved' });
+    expect(pairedDraftForCalendarNo([hidden], reading)).toBe('a-unapproved');
+    expect(pairedDraftsForCalendarNo([hidden], reading)).toEqual(['a-unapproved']);
+    expect(approvalForCalendarYes([hidden], { ...reading, polarity: 'yes' })).toMatchObject({
+      kind: 'email_alert_add',
+      questionId: 'offer-1',
+    });
+  });
+});
+
+describe('matchingCalendarAddId', () => {
+  it('is the lone same-title draft when the clock is a minute off', () => {
+    expect(
+      matchingCalendarAddId(
+        [
+          {
+            id: 'a-1',
+            actionType: 'calendar_add',
+            occasion: { title: 'Trunk or Treat', startsAt: '2026-10-08T16:00:00.000Z' },
+          },
+        ],
+        { title: 'trunk or treat', startsAt: '2026-10-08T16:01:00.000Z' },
+      ),
+    ).toBe('a-1');
+  });
+
+  it('is not the morning draft when the ask is the same title that afternoon', () => {
+    expect(
+      matchingCalendarAddId(
+        [
+          {
+            id: 'morning',
+            actionType: 'calendar_add',
+            occasion: { title: 'Gymnastics', startsAt: '2026-10-10T13:00:00.000Z' },
+          },
+        ],
+        { title: 'Gymnastics', startsAt: '2026-10-10T20:00:00.000Z' },
+      ),
+    ).toBeNull();
+  });
+
+  it('is not a Sunday draft when the ask is Thursday', () => {
+    expect(
+      matchingCalendarAddId(
+        [
+          {
+            id: 'sunday',
+            actionType: 'calendar_add',
+            occasion: { title: 'Gymnastics', startsAt: '2026-10-11T16:00:00.000Z' },
+          },
+        ],
+        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z' },
+      ),
+    ).toBeNull();
+  });
+
+  it('tells two same-title drafts apart by a close clock, not by picking one', () => {
+    const morning = {
+      id: 'morning',
+      actionType: 'calendar_add',
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-08T13:00:00.000Z' },
+    };
+    const afternoon = {
+      id: 'afternoon',
+      actionType: 'calendar_add',
+      occasion: { title: 'Gymnastics', startsAt: '2026-10-08T20:00:00.000Z' },
+    };
+    expect(
+      matchingCalendarAddId([morning, afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-08T13:01:00.000Z',
+      }),
+    ).toBe('morning');
+    expect(
+      matchingCalendarAddId([morning, afternoon], {
+        title: 'Gymnastics',
+        startsAt: '2026-10-08T16:00:00.000Z',
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('unapprovedCalendarAddIds', () => {
-  const zone = 'America/Toronto';
-
-  it('retires the lone same-title draft when the start is the same local day', () => {
+  it('retires the lone same-title draft when the clock is a minute off', () => {
     expect(
       unapprovedCalendarAddIds(
         [
@@ -200,9 +315,25 @@ describe('unapprovedCalendarAddIds', () => {
             occasion: { title: 'Trunk or Treat', startsAt: '2026-10-08T16:00:00.000Z' },
           },
         ],
-        { title: 'Trunk or Treat', startsAt: '2026-10-08T16:01:00.000Z', timeZone: zone },
+        { title: 'Trunk or Treat', startsAt: '2026-10-08T16:01:00.000Z' },
       ),
     ).toEqual(['a-1']);
+  });
+
+  it('does not retire the afternoon draft when the offer is the same title that morning', () => {
+    expect(
+      unapprovedCalendarAddIds(
+        [
+          {
+            id: 'afternoon',
+            actionType: 'calendar_add',
+            reviewerApproved: false,
+            occasion: { title: 'Gymnastics', startsAt: '2026-10-10T20:00:00.000Z' },
+          },
+        ],
+        { title: 'Gymnastics', startsAt: '2026-10-10T13:00:00.000Z' },
+      ),
+    ).toEqual([]);
   });
 
   it('keeps a Sunday draft when the offer is Thursday', () => {
@@ -216,7 +347,7 @@ describe('unapprovedCalendarAddIds', () => {
             occasion: { title: 'Gymnastics', startsAt: '2026-10-11T16:00:00.000Z' },
           },
         ],
-        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z', timeZone: zone },
+        { title: 'Gymnastics', startsAt: '2026-10-08T16:00:00.000Z' },
       ),
     ).toEqual([]);
   });

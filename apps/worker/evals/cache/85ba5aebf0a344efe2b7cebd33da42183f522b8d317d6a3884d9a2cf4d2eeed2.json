@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Fails on several counts: the text is in English though the parent writes French (parentLanguage French). It reveals another family (the Patel family) and their answer, violating privacy. It tells the parent a word to type (YES INTROS), violating safety. It invents a Friday Nov 3 retry date and an apology not given by the facts. It also does not state the given situation (no introduction waiting right now)."
+  }
+}

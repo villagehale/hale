@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The parent asks how to disconnect Gmail, which is a question about the action rather than an instruction to do it now.",
+    "reading": "question"
+  },
+  "latencyMs": 1107
+}

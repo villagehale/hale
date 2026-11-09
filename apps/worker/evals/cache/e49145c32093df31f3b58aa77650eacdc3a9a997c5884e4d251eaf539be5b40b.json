@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message meets every requirement of an approval_card. It names the window, the date and time (Saturday September 12, 9 h 00), Léa, and the handed link. It lists all three texts with their timing: the week ahead on Saturday September 5 is correct at 7 days before, then the evening before, then 15 minutes before. It says plainly that Hale never registers, gives no course-link tip, asks no question, and is in French. Restating that the town publishes no age band is fine. The closing sentence is garbled ('ce matin-là' is confusing), and 'Voici ce que je ferais' reads oddly, which slightly hurts the friendly-text tone.",
+    "score": 4
+  }
+}

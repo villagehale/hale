@@ -24,6 +24,7 @@ import {
 } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
 import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
+import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { runWorkstreamFollowupSweep } from '~/lib/memory/workstream-followup';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
@@ -141,6 +142,7 @@ export const GET = cronRoute('nudge', async () => {
       createCalendarInviteSender(db(), {
         channels: productionChannels(db()),
         renderer: loopTemplateRenderer,
+        inviteVoice: productionCalendarInviteVoice(),
         cancelVoice: productionCalendarCancelVoice(),
       }),
       productionGroupPlanReportPorts(db()),

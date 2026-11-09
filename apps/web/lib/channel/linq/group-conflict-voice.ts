@@ -2,6 +2,8 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { smallerLane } from '~/lib/channel/spoken-line';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { db } from '~/lib/db';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -16,7 +18,8 @@ import {
  * VIL-444 (T24) — the model writes the group's clash alert (skill `group-conflict-alert`).
  *
  * The skill's lane first, then a smaller model, then nothing: null means no alert goes
- * out on this pass. There is no fallback sentence, and no fallback poll option.
+ * out on this pass, and #ops is paged. There is no fallback sentence, and no fallback
+ * poll option.
  */
 
 export interface GroupConflictAlert {
@@ -31,7 +34,10 @@ export interface GroupConflictWriter {
 
 const outputSchema = z.object({ text: z.string(), figureItOut: z.string().nullish() });
 
-export function createGroupConflictWriter(client: () => AgentClient): GroupConflictWriter {
+export function createGroupConflictWriter(
+  client: () => AgentClient,
+  pager: OpsPager,
+): GroupConflictWriter {
   return {
     async write(input) {
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
@@ -42,7 +48,7 @@ export function createGroupConflictWriter(client: () => AgentClient): GroupConfl
           { err: err instanceof Error ? err.name : 'unknown' },
           'group conflict alert: skill load failed',
         );
-        console.error({ urgent: true }, 'URGENT: group conflict alert unwritten - page #ops now');
+        await pager.page({ site: 'group_conflict_unwritten', facts: { stage: 'skill_load' } });
         return null;
       }
       const first = pickLane(skill.meta.task);
@@ -73,10 +79,7 @@ export function createGroupConflictWriter(client: () => AgentClient): GroupConfl
           );
         }
       }
-      console.error(
-        { urgent: true },
-        'URGENT: group conflict alert unwritten after a smaller model - page #ops now',
-      );
+      await pager.page({ site: 'group_conflict_unwritten', facts: { stage: 'after_retry' } });
       return null;
     },
   };
@@ -85,7 +88,10 @@ export function createGroupConflictWriter(client: () => AgentClient): GroupConfl
 let shared: GroupConflictWriter | null = null;
 
 export function sharedGroupConflictWriter(): GroupConflictWriter {
-  shared ??= createGroupConflictWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createGroupConflictWriter(
+    () => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS),
+    failurePageOpsPager(db),
+  );
   return shared;
 }
 

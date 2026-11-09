@@ -112,6 +112,12 @@ export interface ChannelTurnResult {
    * `ifLeaveFails` is the model's own line sent only if that leave is then refused.
    */
   groupLeave?: { ifLeaveFails: string } | null;
+  /**
+   * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
+   * coach returned (the claim read) can still send the drafts receipt. The production
+   * runtime always sets it; absent means none.
+   */
+  draftedActionIds?: readonly string[];
 }
 
 export interface ChannelCoachRuntime {

@@ -44,7 +44,9 @@ export const eventReminders = pgTable(
     fireAt: timestamp('fire_at', { withTimezone: true }).notNull(),
     status: reminderStatusEnum('status').notNull().default('scheduled'),
     /** Why a non-firing terminal status was reached (a suppress reason / 'moved'), for
-     * the audit trail — null while 'scheduled' or after a clean 'sent'. */
+     * the audit trail — null after a clean 'sent', and null while 'scheduled' except for
+     * a row the run held because the writer could not be reached ('compose_unavailable',
+     * VIL-586). */
     suppressReason: text('suppress_reason'),
     /** The A2 channel_messages row minted when this reminder was dispatched. */
     channelMessageId: uuid('channel_message_id').references(() => channelMessages.id, {

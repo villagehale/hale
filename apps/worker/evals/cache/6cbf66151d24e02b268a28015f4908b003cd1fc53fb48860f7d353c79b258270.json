@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores the facts entirely: the parent asked to disconnect Gmail and the fact is that nothing was connected, so nothing changed. Instead it invents a story about the Patel family declining an intro, which hints at another family, adds an unneeded apology, and offers a retry instruction and date (Friday Nov 3) that are not in the facts. It never says nothing was connected.",
+    "score": 1
+  }
+}

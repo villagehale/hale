@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request to reply YES so the sender will book, plus a STOP instruction, which asks the parent for a reply. That is an ask, so the score is low.",
+    "score": 1
+  }
+}

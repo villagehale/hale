@@ -323,6 +323,7 @@ export function groundUserMessage(query: ActivityQuery): string {
     ...(query.stage ? { stage: query.stage } : {}),
     ...(query.stages && query.stages.length > 0 ? { stages: query.stages } : {}),
     ...(query.window ? { window: query.window } : {}),
+    ...(query.today ? { today: query.today } : {}),
   });
 }
 
@@ -557,6 +558,11 @@ async function runActivityOnce(
     // VIL-510: the dated-event / venue-name addendum rides the inline research + extract
     // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
     skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+    // VIL-435: the day check rides only when the query carries the family-local day.
+    if (query.today) {
+      const day = await loadCronSkill('activity-finder-day');
+      skill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+    }
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }

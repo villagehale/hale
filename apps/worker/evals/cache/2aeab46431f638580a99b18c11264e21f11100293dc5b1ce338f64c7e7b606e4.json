@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Answers the reported registration outcome, keeps the handed window name exactly, adds no new claims and asks nothing. Friendly texting tone in English. Brief but does exactly what outcome_registered asks.",
+    "score": 5
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent is exhausted and asking for cheering up, but the text is about an unrelated intro refusal. It hints at another family (the Patels) and what they said, includes an unneeded apology, and offers a Friday retry not present in the facts (which are empty). It also ignores the parent's message entirely.",
+    "score": 1
+  }
+}

@@ -1,8 +1,12 @@
 import { NextResponse, after } from 'next/server';
 import type { FirstReplyRecoveryResult } from '~/lib/channel/intake/first-reply-recovery';
+import type { OptOutRecoveryResult } from '~/lib/channel/intake/opt-out-recovery';
 import { cronRoute } from '~/lib/cron/auth';
 import { DRAINABLE_QUEUES, isConnectionExhaustion, runDrainCron } from '~/lib/cron/drain';
+import { defaultKickedDrainTiming, runKickedDrain } from '~/lib/cron/kicked-drain';
 import type { GroupReminderTickSummary } from '~/lib/loop/reminders/group/fire';
+import type { HeldReminderRecheck } from '~/lib/loop/reminders/run';
+import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import { socialWatchlistEnabled } from '~/lib/social/flag';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
@@ -48,19 +52,18 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // queue's expiry (observed 2026-09-17). `after` keeps this instance alive for the work
   // once the 202 is out, up to maxDuration, and the kicker is free the moment it hears
   // back. The cost is the 503 contract below: a kicked run can no longer tell the kicker
-  // its database is out of connections, so that failure is logged here and the scheduled
-  // run picks the turn up. The scheduled run stays synchronous — nothing aborts it, and
-  // its summary is the heartbeat's evidence.
+  // its database is out of connections, so the run tries again itself a few times
+  // (kicked-drain.ts) and then logs it, leaving the turn to the scheduled run. The
+  // scheduled run stays synchronous — nothing aborts it, and its summary is the
+  // heartbeat's evidence.
   if (queues) {
     after(async () => {
       try {
-        const summary = await runDrainCron({ queues });
-        console.info({ ...summary, queues }, 'cron/drain kicked run complete');
-      } catch (err) {
-        console.error(
-          { err, queues, dbUnavailable: isConnectionExhaustion(err) },
-          'cron/drain kicked run failed',
-        );
+        await runKickedDrain(queues, {
+          run: () => runDrainCron({ queues }),
+          log: console,
+          ...defaultKickedDrainTiming,
+        });
       } finally {
         await flushTelemetry();
       }
@@ -74,11 +77,23 @@ export const GET = cronRoute('drain', async (req: Request) => {
   // a backlogged drain, and its own budget (FIRST_REPLY_RECOVERY_BUDGET_MS) fits inside
   // the headroom the drain's wall budget leaves. A kicked run does not take it. A failed
   // leg is named and the drain still runs.
-  const firstReply = await runFirstReplyLeg();
+  // On Preview the drain works only Preview's own pg-boss schema. These legs read and
+  // write shared family tables (Preview shares prod's database), so they are named
+  // skips there.
+  const preview = isPreviewDeploy();
+  // VIL-553: a text whose opt-out read failed holds its number until it is read. The
+  // re-read goes first: it is a stop nobody has seen yet, and until it is read the number
+  // gets nothing proactive. Bounded by its own budget (OPT_OUT_RECOVERY_BUDGET_MS).
+  const optOutRecovery = preview ? { skipped: 'preview' as const } : await runOptOutRecoveryLeg();
+  const firstReply = preview ? { skipped: 'preview' as const } : await runFirstReplyLeg();
   // A reminder someone in a family group asked for is due to the minute, so it is sent
   // from the scheduled drain too, before the queues: a 1:1 reminder it hands to the
   // channel.send queue goes out in this same run. Bounded per tick; flag off is named.
-  const groupReminders = await runGroupReminderLeg();
+  const groupReminders = preview ? { skipped: 'preview' as const } : await runGroupReminderLeg();
+  // VIL-586: a T-1h the hourly run held because the writer could not be reached is asked
+  // again here, since its next hourly slot is after the event starts. Before the queues,
+  // for the same reason as the group reminders.
+  const heldReminders = preview ? { skipped: 'preview' as const } : await runHeldReminderLeg();
   try {
     const summary = await runDrainCron({ queues });
     // Signup-open watches need a tick inside two minutes of registration_opens_at.
@@ -86,9 +101,11 @@ export const GET = cronRoute('drain', async (req: Request) => {
     // (already every minute) runs the tick when the flag is on. A kicked drain is
     // a parent's inbound slice and does not take this detour. Flag off is named.
     let socialSignup:
-      | { skipped: 'flag_off' | 'tick_failed' }
-      | { checked: number; updated: number } = { skipped: 'flag_off' };
-    if (socialWatchlistEnabled()) {
+      | { skipped: 'flag_off' | 'tick_failed' | 'preview' }
+      | { checked: number; updated: number } = preview
+      ? { skipped: 'preview' }
+      : { skipped: 'flag_off' };
+    if (!preview && socialWatchlistEnabled()) {
       try {
         const { runDueSignupWatches } = await import('~/lib/social/poll');
         const { db } = await import('~/lib/db');
@@ -99,7 +116,15 @@ export const GET = cronRoute('drain', async (req: Request) => {
       }
     }
     return NextResponse.json(
-      { ok: true, ...summary, socialSignup, firstReply, groupReminders },
+      {
+        ok: true,
+        ...summary,
+        socialSignup,
+        firstReply,
+        groupReminders,
+        heldReminders,
+        optOutRecovery,
+      },
       { status: 200 },
     );
   } catch (err) {
@@ -121,6 +146,23 @@ export const GET = cronRoute('drain', async (req: Request) => {
     await flushTelemetry();
   }
 });
+
+async function runOptOutRecoveryLeg(): Promise<OptOutRecoveryResult | { skipped: 'tick_failed' }> {
+  try {
+    const { recoverHeldOptOutReads } = await import('~/lib/channel/intake/opt-out-recovery');
+    const { optOutRecoveryPorts } = await import('~/lib/channel/inbound-deps');
+    const { db } = await import('~/lib/db');
+    const database = db();
+    return await recoverHeldOptOutReads(database, optOutRecoveryPorts(database, new Date()));
+  } catch (err) {
+    // The name only: a message or stack from inside the leg may carry what it was reading.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain opt-out recovery leg failed',
+    );
+    return { skipped: 'tick_failed' };
+  }
+}
 
 async function runFirstReplyLeg(): Promise<FirstReplyRecoveryResult | { skipped: 'tick_failed' }> {
   try {
@@ -149,6 +191,21 @@ async function runGroupReminderLeg(): Promise<
     return await runGroupReminderTick(db(), groupReminderTickPorts(new Date()));
   } catch (err) {
     console.error({ err, skipped: 'tick_failed' }, 'cron/drain group reminder leg failed');
+    return { skipped: 'tick_failed' };
+  }
+}
+
+async function runHeldReminderLeg(): Promise<HeldReminderRecheck | { skipped: 'tick_failed' }> {
+  try {
+    const { recheckHeldReminders } = await import('~/lib/loop/reminders/run');
+    const { db } = await import('~/lib/db');
+    return await recheckHeldReminders(db());
+  } catch (err) {
+    // The name only: a message from inside the leg may carry what it was writing.
+    console.error(
+      { err: err instanceof Error ? err.name : 'unknown', skipped: 'tick_failed' },
+      'cron/drain held reminder leg failed',
+    );
     return { skipped: 'tick_failed' };
   }
 }

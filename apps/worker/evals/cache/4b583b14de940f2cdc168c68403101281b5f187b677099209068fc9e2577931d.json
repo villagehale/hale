@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is wrong against the facts. The only event is a Piano lesson today, 7:00-8:00 PM at Ms. Chen studio, but the text names a different event ('Jour de congé at 3:00'), so the title and the start time are wrong, and the PM/evening marker is missing. The end time and venue are dropped, and the piano lesson is not mentioned at all. It also invents that tomorrow is a day off and implies breathing room, which the facts do not support. It is in English with French rather than the requested Chinese.",
+    "score": 1
+  }
+}

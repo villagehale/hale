@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "identity",
+    "verbatim": "من أنت؟ كيف حصلت على رقمي؟",
+    "language": "ar",
+    "confirmation": ""
+  },
+  "latencyMs": 1371
+}

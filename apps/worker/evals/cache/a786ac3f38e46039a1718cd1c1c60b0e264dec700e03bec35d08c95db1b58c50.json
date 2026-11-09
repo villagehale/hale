@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The picks are real and local: Seattle YMCA, plus Ballard and Meadowbrook pools sourced from Seattle Parks and Recreation's own pages. There are three of them, they fit the preschool stage, and the message leads with the YMCA by name. Attribution is correct ('their site says', 'lists'). The text is plain, with no link and no question. Under no_page_read, 'I could not get into their pages today' is the earned form. With watch=true, 'I'll keep watching and text you' is a valid first-person commitment. No invented times or prices. The one gap: the YMCA pick has a null price and no class day or time, but the message presents only the session dates and never says the day or price is unknown. That partly writes around the gap rather than naming it.",
+    "score": 4
+  }
+}

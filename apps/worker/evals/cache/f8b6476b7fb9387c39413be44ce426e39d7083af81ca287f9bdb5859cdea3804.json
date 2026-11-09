@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text ignores all three given events. It mentions 'Jour de congé at 3:00', which is not in the facts (invented event and time), and omits Theo's swim, Léa's dentist, and Léa's piano along with their start times, ends, venue names, addresses, and who each is for. It also says tomorrow is a day off with 'breathing room', which falsely implies the family has nothing to be at when three timed events exist. Bold is none, which is fine, but the facts are wholly wrong.",
+    "score": 1
+  }
+}

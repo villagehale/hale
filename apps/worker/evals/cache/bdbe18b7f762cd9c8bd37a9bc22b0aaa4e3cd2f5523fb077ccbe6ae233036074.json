@@ -1,0 +1,8 @@
+{
+  "value": {
+    "locality": "St. Catharines",
+    "region": "Ontario",
+    "granularity": "locality"
+  },
+  "latencyMs": 735
+}
