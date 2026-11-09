@@ -50,6 +50,7 @@ function proposal(overrides: Partial<AnswerableProposal> = {}): AnswerablePropos
     familyBId: FAMILY_B,
     familyAReply: null,
     familyBReply: null,
+    askedAt: new Date('2026-08-20T12:00:00.000Z'),
     standing: 'unanswered',
     ...overrides,
   };
@@ -362,6 +363,7 @@ describe('answering a proposal card that already has this side answered', () => 
     familyBId: FAMILY_B,
     familyAReply: standing === 'unanswered' ? null : standing === 'granted' ? 'yes' : 'no',
     familyBReply: null,
+    askedAt: new Date('2026-08-20T12:00:00.000Z'),
     standing,
   });
 

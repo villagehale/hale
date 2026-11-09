@@ -168,9 +168,19 @@ import {
   armHoldingLine,
   holdingLineNotArmed,
 } from './holding-line';
-import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import {
+  type OpenQuestion,
+  type OpenQuestionKind,
+  type OpenQuestionReader,
+  latestAsked,
+} from './open-questions';
 import type { ReplyRoute, ReplySent, ReplyTransport } from './reply-route';
-import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
+import {
+  type ReplyConfidence,
+  type ReplyReading,
+  type ReplyResolver,
+  warrantsClarifying,
+} from './resolve';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger, TurnFailureReason } from './turn-ledger';
 
@@ -1941,18 +1951,17 @@ async function resolveNaturalReply(
   // every inbound text.
   if (questions.length === 0) return { status: 'carry_on', questions };
 
-  // Calendar offers are read by the calendar model, including when the reply is not
-  // English. A draft the reviewer has not cleared does not count as a competing YES
-  // (VIL-513): it used to force the general resolver, which returned not_answerable
-  // and the coach drafted the same add again.
-  const calendarQuestions = questionsForCalendarReader(questions);
-  const read = calendarQuestions
-    ? await deps.calendarOffers.readParent({
-        text: turn.body,
-        questions: calendarQuestions,
-        now: turn.now,
-      })
-    : await deps.replyResolver.read({ text: turn.body, questions });
+  // VIL-302 · the parent is replying to the last thing Hale asked. Their words are read
+  // against that ask first, and against everything open only when they are not about it
+  // (`no_target`): "yes" after a search offer is the search, "yes to the intro" is still
+  // the intro. Any other reading of the newest ask stands, including `ambiguous` when two
+  // offers went out together, which is when Hale asks which.
+  const latest = latestAsked(questions);
+  const first = latest ? await readOpenQuestions(deps, turn, latest) : null;
+  const read =
+    first && !(first.status === 'unresolved' && first.reason === 'no_target')
+      ? first
+      : await readOpenQuestions(deps, turn, questions);
   const offerId =
     read.status === 'resolved' && read.kind === 'email_alert_add' ? read.questionId : null;
   const reading = approvalForCalendarYes(questions, read);
@@ -2055,6 +2064,29 @@ async function resolveNaturalReply(
       handler: owner.name,
     },
   };
+}
+
+/**
+ * One model read of the parent's words against these questions.
+ *
+ * Calendar offers are read by the calendar model, including when the reply is not
+ * English. A draft the reviewer has not cleared does not count as a competing YES
+ * (VIL-513): it used to force the general resolver, which returned not_answerable
+ * and the coach drafted the same add again.
+ */
+async function readOpenQuestions(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  questions: readonly OpenQuestion[],
+): Promise<ReplyReading> {
+  const calendarQuestions = questionsForCalendarReader(questions);
+  return calendarQuestions
+    ? deps.calendarOffers.readParent({
+        text: turn.body,
+        questions: calendarQuestions,
+        now: turn.now,
+      })
+    : deps.replyResolver.read({ text: turn.body, questions });
 }
 
 /**

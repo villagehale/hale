@@ -4,6 +4,7 @@ import {
   type OpenQuestionKind,
   type OpenQuestionSources,
   createOpenQuestionReader,
+  latestAsked,
   newestSolicitedKind,
   soleOpenKind,
 } from './open-questions';
@@ -97,11 +98,84 @@ describe('newest-solicited precedence (ads-week audit, 2026-08-28)', () => {
   });
 });
 
+/**
+ * VIL-302 · the yes answers the ask the parent is replying to.
+ *
+ * 2026-08-20: Hale offered an introduction, later answered a search with an offer to add
+ * the find, and the parent said yes. The yes landed on the introduction. The preference
+ * below picks the newest ask; the router reads the parent's words against it first.
+ */
+describe('latestAsked — the ask a bare reply answers (VIL-302)', () => {
+  const T2 = new Date('2026-08-28T02:00:00.000Z');
+
+  it('picks the newer of two standing offers', () => {
+    const intro = question('intro_proposal', { id: 'intro', askedAt: T0 });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([intro, search])?.map((q) => q.id)).toEqual(['search']);
+    // Order on the list must not matter: oldest-first selection would pick the intro.
+    expect(latestAsked([search, intro])?.map((q) => q.id)).toEqual(['search']);
+  });
+
+  it('keeps every ask that ties at the top, so the model can still say which', () => {
+    const older = question('intro_proposal', { id: 'intro', askedAt: T0 });
+    const a = question('email_alert_add', { id: 'a', askedAt: T2 });
+    const b = question('email_alert_add', { id: 'b', askedAt: T2 });
+    expect(latestAsked([older, a, b])?.map((q) => q.id)).toEqual(['a', 'b']);
+  });
+
+  it('prefers nothing when recency cannot be established', () => {
+    const draft = question('approval', { id: 'draft' });
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([draft, search])).toBeNull();
+  });
+
+  it('prefers nothing when there is nothing to prefer over', () => {
+    const search = question('email_alert_add', { id: 'search', askedAt: T1 });
+    expect(latestAsked([search])).toBeNull();
+    expect(latestAsked([])).toBeNull();
+    const twin = question('email_alert_add', { id: 'twin', askedAt: T1 });
+    expect(latestAsked([search, twin])).toBeNull();
+  });
+});
+
+describe('the intro asks carry their ask time (VIL-302)', () => {
+  it('dates the opt-in and the proposal off their own rows', async () => {
+    const reader = createOpenQuestionReader({
+      pendingApprovals: async () => [],
+      introOptInOpen: async () => ({ askedAt: T0 }),
+      introProposal: async () => ({ id: 'proposal-1', askedAt: T1 }),
+      planOffer: async () => null,
+      checkupOffer: async () => null,
+      founderWelcomeOffer: async () => null,
+      activityPromise: async () => null,
+      registrationReadiness: async () => null,
+      coParentAssent: async () => null,
+      emailAlertOffers: async () => [],
+      eveningCheckIn: async () => null,
+      activityFollowupAsk: async () => null,
+      weekdayCare: async () => null,
+      emptySaturday: async () => null,
+      daycareFollowup: async () => null,
+      forwardAddressRevoke: async () => null,
+    });
+
+    const questions = await reader.open({} as never, {
+      familyId: 'fam-1',
+      parentUserId: 'parent-1',
+      now: T1,
+    });
+
+    const byKind = new Map(questions.map((q) => [q.kind, q]));
+    expect(byKind.get('intro_optin')?.askedAt).toEqual(T0);
+    expect(byKind.get('intro_proposal')).toMatchObject({ id: 'proposal-1', askedAt: T1 });
+  });
+});
+
 describe('the reader stamps recency and solicitation from the owning rows', () => {
   it('carries askedAt off the commitment rows and marks the keyword-printing kinds', async () => {
     const reader = createOpenQuestionReader({
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => ({ id: 'plan-1', summary: 'a plan', askedAt: T0 }),
       checkupOffer: async () => null,
@@ -151,7 +225,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Swim lessons', startsAt },
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -199,7 +273,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Trunk or Treat', startsAt },
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -254,7 +328,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Swim lessons', startsAt },
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -304,7 +378,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Gymnastics', startsAt: '2026-10-10T20:00:00.000Z' },
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -360,7 +434,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           occasion: { title: 'Gymnastics', startsAt: '2026-10-31T17:00:00.000Z' },
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -424,7 +498,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
           groupPlan: true,
         },
       ],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -471,7 +545,7 @@ describe('the reader stamps recency and solicitation from the owning rows', () =
 function calendarReader(approvals: unknown[], startsAt: string) {
   return createOpenQuestionReader({
     pendingApprovals: async () => approvals as never,
-    introOptInOpen: async () => false,
+    introOptInOpen: async () => null,
     introProposal: async () => null,
     planOffer: async () => null,
     checkupOffer: async () => null,
@@ -600,7 +674,7 @@ describe('the registration-readiness question on the open list', () => {
   it('is read off its own source, dated by the ask row and marked solicited', async () => {
     const reader = createOpenQuestionReader({
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -643,7 +717,7 @@ describe('the registration-readiness question on the open list', () => {
   it('is absent from the list when its source says nothing is open (negative control)', async () => {
     const reader = createOpenQuestionReader({
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -721,7 +795,7 @@ describe('the forwarding-address revoke confirm on the open list', () => {
       emptySaturday: async () => null,
       daycareFollowup: async () => null,
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -758,7 +832,7 @@ describe('a stalled reader (VIL-400)', () => {
   function sources(overrides: Partial<OpenQuestionSources> = {}): OpenQuestionSources {
     return {
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => ({ id: 'plan-1', summary: 'a plan', askedAt: T0 }),
       checkupOffer: async () => null,

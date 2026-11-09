@@ -874,11 +874,11 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // question is asked once per household, but only the parent it was TEXTED to has it
         // open — otherwise a co-parent who never saw it could answer it, and Hale would
         // write a consent row in their name for a question it never put to them.
-        const [askedParentUserId, answered] = await Promise.all([
-          introAskRecipient(database, familyId),
+        const [ask, answered] = await Promise.all([
+          introAsk(database, familyId),
           discoverabilityAsked(database, parentUserId),
         ]);
-        return askedParentUserId === parentUserId && !answered;
+        return ask?.parentUserId === parentUserId && !answered ? { askedAt: ask.askedAt } : null;
       },
       introProposal: async (database, familyId, now) => {
         // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
@@ -886,7 +886,9 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
         // card that never existed), and offering one of those to the resolver would invite
         // it to resolve a question that is already closed.
         const proposal = await intros.answerableProposal(database, familyId, now);
-        return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+        return proposal?.standing === 'unanswered'
+          ? { id: proposal.id, askedAt: proposal.askedAt }
+          : null;
       },
       planOffer: async (database, familyId, now) => {
         const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
@@ -982,11 +984,17 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
   );
 }
 
-/** Who the one discoverability ask actually went to, or null if it never went. The
- * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
-async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
+/** Who the one discoverability ask actually went to, and when, or null if it never went.
+ * The dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
+async function introAsk(
+  database: Database,
+  familyId: string,
+): Promise<{ parentUserId: string; askedAt: Date } | null> {
   const [row] = await database
-    .select({ parentUserId: schema.channelMessages.parentUserId })
+    .select({
+      parentUserId: schema.channelMessages.parentUserId,
+      askedAt: schema.channelMessages.createdAt,
+    })
     .from(schema.channelMessages)
     .where(
       and(
@@ -995,5 +1003,5 @@ async function introAskRecipient(database: Database, familyId: string): Promise<
       ),
     )
     .limit(1);
-  return row?.parentUserId ?? null;
+  return row ?? null;
 }

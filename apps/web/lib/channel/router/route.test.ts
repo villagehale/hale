@@ -2994,6 +2994,134 @@ describe('natural reply resolution', () => {
   });
 
   /**
+   * VIL-302 · intro offer, then a search, then "yes".
+   *
+   * The reader stand-in follows the reply-resolver skill's own contract for these words
+   * (the eval pins the real model to it): a bare yes with one answerable question is that
+   * question; with several it is `ambiguous`; words naming something not on the list are
+   * `none`. What is under test is which list the router shows it.
+   */
+  describe('a bare yes answers the newest ask (VIL-302)', () => {
+    const EARLIER = new Date(NOW.getTime() - 2 * 60 * 60 * 1000);
+    const LATER = new Date(NOW.getTime() - 60 * 1000);
+
+    function datedIntro(): OpenQuestion {
+      return { ...introQuestion(), askedAt: EARLIER };
+    }
+
+    function searchOffer(id = 'search-offer', askedAt = LATER): OpenQuestion {
+      return {
+        id,
+        kind: 'email_alert_add',
+        description: 'An offer to put the swim class you searched for on your week',
+        subject: 'putting the swim class on your week',
+        answerable: { yes: true, no: true },
+        askedAt,
+        solicited: true,
+      };
+    }
+
+    function skillContract(text: string, questions: readonly OpenQuestion[]): ReplyReading {
+      const named = /meeting the family/i.test(text)
+        ? questions.find((q) => q.kind === 'intro_proposal')
+        : undefined;
+      if (/meeting the family/i.test(text) && !named) {
+        return { status: 'unresolved', reason: 'no_target' };
+      }
+      const takers = named ? [named] : questions.filter((q) => q.answerable.yes);
+      const [only] = takers;
+      if (takers.length !== 1 || !only) return { status: 'unresolved', reason: 'ambiguous' };
+      return {
+        status: 'resolved',
+        questionId: only.id,
+        kind: only.kind,
+        polarity: 'yes',
+        confidence: 'high',
+      };
+    }
+
+    function readers() {
+      const lists: string[][] = [];
+      const read = async ({
+        text,
+        questions,
+      }: { text: string; questions: readonly OpenQuestion[] }) => {
+        lists.push(questions.map((q) => q.id));
+        return skillContract(text, questions);
+      };
+      return {
+        lists,
+        replyResolver: { read } as ReplyResolver,
+        calendarOffers: { readParent: read, readCoach: calendarOffersIdle.readCoach },
+      };
+    }
+
+    it('lands on the search offer, not the older intro', async () => {
+      const offerOwner = owningHandler('email_alert_add');
+      const introOwner = owningHandler('intro_proposal');
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes' },
+        handlers: [introOwner.handler, offerOwner.handler],
+        questions: fakeQuestions([datedIntro(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_email_alert_add' });
+      expect(offerOwner.seen.map((seen) => seen.resolved)).toEqual([
+        { kind: 'email_alert_add', questionId: 'search-offer', polarity: 'yes', confidence: 'high' },
+      ]);
+      expect(introOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(r.lists).toEqual([['search-offer']]);
+    });
+
+    it('still reads a reply that names the older ask against everything open', async () => {
+      const introOwner = owningHandler('intro_proposal');
+      const offerOwner = owningHandler('email_alert_add');
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes to meeting the family' },
+        handlers: [introOwner.handler, offerOwner.handler],
+        questions: fakeQuestions([datedIntro(), searchOffer()]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result).toMatchObject({ status: 'resolved', handler: 'owner_intro_proposal' });
+      expect(introOwner.seen.map((seen) => seen.resolved).filter(Boolean)).toEqual([
+        { kind: 'intro_proposal', questionId: 'proposal-1', polarity: 'yes', confidence: 'high' },
+      ]);
+      expect(r.lists).toEqual([['search-offer'], ['proposal-1', 'search-offer']]);
+    });
+
+    it('asks rather than guessing when two offers are the newest ask', async () => {
+      const offerOwner = owningHandler('email_alert_add');
+      const coach = fakeCoach('Which one did you mean - the swim class or the art class?');
+      const r = readers();
+      const h = harness({
+        context: { body: 'yes' },
+        coach,
+        handlers: [offerOwner.handler],
+        questions: fakeQuestions([datedIntro(), searchOffer('swim'), searchOffer('art')]),
+        replyResolver: r.replyResolver,
+        calendarOffers: r.calendarOffers,
+      });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_replied');
+      expect(offerOwner.seen.filter((seen) => seen.resolved)).toEqual([]);
+      expect(coach.calls).toBe(1);
+      expect(r.lists).toEqual([['swim', 'art']]);
+    });
+  });
+
+  /**
    * An answer Hale cannot place goes to the COACH, with the candidates.
    *
    * It used to be a fixed sentence sent from the router, and on 2026-08-20 a parent got
@@ -4263,7 +4391,7 @@ describe('the weekday-care answer', () => {
     const sources: OpenQuestionSources = {
       forwardAddressRevoke: async () => null,
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,
@@ -4765,7 +4893,7 @@ describe('a bare yes while the daycare check-in is standing', () => {
     return createOpenQuestionReader({
       forwardAddressRevoke: async () => null,
       pendingApprovals: async () => [],
-      introOptInOpen: async () => false,
+      introOptInOpen: async () => null,
       introProposal: async () => null,
       planOffer: async () => null,
       checkupOffer: async () => null,

@@ -149,6 +149,9 @@ export interface AnswerableProposal {
   familyBId: string;
   familyAReply: 'yes' | 'no' | null;
   familyBReply: 'yes' | 'no' | null;
+  /** When the card went to THIS family's side. A bare yes is read against the newest ask
+   * first (VIL-302), so the intro needs its own time to be told apart from a later offer. */
+  askedAt: Date;
   /** What THIS family has already said about this card. Resolved by the reader so the
    * handler does not have to work out which side it is looking at twice. */
   standing: IntroStanding;
@@ -513,6 +516,8 @@ async function loadAnswerableProposal(
       familyBId: schema.villageIntroProposals.familyBId,
       familyAReply: schema.villageIntroProposals.familyAReply,
       familyBReply: schema.villageIntroProposals.familyBReply,
+      familyAAskedAt: schema.villageIntroProposals.familyAAskedAt,
+      familyBAskedAt: schema.villageIntroProposals.familyBAskedAt,
     })
     .from(schema.villageIntroProposals)
     .where(
@@ -541,7 +546,11 @@ async function loadAnswerableProposal(
     )
     .limit(1);
   if (!row) return null;
-  return { ...row, standing: proposalStanding(row, familyId) };
+  const { familyAAskedAt, familyBAskedAt, ...proposal } = row;
+  const askedAt = row.familyAId === familyId ? familyAAskedAt : familyBAskedAt;
+  // The WHERE above only matches a side whose card went out.
+  if (askedAt === null) throw new Error('intro proposal matched with no ask time on its side');
+  return { ...proposal, askedAt, standing: proposalStanding(row, familyId) };
 }
 
 async function writeDecision(database: Database, decision: IntroDecision): Promise<void> {
