@@ -213,6 +213,18 @@ export const OPS_PAGE_VOCABULARY = {
       'unexpected',
     ],
   },
+  retention_step_failed: {
+    step: [
+      'deletion_sweep',
+      'check_in_notes',
+      'message_retention',
+      'record_retention',
+      'roster_retention',
+      'provider_sessions',
+      'secret_santa',
+      'provider_credentials',
+    ],
+  },
 } as const satisfies Record<string, Readonly<Record<string, readonly string[]>>>;
 
 type OpsPageVocabulary = typeof OPS_PAGE_VOCABULARY;
