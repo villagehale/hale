@@ -307,6 +307,8 @@ export interface OpenCommitment {
   dueAt: Date;
   /** Past its due time and still open — the state the family can feel. */
   overdue: boolean;
+  /** Whose promise it is, when it was about one child. */
+  subjectChildId: string | null;
 }
 
 /**
@@ -461,6 +463,7 @@ export async function loadOpenCommitments(
       commitmentKind: schema.agentCommitments.commitmentKind,
       summary: schema.agentCommitments.summary,
       dueAt: schema.agentCommitments.dueAt,
+      subjectChildId: schema.agentCommitments.subjectChildId,
     })
     .from(schema.agentCommitments)
     .where(and(eq(schema.agentCommitments.familyId, familyId), openPredicate()))
@@ -471,6 +474,7 @@ export async function loadOpenCommitments(
     summary: row.summary,
     dueAt: row.dueAt,
     overdue: row.dueAt.getTime() < now.getTime(),
+    subjectChildId: row.subjectChildId,
   }));
 }
 

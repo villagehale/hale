@@ -248,6 +248,33 @@ describe("VIL-522 radar top-up", () => {
     expect(mergeTopUp([plain], [withDeadline])).toHaveLength(1);
   });
 
+  it("keeps a session whose when leads with a registration time apart from a 10am session (Devin)", () => {
+    const morning = find({
+      sourceName: "Central Library",
+      eventDate: "2026-11-07",
+      when: "Sat 10am",
+    });
+    const afternoon = find({
+      sourceName: "Central Library",
+      eventDate: "2026-11-07",
+      when: "registration opens Monday 10am; Sat 2pm",
+      url: "https://library.example/story-time-2pm",
+      sourceUrl: "https://library.example/story-time-2pm",
+    });
+    expect(mergeTopUp([morning], [afternoon])).toHaveLength(2);
+    expect(mergeTopUp([afternoon], [morning])).toHaveLength(2);
+  });
+
+  it("still merges one session written with and without its end time (control)", () => {
+    const start = find({ eventDate: "2026-11-07", when: "Sat 10am" });
+    const range = find({
+      eventDate: "2026-11-07",
+      when: "Saturday 10:00 AM - 11:00 AM",
+      sourceUrl: "https://listing.example/story",
+    });
+    expect(mergeTopUp([start], [range])).toHaveLength(1);
+  });
+
   it("keeps undated recurring sessions on different weekdays as two finds (Devin)", () => {
     const sat = find({
       sourceName: "Central Library",
