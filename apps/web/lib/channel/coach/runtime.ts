@@ -59,6 +59,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
+import { createLiveClassAvailabilityReader } from '~/lib/registration/class-availability';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
 import {
   activityReviewsSurfaceEnabled,
@@ -839,6 +840,10 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
           reader: bindActivityReader(database, productionActivityFamilyReader()),
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
+          readClassAvailability: createLiveClassAvailabilityReader(
+            anthropicClient(),
+            MINT_FETCH_TIMEOUT_MS,
+          ),
         },
         onDraft,
         onOffer,

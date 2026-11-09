@@ -219,6 +219,44 @@ describe('reminderRefusals — structure only, never wording', () => {
   });
 });
 
+/**
+ * VIL-551 · two things the same morning whose times run into each other. The writer said
+ * "both are on Thursday morning" and never that they overlap: an overlap read off two
+ * clock strings is an inference the skill forbids, so code states it as a fact.
+ */
+describe('reminderFacts — overlaps, the clash stated as a fact (VIL-551)', () => {
+  const at = (startsAt: string, endsAt: string | null, title: string, eventRef: string) =>
+    ev({ eventRef, title, startsAt, endsAt });
+  const swim = at('2026-10-26T14:00:00Z', '2026-10-26T15:00:00Z', 'Swim', 'e1'); // 10-11 AM
+
+  it('names, on each event, the other events whose times run into it', () => {
+    const [a, b] = facts([swim, at('2026-10-26T14:30:00Z', '2026-10-26T15:30:00Z', 'Art', 'e2')])
+      .events;
+    expect(a?.overlaps).toEqual(['Art']);
+    expect(b?.overlaps).toEqual(['Swim']);
+  });
+
+  it('an event with no end overlaps one it starts inside, or one starting with it', () => {
+    const inside = facts([swim, at('2026-10-26T14:15:00Z', null, 'Dentist', 'e2')]).events;
+    expect(inside[1]?.overlaps).toEqual(['Swim']);
+    const same = facts([
+      at('2026-10-26T14:00:00Z', null, 'Dentist', 'e1'),
+      at('2026-10-26T14:00:00Z', null, 'Photos', 'e2'),
+    ]).events;
+    expect(same[0]?.overlaps).toEqual(['Photos']);
+  });
+
+  it('back-to-back, apart, or all-day is no overlap, and adds no key', () => {
+    const plain = facts([
+      swim,
+      at('2026-10-26T15:00:00Z', '2026-10-26T16:00:00Z', 'Art', 'e2'), // starts as swim ends
+      at('2026-10-26T19:00:00Z', null, 'Piano', 'e3'),
+      at('2026-10-26T04:00:00Z', '2026-10-27T04:00:00Z', 'PD Day', 'e4'), // all day
+    ]).events;
+    for (const event of plain) expect(event).not.toHaveProperty('overlaps');
+  });
+});
+
 describe('reminderFacts — parking and what to bring (VIL-468)', () => {
   it('passes stated parking and bring facts through as written', () => {
     const [event] = facts([

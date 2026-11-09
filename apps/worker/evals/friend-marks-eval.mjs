@@ -33,6 +33,7 @@ import {
   makeCost,
   totalUsd,
 } from './lib/harness.mjs';
+import { NAME_ASK_STORED } from './lib/name-ask-stored.mjs';
 
 const HARD_CAP_USD = 2;
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -54,7 +55,11 @@ register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);
 
 function inputFor(voice, fixture) {
-  const base = voice.nameAskVoiceInput(fixture.over.parentWords, fixture.over.language ?? 'en');
+  const base = voice.nameAskVoiceInput(
+    fixture.over.parentWords,
+    fixture.over.language ?? 'en',
+    NAME_ASK_STORED,
+  );
   const retry = fixture.retry
     ? { retry: { draft: fixture.retry.draft, problem: voice.retryProblem(fixture.retry.reason) } }
     : {};

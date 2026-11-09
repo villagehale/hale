@@ -80,8 +80,11 @@ export type PlanNotice = 'sent' | 'failed' | 'withheld';
 export interface PlanRunDeps {
   /** The Browser Use plan engine. Null names it absent: no plan is claimed. */
   runner: PlanSignupRunner | null;
-  /** Tells the parent what happened. Required: every plan ends with a notice or a named failure. */
-  notifyParent: (notice: PlanOutcomeNotice) => Promise<'sent' | 'failed'>;
+  /**
+   * Tells the parent what happened. Required: every plan ends with a notice or a named
+   * failure. `withheld` when the parent's yes no longer stood by the time of the notice.
+   */
+  notifyParent: (notice: PlanOutcomeNotice) => Promise<PlanNotice>;
   /** Rule #7. Undefined uses `signupSpendingCap`: the plan's maximum, never above $500. */
   checkSpendingCap?: (
     familyId: string,
@@ -256,6 +259,7 @@ async function runOnePlan(
   const providerHost = signupProviderHost(host);
   const granted = await loadPlanConsent(database, {
     familyId: plan.familyId,
+    parentUserId: plan.parentUserId,
     messageId: plan.messageId,
     activityKey: plan.activityKey,
     providerHost,
