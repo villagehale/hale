@@ -18,6 +18,16 @@ describe('VIL-423 · dateUnconfirmedRefusals: the writer is handed no link, so a
     'See www.example.org',
     'Details at evil．app',
     'Details at ev​il.app',
+    // VIL-613 · the shared check's evasion table.
+    'Details at evil。app/x',
+    'Details at evil｡app/x',
+    'Details at evil﹒app/x',
+    'see 203.0.113.9/x',
+    'Details at evil.рф',
+    'Details at evil[.]app',
+    'Details at bit . ly/x',
+    // The format character sits before the dot, so only the \p{Cf} strip makes a host of it.
+    'Details at bit\u200B.ly/x',
   ])('refuses a link shape: %s', (text) => {
     expect(dateUnconfirmedRefusals(text)).toEqual(['link']);
   });
@@ -26,6 +36,8 @@ describe('VIL-423 · dateUnconfirmedRefusals: the writer is handed no link, so a
     "I couldn't confirm when Springfield fall swim opens on the page. Can you check it below?",
     'Je n’ai pas pu confirmer la date sur la page, e.g. vérifie-la ci-dessous. Il est 10.30am.',
     'It is 7:00 p.m. now, St. Mary’s pool page did not show the date.',
+    'I could not confirm it on the page.Check it below.',
+    'The St.Mary pool page did not show it. Mr.Smith may know.',
   ])('passes a plain draft: %s', (text) => {
     expect(dateUnconfirmedRefusals(text)).toEqual([]);
   });

@@ -18,6 +18,7 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
+import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -1325,8 +1326,18 @@ function weekdaysOutsideSlots(text: string, slots: readonly string[]): string[] 
 
 /** A phone number in prose: code puts the real one under the reply, never the model. */
 const PHONE = /\+?\d[\d\s().-]{8,}\d/u;
-/** A web address without its scheme ("hale.app/join"). Only the site in the facts may be named. */
-const BARE_DOMAIN = /\b[\w-]+\.(?:app|com|ca|io|org|net|co)(?:\/[^\s,)]*)?/giu;
+const WORD_EDGE = /^[("'“‘]+|[.,;:!?)"'”’]+$/gu;
+
+/** Words a phone would link that no slot holds ("hale.app/join"): only the site in the
+ * facts may be named. A scheme link is held to the handed link below. */
+function linksOutsideSlots(text: string, slots: readonly string[]): string[] {
+  const words = text
+    .split(/\s+/)
+    .map((word) => word.replace(WORD_EDGE, ''))
+    .filter((word) => !word.includes('://') && hasLinkShape(word));
+  const unique = [...new Set(words.map((word) => word.toLowerCase()))];
+  return unique.filter((token) => !slots.some((slot) => slot.toLowerCase().includes(token)));
+}
 /** Capitalised words any reply may use: Hale's own names and the services it talks about. */
 const ALLOWED_NAMES = new Set([
   'hale',
@@ -1586,7 +1597,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['domain', linksOutsideSlots(trimmed, slots)],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1599,9 +1610,12 @@ export function judgeFriendReply(
       kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
     };
   }
-  if (/https?:\/\//i.test(trimmed)) {
-    const allowed = options.link && trimmed.includes(options.link);
-    if (!allowed) return { ok: false, reason: 'invented' };
+  const schemeLinks = trimmed
+    .split(/\s+/)
+    .filter((word) => word.includes('://'))
+    .join(' ');
+  if (schemeLinks !== '' && hasLinkBeyond(schemeLinks, options.link ? [options.link] : [])) {
+    return { ok: false, reason: 'invented' };
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is

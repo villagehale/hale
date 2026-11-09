@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { type CadencePreference, readCadencePreference } from './preference';
 import { boundedLine } from './tools';
 
@@ -625,7 +626,10 @@ export async function loadFamilySnapshot(
     parentUserId === owner ? what : WITHHELD_LABEL;
   const shown = newTexts
     .reverse()
-    .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
+    .map((row) => ({
+      author: row.parentUserId,
+      text: boundedLine(withoutLiveViewLinks(row.body ?? '')),
+    }))
     .filter((row) => row.text.length > 0);
   const snapshot: FamilySnapshot = {
     timeZone: context.timeZone,

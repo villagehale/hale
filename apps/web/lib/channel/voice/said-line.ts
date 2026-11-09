@@ -14,6 +14,7 @@ import {
 import { type ReplyLanguage, certainLanguageHint } from '~/lib/channel/language';
 import type { MomentUnwrittenReason } from '~/lib/channel/off-domain/moment-reply';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -164,7 +165,9 @@ export function acceptSaidLine(text: string, input: SaidLineInput): string | nul
   // A mustConvey key with no fact behind it is a wiring bug, not something to say.
   // The meaning itself is not matched here. The writer asks the convey judge.
   if (!(input.mustConvey ?? []).every((key) => key in input.facts)) return null;
-  if (/https?:\/\//i.test(body) || /\bwww\./i.test(body)) return null;
+  // A required fact is code's own text (Hale's site, its email), so only the rest is read.
+  const prose = required.reduce((rest, fact) => rest.split(fact).join(' '), body);
+  if (hasLinkShape(prose)) return null;
   for (const [name, url] of Object.entries(input.links ?? {})) {
     const slot = linkSlot(name);
     if (body.split(slot).length !== 2) return null;
