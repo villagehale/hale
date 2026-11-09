@@ -4,6 +4,7 @@ import { type CoParentDeparted, departCoParent } from '../channel/coparent/depar
 import {
   type UndecodableIntakeOutcome,
   erasedFamilyHolds,
+  redactErasedIntake,
   releaseErasedHolds,
 } from '../channel/intake/opt-out-hold.js';
 import { removeDocument } from '../docs/storage.js';
@@ -439,8 +440,11 @@ export async function runDeletionSweep(
   // VIL-553 · held opt-out reads are keyed by the number and the text alone, out of the
   // cascade's reach. Read before the delete, like `stranded`.
   const erasedHolds = await erasedFamilyHolds(database, familyIds);
-  // Their crisis claims and reply marks are keyed by the texts the cascade deletes.
-  await releaseErasedCrisisMarks(database, familyIds);
+  // Their crisis claims and reply marks are keyed by the texts the cascade deletes, and by
+  // the pre-signup texts only their intake transcripts name.
+  await releaseErasedCrisisMarks(database, familyIds, erasedHolds.intakeInboundIds);
+  // Their pre-signup intake has no family for the cascade to reach.
+  await redactErasedIntake(database, erasedHolds, now);
 
   let purgedObjects = 0;
   for (const familyId of familyIds) {
