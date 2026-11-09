@@ -1,11 +1,17 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import {
   patchLinqContactCard,
   setupLinqContactCard,
   shareLinqContactCard,
 } from '~/lib/channel/outbound-transport';
 import { linqFromE164 } from './config';
+import {
+  auditRowChatKey,
+  auditRowNamesChat,
+  auditRowNamesNoChat,
+  linqChatAuditKey,
+} from './family-audit';
 import { retrieveLinqContactCard } from './transport';
 
 /**
@@ -194,10 +200,7 @@ export async function shareHaleContactCardOnce(
       and(
         eq(schema.auditLog.familyId, args.familyId),
         eq(schema.auditLog.actionTaken, 'linq_contact_card_shared'),
-        or(
-          sql`${schema.auditLog.after}->>'chatId' = ${chatId}`,
-          sql`${schema.auditLog.after}->>'chatId' is null`,
-        ),
+        or(auditRowNamesChat(chatId), auditRowNamesNoChat()),
       ),
     )
     .orderBy(desc(schema.auditLog.occurredAt))
@@ -244,7 +247,7 @@ export async function shareHaleContactCardOnce(
       targetTable: 'parent_channels',
       targetId: channelId,
       occurredAt: args.now,
-      after: { ...delivered.audit, chatId, sharedOn: day },
+      after: { ...delivered.audit, ...linqChatAuditKey(chatId), sharedOn: day },
     });
   }
   return delivered.outcome;
@@ -255,7 +258,7 @@ function isAuditRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** A share or a refused share for this chat already landed on this Toronto day.
- * An older audit with no chat id blocks every chat that day. */
+ * An older audit that names no chat blocks every chat that day. */
 function contactCardShareRecordedToday(
   rows: readonly {
     familyId: string;
@@ -278,8 +281,8 @@ function contactCardShareRecordedToday(
           ? haleContactCardDay(row.occurredAt)
           : null;
     if (recordedDay !== day) return false;
-    const recordedChat = typeof row.after.chatId === 'string' ? row.after.chatId : null;
-    return recordedChat === null || recordedChat === chatId;
+    const recordedChat = auditRowChatKey(row.after);
+    return recordedChat === null || recordedChat === linqChatAuditKey(chatId).chatKey;
   });
 }
 
