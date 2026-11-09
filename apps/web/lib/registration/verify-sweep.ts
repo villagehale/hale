@@ -423,7 +423,7 @@ async function verifyRow(
   const failure = corroborationFailure(pageText, reading);
   if (failure !== null) {
     console.error(
-      { windowId: row.id, evidence: reading.evidence },
+      { windowId: row.id, reason: failure },
       'registration verify: reading not corroborated by the page — DISCARDED',
     );
     return { ...base, outcome: { kind: 'unverified', reason: failure } };
