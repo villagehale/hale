@@ -122,10 +122,10 @@ describe('the payloads', () => {
     );
   });
 
-  it('omits a town and a stage it does not have rather than sending a placeholder', () => {
+  it('omits a stage it does not have rather than sending a placeholder', () => {
     expect(
-      groundUserMessage({ subject: 'story time', window: null, town: null, stage: null }),
-    ).toBe('{"subject":"story time"}');
+      groundUserMessage({ subject: 'story time', window: null, town: 'Toronto', stage: null }),
+    ).toBe('{"subject":"story time","town":"Toronto"}');
   });
 
   it('gives the compose stage the research and still no identity', () => {

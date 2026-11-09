@@ -1,0 +1,11 @@
+{
+  "value": {
+    "offer": true,
+    "prompt": "Samedi ou dimanche pour le parc ? / 周六还是周日去公园？",
+    "options": [
+      "Samedi / 周六",
+      "Dimanche / 周日"
+    ]
+  },
+  "latencyMs": 1620
+}

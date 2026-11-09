@@ -365,11 +365,7 @@ jobs:
       - name: Reminder eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder
 
-      # Soft path: said-line.md changed again (crisis purposes take direction and the
-      # region's line as facts, on top of intro_reply). Cached-only misses until the
-      # paid re-record. No spend on this change. REVERT continue-on-error then.
       - name: Said-line composer eval (cached-only)
-        continue-on-error: true
         run: pnpm --filter @hale/worker eval:said-line
 
       # VIL-530 meaning gate: the real convey judge, cached-only. No recording until

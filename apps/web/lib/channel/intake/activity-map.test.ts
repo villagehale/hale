@@ -135,13 +135,26 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: [{ name: null, ageMonths: 50, dobPrecision: 'derived' }],
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
     expect(map.titles).toEqual(['Workshop']);
   });
   const kids = [{ name: 'Maya', ageMonths: 50, dobPrecision: 'derived' as const }];
+
+  it('runs no category search with no place, and says the finder refused', async () => {
+    const { finder, subjects } = finderWith({ swimming: [pick('Parent and tot swim')] });
+    const map = await collectActivityMap({
+      finder,
+      children: kids,
+      town: null,
+      civic: [],
+      familyId: FAMILY,
+    });
+    expect(subjects).toEqual([]);
+    expect(map.finder).toBe('refused');
+  });
 
   it('runs one real search per fitting category and keeps two or three results each', async () => {
     const { finder, subjects } = finderWith({
@@ -157,7 +170,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -187,7 +200,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -206,7 +219,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: [{ name: 'Leo', ageMonths: 10, dobPrecision: 'derived' }],
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [civic('Story time'), civic('Baby rhyme time'), civic('Lego club')],
       familyId: FAMILY,
     });
@@ -220,7 +233,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder: null,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [civic('Story time')],
       familyId: FAMILY,
     });
@@ -245,7 +258,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -260,7 +273,7 @@ describe('collectActivityMap', () => {
     const none = await collectActivityMap({
       finder: broken,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -273,7 +286,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: kids,
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -295,7 +308,7 @@ describe('collectActivityMap', () => {
     const map = await collectActivityMap({
       finder,
       children: [{ name: 'Wren', ageMonths: 18, dobPrecision: 'exact' }],
-      areaCoarse: null,
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });
@@ -324,7 +337,7 @@ describe('collectActivityMap', () => {
     await collectActivityMap({
       finder,
       children: [{ name: 'Maya', ageMonths: 50, dobPrecision: 'derived' }],
-      areaCoarse: 'M5V',
+      town: 'Toronto',
       civic: [],
       familyId: FAMILY,
     });

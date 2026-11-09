@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text opens by saying it will treat the parent as wanting this introduction now, which contradicts the facts: saying yes does not reopen it and it stays closed. It also promises that it is still searching, which the facts do not give; only the match-text fact is given. Because it misstates the outcome and adds an unsupported promise of ongoing searching, it fails on facts.",
+    "score": 1
+  }
+}
