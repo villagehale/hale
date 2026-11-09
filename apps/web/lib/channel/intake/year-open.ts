@@ -1,7 +1,7 @@
 import { stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { fitsHouseholdAges } from './pick-fit';
+import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
@@ -114,7 +114,7 @@ export function renderYearOpen(lines: readonly string[]): string {
 /**
  * The live search always runs. Picks whose age band holds a child are said
  * first and civic weekend lines fill toward three; a pick outside every
- * child's age is left out (pick-fit.ts). Absence of the finder is logged and
+ * child's age, or whose only dates are behind `today`, is left out (pick-fit.ts). Absence of the finder is logged and
  * named. The locked empty sentence is the caller's job, and only when this
  * returns no lines.
  */
@@ -124,6 +124,8 @@ export async function collectYearOpenLines(input: {
   town: string | null;
   finder: ActivityFinder | null;
   familyId: string;
+  /** YYYY-MM-DD in the family's zone. */
+  today: string;
 }): Promise<{ lines: string[]; titles: string[]; finder: YearFinderUse }> {
   const civic = input.civic.slice(0, 3).map(civicHit);
   if (!input.finder) {
@@ -147,12 +149,14 @@ export async function collectYearOpenLines(input: {
       );
       return packYearOpen(civic, 'empty');
     }
-    const fitting = found.picks.filter((pick) => fitsHouseholdAges(pick, input.children));
+    const current = found.picks.filter((pick) => !onlyDatedBefore(pick, input.today));
+    const fitting = current.filter((pick) => fitsHouseholdAges(pick, input.children));
     console.info(
       {
         familyId: input.familyId,
         picks: found.picks.length,
-        droppedAge: found.picks.length - fitting.length,
+        droppedAge: current.length - fitting.length,
+        droppedPast: found.picks.length - current.length,
       },
       'intake year find',
     );

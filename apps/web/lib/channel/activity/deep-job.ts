@@ -241,6 +241,7 @@ export async function runDeepResearchJob(
       // disagree with the first.
       pageEvidence: run.result.pageVerdict,
       evidence: run.evidence,
+      heardFacts: commitment.heardFacts,
     },
     now,
   );

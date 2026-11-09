@@ -124,6 +124,14 @@ To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-we
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
 
+## Rotating APP_ENCRYPTION_KEY
+
+There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.
+
+- Encrypted values (phone numbers, signup vaults, invites) no longer decrypt.
+- Every blind index changes: phone, email, Google account, Linq chat and email-alert keys. A parent's texts no longer match their number until it is re-indexed.
+- A calendar add drafted in a household group is keyed by its chat (`chatKey`). After a rotation no chat matches it, so it is listed nowhere and cannot be approved. It fails closed: nothing is placed. The parent asks again and a new draft is made.
+
 ## On call
 
 Slack handles only. Page in **#ops**.
