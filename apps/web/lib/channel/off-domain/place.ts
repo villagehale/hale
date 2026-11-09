@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { postalCountryOf } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import type { HealthPlace } from '../health-line';
 import type { FamilyPlace, PlaceUnknown } from './answer';
@@ -64,27 +65,6 @@ interface PostalTable {
 
 /** `cityOf` values, as postal-cities/build.mjs writes them. */
 const AMBIGUOUS = -1;
-
-/**
- * The names a family's row may hold for the two countries a table is checked in for.
- * Canada's are the ones onboarding's region gate accepts (location-input.ts keeps that set
- * to itself, and it means "cleared to onboard", which is not this question). A Map, because
- * the key is stored text and a plain object also answers to `constructor`.
- */
-const TABLE_FOR_COUNTRY: ReadonlyMap<string, PostalCountry> = new Map([
-  ['canada', 'CA'],
-  ['ca', 'CA'],
-  ['can', 'CA'],
-  ['united states', 'US'],
-  ['united states of america', 'US'],
-  ['usa', 'US'],
-  ['us', 'US'],
-]);
-
-/** The postal table a stored country selects, or undefined for one Hale has no table for. */
-export function postalCountryOf(country: string): PostalCountry | undefined {
-  return TABLE_FOR_COUNTRY.get(country.trim().toLowerCase());
-}
 
 /** The country as the search is told it. */
 const COUNTRY_NAME: Record<PostalCountry, string> = { CA: 'Canada', US: 'United States' };
@@ -218,7 +198,7 @@ export async function placeOf(family: {
 }): Promise<FamilyPlace> {
   const storedCountry = stored(family.country);
   if (storedCountry === null) return unknown('no_country');
-  const postalCountry = TABLE_FOR_COUNTRY.get(storedCountry.toLowerCase());
+  const postalCountry = postalCountryOf(storedCountry);
   if (postalCountry === undefined) return unknown('unsupported_country');
   const country = COUNTRY_NAME[postalCountry];
 
@@ -384,7 +364,7 @@ export async function coarsenPlace(
   if (!sensitive) return place;
   const city = place.city;
   if (city === undefined) return place;
-  const country = TABLE_FOR_COUNTRY.get(place.country.toLowerCase());
+  const country = postalCountryOf(place.country);
   if (country === undefined) return place;
   const index = (await loadCoarsen())[country];
   const name = folded(city);

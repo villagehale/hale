@@ -31,6 +31,7 @@ const PRIVATE_CONTEXT = {
     digestFreshness: 'fresh',
   },
   sourceNote: { eyebrow: 'Email', body: INBOX_LINE, when: 'today' },
+  location: { city: null, province: null, country: 'Canada' },
 };
 
 afterEach(() => vi.unstubAllEnvs());
