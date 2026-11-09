@@ -1,4 +1,3 @@
-import { type AhaCalendarFact, calendarOverlaps } from '~/lib/channel/connect/aha-read';
 import type { CalendarBlockView, ScheduleEvent } from './tools';
 
 /**
@@ -13,8 +12,8 @@ import type { CalendarBlockView, ScheduleEvent } from './tools';
  * said kid; every other block is an adult's busy hour and never surfaces here, not even
  * as "busy". No model is asked at this point and no title is matched on words.
  *
- * No invented end times. Two spans overlap through `calendarOverlaps` (half-open, so
- * back-to-back is not a clash). An item with no end is an instant: it clashes only when
+ * No invented end times. Two real spans overlap half-open (back-to-back is not a
+ * clash). An item with no end is an instant: it clashes only when
  * it falls strictly inside the other item's real span. Two instants never clash.
  */
 export interface KidClashFact {
@@ -89,15 +88,10 @@ export function kidClashFacts(
     clashes.push(fact);
   };
 
-  others.forEach((other, index) => {
+  others.forEach((other) => {
     if (candEnd !== null && other.endMs !== null) {
-      // Both have real spans — the shared overlap rule. Titles are index tokens so the
-      // answer maps back to the row without comparing words.
-      const pair: AhaCalendarFact[] = [
-        spanFact('candidate', candidate.startsAt, candidate.endsAt, false),
-        spanFact(`other:${index}`, new Date(other.startMs), new Date(other.endMs), false),
-      ];
-      if (calendarOverlaps(pair).length > 0) push(other.fact);
+      const realSpans = candStart < candEnd && other.startMs < other.endMs;
+      if (realSpans && candStart < other.endMs && other.startMs < candEnd) push(other.fact);
       return;
     }
     if (candEnd === null && other.endMs !== null) {
@@ -110,17 +104,6 @@ export function kidClashFacts(
     // Two instants: no span on either side, so no clash is claimed.
   });
   return clashes;
-}
-
-function spanFact(title: string, start: Date, end: Date | null, allDay: boolean): AhaCalendarFact {
-  return {
-    title,
-    start: start.toISOString(),
-    end: end?.toISOString() ?? null,
-    allDay,
-    location: null,
-    declined: false,
-  };
 }
 
 /**
