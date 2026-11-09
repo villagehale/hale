@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "Sentence 0 claims a Thursday 3pm swim is booked. The only event row is a Tuesday Nov 10 9:00 AM swim lesson, which has a different day and time, so it cannot back the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "scheduled_event",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 2114
+}

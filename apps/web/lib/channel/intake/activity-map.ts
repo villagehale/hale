@@ -1,10 +1,9 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { activitySearchTown } from '~/lib/channel/activity/search-town';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { activityRecommendationKey } from '~/lib/village/live';
-import { type WeekendPick, asciiCopy } from './radar-decide';
+import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
+import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
 /**
  * Step 4 of onboarding: a broad, skimmable map of what is on for these kids,
@@ -51,7 +50,7 @@ const EIGHTEEN = 18 * 12;
 export const ACTIVITY_CATEGORIES: readonly ActivityCategory[] = [
   {
     id: 'parent_baby',
-    subject: 'parent and baby toddler groups earlyon library story time drop-in play groups',
+    subject: 'parent and baby toddler groups family centre library story time drop-in play groups',
     minMonths: 0,
     maxMonths: PRESCHOOL + 11,
     rank: { newborn: 0, toddler: 0, preschool: 3, child: 9, teenager: 9 },
@@ -153,7 +152,7 @@ export type ActivityMapFinder = 'used' | 'not_configured' | 'refused' | 'failed'
 
 export interface ActivityMap {
   groups: ActivityMapGroup[];
-  /** Every line across groups, in map order. The stored body numbers them so a later read can group them. The parent sees the model's bubbles. */
+  /** Every line across groups, in map order. Index + 1 is the number the parent sees. */
   lines: string[];
   titles: string[];
   finder: ActivityMapFinder;
@@ -175,7 +174,7 @@ function categoryQuery(
   category: ActivityCategory,
   input: {
     children: readonly { name: string | null; ageMonths: number | null }[];
-    areaCoarse: string | null;
+    town: string | null;
   },
 ): ActivityQuery | null {
   const ages = input.children
@@ -183,16 +182,13 @@ function categoryQuery(
     .filter((age): age is number => age !== null);
   if (ages.length === 0) return null;
   const stages = [...new Set(ages.map((age) => stageFromAgeInMonths(age)))];
-  const municipalities = input.areaCoarse ? resolveMunicipalities(input.areaCoarse) : [];
-  const municipality = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   const householdNames = input.children
     .map((child) => child.name)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
     subject: category.subject,
     window: 'this year',
-    municipality,
-    town: activitySearchTown(input.areaCoarse),
+    town: input.town,
     stage: stageFromAgeInMonths(Math.min(...ages)),
     householdNames,
   });
@@ -211,17 +207,23 @@ function flatten(groups: ActivityMapGroup[], finder: ActivityMapFinder): Activit
 }
 
 /**
- * One live search per fitting category, in parallel. A category whose search
- * returned nothing is left off the map rather than filled. Civic weekend
- * finds join the free-and-public group when that group is shown, since they
- * are the free sessions a community centre or library publishes.
+ * One live search per fitting category, in parallel. A pick outside every
+ * child's age, or whose only dates are behind `today`, is left out before the
+ * group is cut to size (pick-fit.ts), and a
+ * category whose search returned nothing for these kids is left off the map
+ * rather than filled. Civic weekend finds join the free-and-public group when
+ * that group is shown, since they are the free sessions a community centre or
+ * library publishes.
  */
 export async function collectActivityMap(input: {
   finder: ActivityFinder | null;
-  children: readonly { name: string | null; ageMonths: number | null }[];
-  areaCoarse: string | null;
+  children: readonly Pick<RadarChild, 'name' | 'ageMonths' | 'dobPrecision'>[];
+  /** From place.ts. Null: no category is searched. */
+  town: string | null;
   civic: readonly WeekendPick[];
   familyId: string;
+  /** YYYY-MM-DD in the family's zone. */
+  today: string;
 }): Promise<ActivityMap> {
   const ages = input.children
     .map((child) => child.ageMonths)
@@ -241,11 +243,17 @@ export async function collectActivityMap(input: {
     console.info({ familyId: input.familyId }, 'intake activity map: skipped: not_configured');
     return flatten(civicGroup ? [civicGroup] : [], 'not_configured');
   }
+  if (input.town === null) {
+    console.info({ familyId: input.familyId, reason: 'no_place' }, 'intake activity map: refused');
+    return flatten(civicGroup ? [civicGroup] : [], 'refused');
+  }
   if (categories.length === 0) {
     return flatten(civicGroup ? [civicGroup] : [], 'refused');
   }
   let anyUsed = false;
   let anyFailed = false;
+  let droppedAge = 0;
+  let droppedPast = 0;
   const groups = await Promise.all(
     categories.map(async (category): Promise<ActivityMapGroup> => {
       const query = categoryQuery(category, input);
@@ -253,14 +261,13 @@ export async function collectActivityMap(input: {
       if (!query) return empty;
       try {
         const found = await input.finder?.find(query);
-        if (!found || !found.found) {
-          // A search that did not run is not "nothing is on". no_picks is the
-          // only honest empty; a timeout or a missing client is a miss to retry.
-          if (found && found.reason !== 'no_picks') anyFailed = true;
-          return empty;
-        }
+        if (!found || !found.found) return empty;
         anyUsed = true;
-        const picks = found.picks.slice(0, MAX_MAP_ITEMS_PER_GROUP);
+        const current = found.picks.filter((pick) => !onlyDatedBefore(pick, input.today));
+        const fitting = current.filter((pick) => fitsHouseholdAges(pick, input.children));
+        droppedPast += found.picks.length - current.length;
+        droppedAge += current.length - fitting.length;
+        const picks = fitting.slice(0, MAX_MAP_ITEMS_PER_GROUP);
         return {
           category: category.id,
           lines: picks.map(webLine),
@@ -313,6 +320,8 @@ export async function collectActivityMap(input: {
       finder,
       groups: groups.filter((group) => group.lines.length > 0).length,
       lines: groups.reduce((sum, group) => sum + group.lines.length, 0),
+      droppedAge,
+      droppedPast,
     },
     'intake activity map',
   );
@@ -321,13 +330,10 @@ export async function collectActivityMap(input: {
 
 /**
  * The stored shape of a map: a `[category]` marker line, then that group's
- * numbered lines, numbered across the whole map so a later read can regroup
- * them. Markers and these numbers stay in storage. The parent sees the model's
- * bubbles. `linesOfFind` reads the numbered lines back; this reads the groups.
+ * numbered lines, numbered across the whole map. Markers never go to the
+ * parent. `linesOfFind` reads the numbered lines back; this reads the groups.
  */
-export function renderActivityMapBody(map: {
-  readonly groups: readonly ActivityMapGroup[];
-}): string {
+export function renderActivityMapBody(map: Pick<ActivityMap, 'groups'>): string {
   const parts: string[] = [];
   let index = 0;
   for (const group of map.groups) {

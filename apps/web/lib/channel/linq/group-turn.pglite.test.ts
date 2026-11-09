@@ -169,7 +169,8 @@ function scriptedReader(reading: GroupTurnReading | null) {
   return { reader, seen };
 }
 
-function door(reading: GroupTurnReading | null = 'chatter') {
+/** `present`: who the live GET says is in the chat now (Hale's own handle excluded). */
+function door(reading: GroupTurnReading | null = 'chatter', present: string[] = [PARENT]) {
   const scripted = scriptedReader(reading);
   const jobs: ChannelMessageReceivedJob[] = [];
   const outcomes: string[] = [];
@@ -177,7 +178,7 @@ function door(reading: GroupTurnReading | null = 'chatter') {
   const transport = new FakeTransport();
   const listHandles: ListChatHandles = async () => ({
     status: 'ok',
-    handles: [PARENT],
+    handles: present,
     isGroup: true,
   });
   const intake: IntakeDeps = {
@@ -280,7 +281,7 @@ describe('a message in the family group', () => {
   it('answers nothing into a confirmed group whose audience may hear no household facts', async () => {
     const { familyId, userId } = await seedClaimedHousehold();
     await seedRoster(familyId, userId, 'confirmed', { status: 'not_family', confirmedRole: null });
-    const { deps, jobs, outcomes, sends, transport } = door('addressed');
+    const { deps, jobs, outcomes, sends, transport } = door('addressed', [PARENT, OTHER]);
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-empty-audience')),
@@ -327,7 +328,7 @@ describe('a message in the family group', () => {
       status: 'confirmed',
       confirmedRole: 'co_parent',
     });
-    const { deps, jobs } = door('addressed');
+    const { deps, jobs } = door('addressed', [PARENT, OTHER]);
 
     const response = await handleLinqInboundRequest(
       signed(groupMessage('Hale, is swim still on tomorrow', 'in-parents')),
@@ -337,6 +338,37 @@ describe('a message in the family group', () => {
     expect(await response.json()).toEqual({ outcome: 'handed_off' });
     expect(jobs).toHaveLength(1);
     expect(await budgetRows()).toEqual([{ identifier: CHAT, route: 'linq-group-inbound' }]);
+  });
+
+  it('answers nothing into a confirmed group of parents when an Apple-ID email is also in it', async () => {
+    const { familyId, userId } = await seedClaimedHousehold();
+    await seedRoster(familyId, userId, 'confirmed', {
+      status: 'confirmed',
+      confirmedRole: 'co_parent',
+    });
+    const { deps, jobs, sends, transport } = door('addressed', [
+      PARENT,
+      OTHER,
+      'nanny@example.com',
+    ]);
+
+    const response = await handleLinqInboundRequest(
+      signed(groupMessage('Hale, is swim still on tomorrow', 'in-email-present')),
+      deps,
+    );
+
+    expect(await response.json()).toEqual({
+      outcome: 'group_coach_refused',
+      reason: 'participant_unresolved',
+    });
+    expect(jobs).toEqual([]);
+    expect(sends).toEqual([]);
+    expect(transport.bodies()).toEqual([]);
+    const audit = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.actionTaken, 'linq_group_coach_held'));
+    expect(audit).toEqual([{ after: { reason: 'participant_unresolved' } }]);
   });
 
   it(`holds the chat at ${RATE_LIMITS['linq-group-inbound'].limit} coach turns an hour, silently`, async () => {

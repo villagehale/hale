@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "stop",
+    "verbatim": "unsub pls",
+    "language": "en",
+    "confirmation": "Got it, Hale won't text you again. If you want to come back, just text us start anytime."
+  },
+  "latencyMs": 1847
+}

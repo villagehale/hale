@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text is French and says the swim class (Le cours de natation) on Thursday 23 July at 10 h 30 is cancelled. The summary is 'Swim class', which the text names in French as 'cours de natation', so it names this event. The start is Thursday, July 23, 2026 at 10:30 in America/Chicago, and the text states the same day, weekday, and hour 10 with minute 30 ('10 h 30'). A cancellation naming this event at this start matches.",
+    "match": true
+  },
+  "latencyMs": 2098
+}

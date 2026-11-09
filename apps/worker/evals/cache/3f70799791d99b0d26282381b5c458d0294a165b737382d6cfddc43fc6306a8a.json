@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The links are intact, the 15-minute validity and the purpose are kept, and the French is plain and friendly. However, it mentions the Google 'application non vérifiée' screen with 'Attention' and 'va afficher' and never says it is expected and safe for this connection, which would scare a parent. This is the named failure mode.",
+    "score": 2
+  }
+}

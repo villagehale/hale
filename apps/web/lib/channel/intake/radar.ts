@@ -3,8 +3,9 @@ import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { eq, inArray } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
+import type { ActivityPlace } from '~/lib/channel/activity/place';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { dayKeyOf } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
@@ -15,12 +16,7 @@ import {
   unofferedActivityPicks,
 } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
-import {
-  type ActivityMapFinder,
-  type ActivityMapGroup,
-  collectActivityMap,
-  renderActivityMapBody,
-} from './activity-map';
+import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideYearFinds } from './radar-decide';
 import { type RadarMessage, promisesFirstFind } from './radar-voice';
@@ -135,6 +131,10 @@ export interface RadarInput {
   children: readonly ExtractedChild[];
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
+  /** Where the finds search (activity/place.ts). Unknown: nothing is searched. */
+  place: ActivityPlace;
+  /** The family's own zone, from the postal code they gave. Never a Toronto default. */
+  timeZone: string;
   /** The kids-and-postal text. The empty year-find has a French twin. */
   language?: ReplyLanguage | null;
   /**
@@ -209,11 +209,6 @@ export interface RadarPayload {
   /** The grouped map when {@link RadarInput.activityMap} asked for one. */
   groups?: readonly ActivityMapGroup[];
   /**
-   * How the activity-map search ended, when one was asked for. `failed` and
-   * `not_configured` are not an honest empty: the walk still owes the map.
-   */
-  mapFinder?: ActivityMapFinder;
-  /**
    * The three rule #11 outcomes of the one turn, carried so a test and any future
    * caller can read what the log line below says. See {@link RadarMessage}: an
    * `actionMove` WITH an `actionHeld` is the compute-and-hold state the dark flag
@@ -244,21 +239,22 @@ export interface RadarDeps {
    */
   yearFinder?: ActivityFinder | null;
   now?: () => Date;
-  timeZone?: string;
 }
 
 /**
  * The parent's own words about their kids, straight from the conversation that just
- * happened — not a read of the rows, which is why 'derived' is a FACT here rather than
- * an assumption: provisioning wrote these very children from a spoken age moments ago,
- * in this same request, and that is exactly what `dob_precision = 'derived'` records.
- * The sweeps that read STORED rows (lib/channel/nudge/run.ts) take the column instead.
+ * happened — not a read of the rows. Provisioning stores every one of these as
+ * `dob_precision = 'derived'`, but the age band only needs the ±6-month tolerance for
+ * an age said in years ("she's 1" is anywhere from 12 to 23 months). "18 months" is an
+ * age the parent already narrowed, so it is matched as said. This precision lives only
+ * on this in-memory child; the stored column is unchanged, and the sweeps that read
+ * STORED rows (lib/channel/nudge/run.ts) take the column.
  */
 function toRadarChildren(children: readonly ExtractedChild[]): RadarChild[] {
   return children.map((child) => ({
     name: child.name,
     ageMonths: child.ageMonths,
-    dobPrecision: 'derived',
+    dobPrecision: child.agePrecision === 'months' ? 'exact' : 'derived',
   }));
 }
 
@@ -365,10 +361,11 @@ export async function readWindows(database: Database, areaCoarse: string) {
 }
 
 export function createRadarComposer(deps: RadarDeps): RadarComposer {
-  const timeZone = deps.timeZone ?? DEFAULT_TIMEZONE;
   return {
     async compose(input) {
       const now = deps.now?.() ?? new Date();
+      const timeZone = input.timeZone;
+      const town = input.place.status === 'known' ? input.place.town : null;
       const children = toRadarChildren(input.children).filter(
         (child) => child.ageMonths === null || child.ageMonths < 156,
       );
@@ -422,9 +419,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
               }
             : null,
           children,
-          areaCoarse: area,
+          town,
           civic,
           familyId: input.familyId,
+          today: dayKeyOf(now, timeZone),
         });
         const won = map.lines.length > 0;
         return {
@@ -432,7 +430,6 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           itemCount: map.lines.length,
           titles: map.titles,
           groups: map.groups,
-          mapFinder: map.finder,
           followUpNeeded: !won,
           checkpointTold: null,
           weekendPickOffered: false,
@@ -446,9 +443,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const opened = await collectYearOpenLines({
         civic,
         children,
-        areaCoarse: area,
+        town,
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
+        today: dayKeyOf(now, timeZone),
       });
       const message = renderYearOpen(opened.lines);
       const findWon = opened.lines.length > 0;

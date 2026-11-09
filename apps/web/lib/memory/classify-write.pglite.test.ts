@@ -50,6 +50,7 @@ describe('declined events and passing questions', () => {
 
     const saved = await save.handler(
       {
+        childId: null,
         factType: 'preference',
         factKey: 'gymnastics',
         factValue: { summary: 'Gymnastics' },
@@ -107,6 +108,7 @@ describe('declined events and passing questions', () => {
     const { familyId } = await seedFamily(db.database);
     const save = toolNamed(buildDistillTools(db.database, OCT_4), 'save_child_fact');
     const asked = {
+      childId: null,
       category: 'preferences' as const,
       factKey: 'saturday_swim',
       summary: 'what about swimming this Saturday?',
@@ -154,6 +156,7 @@ describe('declined events and passing questions', () => {
     const save = toolNamed(buildInferenceTools(db.database, OCT_4), 'save_memory');
     await save.handler(
       {
+        childId: null,
         factType: 'logistic',
         factKey: 'kid_age',
         factValue: 'three',
@@ -165,6 +168,7 @@ describe('declined events and passing questions', () => {
     );
     const corrected = (await save.handler(
       {
+        childId: null,
         factType: 'logistic',
         factKey: 'age',
         factValue: 'four',
@@ -189,6 +193,7 @@ describe('declined events and passing questions', () => {
     const save = toolNamed(buildInferenceTools(db.database, OCT_4), 'save_memory');
     await save.handler(
       {
+        childId: null,
         factType: 'logistic',
         factKey: 'district',
         factValue: { area: 'midtown' },
@@ -213,6 +218,7 @@ const WRITERS: Array<{
     writer: 'nightly save_memory',
     tool: (database) => toolNamed(buildInferenceTools(database, OCT_4), 'save_memory'),
     unclassified: {
+      childId: null,
       factType: 'preference',
       factKey: 'winter_hockey',
       factValue: { summary: 'Hockey this winter' },
@@ -223,6 +229,7 @@ const WRITERS: Array<{
     writer: 'nightly save_child_fact',
     tool: (database) => toolNamed(buildDistillTools(database, OCT_4), 'save_child_fact'),
     unclassified: {
+      childId: null,
       category: 'preferences',
       factKey: 'winter_hockey',
       summary: 'Hockey this winter',

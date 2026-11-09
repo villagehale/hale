@@ -46,17 +46,18 @@ import { loadClaimedWindowIds } from './claims.js';
 import {
   type EveningFacts,
   type MorningFacts,
+  approvalCardFacts,
   battlePlanDecision,
   headsUpFacts,
   headsUpPromisesPlan,
+  legNoteFacts,
   morningFacts,
-  renderSequenceLeg,
-  renderShortlistRationale,
   windowPhrase,
 } from './copy.js';
 import { composeRegistrationEvening } from './evening-compose.js';
 import { composeRegistrationHeadsUp } from './heads-up-compose.js';
 import { composeRegistrationMorning } from './morning-compose.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -127,7 +128,7 @@ export const SHORTLIST_LEAD_DAYS = 10;
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their slot forever. */
-const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
+export const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
 
 /**
  * Whether `now` sits in this family's daily shortlist slot. The same mid-morning hour
@@ -159,8 +160,8 @@ export interface LiveSequence {
    * anchored on, so it is resolved at send time rather than frozen at proposal. */
   areaCoarse: string | null;
   /** The LIVE M1 row. Every leg time is derived from it at send time, so a corrected
-   * date moves the whole ladder. */
-  window: RegistrationWindow;
+   * date moves the whole ladder. Null for a watch a parent's link created (VIL-423). */
+  window: RegistrationWindow | null;
   /** Read live off the approval spine — see registration-sequences.ts. */
   optIn: SequenceOptIn;
   outcome: RegistrationOutcome | null;
@@ -179,6 +180,9 @@ export interface LiveSequence {
    * verified; null is "unasked or unanswered", which the copy says in those words. */
   readinessReady: boolean | null;
 }
+
+/** A ladder with a catalog row: the only kind a leg is composed and sent for. */
+type CatalogSequence = LiveSequence & { window: RegistrationWindow };
 
 export interface SequenceLedgerWrite {
   familyId: string;
@@ -325,6 +329,9 @@ export interface SequenceRunDeps {
   composeMorning: typeof composeRegistrationMorning;
   /** VIL-488 · the heads-up text, written from facts. Null means nothing is sent. */
   composeHeadsUp: typeof composeRegistrationHeadsUp;
+  /** VIL-543 · the approval card and every other leg, written from facts. Null means
+   * nothing is sent (and no card is drafted). */
+  writeNote: RegistrationNoteWriter;
   /** The wall clock the already-open retry reads its deadline against. Defaults to
    * real time; tests pin it. */
   clock?: () => Date;
@@ -422,6 +429,11 @@ export interface SequenceRunResult {
    * unspent, so the next tick tries again. Its own count (rule #11).
    */
   unwritten: number;
+  /** Link watches with no open date yet: no dated leg exists and none is guessed. */
+  undated: number;
+  /** Link-watch legs that were due and held because no send-time read of the parent's
+   * page exists yet. Nothing was sent and the dedupe key is unspent (slice 7b). */
+  linkUnread: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -444,6 +456,8 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     readSkipped: 0,
     noFit: 0,
     unwritten: 0,
+    undated: 0,
+    linkUnread: 0,
   };
 }
 
@@ -518,6 +532,32 @@ async function proposeForFamily(
     });
     if (sequenceId === null) return false;
 
+    // VIL-543 · the card is written from facts. THE SAME REGISTRY LOOKUP THE LEGS RUN
+    // ON (`dueLeg`), so the card enumerates exactly the texts this household will
+    // receive: four where Hale has learned to read the town's portal and the readiness
+    // leg therefore fires, three everywhere else. A card that cannot be written is no
+    // card: the claim is released and the next tick tries again.
+    const rationale = await deps.writeNote(
+      database,
+      family.familyId,
+      approvalCardFacts(
+        shortlist,
+        family.timeZone,
+        now,
+        portalForMunicipality(match.window.municipality),
+      ),
+    );
+    if (rationale === null) {
+      // Nothing was drafted and nothing reaches the family, so this is a named log line
+      // rather than a trail row a retrying tick would repeat.
+      await deps.releaseClaim(database, sequenceId);
+      console.error(
+        { familyId: family.familyId, outcome: 'registration_shortlist_unwritten' },
+        'registration sequence: the approval card could not be written, no card drafted',
+      );
+      return false;
+    }
+
     try {
       const actionId = await deps.draftShortlist(database, {
         familyId: family.familyId,
@@ -526,17 +566,7 @@ async function proposeForFamily(
         // shortlist may cover two siblings at once.
         childId: null,
         intentKind: 'registration_shortlist',
-        // THE SAME REGISTRY LOOKUP THE LEGS RUN ON (`dueLeg`, `renderSequenceLeg`), so
-        // the card enumerates exactly the texts this household will receive: four where
-        // Hale has learned to read the town's portal and the readiness leg therefore
-        // fires, three everywhere else. The sentence a parent consents to and the legs
-        // they then get have to move together.
-        rationale: renderShortlistRationale(
-          shortlist,
-          family.timeZone,
-          now,
-          portalForMunicipality(match.window.municipality),
-        ),
+        rationale,
         // The card's own copy. Without these the approvals surface showed the generic
         // "Note in your daily digest" over the raw payload keys, so the municipality,
         // the date, the link and the "I never register for you" line — the things the
@@ -698,7 +728,7 @@ function courseIdOf(url: string): string | null {
 
 async function runLegForSequence(
   database: Database,
-  sequence: LiveSequence,
+  sequence: CatalogSequence,
   deps: SequenceRunDeps,
   reader: CourseReader,
   now: Date,
@@ -984,7 +1014,21 @@ async function runLegForSequence(
     }
     body = written;
   } else {
-    body = renderSequenceLeg(leg, legInput);
+    // VIL-543 · the readiness checklist, the check-in and the waitlist guards are
+    // written from facts too; there is no code sentence.
+    const written = await deps.writeNote(database, sequence.familyId, legNoteFacts(leg, legInput));
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_leg_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: { leg, windowId: sequence.window.id, outcome: 'registration_leg_unwritten' },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
   }
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
@@ -1254,7 +1298,7 @@ function driftOf(verdict: PrepVerdict): number | null {
 async function recordLegPromise(
   database: Database,
   args: {
-    sequence: LiveSequence;
+    sequence: CatalogSequence;
     shortlist: Shortlist;
     leg: SequenceLeg;
     messageId: string;
@@ -1313,7 +1357,7 @@ async function recordLegPromise(
  * ages rather than stored: a child ages, a municipality corrects a band or a date, and
  * a leg must say what is true this morning. */
 function matchForSequence(
-  sequence: LiveSequence,
+  sequence: CatalogSequence,
   open: { isResidentWindow: boolean; opensForFamilyAt: Date },
 ): RegistrationMatch {
   return {
@@ -1330,6 +1374,35 @@ function matchForSequence(
     opensForFamilyAt: open.opensForFamilyAt,
     generalOpenAt: sequence.window.openAt,
   };
+}
+
+type LinkWatchFate = { kind: 'undated' } | { kind: 'quiet' } | { kind: 'unread'; leg: SequenceLeg };
+
+/**
+ * A watch a parent's link created (VIL-423), evaluated without any I/O. No leg is sent
+ * for one yet: the only send-time reads are a catalog portal's, so its stored
+ * `course_opens_at` cannot be re-read before a text would speak it, and Hale holds no
+ * name for it that the heads-up composer would accept. Slice 7b lifts this.
+ *
+ * A paste is not consent, so only an approved watch can have a leg due at all. No
+ * waitlist clock and no portal are invented for it.
+ */
+function linkWatchFate(sequence: LiveSequence, now: Date): LinkWatchFate {
+  if (sequence.courseOpensAt === null) return { kind: 'undated' };
+  if (sequence.optIn !== 'opted_in') return { kind: 'quiet' };
+  const leg = dueLeg(
+    {
+      openAt: sequence.courseOpensAt,
+      timeZone: sequence.timeZone,
+      optIn: sequence.optIn,
+      outcome: sequence.outcome,
+      waitlistStartedAt: sequence.waitlistStartedAt,
+      waitlistResponseHours: null,
+      portal: null,
+    },
+    now,
+  );
+  return leg === null ? { kind: 'quiet' } : { kind: 'unread', leg };
 }
 
 export async function runRegistrationSequenceCron(
@@ -1362,9 +1435,42 @@ export async function runRegistrationSequenceCron(
   }
 
   // ── Phase B: run the legs ───────────────────────────────────────────────────
-  const sequences = (await deps.loadLiveSequences(database, now))
-    .filter(armed)
+  const live = (await deps.loadLiveSequences(database, now)).filter(armed);
+  // Split BEFORE the cap: a link watch costs no I/O, so it must not take a slot a dated
+  // catalog ladder needs.
+  const sequences = live
+    .filter((sequence): sequence is CatalogSequence => sequence.window !== null)
     .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
+  const linkWatches = live.filter((sequence) => sequence.window === null);
+
+  const undatedIds: string[] = [];
+  const unread: Array<{ sequenceId: string; leg: SequenceLeg }> = [];
+  for (const sequence of linkWatches) {
+    result.evaluated += 1;
+    try {
+      const fate = linkWatchFate(sequence, now);
+      if (fate.kind === 'undated') undatedIds.push(sequence.sequenceId);
+      else if (fate.kind === 'quiet') result.quiet += 1;
+      else unread.push({ sequenceId: sequence.sequenceId, leg: fate.leg });
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
+    }
+  }
+  result.undated = undatedIds.length;
+  result.linkUnread = unread.length;
+  if (undatedIds.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_undated', sequenceIds: undatedIds },
+      'registration sequence: link watches with no open date, no leg',
+    );
+  }
+  if (unread.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_unread', watches: unread },
+      'registration sequence: link-watch legs due and held, nothing sent',
+    );
+  }
 
   // ONE reader for the whole phase, because the budget and the page cache are both
   // properties of the RUN: two households on one course cost one GET, and the wall clock
@@ -1451,7 +1557,9 @@ async function loadLiveSequences(database: Database): Promise<LiveSequence[]> {
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
-    .innerJoin(
+    // LEFT: a watch a parent's link created has no catalog row (VIL-423). The FK
+    // cascades, so a null window here means exactly `window_id IS NULL`.
+    .leftJoin(
       schema.registrationWindows,
       eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
     )
@@ -1592,6 +1700,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     composeEvening: composeRegistrationEvening,
     composeMorning: composeRegistrationMorning,
     composeHeadsUp: composeRegistrationHeadsUp,
+    writeNote: registrationNoteWriter(),
     refreshCourseAnchor: async (database, input) => {
       const [row] = await database
         .update(schema.registrationSequences)

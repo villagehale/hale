@@ -8,7 +8,8 @@ import {
   groupAudienceAllows,
 } from '~/lib/channel/linq/group-audience';
 import type { GroupLineSend } from '~/lib/channel/linq/group-onboarding-voice';
-import { LinqSendError } from '~/lib/channel/linq/transport';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
+import { LinqSendError, listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { sendLinqChatMessage, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 
 /**
@@ -121,9 +122,15 @@ export async function postGroupReminderLine(
     dedupeKey: string;
     now: Date;
     send?: GroupLineSend;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<GroupReminderLineOutcome> {
-  const audience = await groupAudienceAllows(database, input.chatId, REMINDER_LINE);
+  const audience = await groupAudienceAllows(
+    database,
+    input.chatId,
+    REMINDER_LINE,
+    input.listChatHandles ?? listLinqParticipantHandles,
+  );
   if (!audience.allowed) return { outcome: 'held', reason: audience.reason };
 
   return sendOnce(

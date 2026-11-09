@@ -18,6 +18,20 @@ import {
 } from './departure-notice';
 
 /**
+ * `live` arms only once every proactive class is routed (flag.ts PROACTIVE_ROUTING). The
+ * live path here is tested as it will run then.
+ */
+const routing = vi.hoisted(() => ({ complete: true }));
+vi.mock('~/lib/channel/proactive/flag', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('~/lib/channel/proactive/flag')>();
+  return {
+    ...actual,
+    proactiveCadence: () =>
+      routing.complete ? actual.requestedCadence() : actual.proactiveCadence(),
+  };
+});
+
+/**
  * VIL-355 follow-up · item 2 — the parent who stayed is told.
  *
  * Against the real DDL AND through the real gate: every hold this thing can take is a
@@ -449,5 +463,92 @@ describe('telling the parent who stayed', () => {
     expect(outcome).toBe('no_staying_parent');
     expect(transport.sent).toEqual([]);
     expect(await noticeRows(household.familyId)).toEqual([]);
+  });
+});
+
+describe('under live cadence, the decider sends it', () => {
+  async function candidates(familyId: string) {
+    return db.database
+      .select({
+        kind: schema.proactiveCandidates.kind,
+        dedupeKey: schema.proactiveCandidates.dedupeKey,
+        parentUserId: schema.proactiveCandidates.parentUserId,
+        what: schema.proactiveCandidates.what,
+        status: schema.proactiveCandidates.status,
+      })
+      .from(schema.proactiveCandidates)
+      .where(eq(schema.proactiveCandidates.familyId, familyId));
+  }
+
+  it('queues the notice for the staying parent and sends nothing itself', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    const household = await seedHousehold();
+    await departCoParent(db.database, {
+      familyId: household.familyId,
+      actorUserId: household.departedUserId,
+      now: MORNING,
+    });
+    const transport = new FakeTransport();
+    const { ports: sendPorts, threaded } = ports(transport);
+    const args = {
+      familyId: household.familyId,
+      departedUserId: household.departedUserId,
+      now: MORNING,
+    };
+
+    expect(await tellStayingParent(db.database, args, sendPorts)).toBe('queued');
+    expect(transport.sent).toEqual([]);
+    expect(threaded).toEqual([]);
+    expect(await noticeRows(household.familyId)).toEqual([]);
+    expect(await candidates(household.familyId)).toEqual([
+      {
+        kind: 'co_parent_departed',
+        dedupeKey: departureNoticeDedupeKey(household.familyId, household.departedUserId),
+        parentUserId: household.stayingUserId,
+        what: await coParentDepartedNotice('en'),
+        status: 'queued',
+      },
+    ]);
+    const queued = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, household.familyId),
+          eq(schema.auditLog.actionTaken, 'proactive_cadence_queued'),
+        ),
+      );
+    expect(queued).toEqual([{ after: { kind: 'co_parent_departed' } }]);
+
+    // The morning re-drive finds the departure still unclaimed: it is the decider's now.
+    expect(await tellStayingParent(db.database, args, sendPorts)).toBe('already_queued');
+    expect(transport.sent).toEqual([]);
+    expect(await candidates(household.familyId)).toHaveLength(1);
+  });
+
+  it('still sends on its own path while live cannot arm', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    routing.complete = false;
+    try {
+      const household = await seedHousehold();
+      await departCoParent(db.database, {
+        familyId: household.familyId,
+        actorUserId: household.departedUserId,
+        now: MORNING,
+      });
+      const transport = new FakeTransport();
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const outcome = await tellStayingParent(
+        db.database,
+        { familyId: household.familyId, departedUserId: household.departedUserId, now: MORNING },
+        ports(transport).ports,
+      );
+      expect(outcome).toBe('sent');
+      expect(transport.sent).toHaveLength(1);
+      // Shadow records the candidate beside the send.
+      expect(await candidates(household.familyId)).toHaveLength(1);
+    } finally {
+      routing.complete = true;
+    }
   });
 });

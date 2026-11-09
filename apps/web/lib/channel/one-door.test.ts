@@ -32,6 +32,8 @@ const PROVIDER_TOKENS = [
   'api.twilio.com',
   // Linq is the same kind of door: a call here puts bytes on a parent's phone.
   'sendLinqChatMessage(',
+  'sendFlooredChatMessage(',
+  'sendFlooredPoll(',
   'createLinqChat(',
   'createLinqPhoneTransport(',
   'sendLinqParts(',
@@ -54,6 +56,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'the only production caller of createLinqPhoneTransport. Callers ledger beside the send. Exception: claim-code-sender is the pre-existing unledgered sign-in-code residue — the OTP seam returns no provider id and channel_message_category has no honest value for an auth code',
   'apps/web/lib/channel/linq/transport.ts':
     'the iMessage door — the one module that speaks the Linq partner API',
+  'apps/web/lib/channel/linq/group-audience.ts':
+    'the floored sends: sendFlooredChatMessage and sendFlooredPoll check the FloorPass and call outbound-transport; each caller (poll.ts, coparent/duty/ack.ts) writes its own channel_messages row',
   'apps/web/lib/channel/linq/location-share.ts':
     'reads a shared locality after the parent accepts the location card; retrieveLinqLocation drops the street before return, and the next bubble is the intake transport, not a send from this file',
   'apps/web/lib/channel/linq/contact-card.ts':

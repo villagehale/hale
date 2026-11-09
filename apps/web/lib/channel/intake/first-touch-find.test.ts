@@ -45,11 +45,49 @@ describe('findThisWeek', () => {
     expect(seen).toMatchObject({
       subject: WEEK_FIND_SUBJECT,
       window: 'this week',
-      town: 'Toronto and East York',
+      town: 'Toronto',
       stage: null,
     });
     expect(JSON.stringify(seen)).not.toContain('M5V');
     expect(JSON.stringify(seen)).not.toContain('416');
+  });
+
+  it('searches a US ZIP as its own city and state, never the ZIP', async () => {
+    const seen: unknown[] = [];
+    const finder: ActivityFinder = {
+      async find(query) {
+        seen.push(query);
+        return { found: false, reason: 'no_picks' };
+      },
+    };
+    await findThisWeek({
+      finder,
+      place: {
+        kind: 'postal',
+        areaCoarse: '981',
+        postalCode: '98101',
+        municipality: null,
+        city: null,
+      },
+    });
+    expect(seen).toMatchObject([{ town: 'Seattle, Washington, United States' }]);
+    expect(JSON.stringify(seen)).not.toMatch(/981/);
+  });
+
+  it('never runs a placeless search', async () => {
+    const find = vi.fn<ActivityFinder['find']>();
+    const found = await findThisWeek({
+      finder: { find },
+      place: {
+        kind: 'city',
+        areaCoarse: 'Somewhere',
+        postalCode: null,
+        municipality: null,
+        city: 'Somewhere',
+      },
+    });
+    expect(found).toEqual({ lines: [], outcome: 'refused' });
+    expect(find).not.toHaveBeenCalled();
   });
 
   it('renders numbered pick lines and nothing else', () => {

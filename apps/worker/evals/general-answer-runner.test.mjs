@@ -35,6 +35,17 @@ const PLACE_SRC = fileURLToPath(
   new URL('../../web/lib/channel/off-domain/place.ts', import.meta.url),
 );
 
+/**
+ * answer-request.ts, imported ONCE. Every tsImport call stacks another loader, and a file
+ * with a relative import of its own (place-token.ts) is resolved through all of them: the
+ * sixth import took 6 s and the seventh never finished.
+ */
+let answerRequestModule;
+async function answerRequest() {
+  answerRequestModule ??= await tsImport(ANSWER_REQUEST_SRC, import.meta.url);
+  return answerRequestModule;
+}
+
 /** `{ id: [failure, ...] }` from the report's answers block. */
 function failuresById(report) {
   const byId = {};
@@ -1009,10 +1020,7 @@ describe('the general-answer runner', () => {
   ])(
     'takes a reply to the door production opens for a reading of %s, or to none',
     async (_label, reading) => {
-      const { hurtIllOrDanger, safetyDoorFor } = await tsImport(
-        ANSWER_REQUEST_SRC,
-        import.meta.url,
-      );
+      const { hurtIllOrDanger, safetyDoorFor } = await answerRequest();
       const kind = hurtIllOrDanger(reading ?? undefined);
       // The fifth compose read is the second fixture's first reply (see the gate block).
       const run = await runRunner(

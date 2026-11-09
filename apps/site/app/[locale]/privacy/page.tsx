@@ -52,8 +52,8 @@ import { pageSource } from '~/lib/page-source';
  * the merge date. The Canada hosting sentence, the cookie banner, and the Speed
  * Insights wording all landed in that same edit. Counsel should read the diff.
  *
- * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
- * the only copy. Still noindexed by choice — whether a privacy policy should be
+ * app.villagehale.com/privacy is the signed-in data-rights page (VIL-432), which
+ * links here, so this is the only copy of the policy. Still noindexed by choice — whether a privacy policy should be
  * findable in search on a product whose moat is privacy is a founder call.
  * Reachable by direct link either way — the footer, the app, the mobile listing
  * and every consent surface point straight at it.

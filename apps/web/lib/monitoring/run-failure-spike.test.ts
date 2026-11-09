@@ -122,7 +122,7 @@ function deps(over: Partial<ProviderHealthDeps> = {}): ProviderHealthDeps {
   return {
     probe: vi.fn(async () => ({ ok: true }) as const),
     claim: vi.fn(async () => true),
-    sender: { send: vi.fn(async () => true) },
+    sender: { send: vi.fn(async () => 'sent' as const) },
     ...over,
   };
 }

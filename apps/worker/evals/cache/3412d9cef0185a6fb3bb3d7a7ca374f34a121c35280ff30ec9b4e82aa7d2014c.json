@@ -1,0 +1,10 @@
+{
+  "value": {
+    "intent": "claim_pickup",
+    "pickupRefs": [
+      "p1"
+    ],
+    "confidence": "high"
+  },
+  "latencyMs": 1406
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Benign presentation correctly reassured as likely muscle strain, no ER referral, clear triage with the Health811 line for the family's region and explicit emergency red flags (fever, drooling, neck immobility, injury). Plain language, English matches parent's language, concise, no invented numbers or diagnosis stated as certain. Minor nit: it lists fever among ER triggers while also saying no fever is reassuring, which is consistent but could be clearer; otherwise well calibrated.",
+    "score": 5
+  }
+}

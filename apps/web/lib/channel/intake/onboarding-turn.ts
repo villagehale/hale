@@ -67,6 +67,11 @@ export interface OnboardingCapture {
   coparentGroupMode: CoparentGroupMode | null;
   /** They do not want to give a parent name. Do not ask it again. */
   nameDeclined: boolean;
+  /**
+   * This message retracts the name. Not a lasting no: the name stays open,
+   * and a later turn does not inherit it.
+   */
+  nameTakenBack: boolean;
   /** They do not want to give the kids' names. Do not ask that again. */
   kidsNamesDeclined: boolean;
   /** Not now for the calendar. Do not ask it again in this onboarding. */
@@ -74,12 +79,6 @@ export interface OnboardingCapture {
   /** Not now for email. Do not ask it again in this onboarding. */
   gmailLater: boolean;
   stopAsking: boolean;
-  /**
-   * The item this reply is still asking, or null when it asks nothing.
-   * `group` is the group chat with the other parent. Code reads this field
-   * and does not decide from punctuation or wording.
-   */
-  stillAsking: StillAsking | null;
   /** BCP-47 tag of the language this parent is writing in. Null when the model omitted it. */
   language: ReplyLanguage | null;
 }
@@ -98,55 +97,13 @@ export const EMPTY_ONBOARDING_CAPTURE: OnboardingCapture = {
   coparentGroup: null,
   coparentGroupMode: null,
   nameDeclined: false,
+  nameTakenBack: false,
   kidsNamesDeclined: false,
   calendarLater: false,
   gmailLater: false,
   stopAsking: false,
-  stillAsking: null,
   language: null,
 };
-
-/**
- * What a reply can still be asking. The onboarding items, plus `group` for the
- * group chat with the other parent. The model sets one, or null.
- */
-export const STILL_ASKING_ITEMS = [
-  'postal',
-  'kids',
-  'ages',
-  'name',
-  'gmail',
-  'calendar',
-  'schedule',
-  'coparent',
-  'group',
-] as const;
-
-export type StillAsking = (typeof STILL_ASKING_ITEMS)[number];
-
-export function acceptStillAsking(value: unknown): StillAsking | null {
-  return typeof value === 'string' && (STILL_ASKING_ITEMS as readonly string[]).includes(value)
-    ? (value as StillAsking)
-    : null;
-}
-
-/** Both set is not a capture: the reply is re-asked, or not sent. */
-export function stillAskingConflicts(
-  capture: Pick<OnboardingCapture, 'stopAsking' | 'stillAsking'>,
-): boolean {
-  return capture.stopAsking && capture.stillAsking != null;
-}
-
-/**
- * The item this reply is still asking is not an answer. A co-parent or group
- * question does not store a yes or a no to that chat.
- */
-export function dropAskedAnswer(capture: OnboardingCapture): OnboardingCapture {
-  if (capture.stillAsking === 'coparent' || capture.stillAsking === 'group') {
-    return { ...capture, coparentGroup: null, coparentGroupMode: null };
-  }
-  return capture;
-}
 
 /**
  * The order Hale walks. Guidance for the model, and the order code uses once
@@ -246,6 +203,32 @@ function acceptName(value: unknown): string | null {
   if (trimmed.split(/\s+/u).length > 3) return null;
   if (!/\p{L}/u.test(trimmed)) return null;
   return trimmed;
+}
+
+/** One message or name, folded for an equality check: quotes, end marks, accents, case, spaces. */
+export function foldMessage(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“«']+\s*|\s*["”»']+$/gu, '')
+    .replace(/[.!]+$/u, '')
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '')
+    .toLowerCase()
+    .replace(/\s+/gu, ' ');
+}
+
+/**
+ * The model says this message takes the name back or refuses one. If it also
+ * copied that whole message into `parentName`, the copy is not a display name.
+ * A held name turned down (`nameConfirmed` false) is not such a read: "Robin"
+ * in reply to "can I call you Bea?" is the name they gave instead.
+ * This does not set `nameDeclined`: a take-back is not a lasting no.
+ */
+export function dropTakeBackName(body: string, capture: OnboardingCapture): OnboardingCapture {
+  const tookBack = capture.nameTakenBack || capture.nameDeclined;
+  if (!tookBack || !capture.parentName) return capture;
+  if (foldMessage(capture.parentName) !== foldMessage(body)) return capture;
+  return { ...capture, parentName: null };
 }
 
 function acceptBool(value: unknown): boolean | null {
@@ -486,11 +469,11 @@ export function acceptOnboardingCapture(
     coparentGroup: acceptBool(row.coparentGroup),
     coparentGroupMode: acceptGroupMode(row.coparentGroupMode),
     nameDeclined: row.nameDeclined === true,
+    nameTakenBack: row.nameTakenBack === true,
     kidsNamesDeclined: row.kidsNamesDeclined === true,
     calendarLater: row.calendarLater === true,
     gmailLater: row.gmailLater === true,
     stopAsking: row.stopAsking === true,
-    stillAsking: acceptStillAsking(row.stillAsking),
     language: acceptReplyLanguage(typeof row.language === 'string' ? row.language : null),
   };
 }
@@ -540,13 +523,11 @@ export function mergeCaptures(
     coparentGroup: next.coparentGroup ?? prior.coparentGroup,
     coparentGroupMode: next.coparentGroupMode ?? prior.coparentGroupMode,
     nameDeclined: next.nameDeclined || prior.nameDeclined,
+    nameTakenBack: next.nameTakenBack === true,
     kidsNamesDeclined: next.kidsNamesDeclined || prior.kidsNamesDeclined,
     calendarLater: next.calendarLater || prior.calendarLater,
     gmailLater: next.gmailLater || prior.gmailLater,
     stopAsking: next.stopAsking || prior.stopAsking,
-    // This reply's ask only. A later reply that asks nothing must not keep
-    // the previous reply's stillAsking.
-    stillAsking: next.stillAsking,
     language: next.language ?? prior.language,
   };
 }

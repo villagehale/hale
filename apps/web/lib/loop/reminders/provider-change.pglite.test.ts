@@ -5,6 +5,7 @@ import { recordActivityBooking } from '~/lib/integrations/booking';
 import { reconcileCalendarMirrors } from '~/lib/integrations/calendar-mirror';
 import { recordEmailProviderChange } from '~/lib/integrations/email-alert';
 import { correlationMatchCount } from '~/lib/sentinel/correlate';
+import { kidForAllClient } from '~/lib/testing/kid-judge-client';
 import { type TestDb, createTestDb, seedFamily, seedIntegration } from '~/lib/testing/pglite';
 import { changeFromColumns } from './change';
 import { applyProviderChange } from './provider-change';
@@ -30,6 +31,9 @@ afterAll(async () => {
 });
 let gmailIntegration: string | undefined;
 beforeEach(async () => {
+  // The mirror's kid gate hashes each input with a keyed blind index (VIL-548).
+  process.env.APP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+  process.env.HALE_LLM_NO_STREAM = '1';
   family = await seedFamily(db.database);
   gmailIntegration = undefined;
 });
@@ -277,6 +281,11 @@ describe('applyProviderChange', () => {
       timeZone: TZ,
       now: NOW,
       trustWindow: true,
+      kidJudge: {
+        mode: 'model',
+        client: kidForAllClient(),
+        deadline: new Date('2099-01-01T00:00:00.000Z'),
+      },
     });
     const [mirror] = await db.database
       .select()

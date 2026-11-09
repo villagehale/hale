@@ -10,12 +10,12 @@ import {
   coldStartIsStale,
   coldStartQuestionIsStale,
   countRejectedScheduleAdds,
-  dropAskedAnswer,
+  dropTakeBackName,
+  foldMessage,
   kidsAreNamed,
   mergeCaptures,
   mergeChildFacts,
   onboardingMissing,
-  stillAskingConflicts,
   storedFromCapture,
 } from './onboarding-turn';
 
@@ -46,46 +46,58 @@ describe('the onboarding order', () => {
 });
 
 describe('onboarding capture', () => {
-  it('reads stillAsking and does not treat that open ask as an answer', () => {
-    const asked = acceptOnboardingCapture({
-      stillAsking: 'group',
-      coparentGroup: false,
-      coparentGroupMode: 'new',
-      calendarLater: true,
-      stopAsking: false,
-    });
-    expect(asked.stillAsking).toBe('group');
-    expect(asked.calendarLater).toBe(true);
-    expect(dropAskedAnswer(asked)).toMatchObject({
-      coparentGroup: null,
-      coparentGroupMode: null,
-      calendarLater: true,
-    });
-    expect(stillAskingConflicts({ stopAsking: true, stillAsking: 'coparent' })).toBe(true);
-    expect(stillAskingConflicts(asked)).toBe(false);
-    expect(acceptOnboardingCapture({ stillAsking: '家长' }).stillAsking).toBeNull();
-    expect(acceptOnboardingCapture({ stillAsking: 'gmail' }).stillAsking).toBe('gmail');
-  });
-
-  it('takes stillAsking from the current capture only', () => {
-    const prior = acceptOnboardingCapture({
-      stillAsking: 'calendar',
-      calendarLater: true,
-    });
-    const quiet = acceptOnboardingCapture({ stillAsking: null, parentName: 'Sam' });
-    const merged = mergeCaptures(prior, quiet);
-    expect(merged.stillAsking).toBeNull();
-    expect(merged.calendarLater).toBe(true);
-    expect(merged.parentName).toBe('Sam');
-    const asking = acceptOnboardingCapture({ stillAsking: 'group' });
-    expect(mergeCaptures(prior, asking).stillAsking).toBe('group');
-  });
-
   it('keeps a postal field and drops a sentence', () => {
     const clean = acceptOnboardingCapture({ postalCode: 'M5V 2T6' });
     expect(storedFromCapture(prior, clean).place?.postalCode).toBe('M5V 2T6');
     const sentence = acceptOnboardingCapture({ postalCode: 'we are in M5V 2T6' });
     expect(storedFromCapture(prior, sentence).place).toBeNull();
+  });
+
+  it('drops a parentName that is the whole take-back message', () => {
+    const open = dropTakeBackName(
+      'pas maintenant',
+      acceptOnboardingCapture({ parentName: 'pas maintenant', nameDeclined: true }),
+    );
+    expect(open.parentName).toBeNull();
+    expect(open.nameDeclined).toBe(true);
+    const instead = dropTakeBackName(
+      'Robin',
+      acceptOnboardingCapture({ parentName: 'Robin', nameConfirmed: false }),
+    );
+    expect(instead.parentName).toBe('Robin');
+    expect(instead.nameConfirmed).toBe(false);
+    const retracted = dropTakeBackName(
+      'Undo',
+      acceptOnboardingCapture({ parentName: 'Undo', nameTakenBack: true }),
+    );
+    expect(retracted.parentName).toBeNull();
+    expect(retracted.nameDeclined).toBe(false);
+    expect(retracted.nameTakenBack).toBe(true);
+    const named = dropTakeBackName('Dana', acceptOnboardingCapture({ parentName: 'Dana' }));
+    expect(named.parentName).toBe('Dana');
+  });
+
+  it('folds quotes, end marks, accents, case and spaces, so a take-back is caught in any of them', () => {
+    expect(foldMessage('  « Béa. »  ')).toBe('bea');
+    expect(foldMessage('Pas   MAINTENANT!')).toBe('pas maintenant');
+    const shouted = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'annule', nameTakenBack: true }),
+    );
+    expect(shouted.parentName).toBeNull();
+    const other = dropTakeBackName(
+      'ANNULÉ',
+      acceptOnboardingCapture({ parentName: 'Dana', nameTakenBack: true }),
+    );
+    expect(other.parentName).toBe('Dana');
+  });
+
+  it('a take-back does not close the name, and does not stick', () => {
+    const capture = acceptOnboardingCapture({ nameTakenBack: true });
+    expect(checklistAfter(EMPTY_CHECKLIST, capture).name).toBe(false);
+    const later = mergeCaptures(capture, acceptOnboardingCapture(null));
+    expect(later.nameTakenBack).toBe(false);
+    expect(later.nameDeclined).toBe(false);
   });
 
   it('takes the parent name and the kids names from one message', () => {

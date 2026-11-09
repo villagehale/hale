@@ -1,11 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { redactInShape, scrubPlaceTokens } from '../place-token';
 import type { ReplyLanguage } from './medical';
 
 /**
  * The general answer's REQUESTS: what each of its three calls is sent, and the
  * deterministic scrub that runs under the sanitizer (see answer.ts for the lane).
  *
- * This file imports nothing from the web app at runtime, on purpose. The eval
+ * This file imports nothing from behind the web app's `~/` alias at runtime, on purpose
+ * (place-token.ts is relative and imports nothing). The eval
  * (apps/worker/evals/run-general-answer-eval.mjs) cannot resolve the app's `~/` alias,
  * and it used to keep its own copy of every shape here. It loads this file instead, so a
  * recording is the request production sends and not a copy that can drift from it.
@@ -418,10 +420,14 @@ export function safetyDoorFor(category: string): SafetyDoor {
  * millions its figure, written out plain or in groups of three, and a price that size
  * written in groups after its sign.
  *
- * EVERY PATTERN READS ONE SHAPE OF THE TEXT ({@link oneShape}): a digit is a digit and a
- * dash is a dash however it was typed, and what may stand between two groups of digits
- * is one list ({@link BETWEEN_GROUPS}). What is handed on is the text as it was typed,
- * less what a pattern took out.
+ * EVERY PATTERN READS ONE SHAPE OF THE TEXT ({@link redactInShape}): a digit is a digit
+ * and a dash is a dash however it was typed, and what may stand between two groups of
+ * digits is one list ({@link BETWEEN_GROUPS}). What is handed on is the text as it was
+ * typed, less what a pattern took out.
+ *
+ * A postal code and a ZIP are the one matcher every search shares (place-token.ts), run
+ * last so a five-digit house number goes with its street. That costs an unseparated
+ * five-digit count its figure; a price and a grouped figure keep theirs.
  *
  * A name is free-form and stays the sanitizer's job. So does a street written in lower
  * case with its suffix spelled out and more than one word in its name, which no pattern
@@ -443,12 +449,6 @@ const DIRECT_IDENTIFIERS: RegExp[] = [
   new RegExp(`(?<!\\d)\\d{4}${BETWEEN_GROUPS}\\d{3}${BETWEEN_GROUPS}\\d{3}(?!\\d)`, 'g'), // grouped number, four-three-three
   new RegExp(`(?<!\\d)\\d{3}${BETWEEN_GROUPS}\\d{3}${BETWEEN_GROUPS}\\d{3}(?!\\d)`, 'g'), // grouped number, three-three-three
   /(?<![\d$])(?<!\d\.)\d{9,}(?!\d)/g, // nine or more digits in a row
-  /\b[a-z]\d[a-z][ -]?\d[a-z]\d\b/gi, // Canadian postal code
-  /\b\d{5}-\d{4}\b/g, // US ZIP+4
-  // A bare five digits is a ZIP only where an address puts one: after a state code, or
-  // after the word itself. Anywhere else it is a price or a count.
-  /(?<=\b[A-Z]{2},?\s{1,2})\d{5}(?!\d)/g, // US ZIP after a state code
-  /(?<=\bzip(?:\s?code)?(?:\s+is)?:?\s{1,2})\d{5}(?!\d)/gi, // US ZIP after the word
   // A door: a number, a name of one or two words, and a suffix nobody uses for anything
   // else. In any case, because a text is typed in lower case.
   /(?<![\p{L}\p{N}])\d{1,5}[a-z]?\s+(?:[\p{L}'’.-]+\s+){1,2}(?:st|ave|rd|blvd|cres|hwy|pkwy|street|avenue|boulevard|crescent)\b\.?/giu,
@@ -458,64 +458,9 @@ const DIRECT_IDENTIFIERS: RegExp[] = [
 ];
 const REDACTED = '[redacted]';
 
-const ANY_DASH = /[\p{Dash_Punctuation}\u2212]/gu;
-const ANY_DIGIT = /\p{Decimal_Number}/gu;
-const NOT_SEEN = /\p{Format}/gu;
-
-/**
- * A decimal digit of any script as the ordinary one. Unicode lays each script's digits out
- * as ten code points in a row, zero first, so a digit's value is how far it stands from
- * the start of its row.
- */
-function ordinaryDigit(digit: string): string {
-  let below = 0;
-  let point = (digit.codePointAt(0) as number) - 1;
-  while (point >= 0 && String.fromCodePoint(point).match(ANY_DIGIT) !== null) {
-    below += 1;
-    point -= 1;
-  }
-  return String(below % 10);
-}
-
-/**
- * One character as every pattern reads it: its compatibility form (Unicode NFKC, so a
- * full-width digit is the digit and a no-break space is a space), with any dash or minus
- * sign as a hyphen and a digit of any script as the ordinary one. A character that is
- * never seen (a zero-width space or joiner, a soft hyphen) has no shape at all, so one
- * typed inside a number does not split it.
- */
-function oneShape(char: string): string {
-  return char
-    .normalize('NFKC')
-    .replace(NOT_SEEN, '')
-    .replace(ANY_DASH, '-')
-    .replace(ANY_DIGIT, ordinaryDigit);
-}
-
-/** What one pattern takes out of `text`. The pattern is matched against the one shape,
- * and each character of the text any part of a match was read from goes with it. */
-function redact(text: string, pattern: RegExp): string {
-  const chars = Array.from(text, (char) => ({ char, shape: oneShape(char) }));
-  const matches = Array.from(
-    chars
-      .map(({ shape }) => shape)
-      .join('')
-      .matchAll(pattern),
-    (match) => ({ start: match.index, end: match.index + match[0].length }),
-  );
-  let scrubbed = '';
-  let at = 0;
-  let inside: (typeof matches)[number] | undefined;
-  for (const { char, shape } of chars) {
-    const match = matches.find(({ start, end }) => start < at + shape.length && at < end);
-    if (match === undefined) scrubbed += char;
-    else if (match !== inside) scrubbed += REDACTED;
-    inside = match;
-    at += shape.length;
-  }
-  return scrubbed;
-}
-
 export function scrubDirectIdentifiers(text: string): string {
-  return DIRECT_IDENTIFIERS.reduce(redact, text);
+  return scrubPlaceTokens(
+    DIRECT_IDENTIFIERS.reduce((acc, pattern) => redactInShape(acc, pattern, REDACTED), text),
+    REDACTED,
+  );
 }

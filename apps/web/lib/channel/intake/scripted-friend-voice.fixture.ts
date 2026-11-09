@@ -5,11 +5,7 @@
  * (what was sent, what was stored), never these words.
  */
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
-import {
-  EMPTY_ONBOARDING_CAPTURE,
-  type OnboardingCapture,
-  type StillAsking,
-} from './onboarding-turn';
+import { EMPTY_ONBOARDING_CAPTURE, type OnboardingCapture } from './onboarding-turn';
 function offScriptAside(words: string): string | null {
   if (/who is this/i.test(words)) {
     return "I'm Hale, from Village Hale Technologies (villagehale.com). The site has the details, price included.";
@@ -35,6 +31,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 } {
   const words = input.parentWords.trim();
   const capture: OnboardingCapture = {
@@ -149,11 +147,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   const name = capture.parentName ?? input.parentName;
 
   if (input.step === 'find_show') {
-    return {
-      reply: 'Here is what is on near you for their ages.',
-      capture,
-      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
-    };
+    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
@@ -184,49 +178,36 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   let ask: string;
-  let stillAsking: StillAsking | null = null;
   if (speakingFrench && !postalKnown) {
-    stillAsking = 'postal';
     ask = "Salut, c'est Hale. Quel est ton code postal?";
   } else if (speakingFrench && !kidsKnown) {
-    stillAsking = 'kids';
     ask = "Comment s'appellent tes enfants?";
   } else if (speakingFrench && !agesKnown) {
-    stillAsking = 'ages';
     ask = 'Quel âge ont les enfants?';
   } else if (!postalKnown) {
-    stillAsking = 'postal';
     ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";
   } else if (!kidsKnown) {
-    stillAsking = 'kids';
     ask = "What are your kids' names?";
   } else if (!agesKnown) {
-    stillAsking = 'ages';
     ask = 'How old are your kids?';
   } else if (!nameKnown) {
-    stillAsking = 'name';
     ask = 'What should I call you?';
   } else if (!gmailKnown) {
-    stillAsking = 'gmail';
     ask = name
       ? `${name}, want me to watch school and camp email for the dates?`
       : 'Want me to watch school and camp email for the dates?';
   } else if (!calendarKnown) {
-    stillAsking = 'calendar';
     ask = name ? `${name}, want me to check your calendar?` : 'Want me to check your calendar?';
   } else if (!scheduleKnown && input.findLines.length > 0) {
-    stillAsking = 'schedule';
     ask = 'Want the first one on your calendar as a weekly reminder?';
   } else if (!coparentKnown) {
-    stillAsking = 'coparent';
     ask = 'Want me to set up a group chat with the other parent?';
   } else {
     return { reply: offScriptAside(words) ?? 'All set.', capture };
   }
-  capture.stillAsking = stillAsking;
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: true };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */

@@ -1,6 +1,6 @@
 import type { SaidLineWriter } from '~/lib/channel/voice/said-line';
 import { type NumberOrigin, numberOriginFact } from './number-origin';
-import { type OptOutReading, isIdentityReading } from './opt-out-reader';
+import { type OptOutIntentReading, isIdentityReading } from './opt-out-reader';
 
 /**
  * VIL-333 — an identity or distrust challenge ("who is this", "is this a scam", a
@@ -52,7 +52,7 @@ export type IdentityChallengeReply =
 export async function identityChallengeReply(
   body: string,
   writer: SaidLineWriter | null | undefined,
-  reading: OptOutReading | null,
+  reading: OptOutIntentReading | null,
   /** How Hale has this number, read from the family's record only once this is a
    * challenge (#919). Absent or null: no such fact, and the writer does not guess. */
   numberOrigin?: () => Promise<NumberOrigin | null>,

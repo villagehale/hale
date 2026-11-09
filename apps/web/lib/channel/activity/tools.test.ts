@@ -40,7 +40,7 @@ function guardDeps(): GuardDeps {
 
 function reader(overrides: Partial<BoundActivityReader> = {}): BoundActivityReader {
   return {
-    municipality: async () => 'halton_hills',
+    place: async () => ({ status: 'known', town: 'Halton Hills' }),
     stage: async () => 'toddler',
     householdNames: async () => ['Noah'],
     ...overrides,
@@ -80,21 +80,32 @@ describe('find_activities', () => {
     });
   });
 
-  it('searches a Danforth family in Toronto and East York, not all of Toronto', async () => {
+  it('adds the family-local day from the record when it is known (VIL-435)', async () => {
     const seen: unknown[] = [];
     const tool = findActivitiesTool({
-      reader: reader({
-        municipality: async () => 'toronto',
-        areaCoarse: async () => 'M4K 1N1',
-      }),
+      reader: reader({ today: async () => '2026-10-12 (Monday)' }),
       finder: fakeFinder(seen),
       onPromise: () => {},
     });
 
-    await call(tool, { subject: 'kids swimming' });
+    await call(tool, { subject: 'drop-in playgroup', window: 'today' });
+    await call(
+      findActivitiesTool({
+        reader: reader({ today: async () => null }),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+      }),
+      { subject: 'drop-in playgroup', window: 'today' },
+    );
 
-    expect(seen[0]).toMatchObject({ town: 'Toronto and East York' });
-    expect(JSON.stringify(seen[0])).not.toContain('M4K');
+    expect(seen[0]).toEqual({
+      subject: 'drop-in playgroup',
+      window: 'today',
+      town: 'Halton Hills',
+      stage: 'toddler',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(seen[1]).not.toHaveProperty('today');
   });
 
   it('refuses a subject naming a child with a sentence the model can act on, and searches nothing', async () => {
@@ -340,7 +351,6 @@ describe('find_activities family slice (VIL-518)', () => {
   const FIT = {
     children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
     homeArea: 'halton_hills' as const,
-    near: null,
     preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
   };
 

@@ -3,6 +3,7 @@ import { PROACTIVE_QUIET_HOURS } from '~/lib/channel/outbound-gate';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { linqGroupPlanRsvpEnabled } from '../config';
 import { groupPlanRsvpLineInput } from './facts';
+import { GroupPlanRsvpHeld } from './send';
 import type { GroupPlanRsvpStore } from './store';
 import {
   type GroupPlanRsvpComposer,
@@ -15,7 +16,9 @@ import {
  *
  * Deduped by claim-before-send (one wave per plan). Quiet hours are the
  * covering family's local window. The model writes the nudge from waiting
- * names and the deadline. A missed send releases the claim.
+ * names and the deadline. A missed send releases the claim. A follow-up the
+ * family-chat floor holds is `held`: a participant read that failed for now
+ * releases the claim for a later tick; any other refusal keeps the wave spent.
  */
 
 export const GROUP_PLAN_FOLLOWUP_WAVE = 1;
@@ -27,6 +30,7 @@ export interface GroupPlanFollowupResult {
   quietHours: number;
   failed: number;
   skipped: number;
+  held: number;
 }
 
 export interface GroupPlanFollowupDeps {
@@ -52,6 +56,7 @@ export async function runGroupPlanFollowups(
     quietHours: 0,
     failed: 0,
     skipped: 0,
+    held: 0,
   };
   const enabled = deps.enabled ?? linqGroupPlanRsvpEnabled;
   if (!enabled()) return result;
@@ -98,6 +103,17 @@ export async function runGroupPlanFollowups(
       await deps.store.markFollowupSent(item.plan.id, GROUP_PLAN_FOLLOWUP_WAVE, now);
       result.sent += 1;
     } catch (err) {
+      if (err instanceof GroupPlanRsvpHeld) {
+        if (err.reason === 'participants_unverified') {
+          await deps.store.releaseFollowup(item.plan.id, GROUP_PLAN_FOLLOWUP_WAVE);
+        }
+        console.warn(
+          { outcome: 'group_plan_followup_held', reason: err.reason },
+          'group plan rsvp: follow-up held by the family-chat floor',
+        );
+        result.held += 1;
+        continue;
+      }
       await deps.store.releaseFollowup(item.plan.id, GROUP_PLAN_FOLLOWUP_WAVE);
       console.error(
         { err: err instanceof Error ? err.name : 'unknown' },

@@ -10,7 +10,6 @@
 import { localeFor } from '~/lib/channel/language';
 import { zonedMidnight } from '~/lib/memory/period';
 
-export const AHA_TIME_ZONE = 'America/Toronto';
 export const AHA_ITEM_LIMIT = 8;
 /** Far enough to name a registration that is not tomorrow, short enough for one text. */
 export const AHA_CALENDAR_HORIZON_MS = 21 * 24 * 60 * 60 * 1000;
@@ -183,9 +182,9 @@ function selfDeclined(item: Record<string, unknown>): boolean {
   return false;
 }
 
-function torontoDay(now: Date): string {
+function dayIn(now: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: AHA_TIME_ZONE,
+    timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -197,13 +196,13 @@ interface Timed {
   endMs: number;
 }
 
-function factInterval(fact: AhaCalendarFact): Timed | null {
+function factInterval(fact: AhaCalendarFact, timeZone: string): Timed | null {
   if (fact.allDay) {
-    const start = zonedMidnight(fact.start, AHA_TIME_ZONE);
+    const start = zonedMidnight(fact.start, timeZone);
     if (Number.isNaN(start.getTime())) return null;
     const endKey = fact.end && fact.end !== fact.start ? fact.end : null;
     const end = endKey
-      ? zonedMidnight(endKey, AHA_TIME_ZONE)
+      ? zonedMidnight(endKey, timeZone)
       : new Date(start.getTime() + 24 * 60 * 60 * 1000);
     if (Number.isNaN(end.getTime()) || end.getTime() <= start.getTime()) return null;
     return { startMs: start.getTime(), endMs: end.getTime() };
@@ -216,10 +215,16 @@ function factInterval(fact: AhaCalendarFact): Timed | null {
   return { startMs, endMs };
 }
 
-/** Two real intervals overlap. A missing end is not given a guessed duration. */
-export function calendarOverlaps(facts: readonly AhaCalendarFact[]): AhaOverlap[] {
+/**
+ * Two real intervals overlap. A missing end is not given a guessed duration.
+ * An all-day event spans the family's own day, so `timeZone` is theirs.
+ */
+export function calendarOverlaps(
+  facts: readonly AhaCalendarFact[],
+  timeZone: string,
+): AhaOverlap[] {
   const spans = facts.flatMap((fact) => {
-    const span = factInterval(fact);
+    const span = factInterval(fact, timeZone);
     return span ? [{ fact, span }] : [];
   });
   const overlaps: AhaOverlap[] = [];
@@ -238,9 +243,16 @@ export function calendarOverlaps(facts: readonly AhaCalendarFact[]): AhaOverlap[
   return overlaps.slice(0, 4);
 }
 
-/** Upcoming items from one events.list page. Past and cancelled rows are not upcoming. */
-export function calendarFactsFromItems(items: readonly unknown[], now: Date): AhaCalendarFact[] {
-  const today = torontoDay(now);
+/**
+ * Upcoming items from one events.list page. Past and cancelled rows are not
+ * upcoming. "Today" is the family's own day in `timeZone`.
+ */
+export function calendarFactsFromItems(
+  items: readonly unknown[],
+  now: Date,
+  timeZone: string,
+): AhaCalendarFact[] {
+  const today = dayIn(now, timeZone);
   const facts: AhaCalendarFact[] = [];
   for (const raw of items) {
     if (typeof raw !== 'object' || raw === null) continue;
@@ -321,6 +333,7 @@ function snapshot(
   provider: 'gcal' | 'gmail',
   calendar: AhaCalendarFact[],
   email: AhaEmailFact[],
+  timeZone: string,
 ): AhaSnapshot {
   const populated = provider === 'gcal' ? calendar.length > 0 : email.length > 0;
   return {
@@ -328,7 +341,7 @@ function snapshot(
     read: populated ? 'ok' : 'empty',
     calendar,
     email,
-    overlaps: calendarOverlaps(calendar),
+    overlaps: calendarOverlaps(calendar, timeZone),
   };
 }
 
@@ -351,6 +364,8 @@ export async function loadConnectedAha(input: {
   provider: 'gcal' | 'gmail';
   accessToken: string;
   now: Date;
+  /** The family's IANA zone: their today, and their all-day spans. */
+  timeZone: string;
   googleFetch: AhaGoogleFetch;
   hasTeen: boolean;
 }): Promise<AhaSnapshot> {
@@ -366,13 +381,14 @@ export async function readConnectedAha(input: {
   provider: 'gcal' | 'gmail';
   accessToken: string;
   now: Date;
+  timeZone: string;
   googleFetch: AhaGoogleFetch;
 }): Promise<AhaSnapshot> {
-  const { provider, accessToken, now, googleFetch } = input;
+  const { provider, accessToken, now, timeZone, googleFetch } = input;
   if (!accessToken) return failedAha(provider);
   try {
-    if (provider === 'gcal') return await readCalendar(accessToken, now, googleFetch);
-    return await readMailbox(accessToken, googleFetch);
+    if (provider === 'gcal') return await readCalendar(accessToken, now, timeZone, googleFetch);
+    return await readMailbox(accessToken, timeZone, googleFetch);
   } catch {
     return failedAha(provider);
   }
@@ -381,6 +397,7 @@ export async function readConnectedAha(input: {
 async function readCalendar(
   accessToken: string,
   now: Date,
+  timeZone: string,
   googleFetch: AhaGoogleFetch,
 ): Promise<AhaSnapshot> {
   const params = new URLSearchParams({
@@ -399,10 +416,14 @@ async function readCalendar(
   const items = Array.isArray((listed.data as { items?: unknown }).items)
     ? ((listed.data as { items: unknown[] }).items ?? [])
     : [];
-  return snapshot('gcal', calendarFactsFromItems(items, now), []);
+  return snapshot('gcal', calendarFactsFromItems(items, now, timeZone), [], timeZone);
 }
 
-async function readMailbox(accessToken: string, googleFetch: AhaGoogleFetch): Promise<AhaSnapshot> {
+async function readMailbox(
+  accessToken: string,
+  timeZone: string,
+  googleFetch: AhaGoogleFetch,
+): Promise<AhaSnapshot> {
   const listed = await getJson(
     googleFetch,
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${AHA_ITEM_LIMIT}`,
@@ -422,7 +443,7 @@ async function readMailbox(accessToken: string, googleFetch: AhaGoogleFetch): Pr
   );
   const messages = fetched.flatMap((row) => (row.ok ? [row.data] : []));
   if (messages.length === 0) return failedAha('gmail');
-  return snapshot('gmail', [], emailFactsFromMessages(messages));
+  return snapshot('gmail', [], emailFactsFromMessages(messages), timeZone);
 }
 
 function messageIds(data: unknown): string[] {

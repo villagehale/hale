@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale is writing before Riverford's winter registration opens, which is a promise to watch that registration season. Row w1 is the Riverford winter registration and is mintable, so it backs the claim.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "registration_watch",
+        "row": "w1"
+      }
+    ]
+  },
+  "latencyMs": 2211
+}

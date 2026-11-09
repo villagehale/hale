@@ -1,10 +1,22 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import { crisisFactsForRegion } from '~/lib/channel/crisis-resources';
 import { HALE_CONTACT_FIRST_NAME } from '~/lib/channel/linq/contact-card';
+import type {
+  CrisisPager,
+  CrisisUnanswered,
+  SaidLineInput,
+  SaidLineWriter,
+} from '~/lib/channel/voice/said-line';
+import { scriptedSaidLine } from '~/lib/channel/voice/scripted-said-line.fixture';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import type { IntakeAnswerOutcome } from './answer';
 import type { IntakeCollected } from './extract';
 import {
+  FakeAnswerComposer,
   type FakeDb,
   FakeExtractor,
   FakeIdentityAsk,
@@ -17,7 +29,7 @@ import { runFirstReplyRecoveryCron } from './first-reply-recovery';
 import type { FriendVoiceComposer, FriendVoiceInput } from './friend-voice';
 import { type IntakeDeps, handleInboundSms } from './machine';
 import { EMPTY_ONBOARDING_CAPTURE } from './onboarding-turn';
-import { loadOpenSession } from './session';
+import { type FirstTouchPersisted, loadOpenSession } from './session';
 import { runSittingReminderCron } from './sitting-reminder';
 import { type ChannelTransport, FakeTransport, type InboundMessage } from './transport';
 
@@ -108,6 +120,38 @@ function inbound(
   overrides: Partial<InboundMessage> = {},
 ): InboundMessage {
   return transport.inbound(PHONE, body, overrides);
+}
+
+/** An open session already past the first text, on this harness's number. */
+function seedSession(
+  fake: FakeDb,
+  over: {
+    state: string;
+    ladderLanguage?: string;
+    ladderNext?: string;
+    familyId?: string;
+    userId?: string;
+    collected?: IntakeCollected;
+    firstTouch?: FirstTouchPersisted;
+  },
+): void {
+  fake.db.insert(schema.smsIntakeSessions).values({
+    phoneHash: phoneBlindIndex(PHONE),
+    phoneEncrypted: encryptString(PHONE),
+    state: over.state,
+    dataEncrypted: encryptString(
+      JSON.stringify({
+        collected: over.collected ?? EMPTY,
+        ...(over.firstTouch ? { firstTouch: over.firstTouch } : {}),
+        transcript: [{ direction: 'in', body: 'hi', at: NOW.toISOString() }],
+        ...(over.ladderLanguage ? { ladderLanguage: over.ladderLanguage } : {}),
+        ...(over.ladderNext ? { ladderNext: over.ladderNext } : {}),
+      }),
+    ),
+    createdAt: NOW,
+    familyId: over.familyId ?? null,
+    userId: over.userId ?? null,
+  });
 }
 
 beforeEach(() => {
@@ -593,8 +637,7 @@ describe('friend voice onboarding', () => {
     expect(done.status).toBe('provisioned');
     const bodies = transport.bodies();
     expect(bodies).toHaveLength(3);
-    expect(bodies[1]).toContain('Swim (ages 3-5) - Saturday');
-    expect(bodies[1]).not.toMatch(/^\d+\.\s/m);
+    expect(bodies[1]).toContain('1. Swim (ages 3-5) - Saturday');
     expect(bodies[1]).not.toContain('?');
     expect(bodies[2]).toBe('What should I call you?');
     expect(bodies.join('\n')).not.toMatch(/postal code|how old|which of these/i);
@@ -708,33 +751,102 @@ describe('friend voice onboarding', () => {
     expect(calendar).toContain('/connect?t=');
     expect(calendar).toContain('to=gcal');
   });
-  it('routes a crisis through the model reader and sends its reply before any ask', async () => {
-    // #868: no token list and no fixed crisis line. The turn's reader routes the
-    // crisis and writes the reply; the fixture stands in for the model.
-    const crisisReader = (intent: 'crisis_emergency' | 'crisis_mental', reply: string) => ({
-      read: async () => ({ intent, confirmation: reply }),
+  it('routes a crisis through the model reader; the writer answers from facts before any ask', async () => {
+    // Design B: the reader only classifies. Its own draft is never sent; the said-line
+    // writer writes from facts alone, in the language the reader read.
+    const crisisReader = (
+      intent: 'crisis_emergency' | 'crisis_mental',
+      language: string,
+      situation?: 'not_breathing',
+      who?: 'child',
+    ) => ({
+      read: async () => ({
+        intent,
+        confirmation: 'Reader draft with room 5550100 (test fixture).',
+        language,
+        ...(situation ? { situation } : {}),
+        ...(who ? { who } : {}),
+      }),
     });
+    const calls: SaidLineInput[] = [];
     const { fake, transport, deps } = harness({ voice: true });
-    deps.optOutReader = crisisReader('crisis_emergency', 'Emergency reply (test fixture).');
+    deps.optOutReader = crisisReader('crisis_emergency', 'en', 'not_breathing', 'child');
+    deps.saidLine = scriptedSaidLine(calls);
     const crisis = await handleInboundSms(fake.db, inbound(transport, 'not breathing'), deps);
     expect(crisis).toEqual({ status: 'first_touch', step: 'place_waiting' });
-    expect(transport.bodies()).toEqual(['Emergency reply (test fixture).']);
+    // The situation and who the reader read reach the writer as closed facts.
+    expect(transport.bodies()).toEqual([
+      [
+        '[crisis_emergency/en]',
+        'emergency=911',
+        'situation=they just told Hale their child is not breathing or is struggling to breathe, right now',
+        'firstStep=call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+        'replyLanguage=English',
+      ].join('\n'),
+    ]);
+    expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);
+    expect(calls[0]).not.toHaveProperty('parentWords');
 
+    const mentalCalls: SaidLineInput[] = [];
     const { fake: fake2, transport: transport2, deps: deps2 } = harness({ voice: true });
-    deps2.optOutReader = crisisReader('crisis_mental', 'Crisis line reply (test fixture).');
+    deps2.optOutReader = crisisReader('crisis_mental', 'fr');
+    deps2.saidLine = scriptedSaidLine(mentalCalls);
     const mental = await handleInboundSms(
       fake2.db,
-      inbound(transport2, 'i cant do this anymore'),
+      inbound(transport2, "je n'en peux plus"),
       deps2,
     );
     expect(mental.status).toBe('first_touch');
-    expect(transport2.bodies()).toEqual(['Crisis line reply (test fixture).']);
+    expect(transport2.bodies()).toHaveLength(1);
+    expect(transport2.bodies()[0]?.startsWith('[crisis_mental/fr]\n')).toBe(true);
+    expect(transport2.bodies()[0]).not.toContain('Reader draft');
+    expect(mentalCalls[0]?.language).toBe('fr');
+    expect(mentalCalls[0]).not.toHaveProperty('parentWords');
 
-    // A crisis whose reply came back empty still ends the turn: no onboarding ask.
+    // No writer wired: nothing is sent, and the turn still ends (no onboarding ask).
     const { fake: fake3, transport: transport3, deps: deps3 } = harness({ voice: true });
-    deps3.optOutReader = crisisReader('crisis_emergency', '');
-    await handleInboundSms(fake3.db, inbound(transport3, 'fire'), deps3);
+    deps3.optOutReader = crisisReader('crisis_emergency', 'en');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const alerts: CrisisUnanswered[] = [];
+    deps3.crisisPager = {
+      record: async () => {},
+      page: async (alert) => {
+        alerts.push(alert);
+        return 'paged';
+      },
+    };
+    const fire = inbound(transport3, 'fire');
+    await handleInboundSms(fake3.db, fire, deps3);
     expect(transport3.bodies()).toEqual([]);
+    // Before any family exists the page still goes out, keyed on this inbound.
+    expect(alerts).toEqual([
+      {
+        kind: 'emergency',
+        where: 'intake crisis',
+        reason: 'no_writer',
+        writes: 0,
+        inboundId: fire.providerId,
+        familyId: null,
+        parentUserId: null,
+        // The language the reader read, kept with the claim for a later reply.
+        language: 'en',
+        situation: null,
+        who: null,
+      },
+    ]);
+  });
+
+  it('a crisis reply is in the language Hale already holds, over the language the reader read', async () => {
+    const calls: SaidLineInput[] = [];
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, { state: 'awaiting_place', ladderLanguage: 'fr' });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'crisis_mental', confirmation: '', language: 'en' }),
+    };
+    deps.saidLine = scriptedSaidLine(calls);
+    await handleInboundSms(fake.db, inbound(transport, 'I cannot go on'), deps);
+    expect(calls.map((c) => [c.purpose, c.language])).toEqual([['crisis_mental', 'fr']]);
+    expect(transport.bodies()).toHaveLength(1);
   });
 
   it('accepts a US ZIP and still replies when a city name is not a place', async () => {
@@ -918,71 +1030,6 @@ describe('friend voice onboarding', () => {
     const delivered = await loadOpenSession(fake.db, PHONE);
     expect(delivered?.firstTouch?.coldStart?.findDelivered).not.toBe(false);
   });
-
-  it('does not resend a map bubble that already landed', async () => {
-    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
-    const { fake, transport, deps } = harness({ voice: true });
-    const swim = 'Parent and tot swim at Pape (ages 3-5) - Saturdays 10:00';
-    const story = 'Storytime at Riverdale Library (ages 6-8) - Tuesdays 10:30';
-    deps.radar = {
-      async compose() {
-        return {
-          message: `[swimming]\n1. ${swim}\n[free_public]\n2. ${story}`,
-          groups: [
-            {
-              category: 'swimming' as const,
-              lines: [swim],
-              titles: ['Parent and tot swim at Pape'],
-            },
-            {
-              category: 'free_public' as const,
-              lines: [story],
-              titles: ['Storytime at Riverdale Library'],
-            },
-          ],
-          itemCount: 2,
-          followUpNeeded: false,
-          checkpointTold: null,
-          weekendPickOffered: false,
-          findWon: true,
-          firstFindPromised: false,
-          actionMove: null,
-          actionHeld: 'no_move',
-          voiceFallback: null,
-          mapFinder: 'used' as const,
-        };
-      },
-    };
-    const send = transport.send.bind(transport);
-    transport.send = async (input) => {
-      if (input.body.includes('Riverdale')) throw new Error('bubble down');
-      return send(input);
-    };
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 4, M5V 2T6'), deps);
-    const owed = await loadOpenSession(fake.db, PHONE);
-    expect(owed?.firstTouch?.coldStart?.findDelivered).toBe(false);
-    expect(owed?.firstTouch?.coldStart?.findSentKeys).toEqual(['opener', 'group:0']);
-    expect(transport.bodies().filter((body) => body.includes('Pape'))).toHaveLength(1);
-    expect(transport.bodies().some((body) => body.includes('Riverdale'))).toBe(false);
-
-    transport.send = send;
-    await handleInboundSms(fake.db, inbound(transport, 'still here'), deps);
-    expect(transport.bodies().filter((body) => body.includes('Pape'))).toHaveLength(1);
-    expect(transport.bodies().filter((body) => body.includes('Riverdale'))).toHaveLength(1);
-    expect(transport.bodies().filter((body) => body.startsWith('Here is what is on'))).toHaveLength(
-      1,
-    );
-    const delivered = await loadOpenSession(fake.db, PHONE);
-    expect(delivered?.firstTouch?.coldStart?.findDelivered).not.toBe(false);
-    const keys = fake
-      .rows(schema.channelMessages)
-      .map((row) => row.dedupeKey)
-      .filter((key) => typeof key === 'string');
-    expect(keys.filter((key) => String(key).endsWith(':opener'))).toHaveLength(1);
-    expect(keys.filter((key) => String(key).endsWith(':group:0'))).toHaveLength(1);
-    expect(keys.filter((key) => String(key).endsWith(':group:1'))).toHaveLength(1);
-  });
-
   it('updates the child age without re-running the find, and leaves the other family alone', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
@@ -1021,112 +1068,6 @@ describe('friend voice onboarding', () => {
     expect(other?.dateOfBirth).toBe(otherDob);
     expect(transport.bodies().at(-1)).toBe('What should I call you?');
   });
-  it('sends the find_show map when finds show up after declined connects', async () => {
-    vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
-    const { fake, transport, deps } = harness({ voice: true });
-    const swim = 'Parent and tot swim at Pape (ages 3-5) - Saturdays 10:00';
-    const story = 'Storytime at Riverdale Library (ages 6-8) - Tuesdays 10:30';
-    let searches = 0;
-    deps.radar = {
-      async compose() {
-        searches += 1;
-        if (searches === 1) {
-          return {
-            message: '',
-            itemCount: 0,
-            followUpNeeded: true,
-            checkpointTold: null,
-            weekendPickOffered: false,
-            findWon: false,
-            firstFindPromised: false,
-            actionMove: null,
-            actionHeld: 'no_move',
-            voiceFallback: null,
-            mapFinder: 'empty' as const,
-          };
-        }
-        return {
-          message: `[swimming]\n1. ${swim}\n[free_public]\n2. ${story}`,
-          groups: [
-            {
-              category: 'swimming' as const,
-              lines: [swim],
-              titles: ['Parent and tot swim at Pape'],
-            },
-            {
-              category: 'free_public' as const,
-              lines: [story],
-              titles: ['Storytime at Riverdale Library'],
-            },
-          ],
-          itemCount: 2,
-          followUpNeeded: false,
-          checkpointTold: null,
-          weekendPickOffered: false,
-          findWon: true,
-          firstFindPromised: false,
-          actionMove: null,
-          actionHeld: 'no_move',
-          voiceFallback: null,
-          mapFinder: 'used' as const,
-        };
-      },
-    };
-    const voice = deps.friendVoice;
-    deps.friendVoice = {
-      async compose(input, options) {
-        if (!voice) throw new Error('voice missing');
-        const base = await voice.compose(input, options);
-        // The calendar decline also sets stopAsking while still asking the
-        // co-parent question. That used to close intake, and the next text
-        // (the actual no, plus what's good nearby) was handed to the coach.
-        if (input.step === 'calendar' && /^later$/i.test(input.parentWords.trim())) {
-          const prior =
-            base.capture && typeof base.capture === 'object'
-              ? { ...(base.capture as Record<string, unknown>) }
-              : {};
-          // Both flags is not a reply. The retry names the open ask and does
-          // not stop. The prose is Chinese, with a fullwidth question mark and
-          // none of the English co-parent words.
-          return {
-            reply: '要不要和其他家长建个群？',
-            capture: {
-              ...prior,
-              calendarLater: true,
-              coparentGroup: false,
-              stillAsking: 'coparent',
-              stopAsking: input.retry == null,
-            },
-          };
-        }
-        return base;
-      },
-    };
-
-    await handleInboundSms(fake.db, inbound(transport, 'Maya is 7 and Leo is 4, M4K 1N1'), deps);
-    expect(transport.bodies().join('\n')).not.toContain('Pape');
-    await handleInboundSms(fake.db, inbound(transport, 'Dana'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
-    await handleInboundSms(fake.db, inbound(transport, 'later'), deps);
-    const stillOpen = await loadOpenSession(fake.db, PHONE);
-    expect(stillOpen?.state).toBe('awaiting_cold_start');
-    expect(stillOpen?.firstTouch?.given?.coparentGroup).not.toBe(false);
-    expect(transport.bodies().at(-1)).toBe('要不要和其他家长建个群？');
-    expect(transport.bodies().at(-1)).not.toMatch(/group chat|other parent|co-parent/);
-
-    const answered = await handleInboundSms(fake.db, inbound(transport, 'no'), deps);
-    expect(answered.status).not.toBe('ignored');
-    const mapBubbles = transport
-      .bodies()
-      .filter((body) => body.includes('Pape') || body.includes('Riverdale'));
-    expect(mapBubbles.length).toBeGreaterThanOrEqual(2);
-    for (const bubble of mapBubbles) {
-      expect(bubble).not.toMatch(/^\d+\.\s/m);
-      expect(bubble).not.toContain('?');
-    }
-    expect(await loadOpenSession(fake.db, PHONE)).not.toBeNull();
-  });
-
   it('records a no and a later and does not ask that thing again', async () => {
     vi.stubEnv('COLD_START_LADDER_ENABLED', 'true');
     const { fake, transport, deps } = harness({ voice: true });
@@ -1470,8 +1411,10 @@ describe('#868 opt-out reader decides every turn, and a failed read holds the se
     return {
       calls,
       port: {
-        hold: async (hash: string) => void calls.push(`hold:${hash.length > 0}`),
-        release: async (hash: string) => void calls.push(`release:${hash.length > 0}`),
+        hold: async (hash: string, providerMessageId: string) =>
+          void calls.push(`hold:${hash}:${providerMessageId}`),
+        settled: async (providerMessageId: string) =>
+          void calls.push(`settled:${providerMessageId}`),
       },
     };
   };
@@ -1491,22 +1434,396 @@ describe('#868 opt-out reader decides every turn, and a failed read holds the se
     expect(transport.bodies()).toEqual(['Stop confirmation (test fixture).']);
   });
 
-  it('a read that fails (after its retry) holds the sender', async () => {
+  it('a read that fails (after its retry) holds that message by its provider id', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     const held = recorder();
     deps.optOutReader = { read: async () => null };
     deps.optOutHold = held.port;
-    await handleInboundSms(fake.db, inbound(transport, 'unreadable for now'), deps);
-    expect(held.calls).toContain('hold:true');
-    expect(held.calls).not.toContain('release:true');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    expect(held.calls).toEqual([`hold:${phoneBlindIndex(PHONE)}:pm-1`]);
   });
 
-  it('a read that succeeds releases the hold', async () => {
+  it('a read that succeeds settles only the message it read', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     const held = recorder();
     deps.optOutReader = reader('none', '');
     deps.optOutHold = held.port;
-    await handleInboundSms(fake.db, inbound(transport, 'hello again'), deps);
-    expect(held.calls).toEqual(['release:true']);
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'hello again', { providerId: 'pm-2' }),
+      deps,
+    );
+    expect(held.calls).toEqual(['settled:pm-2']);
+  });
+
+  it('VIL-553: a later text read fine never releases the held one', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutHold = held.port;
+    deps.optOutReader = { read: async () => null };
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    deps.optOutReader = reader('none', '');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'hello again', { providerId: 'pm-2' }),
+      deps,
+    );
+    expect(held.calls).toEqual([`hold:${phoneBlindIndex(PHONE)}:pm-1`, 'settled:pm-2']);
+  });
+
+  it('positive control: a redelivery of the held message that is read settles it', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    const held = recorder();
+    deps.optOutHold = held.port;
+    deps.optOutReader = reader('none', '');
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'unreadable for now', { providerId: 'pm-1' }),
+      deps,
+    );
+    expect(held.calls).toEqual(['settled:pm-1']);
+  });
+});
+
+describe('ladder: the answer model flags a mental-health crisis the reader did not', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f001';
+  const USER = '00000000-0000-4000-8000-00000000a001';
+
+  function ladder(
+    reply: string | null,
+    postalCode: string | null = null,
+  ): {
+    fake: FakeDb;
+    transport: FakeTransport;
+    deps: IntakeDeps;
+    calls: SaidLineInput[];
+    reads: () => number;
+  } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      ...(postalCode ? { collected: { children: [], postalCode } } : {}),
+    });
+    let reads = 0;
+    deps.optOutReader = {
+      read: async () => {
+        reads += 1;
+        return { intent: 'none', confirmation: '', language: 'ar' };
+      },
+    };
+    deps.answerComposer = new FakeAnswerComposer({ status: 'mental_crisis' });
+    const calls: SaidLineInput[] = [];
+    const writer: SaidLineWriter = {
+      async write(input) {
+        calls.push(input);
+        return reply;
+      },
+    };
+    deps.saidLine = writer;
+    return { fake, transport, deps, calls, reads: () => reads };
+  }
+
+  it('the writer answers from facts in the language the reader read, on the turn read', async () => {
+    const reply = 'اتصل أو أرسل رسالة إلى 988 الآن.';
+    const { fake, transport, deps, calls, reads } = ladder(reply);
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.purpose).toBe('crisis_mental');
+    expect(calls[0]?.language).toBe('ar');
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion(null, 'mental'),
+      replyLanguage: 'العربية',
+    });
+    expect(calls[0]).not.toHaveProperty('parentWords');
+    expect(transport.bodies()).toEqual([reply]);
+    expect(reads()).toBe(1);
+  });
+
+  it("a US ZIP gets the US crisis line alone, from the session's place", async () => {
+    const reply = 'اتصل أو أرسل رسالة إلى 988 الآن.';
+    const { fake, transport, deps, calls } = ladder(reply, '98101');
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.facts).toEqual({
+      ...crisisFactsForRegion('US', 'mental'),
+      replyLanguage: 'العربية',
+    });
+    expect(transport.bodies()).toEqual([reply]);
+  });
+
+  it("a reply that fails twice reaches the crisis pager with this inbound and this family's id", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const missed = ladder('Call 911.');
+    const alerts: CrisisUnanswered[] = [];
+    const pager: CrisisPager = {
+      record: async () => {},
+      page: async (alert) => {
+        alerts.push(alert);
+        return 'paged';
+      },
+    };
+    missed.deps.crisisPager = pager;
+    const text = inbound(missed.transport, 'words the reader read as none');
+    await handleInboundSms(missed.fake.db, text, missed.deps);
+    expect(missed.transport.bodies()).toEqual([]);
+    expect(alerts).toEqual([
+      {
+        kind: 'mental',
+        where: 'intake answer crisis',
+        reason: 'missing_line',
+        writes: 2,
+        inboundId: text.providerId,
+        familyId: FAMILY,
+        parentUserId: USER,
+        language: 'ar',
+        situation: null,
+        who: null,
+      },
+    ]);
+
+    // Positive control: the same turn with a sendable reply pages nobody.
+    const answered = ladder('اتصل أو أرسل رسالة إلى 988 الآن.');
+    answered.deps.crisisPager = pager;
+    await handleInboundSms(
+      answered.fake.db,
+      inbound(answered.transport, 'words the reader read as none'),
+      answered.deps,
+    );
+    expect(answered.transport.bodies()).toHaveLength(1);
+    expect(alerts).toHaveLength(1);
+  });
+
+  it('a reply that fails the crisis check twice sends nothing and pages #ops', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder('Call 911.');
+    await handleInboundSms(fake.db, inbound(transport, 'words the reader read as none'), deps);
+    expect(calls).toHaveLength(2);
+    expect(transport.bodies()).toEqual([]);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'mental', reason: 'missing_line' }),
+      'URGENT: crisis flagged, no reply sent - paging #ops',
+    );
+  });
+});
+
+describe("ladder: a safety outcome names the health line for the family's region", () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f002';
+  const USER = '00000000-0000-4000-8000-00000000a002';
+  const DOCTOR_LINE = "your child's doctor's after-hours line";
+  const ONTARIO_LINE = 'Health811 (Ontario), call 811, any time';
+  const HURT = 'she fell off the slide and her arm looks wrong';
+
+  function ladder(
+    place: { collected?: string | null; firstTouch?: string },
+    reply: 'echo' | null = 'echo',
+  ): { fake: FakeDb; transport: FakeTransport; deps: IntakeDeps; calls: SaidLineInput[] } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: place.collected ?? null },
+      ...(place.firstTouch
+        ? {
+            firstTouch: {
+              language: null,
+              place: {
+                kind: 'postal',
+                areaCoarse: place.firstTouch.slice(0, 3),
+                postalCode: place.firstTouch,
+                municipality: null,
+                city: null,
+              },
+              locationRequest: null,
+            },
+          }
+        : {}),
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'en' }),
+    };
+    deps.answerComposer = new FakeAnswerComposer({ status: 'safety' });
+    const calls: SaidLineInput[] = [];
+    // A fake at the said-line port, not the model: it hands back the facts it was given.
+    deps.saidLine = {
+      async write(input) {
+        calls.push(input);
+        if (reply === null) return null;
+        return `${input.facts.healthLine} / ${(input.mustInclude ?? []).join(' ')}`;
+      },
+    };
+    return { fake, transport, deps, calls };
+  }
+
+  it('a US ZIP gets 911 and their doctor, and no 811 (the US dig line)', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: '98101' });
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.purpose).toBe('health');
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+    const bodies = transport.bodies();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain('911');
+    expect(bodies[0]).not.toMatch(/\b811\b/);
+    expect(result).toEqual({ status: 'ladder_advanced', step: 'turtle', closed: false });
+    expect(result).not.toHaveProperty('held');
+  });
+
+  it('a family Hale cannot place gets 911 and their doctor', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: null });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+    expect(transport.bodies().join(' ')).not.toMatch(/\b811\b/);
+  });
+
+  it('an Ontario code still gets Health811 and 911', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: 'K7L 3N6' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: ONTARIO_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['811', '911']);
+    expect(transport.bodies()[0]).toMatch(/\b811\b/);
+  });
+
+  it('a province with no verified line gets 911 and their doctor', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: 'V6B 1A1' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+  });
+
+  it('the first code Hale reads decides both country and province', async () => {
+    const { fake, transport, deps, calls } = ladder({ collected: '98101', firstTouch: 'K7L 3N6' });
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(calls[0]?.facts).toEqual({ healthLine: DOCTOR_LINE, emergency: '911' });
+    expect(calls[0]?.mustInclude).toEqual(['911']);
+  });
+
+  it('the composer is handed the first code as the region its searches look in', async () => {
+    const { fake, transport, deps } = ladder({ collected: null, firstTouch: 'K7L 3N6' });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls[0]?.regionToken).toBe('K7L 3N6');
+  });
+
+  it('a session with no code hands the composer no region', async () => {
+    const { fake, transport, deps } = ladder({ collected: null });
+    const composer = new FakeAnswerComposer({ status: 'safety' });
+    deps.answerComposer = composer;
+    await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(composer.calls).toHaveLength(1);
+    expect(composer.calls[0]?.regionToken).toBeNull();
+  });
+
+  it('a write that fails sends nothing and names the hold', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = ladder({ collected: '98101' }, null);
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(transport.bodies()).toEqual([]);
+    expect(result).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+      held: 'write_failed',
+    });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 'intake_health_unwritten',
+        basis: 'united_states',
+        reason: 'write_failed',
+      }),
+      'URGENT: intake_health_unwritten - paging #ops',
+    );
+  });
+
+  it('no writer sends nothing and names the hold', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps } = ladder({ collected: '98101' });
+    deps.saidLine = undefined;
+    const result = await handleInboundSms(fake.db, inbound(transport, HURT), deps);
+    expect(transport.bodies()).toEqual([]);
+    expect(result).toEqual({
+      status: 'ladder_advanced',
+      step: 'turtle',
+      closed: false,
+      held: 'writer_absent',
+    });
+  });
+});
+
+describe('ladder: the line owed after an unanswered ask is the one the composer named', () => {
+  const FAMILY = '00000000-0000-4000-8000-00000000f003';
+  const USER = '00000000-0000-4000-8000-00000000a003';
+
+  function ladder(outcome: IntakeAnswerOutcome): {
+    fake: FakeDb;
+    transport: FakeTransport;
+    deps: IntakeDeps;
+    calls: SaidLineInput[];
+  } {
+    const { fake, transport, deps } = harness({ voice: true });
+    seedSession(fake, {
+      state: 'awaiting_ladder',
+      ladderNext: 'turtle',
+      familyId: FAMILY,
+      userId: USER,
+      collected: { children: [], postalCode: null },
+    });
+    deps.optOutReader = {
+      read: async () => ({ intent: 'none', confirmation: '', language: 'fr' }),
+    };
+    deps.answerComposer = new FakeAnswerComposer(outcome);
+    const calls: SaidLineInput[] = [];
+    // A fake at the said-line port, not the model: it says which line it was asked for.
+    deps.saidLine = {
+      async write(input) {
+        calls.push(input);
+        return `line:${input.purpose}`;
+      },
+    };
+    return { fake, transport, deps, calls };
+  }
+
+  // No English keyword in any of these: the composer's read names the line, not the words.
+  it.each([
+    ['not_posted', 'Quand ouvrent les inscriptions à la natation?'],
+    ['no_source', '¿Cómo hago para que duerma la siesta?'],
+    ['cheer_up', '今天好累，给我打打气吧'],
+  ] as const)('a %s reason gets the %s line', async (reason, words) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({ status: 'unavailable', reason });
+    await handleInboundSms(fake.db, inbound(transport, words), deps);
+    expect(calls.map((c) => c.purpose)).toEqual([reason]);
+    expect(transport.bodies()).toEqual([`line:${reason}`]);
+  });
+
+  it('a composer outage owes no line: the words alone never pick one', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fake, transport, deps, calls } = ladder({
+      status: 'unavailable',
+      reason: 'model_failed',
+    });
+    await handleInboundSms(
+      fake.db,
+      inbound(transport, 'When does swim registration open near me?'),
+      deps,
+    );
+    expect(
+      calls.filter((c) => ['not_posted', 'no_source', 'cheer_up'].includes(c.purpose)),
+    ).toEqual([]);
   });
 });

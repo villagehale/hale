@@ -41,6 +41,12 @@ describe('isProtectedPath', () => {
     expect(isProtectedPath('/messages/thread-1')).toBe(true);
   });
 
+  it('gates the privacy page and anything under it, but not a path that only shares its prefix', () => {
+    expect(isProtectedPath('/privacy')).toBe(true);
+    expect(isProtectedPath('/privacy/x')).toBe(true);
+    expect(isProtectedPath('/privacyish')).toBe(false);
+  });
+
   it('does not gate a public route, nor one that merely shares a prefix', () => {
     for (const path of ['/sign-in', '/onboarding', '/unsubscribe', '/', '/planner', '/savedish']) {
       expect(isProtectedPath(path)).toBe(false);
