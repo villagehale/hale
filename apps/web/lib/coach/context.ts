@@ -8,11 +8,11 @@ import {
   deriveStage,
   familyCountryOf,
 } from '@hale/types';
-import { episodesForContext, factsForContext } from '@hale/worker/memory-context';
+import { type FactReader, episodesForContext, factsForContext } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
 import type { HouseholdGroupFact } from '../channel/intake/household-group';
 import { type MemoryBrief, assembleMemoryBrief } from '../memory/brief';
-import { labelDay, loadFactSources, readerTimeZone } from '../memory/source-label';
+import { labelDay, readerTimeZone } from '@hale/worker/fact-sources';
 import { activeWorkstreamBlock } from '../memory/workstreams';
 import type { TranscriptMessage } from './conversation';
 
@@ -258,6 +258,11 @@ export interface LoadAgentContextInput {
    * only to the adult whose mailbox it was; absent, no mailbox is theirs.
    */
   readerUserId?: string;
+  /**
+   * The turn is in the family group (VIL-599). Every adult hears it, so it carries only
+   * what every adult may hear: nothing one adult said in their own 1:1.
+   */
+  inGroup?: boolean;
 }
 
 /**
@@ -355,25 +360,20 @@ export async function loadAgentContext(
   // Narrowed to the focused child, family-wide facts included: "where do we live"
   // belongs in a conversation about Ella. Keyed on the RESOLVED child (never the raw
   // input) so an id that names nobody in this family falls back to the whole family.
-  const factRows = await factsForContext(database, input.familyId, {
-    now,
-    limit: RELEVANT_FACT_LIMIT,
-    scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
-  });
-
-  const [sources, readerZone] = await Promise.all([
-    loadFactSources(database, {
-      familyId: input.familyId,
-      readerUserId: input.readerUserId ?? null,
-      inGroup: false,
+  const reader: FactReader =
+    input.readerUserId && input.inGroup !== true ? { adult: input.readerUserId } : 'every_adult';
+  const [factRows, readerZone] = await Promise.all([
+    factsForContext(database, input.familyId, {
       now,
-      sourceEventIds: factRows.map((row) => row.sourceEventId),
+      reader,
+      limit: RELEVANT_FACT_LIMIT,
+      scope: focusedChild ? { focusedChildId: focusedChild.id } : undefined,
     }),
     readerTimeZone(database, input.readerUserId),
   ]);
 
   const memoryBrief = briefWithActiveWorkstreams(
-    await assembleMemoryBrief(database, input.familyId, now),
+    await assembleMemoryBrief(database, input.familyId, reader, now),
     await activeWorkstreamBlock(database, input.familyId, now),
   );
 
@@ -392,19 +392,17 @@ export async function loadAgentContext(
         factValue: r.factValue,
         confidence: r.confidence,
       };
-      const source = r.sourceEventId ? sources.get(r.sourceEventId) : undefined;
-      if (!source?.connector) return [fact];
-      // A connector fact this reader may not hear the source of is left out, so no reply
-      // can use it without saying where it came from.
-      if (!source.label) return [];
-      const on = labelDay(source.label.on, readerZone);
+      // The shared read already left out a connector fact this reader may not hear the
+      // source of, so every one that is here says where it came from.
+      if (!r.seenIn) return [fact];
+      const on = labelDay(r.seenIn.on, readerZone);
       return [
         {
           ...fact,
           seenIn:
-            source.label.kind === 'email'
-              ? { email: { from: source.label.from, on } }
-              : { calendar: { title: source.label.title, on } },
+            r.seenIn.kind === 'email'
+              ? { email: { from: r.seenIn.from, on } }
+              : { calendar: { title: r.seenIn.title, on } },
         },
       ];
     }),

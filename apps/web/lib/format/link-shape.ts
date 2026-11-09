@@ -114,6 +114,15 @@ export function linksOutside(text: string, allowed: readonly string[]): string[]
   return [...new Set(found)];
 }
 
+/** Third-party text with every word that holds a link dropped, before a model or a slot
+ * sees it. */
+export function withoutLinks(text: string): string {
+  return asHandsetReads(text)
+    .split(/\s+/)
+    .filter((word) => word && !hasLinkShape(word))
+    .join(' ');
+}
+
 // A handed link is code's URL.href, so printable ASCII; the token ends at the first other
 // character, which keeps Chinese or Japanese written right after a link out of it.
 const SCHEME_TOKEN = /https?:\/\/[\x21-\x7E]+/gi;

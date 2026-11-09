@@ -8,7 +8,7 @@
  */
 
 import { localeFor } from '~/lib/channel/language';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { zonedMidnight } from '~/lib/memory/period';
 
 export const AHA_ITEM_LIMIT = 8;
@@ -134,26 +134,30 @@ function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+/** A cut can end inside a word and make it link-shaped ('evil.co9xyz' to 'evil.co'). */
+function cutWithoutLinks(text: string, max: number): string | null {
+  if (text.length <= max) return text;
+  const cut = withoutLinks(text.slice(0, max)).trimEnd();
+  return cut.length > 0 ? cut : null;
+}
+
 function cleanTitle(value: string): string | null {
-  const text = value.replace(/\s+/g, ' ').trim();
+  const text = withoutLinks(value).trim();
   if (text.length === 0 || text.includes('@')) return null;
-  return text.length <= TITLE_MAX ? text : text.slice(0, TITLE_MAX).trimEnd();
+  return cutWithoutLinks(text, TITLE_MAX);
 }
 
 function cleanLocation(value: string): string | null {
   const text = value.replace(/\s+/g, ' ').trim();
   if (text.length === 0 || text.includes('@') || hasLinkShape(text)) return null;
-  return text.length <= 80 ? text : text.slice(0, 80).trimEnd();
+  return cutWithoutLinks(text, 80);
 }
 
 const EMAIL_ADDRESS = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-const URL_TOKEN = /https?:\/\/\S+/gi;
 const PHONE_TOKEN = /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}/g;
 
 export function stripContactTokens(value: string): string {
-  return value
-    .replace(EMAIL_ADDRESS, ' ')
-    .replace(URL_TOKEN, ' ')
+  return withoutLinks(value.replace(EMAIL_ADDRESS, ' '))
     .replace(PHONE_TOKEN, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -162,7 +166,7 @@ export function stripContactTokens(value: string): string {
 function cleanSnippet(value: string): string | null {
   const text = stripContactTokens(value);
   if (text.length === 0) return null;
-  return text.length <= SNIPPET_MAX ? text : text.slice(0, SNIPPET_MAX).trimEnd();
+  return cutWithoutLinks(text, SNIPPET_MAX);
 }
 
 function displayName(from: string): string | null {

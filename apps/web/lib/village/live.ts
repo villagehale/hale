@@ -8,6 +8,11 @@ import {
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
 import { readActivityPlace } from '~/lib/channel/activity/place';
+import {
+  type NamedAreaReader,
+  resolveNamedArea,
+  sharedNamedAreaReader,
+} from '~/lib/channel/named-area';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { activityClient } from '~/lib/pipeline/client';
 
@@ -147,6 +152,9 @@ export async function findFamilyActivities(
   options: {
     subject?: string;
     window?: string;
+    /** A town, city, or area the parent named, searched instead of home (VIL-523). */
+    area?: string;
+    areaReader?: NamedAreaReader;
     now?: Date;
     finder?: ActivityFinder;
     excludePreviouslyOffered?: boolean;
@@ -173,14 +181,26 @@ export async function findFamilyActivities(
   const youngest = [...eligible].sort(
     (a, b) => ageInMonths(a.dateOfBirth, now) - ageInMonths(b.dateOfBirth, now),
   )[0]!;
+  const householdNames = [...children, ...parents].flatMap(({ name }) =>
+    name ? [name, name.trim().split(/\s+/)[0]!] : [],
+  );
+  let town = place.status === 'known' ? place.town : null;
+  if (options.area !== undefined) {
+    // A named place that cannot be searched is a refusal, never a search of home.
+    const named = await resolveNamedArea({
+      reader: options.areaReader ?? sharedNamedAreaReader(),
+      text: options.area,
+      householdNames,
+    });
+    if (!named.ok) return { picks: [], reason: named.refusal };
+    town = named.label;
+  }
   const query = deidentifyActivityQuery({
     subject: options.subject ?? 'local activities for kids',
     window: options.window ?? 'this year',
-    town: place.status === 'known' ? place.town : null,
+    town,
     stage: deriveStage(youngest.dateOfBirth, now),
-    householdNames: [...children, ...parents].flatMap(({ name }) =>
-      name ? [name, name.trim().split(/\s+/)[0]!] : [],
-    ),
+    householdNames,
   });
   if (!query.ok) return { picks: [], reason: query.refusal };
   // A stored city is coarse context, not a postal code or precise home address.

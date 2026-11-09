@@ -1,10 +1,9 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { hasLinkShape } from '~/lib/format/link-shape';
+import { hasLinkShape, withoutLinks } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { SignupSession } from '../types';
-import { withoutLinks } from './links';
 import { MAX_PLAN_CHOICES } from './store';
 
 /**

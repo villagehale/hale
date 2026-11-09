@@ -381,6 +381,7 @@ export async function writeLogisticsDecision(
     factValue: input.value,
     confidence: 1,
     inferredBy: INFERRED_BY[input.value.source],
+    heard: { in: 'family' as const, userId: input.parentUserId },
     validFrom: input.now,
   };
   const audit = {

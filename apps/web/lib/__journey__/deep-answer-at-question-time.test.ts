@@ -568,7 +568,7 @@ describe('the deep answer arrives at question time', { timeout: RECORD_TIMEOUT }
           draftPort: {} as never,
           villageTool: searchVillageTool(database),
           activity: {
-            reader: bindActivityReader(database, productionActivityFamilyReader()),
+            reader: bindActivityReader(database, productionActivityFamilyReader(), 'every_adult'),
             finder: createActivityFinder(client),
           },
           spots: null,

@@ -317,6 +317,7 @@ export async function recordRegistrationOutcome(
       },
       confidence: 1,
       inferredBy: REGISTRATION_FACT_WRITER,
+      heard: { in: 'one_to_one', userId: input.parentUserId },
       validFrom: input.now,
     });
   });
