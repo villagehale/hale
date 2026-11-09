@@ -19,7 +19,7 @@ export type Db = Database | Parameters<Parameters<Database['transaction']>[0]>[0
 export interface TranscriptMessage {
   /**
    * `assistant` is Hale's own text. `user` is the parent. `tool` is external
-   * content (a mailbox snippet) and is not Hale's history and not the parent's.
+   * content (an email Hale alerted on) and is not Hale's history and not the parent's.
    */
   role: 'user' | 'assistant' | 'tool';
   content: string;
@@ -185,19 +185,27 @@ export async function loadLatestThread(
   return { conversationId, timeline };
 }
 
+/** VIL-619 · the one reader of an alert row's private marker. A row from before the flag
+ * stored the snippet itself, and null meant private, until the scrub rewrites it. */
+export function gmailSourceIsPrivate(
+  source: schema.GmailMessageSource | schema.LegacyGmailMessageSource,
+): boolean {
+  return 'private' in source ? source.private : source.snippet === null;
+}
+
 /** Hale's stored text, plus a `tool` turn naming the email an alert was about, so
- * `read_email` can open it. Only the ids ride along, never the stored snippet (VIL-616):
- * a later turn has every tool, and the sender's words reach a turn only through
- * `read_email`, which taints it. Hale's own alert text is the summary the turn sees.
- * A 13+ child's mail stores a null snippet and adds no turn.
+ * `read_email` can open it. Only the ids ride along, never sender words (VIL-616, and
+ * since VIL-619 the row stores none): a later turn has every tool, and the sender's words
+ * reach a turn only through `read_email`, which taints it. Hale's own alert text is the
+ * summary the turn sees. A private (13+ child's) email adds no turn.
  * No parent-facing sentence is added here. */
 export function emailSourceTurns(
   role: 'user' | 'assistant',
   content: string,
-  source: schema.MessageSource | null,
+  source: schema.StoredMessageSource | null,
 ): TranscriptMessage[] {
   const turn: TranscriptMessage = { role, content };
-  if (role !== 'assistant' || source?.kind !== 'gmail' || source.snippet === null) {
+  if (role !== 'assistant' || source?.kind !== 'gmail' || gmailSourceIsPrivate(source)) {
     return [turn];
   }
   return [
@@ -254,7 +262,11 @@ async function readTranscriptRows(
   conversationId: string,
   database: Database,
 ): Promise<
-  Array<{ role: 'user' | 'assistant'; content: string; source: schema.MessageSource | null }>
+  Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    source: schema.StoredMessageSource | null;
+  }>
 > {
   if (!(await messagesHaveSource(database))) {
     noteSourceColumnAbsent();
@@ -279,8 +291,8 @@ async function readTranscriptRows(
 /** Loads a conversation's transcript in chronological order. Soft-deleted turns
  * (deleted_at stamped) are excluded so a removed turn never re-enters the agent's
  * context (rule #6 soft-delete: the row survives for audit, the read drops it).
- * A mailbox snippet, when stored, follows Hale's text as a `tool` turn. It is not
- * part of that text. A database that has not applied 0212 is read without `source`. */
+ * An email alert's ids follow Hale's text as a `tool` turn. They are not part of
+ * that text. A database that has not applied 0212 is read without `source`. */
 export async function loadTranscript(
   conversationId: string,
   database: Database,

@@ -1249,6 +1249,59 @@ describe('friend voice onboarding', () => {
     expect(fake.rows(schema.smsIntakeSessions)[0]?.firstReplyRecoveredAt).toBeNull();
   });
 
+  // VIL-617: the parent's first answer turns down the postal code.
+  it('answers a declined postal code and keeps the session going', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), deps);
+
+    const declined = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      deps,
+    );
+
+    expect(declined).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in', 'out']);
+  });
+
+  it('names a later place turn the model could not write, instead of a step', async () => {
+    const { fake, transport, deps } = harness({ voice: true });
+    let modelUp = true;
+    const flaky: IntakeDeps = {
+      ...deps,
+      friendVoice: {
+        async compose(input) {
+          if (!modelUp) throw new Error('model down');
+          return { reply: scriptedTurn(input).reply };
+        },
+      },
+    };
+    await handleInboundSms(fake.db, inbound(transport, 'hi'), flaky);
+
+    modelUp = false;
+    const silent = await handleInboundSms(
+      fake.db,
+      inbound(transport, "I'd rather not give out my postal code"),
+      flaky,
+    );
+
+    // A step says Hale replied; nothing went out, so the outcome names that (rule #11).
+    expect(silent).toEqual({ status: 'first_touch_unsent', reason: 'model_failed' });
+    expect(transport.sent).toHaveLength(1);
+    const session = await loadOpenSession(fake.db, PHONE);
+    expect(session?.state).toBe('awaiting_place');
+    expect(session?.transcript.map((entry) => entry.direction)).toEqual(['in', 'out', 'in']);
+
+    // Positive control: their next text re-runs the step and a model that answers sends it.
+    modelUp = true;
+    const answered = await handleInboundSms(fake.db, inbound(transport, 'still here'), flaky);
+    expect(answered).toEqual({ status: 'first_touch', step: 'place_waiting' });
+    expect(transport.sent).toHaveLength(2);
+  });
+
   it('is answered once by the first-reply sweep when the opening turn sent nothing', async () => {
     const { fake, transport, deps } = harness({ voice: true });
     let modelUp = false;

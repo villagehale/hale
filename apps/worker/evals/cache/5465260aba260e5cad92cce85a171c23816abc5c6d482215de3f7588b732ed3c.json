@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Undo is fine, I'll drop that. What should I call you? Tell me in your own words whenever you're ready.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "nameTakenBack": true,
+    "nameDeclined": false
+  },
+  "latencyMs": 1816
+}
