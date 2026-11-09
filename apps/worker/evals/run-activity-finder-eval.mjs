@@ -60,6 +60,8 @@
 //     nowhere to land (2026-08-22: it landed on an unrelated approvals queue).
 //   · unbacked promise / silent watch - the text and the ledger disagree about whether
 //     Hale is coming back.
+//   · research log - after every redraft the follow-up judge still names a sentence that
+//     reports the search, or names text the draft does not contain (production sends nothing).
 //   · links a URL / unsendable - Hale never texts a link, and an empty follow-up is unsendable.
 // Everything else is the judge's bar (JUDGE_MIN): are these real, local, age-fitting things
 // a parent could turn up to, and is the message honest about where the facts came from?
@@ -69,6 +71,7 @@ import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
 import { ACTIVITY_FIXTURES } from './activity-finder-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
+import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -911,6 +914,7 @@ async function main() {
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-events.md'),
   );
   const skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+  const judgeProcess = await loadFollowUpProcessJudge(agent);
   // VIL-435: the lane appends activity-finder-day only when the query carries `today`.
   const day = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder-day.md'),
@@ -1161,6 +1165,7 @@ async function main() {
     const pageEvidence = readPageVerdict(ground);
     const watch = watchWarranted(kept);
     let body = '';
+    let mentionsWatch = false;
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
@@ -1199,11 +1204,27 @@ async function main() {
           ).value;
 
       body = flatten(composed.message);
-      violations = followUpViolations(body, kept, watch, composed.commits_to_return === true);
+      mentionsWatch = composed.commits_to_return === true;
+      violations = followUpViolations(body, kept, watch, mentionsWatch);
+      // The process judge reads only a draft the mechanical gates passed, as in
+      // followup-note.ts. Skipped in broken mode with the quality judge below.
+      if (violations.length === 0 && !broken) {
+        const searchLog = await judgeProcess(body, {
+          tag: evalRunTag(`activity-followup-process:${fixture.id}:${attempt}`),
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        if (searchLog) violations = [searchLog];
+      }
       if (attempt === 1) firstDraftViolations = violations;
-      if (violations.length === 0 || broken) break;
+      // An unjudged draft is not redrafted: production sends nothing.
+      if (violations.length === 0 || broken || violations[0]?.tag === 'process_unjudged') break;
     }
     failures.push(...violations.map((v) => v.tag));
+    // A watch row the sent text never tells the parent about. Not a runtime gate (whether
+    // to mention it is the model's call), so it is scored here and logged in production.
+    if (watch && violations.length === 0 && !mentionsWatch) failures.push('silent_watch');
 
     // ── the judge (skipped in broken mode; the deterministic layer proves calibration) ──
     if (!broken) {
@@ -1281,6 +1302,12 @@ async function main() {
   );
   console.log(
     `unbacked promise:        ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
+  );
+  console.log(
+    `silent watch:            ${count('silent_watch')}  (a row was written and the text never said so)`,
+  );
+  console.log(
+    `research log:            ${count('reports_process') + count('process_unjudged')}  (the follow-up judge still named a search sentence, or named text not in the draft)`,
   );
   // NOT a gate, and deliberately: a fetch refused (`url_not_allowed`) is a real and common
   // shape on these very venues, production logs it and answers from the snippets anyway.
