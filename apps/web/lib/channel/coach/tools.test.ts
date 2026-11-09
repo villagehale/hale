@@ -144,6 +144,7 @@ function harness(
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
+    familyCountry: 'CA',
     reader: fakeReader(events),
     draftPort: port,
     villageTool: null,
@@ -689,6 +690,7 @@ describe('watch_for_opening — registered only when the whole wiring is there',
   const build = (extra: Partial<ChannelCoachToolArgs>) =>
     buildChannelCoachTools({
       familyId: FAMILY,
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: null,

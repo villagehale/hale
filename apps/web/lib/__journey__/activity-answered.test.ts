@@ -463,6 +463,7 @@ describe('the activity question is answered', { timeout: RECORD_TIMEOUT }, () =>
       buildTools: (turn, onDraft, onOffer, onShare, onPromise) =>
         buildChannelCoachTools({
           familyId: turn.familyId,
+          familyCountry: 'CA',
           reader: {} as never,
           draftPort: {} as never,
           villageTool: searchVillageTool(database),

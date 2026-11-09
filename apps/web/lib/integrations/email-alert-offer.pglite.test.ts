@@ -1275,6 +1275,7 @@ describe('a coach offer is the calendar, not the sentence', () => {
     );
     const tools = buildChannelCoachTools({
       familyId: family.familyId,
+      familyCountry: 'CA',
       parentUserId: family.parentUserId,
       reader: {
         timeZone: async () => 'America/Chicago',
@@ -1402,6 +1403,8 @@ describe('a coach offer is the calendar, not the sentence', () => {
           noop,
           noop,
           createTurnOfferLedger(),
+          undefined,
+          'CA',
         )
         .find((candidate) => candidate.name === 'propose_calendar_add');
       if (!tool) throw new Error('production buildTools registers no propose_calendar_add');

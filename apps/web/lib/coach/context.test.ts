@@ -18,7 +18,7 @@ const ROWS = [
 
 describe('toFocusedChild', () => {
   it('surfaces a non-teen child with name, age, stage, and the companion view', () => {
-    const focused = _internal.toFocusedChild('tot', ROWS, NOW);
+    const focused = _internal.toFocusedChild('tot', ROWS, 'Canada', NOW);
     expect(focused).not.toBeNull();
     expect(focused?.id).toBe('tot');
     expect(focused?.stage).toBe('toddler');
@@ -30,7 +30,7 @@ describe('toFocusedChild', () => {
   });
 
   it('redacts a teenager to stage only — no name, age, or companion detail (rule #1)', () => {
-    const focused = _internal.toFocusedChild('teen', ROWS, NOW);
+    const focused = _internal.toFocusedChild('teen', ROWS, 'Canada', NOW);
     expect(focused?.stage).toBe('teenager');
     expect(focused?.teenRedacted).toBe(true);
     expect(focused?.name).toBeNull();
@@ -38,8 +38,18 @@ describe('toFocusedChild', () => {
     expect(focused?.companion).toBeNull();
   });
 
+  it("reads the schedule for the family row's country: Canada's for Canada only (D6)", () => {
+    const canadian = _internal.toFocusedChild('tot', ROWS, 'Canada', NOW);
+    expect(canadian?.companion?.healthSchedule).toBe('canada');
+    expect(canadian?.companion?.nextHealth.length).toBeGreaterThan(0);
+    const american = _internal.toFocusedChild('tot', ROWS, 'United States', NOW);
+    expect(american?.companion?.healthSchedule).toBe('no_verified_us_schedule');
+    expect(american?.companion?.nextHealth).toEqual([]);
+    expect(_internal.toFocusedChild('tot', ROWS, null, NOW)?.companion?.nextHealth).toEqual([]);
+  });
+
   it('resolves an unknown / cross-family focus id to null (no leak)', () => {
-    expect(_internal.toFocusedChild('not-ours', ROWS, NOW)).toBeNull();
+    expect(_internal.toFocusedChild('not-ours', ROWS, 'Canada', NOW)).toBeNull();
   });
 });
 

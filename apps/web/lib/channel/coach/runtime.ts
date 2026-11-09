@@ -12,6 +12,7 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { type FamilyCountry, familyCountryOf } from '@hale/types';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -243,7 +244,9 @@ export interface ChannelCoachPorts {
     /** The turn's offer ledger, owned by the runtime so the provenance match and the
      * nearby count read the same list. */
     offered: TurnOfferLedger,
-    onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    onGmailNotice: ((notice: GmailDraftNoticeBox) => void) | undefined,
+    /** The family row's country, read off the turn's own context (familyCountryOf). */
+    familyCountry: FamilyCountry | null,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -508,6 +511,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               if (gmailNotice?.status === 'unsent') return;
               gmailNotice = notice;
             },
+            familyCountryOf(familyContext.location.country),
           );
           // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
           // are busy-only, on every group turn.
@@ -798,9 +802,20 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         DEFAULT_TIMEZONE,
         now,
       ),
-    buildTools: (turn, onDraft, onOffer, onShare, onPromise, onWatch, offered, onGmailNotice) => {
+    buildTools: (
+      turn,
+      onDraft,
+      onOffer,
+      onShare,
+      onPromise,
+      onWatch,
+      offered,
+      onGmailNotice,
+      familyCountry,
+    ) => {
       return buildChannelCoachTools({
         familyId: turn.familyId,
+        familyCountry,
         reader: channelScheduleReader(database, turn.now),
         // VIL-443: a calendar_add drafted in the family group records that origin, so its
         // placement is reported back to the group. Code writes it; the model never sees it.

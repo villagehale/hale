@@ -276,6 +276,7 @@ describe('the texted verbs over the real door (VIL-270)', () => {
     };
     const tools = buildChannelCoachTools({
       familyId: fx.familyId,
+      familyCountry: 'CA',
       reader: channelScheduleReader(db.database, NOW),
       draftPort,
       villageTool: null,

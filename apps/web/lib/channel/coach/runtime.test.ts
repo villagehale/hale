@@ -77,7 +77,12 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     loadTranscript: async () => [{ role: 'user' as const, content: 'earlier' }],
     loadContext: async (input) => {
       contextInputs.push(input);
-      return { question: input.question, transcript: input.transcript, memoryFacts: [] } as never;
+      return {
+        question: input.question,
+        transcript: input.transcript,
+        memoryFacts: [],
+        location: { city: null, province: null, country: 'Canada' },
+      } as never;
     },
     loadChildren: async () => [TEEN],
     loadRegistrationWindows: async () => [],
@@ -141,6 +146,7 @@ describe('channelCoachRuntime', () => {
             question: input.question,
             transcript: input.transcript,
             memoryFacts: [],
+            location: { city: null, province: null, country: 'Canada' },
             ...(householdGroup ? { householdGroup } : {}),
           }) as never,
         runAgent: async (args) => {
@@ -171,6 +177,7 @@ describe('channelCoachRuntime', () => {
             question: input.question,
             transcript: input.transcript,
             memoryFacts: [seen ? sourced : fact],
+            location: { city: null, province: null, country: 'Canada' },
           }) as never,
         runAgent: async (args) => {
           calls.push(args.skill.instructions);

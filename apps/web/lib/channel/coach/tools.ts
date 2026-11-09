@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import type { CalendarPlacementPayload } from '@hale/types';
+import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
@@ -193,6 +193,9 @@ export interface ChannelCoachToolArgs {
    * AUTHORIZED_SIGNUP_ENABLED is on; absent leaves the tool set unchanged. */
   signupOffer?: SignupOfferToolPorts | null;
   familyId: string;
+  /** The family row's country (familyCountryOf). Only a Canadian family's guidance carries
+   * a routine health schedule (D6); null is a family Hale cannot place. */
+  familyCountry: FamilyCountry | null;
   reader: ChannelScheduleReader;
   draftPort: ChannelDraftPort;
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
@@ -770,7 +773,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     // "Parenting questions are yours" section calls get_framework_guidance, and
     // until now only the WEB coach carried it — the SMS runtime would have made
     // a tool call into a void. Shared definition: ~/lib/coach/framework-tool.
-    frameworkGuidanceTool(),
+    frameworkGuidanceTool(args.familyCountry),
   ];
   if (args.villageTool) tools.push(args.villageTool);
   // The live web verb. Registered only where the lane and the reader are both wired,

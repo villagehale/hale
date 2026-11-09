@@ -93,6 +93,8 @@ describe('stop_watching — production wiring', () => {
         noop,
         noop,
         createTurnOfferLedger(),
+        undefined,
+        'CA',
       )
       .find((candidate) => candidate.name === 'stop_watching');
     if (!tool) throw new Error('production buildTools registers no stop_watching');

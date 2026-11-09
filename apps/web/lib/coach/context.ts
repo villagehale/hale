@@ -6,6 +6,7 @@ import {
   ageInMonths,
   companionForChild,
   deriveStage,
+  familyCountryOf,
 } from '@hale/types';
 import { episodesForContext, factsForContext } from '@hale/worker/memory-context';
 import { and, eq } from 'drizzle-orm';
@@ -267,6 +268,7 @@ export interface LoadAgentContextInput {
 function toFocusedChild(
   focusedChildId: string,
   childRows: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>,
+  storedCountry: string | null,
   now: Date,
 ): FocusedChildContext | null {
   const row = childRows.find((c) => c.id === focusedChildId);
@@ -281,7 +283,10 @@ function toFocusedChild(
     name: row.name,
     ageMonths: ageInMonths(row.dateOfBirth, now),
     teenRedacted: false,
-    companion: companionForChild({ dateOfBirth: row.dateOfBirth, name: row.name }, now),
+    companion: companionForChild(
+      { dateOfBirth: row.dateOfBirth, name: row.name, country: familyCountryOf(storedCountry) },
+      now,
+    ),
   };
 }
 
@@ -341,7 +346,7 @@ export async function loadAgentContext(
   const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
   const focusedChild = input.focusedChildId
-    ? toFocusedChild(input.focusedChildId, childRows, now)
+    ? toFocusedChild(input.focusedChildId, childRows, family.country, now)
     : null;
 
   const thread = compactTranscript(input.transcript);
