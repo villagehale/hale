@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@hale/db';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  coachEmailReader,
+  productionCoachEmailReaderDeps,
+} from '~/lib/channel/coach/read-email-tool';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
@@ -39,6 +43,7 @@ import {
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
 import { GOING_COUNT_ENABLED_ENV, sessionKey } from './going';
+import { CONNECTOR_SCOPES } from './google-oauth';
 
 /**
  * The join between the sentinel and the outbound chokepoint, against the REAL DDL.
@@ -1374,6 +1379,69 @@ describe('the notice is the whole text, and the thread keeps the email for the c
     expect(trail).not.toContain(ENVELOPE.snippet);
     expect(trail).not.toContain(ENVELOPE.subject);
   });
+
+  // The age floor, not the model's teen flag: a confident logistics read of a 13+ child's
+  // email has teenContent false and teenAttributed true, and is still a teen's email.
+  it.each([
+    { teenAttributed: false, snippet: ENVELOPE.snippet, read: true },
+    { teenAttributed: true, snippet: null, read: false },
+  ])(
+    'teenAttributed $teenAttributed with teenContent false: snippet $snippet, read_email read $read',
+    async ({ teenAttributed, snippet, read }) => {
+      vi.spyOn(console, 'info').mockImplementation(() => {});
+      const integrationId = await seedIntegration(
+        db.database,
+        family.familyId,
+        family.parentUserId,
+        'gmail',
+      );
+      await db.database
+        .update(schema.integrations)
+        .set({ scopes: [...CONNECTOR_SCOPES.gmail] })
+        .where(eq(schema.integrations.id, integrationId));
+      const h = harness({
+        notice: { send: true, text: WRITTEN },
+        classification: classified({ kind: 'new_event', teenContent: false, teenAttributed }),
+      });
+      h.ports.threadMessage = threadProactiveMessage;
+      await expect(alert(h)).resolves.toBe('sent');
+
+      const conversationId = (await resolveNoteConversation(
+        family.familyId,
+        channelSmsNoteKey(family.parentUserId),
+        db.database,
+      )) as string;
+      const stored = await db.database
+        .select({ source: schema.messages.source })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, conversationId));
+      expect(stored).toEqual([
+        { source: { kind: 'gmail', eventId: null, gmailMessageId: 'm1', snippet } },
+      ]);
+
+      const fetched: string[] = [];
+      const reader = coachEmailReader({
+        ...productionCoachEmailReaderDeps(db.database),
+        accessToken: async () => 'token-1',
+        fetchBody: async (id) => {
+          fetched.push(id);
+          return 'the email body';
+        },
+      });
+      const result = await reader.read({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        conversationId,
+        gmailMessageId: 'm1',
+      });
+      expect(result).toEqual(
+        read
+          ? { read: true, body: 'the email body', truncated: false }
+          : { read: false, reason: 'private' },
+      );
+      expect(fetched).toEqual(read ? ['m1'] : []);
+    },
+  );
 
   it('a 13+ child keeps the snippet off the row and off the model transcript', async () => {
     const h = harness({

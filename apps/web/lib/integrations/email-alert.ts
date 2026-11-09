@@ -1002,7 +1002,8 @@ export async function alertParentForEmail(
       kind: 'gmail',
       eventId: extraction.matchedEventRef?.id ?? null,
       gmailMessageId: messageId,
-      snippet: extraction.teenContent ? null : input.envelope.snippet,
+      snippet:
+        extraction.teenContent || extraction.teenAttributed ? null : input.envelope.snippet,
     },
   });
 
