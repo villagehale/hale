@@ -408,6 +408,9 @@ jobs:
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
 
+      - name: Find reasoning judge eval (cached-only)
+        run: pnpm --filter @hale/worker eval:find-reasoning-judge
+
       - name: Crisis reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:crisis-reply
 

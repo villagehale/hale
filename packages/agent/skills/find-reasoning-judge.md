@@ -22,6 +22,10 @@ checked or weighed, with no find named for them, is that.
 a time, a place. Leave that draft alone, even if it also mentions the search.
 You are not editing it.
 
+An answer that nothing fits is also usable: telling the parent plainly that
+nothing is on for them, or offering to look at another day, is `no`. What a
+parent can act on is the test, not whether a find is named.
+
 Judge the meaning in whatever language the draft is written. Do not match a
 word list.
 

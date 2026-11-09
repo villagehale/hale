@@ -42,11 +42,24 @@ const verdictSchema = z.object({
 });
 
 const MAX_TOKENS = 256;
+const TOOL_NAME = 'find_reasoning';
+const TOOL_DESCRIPTION = 'Decide whether this whole nearby-find reply must be withheld.';
+
+export function findReasoningUserMessage(draft: string): string {
+  return JSON.stringify({ draft });
+}
+
+/** The judge's request shape, imported by the find-reasoning-judge eval. */
+export const FIND_REASONING_TOOL = {
+  name: TOOL_NAME,
+  description: TOOL_DESCRIPTION,
+  schema: VERDICT_SCHEMA,
+  maxTokens: MAX_TOKENS,
+} as const;
 
 /**
- * The hard gate for a nearby-find reply. A dry client is enough to prove the
- * request: answer quality is a cached eval, not wired until it can be re-recorded
- * without a live spend.
+ * The hard gate for a nearby-find reply. Verdict quality is the cached
+ * find-reasoning-judge eval (apps/worker/evals), which imports this request shape.
  */
 export async function judgeWholeFindReply(
   client: () => AgentClient,
@@ -71,9 +84,9 @@ export async function judgeWholeFindReply(
       client: resolved,
       lane: pickLane(skill.meta.task),
       system: skill.instructions,
-      userMessage: JSON.stringify({ draft }),
-      toolName: 'find_reasoning',
-      toolDescription: 'Decide whether this whole nearby-find reply must be withheld.',
+      userMessage: findReasoningUserMessage(draft),
+      toolName: TOOL_NAME,
+      toolDescription: TOOL_DESCRIPTION,
       inputJsonSchema: VERDICT_SCHEMA,
       schema: verdictSchema,
       maxTokens: MAX_TOKENS,
