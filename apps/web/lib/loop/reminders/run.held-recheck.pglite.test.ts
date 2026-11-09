@@ -12,6 +12,8 @@ import {
   recheckHeldReminders,
   runReminderCron,
 } from './run';
+import { REMINDER_MAX_ATTEMPTS } from './compose';
+import { COMPOSE_HOLD_MAX_ATTEMPTS } from './schedule';
 
 /**
  * VIL-586 · a T-1h held because the writer could not be reached is asked again by the
@@ -91,6 +93,14 @@ function client(...replies: ({ texts: string[] } | unknown)[]) {
         ? [{ type: 'tool_use', id: 'tu_0', name: 'reminder_texts', input: next }]
         : [{ type: 'text', text: JSON.stringify(next) }],
     };
+  });
+  return { agent: { messages: { create } } as unknown as AgentClient, create };
+}
+
+/** A writer the provider never answers: every call is a 500. */
+function failing() {
+  const create = vi.fn(async () => {
+    throw SERVER_ERROR();
   });
   return { agent: { messages: { create } } as unknown as AgentClient, create };
 }
@@ -257,5 +267,82 @@ describe('recheckHeldReminders (VIL-586)', () => {
       skipped: 'no_client',
     });
     expect(d.probe).not.toHaveBeenCalled();
+  });
+
+  it('backs off a hold the writer keeps failing instead of asking it every drain minute', async () => {
+    await holdAtTheSlot();
+    const writer = failing();
+    const d = deps(writer.agent);
+
+    // The drain ticks every minute from the slot to the event's start; the provider probe
+    // says it answers each time, but the compose itself keeps failing.
+    for (let at = T1H_TICK.getTime() + 60_000; at < STARTS_AT.getTime(); at += 60_000) {
+      await recheckHeldReminders(db.database, d, new Date(at));
+    }
+
+    // One compose per remaining try (the slot's own was the first), each of which makes
+    // the writer's own two attempts. Unbounded, this is two calls every minute.
+    expect(writer.create).toHaveBeenCalledTimes(
+      (COMPOSE_HOLD_MAX_ATTEMPTS - 1) * REMINDER_MAX_ATTEMPTS,
+    );
+    expect(d.probe).toHaveBeenCalledTimes(COMPOSE_HOLD_MAX_ATTEMPTS - 1);
+    expect(enqueued).toEqual([]);
+  });
+
+  it('does not probe or write again the minute after a hold, only once its next try is due', async () => {
+    await holdAtTheSlot();
+    const early = deps(failing().agent);
+    expect(
+      await recheckHeldReminders(db.database, early, new Date(T1H_TICK.getTime() + 60_000)),
+    ).toEqual({ held: 0 });
+    expect(early.probe).not.toHaveBeenCalled();
+
+    // Positive control: the same hold is asked again once its next try comes round.
+    const writer = client({ texts: ['Puppet Club at 10:00 AM.'] });
+    const later = await recheckHeldReminders(db.database, deps(writer.agent), MINUTES_LATER);
+    expect(later).toMatchObject({ held: 1, fired: 1 });
+    expect(await reminder('-PT1H')).toEqual({ status: 'sent', suppressReason: null });
+  });
+
+  it('ends the hold as compose_retries_exhausted with an audit row when the tries run out', async () => {
+    await holdAtTheSlot();
+    const d = deps(failing().agent);
+    for (let at = T1H_TICK.getTime() + 60_000; at < STARTS_AT.getTime(); at += 60_000) {
+      await recheckHeldReminders(db.database, d, new Date(at));
+    }
+
+    expect(await reminder('-PT1H')).toEqual({
+      status: 'suppressed',
+      suppressReason: 'compose_retries_exhausted',
+    });
+    const audit = await db.database
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, familyId));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actionTaken: 'reminder_suppressed',
+      after: { reason: 'compose_retries_exhausted', offset: '-PT1H' },
+    });
+    // Ended, so the drain has nothing left to ask about.
+    expect(await recheckHeldReminders(db.database, d, new Date(STARTS_AT.getTime() - 1))).toEqual({
+      held: 0,
+    });
+  });
+
+  it('migration 0220 applies a second time over itself', async () => {
+    await expect(
+      db.applyMigration('0220_event_reminders_compose_backoff.sql'),
+    ).resolves.toBeUndefined();
+    const result = await db.client.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+        where table_name = 'event_reminders'
+          and column_name in ('compose_attempts', 'compose_next_try_at')
+        order by column_name`,
+    );
+    expect(result.rows.map((r) => r.column_name)).toEqual([
+      'compose_attempts',
+      'compose_next_try_at',
+    ]);
   });
 });
