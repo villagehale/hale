@@ -59,6 +59,11 @@
     "version": null,
     "sha256": "f1eb94c2038186bee935497dfd777a9291c17c2d0e42bdc85bb3702f682a2f89"
   },
+  "judges/calendar-kid-notice": {
+    "name": "judges/calendar-kid-notice",
+    "version": null,
+    "sha256": "57b23f58a39c590c3352b0c8c311bb457b1e3cb6ae269596dc35654c7e02874e"
+  },
   "judges/calendar-write-notice": {
     "name": "judges/calendar-write-notice",
     "version": null,
