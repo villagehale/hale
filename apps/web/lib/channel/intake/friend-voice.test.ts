@@ -14,6 +14,7 @@ import {
   lastInboundFact,
   nameAskVoiceInput,
   parentReading,
+  readGroupLeads,
   speakFriend,
 } from './friend-voice';
 import { FRIEND_CONVERSATIONS, fixtureBody } from './friend-voice-fixtures';
@@ -900,6 +901,18 @@ describe('speakFriend', () => {
       const { spoken, prompts } = await speakWith(() => ({ reply: OPENER, groupLeads: null }));
       expect(prompts).toEqual(['full', 'short']);
       expect(spoken).toMatchObject({ source: 'unsent', body: '', bubbles: [] });
+    });
+
+    it('reads a bubble with line breaks as one bubble, in every shape the model returns', () => {
+      const multiline = 'Two swims near you:\nSat 10:00\nSun 9:30';
+      expect(readGroupLeads([multiline, 'Story time Tue 10:30'])).toEqual([
+        multiline,
+        'Story time Tue 10:30',
+      ]);
+      expect(readGroupLeads('a\nb')).toEqual(['a\nb']);
+      expect(readGroupLeads({ swimming: { lead: multiline } })).toEqual([multiline]);
+      expect(readGroupLeads(JSON.stringify([multiline, 'Story']))).toEqual([multiline, 'Story']);
+      expect(readGroupLeads(null)).toBeNull();
     });
   });
 
