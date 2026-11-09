@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly states the cancellation, the event name, day, and time window, and is in English. However, it says the cancellation 'covers 3 sessions starting that day', which is a reasonable reading of the facts, though the facts only say 'sessions: 3' and do not specify whether all three are cancelled or only the first. It does not name a kid, invent a reason, or offer anything, and avoids emoji or apology. Minor ambiguity in the sessions wording keeps it from a top score.",
+    "score": 4
+  }
+}

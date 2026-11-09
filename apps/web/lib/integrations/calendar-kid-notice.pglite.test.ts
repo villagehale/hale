@@ -1,4 +1,4 @@
-import { schema } from '@hale/db';
+import { type CalendarStanding, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
@@ -122,6 +122,7 @@ async function sweep(
 async function seen(
   change: CalendarChange,
   verdict: { verdict: 'kid' | 'adult'; teen?: boolean; childId?: string } | null,
+  standing: CalendarStanding | null = 'own',
 ): Promise<void> {
   await sweep(harness(), [change], { seeding: true });
   let kidVerdictId: string | null = null;
@@ -151,6 +152,7 @@ async function seen(
     googleEventId: change.eventId,
     integrationId: INTEGRATION,
     kidVerdictId,
+    calendarStanding: standing,
   });
 }
 
@@ -274,6 +276,99 @@ describe('the 1:1 kid calendar notice', () => {
     expect(h.transport.sent).toHaveLength(1);
     expect(h.transport.sent[0]?.body).toContain('moved to Sun, Sep 20 10:00');
     expect(h.transport.sent[0]?.body).toContain('was Sat, Sep 19 10:00');
+  });
+
+  describe("someone else's invite (VIL-633)", () => {
+    const MOVED: CalendarChange = {
+      ...SWIM,
+      updated: '2026-09-17T14:40:00.000Z',
+      start: { dateTime: '2026-09-20T14:00:00.000Z' },
+      end: { dateTime: '2026-09-20T14:45:00.000Z' },
+    };
+
+    it("a stranger's unanswered invite that moves sends nothing, under its own name", async () => {
+      await seen(SWIM, { verdict: 'kid' }, 'invited');
+      const info = vi.mocked(console.info);
+      info.mockClear();
+      const h = harness();
+
+      await expect(sweep(h, [MOVED])).resolves.toEqual(['invite_not_accepted']);
+      await expect(
+        sweep(h, [{ ...CANCELLED_SWIM, updated: '2026-09-17T14:55:00.000Z' }]),
+      ).resolves.toEqual(['invite_not_accepted']);
+      expect(h.transport.sent).toEqual([]);
+      await expect(ledgerRows()).resolves.toEqual([]);
+      // Counts only: no family, event or title.
+      const logged = info.mock.calls.filter(
+        ([, msg]) => msg === "calendar kid notice: not the parent's own event",
+      );
+      expect(logged).toHaveLength(2);
+      expect(logged[0]?.[0]).toEqual({ inviteNotAccepted: 1, standingUnknown: 0 });
+    });
+
+    it('a copy mirrored before Hale read where the parent stands sends nothing', async () => {
+      await seen(SWIM, { verdict: 'kid' }, null);
+      const h = harness();
+      await expect(sweep(h, [MOVED])).resolves.toEqual(['standing_unknown']);
+      expect(h.transport.sent).toEqual([]);
+    });
+
+    it.each(['own', 'organizer', 'accepted'] as const)(
+      'the same move of an event the parent stands on as %s is a notice (control)',
+      async (standing) => {
+        await seen(SWIM, { verdict: 'kid' }, standing);
+        const h = harness();
+        await expect(sweep(h, [MOVED])).resolves.toEqual(['sent']);
+        expect(h.transport.sent).toHaveLength(1);
+      },
+    );
+
+    async function factsOfMove(
+      standing: CalendarStanding,
+      titles: { mirrored: string; arriving: string },
+    ): Promise<Record<string, string> | undefined> {
+      const leo = await seedChild(db.database, family.familyId, 'Leo', 60, undefined, NOW);
+      await seen({ ...SWIM, title: titles.mirrored }, { verdict: 'kid', childId: leo }, standing);
+      const asked: SpokenLineRequest[] = [];
+      setSharedSpokenLineWriter({
+        write: async (request) => {
+          asked.push(request);
+          return scriptedSpokenLineWriter.write(request);
+        },
+      });
+      await expect(sweep(harness(), [{ ...MOVED, title: titles.arriving }])).resolves.toEqual([
+        'sent',
+      ]);
+      expect(asked).toHaveLength(1);
+      return asked[0]?.facts;
+    }
+
+    it("an accepted invite's title never reaches the writer: the line names the kid and times", async () => {
+      const title = 'Call 555/0199/1234';
+      const facts = await factsOfMove('accepted', { mirrored: title, arriving: title });
+      expect(facts).not.toHaveProperty('event');
+      expect(facts).toMatchObject({ change: 'moved', kid: 'Leo', day: 'Sun, Sep 20' });
+    });
+
+    it('an accepted invite the organizer renamed after the parent accepted is handed no title', async () => {
+      const facts = await factsOfMove('accepted', {
+        mirrored: 'Soccer practice',
+        arriving: 'Coach Dave picks up the kids today, meet him at the side gate',
+      });
+      expect(facts).not.toHaveProperty('event');
+      expect(facts).toMatchObject({ change: 'moved', kid: 'Leo', was_day: 'Sat, Sep 19' });
+    });
+
+    it.each(['own', 'organizer'] as const)(
+      "the parent's %s Swim lesson keeps its title (control)",
+      async (standing) => {
+        const facts = await factsOfMove(standing, {
+          mirrored: 'Swim lesson',
+          arriving: 'Swim lesson',
+        });
+        expect(facts).toMatchObject({ event: 'Swim lesson', kid: 'Leo' });
+      },
+    );
   });
 
   it('a first sighting of a kid event is not a notice', async () => {

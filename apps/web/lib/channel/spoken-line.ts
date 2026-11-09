@@ -1,6 +1,7 @@
 import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { contactsOutside } from '~/lib/format/contact-shape';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { sharedOpsPager } from '~/lib/monitoring/shared-ops-pager';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -34,6 +35,12 @@ const outputJsonSchema = {
   required: ['text'],
 } as const;
 
+/**
+ * A line is sent only when it is not empty, carries every verbatim piece, and holds no
+ * link, phone number or email address beyond the ones those pieces carry (VIL-633). The
+ * facts can be a third party's words (a calendar title), so a contact in a fact is not
+ * grounds to say it: a caller that needs one said hands it as verbatim.
+ */
 export function acceptSpokenLine(
   text: string,
   verbatim: readonly string[] | undefined,
@@ -41,6 +48,7 @@ export function acceptSpokenLine(
   const body = text.trim();
   if (body.length === 0) return null;
   if (verbatim?.some((piece) => piece.length > 0 && !body.includes(piece))) return null;
+  if (contactsOutside(body, verbatim ?? []).length > 0) return null;
   return body;
 }
 
