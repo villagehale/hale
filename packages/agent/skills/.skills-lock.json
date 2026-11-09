@@ -289,7 +289,7 @@
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
-    "sha256": "c47f74f71e4c69138cf2bdca5673598697973daed2370fb04e549f358ba95790"
+    "sha256": "bb9d105f941e29a4737ada757d82644409689c4a9013b7a622d40874133ca3af"
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
@@ -398,6 +398,10 @@
   "registration-morning.md": {
     "file": "registration-morning.md",
     "sha256": "3ac1ac6e35907438c462dc67848d392c9c1d767cf5dffc5186abd908e7e14602"
+  },
+  "registration-note.md": {
+    "file": "registration-note.md",
+    "sha256": "3ff9e76330bcbd0d9386738d7d926e83e2983a4ac1f45e69077536c02c1e8b81"
   },
   "registration-text-check.md": {
     "file": "registration-text-check.md",

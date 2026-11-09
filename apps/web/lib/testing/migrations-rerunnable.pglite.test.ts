@@ -255,3 +255,40 @@ describe('opt_out_held_messages crisis read', () => {
     );
   });
 });
+
+/** VIL-597 · the sweep rotation marks, found by suffix so it survives renumbering at merge. */
+describe('family_sweep_marks', () => {
+  const MARKS_FILE = migrationFiles().find((f) => f.endsWith('_family_sweep_marks.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(MARKS_FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string }>(
+        "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'family_sweep_marks' ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and creates the three-column table', async () => {
+    expect(MARKS_FILE).toMatch(/^\d{4}_family_sweep_marks\.sql$/);
+    // Positive control: the table is absent before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(MARKS_FILE as string);
+    await expect(db.applyMigration(MARKS_FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'family_id', is_nullable: 'NO' },
+      { column_name: 'sweep', is_nullable: 'NO' },
+      { column_name: 'swept_at', is_nullable: 'NO' },
+    ]);
+  });
+});

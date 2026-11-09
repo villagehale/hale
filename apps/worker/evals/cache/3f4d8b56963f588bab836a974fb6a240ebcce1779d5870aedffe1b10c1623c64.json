@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This correctly handles a 'no' on readiness_answer. It names the portal, the account, Max and your teen added with birthdays, and a saved card. It promises to ask again the evening before and asks nothing now. The tone is friendly English. The flaw is 'both addresses complete': the facts specify a single address, so 'both' implies two addresses the facts never mention. That is a small distortion of a requirement.",
+    "score": 3
+  }
+}
