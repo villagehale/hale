@@ -377,7 +377,7 @@ async function coachLane(fixture, client, modules) {
       kind: 'gmail',
       eventId: null,
       gmailMessageId: fixture.gmailMessageId,
-      snippet: fixture.snippet,
+      private: false,
     };
     const transcript = [
       ...coach.conversation.emailSourceTurns('assistant', fixture.alert, source),
@@ -387,6 +387,7 @@ async function coachLane(fixture, client, modules) {
     const emailReader = coach.readEmail.coachEmailReader({
       alertedSource: async (request) =>
         request.gmailMessageId === fixture.gmailMessageId ? source : null,
+      familyChildren: async () => FAMILY.children,
       gmailConnection: async () => ({ id: 'fixture-integration' }),
       accessToken: async () => 'fixture-token',
       fetchBody: async () => {
