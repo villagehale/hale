@@ -1599,6 +1599,7 @@ describe('a reply written after read_email (VIL-628)', () => {
         ({
           question: input.question,
           transcript: input.transcript,
+          location: { city: null, province: null, country: 'United States' },
           memoryFacts: (opts.facts ?? []).map((factValue) => ({ factKey: 'note', factValue })),
         }) as never,
       emailReader: {
