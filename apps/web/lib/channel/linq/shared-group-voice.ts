@@ -2,6 +2,7 @@ import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { composeVoice, firstJsonObject, voiceClient } from '~/lib/loop/voice/compose';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -87,7 +88,7 @@ export function acceptSpoken(value: unknown, questions: 0 | 1): SpokenSharedLine
 }
 
 const BANNED =
-  /\b(www\.|unsubscribe|yes\/no|reply yes|reply no|imessage|assistant|automation|tapback)\b/i;
+  /\b(unsubscribe|yes\/no|reply yes|reply no|imessage|assistant|automation|tapback)\b/i;
 
 export function sharedLineUsable(
   line: string,
@@ -96,14 +97,13 @@ export function sharedLineUsable(
 ): boolean {
   const text = line.trim();
   if (!text) return false;
-  if (/https?:\/\//i.test(text)) return false;
+  if (hasLinkShape(text)) return false;
   if (/\+\d[\d\s-]{7,}/.test(text)) return false;
   const questions = (text.match(/\?/g) ?? []).length;
   if (input.questions === 1 && questions !== 1) return false;
   if (input.questions === 0 && questions !== 0) return false;
   if (text.includes('TODO-Design')) return false;
   if (BANNED.test(text) && !input.wayOut) return false;
-  if (input.wayOut && /https?:\/\//i.test(text)) return false;
   const folded = text.toLowerCase();
   for (const token of deny) {
     const needle = token.trim();

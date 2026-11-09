@@ -236,6 +236,13 @@ describe('links', () => {
     ['Latin name, Han ending', 'Call 988 or see example.中国'],
     ['two-letter pair, no closing dot', 'Call 988 or see EX.CO'],
     ['two-letter pair, then a domain', 'Call 988 or see EE.UU.com'],
+    ['title-case domain', 'Call 988 or see crisis.Org'],
+    ['title-case ending', 'Call or text 988, or visit evil.Com'],
+    ['title-case name and ending', 'Call or text 988, or visit Abc.Com'],
+    ['capitalised short link', 'Call or text 988, or visit Bit.Ly'],
+    // Fails closed: the writer is re-asked with the reason named (the ASCII dot is read as
+    // a host before Han, 988.你 being a valid host shape); 。 is the Chinese full stop.
+    ['ASCII full stop in Chinese', '请拨打988.你并不孤单。'],
   ])('%s is a link', (_name, text) => {
     expect(crisisReplyViolation('mental', text, null)).toBe('link');
   });
@@ -246,7 +253,6 @@ describe('links', () => {
     ['Chinese full stop', '请拨打988。全天都有人接听。'],
     ['country abbreviation', 'In the U.S. and Canada, call or text 988.'],
     ['Spanish country abbreviation', 'En EE.UU., llama o escribe al 988.'],
-    ['ASCII full stop in Chinese', '请拨打988.你并不孤单。'],
   ])('%s is not a link', (_name, text) => {
     expect(crisisReplyViolation('mental', text, null)).toBeNull();
   });

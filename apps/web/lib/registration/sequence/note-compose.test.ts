@@ -38,6 +38,22 @@ describe('VIL-543 · noteRefusals', () => {
     ]);
   });
 
+  it.each([
+    ['a host glued onto the handed link', `Register here: ${CARD_LINK}.evil.tld`],
+    ['the handed link as a user name', `Register here: ${CARD_LINK}@evil.tld/x`],
+    ['a scheme-less domain beside it', `Register here: ${CARD_LINK} or bit.ly/x`],
+  ])('refuses %s on the card (VIL-613)', (_label, text) => {
+    expect(noteRefusals(text, CARD)).toEqual(['other_link']);
+  });
+
+  it('passes the handed link ending a sentence', () => {
+    expect(noteRefusals(`Opens Tuesday. Register here: ${CARD_LINK}.`, CARD)).toEqual([]);
+  });
+
+  it('refuses a scheme-less domain on a note that was handed none (VIL-613)', () => {
+    expect(noteRefusals('How did it go? See evil.app', CHECK_IN)).toEqual(['other_link']);
+  });
+
   it('passes a plain note', () => {
     expect(noteRefusals('How did Springfield swim go this morning?', CHECK_IN)).toEqual([]);
   });

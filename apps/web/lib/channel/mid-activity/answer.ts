@@ -10,6 +10,7 @@ import { askStillStanding } from '~/lib/channel/checkin/cadence';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { type ReviewSubjectRef, familyAreaKey } from '~/lib/reviews/aggregate';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import {
   MID_ACTIVITY_ASK_TEMPLATE_KEY,
   type MidActivityAskRef,
@@ -371,7 +372,7 @@ async function captureAsk(
     return 'skipped';
   }
 
-  const outcome = await deps.verdict.read(inbound.body ?? '');
+  const outcome = await deps.verdict.read(withoutLiveViewLinks(inbound.body ?? ''));
   return applyOutcome(
     database,
     result,
