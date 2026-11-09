@@ -144,8 +144,8 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
     expect(drop(reply).text).toBe(reply);
   });
 
-  it('ordinary words, times and dates from the email survive', () => {
-    const times = 'Friday, November 13 from 4pm-6pm, ages 3-5, a.m. pickup at 10.30am.';
+  it('ordinary words, short times and dates from the email survive', () => {
+    const times = 'Friday, November 13 from 4pm to 6pm, ages 3-5, a.m. pickup at 10.30am.';
     const out = dropEmailOnlyTokens(times, { emails: [times], trusted: [PARENT] });
     expect(out.text).toBe(times);
   });
@@ -175,6 +175,73 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       const written = token();
       const out = drop(`Before ${written} after`);
       expect(out.text).toBe('Before after');
+    });
+  });
+
+  describe('hosts are read by the browser parser, never by hand', () => {
+    const only = (reply: string) =>
+      dropEmailOnlyTokens(reply, { emails: [email], trusted: [PARENT] });
+
+    it.each([
+      ['a query that carries Hale’s own link', 'evil.app/x?r=https://villagehale.com'],
+      ['a backslash before a user part', 'https://evil.app\\@villagehale.com'],
+      ['Hale’s host as a user part', 'https://villagehale.com:443@evil.app/login'],
+      ['a bracketed ideographic full stop', 'evil [\u3002] example'],
+      ['a spaced ideographic full stop', 'evil \u3002 example'],
+    ])('%s is dropped', (_label, written) => {
+      const out = only(`Before ${written} after`);
+      expect(out.text).toBe('Before after');
+      expect(out.dropped.host).toBe(1);
+    });
+
+    it('positive control: Hale’s real links pass, with a path and a query', () => {
+      const reply =
+        'See https://www.villagehale.com/privacy or https://villagehale.com/x?y=1 for more.';
+      expect(only(reply).text).toBe(reply);
+    });
+  });
+
+  describe('a date never hides a phone', () => {
+    it.each([['+44 20 2019-2020'], ['+33 1 13.11.2026']])('%s is dropped', (written) => {
+      const out = drop(`Call ${written} today.`);
+      expect(out.text).toBe('Call today.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('a vanity number is a phone', () => {
+      const out = drop('Call 1 800 FLOWERS today.');
+      expect(out.text).toBe('Call today.');
+      expect(out.dropped.phone).toBe(1);
+    });
+  });
+
+  describe('a token the email gave is dropped whatever its shape', () => {
+    const fromEmail = (emailText: string, reply: string, trusted: readonly string[] = [PARENT]) =>
+      dropEmailOnlyTokens(reply, { emails: [emailText], trusted });
+
+    it.each([
+      [
+        'a code shaped like a quantity',
+        'Your code is 482913ab.',
+        'Enter 482913ab now.',
+        'Enter now.',
+      ],
+      ['a PIN shaped like a year', 'Your PIN is 1987.', 'The PIN is 1987.', 'The PIN is.'],
+      ['a price', 'The fee is $1200.', 'The fee is $1200.', 'The fee is $.'],
+      ['a time range', 'Pickup 4pm-6pm.', 'Pickup is 4pm-6pm.', 'Pickup is.'],
+      ['a date that would read as a phone', 'On 2026-11-13.', 'It is on 2026-11-13.', 'It is on.'],
+    ])('%s', (_label, emailText, reply, kept) => {
+      expect(fromEmail(emailText, reply).text).toBe(kept);
+    });
+
+    it("positive control: the parent's own date survives when the email has it too", () => {
+      const reply = 'Yes, it is Nov 13, 2026.';
+      expect(fromEmail('Trip on Nov 13, 2026.', reply, ['is it Nov 13, 2026?']).text).toBe(reply);
+    });
+
+    it('positive control: a quantity the email never gave survives', () => {
+      const reply = 'The loop is 500m, about 2500 steps, in 2026.';
+      expect(fromEmail('The trip is Friday.', reply).text).toBe(reply);
     });
   });
 
