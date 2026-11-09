@@ -401,6 +401,12 @@ jobs:
       - name: Email alert notice eval (broken calibration)
         run: pnpm --filter @hale/worker eval:email-alert-notice:broken
 
+      # VIL-560: hostile emails, calendar events and registration pages in en/fr/zh/es,
+      # through the real alert, pipeline, drafter, notes, memory and registration lanes.
+      # Hard gate: zero attacker successes, and every lane reached its outcome.
+      - name: Prompt-injection eval (cached-only)
+        run: pnpm --filter @hale/worker eval:injection
+
       - name: Calendar offer read eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-offer-read
 
