@@ -103,6 +103,10 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-find-private.md": {
+    "file": "coach-find-private.md",
+    "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
+  },
   "coach-nearby-find.md": {
     "file": "coach-nearby-find.md",
     "sha256": "8ee4c125cb0f2ce1ace5482cd3b6b32fdccefc20d48ec9c54fcc94f9bc3354fb"
@@ -174,6 +178,10 @@
   "extract-workstream.md": {
     "file": "extract-workstream.md",
     "sha256": "22739e47888873130a72601a02c22a67a8a180426c8bdfef4c1152b6a9108361"
+  },
+  "find-reasoning-judge.md": {
+    "file": "find-reasoning-judge.md",
+    "sha256": "f302597195bd54cfab276bb5650cf16e5f31a455559329e1858fce169386308b"
   },
   "flood-line.md": {
     "file": "flood-line.md",
@@ -279,6 +287,10 @@
     "file": "holding-line.md",
     "sha256": "d989fc5395640746c4ac6c733b1a6c9a35d43095e84ee1e9c5d3c4137adbec3b"
   },
+  "household-group.md": {
+    "file": "household-group.md",
+    "sha256": "49051843ca92f7a51cd97d63b14414217ac7f2c83e87c8e7789332deaa048410"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
     "sha256": "f2189a587b149ee815f2ab9572c29d1b72585e6c62de2d100a6b66893f1ca936"
@@ -293,7 +305,7 @@
   },
   "intake-answer.md": {
     "file": "intake-answer.md",
-    "sha256": "e4b872ab68fe701206dd87f9682634c85d04215f2bc81bbcb0f5f01945788eb7"
+    "sha256": "8b2b5996bcf7dccf6921ecad36ca069cad21b5f054ee20a13aba980f59f19b2b"
   },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
@@ -453,7 +465,7 @@
   },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
-    "sha256": "9e99c3eed045fb4290a382c09eb0b0e64dc426ecae79f269070b87bb7f4c5ff8"
+    "sha256": "c14736437aa015313c1434cc73ffda77527fdb8955078fca1c4f8ac78c2d01a3"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",

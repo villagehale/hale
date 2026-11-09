@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text correctly says payment was not approved, nothing paid, not signed up, gives the live browser link with the 5-minute window (holdMinutes 5, linkIs live_browser), no personal details, no booked/held/reserved claim, no promise to retry, language zh matches. Minor: '留了一个打开的页面' is accurate and doesn't imply a spot is held.",
+    "score": 5
+  }
+}

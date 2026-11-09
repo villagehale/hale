@@ -71,10 +71,16 @@ describe('placeTokensIn', () => {
   });
 });
 
+/** The query an intake scrub hands on. With no child names it never refuses. */
+function searched(scrub: { ok: true; text: string } | { ok: false }): string {
+  if (!scrub.ok) throw new Error('the scrub refused a text with no child name');
+  return scrub.text;
+}
+
 /** Every place text leaves Hale through, scrubbed by the one matcher. */
 const SITES: readonly [string, (text: string) => string][] = [
-  ['intake live lookup', (text) => deidentifyLiveQuery(text, [])],
-  ['intake official page', (text) => deidentifyOfficialQuery(text, [])],
+  ['intake live lookup', (text) => searched(deidentifyLiveQuery(text, []))],
+  ['intake official page', (text) => searched(deidentifyOfficialQuery(text, []))],
   ['medical and activity searches', scrubResidualPii],
   ['general answer search', scrubDirectIdentifiers],
   ['trace mask, prose', (text) => haleMask({ data: text })],

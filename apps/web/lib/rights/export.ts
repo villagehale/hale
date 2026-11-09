@@ -671,7 +671,7 @@ export async function assembleFamilyExport(
     database,
     familyId,
     childRows,
-    { userId: deps.actorUserId, householdAdults: memberRows.length },
+    { userId: deps.actorUserId },
     now,
   );
 
