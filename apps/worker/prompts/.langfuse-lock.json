@@ -99,6 +99,11 @@
     "version": null,
     "sha256": "da8049cfc09c90ecab0993bc41cc1806ce46de5b725173e5caa2948d93b5fbc9"
   },
+  "judges/common-time": {
+    "name": "judges/common-time",
+    "version": null,
+    "sha256": "2038293c899ebab80aefedf25dac090c11945264e8d375f23a3f51fce30806b1"
+  },
   "judges/crisis-reply": {
     "name": "judges/crisis-reply",
     "version": null,

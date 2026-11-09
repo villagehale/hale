@@ -293,6 +293,14 @@ jobs:
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
 
+      # VIL-459 find a common time across families.
+      - name: Common time composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:common-time
+
+      # VIL-456 shared-group reading, with the VIL-459 find-time ask.
+      - name: Shared-group reading classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:shared-group-reading
+
       - name: Group mention read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-mention-read
 
