@@ -140,15 +140,6 @@ describe('intake answer · reading the pair', () => {
     });
   });
 
-  it('substitutes the reviewed safety line when the composer reaches for a referral', () => {
-    // Before every other gate: this parent must never get a signup question instead.
-    const outcome = readPair(
-      { answer: 'Call 811 if you are worried', returnLine: `${'x'.repeat(200)}?` },
-      INPUT,
-    );
-    expect(outcome).toEqual({ status: 'safety' });
-  });
-
   it('names WHY a body was refused rather than sending it', () => {
     expect(readPair({ answer: "I'll watch that for you.", returnLine: RETURN }, INPUT)).toEqual({
       status: 'unavailable',
@@ -429,6 +420,96 @@ describe('intake answer · the emergency tripwire', () => {
           'intake answer: official page not grounded',
         );
       });
+    });
+
+    describe('the health-line tripwire reads every outcome, not only answer_here', () => {
+      const SICK = 'wait my daughter has a 40 fever and she is barely waking up';
+      const DATES = { notes: 'Swim registration opens September 8.', url: 'https://example.org' };
+      const SLEEP = { notes: 'Most toddlers drop to one nap by 18 months.', url: 'https://x.org' };
+      // Each case puts the 911 in a different place the composer can emit from: the
+      // read's own fields, or the search notes a body is restated from.
+      const CASES = [
+        {
+          askKind: 'program_dates',
+          read: { answer: 'If this is an emergency, call 911.' },
+          search: DATES,
+          clean: DATES,
+          withoutIt: 'answered',
+        },
+        {
+          askKind: 'current_source',
+          read: {},
+          search: { ...SLEEP, notes: 'Call 911 if a child with a fever will not wake.' },
+          clean: SLEEP,
+          withoutIt: 'answered',
+        },
+        {
+          askKind: 'cheer_up',
+          read: { returnLine: 'Call 911 now if she will not wake?' },
+          search: null,
+          clean: null,
+          withoutIt: 'unavailable',
+        },
+      ] as const;
+
+      it('answer_here: substitutes for a pair the gates would refuse, too', async () => {
+        // This parent must never get the script's signup question instead.
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { client } = wire(
+          {
+            askKind: 'answer_here',
+            answer: 'Call 911 if you are worried',
+            returnLine: COLD_START_ASK,
+          },
+          null,
+        );
+        const outcome = await createIntakeAnswerComposer(client).compose({
+          ...ASK,
+          parentWords: SICK,
+        });
+        expect(outcome).toEqual({ status: 'safety' });
+      });
+
+      for (const { askKind, read, search, clean, withoutIt } of CASES) {
+        it(`${askKind}: a 911 the model or its search wrote sends the safety line`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client } = wire({ askKind, ...read }, search);
+          const outcome = await createIntakeAnswerComposer(client).compose({
+            ...ASK,
+            parentWords: SICK,
+          });
+          expect(outcome).toEqual({ status: 'safety' });
+        });
+
+        it(`${askKind}: positive control, the same text with no 911 keeps its path`, async () => {
+          vi.spyOn(console, 'error').mockImplementation(() => {});
+          const { client } = wire({ askKind }, clean);
+          const outcome = await createIntakeAnswerComposer(client).compose({
+            ...ASK,
+            parentWords: SICK,
+          });
+          expect(outcome.status).toBe(withoutIt);
+        });
+      }
+    });
+
+    it('a current_source read naming a child the scrub cannot remove never searches', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { client, searched } = wire(
+        { askKind: 'current_source' },
+        { notes: 'Most toddlers drop to one nap by 18 months.', url: 'https://x.org' },
+      );
+      const outcome = await createIntakeAnswerComposer(client).compose({
+        pendingAsk: COLD_START_ASK,
+        children: [{ name: 'Zoé', ageMonths: 30, agePrecision: 'years' }],
+        parentWords: 'Comment aider Zoe à faire la sieste?',
+      });
+      expect(searched()).toBe(0);
+      expect(outcome).toEqual({ status: 'unavailable', reason: 'no_source' });
+      expect(error).toHaveBeenCalledWith(
+        { reason: 'names_a_child' },
+        'intake answer: current source not grounded',
+      );
     });
 
     it('a cheer_up read owes the cheer-up line and searches nothing', async () => {

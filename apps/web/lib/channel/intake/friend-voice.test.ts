@@ -602,6 +602,81 @@ describe('friend-voice judge', () => {
     ).toEqual({ ok: true });
   });
 
+  it('lets a host through only as a whole word the parent wrote, never a piece of one', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. club.ca it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+    expect(judgeFriendReply('Done. kidsclub.ca.evil.app it is.', yes)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+  });
+
+  it('reads a link once: a full-width colon or slash in a scheme is still a link', () => {
+    const yes = blank({ step: 'ack', granted: true, parentWords: 'yes, we use kidsclub.ca' });
+    for (const reply of [
+      'Done. https：//evil.app it is.',
+      'Done. hxxps：//evil.app/x it is.',
+      'Done. https:／／evil.app it is.',
+      'Done. https：／／evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, yes), reply).toMatchObject({ ok: false, reason: 'invented' });
+    }
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', yes)).toEqual({ ok: true });
+
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+    expect(
+      judgeFriendReply(`${prose}\n${link}\nhttps：//evil.app/x`, calendar, { link }),
+    ).toMatchObject({ ok: false, reason: 'invented' });
+  });
+
+  it('holds a scheme link to the handed link even when a page or the parent wrote it', () => {
+    const listed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, we use kidsclub.ca',
+      findLines: ['Swim Tuesdays https://evil.app/x', 'Art Fridays https：//evil.app/y'],
+    });
+    for (const reply of [
+      'Done. Swim Tuesdays, sign up at https://evil.app/x it is.',
+      'Done. Art Fridays, sign up at https：//evil.app/y it is.',
+      'Done. Swim Tuesdays, sign up at https：//evil.app/x it is.',
+    ]) {
+      expect(judgeFriendReply(reply, listed), reply).toMatchObject({
+        ok: false,
+        reason: 'invented',
+        kinds: ['domain'],
+      });
+    }
+    const echoed = blank({
+      step: 'ack',
+      granted: true,
+      parentWords: 'yes, sign up at https://evil.app/x',
+    });
+    expect(judgeFriendReply('Done. https://evil.app/x it is.', echoed)).toMatchObject({
+      ok: false,
+      reason: 'invented',
+      kinds: ['domain'],
+    });
+
+    expect(judgeFriendReply('Done. kidsclub.ca it is.', listed)).toEqual({ ok: true });
+    expect(judgeFriendReply('Done. See https://villagehale.com for more.', listed)).toEqual({
+      ok: true,
+    });
+    const calendar = blank({ step: 'calendar', parentWords: 'Dana', parentName: 'Dana' });
+    const link = 'https://app.villagehale.com/connect?t=abc&to=gcal';
+    const prose = 'This link is just for you. Want me to check your calendar?';
+    expect(judgeFriendReply(`${prose}\n${link}`, calendar, { link })).toEqual({ ok: true });
+  });
+
   it('rejects STOP and a connector named on the wrong step', () => {
     const yes = blank({ step: 'ack', granted: true, parentWords: 'yes' });
     expect(judgeFriendReply('Done. STOP always works.', yes)).toEqual({
@@ -1806,8 +1881,9 @@ describe('#868 question marks in any script', () => {
       parentName: null,
     } as const;
     expect(
-      judgeFriendReply('你好！我是Hale。你住在哪个邮编？', { ...base, parentWords: '你好' }),
+      judgeFriendReply('你好！我是Hale，你住在哪个邮编？', { ...base, parentWords: '你好' }),
     ).toEqual({ ok: true });
+    // 'Hale。你…' reads as the host 'hale.你…' (fails closed), so the full stop is not used here.
     expect(
       judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
     ).toEqual({ ok: true });

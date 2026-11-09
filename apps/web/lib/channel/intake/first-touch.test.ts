@@ -794,10 +794,10 @@ describe('friend voice onboarding', () => {
     expect(transport.bodies()).toEqual([
       [
         '[crisis_emergency/en]',
-        'emergency=911',
-        'situation=they just told Hale their child is not breathing or is struggling to breathe, right now',
-        'firstStep=call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
-        'replyLanguage=English',
+        'emergency: 911',
+        'situation: they just told Hale their child is not breathing or is struggling to breathe, right now',
+        'firstStep: call 911 now and stay on the line; the 911 dispatcher will tell them exactly what to do, including CPR if needed',
+        'replyLanguage: English',
       ].join('\n'),
     ]);
     expect(calls.map((c) => c.purpose)).toEqual(['crisis_emergency']);

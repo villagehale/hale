@@ -187,7 +187,7 @@
   "judges/group-privacy": {
     "name": "judges/group-privacy",
     "version": null,
-    "sha256": "881df70f431c1dd985a763922bccbc2d1c4e2b6a781e4781efef89642fcd39d1"
+    "sha256": "4b4863ef6eb9fe206cc6032fe1c43198b0f06b084ca60bcdef2fe183a865bd3b"
   },
   "judges/group-private-aside": {
     "name": "judges/group-private-aside",

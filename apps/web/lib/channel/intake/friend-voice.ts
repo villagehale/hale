@@ -18,6 +18,7 @@ import {
   loadOnboardingFriendShortSkill,
   loadOnboardingFriendSkill,
 } from '~/lib/cron/skill';
+import { asHandsetReads, linksOutside } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
@@ -1327,8 +1328,7 @@ function weekdaysOutsideSlots(text: string, slots: readonly string[]): string[] 
 
 /** A phone number in prose: code puts the real one under the reply, never the model. */
 const PHONE = /\+?\d[\d\s().-]{8,}\d/u;
-/** A web address without its scheme ("hale.app/join"). Only the site in the facts may be named. */
-const BARE_DOMAIN = /\b[\w-]+\.(?:app|com|ca|io|org|net|co)(?:\/[^\s,)]*)?/giu;
+
 /** Capitalised words any reply may use: Hale's own names and the services it talks about. */
 const ALLOWED_NAMES = new Set([
   'hale',
@@ -1515,6 +1515,22 @@ function trailerFacts(options: JudgeOptions): string[] {
 }
 
 /**
+ * The words a reply's links may be. A bare domain the parent or a page wrote may be
+ * repeated; a scheme link only ever as the one code handed this bubble or Hale's own
+ * site, since page text is third-party. Scheme words are found in the handset reading,
+ * so a full-width ':' or '/' is a scheme too.
+ */
+function linkSlots(slots: readonly string[], link: string | null | undefined): string[] {
+  const bare = slots.map((slot) =>
+    asHandsetReads(slot)
+      .split(/\s+/)
+      .filter((word) => !word.includes('://'))
+      .join(' '),
+  );
+  return [...bare, ...(link ? [link] : []), `https://${HALE_IDENTITY.site}`];
+}
+
+/**
  * `detail` is for the retry and may quote the draft. `kinds` is what a log may
  * carry: fixed codes, never the draft's words.
  */
@@ -1588,7 +1604,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', mentionsOutsideSlots(trimmed, BARE_DOMAIN, slots)],
+    ['domain', linksOutside(trimmed, linkSlots(slots, options.link))],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);
@@ -1600,10 +1616,6 @@ export function judgeFriendReply(
       count: invented.length,
       kinds: found.filter(([, matched]) => matched.length > 0).map(([kind]) => kind),
     };
-  }
-  if (/https?:\/\//i.test(trimmed)) {
-    const allowed = options.link && trimmed.includes(options.link);
-    if (!allowed) return { ok: false, reason: 'invented' };
   }
 
   // "The link" is true only when a link rides this bubble, or when the card is

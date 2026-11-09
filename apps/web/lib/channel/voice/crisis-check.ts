@@ -1,5 +1,6 @@
 import { CRISIS_LINE_NAMES } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { hasLinkShape } from '~/lib/format/link-shape';
 
 /**
  * The crisis acceptance checks: the digit tokenizer, the hours forms, the link and
@@ -182,27 +183,6 @@ function tokenIsCrisisLinesOnly(token: readonly CrisisDigitGroup[]): boolean {
   );
 }
 
-const LINK_SCHEME = /[a-z][a-z\d+.-]*:\/\/|\bwww\./i;
-// A name, a dot, then a 2+ letter ending: written plainly, spaced on both sides, or
-// bracketed ('example[.]com').
-const DOMAIN_DOT = /[\p{L}\d-](?:\.|\s+\.\s+|\s*[[({]\s*\.\s*[\])}]\s*)\p{L}{2,}(?![\p{L}\d])/iu;
-// An ideographic full stop between Latin parts ('example。com'), but not a CJK sentence end.
-const IDEOGRAPHIC_DOMAIN_DOT = /[a-z\d-][\u3002\uff61][a-z]{2,}(?![a-z\d])/i;
-
-// Not domain dots: a Spanish doubled-letter plural ('EE.UU.'), and an ASCII full stop
-// ending a sentence before Chinese or Japanese when no Latin name sits before it.
-const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\d])/gu;
-const CJK_SENTENCE_DOT =
-  /(?<![^\P{L}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}][\p{Nd}-]*)\.(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu;
-
-function crisisTextHasLink(text: string): boolean {
-  const folded = text
-    .normalize('NFKC')
-    .replace(DOUBLED_PAIR_ABBREVIATION, ' ')
-    .replace(CJK_SENTENCE_DOT, ' ');
-  return LINK_SCHEME.test(folded) || DOMAIN_DOT.test(folded) || IDEOGRAPHIC_DOMAIN_DOT.test(folded);
-}
-
 // Intl names a language's usual script; these tags name a writing system that spans
 // several Unicode scripts.
 const WRITING_SYSTEM_SCRIPTS: Readonly<Record<string, readonly string[]>> = {
@@ -330,7 +310,7 @@ export function crisisReplyViolation(
     return 'emergency_988';
   }
   if (!tokens.every(tokenIsCrisisLinesOnly)) return 'other_number';
-  if (crisisTextHasLink(text)) return 'link';
+  if (hasLinkShape(text)) return 'link';
   const scriptLetter = replyScriptLetter(language);
   if (scriptLetter && !replyMostlyInScript(text, scriptLetter)) return 'wrong_script';
   return null;
@@ -342,6 +322,6 @@ export function crisisReplyViolation(
  */
 export function readerConfirmationViolation(text: string): 'other_number' | 'link' | null {
   if (crisisNumberTokens(text).length > 0) return 'other_number';
-  if (crisisTextHasLink(text)) return 'link';
+  if (hasLinkShape(text)) return 'link';
   return null;
 }
