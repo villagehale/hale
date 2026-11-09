@@ -1,13 +1,15 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import type { BrowserUsePlanInput, BrowserUsePlanResult } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
-import { recordSignupOffer } from '../store';
+import { isOneSubmittingViolation, recordSignupOffer } from '../store';
 import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import { type PlanOutcomeNotice, type PlanRunDeps, runDueSignupPlans } from './run';
-import { approveSignupPlan } from './store';
+import { approveSignupPlan, cancelSignupPlan } from './store';
 
 // Invented hosts and details only. The Browser Use engine is its own tested unit
 // (plan-engine.test.ts); here a stand-in runner reports steps the way it does.
@@ -37,6 +39,22 @@ const SESSIONS = [
 
 let db: TestDb;
 let messageSeq = 0;
+let phoneSeq = 0;
+
+/** The parent's live channel: enrolled, verified, not revoked. */
+async function enrolParent(familyId: string, userId: string) {
+  phoneSeq += 1;
+  const phone = `+1202555${String(100 + phoneSeq).padStart(4, '0')}`;
+  await db.database.insert(schema.parentChannels).values({
+    userId,
+    familyId,
+    kind: 'sms',
+    phoneE164Encrypted: encryptString(phone),
+    phoneE164Hash: phoneBlindIndex(phone),
+    verifiedAt: new Date(NOW.getTime() - 30 * 24 * 60 * 60_000),
+  });
+  return phone;
+}
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -57,6 +75,7 @@ async function plannedFamily(
   options: { url?: string; maxPriceCents?: number; opensAt?: Date; session?: boolean } = {},
 ) {
   const seeded = await seedFamily(db.database);
+  const phone = await enrolParent(seeded.familyId, seeded.parentUserId);
   const childId = await seedChild(db.database, seeded.familyId, 'Ada', 40, undefined, NOW);
   const url = options.url ?? AUTO_URL;
   const offer = await recordSignupOffer(db.database, {
@@ -93,7 +112,7 @@ async function plannedFamily(
     });
     expect(stored.ok).toBe(true);
   }
-  return { ...seeded, offerId: offer.id };
+  return { ...seeded, phone, offerId: offer.id };
 }
 
 const PAID: BrowserUsePlanResult = {
@@ -127,6 +146,15 @@ function engineLike(result: BrowserUsePlanResult, cartTotalCents = 9800) {
       await input.onStep({ step: 'spending_cap', amountCents: cartTotalCents, ok: cap.ok });
       if (!cap.ok)
         return { ...result, outcome: 'needs_human' as const, detail: 'spending_cap' as const };
+      if (!(await input.stillAuthorized())) {
+        return {
+          ...result,
+          outcome: 'cancelled' as const,
+          detail: 'authorization_lapsed' as const,
+          confirmationNumber: null,
+          amountChargedCents: null,
+        };
+      }
       await input.onStep({
         step: 'payment',
         outcome: result.outcome,
@@ -395,5 +423,187 @@ describe('carrying out plans at the open', () => {
       (await offerRow(second.id))?.status,
     ];
     expect(statuses.sort()).toEqual(['completed', 'planned']);
+  });
+});
+
+describe("a plan runs only while the parent's yes still stands", () => {
+  const lapses: [string, (family: Awaited<ReturnType<typeof plannedFamily>>) => Promise<void>][] = [
+    [
+      'the parent opted out (the live channel row is revoked)',
+      async (family) => {
+        await db.database
+          .update(schema.parentChannels)
+          .set({ revokedAt: NOW })
+          .where(eq(schema.parentChannels.userId, family.parentUserId));
+      },
+    ],
+    [
+      'the parent left the family',
+      async (family) => {
+        await db.database
+          .delete(schema.familyMembers)
+          .where(
+            and(
+              eq(schema.familyMembers.familyId, family.familyId),
+              eq(schema.familyMembers.userId, family.parentUserId),
+            ),
+          );
+      },
+    ],
+    [
+      'the family is scheduled for erasure',
+      async (family) => {
+        await db.database
+          .update(schema.families)
+          .set({ scheduledDeletionAt: new Date(NOW.getTime() + 7 * 24 * 60 * 60_000) })
+          .where(eq(schema.families.id, family.familyId));
+      },
+    ],
+    [
+      'a text the parent sent may be a stop nobody has read yet',
+      async (family) => {
+        await db.database.insert(schema.optOutHeldMessages).values({
+          providerMessageId: `held-${family.offerId}`,
+          phoneHash: phoneBlindIndex(family.phone),
+          heldAt: NOW,
+          nextReadAt: NOW,
+        });
+      },
+    ],
+  ];
+
+  it.each(lapses)(
+    'ends with a named outcome and opens no browser when %s',
+    async (_name, lapse) => {
+      const family = await plannedFamily();
+      await lapse(family);
+      const { runner, inputs } = engineLike(PAID);
+      const { deps: d, notices } = deps(runner);
+      const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+      expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+        offerId: family.offerId,
+        outcome: 'cancelled',
+        detail: 'authorization_lapsed',
+        notice: 'withheld',
+      });
+      expect(inputs.some((i) => i.correlationId === family.offerId)).toBe(false);
+      expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+      expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+      const audit = await steps(family.offerId);
+      expect(audit.map((s) => s.step)).toEqual(['plan_approved', 'plan_started', 'plan_finished']);
+      // One code for every lapse: a co-parent's export never says which (a stop is one adult's).
+      expect(audit.at(-1)).toMatchObject({ detail: 'authorization_lapsed', notice: 'withheld' });
+    },
+  );
+
+  it('re-checks just before paying: an opt-out during the run leaves the card unused', async () => {
+    const family = await plannedFamily();
+    const { runner: inner } = engineLike(PAID);
+    const runner = {
+      run: vi.fn(async (input: BrowserUsePlanInput) => {
+        expect(await input.stillAuthorized()).toBe(true);
+        if (input.correlationId === family.offerId) {
+          await db.database
+            .update(schema.parentChannels)
+            .set({ revokedAt: NOW })
+            .where(eq(schema.parentChannels.userId, family.parentUserId));
+        }
+        return inner.run(input);
+      }),
+    };
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      notice: 'withheld',
+    });
+    expect((await steps(family.offerId)).map((s) => s.step)).not.toContain('plan_payment');
+    expect(notices.some((n) => n.offerId === family.offerId)).toBe(false);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+  });
+});
+
+describe('cancelling a planned registration', () => {
+  it('moves the plan out of planned with one audit row, so the open never runs it', async () => {
+    const family = await plannedFamily();
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: NOW,
+      }),
+    ).toBe('cancelled');
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual(['plan_approved', 'plan_cancelled']);
+
+    const { runner, inputs } = engineLike(PAID);
+    const swept = await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+    expect(swept.plans.some((p) => p.offerId === family.offerId)).toBe(false);
+    expect(inputs.some((i) => i.correlationId === family.offerId)).toBe(false);
+
+    // A second cancel finds nothing planned and writes nothing.
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: family.familyId,
+        actor: family.parentUserId,
+        now: NOW,
+      }),
+    ).toBe('not_planned');
+    expect(await steps(family.offerId)).toHaveLength(2);
+  });
+
+  it("refuses another family's offer", async () => {
+    const family = await plannedFamily();
+    const other = await seedFamily(db.database);
+    expect(
+      await cancelSignupPlan(db.database, {
+        offerId: family.offerId,
+        familyId: other.familyId,
+        actor: other.parentUserId,
+        now: NOW,
+      }),
+    ).toBe('not_planned');
+    expect((await offerRow(family.offerId))?.status).toBe('planned');
+  });
+});
+
+describe('one registration per family, held by the database', () => {
+  it('rejects a second submitting offer for the same family, whoever writes it', async () => {
+    const family = await plannedFamily();
+    const childId = await seedChild(db.database, family.familyId, 'Bo', 50, undefined, NOW);
+    const second = await recordSignupOffer(db.database, {
+      familyId: family.familyId,
+      childId,
+      parentUserId: family.parentUserId,
+      activityKey: 'gym-preschool',
+      registrationUrl: AUTO_URL,
+      sessions: SESSIONS,
+      approvedPriceCents: null,
+      now: NOW,
+    });
+    if (!second.ok) throw new Error(second.reason);
+    const toSubmitting = (id: string) =>
+      db.database
+        .update(schema.authorizedSignupOffers)
+        .set({ status: 'submitting' })
+        .where(eq(schema.authorizedSignupOffers.id, id));
+    await toSubmitting(family.offerId);
+    const error = await toSubmitting(second.id).then(
+      () => null,
+      (err: unknown) => err,
+    );
+    expect(error).not.toBeNull();
+    expect(isOneSubmittingViolation(error)).toBe(true);
+    // Positive control: another family's offer is free to submit, and an unrelated error
+    // is not read as the one-per-family guard.
+    const other = await plannedFamily();
+    await expect(toSubmitting(other.offerId)).resolves.toBeDefined();
+    expect(isOneSubmittingViolation(new Error('connection reset'))).toBe(false);
   });
 });

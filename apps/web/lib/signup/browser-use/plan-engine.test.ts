@@ -141,6 +141,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     onProfileCreated: async () => undefined,
     proxyCountryCode: null,
     checkSpendingCap: cap,
+    stillAuthorized: async () => true,
     onStep: async (step) => {
       steps.push(step);
     },
@@ -205,6 +206,27 @@ describe('day-before plan engine', () => {
     });
     expect(runPosts(log)).toHaveLength(1);
     expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+  });
+
+  it("never pays once the parent's yes no longer stands: the browser stops, no payment run", async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const stillAuthorized = vi.fn(async () => false);
+    const { input, steps, cap } = plan({ stillAuthorized });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      liveViewUrl: null,
+      confirmationNumber: null,
+      amountChargedCents: null,
+    });
+    // Checked after the cap, just before the card: the last moment that matters.
+    expect(cap).toHaveBeenCalledWith(9800);
+    expect(stillAuthorized).toHaveBeenCalledTimes(1);
+    expect(runPosts(log)).toHaveLength(1);
+    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+    expect(log.some((r) => r.method === 'PATCH' && r.path === '/browsers/browser-1')).toBe(true);
   });
 
   it.each([

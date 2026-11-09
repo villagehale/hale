@@ -21,6 +21,11 @@ ALTER TABLE "authorized_signup_offers" ADD COLUMN IF NOT EXISTS "plan_approved_a
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "authorized_signup_offers_planned_idx" ON "authorized_signup_offers" ("plan_opens_at") WHERE "status" = 'planned';
 --> statement-breakpoint
+-- One registration per family at a time. Two overlapping sweeps under READ COMMITTED
+-- can each pass a NOT EXISTS check on the other's uncommitted claim; this index makes
+-- the second claim fail instead. Prod held no offer rows on 2026-11-08.
+CREATE UNIQUE INDEX IF NOT EXISTS "authorized_signup_offers_one_submitting" ON "authorized_signup_offers" ("family_id") WHERE "status" = 'submitting';
+--> statement-breakpoint
 DO $$ BEGIN
   ALTER TABLE "authorized_signup_offers" DROP CONSTRAINT IF EXISTS "authorized_signup_offers_status_chk";
   ALTER TABLE "authorized_signup_offers" ADD CONSTRAINT "authorized_signup_offers_status_chk"

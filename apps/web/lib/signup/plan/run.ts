@@ -27,6 +27,7 @@ import {
   claimDuePlan,
   loadPlanConsent,
   planFieldsToType,
+  planLapse,
   writePlanAudit,
 } from './store';
 import { planModeFor } from './towns';
@@ -73,6 +74,9 @@ export type PlanRunDetail =
   | 'spend_reserve_reached'
   | 'engine_threw';
 
+/** Told nothing: a parent whose yes no longer stands (an opt-out, a departure) is not texted. */
+export type PlanNotice = 'sent' | 'failed' | 'withheld';
+
 export interface PlanRunDeps {
   /** The Browser Use plan engine. Null names it absent: no plan is claimed. */
   runner: PlanSignupRunner | null;
@@ -91,7 +95,7 @@ export interface PlanRunSummary {
   offerId: string;
   outcome: PlanRunOutcome;
   detail: PlanRunDetail;
-  notice: 'sent' | 'failed';
+  notice: PlanNotice;
 }
 
 export type PlanSweepResult =
@@ -101,7 +105,8 @@ export type PlanSweepResult =
 /**
  * VIL-558 · carries out every day-before plan whose open is now. Dark behind its own
  * kill switch. Each plan writes one audit row per step: started, checkout, spending
- * cap, payment, finished (rule #6).
+ * cap, payment, finished (rule #6). A plan whose yes no longer stands ({@link planLapse},
+ * read at the claim and again before payment) ends `cancelled` and texts no one.
  */
 export async function runDueSignupPlans(
   database: Database,
@@ -115,8 +120,13 @@ export async function runDueSignupPlans(
     return { skipped: 'not_configured', plans: [] };
   }
   const claimed: ClaimedPlan[] = [];
-  while (claimed.length < PLAN_SWEEP_MAX) {
+  for (
+    let attempt = 0;
+    attempt < 2 * PLAN_SWEEP_MAX && claimed.length < PLAN_SWEEP_MAX;
+    attempt++
+  ) {
     const plan = await claimDuePlan(database, { now: input.now, leadMs: PLAN_JOIN_LEAD_MS });
+    if (plan === 'contended') continue;
     if (!plan) break;
     claimed.push(plan);
   }
@@ -188,7 +198,10 @@ async function runOnePlan(
       familyId: plan.familyId,
       parentUserId: plan.parentUserId,
     };
-    const notice = await deps.notifyParent(noticeFacts).catch(() => 'failed' as const);
+    const notice: PlanNotice =
+      result.detail === 'authorization_lapsed'
+        ? 'withheld'
+        : await deps.notifyParent(noticeFacts).catch(() => 'failed' as const);
     if (notice === 'failed') {
       console.error(
         { offerId: plan.offerId, outcome: result.outcome, notice },
@@ -223,6 +236,11 @@ async function runOnePlan(
       holdExpiresAt: null,
     });
 
+  const lapse = await planLapse(database, plan);
+  if (lapse) {
+    console.info({ offerId: plan.offerId, lapse }, 'signup plans: the yes no longer stands');
+    return handBack('authorization_lapsed', 'cancelled');
+  }
   if (!allowed.ok || !host) return handBack('url_refused');
   if (now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) return handBack('missed_open');
   if (mode === 'assisted') return handBack('assisted_town');
@@ -282,6 +300,15 @@ async function runOnePlan(
       proxyCountryCode: browserUseProxyFor(providerHost),
       checkSpendingCap: (amountCents) =>
         cap(plan.familyId, { amountUsd: amountCents / 100, category: 'registration' }),
+      stillAuthorized: async () => {
+        const late = await planLapse(database, plan);
+        if (late)
+          console.info(
+            { offerId: plan.offerId, lapse: late },
+            'signup plans: yes lapsed before payment',
+          );
+        return late === null;
+      },
       onStep: (step) => audit({ ...step, step: `plan_${step.step}`, host }),
     });
   } catch (err) {

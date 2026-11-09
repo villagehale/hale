@@ -80,6 +80,10 @@ export const authorizedSignupOffers = pgTable(
     onePending: uniqueIndex('authorized_signup_offers_one_pending')
       .on(table.familyId)
       .where(sql`${table.status} = 'pending'`),
+    /** One registration per family at a time, held under concurrent sweeps (VIL-558). */
+    oneSubmitting: uniqueIndex('authorized_signup_offers_one_submitting')
+      .on(table.familyId)
+      .where(sql`${table.status} = 'submitting'`),
     plannedIdx: index('authorized_signup_offers_planned_idx')
       .on(table.planOpensAt)
       .where(sql`${table.status} = 'planned'`),

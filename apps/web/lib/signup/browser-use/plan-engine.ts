@@ -42,14 +42,16 @@ import {
 export const PLAN_SIGNUP_SKILL = 'browser-use-plan-signup';
 export const SAVED_CARD_PAYMENT_SKILL = 'browser-use-saved-card-payment';
 
-export type PlanEngineOutcome = BrowserUseEngineOutcome | 'not_open';
+export type PlanEngineOutcome = BrowserUseEngineOutcome | 'not_open' | 'cancelled';
 
 export type PlanEngineDetail =
   | BrowserUseEngineDetail
   | 'choice_unreadable'
   | 'no_saved_card'
   | 'security_code'
-  | 'spending_cap';
+  | 'spending_cap'
+  /** The parent's yes no longer stood at the moment of payment (rule #4). */
+  | 'authorization_lapsed';
 
 export type PlanEngineStep =
   | { step: 'checkout'; choiceIndex: number; cartTotalCents: number | null }
@@ -80,6 +82,8 @@ export interface BrowserUsePlanInput
   waiverAccepted: boolean;
   /** Rule #7, on the cart total, before the saved card is used. */
   checkSpendingCap: (amountCents: number) => Promise<{ ok: boolean; reason: string }>;
+  /** Rule #4, re-read just before the saved card is used: false stops the browser unpaid. */
+  stillAuthorized: () => Promise<boolean>;
   /** Called once per step so the caller writes one audit row each (rule #6). */
   onStep: (step: PlanEngineStep) => Promise<void>;
 }
@@ -242,6 +246,9 @@ async function drivePlan(
     const cap = await input.checkSpendingCap(total);
     await input.onStep({ step: 'spending_cap', amountCents: total, ok: cap.ok });
     if (!cap.ok) return { ...checkout, detail: 'spending_cap' };
+    if (!(await input.stillAuthorized())) {
+      return stop('cancelled', 'authorization_lapsed', choiceIndex);
+    }
     if (!ids.sessionId) return checkout;
     const paid = await payWithSavedCard(input, deps, tracker, checkout, {
       total,
