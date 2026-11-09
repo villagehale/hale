@@ -447,6 +447,13 @@ jobs:
       - name: Onboarding reply fields eval (cached-only)
         run: pnpm --filter @hale/worker eval:friend-marks
 
+      # Hard cache gate. A miss fails the job.
+      - name: Household group eval (cached-only)
+        run: pnpm --filter @hale/worker eval:household-group
+
+      - name: Household group eval (broken calibration)
+        run: pnpm --filter @hale/worker eval:household-group:broken
+
   # Aggregator that preserves the historical check name. Always reports, including
   # when worker evals were skipped, so branch protection is not left waiting on a
   # skipped job. Fails when workspace checks fail or when evals were required and
