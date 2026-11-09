@@ -168,6 +168,7 @@ function suiteUsd({
       estimateTokens(READ_JUDGE_SYSTEM) +
         estimateTokens({
           situation: fixture.situation,
+          message: fixture.input,
           reading: { intent: "chatter" },
         }) +
         estimateTokens(JUDGE_TOOL),
@@ -356,6 +357,7 @@ async function main() {
     });
     const verdict = await readJudge(fixture.id, {
       situation: fixture.situation,
+      message: fixture.input,
       reading: value,
     });
     const ok =

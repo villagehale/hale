@@ -314,6 +314,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Group shared lists eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-lists
+
       - name: Coach local day eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-local-day
 
