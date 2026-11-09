@@ -415,6 +415,10 @@
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
+  "registration-date-unconfirmed.md": {
+    "file": "registration-date-unconfirmed.md",
+    "sha256": "df670bbb95411f7858b8e3b608d81d3153d800eaa736c2aa0ee8e94315a8fe20"
+  },
   "registration-evening.md": {
     "file": "registration-evening.md",
     "sha256": "218c8e446e9400784aac34806b17b11cfcc6587521e8ac7142b6153e06b20fcc"
@@ -437,7 +441,7 @@
   },
   "reminder.md": {
     "file": "reminder.md",
-    "sha256": "5036b4da06914c0739a941a8d32a8a581fb9964fecf044c057c967ab62555473"
+    "sha256": "32bf310ee83d6708bd5ead832ebb2a16c7c7d230b78df880207a98d31e75a47e"
   },
   "reply-copy.md": {
     "file": "reply-copy.md",

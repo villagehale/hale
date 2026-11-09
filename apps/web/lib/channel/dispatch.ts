@@ -13,6 +13,7 @@ import type {
   Channel,
   ChannelKind,
   ChannelSendOutcome,
+  DeliveredChannel,
   LoopCategory,
   LoopMessage,
   RenderedContent,
@@ -39,7 +40,8 @@ import type {
  * no live provider.
  */
 
-/** The one leg the dispatch sends on. */
+/** The one leg the dispatch sends on. A sent row records the pipe the adapter names
+ * instead (`ChannelSendOutcome.transport`). */
 const EXCHANGE_CHANNEL: ChannelKind = 'sms';
 
 /**
@@ -58,7 +60,7 @@ export type SuppressionStatus =
 export interface LedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: ChannelKind;
+  channel: DeliveredChannel;
   category: LoopCategory;
   templateKey: string;
   dedupeKey: string | null;
@@ -324,13 +326,19 @@ async function dispatchLeg(
     // channel with no receipt wired is terminal here (channel/ledger.ts). The LEG's
     // outcome stays 'sent' either way — the leg did hand the message over, and that is
     // the question a caller composing legs is asking.
-    const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
-      dedupeKey: legKey,
-      providerMessageId: result.providerMessageId,
-      providerChatId: result.providerChatId ?? null,
-      sentAt: now,
-      ...(rendered.recordBody ? { body: rendered.text } : {}),
-    });
+    const id = await writeLedgerRow(
+      ports,
+      msg,
+      result.transport,
+      acceptedStatus(result.transport),
+      {
+        dedupeKey: legKey,
+        providerMessageId: result.providerMessageId,
+        providerChatId: result.providerChatId ?? null,
+        sentAt: now,
+        ...(rendered.recordBody ? { body: rendered.text } : {}),
+      },
+    );
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
     // the household's week to a third party the parents authorised, and the generic row
     // renders on the family's trail as "Hale sent you a message" — which is false about
@@ -348,7 +356,12 @@ async function dispatchLeg(
       // an immutable PIPEDA-exportable row — and it is the only DURABLE count there is:
       // the drain discards the DispatchResult, so an outcome that stopped at the leg
       // would be the same silence in production that naming it exists to end.
-      after: { channel, category: msg.category, templateKey: msg.templateKey, voice },
+      after: {
+        channel: result.transport,
+        category: msg.category,
+        templateKey: msg.templateKey,
+        voice,
+      },
     });
     // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
     // every other post-send write here: a leg that a suppression or a refusal stopped is
@@ -421,13 +434,19 @@ async function dispatchTexts(
     },
     isTransient: (err) => err instanceof ChannelRetryableError,
     record: async ({ key, text, result }) => {
-      const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
-        dedupeKey: key,
-        providerMessageId: result.providerMessageId,
-        providerChatId: result.providerChatId ?? null,
-        sentAt: now,
-        ...(rendered.recordBody ? { body: text } : {}),
-      });
+      const id = await writeLedgerRow(
+        ports,
+        msg,
+        result.transport,
+        acceptedStatus(result.transport),
+        {
+          dedupeKey: key,
+          providerMessageId: result.providerMessageId,
+          providerChatId: result.providerChatId ?? null,
+          sentAt: now,
+          ...(rendered.recordBody ? { body: text } : {}),
+        },
+      );
       await ports.audit({
         familyId: msg.familyId,
         actor: 'system',
@@ -436,7 +455,12 @@ async function dispatchTexts(
           : 'channel_sent',
         targetTable: 'channel_messages',
         targetId: id,
-        after: { channel, category: msg.category, templateKey: msg.templateKey, voice },
+        after: {
+          channel: result.transport,
+          category: msg.category,
+          templateKey: msg.templateKey,
+          voice,
+        },
       });
       if (channel === 'sms') {
         await ports.threadMessage({
@@ -478,7 +502,7 @@ function claimText(rendered: RenderedContent): string {
 async function writeLedgerRow(
   ports: DispatchPorts,
   msg: LoopMessage,
-  channel: ChannelKind,
+  channel: DeliveredChannel,
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
@@ -499,7 +523,7 @@ async function writeLedgerRow(
 
 function rowFor(
   msg: LoopMessage,
-  channel: ChannelKind,
+  channel: DeliveredChannel,
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): LedgerWrite {
