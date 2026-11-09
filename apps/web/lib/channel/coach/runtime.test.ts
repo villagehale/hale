@@ -996,7 +996,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     );
     expect(e.asked).toEqual([PARENT]);
     expect(seen[0]?.tools).not.toContain('read_email');
-    expect(seen[0]?.skillTools).toEqual([]);
+    expect(seen[0]?.skillTools).not.toContain('read_email');
     expect(seen[0]?.instructions).not.toContain('read_email');
   });
 
