@@ -2,6 +2,7 @@ import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
 import { senderLabel } from '@hale/worker/sender-label';
@@ -176,8 +177,6 @@ export function emailAlertNoticeUserMessage(facts: EmailAlertNoticeFacts): strin
   return JSON.stringify(facts);
 }
 
-const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
-
 /**
  * Structural refusals only, never wording or length: empty, or a link. Whether the text
  * asks to add it is the model's own structured `asks_to_add`, held to the offer row in
@@ -187,7 +186,7 @@ const URL_SHAPE = /https?:\/\/\S+|www\.\S+/i;
 export function emailAlertNoticeRefusals(text: string): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
-  return URL_SHAPE.test(body) ? ['link'] : [];
+  return hasLinkShape(body) ? ['link'] : [];
 }
 
 /** The model's `asks_to_add` against the offer row: a fact check, not a punctuation one. */

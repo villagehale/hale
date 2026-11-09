@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { hasWord } from './kid-event';
 import type { PollOptionWrite } from './poll';
 
@@ -640,7 +641,7 @@ export const GROUP_CONFLICT_MAX_TOKENS = 400;
 export function groupConflictTextUsable(text: string): string | null {
   const body = text.trim();
   if (body.length === 0) return null;
-  if (/https?:\/\/|www\./i.test(body)) return null;
+  if (hasLinkShape(body)) return null;
   return body;
 }
 

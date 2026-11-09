@@ -1,8 +1,9 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { hasLink, withoutLinks } from './links';
+import { withoutLinks } from './links';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -81,7 +82,7 @@ export function planReplyViolations(text: string): string[] {
   const out: string[] = [];
   const tidy = text.trim();
   if (!tidy) out.push('empty');
-  if (hasLink(tidy)) out.push('contains a link: Hale adds any link after the text');
+  if (hasLinkShape(tidy)) out.push('contains a link: Hale adds any link after the text');
   return out;
 }
 

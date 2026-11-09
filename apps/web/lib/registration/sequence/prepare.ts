@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
 import { type BookMe4Model, fragment, readCourseModel } from '~/lib/channel/spots/availability';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 
 /**
@@ -176,11 +177,6 @@ const PRINTABLE_STRING_CAPS: Readonly<Record<string, number>> = {
  * one of at most seven ("$435.65"). */
 const PRICE_FIGURE_CAP = 16;
 
-/** Anything that would read as a link in a phone's message list. Checked as a substring
- * rather than parsed: the question is not "is this a URL" but "will a handset make one
- * of it", and every handset linkifies more eagerly than any parser. */
-const LINK_SHAPED = /:\/\/|http|www\./i;
-
 /**
  * Whether Hale can put this vendor string into an outbound body AS ITSELF.
  *
@@ -197,7 +193,7 @@ const LINK_SHAPED = /:\/\/|http|www\./i;
 function sendableAsItself(value: string, maxChars: number): boolean {
   if (value.length > maxChars) return false;
   if (!isPrintableGsm7Basic(value)) return false;
-  return !LINK_SHAPED.test(value);
+  return !hasLinkShape(value);
 }
 
 /**

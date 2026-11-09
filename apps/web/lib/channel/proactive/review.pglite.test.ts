@@ -10,6 +10,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey } from '~/lib/channel/weekday-care/key';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { assembleMemoryBrief } from '~/lib/memory/brief';
+import { LIVE_VIEW_LINK_WITHHELD } from '~/lib/signup/browser-use/live-view';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { travelBriefDedupeKey } from '~/lib/travel/sweep';
 import type { WriterResult } from './compose';
@@ -1373,6 +1374,17 @@ describe('runProactiveReview', () => {
       cadencePreference: { schemaVersion: 1, parentUserId, direction: 'less' },
     });
     expect(await memoryFacts()).toEqual([]);
+  });
+
+  it('never shows the decider a live browser link from a parent text (VIL-613)', async () => {
+    vi.stubEnv('PROACTIVE_CADENCE', 'live');
+    await parentText('done here https://live.browser-use.com/s/fixture-live-token', HOUR_BEFORE);
+    await enqueue();
+    const h = harness(lessPlease);
+
+    await runProactiveReview(db.database, h.deps, THURSDAY_EVENING);
+
+    expect(h.snapshots[0]?.recentParentTexts).toEqual([`done here ${LIVE_VIEW_LINK_WITHHELD}`]);
   });
 
   it('reads no parent text for a batch two parents own, and names the withhold', async () => {

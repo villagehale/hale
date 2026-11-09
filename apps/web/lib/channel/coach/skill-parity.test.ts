@@ -20,6 +20,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
