@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with every given fact. 'Jour de congé' is said to be tomorrow, all day, with no clock time, and it is kept as the name of the all-day item without being turned into a claim that the day is free or open. Léa's swimming is stated as tomorrow morning from 10 h to 11 h (correct AM, matches 10:00-11:00 AM), at Piscine Main, 120 Main St, so the venue name and address are both there. 'Demain matin' is true for a 10:00 AM start. Nothing is invented: no travel or departure time, no overlap claim, no invented detail. It is entirely in French, there is no link, and bold is none, which is fine.",
+    "score": 5
+  }
+}
