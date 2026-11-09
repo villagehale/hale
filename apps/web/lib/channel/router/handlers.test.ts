@@ -5,6 +5,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { type CanaryHousehold, canaryChannel } from '~/lib/channel/canary/config';
 import { seedCanaryHousehold } from '~/lib/channel/canary/seed';
 import { TORONTO_FOLLOW, cityRecLine } from '~/lib/channel/rec-morning';
+import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
+import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
 import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import type { SpotPortal } from '~/lib/channel/spots/url';
 import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
@@ -607,6 +609,25 @@ describe('recMorningHandler', () => {
     } finally {
       setSharedSpokenLineWriter(scriptedSpokenLineWriter);
     }
+  });
+
+  it('VIL-545: leaves a swim pickup to the coach when the read says the facts do not answer it', async () => {
+    const pickup = "Hale, can you loop in Sam about Saturday's swim pickup? I can't make it.";
+    const texts: string[] = [];
+    setSharedRecMorningReader(async (input) => {
+      texts.push(input.text);
+      return 'other';
+    });
+    try {
+      expect(await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).toEqual({
+        claimed: false,
+      });
+      expect(texts).toEqual([pickup]);
+    } finally {
+      setSharedRecMorningReader(scriptedRecMorningReader);
+    }
+    // Positive control: the same text, read as answered, is claimed by the lane.
+    expect((await recMorningHandler().handle(TORONTO_FAMILY, turn(pickup))).claimed).toBe(true);
   });
 
   it('leaves waitlisted #3 and a watch ask for the handlers that own them', async () => {

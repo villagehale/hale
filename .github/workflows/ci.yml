@@ -408,6 +408,9 @@ jobs:
       - name: Connector disconnect read eval (cached-only)
         run: pnpm --filter @hale/worker eval:connector-disconnect-read
 
+      - name: Rec-morning read eval (cached-only)
+        run: pnpm --filter @hale/worker eval:rec-morning-read
+
       - name: Crisis reply eval (cached-only)
         run: pnpm --filter @hale/worker eval:crisis-reply
 
