@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "question",
+    "role": "unclear",
+    "familyLabel": null,
+    "kidName": null,
+    "confidence": "high",
+    "ruledOut": []
+  },
+  "latencyMs": 1191
+}

@@ -1,5 +1,8 @@
+import type { Database } from '@hale/db';
+import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { speak } from '~/lib/channel/spoken-line';
+import { DEFAULT_LOOP_PREFS, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { formatWhen } from './household-calendar';
 
 /**
@@ -44,6 +47,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const DEFAULT_QUIET_START = 21;
 const DEFAULT_QUIET_END = 8;
 const MAX_PROPOSALS = 3;
+const DEFAULT_DAYS = 7;
 
 function localHour(date: Date, timeZone: string): number {
   const hour = new Intl.DateTimeFormat('en-US', {
@@ -60,7 +64,8 @@ function awakeThroughout(family: FamilyAvailability, start: Date, end: Date): bo
   const sleep = family.quietStartHour ?? DEFAULT_QUIET_START;
   for (let t = start.getTime(); t < end.getTime(); t += HOUR_MS) {
     const hour = localHour(new Date(t), family.timeZone);
-    if (hour < wake || hour >= sleep) return false;
+    const quiet = sleep > wake ? hour >= sleep || hour < wake : hour >= sleep && hour < wake;
+    if (quiet) return false;
   }
   return true;
 }
@@ -80,7 +85,7 @@ function overlapsAny(spans: readonly Span[], start: Date, end: Date): boolean {
 export function findCommonTimes(input: CommonTimeInput): Date[] {
   const count = Math.min(input.count ?? MAX_PROPOSALS, MAX_PROPOSALS);
   const durationMs = (input.durationMinutes ?? 60) * 60 * 1000;
-  const horizon = input.now.getTime() + (input.days ?? 7) * 24 * HOUR_MS;
+  const horizon = input.now.getTime() + (input.days ?? DEFAULT_DAYS) * 24 * HOUR_MS;
   const blocked = input.blocked ?? [];
   const anchorZone = input.families[0]?.timeZone ?? 'UTC';
   const found: Date[] = [];
@@ -102,6 +107,32 @@ export function findCommonTimes(input: CommonTimeInput): Date[] {
     days.add(day);
   }
   return found;
+}
+
+/**
+ * A family's clock: its own zone (null when never set; Hale does not guess one) and the
+ * waking hours its parent's own quiet hours leave. Quiet 21:30 to 07:30 leaves 08 to 21:
+ * a proposal never touches a quiet minute. Equal ends mean no quiet window.
+ */
+export async function familyClock(
+  database: Database,
+  familyId: string,
+  parentUserId: string | null,
+): Promise<{ timeZone: string | null; quietStartHour: number; quietEndHour: number }> {
+  const timeZone = await knownHouseholdTimezone(database, familyId);
+  const prefs = parentUserId ? await loadLoopPrefsView(parentUserId, database) : DEFAULT_LOOP_PREFS;
+  if (prefs.quietHoursStart === prefs.quietHoursEnd) {
+    return { timeZone, quietStartHour: 24, quietEndHour: 0 };
+  }
+  const minutes = (clock: string) => {
+    const [hour, minute] = clock.split(':').map(Number);
+    return (hour ?? 0) * 60 + (minute ?? 0);
+  };
+  return {
+    timeZone,
+    quietStartHour: Math.floor(minutes(prefs.quietHoursStart) / 60),
+    quietEndHour: Math.ceil(minutes(prefs.quietHoursEnd) / 60),
+  };
 }
 
 /** Labels of families whose time Hale cannot see and has to ask about. */
@@ -126,7 +157,12 @@ export function commonTimeFacts(
       .join(', '),
     askFamilies: familiesToAsk(input.families).join(', '),
     proposalCount: String(slots.length),
+    searchedDays: String(input.days ?? DEFAULT_DAYS),
   };
+  if (slots.length === 0) {
+    // What Hale can truly do next. Hale never texts first, so it cannot promise to watch.
+    facts.whenNoneWorks = 'someone names another day or week and Hale looks again';
+  }
   slots.forEach((slot, index) => {
     facts[`option${index + 1}`] = zones
       .map((zone) =>
@@ -140,8 +176,9 @@ export function commonTimeFacts(
 }
 
 /**
- * The group line, AI-written. Null (send nothing) when there is nothing true to say:
- * no common time and nobody to ask, or the writer failed.
+ * The group line, AI-written from facts. With no common time and nobody to ask, the facts
+ * say so (no option) and the AI tells the group plainly. Null (send nothing) when the
+ * writer failed: there is no fallback line.
  */
 export async function composeCommonTime(
   input: CommonTimeInput,
@@ -149,7 +186,6 @@ export async function composeCommonTime(
   write: typeof speak = speak,
 ): Promise<{ text: string; slots: Date[] } | null> {
   const slots = findCommonTimes(input);
-  if (slots.length === 0 && familiesToAsk(input.families).length === 0) return null;
   const text = await write({
     purpose: 'group_common_time',
     language,

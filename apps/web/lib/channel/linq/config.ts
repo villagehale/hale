@@ -171,3 +171,12 @@ export function linqExperiencesEnabled(): boolean {
 export function linqGroupLeaveEnabled(): boolean {
   return trimmed('LINQ_GROUP_LEAVE_ENABLED') === 'true';
 }
+
+/**
+ * VIL-459 — in a group several families share, "when can we all do it?" gets times read
+ * from each consenting family's free/busy. Exactly `true` enables it. Default off: off,
+ * the ask is an ordinary shared-group answer and no family's calendar is read.
+ */
+export function linqGroupCommonTimeEnabled(): boolean {
+  return trimmed('LINQ_GROUP_COMMON_TIME_ENABLED') === 'true';
+}

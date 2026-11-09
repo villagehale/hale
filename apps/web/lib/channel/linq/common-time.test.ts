@@ -131,7 +131,7 @@ describe('commonTimeFacts', () => {
     };
     const facts = commonTimeFacts(input, [at('2026-10-27T22:00:00Z')], 'fr');
     expect(Object.keys(facts).sort()).toEqual(
-      ['askFamilies', 'checkedFamilies', 'option1', 'proposalCount'].sort(),
+      ['askFamilies', 'checkedFamilies', 'option1', 'proposalCount', 'searchedDays'].sort(),
     );
     expect(facts.option1).toContain('America/Vancouver');
     expect(facts.askFamilies).toBe('the Ruiz family');
@@ -157,13 +157,22 @@ describe('composeCommonTime', () => {
     expect(out).toBeNull();
   });
 
-  it('sends nothing when no time works and nobody can be asked', async () => {
-    const write = vi.fn(async () => 'x');
+  it('when no time works and nobody can be asked, the AI says so from facts with no option', async () => {
+    const write = vi.fn(async () => 'nothing works this week');
     const always = { ...chens, busy: [span('2026-10-26T00:00:00Z', '2026-11-03T00:00:00Z')] };
-    expect(
-      await composeCommonTime({ families: [always, patels], now: NOW }, 'en', write),
-    ).toBeNull();
-    expect(write).not.toHaveBeenCalled();
+    const out = await composeCommonTime({ families: [always, patels], now: NOW }, 'en', write);
+    expect(out).toEqual({ text: 'nothing works this week', slots: [] });
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        facts: {
+          checkedFamilies: 'the Chens, the Patels',
+          askFamilies: '',
+          proposalCount: '0',
+          searchedDays: '7',
+          whenNoneWorks: 'someone names another day or week and Hale looks again',
+        },
+      }),
+    );
   });
 
   it('never hands the writer a calendar title', async () => {

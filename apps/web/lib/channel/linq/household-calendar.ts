@@ -2128,6 +2128,30 @@ async function loadFamilyBlocks(database: Database, familyId: string): Promise<B
     }));
 }
 
+/**
+ * VIL-459: a family's free/busy, or null when no parent has a Google Calendar syncing
+ * now (Hale cannot see their time and asks them instead). Spans only, from live syncs.
+ */
+export async function familyFreeBusy(
+  database: Database,
+  familyId: string,
+): Promise<{ start: Date; end: Date }[] | null> {
+  const live = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        eq(schema.integrations.provider, 'gcal'),
+        eq(schema.integrations.status, 'active'),
+      ),
+    );
+  if (live.length === 0) return null;
+  const syncing = new Set(live.map((row) => row.id));
+  const blocks = await loadFamilyBlocks(database, familyId);
+  return freeBusyOnly(blocks.filter((block) => syncing.has(block.integrationId)));
+}
+
 export async function familyHasTwoCalendars(
   database: Database,
   familyId: string,
