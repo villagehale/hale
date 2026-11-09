@@ -9,6 +9,7 @@ export type {
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type {
+  CalendarStanding,
   FamilyEvent,
   FamilyEventNotes,
   NewFamilyEvent,

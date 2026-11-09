@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states the move accurately: Leo's event now Sun Sep 20 10:00-11:00, previously Sat Sep 19 10:00. It names the kid, uses English, adds no invented reason, reschedule, link, or event name, and stays brief and plain. Minor gap: it omits the end time for the original slot, which is fine since the facts gave none.",
+    "score": 5
+  }
+}
