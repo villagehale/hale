@@ -65,30 +65,38 @@ describe('live recommendations without a catalog', () => {
     expect(JSON.stringify(find.mock.calls)).not.toContain('L7M');
   });
 
-  it('keeps main’s no-area boundary for an unmapped city', async () => {
+  it('searches a Canadian city outside the GTA by its city and province', async () => {
     const familyId = await family(36, 'Victoria');
     await db.database
       .update(schema.families)
       .set({ areaCoarse: null, province: 'BC', country: 'Canada' })
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
-    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
-      'no_area',
-    );
-    expect(find).not.toHaveBeenCalled();
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Victoria, British Columbia, Canada');
   });
 
-  it('does not guess an Ontario municipality for an unmapped foreign family', async () => {
+  it('searches a US family in its own state, never an Ontario namesake', async () => {
     const familyId = await family(36, 'Burlington');
     await db.database
       .update(schema.families)
       .set({ areaCoarse: null, province: 'VT', country: 'US' })
       .where(eq(schema.families.id, familyId));
     const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
-    expect((await findFamilyActivities(db.database, familyId, { finder: { find } })).reason).toBe(
-      'no_area',
-    );
-    expect(find).not.toHaveBeenCalled();
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Burlington, Vermont, United States');
+  });
+
+  it('searches a US ZIP as its city, state and country, and never sends the ZIP', async () => {
+    const familyId = await family(36, '');
+    await db.database
+      .update(schema.families)
+      .set({ postalCode: '98101', areaCoarse: '981', country: 'United States' })
+      .where(eq(schema.families.id, familyId));
+    const find = vi.fn().mockResolvedValue({ found: true, picks: [pick] });
+    await findFamilyActivities(db.database, familyId, { finder: { find } });
+    expect(find.mock.calls[0]![0].town).toBe('Seattle, Washington, United States');
+    expect(JSON.stringify(find.mock.calls)).not.toMatch(/98101|981/);
   });
 
   it('keeps a known venue identity for review ranking, never an ambiguous shared URL', async () => {
@@ -210,7 +218,7 @@ describe('live recommendations without a catalog', () => {
     );
     const noArea = await family(36, '');
     expect((await findFamilyActivities(db.database, noArea, { finder: { find } })).reason).toBe(
-      'no_area',
+      'no_place',
     );
     const own = await family();
     expect(

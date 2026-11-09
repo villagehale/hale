@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
+import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
 import {
   declineOpenInviteOnStop,
   loadLapsedInviteByPhone,
@@ -2921,6 +2922,10 @@ async function provision(
     familyId,
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
+    place: await activityPlaceOfPostal(
+      gathered.location.postalCode ?? gathered.location.areaCoarse,
+    ),
+    timeZone: gathered.location.timezone,
     language,
     ...(discoveryOn ? { activityMap: true } : {}),
   });
