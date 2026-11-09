@@ -395,7 +395,6 @@ async function runToddlerJourney(): Promise<Journey> {
       weather: fakeWeather([]),
       client: null,
       now: () => INTAKE_AT,
-      timeZone: TZ,
       yearFinder: JOURNEY_FINDER,
     }),
     // Same discipline as the radar above: the REAL composer on the REAL production

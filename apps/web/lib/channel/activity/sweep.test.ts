@@ -102,7 +102,7 @@ function harness(
       language: overrides.language ?? 'en-CA',
     }),
     reader: {
-      municipality: async () => 'halton_hills',
+      place: async () => ({ status: 'known', town: 'Halton Hills' }),
       stage: async () => 'toddler',
       householdNames: async () => overrides.householdNames ?? ['Noah'],
     },

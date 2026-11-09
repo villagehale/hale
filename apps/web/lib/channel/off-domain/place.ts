@@ -240,6 +240,28 @@ export async function placeOf(family: {
 }
 
 /**
+ * {@link placeOf}, with the province or state ALWAYS named where the postal area gives
+ * one — the activity find's grain (VIL-590), where "Seattle, Washington" is a better
+ * search than "Seattle". The off-topic search keeps {@link placeOf}'s narrower rule.
+ * The region is the one the table has for the area the city was read from, and is left
+ * off when the city came from a stored name the area does not belong to.
+ */
+export async function searchPlaceOf(family: Parameters<typeof placeOf>[0]): Promise<FamilyPlace> {
+  const place = await placeOf(family);
+  if (place.status !== 'known' || place.provinceOrState !== undefined) return place;
+  const postalCountry = family.country === null ? undefined : postalCountryOf(family.country);
+  const postal = stored(family.postalCode) ?? stored(family.areaCoarse);
+  if (postalCountry === undefined || postal === null) return place;
+  const area = AREA_OF[postalCountry].exec(postal)?.[1]?.toUpperCase();
+  if (area === undefined) return place;
+  const table = await TABLES[postalCountry]();
+  const areaAt = table.codes.indexOf(area);
+  if (table.cities[table.cityOf[areaAt] ?? -1] !== place.city) return place;
+  const provinceOrState = table.regions[table.regionOf[areaAt] ?? -1];
+  return provinceOrState === undefined ? place : { ...place, provinceOrState };
+}
+
+/**
  * A place name the search may be told, and the nearest larger place to send instead
  * when fewer than 10,000 people live there. `city` is null when no place of 10,000 or
  * more in the same province or state is within the cap: the province or state is sent
@@ -379,6 +401,14 @@ export async function coarsenPlace(
  * no active area.
  */
 export async function readFamilyPlace(database: Database, familyId: string): Promise<FamilyPlace> {
+  return placeOf(await readFamilyPlaceRow(database, familyId));
+}
+
+/** The row {@link readFamilyPlace} reads, for a caller that places it by another grain. */
+export async function readFamilyPlaceRow(
+  database: Database,
+  familyId: string,
+): Promise<Parameters<typeof placeOf>[0]> {
   const [active] = await database
     .select({
       province: schema.familyAreas.province,
@@ -400,5 +430,5 @@ export async function readFamilyPlace(database: Database, familyId: string): Pro
     .where(eq(schema.families.id, familyId))
     .limit(1);
   if (!family) throw new Error('off-domain place: no family row');
-  return placeOf(active ? { ...active, country: family.country, areaCoarse: null } : family);
+  return active ? { ...active, country: family.country, areaCoarse: null } : family;
 }

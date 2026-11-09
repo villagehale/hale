@@ -1,0 +1,23 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Swim Lessons – Preschool (Stage 2 to Stage 4), Seattle YMCA",
+        "age_fit": "Preschool age children who are comfortable in the water and able to swim and float assisted for 5 feet (Stage 2); Stage 3 and Stage 4 are for kids who can swim 10 yards and 15 yards unassisted",
+        "when": "Winter session runs January 1 to February 28, 2027; registration opened at 6:00 am on October 15 for Y members and October 22 for community members",
+        "source_name": "Seattle YMCA"
+      },
+      {
+        "name": "Preschool lessons, Ballard Pool",
+        "age_fit": "Preschool lessons (the page gives no age range for them); parent & child lessons are 6 months to 4 years of age",
+        "source_name": "Seattle Parks and Recreation"
+      },
+      {
+        "name": "Preschool lessons, Meadowbrook Pool (Lake City)",
+        "age_fit": "Preschool lessons (the page gives no age range for them); tot lessons are 6 months to 4 years of age",
+        "source_name": "Seattle Parks and Recreation"
+      }
+    ]
+  },
+  "latencyMs": 6886
+}

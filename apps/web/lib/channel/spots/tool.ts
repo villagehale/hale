@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { z } from 'zod';
-import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
+import { deidentifyActivitySubject } from '~/lib/channel/activity/deidentify';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { isGsm7 } from '~/lib/channel/sms-segments';
@@ -190,12 +190,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // to REWRITE and this field may not be rewritten.
       const householdNames = await args.reader.householdNames(ctx.familyId);
       const collapsed = input.label.replace(/\s+/g, ' ').trim();
-      const gated = deidentifyActivityQuery({
-        subject: input.label,
-        municipality: null,
-        stage: null,
-        householdNames,
-      });
+      const gated = deidentifyActivitySubject(input.label, householdNames);
       if (!gated.ok) {
         throw new Error(
           gated.refusal === 'names_a_person' ? LABEL_REFUSAL.names_a_person : LABEL_REFUSAL.empty,
@@ -204,7 +199,7 @@ export function watchForOpeningTool(args: SpotWatchToolArgs): RegisteredTool {
       // `scrubResidualPii` REWRITES ages ("3 years" → "[redacted]") and gateFreeText
       // returns the rewrite as ok. Storing it would text a parent about their
       // "[redacted]" class; refusing hands the model a sentence it can act on.
-      if (gated.query.subject !== collapsed) throw new Error(LABEL_REFUSAL.rewritten);
+      if (gated.value !== collapsed) throw new Error(LABEL_REFUSAL.rewritten);
       // The opening text carries this label and may hold no '?' outside the URL — a
       // proactive text that asks a question is one the parent cannot answer (copy.ts).
       if (collapsed.includes('?')) throw new Error(LABEL_REFUSAL.question);

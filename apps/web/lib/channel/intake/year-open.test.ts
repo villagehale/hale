@@ -8,7 +8,7 @@ const SEB = { name: 'Seb', ageMonths: 17, dobPrecision: 'derived' as const };
 
 describe('yearOpenQuery', () => {
   it('asks for the kids year in Halton Hills, with the stage beside the subject', () => {
-    const query = yearOpenQuery({ children: [SEB], areaCoarse: 'L7G' });
+    const query = yearOpenQuery({ children: [SEB], town: 'Halton Hills' });
     expect(query.ok).toBe(true);
     if (!query.ok) return;
     expect(query.query.subject).toBe(YEAR_OPEN_SUBJECT);
@@ -27,11 +27,11 @@ describe('yearOpenQuery', () => {
   it('keeps the same subject at the edges of 0-18 and still names the stage', () => {
     const baby = yearOpenQuery({
       children: [{ name: 'Ada', ageMonths: 2 }],
-      areaCoarse: 'M5V',
+      town: 'Toronto',
     });
     const teen = yearOpenQuery({
       children: [{ name: null, ageMonths: 200 }],
-      areaCoarse: 'M5V',
+      town: 'Toronto',
     });
     expect(baby.ok && baby.query.subject).toBe(YEAR_OPEN_SUBJECT);
     expect(baby.ok && baby.query.stage).toBe('newborn');
@@ -39,10 +39,17 @@ describe('yearOpenQuery', () => {
     expect(teen.ok && teen.query.stage).toBe('teenager');
   });
 
+  it('refuses with no place, so the year find never searches nowhere', () => {
+    expect(yearOpenQuery({ children: [SEB], town: null })).toEqual({
+      ok: false,
+      reason: 'no_place',
+    });
+  });
+
   it('sends every household stage when siblings do not share one', () => {
     const query = yearOpenQuery({
       children: [SEB, { name: 'Jo', ageMonths: 96 }],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
     });
     expect(query.ok).toBe(true);
     if (!query.ok) return;
@@ -96,7 +103,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time'), pick('Music')],
       children: [SEB],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder: { find },
       familyId: 'fam',
     });
@@ -114,7 +121,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder: null,
       familyId: 'fam',
     });
@@ -131,7 +138,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time')],
       children: [SEB],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder,
       familyId: 'fam',
     });
@@ -148,7 +155,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time')],
       children: [SEB],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder: {
         async find() {
           return {
@@ -175,7 +182,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB, { name: 'Jo', ageMonths: 96, dobPrecision: 'derived' }],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder: {
         async find() {
           return {
@@ -207,7 +214,7 @@ describe('collectYearOpenLines', () => {
     const exact = await collectYearOpenLines({
       civic: [],
       children: [wren],
-      areaCoarse: null,
+      town: 'Toronto',
       finder: { find },
       familyId: 'fam',
     });
@@ -219,7 +226,7 @@ describe('collectYearOpenLines', () => {
     const derived = await collectYearOpenLines({
       civic: [],
       children: [{ ...wren, dobPrecision: 'derived' }],
-      areaCoarse: null,
+      town: 'Toronto',
       finder: { find },
       familyId: 'fam',
     });
@@ -232,7 +239,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB],
-      areaCoarse: 'L7G',
+      town: 'Halton Hills',
       finder: {
         async find() {
           return { found: true, picks: [webPick('Lantern festival', 'all ages')] };

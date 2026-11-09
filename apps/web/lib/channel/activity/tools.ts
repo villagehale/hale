@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { linkRef } from '~/lib/channel/coach/activity-links';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import type { ActivityPromise } from './commitment';
-import { deidentifyActivityQuery, refusalSentence } from './deidentify';
+import { deidentifyActivityQuery, deidentifyActivitySubject, refusalSentence } from './deidentify';
 import { type ActivityFinder, MAX_ACTIVITY_CALLS_PER_TURN } from './lane';
 import type { BoundActivityReader } from './reader';
 
@@ -94,8 +94,8 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       callsThisTurn += 1;
 
       const childId = input.childId ?? null;
-      const [municipality, stage, householdNames] = await Promise.all([
-        args.reader.municipality(ctx.familyId),
+      const [place, stage, householdNames] = await Promise.all([
+        args.reader.place(ctx.familyId),
         args.reader.stage(ctx.familyId, childId),
         args.reader.householdNames(ctx.familyId),
       ]);
@@ -103,10 +103,14 @@ export function findActivitiesTool(args: ActivityToolArgs): RegisteredTool {
       const deidentified = deidentifyActivityQuery({
         subject: input.subject,
         window: input.window ?? null,
-        municipality,
+        town: place.status === 'known' ? place.town : null,
         stage,
         householdNames,
       });
+      // No place is an outcome, not a subject to recompose: nothing was searched.
+      if (!deidentified.ok && deidentified.refusal === 'no_place') {
+        return { found: false as const, reason: 'no_place' as const };
+      }
       if (!deidentified.ok) {
         // The recompose loop, exactly as `offer_full_plan` runs it: the refusal is a
         // sentence the model answers by calling again with a subject that is about the
@@ -216,15 +220,10 @@ export function promiseActivityFollowUpTool(args: {
       // — so it has to clear the same de-identification the live search does, HERE, where
       // there is still a model to hand the refusal back to (rule #1).
       const householdNames = await args.reader.householdNames(ctx.familyId);
-      const deidentified = deidentifyActivityQuery({
-        subject: input.subject,
-        municipality: null,
-        stage: null,
-        householdNames,
-      });
-      if (!deidentified.ok) throw new Error(refusalSentence(deidentified.refusal));
+      const subject = deidentifyActivitySubject(input.subject, householdNames);
+      if (!subject.ok) throw new Error(refusalSentence(subject.refusal));
 
-      args.onPromise({ subject: deidentified.query.subject, childId: input.childId ?? null });
+      args.onPromise({ subject: subject.value, childId: input.childId ?? null });
       return { promised: true as const };
     },
   });

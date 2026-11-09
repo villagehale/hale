@@ -1,7 +1,7 @@
-import { type Database, type Municipality, schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, desc, eq, gt, inArray, isNull, ne, notInArray, or } from 'drizzle-orm';
-import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
+import { type ActivityPlace, readActivityPlace } from './place';
 
 /**
  * THE THREE FACTS THE ACTIVITY LANE READS FROM THE DATABASE — and the whole reason it
@@ -10,15 +10,15 @@ import { municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
  * The town and the age band travel with a query to Anthropic's US `web_search`: a
  * cross-border disclosure, so rule #1 governs what they may be. A model asked for "the
  * location" will happily write a street; a model asked for "the age" writes the age. Both
- * are exactly what must not cross. Resolving them HERE, from `families.area_coarse` and a
- * date of birth, is what makes "town-level and age-band only" a property of the code
+ * are exactly what must not cross. Resolving them HERE, from the family's place (place.ts)
+ * and a date of birth, is what makes "town-level and age-band only" a property of the code
  * rather than a line in a prompt.
  *
  * The names are the third, and they are read for the opposite purpose: nothing is sent
  * with them, they are what a query is REFUSED for containing (deidentify.ts).
  */
 export interface ActivityFamilyReader {
-  municipality(database: Database, familyId: string): Promise<Municipality | null>;
+  place(database: Database, familyId: string): Promise<ActivityPlace>;
   stage(database: Database, familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(database: Database, familyId: string): Promise<string[]>;
   familyFit?(database: Database, familyId: string, now?: Date): Promise<FamilyFit>;
@@ -51,8 +51,8 @@ export interface FamilyFitPreference {
 
 export interface FamilyFit {
   children: FamilyFitChild[];
-  /** The home municipality the search looked around, or null when unknown. */
-  homeArea: Municipality | null;
+  /** The town the search looked around, or null when the family has none. */
+  homeArea: string | null;
   preferences: FamilyFitPreference[];
 }
 
@@ -65,7 +65,7 @@ export const FAMILY_FIT_PREFERENCE_LIMIT = 8;
 /** The same three reads with the database already closed over — the shape a coach tool
  * wants, since a tool handler is handed a family and not a connection. */
 export interface BoundActivityReader {
-  municipality(familyId: string): Promise<Municipality | null>;
+  place(familyId: string): Promise<ActivityPlace>;
   stage(familyId: string, childId: string | null): Promise<FamilyStage | null>;
   householdNames(familyId: string): Promise<string[]>;
   familyFit?(familyId: string): Promise<FamilyFit>;
@@ -76,7 +76,7 @@ export function bindActivityReader(
   reader: ActivityFamilyReader,
 ): BoundActivityReader {
   return {
-    municipality: (familyId) => reader.municipality(database, familyId),
+    place: (familyId) => reader.place(database, familyId),
     stage: (familyId, childId) => reader.stage(database, familyId, childId),
     householdNames: (familyId) => reader.householdNames(database, familyId),
     ...(reader.familyFit
@@ -88,24 +88,10 @@ export function bindActivityReader(
 export function productionActivityFamilyReader(): ActivityFamilyReader {
   return {
     /**
-     * The ONE municipality this family's postal code names, or null.
-     *
-     * Null where the FSA names none or TWO, which is `selectStandingOption`'s own rule and
-     * not a new one: two Thornhill FSAs genuinely straddle a municipal boundary, and the
-     * table declines to guess rather than send a family the wrong town's programs. A null
-     * town is not a failure — the search runs without one and the skill says so.
+     * Where the family is now, as a search may be told it (place.ts), or why it cannot
+     * be. A postal area that covers two towns is not guessed: the find does not run.
      */
-    municipality: async (database, familyId) => {
-      const [family] = await database
-        .select({ areaCoarse: schema.families.areaCoarse })
-        .from(schema.families)
-        .where(eq(schema.families.id, familyId))
-        .limit(1);
-      const postal = family?.areaCoarse ?? null;
-      if (postal === null) return null;
-      const municipalities = municipalitiesForFsa(postal);
-      return municipalities.length === 1 ? (municipalities[0] as Municipality) : null;
-    },
+    place: readActivityPlace,
 
     /**
      * The named child's stage, or the YOUNGEST child's when none was named.
@@ -156,8 +142,8 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
 
     familyFit: async (database, familyId, now = new Date()) => {
       const self = productionActivityFamilyReader();
-      const [homeArea, childRows] = await Promise.all([
-        self.municipality(database, familyId),
+      const [place, childRows] = await Promise.all([
+        self.place(database, familyId),
         database
           .select({
             id: schema.children.id,
@@ -206,7 +192,7 @@ export function productionActivityFamilyReader(): ActivityFamilyReader {
         .limit(FAMILY_FIT_PREFERENCE_LIMIT * 2);
       return {
         children,
-        homeArea,
+        homeArea: place.status === 'known' ? place.town : null,
         preferences: selectFitPreferences(factRows, teenIds),
       };
     },

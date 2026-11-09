@@ -1,7 +1,6 @@
 import { stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
 import { fitsHouseholdAges } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
 
@@ -32,13 +31,13 @@ export type YearFinderUse = 'used' | 'not_configured' | 'failed' | 'empty' | 're
 
 /**
  * What may be searched: the year subject above, a stage word, every stage in
- * the household when siblings differ, a town when the FSA names exactly one,
- * and "this year". No child name, no exact age, no postal code (rule #1).
+ * the household when siblings differ, the family's town (place.ts), and
+ * "this year". No town, no search. No child name, no exact age, no postal code (rule #1).
  * Ages 0-18 all get a subject; nothing here refuses a finder because of age.
  */
 export function yearOpenQuery(input: {
   children: readonly { name: string | null; ageMonths: number | null }[];
-  areaCoarse: string | null;
+  town: string | null;
 }): { ok: true; query: ActivityQuery } | { ok: false; reason: string } {
   const ages = input.children
     .map((child) => child.ageMonths)
@@ -47,15 +46,13 @@ export function yearOpenQuery(input: {
   const youngest = Math.min(...ages);
   const stage = stageFromAgeInMonths(youngest);
   const stages = [...new Set(ages.map((age) => stageFromAgeInMonths(age)))];
-  const municipalities = input.areaCoarse ? resolveMunicipalities(input.areaCoarse) : [];
-  const municipality = municipalities.length === 1 ? (municipalities[0] ?? null) : null;
   const householdNames = input.children
     .map((child) => child.name)
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
   const deidentified = deidentifyActivityQuery({
     subject: YEAR_OPEN_SUBJECT,
     window: 'this year',
-    municipality,
+    town: input.town,
     stage,
     householdNames,
   });
@@ -124,7 +121,7 @@ export function renderYearOpen(lines: readonly string[]): string {
 export async function collectYearOpenLines(input: {
   civic: readonly WeekendPick[];
   children: readonly Pick<RadarChild, 'name' | 'ageMonths' | 'dobPrecision'>[];
-  areaCoarse: string | null;
+  town: string | null;
   finder: ActivityFinder | null;
   familyId: string;
 }): Promise<{ lines: string[]; titles: string[]; finder: YearFinderUse }> {
@@ -133,7 +130,7 @@ export async function collectYearOpenLines(input: {
     console.info({ familyId: input.familyId }, 'intake year find: skipped: not_configured');
     return packYearOpen(civic, 'not_configured');
   }
-  const query = yearOpenQuery({ children: input.children, areaCoarse: input.areaCoarse });
+  const query = yearOpenQuery({ children: input.children, town: input.town });
   if (!query.ok) {
     console.info(
       { familyId: input.familyId, reason: query.reason },
