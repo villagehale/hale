@@ -79,6 +79,20 @@ function masked(body: string): string {
   return out;
 }
 
+/**
+ * VIL-575 · a period that ends a word, not a sentence: a title, a street, a month or a
+ * weekday, "e.g.", or a single capital ("M. Dupuis", "J. Lee"). ICU's sentence rules know
+ * none of these, so "St. Mary's" is two of its sentences, and cutting the second sends
+ * a reply ending "at St.". A wrong merge only makes a cut bigger; a wrong split ships a
+ * fragment, so the list leans towards merging.
+ */
+const ABBREVIATION =
+  /(?:^|[^\p{L}\p{N}])(?:St|Ste|Dr|Mr|Mrs|Ms|Mx|Mme|Mlle|Jr|Sr|Mt|Ft|Ave|Blvd|Rd|Hwy|Prof|Rev|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun|vs|approx|e\.g|i\.e|\p{Lu})\.$/u;
+
+export function endsInAbbreviation(text: string): boolean {
+  return ABBREVIATION.test(text.trimEnd());
+}
+
 export function segmentSentences(body: string, locale: string | undefined): Segment[] {
   const spans: Array<{ start: number; end: number }> = [];
   const segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
@@ -90,6 +104,12 @@ export function segmentSentences(body: string, locale: string | undefined): Segm
       previous.end = span.end;
     } else if (previous && body.slice(previous.start, previous.end).trim() === '') {
       // A leading whitespace-only span joins the first real segment.
+      previous.end = span.end;
+    } else if (
+      previous &&
+      !body.slice(previous.start, previous.end).includes('\n') &&
+      endsInAbbreviation(body.slice(previous.start, previous.end))
+    ) {
       previous.end = span.end;
     } else {
       spans.push(span);
@@ -103,4 +123,56 @@ export function segmentSentences(body: string, locale: string | undefined): Segm
       start: span.start,
       end: span.end,
     }));
+}
+
+export type Span = { start: number; end: number };
+
+/** What is left of a body once spans are cut from it. */
+export type Subtraction =
+  /** Every seam is a sentence boundary; `text` is whitespace-collapsed, '' if all was cut. */
+  | { status: 'cut'; text: string }
+  /** A seam falls inside a sentence, or leaves a clause pointing at what was cut. */
+  | { status: 'fragment' };
+
+const TERMINATED = /[.!?。！？…]["'”’»」』)\]]*$/u;
+const JOINER = /[,:;\-–—&]$/;
+
+/** Is offset `at` a place where a sentence ends and the next may begin? */
+function isSentenceSeam(body: string, at: number): boolean {
+  const before = body.slice(0, at).trimEnd();
+  const after = body.slice(at);
+  if (before === '' || after.trim() === '') return true;
+  if (JOINER.test(before)) return false;
+  if (TERMINATED.test(before)) return !endsInAbbreviation(before);
+  const gap = body.slice(before.length, at) + (after.match(/^\s*/)?.[0] ?? '');
+  return gap.includes('\n');
+}
+
+/**
+ * VIL-575 · the body minus the spans, or `fragment` when a cut would leave part of a
+ * sentence: "…at St." with "Mary's pool." gone, or "Here's where things stand:" with
+ * what it introduced gone. The caller sends a fragment to nobody. Neighbouring spans
+ * (only whitespace between) are one cut, so the seam between them is not judged.
+ */
+export function subtractSpans(body: string, spans: readonly Span[]): Subtraction {
+  const cuts: Span[] = [];
+  for (const span of [...spans].sort((a, b) => a.start - b.start)) {
+    const previous = cuts.at(-1);
+    if (previous && body.slice(previous.end, span.start).trim() === '') {
+      previous.end = Math.max(previous.end, span.end);
+    } else {
+      cuts.push({ ...span });
+    }
+  }
+  let text = '';
+  let from = 0;
+  for (const cut of cuts) {
+    if (!isSentenceSeam(body, cut.start) || !isSentenceSeam(body, cut.end)) {
+      return { status: 'fragment' };
+    }
+    text += `${body.slice(from, cut.start)} `;
+    from = cut.end;
+  }
+  text += body.slice(from);
+  return { status: 'cut', text: text.replace(/\s+/g, ' ').trim() };
 }

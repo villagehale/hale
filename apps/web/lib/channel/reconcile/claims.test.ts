@@ -160,6 +160,17 @@ describe('extractStateClaims — the false positives that would break production
     ).toEqual([]);
   });
 
+  it('keeps "St. Mary\'s" inside its sentence, so the claim is the whole sentence (VIL-575)', () => {
+    expect(
+      extractStateClaims("Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked."),
+    ).toEqual([
+      expect.objectContaining({
+        sentence: "Your visit at St. Mary's clinic is booked.",
+        kind: 'scheduled_event',
+      }),
+    ]);
+  });
+
   it('reads a one-sentence watch promise the ladder legs never make', () => {
     expect(kinds("I'll text you when Halton Hills registration opens.")).toEqual([
       'registration_watch',

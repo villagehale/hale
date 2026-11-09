@@ -1,3 +1,5 @@
+import { endsInAbbreviation } from './sentences';
+
 /**
  * VIL-293 · THE RECONCILIATION PRIMITIVE, half one — what did this message CLAIM?
  *
@@ -79,11 +81,20 @@ export interface StateClaim {
  * into fragments — which loses the claim (neither half holds both the verb and the
  * subject) AND loses the span a lane needs to drop a sentence it cannot back.
  */
+const SENTENCE_BREAK = /(?<=[.!?])\s+(?=[A-Z(])|\n+/g;
+
 function sentencesOf(body: string): string[] {
-  return body
-    .split(/(?<=[.!?])\s+(?=[A-Z(])|\n+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0);
+  const sentences: string[] = [];
+  let from = 0;
+  for (const boundary of body.matchAll(SENTENCE_BREAK)) {
+    const sentence = body.slice(from, boundary.index);
+    // VIL-575: "St. Mary's" is one sentence; a line break always ends one.
+    if (!boundary[0].includes('\n') && endsInAbbreviation(sentence)) continue;
+    sentences.push(sentence);
+    from = boundary.index + boundary[0].length;
+  }
+  sentences.push(body.slice(from));
+  return sentences.map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 0);
 }
 
 /** Hale is about to do something: "I'll text you", "I will send", "I'm going to check". */

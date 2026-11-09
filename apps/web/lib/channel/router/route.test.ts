@@ -3842,6 +3842,28 @@ describe('audit replay: a claim reaches the wire only when a row backs it', () =
     expect(result.status).toBe('agent_replied');
   });
 
+  it('(c2) a claim naming "St. Mary\'s" is cut whole, never leaving "at St." (VIL-575)', async () => {
+    const named = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    const coach = scriptedCoach([{ reply: named }, { reply: named }]);
+    const h = harness({ coach });
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['Swim runs Tuesdays at 4.']);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('(c3) a cut that would leave a dangling clause fails the turn (VIL-575)', async () => {
+    const dangling = "Here's where things stand:\nYour well-baby visit is booked.";
+    const coach = scriptedCoach([{ reply: dangling }, { reply: dangling }]);
+    const h = harness({ coach, apology: fakeApology({ status: 'composed', reply: 'sorry' }) });
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Never "Here's where things stand:" on its own: the turn's failure path answers.
+    expect(h.transport.sent.map((m) => m.body)).toEqual(['sorry']);
+    expect(result.status).toBe('agent_failed');
+    expect(JSON.stringify(h.logs)).toContain('"reason":"cut_fragment"');
+  });
+
   it('(d) a booking claim with nothing on the calendar never reaches the wire', async () => {
     const coach = scriptedCoach([
       { reply: 'Your well-baby visit is booked.' },
