@@ -921,6 +921,7 @@ async function recordInbound(
     at: inbound.receivedAt.toISOString(),
     channel: ctx.pipe.channel,
     chatId: ctx.pipe.chatId,
+    ...(inbound.isGroup === undefined ? {} : { inGroup: inbound.isGroup }),
   };
   if (ctx.session.familyId && ctx.session.userId) {
     const id = await writeChannelMessage(
@@ -957,6 +958,7 @@ export async function writeChannelMessage(
       templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
       providerChatId: channel === 'imessage' ? (entry.chatId ?? null) : null,
+      inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
       status: entry.direction === 'in' ? 'delivered' : acceptedStatus(channel),
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
       // copy module, and storing rendered child data is a liability (rule #1).
