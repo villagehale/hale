@@ -292,3 +292,39 @@ describe('family_sweep_marks', () => {
     ]);
   });
 });
+
+/** VIL-564 · what an activity watch already told the parent, found by suffix so it survives
+ * renumbering at merge. */
+describe('agent_commitments heard_facts', () => {
+  const HEARD_FILE = migrationFiles().find((f) => f.endsWith('_agent_commitments_heard_facts.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(HEARD_FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'agent_commitments' AND column_name = 'heard_facts'",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds one nullable text array', async () => {
+    expect(HEARD_FILE).toMatch(/^\d{4}_agent_commitments_heard_facts\.sql$/);
+    // Positive control: the table is there and the column is not, before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(HEARD_FILE as string);
+    await expect(db.applyMigration(HEARD_FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'heard_facts', is_nullable: 'YES', data_type: 'ARRAY' },
+    ]);
+  });
+});

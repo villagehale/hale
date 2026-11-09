@@ -554,6 +554,7 @@ export const AUDIT_VERBS = [
   'commitment_recorded',
   'commitment_fulfilled',
   'commitment_cancelled',
+  'commitment_deferred',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -1997,6 +1998,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   commitment_fulfilled: { sentence: 'did something it said it would do', family: 'note' },
   commitment_cancelled: {
     sentence: 'stopped owing something it said it would do',
+    family: 'note',
+  },
+  // An activity watch that looked again and found nothing the parent has not already been
+  // told: nothing was sent, and the promise stays owed (commitments/ledger.ts).
+  commitment_deferred: {
+    sentence: 'looked again and had nothing new to tell you yet',
     family: 'note',
   },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
