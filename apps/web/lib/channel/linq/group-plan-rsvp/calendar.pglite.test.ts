@@ -1276,10 +1276,10 @@ async function tableCounts(): Promise<Map<string, number>> {
   return counts;
 }
 
-describe('migration 0214 on a database that already has it', () => {
+describe('migration 0215 on a database that already has it', () => {
   it('applies a second time without throwing and keeps the consent table', async () => {
-    await db.applyMigration('0214_linq_group_plan_calendar_consent.sql');
-    await db.applyMigration('0214_linq_group_plan_calendar_consent.sql');
+    await db.applyMigration('0215_linq_group_plan_calendar_consent.sql');
+    await db.applyMigration('0215_linq_group_plan_calendar_consent.sql');
     const result = await db.client.query(
       "select to_regclass('linq_group_plan_calendar_consents')::text as consents",
     );
