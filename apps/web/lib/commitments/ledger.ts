@@ -105,6 +105,14 @@ export type CommitmentCloseOutcome =
   | { status: 'none_open' }
   | { status: 'not_closed'; reason: 'no_ledger_row' | 'write_failed' };
 
+/** A Postgres error's message and detail can carry the failing row's values, summary
+ * included, so a log keeps the SQLSTATE only. */
+function pgErrorCode(err: unknown): string {
+  return err instanceof Error && 'code' in err && typeof err.code === 'string'
+    ? err.code
+    : 'unknown';
+}
+
 /** The predicate that IS "still owed": not kept, not voided. Written once so a reader
  * and the unique index cannot disagree about what open means. */
 function openPredicate() {
@@ -186,7 +194,7 @@ export async function recordCommitment(
     return { status: 'recorded', commitmentId: row.id };
   } catch (err) {
     console.error(
-      { err, familyId: input.familyId, kind: input.kind },
+      { code: pgErrorCode(err), familyId: input.familyId, kind: input.kind },
       'commitments: promise write failed - this debt is invisible',
     );
     return { status: 'not_recorded', reason: 'write_failed' };
@@ -305,7 +313,7 @@ export async function deferCommitment(
     return moved ? { status: 'deferred' } : { status: 'none_open' };
   } catch (err) {
     console.error(
-      { err, commitmentId: input.commitmentId },
+      { code: pgErrorCode(err), commitmentId: input.commitmentId },
       'commitments: defer failed - promise left due, the next tick looks again',
     );
     return { status: 'not_deferred' };
@@ -350,7 +358,7 @@ async function close(
     return { status: 'closed', commitmentIds: rows.map((row) => row.id) };
   } catch (err) {
     console.error(
-      { err, familyId: target.familyId, kind: target.kind },
+      { code: pgErrorCode(err), familyId: target.familyId, kind: target.kind },
       'commitments: close failed - promise left open, Hale will read as still owing it',
     );
     return { status: 'not_closed', reason: 'write_failed' };

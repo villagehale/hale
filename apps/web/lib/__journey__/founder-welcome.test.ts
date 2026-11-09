@@ -427,11 +427,24 @@ describe("the founder's welcome note", () => {
     // message actually reached.
     expect(await auditVerbs(familyId)).toContain('founder_welcome_sent');
 
-    // Closed by the NOTE, not by the ack: a kept promise points at the message that kept
-    // it, and that message is in the other family's thread.
+    // Closed by the founder's OWN ack, never by the note: the note is a row in another
+    // household, and the founder's offer row and its audit row are on his family's
+    // access export (rule #1).
     const [closed] = await offers();
     expect(closed?.fulfilledAt).not.toBeNull();
-    expect(closed?.fulfilledBy).toBe(note?.id);
+    const [keptBy] = await database
+      .select({ familyId: schema.channelMessages.familyId })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, closed?.fulfilledBy as string));
+    expect(keptBy?.familyId).toBe(founderFamilyId);
+    expect(closed?.fulfilledBy).not.toBe(note?.id);
+
+    const founderAudit = await database
+      .select({ verb: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, founderFamilyId));
+    expect(founderAudit.map((row) => row.verb)).toContain('commitment_fulfilled');
+    expect(JSON.stringify(founderAudit)).not.toContain(note?.id as string);
     expect((await openQuestions(REPLY_AT)).map((q) => q.kind)).toEqual([]);
   });
 
