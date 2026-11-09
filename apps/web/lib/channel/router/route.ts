@@ -19,6 +19,7 @@ import {
   questionsForCalendarReader,
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
+import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import {
@@ -688,6 +689,21 @@ export interface ChannelRouterDeps {
       now: Date;
     },
   ): Promise<WatchedSpotArmOutcome>;
+  /**
+   * VIL-303 · write down the no this reply gave about a deferred capability, or the
+   * earlier no it corrected, against the message that carried it. Non-nullable (rule
+   * #11): a no nobody recorded is one nobody can correct once the capability is real.
+   */
+  recordCapabilityNotes(
+    database: Database,
+    input: {
+      familyId: string;
+      parentUserId: string;
+      notes: CapabilityNotes;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<CapabilityNotesOutcome>;
   limiter: RateLimiter;
   now(): Date;
   log: Pick<Console, 'info' | 'warn' | 'error'>;
@@ -2255,6 +2271,7 @@ async function runAgentTurn(
       attempts,
       enforced,
       emailRead,
+      capabilityNotes,
     } = await composeReconciledReply(deps, args, view);
     // VIL-616: a reply written after reading an email may repeat the sender's words, so
     // its thread row says so and the nightly memory writer leaves it out.
@@ -2437,6 +2454,26 @@ async function runAgentTurn(
           ...('reason' in dispatched ? { reason: dispatched.reason } : {}),
         },
         'channel router: activity promise recorded',
+      );
+    }
+    // VIL-303 · the no this reply gave, or the earlier no it corrected. Same send-time
+    // discipline and never-throws contract as the writers around it.
+    if (capabilityNotes) {
+      const noted = await deps.recordCapabilityNotes(deps.database, {
+        familyId: args.turn.familyId,
+        parentUserId: args.turn.parentUserId,
+        notes: capabilityNotes,
+        channelMessageId,
+        now: args.turn.now,
+      });
+      deps.log.info(
+        {
+          status: noted.status,
+          ...(noted.status === 'recorded'
+            ? { declined: noted.declined, corrected: noted.corrected }
+            : { reason: noted.reason }),
+        },
+        'channel router: capability notes',
       );
     }
     // THE PROMISE THE RECONCILE KEPT (VIL-293). The coach said it was watching a
@@ -2866,6 +2903,7 @@ async function composeReconciledReply(
         // Enforce: nothing the cut reply no longer says is written after the send.
         const unsaid = {
           spotWatch: null,
+          capabilityNotes: null,
           ...(enforced ? { activityPromise: null, planOffer: null } : {}),
           mints: [],
           attempts,
@@ -2918,10 +2956,14 @@ async function composeReconciledReply(
     regexKinds.has('activity_followup');
   const offerSurvived =
     !enforced || composed.planOffer === null || reply.includes(composed.planOffer.sentence.trim());
+  // VIL-303: a cut reply may have lost the sentence a note rides on, and nothing names
+  // which sentence that was, so neither note is written. A no left unrecorded owes no
+  // correction; a correction left unrecorded is offered again on a later text.
   const drops = [
     ackSurvived ? null : ('ack_cut' as const),
     promiseSurvived ? null : ('promise_cut' as const),
     offerSurvived ? null : ('offer_cut' as const),
+    composed.capabilityNotes ? ('capability_notes_cut' as const) : null,
   ].filter((drop) => drop !== null);
   for (const reason of drops) {
     deps.log.error(
@@ -2936,6 +2978,7 @@ async function composeReconciledReply(
     spotWatch: ackSurvived ? armingAck : null,
     activityPromise: promiseSurvived ? composed.activityPromise : null,
     planOffer: offerSurvived ? composed.planOffer : null,
+    capabilityNotes: null,
     mints: enforced
       ? survivingMints(refusedVerdict, enforced.read, enforced.judged, reply)
       : refusedVerdict.mints,

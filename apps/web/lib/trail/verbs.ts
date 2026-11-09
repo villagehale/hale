@@ -559,6 +559,9 @@ export const AUDIT_VERBS = [
   'commitment_fulfilled',
   'commitment_cancelled',
   'commitment_deferred',
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  'capability_denial_recorded',
+  'capability_denial_corrected',
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   'interest_stamp_inferred',
   'interest_stamp_confirmed',
@@ -2017,6 +2020,17 @@ const VERBS: Record<AuditVerb, Verb> = {
   commitment_deferred: {
     sentence: 'looked again and had nothing new to tell you yet',
     family: 'note',
+  },
+  // ── stale denials (VIL-303) ─────────────────────────────────────────────
+  // The whole family reads these, and the no was said to one parent: the sentence names
+  // neither the parent nor what was asked. Both are written only once the text was sent.
+  capability_denial_recorded: {
+    sentence: 'told a parent it could not do something yet, and noted it to follow up',
+    family: 'note',
+  },
+  capability_denial_corrected: {
+    sentence: 'let a parent know it can now do something it had said it could not',
+    family: 'done',
   },
   // ── interest passport (VIL-106) ─────────────────────────────────────────
   interest_stamp_inferred: {

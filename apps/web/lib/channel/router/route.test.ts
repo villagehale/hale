@@ -497,6 +497,7 @@ function harness(
     calendarOffers?: ChannelRouterDeps['calendarOffers'];
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
     recordActivityPromise?: ChannelRouterDeps['recordActivityPromise'];
+    recordCapabilityNotes?: ChannelRouterDeps['recordCapabilityNotes'];
     reconcileView?: ChannelRouterDeps['reconcileView'];
     claimShadow?: ChannelRouterDeps['claimShadow'];
     claimEnforcer?: ChannelRouterDeps['claimEnforcer'];
@@ -548,6 +549,9 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
+      recordCapabilityNotes:
+        options.recordCapabilityNotes ??
+        (async () => ({ status: 'recorded' as const, declined: 0, corrected: 0 })),
       recordActivityPromise:
         options.recordActivityPromise ??
         (async () => ({ status: 'recorded' as const, commitmentId: PROMISE_COMMITMENT_ID })),
@@ -7129,5 +7133,66 @@ describe('a live crisis reply is marked answered only once it is sent', () => {
     expect(outcome).toBe('routed');
     expect(h.transport.bodies()).toEqual(['a written crisis reply']);
     expect(await marks('pm-route-sent')).toEqual([1]);
+  });
+});
+
+/**
+ * VIL-303 · the no a reply gave about a deferred capability, or the earlier no it
+ * corrected, is written against the message that carried it, and only once it was sent.
+ */
+describe('capability notes ride out with the reply', () => {
+  const NOTES = { declined: ['spot_watch' as const], corrected: ['sign_up' as const] };
+
+  function notingCoach(reply: string): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply,
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          capabilityNotes: NOTES,
+        };
+      },
+    };
+  }
+
+  it('records the notes against the sent message', async () => {
+    const noted: unknown[] = [];
+    const h = harness({
+      coach: notingCoach('Watching a full class is not something I can do yet.'),
+      recordCapabilityNotes: async (_db, input) => {
+        noted.push(input);
+        return { status: 'recorded' as const, declined: 1, corrected: 1 };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(1);
+    expect(noted).toEqual([
+      expect.objectContaining({
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        notes: NOTES,
+        channelMessageId: ledgerRows(h.fake).find((row) => row.direction === 'out')?.id,
+      }),
+    ]);
+  });
+
+  it('records nothing when the reply is empty and nothing is sent', async () => {
+    const noted: unknown[] = [];
+    const h = harness({
+      coach: notingCoach(''),
+      recordCapabilityNotes: async (_db, input) => {
+        noted.push(input);
+        return { status: 'recorded' as const, declined: 1, corrected: 1 };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.sent).toHaveLength(0);
+    expect(noted).toEqual([]);
   });
 });

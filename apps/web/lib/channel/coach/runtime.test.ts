@@ -348,7 +348,8 @@ describe('channelCoachRuntime', () => {
       expect(seen[1]?.tools).toContain(n);
       expect(seen[2]?.tools).not.toContain(n);
     }
-    expect(seen[2]?.tools).toEqual(SKILL.meta.tools);
+    // A 1:1 turn adds only the VIL-303 decline verb, which rides while a capability is dark.
+    expect(seen[2]?.tools).toEqual([...SKILL.meta.tools, 'note_capability_declined']);
     // Tone is the disk skill, appended only when the list verbs are offered.
     expect(seen[0]?.instructions).not.toContain(tone.instructions);
     expect(seen[1]?.instructions.endsWith(`\n\n${tone.instructions}`)).toBe(true);
@@ -862,7 +863,8 @@ describe('channelCoachRuntime · experience cards (VIL-497)', () => {
     });
     const result = await channelCoachRuntime(p).respond(turn(), []);
     expect(seen[0]?.tools).not.toContain('share_experience_card');
-    expect(seen[0]?.skillTools).toEqual([]);
+    // VIL-303's declined verb rides while a deferred capability is dark; nothing else.
+    expect(seen[0]?.skillTools).toEqual(['note_capability_declined']);
     expect(result.experienceCard ?? null).toBeNull();
   });
 
@@ -1232,7 +1234,7 @@ describe('channelCoachRuntime · read_email (VIL-433)', () => {
     );
     expect(e.asked).toEqual([PARENT]);
     expect(seen[0]?.tools).not.toContain('read_email');
-    expect(seen[0]?.skillTools).toEqual([]);
+    expect(seen[0]?.skillTools).not.toContain('read_email');
     expect(seen[0]?.instructions).not.toContain('read_email');
   });
 
@@ -1443,5 +1445,117 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       expect.any(String),
     );
     error.mockRestore();
+  });
+});
+
+/**
+ * VIL-303 · the plumbing of a stale no: which verbs a turn gets, what context it
+ * carries, and what rides out. Whether the model calls them is the eval's
+ * (run-coach-capability-correction-eval.mjs).
+ */
+describe('deferred capabilities', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function lightEverything() {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('WATCHED_SPOTS_ENABLED', 'true');
+    vi.stubEnv('F14_ENABLED', 'true');
+  }
+
+  async function run(
+    options: {
+      audience?: ChannelTurn['audience'];
+      owed?: { capability: 'sign_up' | 'spot_watch'; toldOn: string }[];
+      call?: { tool: string; capability: string }[];
+    } = {},
+  ) {
+    const seen: { tools: string[]; listed: string[]; context: unknown; instructions: string }[] =
+      [];
+    const p = ports({
+      ...(options.owed ? { loadOwedCorrections: async () => options.owed ?? [] } : {}),
+      runAgent: async (args) => {
+        seen.push({
+          tools: args.tools.map((tool) => tool.name),
+          listed: args.skill.meta.tools,
+          context: args.context,
+          instructions: args.skill.instructions,
+        });
+        for (const call of options.call ?? []) {
+          const tool = args.tools.find((t) => t.name === call.tool);
+          await tool?.handler({ capability: call.capability }, { familyId: FAMILY, actor: PARENT });
+        }
+        return answering('ok.')(args);
+      },
+    });
+    const result = await channelCoachRuntime(p).respond(
+      { ...turn(), audience: options.audience ?? 'direct' },
+      [],
+    );
+    return { result, seen: seen[0] };
+  }
+
+  it('offers the declined verb with only the dark capabilities, and carries what it noted', async () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    const { result, seen } = await run({
+      call: [{ tool: 'note_capability_declined', capability: 'spot_watch' }],
+    });
+
+    expect(seen?.tools).toContain('note_capability_declined');
+    expect(seen?.listed).toContain('note_capability_declined');
+    expect(seen?.tools).not.toContain('note_capability_correction');
+    expect(result.capabilityNotes).toEqual({ declined: ['spot_watch'], corrected: [] });
+  });
+
+  it('cannot note a no about a capability that is already lit', async () => {
+    vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    const registered: RegisteredTool[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        registered.push(...args.tools);
+        return answering('ok.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    const verb = registered.find((tool) => tool.name === 'note_capability_declined');
+    expect(verb?.inputSchema.safeParse({ capability: 'spot_watch' }).success).toBe(true);
+    expect(verb?.inputSchema.safeParse({ capability: 'sign_up' }).success).toBe(false);
+  });
+
+  it('offers no declined verb once every capability is lit, and none on a group turn', async () => {
+    const dark = await run();
+    expect(dark.seen?.tools).toContain('note_capability_declined');
+    expect((await run({ audience: 'group' })).seen?.tools).not.toContain(
+      'note_capability_declined',
+    );
+    lightEverything();
+    expect((await run()).seen?.tools).not.toContain('note_capability_declined');
+    expect((await run()).result.capabilityNotes).toBeNull();
+  });
+
+  it('carries an owed correction as context, with its addendum and verb', async () => {
+    lightEverything();
+    const addendum = (await loadCronSkill('coach-capability-correction')).instructions;
+    const owed = [{ capability: 'sign_up' as const, toldOn: '2026-10-02' }];
+    const { result, seen } = await run({
+      owed,
+      call: [{ tool: 'note_capability_correction', capability: 'sign_up' }],
+    });
+
+    expect(seen?.context).toEqual(expect.objectContaining({ capabilityCorrections: owed }));
+    expect(seen?.instructions.endsWith(`\n\n${addendum}`)).toBe(true);
+    expect(seen?.listed).toContain('note_capability_correction');
+    expect(result.capabilityNotes).toEqual({ declined: [], corrected: ['sign_up'] });
+
+    const none = await run({ owed: [] });
+    expect(none.seen?.context).not.toHaveProperty('capabilityCorrections');
+    expect(none.seen?.instructions).not.toContain(addendum);
+    expect(none.seen?.tools).not.toContain('note_capability_correction');
+
+    const group = await run({ owed, audience: 'group' });
+    expect(group.seen?.context).not.toHaveProperty('capabilityCorrections');
+    expect(group.seen?.tools).not.toContain('note_capability_correction');
   });
 });
