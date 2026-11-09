@@ -9,6 +9,7 @@ import {
   forgetLinqIMessageCapability,
   sendLinqVoiceMemo,
   setPreviewGroupCaptureSinkForTest,
+  uploadLinqAttachment,
 } from './transport';
 
 /** VIL-476 · capability check (cached) + native voice memo + inbound audio, all dark by default. */
@@ -170,6 +171,75 @@ describe('sendLinqVoiceMemo', () => {
     }).catch((e) => e);
     expect(err).toBeInstanceOf(LinqSendError);
     expect(err).toMatchObject({ code: '2001', permanent: true });
+  });
+});
+
+describe('uploadLinqAttachment (VIL-495)', () => {
+  const UPLOAD = 'https://uploads.linq.test/att-9?X-Amz-Signature=sig';
+
+  it('refuses while dark, before any fetch', async () => {
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const f = jsonFetch(200, {});
+    await expect(
+      uploadLinqAttachment({
+        bytes: new Uint8Array([1]),
+        contentType: 'audio/mpeg',
+        filename: 'a.mp3',
+        fetch: f,
+      }),
+    ).rejects.toMatchObject({ code: 'voice_memos_dark' });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('declares the file, then PUTs the raw bytes with the signed headers', async () => {
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const f = vi.fn(async (url: string | URL | Request, _init?: RequestInit) =>
+      String(url) === UPLOAD
+        ? new Response(null, { status: 200 })
+        : new Response(
+            JSON.stringify({
+              attachment_id: 'att-9',
+              upload_url: UPLOAD,
+              required_headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': '3' },
+            }),
+            { status: 200 },
+          ),
+    );
+    const bytes = new Uint8Array([4, 5, 6]);
+    expect(
+      await uploadLinqAttachment({ bytes, contentType: 'audio/mpeg', filename: 'a.mp3', fetch: f }),
+    ).toEqual({ attachmentId: 'att-9' });
+    const [createUrl, createInit] = f.mock.calls[0] ?? [];
+    expect(createUrl).toBe('https://api.linqapp.com/api/partner/v3/attachments');
+    expect(JSON.parse(String(createInit?.body))).toEqual({
+      filename: 'a.mp3',
+      content_type: 'audio/mpeg',
+      size_bytes: 3,
+    });
+    const [putUrl, putInit] = f.mock.calls[1] ?? [];
+    expect(putUrl).toBe(UPLOAD);
+    expect(putInit?.method).toBe('PUT');
+    expect(putInit?.headers).toEqual({ 'Content-Type': 'audio/mpeg', 'Content-Length': '3' });
+    expect(putInit?.body).toBe(bytes);
+  });
+
+  it('a refused PUT is a named error', async () => {
+    vi.stubEnv('LINQ_VOICE_MEMOS_ENABLED', 'true');
+    vi.stubEnv('LINQ_API_KEY', API_KEY);
+    const f = vi.fn(async (url: string | URL | Request) =>
+      String(url) === UPLOAD
+        ? new Response(null, { status: 403 })
+        : new Response(JSON.stringify({ attachment_id: 'att-9', upload_url: UPLOAD })),
+    );
+    await expect(
+      uploadLinqAttachment({
+        bytes: new Uint8Array([1]),
+        contentType: 'audio/mpeg',
+        filename: 'a.mp3',
+        fetch: f,
+      }),
+    ).rejects.toMatchObject({ code: 'upload_http_403', permanent: true });
   });
 });
 

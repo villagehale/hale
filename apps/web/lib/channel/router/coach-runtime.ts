@@ -113,6 +113,12 @@ export interface ChannelTurnResult {
    */
   groupLeave?: { ifLeaveFails: string } | null;
   /**
+   * VIL-495 — the model chose to say this reply as a voice memo. Only ever true while
+   * `LINQ_VOICE_MEMOS_ENABLED` is lit on a 1:1 turn. The router sends the SAME reply as a
+   * memo when every send-time gate holds (linq/voice-reply.ts), and as text otherwise.
+   */
+  voiceMemo?: boolean;
+  /**
    * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
    * coach returned (the claim read) can still send the drafts receipt. The production
    * runtime always sets it; absent means none.

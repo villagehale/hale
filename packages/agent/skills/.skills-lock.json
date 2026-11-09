@@ -135,6 +135,10 @@
     "file": "coach-plan.md",
     "sha256": "b06bc190faf67d075424a87c05826d6ccaf4e43897e51c745fedd5417d40beab"
   },
+  "coach-voice-memo.md": {
+    "file": "coach-voice-memo.md",
+    "sha256": "d78ae65ffd6044bd50e7c22fc644b999dac26e689e4b451d2ebea832c1e004c9"
+  },
   "connector-disconnect-read.md": {
     "file": "connector-disconnect-read.md",
     "sha256": "7b351171cf1c93807d6267ebfcb1909e52965e8e7cf1a2b3b1fe6d747cac2d2f"

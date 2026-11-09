@@ -19,6 +19,7 @@ import { channelCoachRuntime } from '~/lib/channel/coach/runtime';
 import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
+import type { VoiceReplyOutcome } from '~/lib/channel/linq/voice-reply';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   createGeneralAnswer,
@@ -5175,6 +5176,104 @@ describe('turn deadline (VIL-400)', () => {
 });
 
 // ── a slow answer: the typing bubble stays up and one holding line goes first ──
+
+// ── VIL-495 · the model chose voice: the same reply goes as a memo, or as text ──
+
+describe('a reply the model chose to say as a voice memo (VIL-495)', () => {
+  const IM_ROUTE: ReplyRoute = {
+    channel: 'imessage',
+    to: PHONE,
+    chatId: 'chat-voice',
+    replyToMessageId: null,
+  };
+  const SPOKEN = 'So glad swim went well. Same time next week?';
+
+  function voiceCoach(chose: boolean): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: SPOKEN,
+          planOffer: null,
+          activityPromise: null,
+          spotWatch: null,
+          voiceMemo: chose,
+        };
+      },
+    };
+  }
+
+  function voiceHarness(chose: boolean, outcome: VoiceReplyOutcome) {
+    const h = harness({ coach: voiceCoach(chose), context: { reply: IM_ROUTE } });
+    const calls: Array<{ input: unknown; familyId: string }> = [];
+    h.deps.sendVoiceReply = async (input, familyId) => {
+      calls.push({ input, familyId });
+      return outcome;
+    };
+    return { h, calls };
+  }
+
+  it('sent as a memo: no text goes out, and the ledger, audit and thread record it', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    const result = await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(result.status).toBe('agent_replied');
+    expect(h.transport.sent).toEqual([]);
+    expect(calls).toEqual([
+      {
+        input: {
+          text: SPOKEN,
+          modelChoseVoice: true,
+          isGroup: false,
+          textOnly: false,
+          chatId: 'chat-voice',
+          address: PHONE,
+        },
+        familyId: FAMILY,
+      },
+    ]);
+    const out = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(out).toEqual([
+      expect.objectContaining({ channel: 'imessage', providerMessageId: 'vm-1', body: null }),
+    ]);
+    expect(auditRows(h.fake)).toContainEqual(
+      expect.objectContaining({ actionTaken: 'sms_reply_sent', after: { form: 'voice_memo' } }),
+    );
+    expect(messageRows(h.fake)).toContainEqual(
+      expect.objectContaining({ role: 'assistant', content: SPOKEN }),
+    );
+  });
+
+  it('a memo that cannot go sends the same reply as text, once', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'capability' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toHaveLength(1);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+    expect(auditRows(h.fake)).not.toContainEqual(
+      expect.objectContaining({ after: { form: 'voice_memo' } }),
+    );
+  });
+
+  it('a group chat is told it is a group, and gets the text', async () => {
+    const { h, calls } = voiceHarness(true, { sent: 'text', why: 'not_one_to_one' });
+
+    await routeChannelMessage(h.deps, job({ in_group: true }));
+
+    expect(calls[0]?.input).toMatchObject({ isGroup: true });
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+
+  it('the model did not choose voice: the voice send is never asked', async () => {
+    const { h, calls } = voiceHarness(false, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+    await routeChannelMessage(h.deps, job({ in_group: false }));
+
+    expect(calls).toEqual([]);
+    expect(h.transport.bodies()).toEqual([SPOKEN]);
+  });
+});
 
 describe('a slow answer gets one holding line first', () => {
   const IMESSAGE_ROUTE: ReplyRoute = {
