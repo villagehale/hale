@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurate: milk is on the Groceries list per facts.after, and it claims no purchase or other action. Name Jordan is spelled correctly, no secrets leak, and it's in English. It is short, warm, and doesn't recite eggs or other items nobody asked about. This matches the reference for a simple add acknowledgement, which scores 4 since there is nothing more to react to.",
+    "score": 4
+  }
+}

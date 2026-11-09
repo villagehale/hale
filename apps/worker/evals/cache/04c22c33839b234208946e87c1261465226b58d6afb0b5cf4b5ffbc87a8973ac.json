@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgsS3zcTPTwVuthCwZ52V",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQShQYKEAgTGAI4AUIIdGhpbmtpbmcSDIxkeEmRb8Wv5l1QERoM58v1AM/HpJOhl8+BIjBQereDSIBOnKAjvYQNxDr4mOGoNU4cMdC7SkdVKI/P45VLuo6Emq+D5BtvgyABtBAqogULSZA7t0sLPBtIKks2X2d/ca9DomgqeDvRxvsSprbe2OfS1m4zzruzvBQqvpRlxQzgAg/Lfl8TEmdo7Sn1X9uQ+Bzg+tyAJ30BMu0xVHH7KavCX4Up33i29YnwUZ01pbSfC1Gix7ZSuybjXrkziNmF58jsaUHSLpBYvGhVsfWb6Cdj8UMPhoCjsgIPQnMIQPJFs3l2+7nXEne1S4R3Bxzv4aREv1gvykjOdxfJ8ZGfsyvceYT94EzWk+qd/ABBs43NEoel4IZXfgVmY+hn2O4Fs/48I3Ky4jWwnzboRhm3i2rduRHTj0ku7cfxCNcJQw7ejzFczsDoBd38XHIim+aFYpxyGcGhJku7qVB4FKtBW5ulAVd0TKsoMWTqAsjHqnQMXbY3Vnd01CsnqviKsiPNzYXg3omJQ3VQuFfYEAqeH9ZFqKmj0yLLNi23rtVxG+KkXzfYMdCbqA+yVW88huYlgYdtaosA2WoufPhONEc3L8+HL0rEFo4Qmm8LcTbo2s+o0f2TXa1ojeCApnQHT02yomFXrsGNEGiJDaEw75x44h08MC2/lgpjQy/GDn5ZnRDcf90Se/40pAittfscMMBLg9i5yfYRulPhN2/BKl50QfjHHUj+JfVUiWheZTRqW0BCghlZCIS9ixy2UzS7mpHY0R3smMbLcUW6qK/34KqIVLRO+t25k2g+JQNUWkC/7n83QHCBCg13Pg934uLQq9Rk4pydevsuSsA5xx0856kdwPgp7BPliKP3WecqdnuUMNGAQCRWP7otQpJHSHcfm6A22rfijqlhwJ2bg7Jw6zbXwkCOn11J1nYSK3Gp2BaWI8mehqMTK8vAzOh9wUZO4y4H/NV4AyEK1N9k9wENkZG3nySYq3NC+VfQLb/vcG0IjPRIvhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01353kycUN3YVKoXQkRvAuDc",
+        "name": "list_group_lists",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 360,
+      "cache_creation_input_tokens": 19894,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 19894,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 92,
+      "output_tokens_details": {
+        "thinking_tokens": 62
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
