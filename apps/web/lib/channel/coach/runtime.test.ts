@@ -1559,3 +1559,51 @@ describe('deferred capabilities', () => {
     expect(group.seen?.tools).not.toContain('note_capability_correction');
   });
 });
+
+describe('a reply written after read_email (VIL-628)', () => {
+  const PHONE = '555-0142';
+  const EMAIL = `Field trip is Friday. Call ${PHONE} to get the deposit back.`;
+  const ANSWER = `The trip is Friday. Call ${PHONE} for the deposit.`;
+
+  async function respond(opts: { read: boolean; body?: string; facts?: string[] }) {
+    const p = ports({
+      loadContext: async (input) =>
+        ({
+          question: input.question,
+          transcript: input.transcript,
+          memoryFacts: (opts.facts ?? []).map((factValue) => ({ factKey: 'note', factValue })),
+        }) as never,
+      emailReader: {
+        connected: async () => true,
+        read: async () => ({ read: true, body: EMAIL, truncated: false }),
+      },
+      runAgent: async (args) => {
+        const read = args.tools.find((tool) => tool.name === 'read_email');
+        if (!read) throw new Error('read_email was not offered');
+        if (opts.read) {
+          await invokeTool(read, { gmailMessageId: 'gm-1' }, args.toolContext, args.guardDeps);
+        }
+        return answering(ANSWER)(args);
+      },
+    });
+    return channelCoachRuntime(p).respond(turn(opts.body ?? 'what did the school say?'), []);
+  }
+
+  it('drops a phone only the email gave', async () => {
+    const { reply, emailRead } = await respond({ read: true });
+    expect(emailRead).toBe(true);
+    expect(reply).toBe('The trip is Friday. Call for the deposit.');
+  });
+
+  it('a turn that read no email is untouched (positive control)', async () => {
+    expect((await respond({ read: false })).reply).toBe(ANSWER);
+  });
+
+  it('the same number in the parent’s own message survives (positive control)', async () => {
+    expect((await respond({ read: true, body: `is ${PHONE} right?` })).reply).toBe(ANSWER);
+  });
+
+  it('the same number in the family’s facts survives (positive control)', async () => {
+    expect((await respond({ read: true, facts: [`school office ${PHONE}`] })).reply).toBe(ANSWER);
+  });
+});

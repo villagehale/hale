@@ -102,6 +102,7 @@ import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { linkRef } from './activity-links';
 import { augmentCoachSkillForAutonomySwitchOff } from './autonomy-switch-off-tool';
 import { draftOriginForTurn, productionChannelDraftPort } from './draft';
+import { dropEmailOnlyTokens } from './email-only-tokens';
 import {
   type ExperienceCardIntent,
   augmentCoachSkillForExperienceCards,
@@ -625,7 +626,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
             // are busy-only, on every group turn. VIL-615: once read_email returns text,
             // only reads run for the rest of the turn.
-            const { tools, emailRead } = taintTurnOnEmailRead([
+            const { tools, emailRead, emailTexts } = taintTurnOnEmailRead([
               ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
               ...(cardsLit
                 ? [
@@ -779,16 +780,33 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
                 ? await ports.nearbySaid(turn.familyId, offeredThisTurn.read())
                 : null;
             const noticeReady = gmailNotice !== null && gmailNotice.status === 'ready';
-            const spoken =
+            const drafted =
               gmailNotice !== null && gmailNotice.status === 'ready'
                 ? gmailNotice.text
                 : result.answer;
-            if (!spoken) {
+            if (!drafted) {
               await ports.recordRun(record('failed'));
               throw failed(
                 'channel coach: gmail draft notice was not sent',
                 new GmailDraftNoticeUnsent(),
               );
+            }
+            // VIL-628: after read_email, a phone, code or host only the email gave is cut
+            // before the judge reads the draft, so the judge sees what is sent.
+            const emails = emailTexts();
+            const { text: spoken, dropped } = dropEmailOnlyTokens(drafted, {
+              emails,
+              trusted: emails.length > 0 ? trustedAfterEmail(turn, transcript, context) : [],
+            });
+            if (Object.values(dropped).some((count) => count > 0)) {
+              console.info(
+                { outcome: 'email_only_tokens_dropped', ...dropped },
+                'channel coach: reply tokens only the email gave were dropped',
+              );
+            }
+            if (spoken === '') {
+              await ports.recordRun(record('failed'));
+              throw failed('channel coach: reply held only tokens the email gave');
             }
             // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
             // turn whose tools handed over a find (any language). It does not edit the
@@ -870,6 +888,35 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       );
     },
   };
+}
+
+/**
+ * VIL-628 · what a reply written after read_email may repeat: the parent's own words in
+ * this thread and the family's facts. Hale's earlier turns are not on it, because an
+ * alert can quote the email, and neither is a rejected attempt's claim.
+ */
+function trustedAfterEmail(
+  turn: ChannelTurn,
+  transcript: readonly TranscriptMessage[],
+  context: AgentContext & {
+    registrationWindows: readonly RegistrationWindowContext[];
+    providerWatch?: readonly ProviderWatchContext[];
+  },
+): string[] {
+  return [
+    turn.body,
+    ...transcript.filter((message) => message.role === 'user').map((message) => message.content),
+    JSON.stringify({
+      parentName: context.parentName,
+      location: context.location,
+      children: context.children,
+      memoryFacts: context.memoryFacts,
+      memoryBrief: context.memoryBrief,
+      householdGroup: context.householdGroup,
+      registrationWindows: context.registrationWindows,
+      providerWatch: context.providerWatch,
+    }),
+  ];
 }
 
 async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
