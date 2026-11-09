@@ -145,6 +145,49 @@ describe('aha snapshot from fixture calendars and mail', () => {
     ]);
   });
 
+  it('a length cut never leaves a link behind (VIL-632)', () => {
+    // 'evil.co9xyz' is not link-shaped; cut right after 'evil.co' it would be.
+    const titleWords = 'Swim '.repeat(22).concat('ab');
+    const snippetWords = 'Swim '.repeat(30).concat('ab');
+    const event = (id: string, summary: string) => ({
+      id,
+      status: 'confirmed',
+      summary,
+      start: { dateTime: '2026-09-12T13:00:00.000Z' },
+      end: { dateTime: '2026-09-12T14:00:00.000Z' },
+    });
+    const message = (id: string, subject: string, snippet: string) => ({
+      id,
+      internalDate: '1757606400000',
+      snippet,
+      payload: { headers: [{ name: 'Subject', value: subject }] },
+    });
+    const longPlain = 'Swim lesson at the pool '.repeat(10);
+
+    const placeWords = 'Rec '.repeat(17).concat('abcd');
+    const calendar = calendarFactsFromItems(
+      [
+        { ...event('cut', `${titleWords} evil.co9xyz`), location: `${placeWords} evil.co9xyz` },
+        { ...event('plain', longPlain), location: longPlain },
+      ],
+      NOW,
+      EASTERN,
+    );
+    expect(calendar.map((fact) => [fact.title, fact.location])).toEqual([
+      [titleWords, placeWords],
+      [longPlain.slice(0, 120).trimEnd(), longPlain.slice(0, 80).trimEnd()],
+    ]);
+
+    const mail = emailFactsFromMessages([
+      message('cut', `${titleWords} evil.co9xyz`, `${snippetWords} evil.co9xyz`),
+      message('plain', longPlain, longPlain),
+    ]);
+    expect(mail.map((fact) => [fact.subject, fact.snippet])).toEqual([
+      [titleWords, snippetWords],
+      [longPlain.slice(0, 120).trimEnd(), longPlain.slice(0, 160).trimEnd()],
+    ]);
+  });
+
   it("reads today on the family's own clock, so an all-day event today is still upcoming", () => {
     // 05:30Z on Nov 10: still Nov 9 in Chicago, already Nov 10 in Toronto.
     const lateEvening = new Date('2026-11-10T05:30:00.000Z');
