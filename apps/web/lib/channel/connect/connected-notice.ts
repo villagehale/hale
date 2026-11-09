@@ -12,6 +12,10 @@ import {
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import {
+  type HouseholdGroupFact,
+  loadHouseholdGroupFact,
+} from '~/lib/channel/intake/household-group';
+import {
   type OnboardingChecklist,
   agesAreComplete,
   kidsAreNamed,
@@ -164,6 +168,8 @@ export async function connectedReceiptBody(
     nameStored?: boolean;
     /** The family's IANA zone, required when `aha` has items: their times on their clock. */
     timeZone?: string;
+    /** VIL-566 — the household group, when they said yes to one: claimed or still pending. */
+    householdGroup?: HouseholdGroupFact | null;
   },
 ): Promise<string> {
   const spoken = await speakFriend(
@@ -180,6 +186,7 @@ export async function connectedReceiptBody(
       granted: null,
       synced: aha ?? failedAha(provider),
       ...(options?.timeZone ? { timeZone: options.timeZone } : {}),
+      ...(options?.householdGroup ? { householdGroup: options.householdGroup } : {}),
     },
     options?.page ? { page: options.page } : {},
   );
@@ -321,6 +328,7 @@ async function sendReceipt(
       session,
       timeZone,
       nameStored: await parentNameStored(database, parentUserId),
+      householdGroup: await loadHouseholdGroupFact(database, familyId),
       page: pageOncePerDay(new PostgresRateLimiter(database), familyId),
     },
   );

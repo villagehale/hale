@@ -27,6 +27,7 @@ import {
   type ReadInboundMedia,
   readInboundMedia,
 } from '~/lib/channel/inbound-media';
+import { loadHouseholdGroupFact } from '~/lib/channel/intake/household-group';
 import { linqExperiencesEnabled, linqGroupLeaveEnabled } from '~/lib/channel/linq/config';
 import { type GroupLeaveEligibility, groupLeaveEligibility } from '~/lib/channel/linq/group-leave';
 import { midActivitySignupToolEnabled } from '~/lib/channel/mid-activity/said-tool';
@@ -369,7 +370,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
-      const skill = augmentCoachSkillForFindPrivate(
+      const composedSkill = augmentCoachSkillForFindPrivate(
         augmentCoachSkillForFindPrivate(
           augmentCoachSkillForGroupLeave(
             augmentCoachSkillForExperienceCards(
@@ -400,6 +401,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         transcript,
         sourceNote: null,
       });
+      // VIL-566: the household-group addendum rides only when the fact does, so every
+      // other turn keeps its system bytes.
+      const skill = familyContext.householdGroup
+        ? await appendHouseholdGroupSkill(composedSkill)
+        : composedSkill;
 
       // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
@@ -688,6 +694,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
   };
 }
 
+async function appendHouseholdGroupSkill(skill: Skill): Promise<Skill> {
+  const group = await loadCronSkill('household-group');
+  return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
+}
+
 async function appendGroupCoachSkill(skill: Skill): Promise<Skill> {
   const group = await loadCronSkill('coach-channel-group');
   return { ...skill, instructions: `${skill.instructions}\n\n${group.instructions}` };
@@ -740,7 +751,11 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         (await loadParentLiveWatches(database, { familyId, parentUserId })).length > 0,
       ),
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
-    loadContext: (input) => loadAgentContext(input, database),
+    loadContext: async (input) => {
+      const context = await loadAgentContext(input, database);
+      const householdGroup = await loadHouseholdGroupFact(database, input.familyId);
+      return householdGroup ? { ...context, householdGroup } : context;
+    },
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.

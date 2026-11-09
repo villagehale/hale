@@ -117,6 +117,7 @@ import {
   speakFriend,
   turnsFromTranscript,
 } from './friend-voice';
+import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
@@ -2304,6 +2305,10 @@ async function friendColdTurn(
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
   const join = gap === 'schedule' || gap === 'coparent' ? coparentJoinFor(ctx, language) : null;
+  const householdGroup = await householdGroupForTurn(database, familyId, {
+    wanted: given?.coparentGroup ?? null,
+    asking: gap === 'coparent',
+  });
   const spoken = await friendSpeak(
     deps,
     session.transcript,
@@ -2327,6 +2332,7 @@ async function friendColdTurn(
       scheduled: scheduledForModel(given, language),
       coparentJoin: join,
       checklist,
+      householdGroup,
     }),
     {
       // A card rides only the ask for its own connector, and only the first time.

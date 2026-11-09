@@ -291,6 +291,10 @@
     "file": "holding-line.md",
     "sha256": "d989fc5395640746c4ac6c733b1a6c9a35d43095e84ee1e9c5d3c4137adbec3b"
   },
+  "household-group.md": {
+    "file": "household-group.md",
+    "sha256": "49051843ca92f7a51cd97d63b14414217ac7f2c83e87c8e7789332deaa048410"
+  },
   "identity-ask.md": {
     "file": "identity-ask.md",
     "sha256": "f2189a587b149ee815f2ab9572c29d1b72585e6c62de2d100a6b66893f1ca936"
@@ -465,7 +469,7 @@
   },
   "signup-outcome-reply.md": {
     "file": "signup-outcome-reply.md",
-    "sha256": "9e99c3eed045fb4290a382c09eb0b0e64dc426ecae79f269070b87bb7f4c5ff8"
+    "sha256": "c14736437aa015313c1434cc73ffda77527fdb8955078fca1c4f8ac78c2d01a3"
   },
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
