@@ -21,7 +21,7 @@ import {
 import { linksOutside } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
-import { forceToolJson, llmTransport } from '~/lib/pipeline/structured';
+import { StructuredOutputError, forceToolJson, llmTransport } from '~/lib/pipeline/structured';
 import { addDaysToKey, dayKeyIn } from '~/lib/plan/spine';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { HouseholdGroupFact } from './household-group';
@@ -63,11 +63,11 @@ import {
 /**
  * The reply plus the capture fields, as one forced tool call. The map turn
  * returns an opener, a bubble per group (up to three) and the kids; a cut-off at max_tokens
- * is a failed attempt, so the budget is well over what a good reply uses.
+ * is a failed attempt, so the budget is well over what a good reply uses. The short
+ * retry has the same budget: its prompt is smaller, its answer is not. A reply that
+ * fills every optional field ran past 600 tokens live (VIL-617).
  */
 const MAX_TOKENS = 1000;
-const SHORT_MAX_TOKENS = 600;
-export const ONBOARDING_REPLY_SHORT_MAX_TOKENS = SHORT_MAX_TOKENS;
 
 export const ONBOARDING_REPLY_MAX_TOKENS = MAX_TOKENS;
 export const ONBOARDING_REPLY_TOOL = 'reply';
@@ -2217,6 +2217,9 @@ export async function speakFriend(
       noteRefusal(
         {
           err: err instanceof Error ? err.name : 'unknown',
+          ...(err instanceof StructuredOutputError
+            ? { outcome: err.outcome, stopReason: err.stopReason }
+            : {}),
           ...(err instanceof z.ZodError
             ? {
                 issues: err.issues
@@ -2364,7 +2367,7 @@ export function retryProblem(
   }
 }
 
-function askInWords(step: FriendStep | undefined): string {
+export function askInWords(step: FriendStep | undefined): string {
   switch (step) {
     case 'email':
       return 'ask whether they want to connect their Gmail (one trust line from facts.access first)';
@@ -2382,7 +2385,7 @@ function askInWords(step: FriendStep | undefined): string {
     case 'ages':
       return 'ask how old each kid is';
     case 'place':
-      return 'ask their postal code';
+      return 'ask their postal code or ZIP, or, when they just declined it, ask `next` instead';
     default:
       return 'ask the open item';
   }
@@ -2570,7 +2573,7 @@ export function createFriendVoiceComposer(client: AgentClient | null): FriendVoi
         toolDescription: 'Return the onboarding reply and any facts the parent just gave.',
         inputJsonSchema: onboardingReplyToolSchema(),
         schema: replySchema,
-        maxTokens: short ? SHORT_MAX_TOKENS : MAX_TOKENS,
+        maxTokens: MAX_TOKENS,
         transport: llmTransport(),
       });
       return {

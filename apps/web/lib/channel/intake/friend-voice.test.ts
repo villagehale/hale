@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type Anthropic from '@anthropic-ai/sdk';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
@@ -7,6 +10,7 @@ import {
 import {
   type FriendVoiceInput,
   assembleFriendBody,
+  createFriendVoiceComposer,
   friendVoiceContext,
   friendVoiceSystem,
   friendWeekAction,
@@ -1841,5 +1845,112 @@ describe('#868 question marks in any script', () => {
     expect(
       judgeFriendReply('مرحبا! أنا Hale. ما هو رمزك البريدي؟', { ...base, parentWords: 'مرحبا' }),
     ).toEqual({ ok: true });
+  });
+});
+
+/**
+ * VIL-617: a parent who will not give the postal code. On Preview both attempts died
+ * with a StructuredOutputError and the log said only that. The recording is the live
+ * Haiku reply on the short retry, cut off at its old 600-token budget.
+ */
+describe('a declined postal code', () => {
+  const recorded = JSON.parse(
+    readFileSync(join(__dirname, '__recordings__', 'place-decline-truncated.json'), 'utf8'),
+  ) as { response: Anthropic.Message };
+  const WORDS = "I'd rather not give out my postal code";
+  const declined = blank({
+    step: 'place',
+    parentWords: WORDS,
+    recentTurns: [{ role: 'hale', body: 'What is your postal code or ZIP?', asked: true }],
+    checklist: {
+      postal: false,
+      kids: false,
+      ages: false,
+      name: false,
+      gmail: false,
+      calendar: false,
+      schedule: false,
+      coparent: false,
+    },
+  });
+
+  function toolReply(input: Record<string, unknown>): Anthropic.Message {
+    return {
+      ...recorded.response,
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_test', name: 'reply', input }],
+    } as Anthropic.Message;
+  }
+
+  /** Replays the given responses in order, through either transport. */
+  function replaying(responses: Anthropic.Message[]) {
+    const sent: Array<{ max_tokens: number; messages: Array<{ content: string }> }> = [];
+    const next = async (request: unknown) => {
+      sent.push(request as (typeof sent)[number]);
+      const response = responses.shift();
+      if (!response) throw new Error('no recorded response left');
+      return response;
+    };
+    const client = {
+      messages: {
+        create: next,
+        stream: (request: unknown) => ({ finalMessage: () => next(request) }),
+      },
+    };
+    return { sent, composer: createFriendVoiceComposer(client as never) };
+  }
+
+  it('logs the structured outcome and stop reason of a cut-off reply, and none of their words', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { composer } = replaying([recorded.response, recorded.response]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('unsent');
+      const compose = [...warn.mock.calls, ...error.mock.calls].filter(
+        ([fields]) => (fields as { err?: string } | undefined)?.err === 'StructuredOutputError',
+      );
+      expect(compose).toHaveLength(2);
+      for (const [fields] of compose) {
+        expect(fields).toMatchObject({ outcome: 'truncated', stopReason: 'max_tokens' });
+        expect(JSON.stringify(fields)).not.toMatch(/postal|rather not/i);
+      }
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  it('gives the retry the room the first attempt had, and lets it carry on without the code', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      const fields = {
+        asks: true,
+        parentQuestion: false,
+        connectorsOffered: [],
+        joinPointer: null,
+        claimsSaved: false,
+      };
+      const { sent, composer } = replaying([
+        // Two questions: the judge refuses it, so the short retry runs.
+        toolReply({ ...fields, reply: 'Totally fair. Just the first part of it? Or your ZIP?' }),
+        toolReply({ ...fields, reply: 'Totally fair. How many kids are we looking for?' }),
+      ]);
+      const spoken = await speakFriend(composer, declined, { page: async () => {} });
+      expect(spoken.source).toBe('retry');
+      expect(sent).toHaveLength(2);
+      // The recorded retry was cut at 600 tokens; the retry gets the first attempt's room.
+      expect(sent[1]?.max_tokens).toBe(sent[0]?.max_tokens);
+      expect(sent[1]?.max_tokens).toBeGreaterThan(recorded.response.usage.output_tokens);
+      const brief = JSON.parse(sent[1]?.messages[0]?.content ?? '{}') as {
+        retry?: { problem: string };
+      };
+      // The retry is not told to ask again for the code they just turned down.
+      expect(brief.retry?.problem).toMatch(/declined/);
+    } finally {
+      warn.mockRestore();
+      info.mockRestore();
+    }
   });
 });

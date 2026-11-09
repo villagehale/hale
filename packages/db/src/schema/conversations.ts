@@ -65,8 +65,20 @@ export const conversations = pgTable(
  * not cascade-delete the family's conversation history.
  */
 /** What a proactive email-alert turn was about, so the coach can answer a reply to it.
- * The SMS itself stays the notice text. A 13+ child's mail stores no snippet. */
+ * The SMS itself stays the notice text. VIL-619: no sender words are stored here, only
+ * ids and whether the email is private. `private` is a 13+ child's mail: `read_email`
+ * refuses it and no later turn is told its id. */
 export interface GmailMessageSource {
+  kind: 'gmail';
+  eventId: string | null;
+  gmailMessageId: string;
+  private: boolean;
+}
+
+/** A row written before VIL-619 stored the snippet itself, and null meant private. Read,
+ * never written. The one-time scrub (apps/web/scripts/scrub-email-alert-snippets.ts)
+ * rewrites these as {@link GmailMessageSource}. */
+export interface LegacyGmailMessageSource {
   kind: 'gmail';
   eventId: string | null;
   gmailMessageId: string;
@@ -79,7 +91,11 @@ export interface EmailReadMessageSource {
   kind: 'read_email';
 }
 
+/** What a writer may store. */
 export type MessageSource = GmailMessageSource | EmailReadMessageSource;
+
+/** What a reader may find, until the scrub has run. */
+export type StoredMessageSource = MessageSource | LegacyGmailMessageSource;
 
 export const messages = pgTable(
   'messages',
@@ -96,7 +112,7 @@ export const messages = pgTable(
     topic: text('topic'),
     /** What a proactive turn was about (0212). Null for every turn that has none.
      * Never copied to a log or an audit row. */
-    source: jsonb('source').$type<MessageSource>(),
+    source: jsonb('source').$type<StoredMessageSource>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Soft delete (rule #6 / #9): a parent-removed turn is stamped, not erased, so
      * the audit row that references it stays intact. NULL = live; the read path

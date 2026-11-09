@@ -221,6 +221,51 @@ describe('invokeTool — untrusted-content rail (VIL-616)', () => {
   });
 });
 
+describe('invokeTool — input-aware child-content gate (VIL-618)', () => {
+  function gatedTool() {
+    const handler = vi.fn(async () => ({ saved: true }));
+    const tool = defineTool({
+      name: 'save_memory',
+      description: 'Save a fact.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ factValue: z.string() }),
+      childContentGate: async (input: { factValue: string }, gateCtx: ToolHandlerContext) =>
+        gateCtx.familyId === ctx.familyId && input.factValue.includes('Tamsin')
+          ? { ok: false, reason: 'names_teen' }
+          : { ok: true, reason: 'names_no_teen' },
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused input writes NO audit row and the handler never runs', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { factValue: 'Tamsin has a secret' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'save_memory', rail: 'child_content' });
+    expect((refusal as Error).message).toContain('names_teen');
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it('an input the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { factValue: 'library on Sundays' }, ctx, deps)).resolves.toEqual(
+      { saved: true },
+    );
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.after)).toEqual([{ factValue: 'library on Sundays' }]);
+  });
+});
+
 describe('invokeTool — input validation', () => {
   it('rejects hallucinated args at the boundary before any rail or handler runs', async () => {
     const handler = vi.fn(async () => ({ ok: true }));

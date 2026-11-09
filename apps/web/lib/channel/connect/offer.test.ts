@@ -51,6 +51,23 @@ describe('offerConnectorLink', () => {
     await db.close();
   });
 
+  // VIL-617: a link minted on a Preview deploy lands on that deploy's app host when its
+  // APP_URL names one, not on production. The default host is pinned by the test below.
+  it('builds the link on the app host APP_URL names', async () => {
+    vi.stubEnv('APP_URL', 'https://hale-preview.example.test');
+    const outcome = await offerConnectorLink(db.database, {
+      familyId,
+      parentUserId,
+      provider: 'gmail',
+      now: NOW,
+    });
+
+    if (outcome.status !== 'minted') throw new Error(`expected minted, got ${outcome.status}`);
+    expect(outcome.url).toMatch(
+      /^https:\/\/hale-preview\.example\.test\/connect\?t=[A-Za-z0-9_-]+&to=gmail$/,
+    );
+  });
+
   it('mints a link for a verified parent, with the audit row beside it (rule #6)', async () => {
     const outcome = await offerConnectorLink(db.database, {
       familyId,

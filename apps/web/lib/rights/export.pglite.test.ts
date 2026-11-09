@@ -1,5 +1,7 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { assembleFamilyExport } from './export';
 
@@ -236,5 +238,266 @@ describe('a link-owned registration watch in a right-to-access copy', () => {
       })),
     ).toEqual([{ pausedAt: '2026-10-03T12:00:00.000Z', hasPendingChange: true }]);
     expect(JSON.stringify(docB)).not.toContain('pending-body-q9');
+  });
+});
+
+/**
+ * One adult's own records: their 1:1 text thread with Hale, the language Hale writes to
+ * them in, and the audit rows for each time that changed. The family copy leaves these
+ * out for everyone (NOT_IN_FAMILY_EXPORT), so without this section the requester gets
+ * none of it either. The co-parent's copy is the negative, and the requester's own copy
+ * is its positive control: an always-empty section would pass the negative alone.
+ */
+describe("the requester's own section in a right-to-access copy", () => {
+  it('gives each parent their own thread and language rows, and never the other parent', async () => {
+    const [family] = await db.database
+      .insert(schema.families)
+      .values({ displayName: 'Ana + Sam', provinceOrState: 'ON' })
+      .returning({ id: schema.families.id });
+    const familyId = family?.id as string;
+    const anaId = await seedParent(familyId, 'ana', 'primary_parent');
+    const samId = await seedParent(familyId, 'sam', 'co_parent');
+    await db.database
+      .update(schema.users)
+      .set({ proactiveLanguage: 'fr', languageStreakTag: 'es', languageStreakCount: 2 })
+      .where(eq(schema.users.id, anaId));
+
+    const thread = async (
+      noteKey: string,
+      turns: { role: 'user' | 'assistant'; content: string; at: string; deletedAt?: string }[],
+    ) => {
+      const [conversation] = await db.database
+        .insert(schema.conversations)
+        .values({ familyId, noteKey })
+        .returning({ id: schema.conversations.id });
+      await db.database.insert(schema.messages).values(
+        turns.map((turn) => ({
+          conversationId: conversation?.id as string,
+          role: turn.role,
+          content: turn.content,
+          createdAt: new Date(turn.at),
+          deletedAt: turn.deletedAt ? new Date(turn.deletedAt) : null,
+        })),
+      );
+    };
+    await thread(channelSmsNoteKey(anaId), [
+      { role: 'user', content: 'ana asks about swim on saturday', at: '2026-11-01T14:00:00.000Z' },
+      { role: 'assistant', content: 'hale answers ana about swim', at: '2026-11-01T14:00:05.000Z' },
+      {
+        role: 'user',
+        content: 'ana removed this line',
+        at: '2026-11-01T14:01:00.000Z',
+        deletedAt: '2026-11-02T09:00:00.000Z',
+      },
+    ]);
+    await thread(channelSmsNoteKey(samId), [
+      { role: 'user', content: 'sam private question', at: '2026-11-01T15:00:00.000Z' },
+    ]);
+    await thread('channel-group:chat-x1', [
+      { role: 'user', content: 'group carpool chatter', at: '2026-11-01T16:00:00.000Z' },
+    ]);
+    await db.database.insert(schema.auditLog).values([
+      {
+        familyId,
+        actor: anaId,
+        actionTaken: 'parent_language_changed',
+        targetTable: 'users',
+        targetId: anaId,
+        before: { language: 'en' },
+        after: { language: 'fr', why: 'asked' },
+        occurredAt: new Date('2026-10-20T12:00:00.000Z'),
+      },
+      {
+        familyId,
+        actor: samId,
+        actionTaken: 'parent_language_changed',
+        targetTable: 'users',
+        targetId: samId,
+        before: { language: 'en' },
+        after: { language: 'pt', why: 'sustained' },
+        occurredAt: new Date('2026-10-21T12:00:00.000Z'),
+      },
+    ]);
+
+    const anas = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: anaId,
+      now: NOTED_AT,
+    });
+    expect(anas.requesterOnly).toEqual({
+      language: { proactiveLanguage: 'fr', languageStreakTag: 'es', languageStreakCount: 2 },
+      languageChanges: [
+        { changedAt: '2026-10-20T12:00:00.000Z', from: 'en', to: 'fr', why: 'asked' },
+      ],
+      textThread: [
+        {
+          role: 'user',
+          content: 'ana asks about swim on saturday',
+          topic: null,
+          sentAt: '2026-11-01T14:00:00.000Z',
+          removedAt: null,
+        },
+        {
+          role: 'assistant',
+          content: 'hale answers ana about swim',
+          topic: null,
+          sentAt: '2026-11-01T14:00:05.000Z',
+          removedAt: null,
+        },
+        {
+          role: 'user',
+          content: 'ana removed this line',
+          topic: null,
+          sentAt: '2026-11-01T14:01:00.000Z',
+          removedAt: '2026-11-02T09:00:00.000Z',
+        },
+      ],
+      consents: [],
+      connections: [],
+      calendarMirrors: [],
+    });
+    const anaText = JSON.stringify(anas);
+    expect(anaText).not.toContain('sam private');
+    expect(anaText).not.toContain('"pt"');
+    // The group thread is the household's, so it is in the shared threads, not here.
+    expect(JSON.stringify(anas.requesterOnly)).not.toContain('group carpool');
+    expect(anas.sharedThreads.map((t) => [t.kind, t.turns.map((turn) => turn.content)])).toEqual([
+      ['group', ['group carpool chatter']],
+    ]);
+
+    // The real trail loader, so the whole of Sam's copy is checked, not one block.
+    const sams = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: samId,
+      now: NOTED_AT,
+    });
+    expect(sams.requesterOnly.textThread.map((turn) => turn.content)).toEqual([
+      'sam private question',
+    ]);
+    expect(sams.requesterOnly.language).toEqual({
+      proactiveLanguage: null,
+      languageStreakTag: null,
+      languageStreakCount: 0,
+    });
+    expect(sams.requesterOnly.languageChanges).toEqual([
+      { changedAt: '2026-10-21T12:00:00.000Z', from: 'en', to: 'pt', why: 'sustained' },
+    ]);
+    const samText = JSON.stringify(sams);
+    expect(samText).not.toContain('ana asks');
+    expect(samText).not.toContain('hale answers ana');
+    expect(samText).not.toContain('ana removed');
+    expect(samText).not.toContain('"fr"');
+    expect(samText).not.toContain('2026-10-20T12:00:00');
+  });
+});
+
+describe('booking and signup-plan columns in a right-to-access copy', () => {
+  it('carries the place and street address a booking holds', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Booking Export');
+    await db.database.insert(schema.activityBookings).values([
+      {
+        familyId,
+        parentUserId,
+        integrationId: '99999999-9999-4999-8999-999999999991',
+        messageId: 'gmail-booking-1',
+        providerHost: 'rec.example.org',
+        title: 'Swim Level 2',
+        firstSessionAt: new Date('2026-11-14T15:00:00.000Z'),
+        location: 'Northside Pool',
+        address: '100 Example Ave',
+      },
+      {
+        familyId,
+        parentUserId,
+        integrationId: '99999999-9999-4999-8999-999999999991',
+        messageId: 'gmail-booking-2',
+        providerHost: 'rec.example.org',
+        title: 'Art club',
+        firstSessionAt: new Date('2026-11-15T15:00:00.000Z'),
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(
+      doc.activityBookings.map(({ title, location, address }) => ({ title, location, address })),
+    ).toEqual([
+      { title: 'Swim Level 2', location: 'Northside Pool', address: '100 Example Ave' },
+      { title: 'Art club', location: null, address: null },
+    ]);
+  });
+
+  it('carries the day-before plan a parent approved for an authorized signup', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Plan Export');
+    const [child] = await db.database
+      .insert(schema.children)
+      .values({ familyId, name: 'Pip', dateOfBirth: '2021-03-01' })
+      .returning({ id: schema.children.id });
+    await db.database.insert(schema.authorizedSignupOffers).values([
+      {
+        familyId,
+        childId: child?.id as string,
+        parentUserId,
+        activityKey: 'rec.example.org|swim|2026-11-20',
+        registrationUrl: 'https://rec.example.org/register/swim?code=q7',
+        sessions: [],
+        status: 'planned',
+        planChoiceIds: ['s-2', 's-1'],
+        planMaxPriceCents: 14200,
+        planOpensAt: new Date('2026-11-20T12:00:00.000Z'),
+        planWaiverAccepted: true,
+        planApprovedAt: new Date('2026-11-19T20:00:00.000Z'),
+      },
+      {
+        familyId,
+        childId: child?.id as string,
+        parentUserId,
+        activityKey: 'rec.example.org|art|2026-11-21',
+        registrationUrl: 'https://rec.example.org/register/art',
+        sessions: [],
+        status: 'pending',
+      },
+    ]);
+
+    const doc = await assembleFamilyExport(db.database, familyId, {
+      actorUserId: parentUserId,
+      loadTrail: async () => [],
+    });
+    expect(
+      doc.authorizedSignups.map(
+        ({
+          status,
+          planChoiceIds,
+          planMaxPriceCents,
+          planOpensAt,
+          planWaiverAccepted,
+          planApprovedAt,
+        }) => ({
+          status,
+          planChoiceIds,
+          planMaxPriceCents,
+          planOpensAt,
+          planWaiverAccepted,
+          planApprovedAt,
+        }),
+      ),
+    ).toEqual([
+      {
+        status: 'planned',
+        planChoiceIds: ['s-2', 's-1'],
+        planMaxPriceCents: 14200,
+        planOpensAt: '2026-11-20T12:00:00.000Z',
+        planWaiverAccepted: true,
+        planApprovedAt: '2026-11-19T20:00:00.000Z',
+      },
+      {
+        status: 'pending',
+        planChoiceIds: null,
+        planMaxPriceCents: null,
+        planOpensAt: null,
+        planWaiverAccepted: null,
+        planApprovedAt: null,
+      },
+    ]);
   });
 });

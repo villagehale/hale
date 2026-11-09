@@ -82,7 +82,7 @@
   "judges/coach-channel": {
     "name": "judges/coach-channel",
     "version": null,
-    "sha256": "9845bab7eb83d47115786551f380d402045724a37160efcd772156579716a512"
+    "sha256": "d849f9d328cbdce1e20ac9ba3969ebf179344c7935a5113ec895cb5700890593"
   },
   "judges/coach-clash": {
     "name": "judges/coach-clash",

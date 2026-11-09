@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgsAnbCtevMHMqwyTC4kG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSmQYKEAgTGAI4AUIIdGhpbmtpbmcSDFSF+UsJzvIRHKwEhhoM3yU8Xv5aG30aPjW4IjDOVJuUaFr/f6YiKWDRIC0wGkzK+BzL725feZvmO2hQGe4J2as9gf/mM/1tbIWSlDQqtgWFov+/OfRxkjHKpEqQ8jELMpNYY+0yGGImcYWwovMR9Zp8XCFyZYkPU/JIcBEM8PohE/aZXc+QR+x7JcKn/69jImXLuKu8YJPzpizjT0E7WaL16/wFbCPwepVwbWWIt2RcER2PCWV9Ln+8GPnzKzUMI1N5Qa3BeT+NGcacvd/Tli4CLgUA0l+48NN9preaD4wXrOXE7Y33HrDhajLTL3NIbwgOvpB3kjD6mz3gibCtizbIY4I3fGe6DeH+WUwr+q2kYByZtNHrSnYDtJ2S8mssXslz7nzP2wn/TXL1szyY5n4ubsgn/OLYpwbaXnr69BuuSMHxBoQsLjSuLl0pdqsTdPrBtP5+wTdPk3f6UdBmeK03YWEOHbxo7haz0DNU7txzTyIq4cYrTK49b4M5yuOeEHuNlShNvGUpmdXJ7mNLscCzfIobD2LgsbyA6qkbMbqDXb+qk8McBbHvbsVh9PhcScO9GCcyHFet7oUA1CBID/ZnCTYE/uoTp2Ky4Tlh6Xq+m9aZgjmBVZcZb4FIkapoO7s2AGyTbey9BtfZf5eSLi12VUmxw+KK8nxFwQAGLtVA25ynI1wyVnI9tpKHsoGQS46VXoIJFT0L2711wQjy3puMNvxmkmDlsfpOutZ83FKSv4TLBHKILbZFOOXDchhQBgjCdVRTRxLZxNXK4Sls+4e88kPYk73AZ4eEekPxX6KzbMDzENgFscV5TWRIMfScpnAldxdNyXDAdoZ6Rn+wcKZnlj0IW9kmFcXjRec11BgGrJbi7wjdFQhhRDhPj4Ul3+6gQowF4/LUjNSbmb13ViXz9AATZY9hr0w0Sp4AdNoITiSEGwLACcmcG4t06SkfYzw6CE/mhoPftSC6UGh30gLYHR4r0+OAJW0zopmggSgUsPHgC0OLkdanENSGRsfwRe5kiaRFGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KyLcmtU3aYewkVgBhEG9Ac",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "child-toddler",
+          "offer": "Want me to send the full plan for staying in bed, night by night?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 145,
+      "cache_read_input_tokens": 21023,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 145,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 184,
+      "output_tokens_details": {
+        "thinking_tokens": 62
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}
