@@ -16,6 +16,7 @@ import {
   autonomyDeniedForKind,
   streakSatisfiesAutonomy,
 } from '../orchestrator/autonomy-gate.js';
+import { episodesForContext, factsForContext } from './memory-context.js';
 
 /**
  * A Drizzle transaction handle — the same query surface as Database, scoped to
@@ -1524,8 +1525,8 @@ export async function markEventStage(
 
 // ─── Memory graph: longitudinal family-context read path ──────────────────
 
-/** How many most-recent episodes a memory slice carries to an agent. Bounded so
- * the slice that goes into a drafter prompt stays small. */
+/** How much a memory slice carries to the drafter. Bounded so the prompt stays small. */
+const MEMORY_SLICE_FACT_LIMIT = 40;
 const MEMORY_SLICE_EPISODE_LIMIT = 20;
 
 export interface MemorySlice {
@@ -1534,32 +1535,19 @@ export interface MemorySlice {
 }
 
 /**
- * Reads a family's current memory: every currently-valid fact (valid_until IS
- * NULL — the lookup index is partial on exactly this predicate) plus the most
- * recent episodes. This is the snapshot the drafter consults for context and the
- * inferencer diffs against. An empty family returns {facts:[],episodes:[]} — the
- * callers skip gracefully rather than null-masking.
+ * The family memory the drafter consults for context, through the shared prompt read
+ * (`memory-context.ts`): live, unexpired, non-teen facts and live, non-teen episodes.
+ * An empty family returns {facts:[],episodes:[]} — the callers skip gracefully rather
+ * than null-masking.
  */
 export async function getMemorySlice(
   familyId: string,
   database: Database = db(),
+  now: Date = new Date(),
 ): Promise<MemorySlice> {
-  const facts = await database
-    .select()
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, familyId),
-        sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
-      ),
-    );
-
-  const episodes = await database
-    .select()
-    .from(schema.familyMemoryEpisodes)
-    .where(eq(schema.familyMemoryEpisodes.familyId, familyId))
-    .orderBy(sql`${schema.familyMemoryEpisodes.occurredAt} DESC`)
-    .limit(MEMORY_SLICE_EPISODE_LIMIT);
-
+  const [facts, episodes] = await Promise.all([
+    factsForContext(database, familyId, { now, limit: MEMORY_SLICE_FACT_LIMIT }),
+    episodesForContext(database, familyId, { now, limit: MEMORY_SLICE_EPISODE_LIMIT }),
+  ]);
   return { facts, episodes };
 }
