@@ -881,7 +881,9 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
     let judged = 0;
     const p = ports({
       buildTools: (_t, _d, _o, _s, _p, _w, offered) => {
-        offered.recordLinks([{ url: 'https://example.org/storytime', title: 'Storytime' } as never]);
+        offered.recordLinks([
+          { url: 'https://example.org/storytime', title: 'Storytime' } as never,
+        ]);
         return [];
       },
       judgeFindReply: async () => {
@@ -937,5 +939,60 @@ describe('find reasoning stays off the reply (VIL-524)', () => {
       expect.any(String),
     );
     error.mockRestore();
+  });
+});
+
+describe('the day a find is for (VIL-567)', () => {
+  const send = async () => ({ verdict: 'send' as const });
+
+  it("hands the model today on the family's clock, not the UTC day", async () => {
+    const seen: Record<string, unknown>[] = [];
+    // 02:30Z Monday is still Sunday evening for a family on Pacific time.
+    const p = ports({
+      now: () => new Date('2026-11-09T02:30:00.000Z'),
+      loadTimeZone: async () => 'America/Los_Angeles',
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(seen[0]?.localNow).toEqual({
+      date: '2026-11-08',
+      weekday: 'Sunday',
+      time: '18:30',
+      timeZone: 'America/Los_Angeles',
+    });
+  });
+
+  it('a bare find after a question about today gets the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      judgeFindReply: send,
+      loadTranscript: async () => [
+        { role: 'user' as const, content: 'is there anything on today?' },
+        { role: 'assistant' as const, content: 'Nothing on your calendar today.' },
+        { role: 'user' as const, content: 'find me something to do' },
+      ],
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Family skate at the arena, today at 1.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('find me something to do'), []);
+    expect(instructions).toContain('The day a find is for');
+    expect(instructions).toContain('Keep the finding to yourself');
+  });
+
+  it('a calendar edit does not get the day addendum', async () => {
+    let instructions = '';
+    const p = ports({
+      runAgent: async (args) => {
+        instructions = args.skill.instructions;
+        return answering('Swim moved.')(args);
+      },
+    });
+    await channelCoachRuntime(p).respond(turn('move swim to tuesday'), []);
+    expect(instructions).not.toContain('The day a find is for');
   });
 });

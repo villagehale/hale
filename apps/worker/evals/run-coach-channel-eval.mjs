@@ -113,6 +113,7 @@ import { borrowedFindDates, dateSource } from './borrowed-find-dates.mjs';
 import { claimsDraftAlreadyHappened } from './coach-channel-draft-claim.mjs';
 import {
   COACH_CHANNEL_FIXTURES,
+  FIND_DAY_JUDGE_SYSTEM,
   FIXTURE_CHILDREN,
   FIXTURE_COURSE_ID,
   FIXTURE_EVENTS,
@@ -203,6 +204,26 @@ const SPOTS_FIXTURES = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'spots',
 /** The REAL switch-off verb and the REAL skill listing for it. Imported, never replicated:
  * neither reaches for a `~/` alias. Only `autonomy` fixtures list it, as the runtime only
  * lists it for a family with an autonomy grant, so every other fixture's bytes stay put. */
+/**
+ * VIL-567 · the REAL find-turn gate, the REAL family-clock reader, and the find-turn
+ * addenda the runtime appends. Only a `findTurnPrompt` fixture is assembled this way, so
+ * every other fixture keeps the prompt its recording is keyed on. That leaves a named gap:
+ * the standing find fixtures still record without `localNow` and without the find-turn
+ * addenda production sends them (see VIL-524's follow-up).
+ */
+const FIND_PRIVATE_SRC = join(
+  REPO_ROOT,
+  'apps',
+  'web',
+  'lib',
+  'channel',
+  'coach',
+  'find-private.ts',
+);
+const LOCAL_NOW_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'coach', 'local-now.ts');
+const FIND_TURN_SKILL_PATHS = ['coach-find-private.md', 'coach-find-day.md'].map((file) =>
+  join(REPO_ROOT, 'packages', 'agent', 'skills', file),
+);
 const AUTONOMY_SWITCH_OFF_SRC = join(
   REPO_ROOT,
   'apps',
@@ -724,7 +745,43 @@ function refuseMismatchedWeekday(input, timeZone, tool) {
   );
 }
 
-function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) {
+/**
+ * VIL-567 · `search_village` as apps/web/lib/coach/tools.ts declares it today: its own
+ * description, `query` and `window`, and its examples. The shared fake below predates the
+ * `window` field, and every standing recording is keyed on it, so only a `findTurnPrompt`
+ * fixture gets this one. A search with no window searches the whole year in production
+ * (village/live.ts), so the fixture's `yearVillage` answers it; a window gets `village`.
+ */
+const SEARCH_VILLAGE_DESCRIPTION =
+  'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.';
+
+function windowedSearchVillageTool(agent, record, village, yearVillage, toolOutputs) {
+  return agent.defineTool({
+    name: 'search_village',
+    description: SEARCH_VILLAGE_DESCRIPTION,
+    inputSchema: z.object({ query: z.string().optional(), window: z.string().optional() }),
+    inputExamples: [{ query: 'swim' }, {}],
+    monetary: false,
+    touchesChildContent: false,
+    handler: async (input) => {
+      const window = input.window?.trim() ? input.window.trim() : null;
+      record('search_village', { window });
+      const found = window ? village : yearVillage;
+      const shown = {
+        candidates: (found.candidates ?? []).map(({ url, ...candidate }) =>
+          url ? { ...candidate, ref: linkRef(url) } : candidate,
+        ),
+        inVerification: found.inVerification ?? 0,
+        standingOption: found.standingOption ?? null,
+        liveRead: 'verified',
+      };
+      toolOutputs.push(shown);
+      return shown;
+    },
+  });
+}
+
+function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs, yearVillage) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
@@ -837,24 +894,26 @@ function buildFixtureTools(agent, calls, village, spots, webPicks, toolOutputs) 
     },
   });
 
-  const searchVillage = agent.defineTool({
-    name: 'search_village',
-    description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
-    inputSchema: passthrough(),
-    handler: async () => {
-      record('search_village');
-      // What the model sees: each page's ref, never its URL (coach/tools.ts).
-      const shown = {
-        ...village,
-        candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
-          url ? { ...candidate, ref: linkRef(url) } : candidate,
-        ),
-      };
-      toolOutputs.push(shown);
-      return shown;
-    },
-  });
+  const searchVillage = yearVillage
+    ? windowedSearchVillageTool(agent, record, village, yearVillage, toolOutputs)
+    : agent.defineTool({
+        name: 'search_village',
+        description:
+          "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
+        inputSchema: passthrough(),
+        handler: async () => {
+          record('search_village');
+          // What the model sees: each page's ref, never its URL (coach/tools.ts).
+          const shown = {
+            ...village,
+            candidates: (village.candidates ?? []).map(({ url, ...candidate }) =>
+              url ? { ...candidate, ref: linkRef(url) } : candidate,
+            ),
+          };
+          toolOutputs.push(shown);
+          return shown;
+        },
+      });
 
   // Replicated from apps/web/lib/channel/activity/tools.ts `findActivitiesTool` — behind
   // the `~/` alias (it imports the lane + ledger), so it cannot be imported here. The
@@ -1152,7 +1211,10 @@ function channelContext(fixture, compact, severed = false) {
     // No appLink, mirroring the runtime: the model is handed no URL, so a link in a
     // reply is one it composed — and the skill's standing rule is that a URL it was
     // not given is a URL it invented.
-    nowIso: NOW.toISOString(),
+    nowIso: (fixture.now ? new Date(fixture.now) : NOW).toISOString(),
+    // Today on the family's clock, as channel/coach/runtime.ts hands it over. Only on a
+    // `findTurnPrompt` fixture, so every other recording's key stays put.
+    ...(fixture.findTurnPrompt ? { localNow: fixtureLocalNow(fixture) } : {}),
     // What Hale is holding an answer for, in Hale's own words (channel/coach/runtime.ts).
     // Empty is the ordinary case and means Hale is waiting on nothing — which is exactly
     // the state a "yes" that matches nothing arrives in.
@@ -1328,6 +1390,12 @@ function longMonth(abbr) {
  * does not also carry that venue, which is what made "Riverdale Farm visit at
  * Riverdale Farm" the thing the model quoted. */
 let spokenFind = (title, venue) => ({ title, venue: venue?.trim() ? venue : null });
+/** Replaced in main() by the REAL family-clock reader (LOCAL_NOW_SRC). */
+let familyLocalNow = null;
+
+function fixtureLocalNow(fixture) {
+  return familyLocalNow(fixture.now ? new Date(fixture.now) : NOW, FIXTURE_TIMEZONE);
+}
 
 function presentCandidate(candidate) {
   const spoken = spokenFind(candidate.title, candidate.venue ?? '');
@@ -1345,6 +1413,13 @@ function presentVillage(village) {
 
 function villageFor(fixture) {
   return presentVillage(fixture.village ?? FIXTURE_VILLAGE);
+}
+
+/** What `search_village` handed back this turn: a `findTurnPrompt` fixture answers by window. */
+function returnedVillage(fixture, calls) {
+  if (!fixture.findTurnPrompt) return villageFor(fixture);
+  const windowed = calls.some((call) => call.tool === 'search_village' && call.window);
+  return windowed ? villageFor(fixture) : presentVillage(fixture.yearVillage);
 }
 
 /**
@@ -1386,6 +1461,11 @@ function groundedHay(fixture, toolResults) {
   // on a fixture whose whole subject is a "yes" to that message, every noun in it would
   // otherwise be read as an invention by the gate that exists to catch inventions.
   for (const message of fixture.transcript ?? []) parts.push(message.content);
+  // `localNow` is on the context of a `findTurnPrompt` fixture, so today's date and
+  // weekday are recall there.
+  if (fixture.findTurnPrompt) {
+    parts.push(JSON.stringify(fixtureLocalNow(fixture)));
+  }
   // The registration windows on the context ground too, and this is the one source whose
   // facts are DATES — the thing the fabrication gate is most load-bearing about. A date
   // in the reply that is not in this list is one the model made up.
@@ -2035,6 +2115,12 @@ async function main() {
     import.meta.url,
   );
   const experienceCardAddendum = await agent.loadSkill(EXPERIENCE_CARD_SKILL_PATH);
+  const { nearbyFindTurn, augmentCoachSkillForFindPrivate } = await tsImport(
+    FIND_PRIVATE_SRC,
+    import.meta.url,
+  );
+  ({ familyLocalNow } = await tsImport(LOCAL_NOW_SRC, import.meta.url));
+  const findTurnAddenda = await Promise.all(FIND_TURN_SKILL_PATHS.map((p) => agent.loadSkill(p)));
   assertLongRepliesAreNotCut();
   const model =
     process.env.EVAL_GATEWAY_MODEL ?? anthropicModel ?? agent.pickModel(skill.meta.task);
@@ -2057,6 +2143,17 @@ async function main() {
     judgeModel,
     JUDGE_SYSTEM,
     'coach-channel',
+    cachedOnly,
+    getJudgeClient,
+    cost,
+    { samples: JUDGE_SAMPLES_MEDIAN },
+  );
+
+  // VIL-567 · the day a find is for, graded by meaning on the fixtures that state one.
+  const dayJudge = makeJudge(
+    judgeModel,
+    FIND_DAY_JUDGE_SYSTEM,
+    'coach-find-day',
     cachedOnly,
     getJudgeClient,
     cost,
@@ -2138,6 +2235,7 @@ async function main() {
           spots,
           webPicksFor(fixture),
           toolOutputs,
+          fixture.findTurnPrompt ? presentVillage(fixture.yearVillage) : undefined,
         ),
         recordingFrameworkTool(frameworkGuidanceTool, calls, guidance),
         ...(fixture.autonomy
@@ -2157,6 +2255,12 @@ async function main() {
             },
           }),
         );
+      }
+      // VIL-567: the find-turn addenda, behind the runtime's own gate, in its order.
+      if (fixture.findTurnPrompt && nearbyFindTurn(fixture.text, fixture.transcript ?? [])) {
+        for (const addendum of findTurnAddenda) {
+          turnSkill = augmentCoachSkillForFindPrivate(turnSkill, addendum);
+        }
       }
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}${nonce}`,
@@ -2262,6 +2366,9 @@ async function main() {
             // confident wrong one.
             knows: {
               parent: CONTEXT_PARENT_NAME,
+              // Today on the family's clock, as the model was told it. `undefined` off the
+              // `findTurnPrompt` fixtures, so every committed verdict's key stays put.
+              today: fixture.findTurnPrompt ? fixtureLocalNow(fixture) : undefined,
               city: cityFor(fixture),
               // Ages included: a coaching answer is graded on whether it fits THIS
               // child, and a judge that cannot see how old they are would be scoring
@@ -2323,7 +2430,7 @@ async function main() {
               // same four words an invented detail and put a correct reply below the
               // floor. Same half-blindness as `webFind` and `standingPlace` above, same
               // fix: show the judge what the tool showed the model.
-              offerable: villageFor(fixture).candidates.map((c) => {
+              offerable: returnedVillage(fixture, calls).candidates.map((c) => {
                 const line = c.venue
                   ? `${c.title} at ${c.venue}, ${c.when} — ${c.summary}`
                   : `${c.title}, ${c.when} — ${c.summary}`;
@@ -2383,6 +2490,27 @@ async function main() {
             reply,
           });
     const score = verdict === null ? null : verdict.score;
+    const dayFailures = [];
+    if (fixture.expect?.dayJudge) {
+      const day = await dayJudge(fixture.id, {
+        parentText: fixture.text,
+        thread: turnContext.transcript,
+        today: fixtureLocalNow(fixture),
+        dayMeant: fixture.expect.dayJudge.day,
+        searchedWindows: calls
+          .filter((call) => call.tool === 'search_village')
+          .map((call) => call.window ?? null),
+        finds: returnedVillage(fixture, calls).candidates.map(
+          (c) => `${c.title} at ${c.venue}, ${c.when}`,
+        ),
+        reply,
+      });
+      if (!day.dry && day.score < JUDGE_MIN) {
+        dayFailures.push(
+          `DAY: judge ${day.score} (${(day.samples ?? []).join('/')}) - ${day.reason}`,
+        );
+      }
+    }
 
     results.push({
       fixture,
@@ -2402,6 +2530,7 @@ async function main() {
       failures: [
         ...invented.map((f) => `FABRICATION: ${f}`),
         ...checkFixture(fixture, reply, calls, auditLog, truncatedRetries),
+        ...dayFailures,
       ],
     });
   }
@@ -2596,7 +2725,7 @@ async function main() {
     (broken || clashWrong.length === 0);
 
   if (isDryRun()) {
-    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan]));
+    console.log(dryReportLine('coach-channel', [judge.plan, clashJudge.plan, dayJudge.plan]));
     process.exit(0);
   }
   console.log('\n--- gate ---');

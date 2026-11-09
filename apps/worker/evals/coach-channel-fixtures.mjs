@@ -409,6 +409,67 @@ function smallTalk(pairs, offset = 0) {
   return out;
 }
 
+/**
+ * VIL-567 · Sunday 10:00 a.m. family-local, the last day of the fixture week. Nothing of
+ * the family's is on that day, so a find is the whole answer.
+ */
+export const FIXTURE_SUNDAY_NOW = '2026-08-09T14:00:00.000Z';
+
+const TUMBLE_TOTS = {
+  title: 'Tumble tots gym class',
+  kind: 'class',
+  summary: 'Weekly gym class for ages 3 to 6.',
+  venue: 'Northside Community Centre',
+  when: 'Tue & Thu, 10am',
+  url: 'https://example.org/tumble-tots',
+};
+
+/**
+ * VIL-567 · what a search for that Sunday finds: one thing that runs that day and one
+ * weekly class that does not. The class comes FIRST and fits the five-year-old, so a
+ * reply that hands over the first candidate leads with a day the parent did not ask
+ * about. Invented names, example.org pages.
+ */
+export const FIXTURE_VILLAGE_SUNDAY = {
+  candidates: [
+    TUMBLE_TOTS,
+    {
+      title: 'Family skate',
+      kind: 'drop_in',
+      summary: 'Public skate, all ages, helmets for under-sixes.',
+      venue: 'Lakeside Arena',
+      when: 'Sun, Aug 9, 1pm',
+      url: 'https://example.org/family-skate',
+    },
+  ],
+  inVerification: 0,
+  standingOption: null,
+};
+
+/**
+ * VIL-567 · what a search with no window finds. Production searches the whole year then
+ * (village/live.ts), and a year's search turns up the standing weekly class: the 2026-11
+ * audit case, where Hale offered a Tue/Thu class to a parent asking about today.
+ */
+export const FIXTURE_VILLAGE_YEAR = {
+  candidates: [TUMBLE_TOTS],
+  inVerification: 0,
+  standingOption: null,
+};
+
+/**
+ * VIL-567 · the day judge. Graded by meaning: "today", "this afternoon" and the weekday's
+ * name are one day. A fixture states the day the parent means in `expect.dayJudge.day`.
+ */
+export const FIND_DAY_JUDGE_SYSTEM = `You grade one SMS reply from Hale, a planner for a family's kids' year, on ONE question: does it offer something for the day the parent means? You are given the parent's text, the conversation before it, today on the family's own clock, the day the parent means, the time window Hale searched (null means no window, which searches the whole year), the finds that search returned with each one's own day, and the reply. Judge by meaning, not by wording: "today", "this afternoon", a date and the weekday's name can all name the same day. Score 5 when Hale searched a window that covers that day, and every activity the reply offers runs on that day, the first one included. Score 4 when that holds and the reply also mentions a find on a different day, plainly as a different day. Score 2 or below when Hale searched without a window or for a window that misses that day, when the reply leads with a find that does not run on that day or offers one as if it did, when it offers nothing although a returned find runs that day, or when it asks the parent which day they mean. Give a short reason first; do not quote the reply.`;
+
+/** The stand-in that fails the day judge: it hands over the first candidate, whatever its day. */
+const FIND_DAY_BROKEN = {
+  reply:
+    'Tumble tots gym class at Northside Community Centre is a good fit for Milo, Tue & Thu at 10am.',
+  calls: [{ tool: 'search_village' }],
+};
+
 export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'move-named-day',
@@ -562,6 +623,42 @@ export const COACH_CHANNEL_FIXTURES = [
       // digits, so the fabrication gate flags any number the reply reaches for.
       forbidden: [...HEDGES, 'story time', 'riverdale'],
     },
+  },
+  {
+    id: 'find-day-from-thread-sunday',
+    text: 'find me something to do',
+    note: 'VIL-567, the 2026-11 audit case. On a Sunday the parent asked whether anything was on today, then asked Hale to find something. Today is still the day: they should not have to say it twice. Hale offered a Tue/Thu class and the parent had to repeat himself. The reply leads with what runs today and never hands over the weekday class as if it fit.',
+    now: FIXTURE_SUNDAY_NOW,
+    findTurnPrompt: true,
+    village: FIXTURE_VILLAGE_SUNDAY,
+    yearVillage: FIXTURE_VILLAGE_YEAR,
+    transcript: [
+      { role: 'user', content: 'is there anything on today?' },
+      { role: 'assistant', content: 'Nothing on your calendar today.' },
+    ],
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      dayJudge: { day: 'today, Sunday, August 9, as the earlier text in the thread asked' },
+    },
+    broken: FIND_DAY_BROKEN,
+  },
+  {
+    id: 'find-day-none-given-sunday',
+    text: 'find me something to do',
+    note: 'VIL-567. A bare find with no day in the text or the thread. The day is the soonest time they could go, and Sunday at 10 a.m. leaves most of today, so today comes first and a weekday class is never the lead.',
+    now: FIXTURE_SUNDAY_NOW,
+    findTurnPrompt: true,
+    village: FIXTURE_VILLAGE_SUNDAY,
+    yearVillage: FIXTURE_VILLAGE_YEAR,
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      dayJudge: {
+        day: 'the soonest the family could go: today, Sunday, August 9, with most of the day left',
+      },
+    },
+    broken: FIND_DAY_BROKEN,
   },
   {
     id: 'find-activities-bare-ask',

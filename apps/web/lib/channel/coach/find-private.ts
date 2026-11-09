@@ -7,7 +7,7 @@ import type { Skill } from '@hale/agent';
 const CALENDAR_EDIT = /\b(?:move|cancel|reschedul\w*|remind)\b/i;
 const CALENDAR_READ = /\bwhat(?:['’]?s| is) on the calendar\b/i;
 const FIND_ASK =
-  /\b(?:what(?:['’]?s| is) on|what(?:['’]?s| is) (?:happening|going on|good)|anything (?:on|going on|happening)|who(?:['’]?s| is) around|things to do|what (?:can|should) we do|find (?:something|activities|a class|classes|us)|near(?:by| us| me)|trick[- ]or[- ]treat|drop[- ]ins?|halloween|(?:this|next|the) weekend)\b/i;
+  /\b(?:what(?:['’]?s| is) on|what(?:['’]?s| is) (?:happening|going on|good)|anything (?:on|going on|happening)|who(?:['’]?s| is) around|things to do|what (?:can|should) we do|find (?:(?:me|us) )?(?:something|some activities|activities|a class|classes)|find us|near(?:by| us| me)|trick[- ]or[- ]treat|drop[- ]ins?|halloween|(?:this|next|the) weekend)\b/i;
 
 function isNearbyFindAsk(body: string): boolean {
   if (CALENDAR_EDIT.test(body) || CALENDAR_READ.test(body)) return false;

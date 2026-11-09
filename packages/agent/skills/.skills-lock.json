@@ -103,6 +103,10 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-find-day.md": {
+    "file": "coach-find-day.md",
+    "sha256": "c26d8e6d41916a6f6b01cca4d2a54103d50735d1c34c8995ed1d9a15afbe1cfa"
+  },
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"

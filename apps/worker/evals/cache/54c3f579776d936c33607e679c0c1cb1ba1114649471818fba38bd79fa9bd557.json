@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgrbRngm9Uh8jM8aaEd8Z",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAUKEAgTGAI4AUIIdGhpbmtpbmcSDGKdhWXcKYlAKCSyfhoM+Lr9wNdXXhRWvchuIjAsMZxBod/XcIrZuTgLrOmWNjtt99jUnlzL0ppE7e1+obKkihFfUlKnEqqy/M453r4q2QQNydeSJIoDQzvLUGZjWXQhRUmIAlI3Q5wT+lsiPQmWYItMoKvAukSL2IddDmCLADevO7/QC/jl/BkmXXQ175EibC1iypwGbwZJTAu8vC8np5xP0xhf3oD3iBP4s06JhJtDejzl/PG32jpSoDgp/coUXNJexUFbiYDVQqhMQV9zc9xl/PZeK3ksV67s5zcd4h4+/nalmrZwfPnCc2yQJih5mds8IKGq4k2yhEIk5k1rjNA4DSoRDbU/sqSM+iOHxi6Nk6z7PHID9QUQh00bvjJDUfeBFFI8QdBWYao0W81QbZS8nEc+TLq2yLSv98+l+1gdptNgnWYqrsJGZXlHcn6ZNLWoWQcXCv1wH1gpxRgSHZdEjFjEQfEXQFXPIrNk322Ck8YNCmqiDwphtfreLTJ3YoXvGJg34+7QTjs5nv8UOd6aJ7k0oTnE08XGtuoQgH5AfouFlx3qw1H5bi3ZDAyENjr58fk0FXjae/4c1ydK6rmmyi8dA4jpXjsruTeRqilUFbcu6pEyxuP62aiFCM9wF9frEb96XAUDgK+/+soUUnjBQu98EAVJeQHcdYxkLwqdhcy490QQTFew58SxMlb1RyLXkKIS9EUC06NOXpA+7Xzh+y4MSy2dXYq4bQDZN1RvLmIzWNQPQXOPmVbV92OlMxwrcw0K9svcSWoyEi96BsAljDHFNYfpXU1wQQCJRBBgeo/pkA/5ciwgFvtQZTwYsMeJIyX/G/GPBki2RqTi43dzXTzsYWEQx9oV5BLq9Ht1cuknFe1+4Gk27ZT2uU8fYZTB+OGaGb6FGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01X2YrYBoa49C22ViQbkcmyA",
+        "name": "search_village",
+        "input": {
+          "query": "family activities for kids",
+          "window": "Sunday, 2026-08-09"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 465,
+      "cache_creation_input_tokens": 22437,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 22437,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 125,
+      "output_tokens_details": {
+        "thinking_tokens": 40
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1967
+}

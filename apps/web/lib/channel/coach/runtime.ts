@@ -56,6 +56,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 import { type OfferedCandidate, searchVillageTool } from '~/lib/coach/tools';
 import { POLICY_VERSION } from '~/lib/consent';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { HOT_SMS_CLIENT_OPTIONS, activityClient, budgetedAnthropic } from '~/lib/pipeline/client';
 import { createFetchBody } from '~/lib/registration/verify-sweep';
@@ -83,6 +84,7 @@ import {
   shareExperienceCardTool,
 } from './experience-card-tool';
 import { augmentCoachSkillForFindPrivate, nearbyFindTurn } from './find-private';
+import { familyLocalNow } from './local-now';
 import { type FindReplyGate, judgeWholeFindReply } from './find-reasoning-judge';
 import { GmailDraftNoticeUnsent } from './gmail-draft-notice';
 import {
@@ -213,6 +215,9 @@ export interface ChannelCoachPorts {
    * openings, waitlists), as data. Optional: absent or empty leaves the context key out,
    * so an ordinary turn's prompt bytes are unchanged (signup/browser-use/watch/context.ts). */
   loadProviderWatch?(familyId: string, now: Date): Promise<ProviderWatchContext[]>;
+  /** The family's IANA time zone, so the turn knows which day it is where they live.
+   * Optional for test fakes only: production always wires it. */
+  loadTimeZone?(familyId: string): Promise<string>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
    * with the full plan the turn offered, which the router writes down after the send;
@@ -338,6 +343,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       const providerWatch = ports.loadProviderWatch
         ? await ports.loadProviderWatch(turn.familyId, now)
         : [];
+      const localNow = ports.loadTimeZone
+        ? familyLocalNow(now, await ports.loadTimeZone(turn.familyId))
+        : null;
       // The 1:1 skill stays byte-identical. The group section is a second file,
       // loaded only when this turn is the family group.
       const cardsLit = turn.audience !== 'group' && (ports.experienceCardsEnabled?.() ?? false);
@@ -356,18 +364,23 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // recordings stay keyed on the prompt they already have.
       const findTurn = nearbyFindTurn(turn.body, transcript);
       const findPrivate = findTurn ? await loadCronSkill('coach-find-private') : null;
+      // VIL-567: the same gate, so a bare find reads its day from the thread.
+      const findDay = findTurn ? await loadCronSkill('coach-find-day') : null;
       // Dark and group turns pass null: the disk skill object is unchanged (VIL-497).
       // Lit 1:1 appends experience-card-coach so citing a ref is not a substitute for
       // the card when the answer is one venue's page (VIL-500).
       const skill = augmentCoachSkillForFindPrivate(
-        augmentCoachSkillForGroupLeave(
-          augmentCoachSkillForExperienceCards(
-            baseSkill,
-            cardsLit ? await loadCronSkill('experience-card-coach') : null,
+        augmentCoachSkillForFindPrivate(
+          augmentCoachSkillForGroupLeave(
+            augmentCoachSkillForExperienceCards(
+              baseSkill,
+              cardsLit ? await loadCronSkill('experience-card-coach') : null,
+            ),
+            leaveLit,
           ),
-          leaveLit,
+          findPrivate,
         ),
-        findPrivate,
+        findDay,
       );
       // The ref→page table for this turn: the same list the reply's [link-…] markers
       // resolve against, so a card and a cited link can never point at different pages.
@@ -408,6 +421,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         ...familyContext,
         channel: 'sms' as const,
         nowIso: now.toISOString(),
+        // Today on the family's own clock (VIL-435). A UTC instant read as a day is
+        // tomorrow by Sunday evening in Toronto, and a find for "today" goes wrong.
+        ...(localNow ? { localNow } : {}),
         // What Hale is holding an answer for, in Hale's own words (see ChannelTurn). A
         // FACT about state, handed to the model the same way the family's schedule is —
         // so a turn that is plainly an answer to one of them can be treated as one, and a
@@ -728,6 +744,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
     // Optional data: a failed read leaves it out rather than failing the parent's turn.
     // The line names the fault class only.
+    loadTimeZone: (familyId) => readFamilyTimezone(database, familyId),
     loadProviderWatch: (familyId, now) =>
       loadProviderWatchContext(database, familyId, now).catch((err: unknown) => {
         console.error(
