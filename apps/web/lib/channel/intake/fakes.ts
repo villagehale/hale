@@ -49,7 +49,7 @@ export class FakeIntentReader implements ReplyIntentReader {
     this.calls.push(input);
     const next = this.queue.length > 1 ? (this.queue.shift() as IntentReading) : this.queue[0];
     if (!next) throw new Error('FakeIntentReader: no scripted result');
-    return next;
+    return { ...next, candidateRefusal: null };
   }
 }
 

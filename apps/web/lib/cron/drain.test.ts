@@ -162,6 +162,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     fail: vi.fn(async (name: string, id: string) => {
       failed.get(name)?.push(id);
     }),
+    expire: vi.fn(async () => 0),
   } as unknown as DrainBoss & { fetch: typeof fetch };
 
   return {
@@ -193,6 +194,25 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
 }
 
 describe('drainHotQueues', () => {
+  it('reaps expired active jobs before the first fetch', async () => {
+    const { boss } = makeFakeBoss({});
+    const order: string[] = [];
+    boss.expire = vi.fn(async () => {
+      order.push('expire');
+      return 2;
+    });
+    (boss.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push('fetch');
+      return [];
+    });
+
+    const summary = await drainHotQueues(makeDeps(boss));
+
+    expect(order[0]).toBe('expire');
+    expect(order.filter((step) => step === 'fetch').length).toBeGreaterThan(0);
+    expect(summary.expiredActive).toBe(2);
+  });
+
   it('creates all hot queues with the fast expiry, then drains them', async () => {
     const { boss, created } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
@@ -413,7 +433,7 @@ describe('drainHotQueues', () => {
     expect(deps.handlers.autonomyNotices).toHaveBeenCalledWith(FAMILY);
     expect(completed(EVENTS)).toEqual(['e1']);
     expect(failed(EVENTS)).toEqual([]);
-    expect(summary).toEqual({ processed: 1, failed: 0, dropped: 0 });
+    expect(summary).toEqual({ processed: 1, failed: 0, dropped: 0, expiredActive: 0 });
   });
 
   it('drives an actions.approved job into execution and completes it', async () => {
@@ -449,7 +469,7 @@ describe('drainHotQueues', () => {
     expect(failed(EVENTS)).toEqual(['e1']);
     expect(completed(EVENTS)).toEqual([]);
     expect(deps.handlers.autonomyNotices).not.toHaveBeenCalled();
-    expect(summary).toEqual({ processed: 0, failed: 1, dropped: 0 });
+    expect(summary).toEqual({ processed: 0, failed: 1, dropped: 0, expiredActive: 0 });
   });
 
   it('records a thrown error as plain strings — name, message, code, stack — in the log and the job', async () => {
@@ -500,7 +520,7 @@ describe('drainHotQueues', () => {
     expect(completed(EVENTS)).toEqual(['bad']);
     expect(completed(ACTIONS)).toEqual(['bad2']);
     expect(failed(EVENTS)).toEqual([]);
-    expect(summary).toEqual({ processed: 0, failed: 0, dropped: 2 });
+    expect(summary).toEqual({ processed: 0, failed: 0, dropped: 2, expiredActive: 0 });
   });
 
   it('stops fetching once the wall-clock budget is exhausted (does not loop forever)', async () => {
@@ -674,12 +694,13 @@ describe('channel.message.received', () => {
   });
 
   /**
-   * The inbound fetch window is the full batch. pg-boss gates singleton keys INSIDE the
-   * fetched batch, so a one-row window that lands on a blocked key returns nothing and
-   * the queue stalls behind it (seen in prod 2026-09-17). The window is what keeps the
-   * canary and every other family moving while one family's earlier turn is still active.
+   * An inbound turn is claimed only when it is about to run. A claimed row is `active`,
+   * and every drain's expiry sweep reaps an `active` row past 180s, so a batch fetched
+   * ahead of its turns would age its unstarted rows into the sweep. The claim skips held
+   * keys (singleton-fetch.ts), so a one-row claim cannot land on a blocked key; the
+   * 2026-09-17 stall is pinned by the pglite reap test at this same batch size.
    */
-  it('fetches the inbound queue with the full batch window, and drains it serially', async () => {
+  it('claims inbound turns one at a time, and drains them serially', async () => {
     const { boss, completed } = makeFakeBoss({
       [INBOUND]: [
         {
@@ -703,7 +724,8 @@ describe('channel.message.received', () => {
 
     const summary = await drainHotQueues(makeDeps(boss, { channelMessage }));
 
-    expect(boss.fetch).toHaveBeenCalledWith(INBOUND, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledWith(INBOUND, { batchSize: 1 });
+    expect(boss.fetch).not.toHaveBeenCalledWith(INBOUND, { batchSize: 10 });
     expect(order).toEqual(['SM1', 'SM2', 'SM3']);
     expect([...completed(INBOUND)].sort()).toEqual(['i1', 'i2', 'i3']);
     expect(summary.processed).toBe(3);

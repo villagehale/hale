@@ -13,8 +13,8 @@ import {
   handleVillageIntroReply,
   introStanding,
   proposalStanding,
-  writeIntroReply,
   repeatedAnswer,
+  writeIntroReply,
 } from './reply';
 
 /**
@@ -692,10 +692,16 @@ describe('#919: guardrails are writer constraints, not facts to be voiced', () =
 describe('#919: switching introductions off always conveys that pending ones are closed', () => {
   it('discoverability_off requires the pendingClosed fact by key, and that fact exists', () => {
     expect(INTRO_MUST_CONVEY.discoverability_off).toEqual(['pendingClosed']);
+    expect(Object.keys(INTRO_MUST_CONVEY)).toEqual(['discoverability_off']);
+    expect(INTRO_MUST_CONVEY.discoverability_off).not.toContain('backOn');
     expect(INTRO_REPLY_FACTS.discoverability_off).toHaveProperty('pendingClosed');
+    expect(INTRO_REPLY_FACTS.discoverability_off).toHaveProperty('backOn');
     for (const [situation, keys] of Object.entries(INTRO_MUST_CONVEY)) {
       for (const key of keys ?? []) {
-        expect(INTRO_REPLY_FACTS[situation as keyof typeof INTRO_REPLY_FACTS], situation).toHaveProperty(key);
+        expect(
+          INTRO_REPLY_FACTS[situation as keyof typeof INTRO_REPLY_FACTS],
+          situation,
+        ).toHaveProperty(key);
       }
     }
   });
@@ -724,7 +730,7 @@ describe('the said-line eval replays these exact facts', () => {
   });
 });
 
-describe('#919: standing is the parent\'s own state, and an open parent knows Hale texts on a match', () => {
+describe("#919: standing is the parent's own state, and an open parent knows Hale texts on a match", () => {
   const situations = Object.entries(INTRO_REPLY_FACTS) as Array<[string, Record<string, string>]>;
   it('every situation where the parent is open carries the match-text fact (run.ts cardUnaskedSides)', () => {
     for (const [name, facts] of situations) {
@@ -732,6 +738,14 @@ describe('#919: standing is the parent\'s own state, and an open parent knows Ha
       const open = name !== 'discoverability_off' && name !== 'discoverability_already_off';
       expect(['matchText' in facts, name]).toEqual([open, name]);
     }
+  });
+  it('standing never describes the parent: in French or Spanish that word would mark a gender', () => {
+    const describesParent = /^the parent is\b/;
+    expect('the parent is still open to other introductions').toMatch(describesParent);
+    const described = situations
+      .filter(([, facts]) => describesParent.test(facts.standing ?? ''))
+      .map(([name]) => name);
+    expect(described).toEqual([]);
   });
   it('the switched-off situations promise no match text', () => {
     expect('matchText' in INTRO_REPLY_FACTS.discoverability_off).toBe(false);

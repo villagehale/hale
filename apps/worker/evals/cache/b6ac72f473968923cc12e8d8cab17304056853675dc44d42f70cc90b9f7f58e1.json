@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event 'Swim class' and says 周四上午10点, Thursday morning at 10 o'clock. The start is Thursday July 23, 2026 at 10:00 in America/New_York, and 上午 places the hour in the morning, so 10 is 10 AM. The hour is stated with no minute, so minute zero is the claim, which matches the start's minute of 0. The text offers a link to add the event, and the day and hour agree with the start.",
+    "match": true
+  },
+  "latencyMs": 3633
+}

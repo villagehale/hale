@@ -1133,17 +1133,16 @@ describe('scrubDirectIdentifiers', () => {
   });
 
   /**
-   * Where a grouped shape begins and ends. A figure grouped some other way is not one of
-   * the shapes, and no pattern takes nine or ten of its digits and leaves the rest of it
-   * standing. Whether such a figure should go whole is the open question about adding
-   * shapes; what is pinned here is that it is never cut in two.
+   * Where a grouped shape begins and ends. No pattern takes nine or ten of a figure's
+   * digits and leaves the rest of it standing. A figure with a group of five is a ZIP to
+   * the place matcher (place-token.ts), so it goes whole, never cut in two.
    */
   it.each([
     ['three, three and five', 'is 123 456 78901 a real number'],
     ['four, three and five', 'is 1234 567 89012 a real number'],
     ['five, three and three', 'is 12345 678 901 a real number'],
-  ])('does not take part of a figure grouped %s', (_label, text) => {
-    expect(scrubDirectIdentifiers(text)).toBe(text);
+  ])('takes a figure grouped %s whole', (_label, text) => {
+    expect(scrubDirectIdentifiers(text)).toBe('is [redacted] a real number');
   });
 
   /** A price is one unbroken figure after its sign. Written in groups it is read as any

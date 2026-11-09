@@ -33,7 +33,7 @@ export const conversations = pgTable(
   },
   (table) => ({
     familyIdx: index('conversations_family_idx').on(table.familyId),
-    // VIL-447 (0199): the target of group_lists' (conversation_id, family_id) FK, so a
+    // VIL-447 (0212): the target of group_lists' (conversation_id, family_id) FK, so a
     // shared list can only point at its own family's thread.
     idFamilyUniq: uniqueIndex('conversations_id_family_uniq').on(table.id, table.familyId),
     // At most one note-anchored conversation per (family, note). Partial (note_key

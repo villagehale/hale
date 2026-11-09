@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The only event is an all-day PD Day tomorrow with no start time. The text invents a clock time ('at 3:00'), which is forbidden for an all-day event. It also changes the title: 'PD Day' becomes 'Jour de congé', a different name and language that is not presented as the event's name. It further draws an unstated inference ('a day off... breathing room') that the facts do not support. Bold is none, which is fine, but the fact failures are severe.",
+    "score": 1
+  }
+}

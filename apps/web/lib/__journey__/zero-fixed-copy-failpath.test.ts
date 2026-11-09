@@ -6,7 +6,11 @@ import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { sendWelcomeContactCard } from '~/lib/channel/intake/welcome-card';
 import { linqGroupOpenLine, linqGroupUnreachableLine } from '~/lib/channel/linq/group';
-import { recMorningReply, writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
+import {
+  recMorningReply,
+  resolveRecMorningWhere,
+  writeRecMorningIntakeReply,
+} from '~/lib/channel/rec-morning';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { recMorningHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
@@ -89,8 +93,16 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
     // An explicit null client is "no model" (resolveReplyClient). Nothing is
     // scripted onto messages.create: a miss sends no restate.
+    // The parent's own inbound in chat-1 carried Linq's is_group: false: their 1:1.
+    const oneToOne = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ orderBy: () => ({ limit: async () => [{ inGroup: false }] }) }),
+        }),
+      }),
+    } as unknown as Database;
     const ack = await acknowledgeDutyWrite({
-      database: db,
+      database: oneToOne,
       familyId: FAMILY,
       actorUserId: PARENT,
       source: 'llm',
@@ -113,16 +125,38 @@ describe('#973 fail-path: model writes nothing → nothing is sent', () => {
     quiet();
     setSharedSpokenLineWriter(SILENT_MODEL);
     const body = 'is efun still a thing?';
-    expect(recMorningReply(body, new Date())).not.toBeNull();
-    const verdict = await recMorningHandler().handle(
-      {} as Database,
-      {
+    // A GTA family (stored Toronto FSA), so the facts exist and only the model is silent.
+    const postal = 'M5V';
+    expect(
+      recMorningReply(
         body,
-        now: new Date(),
-        familyId: FAMILY,
-      } as unknown as HandlerContext,
-    );
+        new Date(),
+        resolveRecMorningWhere({
+          city: null,
+          postal,
+          country: null,
+          province: null,
+          timeZone: 'America/Toronto',
+        }),
+      ),
+    ).not.toBeNull();
+    const family = { primaryLanguage: null, city: null, postalCode: postal, areaCoarse: null };
+    const database = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [family] }),
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      }),
+    } as unknown as Database;
+    const verdict = await recMorningHandler().handle(database, {
+      body,
+      now: new Date(),
+      familyId: FAMILY,
+    } as unknown as HandlerContext);
     expect(verdict).toEqual({ claimed: false });
-    expect(await writeRecMorningIntakeReply({ parentWords: body, pendingAsk: '' })).toBeNull();
+    expect(
+      await writeRecMorningIntakeReply({ parentWords: body, pendingAsk: '', postal }),
+    ).toBeNull();
   });
 });

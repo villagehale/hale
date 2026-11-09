@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts give one event: Swim class today, Mon Oct 26, 10:00-11:00 AM. The text names a different event (\"Jour de congé\") that is not in the facts, gives the wrong time (3:00 instead of 10:00 AM), drops the end time, says \"Tomorrow\" when the event is today, and invents a day off and \"breathing room\" while a timed event exists. Swim class is never mentioned. Multiple fact failures and invented details.",
+    "score": 1
+  }
+}

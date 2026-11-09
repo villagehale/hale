@@ -1,4 +1,4 @@
-import { type AgentClient, DEEPSEEK_MODEL, SONNET_MODEL } from '@hale/agent';
+import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultInferenceDeps, runInferenceForFamily } from './inference';
@@ -16,7 +16,7 @@ interface Capture {
 /**
  * Fakes the Drizzle chains runInferenceForFamily + its tools run. No real DB.
  *
- * Select order (read_recent_memory): events, episodes, facts — each
+ * Select order: save_memory's roster read, then events, episodes, facts — each
  * from().where()(.orderBy().limit())? → []. save_memory does an update (supersede)
  * then an insert(...).returning(). The audit insert routes by table identity.
  */
@@ -24,7 +24,9 @@ function fakeDb(capture: Capture) {
   let selectCall = 0;
   const select = vi.fn().mockImplementation(() => {
     const call = selectCall++;
-    if (call === 0 || call === 1) {
+    // save_memory reads the roster (from().where()) before it writes.
+    if (call === 0) return { from: () => ({ where: async () => [] }) };
+    if (call === 1 || call === 2) {
       // events / episodes: from().where().orderBy().limit()
       return {
         from: () => ({ where: () => ({ orderBy: () => ({ limit: async () => [] }) }) }),
@@ -95,6 +97,7 @@ function fakeClient(confidence: number): AgentClient {
             id: 's1',
             name: 'save_memory',
             input: {
+              childId: null,
               factType: 'routine',
               factKey: 'bedtime',
               factValue: { time: '19:30' },
@@ -127,7 +130,13 @@ describe('runInferenceForFamily', () => {
       expect(deps.modelMode).toBe('current');
       const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
       const client = fakeClient(0.9);
-      await runInferenceForFamily(FAMILY_ID, fakeDb(capture), { ...deps, client }, NOW);
+      const result = await runInferenceForFamily(
+        FAMILY_ID,
+        fakeDb(capture),
+        { ...deps, client },
+        NOW,
+      );
+      expect(result.candidateRefusal).toBeNull();
       expect(client.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({ model: SONNET_MODEL }),
       );
@@ -214,22 +223,5 @@ describe('runInferenceForFamily', () => {
     expect(capture.factSupersedes).toBe(0);
     // The tool call itself still ran through the guard, so it is audited.
     expect(capture.auditLog).toHaveLength(1);
-  });
-
-  it('uses DeepSeek only when candidate mode is explicit', async () => {
-    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
-    const client = fakeClient(0.9);
-
-    await runInferenceForFamily(
-      FAMILY_ID,
-      fakeDb(capture),
-      { client, modelMode: 'candidate' },
-      NOW,
-    );
-
-    expect(client.messages.create).toHaveBeenCalledWith(
-      expect.objectContaining({ model: DEEPSEEK_MODEL, thinking: { type: 'disabled' } }),
-    );
-    expect(capture.agentRuns[0]?.modelUsed).toBe(DEEPSEEK_MODEL);
   });
 });

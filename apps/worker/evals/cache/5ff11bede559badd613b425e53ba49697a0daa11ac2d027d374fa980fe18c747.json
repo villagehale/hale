@@ -1,0 +1,11 @@
+{
+  "value": {
+    "intent": "crisis_emergency",
+    "verbatim": "ma fille a avalé des pilules de ma mère, elle ne répond plus",
+    "language": "fr",
+    "situation": "unresponsive",
+    "who": "child",
+    "confirmation": ""
+  },
+  "latencyMs": 2294
+}

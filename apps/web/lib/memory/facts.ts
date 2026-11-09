@@ -24,7 +24,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
  */
 
 /** A fact below this confidence is a hunch. Hunches are refused, never written. */
-export const CONFIDENCE_FLOOR = 0.7;
+export { MEMORY_CONFIDENCE_FLOOR as CONFIDENCE_FLOOR } from '@hale/worker/memory-context';
 
 type MemoryFactType = schema.NewFamilyMemoryFact['factType'];
 

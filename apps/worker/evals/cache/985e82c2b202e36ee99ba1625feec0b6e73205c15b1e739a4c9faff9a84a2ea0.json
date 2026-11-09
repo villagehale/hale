@@ -1,0 +1,8 @@
+{
+  "value": {
+    "intent": "crisis_mental",
+    "verbatim": "i can't do this anymore. i want to end it",
+    "confirmation": "I'm really glad you told me. If you might act on this, please call or text 988 right now if you're in the US or Canada, or your local crisis line or emergency number if you're somewhere else. If you're in danger right now, call your emergency number."
+  },
+  "latencyMs": 1400
+}

@@ -1,7 +1,19 @@
-import type { AgentClient } from '@hale/agent';
+import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type NonGoogleClearance, assertClearance } from '~/lib/pipeline/provider-clearance';
 import { structuredReply } from '~/lib/testing/structured-reply';
 import { applyVerbatimGuard, createReplyIntentReader } from './intent';
+
+const PARENT_TEXT = { kind: 'parent_text' } as const;
+
+function confidentDecline() {
+  return vi.fn(async (_args: unknown, _clearance: NonGoogleClearance) => ({
+    choice: 'decline' as const,
+    probabilities: { assent: 0.02, decline: 0.95, ambiguous: 0.03 },
+    confidence: 0.95,
+    usage: { inputTokens: 10, outputTokens: 1 },
+  }));
+}
 
 function currentClient(): AgentClient {
   return {
@@ -51,7 +63,10 @@ describe('applyVerbatimGuard', () => {
 
 describe('createReplyIntentReader rollout', () => {
   beforeEach(() => vi.stubEnv('HALE_REPLY_INTENT_MODEL_MODE', ''));
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
 
   it.each([undefined, '', ' \t\n ', 'invalid', 'shadow', 'current'])(
     'keeps Sonnet 5 for model mode %j',
@@ -67,7 +82,7 @@ describe('createReplyIntentReader rollout', () => {
 
       const result = await createReplyIntentReader(client, {
         evaluateChoice,
-      }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+      }).read({ question: 'Want me to watch this?', reply: 'no thanks', origin: PARENT_TEXT });
 
       expect(result.intent).toBe('decline');
       expect(evaluateChoice).not.toHaveBeenCalled();
@@ -82,7 +97,7 @@ describe('createReplyIntentReader rollout', () => {
       evaluateChoice: vi.fn(async () => {
         throw new Error('candidate unavailable');
       }),
-    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+    }).read({ question: 'Want me to watch this?', reply: 'no thanks', origin: PARENT_TEXT });
 
     expect(result.intent).toBe('decline');
     expect(client.messages.create).toHaveBeenCalledTimes(1);
@@ -90,19 +105,51 @@ describe('createReplyIntentReader rollout', () => {
 
   it('uses a confident JEV decline without calling Sonnet', async () => {
     const client = currentClient();
+    const evaluateChoice = confidentDecline();
     const result = await createReplyIntentReader(client, {
       modelMode: 'candidate',
-      evaluateChoice: vi.fn(async () => ({
-        choice: 'decline' as const,
-        probabilities: { assent: 0.02, decline: 0.95, ambiguous: 0.03 },
-        confidence: 0.95,
-        usage: { inputTokens: 10, outputTokens: 1 },
-      })),
-    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+      evaluateChoice,
+    }).read({ question: 'Want me to watch this?', reply: 'no thanks', origin: PARENT_TEXT });
 
     expect(result.intent).toBe('decline');
+    expect(result.candidateRefusal).toBeNull();
     expect(client.messages.create).not.toHaveBeenCalled();
+    // VIL-556 positive control: parent text reaches the candidate with a minted clearance.
+    expect(evaluateChoice).toHaveBeenCalledTimes(1);
+    const clearance = evaluateChoice.mock.calls[0]?.[1];
+    if (!clearance) throw new Error('the candidate was called without a clearance');
+    expect(clearance.basis).toBe('parent_text');
+    expect(() => assertClearance(clearance)).not.toThrow();
   });
+
+  it.each([
+    [{ kind: 'google' } as const, 'google_derived_input'],
+    [{ kind: 'unproven' } as const, 'origin_unproven'],
+  ])(
+    'origin %j never reaches the candidate: Sonnet reads it and the refusal is named',
+    async (origin, refusal) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const client = currentClient();
+      const evaluateChoice = confidentDecline();
+
+      const result = await createReplyIntentReader(client, {
+        modelMode: 'candidate',
+        evaluateChoice,
+      }).read({ question: 'Want me to watch this?', reply: 'no thanks', origin });
+
+      expect(evaluateChoice).not.toHaveBeenCalled();
+      expect(client.messages.create).toHaveBeenCalledTimes(1);
+      expect(client.messages.create).toHaveBeenCalledWith(
+        expect.objectContaining({ model: SONNET_MODEL }),
+      );
+      expect(result.intent).toBe('decline');
+      expect(result.candidateRefusal).toBe(refusal);
+      expect(warn.mock.calls.map((call) => call[0])).toContainEqual({
+        stage: 'reply intent',
+        refusal,
+      });
+    },
+  );
 
   it('sends assent and low-confidence choices through the guarded Sonnet path', async () => {
     const client = currentClient();
@@ -114,7 +161,7 @@ describe('createReplyIntentReader rollout', () => {
         confidence: 0.98,
         usage: { inputTokens: 10, outputTokens: 1 },
       })),
-    }).read({ question: 'Want me to watch this?', reply: 'yes please' });
+    }).read({ question: 'Want me to watch this?', reply: 'yes please', origin: PARENT_TEXT });
 
     expect(client.messages.create).toHaveBeenCalledTimes(1);
   });
@@ -129,7 +176,11 @@ describe('createReplyIntentReader rollout', () => {
         confidence: 0.55,
         usage: { inputTokens: 10, outputTokens: 1 },
       })),
-    }).read({ question: 'Want me to watch this?', reply: 'what does that include?' });
+    }).read({
+      question: 'Want me to watch this?',
+      reply: 'what does that include?',
+      origin: PARENT_TEXT,
+    });
 
     expect(client.messages.create).toHaveBeenCalledTimes(1);
   });
@@ -141,7 +192,7 @@ describe('createReplyIntentReader rollout', () => {
     const result = await createReplyIntentReader(client, {
       modelMode: 'current',
       evaluateChoice,
-    }).read({ question: 'Want me to watch this?', reply: 'no thanks' });
+    }).read({ question: 'Want me to watch this?', reply: 'no thanks', origin: PARENT_TEXT });
 
     expect(result.intent).toBe('decline');
     expect(evaluateChoice).not.toHaveBeenCalled();

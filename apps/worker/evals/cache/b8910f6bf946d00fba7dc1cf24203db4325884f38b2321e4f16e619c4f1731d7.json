@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message only reports the registration date and the library story time it found; it contains no question, request to reply, or waiting offer. The only ask is the shell question, which the rubric allows.",
+    "score": 5
+  }
+}

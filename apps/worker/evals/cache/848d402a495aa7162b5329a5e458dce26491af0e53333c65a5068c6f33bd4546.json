@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Accurately states payment wasn't approved, nothing paid, spot not booked; link is exact and linkIs is live_browser with 5-minute window stated. However the text says 'It's held for about 5 minutes', which hints a spot is held, violating the rule that the open browser holds no spot. Otherwise clean: no personal details, no retry promise, correct language and tone.",
+    "score": 3
+  }
+}

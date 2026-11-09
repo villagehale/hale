@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fails on several counts. The text is in English, not the requested French. It gives only the start (3:00) with no end (4:00 PM) and no AM/PM, and it omits the venue name and address (Georgetown library, 9 Church St). It also recasts the event title \"Jour de congé\" as a statement about the day (\"Tomorrow's a day off\") and calls the day \"a bit of breathing room\", which the watchFor and rubric explicitly mark as a LOW-score fault, since the family has a timed event at the library.",
+    "score": 1
+  }
+}

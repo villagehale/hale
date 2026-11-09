@@ -3,6 +3,7 @@ import {
   type FriendVoiceComposer,
   type FriendVoiceInput,
   createFriendVoiceComposer,
+  nameAskVoiceInput,
   speakFriend,
 } from '~/lib/channel/intake/friend-voice';
 import type { ReplyLanguage } from '~/lib/channel/language';
@@ -54,6 +55,15 @@ export async function composeParentCallNameAsk(
   return spoken.body;
 }
 
+/** The model input for a reply to the confirm ask of a held name. */
+export function nameReplyVoiceInput(
+  body: string,
+  heldName: string,
+  language: ReplyLanguage,
+): FriendVoiceInput {
+  return { ...base('name_reply', language, body), parentName: heldName };
+}
+
 /** Reads a reply to the confirm ask and writes its receipt. */
 export function parentCallNameVoice(
   composer: FriendVoiceComposer | undefined,
@@ -61,10 +71,10 @@ export function parentCallNameVoice(
 ): ParentCallNameVoice {
   return {
     async read(input) {
-      const spoken = await speakFriend(composer, {
-        ...base('name_reply', language, input.body),
-        parentName: input.heldName,
-      });
+      const spoken = await speakFriend(
+        composer,
+        nameReplyVoiceInput(input.body, input.heldName, language),
+      );
       const reply =
         spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
       return {
@@ -77,17 +87,27 @@ export function parentCallNameVoice(
   };
 }
 
-/** The receipt after a typed name was stored, or null when the model could not write one. */
-export async function composeNameCapturedReceipt(
+/**
+ * The onboarding model reads a reply to the open name ask.
+ * `parentName` is empty when the model read a take-back.
+ */
+export async function readModelParentName(
   composer: FriendVoiceComposer | undefined,
-  input: { name: string; parentWords: string; language: ReplyLanguage },
-): Promise<string | null> {
-  const spoken = await speakFriend(composer, {
-    ...base('name_reply', input.language, input.parentWords),
-    parentName: input.name,
-  });
-  if (spoken.source === 'unsent' || spoken.body.trim().length === 0) return null;
-  return spoken.body;
+  input: { parentWords: string; language: ReplyLanguage | null },
+): Promise<{
+  parentName: string | null;
+  nameDeclined: boolean;
+  nameTakenBack: boolean;
+  reply: string | null;
+}> {
+  const spoken = await speakFriend(composer, nameAskVoiceInput(input.parentWords, input.language));
+  const reply = spoken.source === 'unsent' || spoken.body.trim().length === 0 ? null : spoken.body;
+  return {
+    parentName: spoken.capture.parentName,
+    nameDeclined: spoken.capture.nameDeclined,
+    nameTakenBack: spoken.capture.nameTakenBack,
+    reply,
+  };
 }
 
 export function defaultCallNameComposer(client: AgentClient | null = voiceClient()) {

@@ -113,9 +113,24 @@ export type SuppressReason =
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
   | 'kid_relevance_backfill'
+  /** The calendar mirror dropped this row's copy (not the kids', covered by a Hale row, or
+   * gone from the calendar). Restoring that copy schedules these rows again. */
+  | 'calendar_mirror_dropped'
   /** The parent's reminder text could not be written by the model (or no model client
    * is configured). Nothing is sent: there is no fallback copy. */
-  | 'unwritten';
+  | 'unwritten'
+  /** VIL-586. The provider refused Hale's own request, or our code threw, while writing
+   * it. The same request fails the same way every slot, so it is asked once. */
+  | 'compose_rejected'
+  /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
+   * starts, so it can never be sent in time. */
+  | 'quiet_hours'
+  /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
+   * not be reached. The drain asks again for a T-1h held this way, which the next hourly
+   * slot would only find started. Sending or dropping the row overwrites it. */
+  | typeof COMPOSE_HELD;
+
+export const COMPOSE_HELD = 'compose_unavailable';
 
 export type ReminderDecision =
   | { action: 'fire' }

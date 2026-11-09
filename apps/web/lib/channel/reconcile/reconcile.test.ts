@@ -2,12 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { coParentInviteSentAck } from '~/lib/channel/coparent/copy';
 import type { CommitmentKind } from '~/lib/commitments/ledger';
 import { extractStateClaims } from './claims';
-import {
-  type ReconcileView,
-  reconcile,
-  reconcileViolations,
-  withoutRefusedClaims,
-} from './reconcile';
+import { type ReconcileView, reconcile, reconcileViolations, refusedClaimSpans } from './reconcile';
+import { subtractSpans } from './sentences';
 
 const OPENS = new Date('2026-09-01T11:00:00.000Z');
 
@@ -24,6 +20,10 @@ function view(overrides: Partial<ReconcileView> = {}): ReconcileView {
 }
 
 const verdictFor = (body: string, v: ReconcileView) => reconcile(extractStateClaims(body), v);
+const withoutRefusedClaims = (body: string, verdict: ReturnType<typeof reconcile>) => {
+  const cut = subtractSpans(body, refusedClaimSpans(body, verdict));
+  return cut.status === 'cut' ? cut.text : cut.status;
+};
 
 describe('reconcile — the registration watch', () => {
   const body = "I'm watching that morning and I'll text you before it goes live.";
@@ -402,6 +402,39 @@ describe('reconcile — what a refused body produces', () => {
     expect(withoutRefusedClaims(body, verdictFor(body, view()))).toBe(
       'Swim runs Tuesdays at 4 at the Gellert.',
     );
+  });
+
+  it('cuts a claim naming "St. Mary\'s" whole, never leaving "at St." (VIL-575)', () => {
+    const named = "Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked.";
+    expect(withoutRefusedClaims(named, verdictFor(named, view()))).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts a claim ending "Sat." together with the question it was joined to', () => {
+    const body = 'Swim runs Tuesdays at 4. Your visit is booked for Sat. Want me to add swim?';
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual(['no_scheduled_row']);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts a joined sentence once when two of its pieces are refused', () => {
+    const body = "Swim runs Tuesdays at 4. I'll send an invite Sat. Your visit is booked.";
+    const verdict = verdictFor(body, view());
+    expect(verdict.refused.map((r) => r.reason)).toEqual([
+      'no_coparent_invite',
+      'no_scheduled_row',
+    ]);
+    expect(withoutRefusedClaims(body, verdict)).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('cuts every copy of a repeated joined sentence', () => {
+    const twice = "I'll send an invite Sat. Your visit is booked.";
+    const body = `${twice} Swim runs Tuesdays at 4. ${twice}`;
+    expect(withoutRefusedClaims(body, verdictFor(body, view()))).toBe('Swim runs Tuesdays at 4.');
+  });
+
+  it('a cut that leaves a dangling clause is a fragment, not a reply', () => {
+    const dangling = "Here's where things stand:\nYour visit is booked.";
+    expect(withoutRefusedClaims(dangling, verdictFor(dangling, view()))).toBe('fragment');
   });
 
   it('returns empty when the whole reply was the unbacked claim', () => {

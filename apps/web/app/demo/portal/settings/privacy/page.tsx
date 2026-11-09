@@ -8,5 +8,5 @@ const DEMO_ROLE: DeleteAccountRole = 'primary_parent';
 export const metadata: Metadata = { title: 'Privacy & data' };
 
 export default function DemoPrivacyPage() {
-  return <PrivacyView records={[]} role={DEMO_ROLE} basePath={DEMO_BASE} />;
+  return <PrivacyView records={[]} role={DEMO_ROLE} canExport basePath={DEMO_BASE} />;
 }

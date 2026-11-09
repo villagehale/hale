@@ -5,7 +5,7 @@ import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
-import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
 import { GROUP_WITHHELD_TOOLS } from '../coach/group-privacy-scope';
 import { groupSharedListsEnabled } from './flag';
 import {
@@ -26,7 +26,7 @@ import {
 } from './tools';
 
 /**
- * VIL-447 shared lists over the REAL DDL (0199 applied in journal order), driven through
+ * VIL-447 shared lists over the REAL DDL (the group_lists migration applied in journal order), driven through
  * the real agent loop by a SCRIPTED client that stands in for the model's reading of
  * intent. What is tested is what that reading can reach. No key is set; nothing leaves
  * the process. Judged reply quality lives in evals/run-group-lists-eval.mjs.
@@ -462,7 +462,21 @@ describe('group shared lists (VIL-447)', () => {
     expect(lists[0]?.items[0]).toMatchObject({ text: '牛奶', addedBy: '婷' });
   });
 
-  it('0199 enables RLS on both tables', async () => {
+  it('the group_lists migration applied a second time keeps the lists it already holds', async () => {
+    const file = migrationFiles().find((f) => f.endsWith('_group_lists.sql'));
+    if (!file) throw new Error('group_lists migration not found');
+    const g = await group();
+    await addToGroupList(g.ports, 'Groceries', ['milk']);
+
+    await db.applyMigration(file);
+
+    const lists = await readGroupLists(g.ports);
+    expect(lists.map((l) => [l.name, l.items.map((i) => i.text)])).toEqual([
+      ['Groceries', ['milk']],
+    ]);
+  });
+
+  it('the group_lists migration enables RLS on both tables', async () => {
     const res = (await db.database.execute(
       sql`select relname, relrowsecurity from pg_class where relname in ('group_lists','group_list_items') order by relname`,
     )) as unknown as { rows: Array<{ relname: string; relrowsecurity: boolean }> };

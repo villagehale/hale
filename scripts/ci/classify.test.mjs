@@ -122,6 +122,41 @@ describe('classify — pglite timeout flake (class 3)', () => {
     expect(classify('Test', log).class).toBe('unknown');
   });
 
+  // `--log-failed` joins every failed job's log; each line carries its own job name.
+  const shard = (job, lines) => lines.map((l) => `${job}\tUNKNOWN STEP\t2026-11-04T09:12:44.1000000Z ${l}`);
+  const SHARD_ONE_TIMEOUT = shard('Workspace tests (web 1/4)', [
+    'FAIL  lib/__journey__/a.test.ts > journey > waits on the snapshot',
+    'Error: Hook timed out in 10000ms.',
+    'Test Files  1 failed | 551 passed (552)',
+  ]);
+
+  it('refuses when another shard in the dump reports more than one failed file', () => {
+    const shardThreeTwoFailed = shard('Workspace tests (web 3/4)', [
+      'FAIL  lib/x/b.pglite.test.ts > b > writes the row',
+      'FAIL  lib/y/c.pglite.test.ts > c > reads the row',
+      'Test Files  2 failed | 550 passed (552)',
+    ]);
+    const log = [...SHARD_ONE_TIMEOUT, ...shardThreeTwoFailed].join('\n');
+    expect(classify('Test', log).class).toBe('unknown');
+  });
+
+  it('still classifies a single shard with one pglite timeout as a flake', () => {
+    const result = classify('Test', SHARD_ONE_TIMEOUT.join('\n'));
+    expect(result.class).toBe('pglite-flake');
+    expect(result.failFiles).toEqual(['lib/__journey__/a.test.ts']);
+  });
+
+  it('still classifies two shards that each report one pglite timeout as a flake', () => {
+    const shardTwoTimeout = shard('Workspace tests (web 2/4)', [
+      'FAIL  lib/z/d.pglite.test.ts > d > boots',
+      'Error: Test timed out in 5000ms.',
+      'Test Files  1 failed | 551 passed (552)',
+    ]);
+    const result = classify('Test', [...SHARD_ONE_TIMEOUT, ...shardTwoTimeout].join('\n'));
+    expect(result.class).toBe('pglite-flake');
+    expect(result.failFiles).toEqual(['lib/__journey__/a.test.ts', 'lib/z/d.pglite.test.ts']);
+  });
+
   it('refuses when no FAIL file lines are present (truncated log)', () => {
     const log = prefixed(['Error: Hook timed out in 10000ms.', 'Test Files  1 failed | 552 passed (553)']);
     expect(classify('Test', log).class).toBe('unknown');

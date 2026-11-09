@@ -83,6 +83,7 @@ export function postgresGroupPollCard(database: Database): GroupPollCardPort {
           options: await store.cardOptions(sent.providerMessageId),
         };
       }
+      if (sent.status === 'held') return { status: 'skipped', reason: sent.reason };
       if (sent.status === 'skipped' && sent.reason === 'flag_off') {
         return { status: 'skipped', reason: 'polls_off' };
       }

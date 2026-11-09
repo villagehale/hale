@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both pickups, the day and time, and Barton as the conflict, and gives one ask: Sam takes Maya's swim pickup. The poll matches input.poll.takes with the choices Barton and Sam plus a neutral last option in English. Minor issue: it says Sam looks free from the calendar, which is supported by the input, and the message is casual. Nothing invented, no privacy issue, one ask.",
+    "score": 5
+  }
+}

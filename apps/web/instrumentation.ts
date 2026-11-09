@@ -20,6 +20,9 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') {
     return;
   }
+  const { reportTzdataAtBoot } = await import('~/lib/runtime/tzdata');
+  reportTzdataAtBoot();
+
   const { NodeTracerProvider } = await import('@opentelemetry/sdk-trace-node');
   const { langfuseSpanProcessor } = await import('~/lib/telemetry/langfuse');
 

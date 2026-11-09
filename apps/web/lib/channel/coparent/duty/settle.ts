@@ -208,7 +208,8 @@ export async function settleDutyMemory(
   });
   return {
     status: ack.status === 'held' ? 'held' : 'recorded',
-    reason: ack.status === 'held' ? 'quiet_hours' : null,
+    reason:
+      ack.status === 'held' ? 'quiet_hours' : ack.status === 'audience_held' ? ack.reason : null,
     sent: ack.sent,
     spoken: ack.status === 'restated' ? ack.text : null,
   };

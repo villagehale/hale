@@ -27,7 +27,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
  *   READ_BUDGET_CHARS) so a long list stays readable under the tool-result ceiling: the
  *   most recent open items, and an `omittedCount` the model can read and say.
  * - THE THREAD IS THE FAMILY'S. Every verb first confirms the conversation is this
- *   family's (and 0199's composite FK makes the pairing impossible to store otherwise).
+ *   family's (and the group_lists migration's composite FK makes the pairing impossible to store otherwise).
  * - A FAILED TURN LEAVES NO LIST WRITE. Writes go in the turn's journal; when the turn
  *   fails (no reply goes out), the runtime undoes them, so the router's "nothing was
  *   changed" stays true. Hale never writes a sentence about it.

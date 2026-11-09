@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately says the captcha stopped progress, the parent must finish in the open browser at the given link, no child is confirmed signed up, no personal details, no retry promise, no invented time limit (holdMinutes null), and it is in English for a direct audience. Warm and plain.",
+    "score": 5
+  }
+}

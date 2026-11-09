@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request for a reply ('Reply YES and I'll book it for you') and an offer that waits on the parent's yes, so it asks the parent for a response. It is an unprompted text that turns information into a chore. The 'Reply STOP to opt out' line is a standard opt-out notice, not a substantive ask, but the YES request alone makes this a clear ask.",
+    "score": 1
+  }
+}

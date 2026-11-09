@@ -23,7 +23,7 @@ describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
 describe('classifyParticipantAdd', () => {
   const participant = '+14165550199';
 
-  it('welcomes a parent add and an unnamed actor, and seats Hale without that welcome', () => {
+  it('seats and welcomes only a named household parent add', () => {
     expect(
       classifyParticipantAdd({
         participantPhone: participant,
@@ -33,7 +33,9 @@ describe('classifyParticipantAdd', () => {
         actorIsHale: false,
       }),
     ).toEqual({ kind: 'parent', seat: true, welcome: true });
+  });
 
+  it('seats nobody when Linq names no actor or Hale is the actor', () => {
     expect(
       classifyParticipantAdd({
         participantPhone: participant,
@@ -42,7 +44,7 @@ describe('classifyParticipantAdd', () => {
         actorIsHouseholdParent: false,
         actorIsHale: false,
       }),
-    ).toEqual({ kind: 'unnamed', seat: true, welcome: true });
+    ).toEqual({ kind: 'unnamed', seat: false, welcome: false });
 
     expect(
       classifyParticipantAdd({
@@ -52,7 +54,7 @@ describe('classifyParticipantAdd', () => {
         actorIsHouseholdParent: false,
         actorIsHale: true,
       }),
-    ).toEqual({ kind: 'hale', seat: true, welcome: false });
+    ).toEqual({ kind: 'hale', seat: false, welcome: false });
   });
 
   it('does not seat a named stranger', () => {
