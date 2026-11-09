@@ -249,6 +249,9 @@ jobs:
       - name: Mid-signup answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-answer
 
+      - name: Mid-signup grounding searches eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake-ground
+
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane
 

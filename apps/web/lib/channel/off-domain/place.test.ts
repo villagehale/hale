@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isOnboardingRegionSupported } from '~/lib/family/location-input';
-import { coarsenPlace, healthPlaceOf, placeOf, provinceOfPostal } from './place';
+import { coarsenPlace, healthPlaceOf, placeOf, provinceOfPostal, regionOfPostal } from './place';
 import ca from './postal-cities/ca.json';
 import coarsen from './postal-cities/coarsen.json';
 import us from './postal-cities/us.json';
@@ -646,6 +646,22 @@ describe('provinceOfPostal', () => {
 
   it.each([['98101'], ['SW1A 1AA'], ['']])('%j has no province', async (token) => {
     expect(await provinceOfPostal(token)).toBeNull();
+  });
+});
+
+/** Where the intake searches look (VIL-592): the country, and the province or state. */
+describe('regionOfPostal', () => {
+  it.each([
+    ['P3A', 'Canada', 'Ontario'],
+    ['V6B', 'Canada', 'British Columbia'],
+    ['98101', 'United States', 'Washington'],
+    ['98101-1234', 'United States', 'Washington'],
+  ])('%s is in %s, %s', async (token, countryName, provinceOrState) => {
+    expect(await regionOfPostal(token)).toEqual({ countryName, provinceOrState });
+  });
+
+  it.each([['SW1A 1AA'], ['W1A'], ['']])('%j is no region', async (token) => {
+    expect(await regionOfPostal(token)).toBeNull();
   });
 });
 

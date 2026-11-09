@@ -162,6 +162,25 @@ export async function provinceOfPostal(raw: string): Promise<string | null> {
   return table.regions[table.regionOf[table.codes.indexOf(matched.areaKey)] ?? -1] ?? null;
 }
 
+/**
+ * The country a Canadian or US postal token is in, and the table's name for its province
+ * or state (VIL-592: the intake searches look for that country's sources). Null for a
+ * token that is neither; the province or state is null for an area the table does not
+ * have. Never a guess, and the code itself is not returned.
+ */
+export async function regionOfPostal(
+  raw: string,
+): Promise<{ countryName: string; provinceOrState: string | null } | null> {
+  const matched = matchPostalToken(raw);
+  if (matched === null) return null;
+  const table = await TABLES[matched.country]();
+  const region = table.regionOf[table.codes.indexOf(matched.areaKey)];
+  return {
+    countryName: matched.countryName,
+    provinceOrState: region === undefined ? null : (table.regions[region] ?? null),
+  };
+}
+
 function stored(value: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;

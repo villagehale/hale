@@ -1,3 +1,4 @@
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import type { ExtractedChild } from './extract';
 
@@ -91,7 +92,7 @@ export function officialPageReplyFromNotes(notes: string, pendingAsk: string): s
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the rec
- * question with household names and postal codes stripped. Dates stay — they
+ * question with household names, postal codes and ZIPs stripped. Dates stay — they
  * are the thing being looked up.
  */
 export function deidentifyOfficialQuery(
@@ -104,9 +105,7 @@ export function deidentifyOfficialQuery(
       query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
     }
   }
-  query = query
-    .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
-    .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
+  query = scrubPlaceTokens(query, ' ')
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
     .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
     .replace(/\s+/g, ' ')

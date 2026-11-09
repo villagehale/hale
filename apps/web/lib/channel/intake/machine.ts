@@ -1032,7 +1032,8 @@ async function offScriptReply(
     children: readonly ExtractedChild[];
     postalCode?: string | null;
     /** Every place the session holds, in order. The first Canadian or US code gives
-     * both the crisis region and the health line's province. Never guessed. */
+     * the crisis region, the health line's province, and the country and province or
+     * state the intake searches look in. Never guessed. */
     placeTokens: readonly (string | null | undefined)[];
     /** How Hale has this number: an intake session exists because they texted first. */
     numberOrigin?: NumberOrigin | null;
@@ -1061,8 +1062,11 @@ async function offScriptReply(
     return identity.body ? { body: identity.body, source: 'identity' } : HELD_SILENT;
   }
   const { numberOrigin: _origin, placeTokens: _placeTokens, ...composeArgs } = args;
-  const outcome = await deps.answerComposer.compose(composeArgs);
   const placed = firstIntakePostal(args.placeTokens);
+  const outcome = await deps.answerComposer.compose({
+    ...composeArgs,
+    regionToken: placed?.token ?? null,
+  });
   if (outcome.status === 'mental_crisis') {
     // The answer model saw a crisis the reader did not. The same facts-only writer and
     // check as every crisis reply; a miss has already paged #ops. The turn's one read

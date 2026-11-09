@@ -1,8 +1,11 @@
 import { type AgentClient, cachedSystem, pickModel } from '@hale/agent';
 import { readEvidence } from '~/lib/channel/activity/evidence';
+import { regionOfPostal } from '~/lib/channel/off-domain/place';
+import { scrubPlaceTokens } from '~/lib/channel/place-token';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import type { ExtractedChild } from './extract';
+import { type GroundPlace, groundUserMessage } from './ground-message';
 import { officialPageReturnLine } from './official-page';
 
 /**
@@ -145,7 +148,7 @@ export function afterProvisionReplyFromNotes(notes: string): string | null {
 
 /**
  * What may cross the border to Anthropic's US web_search (rule #1): the
- * question with household names and postal codes stripped.
+ * question with household names, postal codes and ZIPs stripped.
  */
 export function deidentifyLiveQuery(
   parentWords: string,
@@ -157,9 +160,7 @@ export function deidentifyLiveQuery(
       query = query.replace(new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi'), '');
     }
   }
-  query = query
-    .replace(/\b[A-Za-z]\d[A-Za-z]\s*\d[A-Za-z]\d\b/g, '')
-    .replace(/\b[A-Za-z]\d[A-Za-z]\b/g, '')
+  query = scrubPlaceTokens(query, ' ')
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '')
     .replace(/\+?\d[\d\s.-]{7,}\d/g, '')
     .replace(/\s+/g, ' ')
@@ -186,10 +187,17 @@ function message(err: unknown): string {
  * that do not restate a source are the same parent-facing sentence — no
  * current source yet — and each reason is named in the log (rule #11).
  */
+/** Where the intake searches look: the country and province or state of the session's
+ * first Canadian or US code, or null when it holds none. */
+export async function groundPlaceOf(regionToken: string | null): Promise<GroundPlace | null> {
+  return regionToken === null ? null : regionOfPostal(regionToken);
+}
+
 export async function groundCurrentSource(
   client: AgentClient,
   parentWords: string,
-  children: readonly ExtractedChild[] = [],
+  children: readonly ExtractedChild[],
+  regionToken: string | null,
 ): Promise<LiveGround> {
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
   try {
@@ -200,12 +208,13 @@ export async function groundCurrentSource(
 
   const query = deidentifyLiveQuery(parentWords, children);
   try {
+    const place = await groundPlaceOf(regionToken);
     const research = await client.messages.create({
       model: pickModel(skill.meta.task),
       max_tokens: GROUND_MAX_TOKENS,
       system: cachedSystem(skill.instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
-      messages: [{ role: 'user', content: query }],
+      messages: [{ role: 'user', content: groundUserMessage(query, place) }],
     });
     const evidence = readEvidence(new Date(), research.content);
     if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
