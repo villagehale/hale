@@ -1438,13 +1438,14 @@ describe('the notice is the whole text, and the thread keeps the email for the c
         parentUserId: family.parentUserId,
         integrationId,
         messageId: 'm-karate',
+        threadId: 't-m-karate',
+        labelIds: ['INBOX'],
         envelope: {
           subject: 'Registration confirmed: Little Dragons Karate, Fall session, 12 weeks',
           from: 'Little Dragons <hello@dragons.example>',
           snippet: 'You are registered for Little Dragons Karate.',
           receivedAt: '2026-09-17T14:00:00.000Z',
         },
-        cancelledThisSweep: new Set<string>(),
         timeZone: 'America/Toronto',
         now: NOW,
       },
@@ -1467,8 +1468,8 @@ describe('coach transcript before messages.source exists', () => {
   let old: TestDb;
 
   beforeAll(async () => {
-    // 0198 is the next file after this name. The column is not added here.
-    old = await createTestDb('0197_family_event_notes.sql');
+    // 0208 is the next file after this name. The column is not added here.
+    old = await createTestDb('0207_family_sweep_marks.sql');
   });
 
   afterAll(async () => {
@@ -1511,5 +1512,14 @@ describe('coach transcript before messages.source exists', () => {
     const after = await loadTranscript(threaded, old.database);
     expect(after).toEqual([{ role: 'assistant', content: 'Notice only.' }]);
     expect(JSON.stringify(after)).not.toContain('secret snippet');
+  });
+
+  it('migration 0208 applies twice and leaves one jsonb source column', async () => {
+    await old.applyMigration('0208_message_source.sql');
+    await expect(old.applyMigration('0208_message_source.sql')).resolves.toBeUndefined();
+    const columns = await old.client.query<{ data_type: string }>(
+      "SELECT data_type FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'source'",
+    );
+    expect(columns.rows).toEqual([{ data_type: 'jsonb' }]);
   });
 });
