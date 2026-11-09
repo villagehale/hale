@@ -109,6 +109,13 @@ function render(
         ),
         facts,
       );
+    case 'calendar_kid_change': {
+      const what = [facts.kid, facts.event].filter(Boolean).join(' - ') || 'An event';
+      const count = facts.sessions ? ` (${facts.sessions} sessions)` : '';
+      return facts.change === 'cancelled'
+        ? `${what} on ${facts.day}${count} is cancelled.`
+        : `${what} moved to ${facts.day} ${facts.time ?? ''}${count} (was ${facts.was_day} ${facts.was_time ?? ''}).`;
+    }
     case 'group_handoff':
       return fill(
         pick(

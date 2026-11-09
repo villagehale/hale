@@ -527,7 +527,7 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
+function followUpViolations(body, slots, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (LINK_SHAPE.test(body)) {
@@ -563,17 +563,13 @@ function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
-  if (watch !== commitsToReturn) {
+  // Mirrors the runtime (VIL-571): only a promise with no row behind it is refused. With
+  // a row, whether the watch is worth a sentence is the model's call.
+  if (commitsToReturn && !watch) {
     violations.push({
-      tag: watch ? 'silent_watch' : 'unbacked_promise',
-      // The EXAMPLE is page-state-aware or the two corrections fight: under
-      // `page_has_schedule` the gate above refuses the very sentence this one used to
-      // hand the model as the fix.
-      reason: watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
-            pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
-          }.`
-        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
+      tag: 'unbacked_promise',
+      reason:
+        'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -985,7 +981,7 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, pageEvidence, watch, composed.commits_to_return === true);
+      violations = followUpViolations(body, inText, watch, composed.commits_to_return === true);
       if (attempt === 1) firstDraftViolations = violations;
       if (violations.length === 0 || broken) break;
     }
@@ -1065,7 +1061,6 @@ async function main() {
   console.log(
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
   );
-  console.log(`silent watch:              ${count('silent_watch')}`);
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(

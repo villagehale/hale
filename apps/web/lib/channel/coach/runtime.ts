@@ -625,7 +625,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
             // are busy-only, on every group turn. VIL-615: once read_email returns text,
             // only reads run for the rest of the turn.
-            const tools = taintTurnOnEmailRead([
+            const { tools, emailRead } = taintTurnOnEmailRead([
               ...(groupScoped ? groupScopedTools(builtTools) : builtTools),
               ...(cardsLit
                 ? [
@@ -860,6 +860,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               // A Gmail draft notice is a receipt to read, so it stays text.
               voiceMemo: voiceChosen && !noticeReady,
               draftedActionIds,
+              emailRead: emailRead(),
             };
           } catch (err) {
             await undoAll();

@@ -185,9 +185,11 @@ export async function loadLatestThread(
   return { conversationId, timeline };
 }
 
-/** Hale's stored text, plus a mailbox snippet as its own `tool` turn when one may be
- * shown. The snippet is not appended to the assistant turn: that would make sender
- * text look like Hale's history. A 13+ child's snippet is null and adds no turn.
+/** Hale's stored text, plus a `tool` turn naming the email an alert was about, so
+ * `read_email` can open it. Only the ids ride along, never the stored snippet (VIL-616):
+ * a later turn has every tool, and the sender's words reach a turn only through
+ * `read_email`, which taints it. Hale's own alert text is the summary the turn sees.
+ * A 13+ child's mail stores a null snippet and adds no turn.
  * No parent-facing sentence is added here. */
 export function emailSourceTurns(
   role: 'user' | 'assistant',
@@ -195,12 +197,7 @@ export function emailSourceTurns(
   source: schema.MessageSource | null,
 ): TranscriptMessage[] {
   const turn: TranscriptMessage = { role, content };
-  if (
-    role !== 'assistant' ||
-    source?.kind !== 'gmail' ||
-    source.snippet == null ||
-    source.snippet === ''
-  ) {
+  if (role !== 'assistant' || source?.kind !== 'gmail' || source.snippet === null) {
     return [turn];
   }
   return [
@@ -209,10 +206,8 @@ export function emailSourceTurns(
       role: 'tool',
       content: JSON.stringify({
         kind: 'gmail',
-        trust: 'external',
         gmailMessageId: source.gmailMessageId,
         eventId: source.eventId,
-        snippet: source.snippet,
       }),
     },
   ];
