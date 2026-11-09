@@ -1515,19 +1515,32 @@ function trailerFacts(options: JudgeOptions): string[] {
 }
 
 /**
- * The words a reply's links may be. A bare domain the parent or a page wrote may be
- * repeated; a scheme link only ever as the one code handed this bubble or Hale's own
- * site, since page text is third-party. Scheme words are found in the handset reading,
- * so a full-width ':' or '/' is a scheme too.
+ * The link allow-list: the only words a reply's links may be. The fact slots ground names,
+ * dates and places, but they hold third-party text (synced calendar titles and locations,
+ * email subjects and snippets, listing lines, Hale's own earlier turns that repeated
+ * them), so a link is never grounded by one. A link may be the one code handed this
+ * bubble, Hale's own site, a line code appends under the prose, or a bare domain the
+ * parent wrote. A scheme link from the parent's words is still refused: scheme words are
+ * found in the handset reading, so a full-width ':' or '/' is a scheme too.
  */
-function linkSlots(slots: readonly string[], link: string | null | undefined): string[] {
-  const bare = slots.map((slot) =>
-    asHandsetReads(slot)
+function linkAllowList(input: FriendVoiceInput, options: JudgeOptions): string[] {
+  const theirs = [
+    input.parentWords,
+    ...input.recentTurns.filter((turn) => turn.role === 'parent').map((turn) => turn.body),
+  ].map((words) =>
+    asHandsetReads(words)
       .split(/\s+/)
       .filter((word) => !word.includes('://'))
       .join(' '),
   );
-  return [...bare, ...(link ? [link] : []), `https://${HALE_IDENTITY.site}`];
+  return [
+    ...theirs,
+    ...(options.link ? [options.link] : []),
+    ...trailerFacts(options),
+    HALE_IDENTITY.site,
+    `https://${HALE_IDENTITY.site}`,
+    HALE_IDENTITY.contact,
+  ];
 }
 
 /**
@@ -1604,7 +1617,7 @@ export function judgeFriendReply(
     ['quote', quotesOutsideSlots(trimmed, slots)],
     ['name', namesOutsideSlots(trimmed, slots)],
     ['phone', PHONE.test(trimmed) ? ['phone number'] : []],
-    ['domain', linksOutside(trimmed, linkSlots(slots, options.link))],
+    ['domain', linksOutside(trimmed, linkAllowList(input, options))],
     ['activity', input.step !== 'email' ? activitiesOutsideSlots(trimmed, slots) : []],
   ];
   const invented = found.flatMap(([, matched]) => matched);

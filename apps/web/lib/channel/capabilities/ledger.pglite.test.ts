@@ -1,7 +1,9 @@
 import { schema } from '@hale/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
+import { trailVerb } from '~/lib/trail/verbs';
 import { loadOwedCorrections, recordCapabilityNotes } from './ledger';
 
 /**
@@ -100,6 +102,85 @@ describe('recordCapabilityNotes', () => {
 
     expect(outcome).toEqual({ status: 'not_recorded', reason: 'no_ledger_row' });
     expect(await db.database.select().from(schema.capabilityDenials)).toEqual([]);
+  });
+
+  it("corrects only the parent who heard it: the co-parent's open no stays open", async () => {
+    const family = await seedFamily(db.database);
+    const other = await coParent(family.familyId);
+    for (const [parentUserId, channelMessageId] of [
+      [family.parentUserId, 'msg-told-a'],
+      [other, 'msg-told-b'],
+    ] as const) {
+      await recordCapabilityNotes(db.database, {
+        familyId: family.familyId,
+        parentUserId,
+        notes: { declined: ['spot_watch'], corrected: [] },
+        channelMessageId,
+        now: TOLD,
+      });
+    }
+
+    expect(
+      await recordCapabilityNotes(db.database, {
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        notes: { declined: [], corrected: ['spot_watch'] },
+        channelMessageId: 'msg-fixed-a',
+        now: LATER,
+      }),
+    ).toEqual({ status: 'recorded', declined: 0, corrected: 1 });
+
+    const rows = await db.database
+      .select({
+        userId: schema.capabilityDenials.userId,
+        correctedAt: schema.capabilityDenials.correctedAt,
+      })
+      .from(schema.capabilityDenials);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.userId === family.parentUserId)?.correctedAt).toEqual(LATER);
+    expect(rows.find((row) => row.userId === other)?.correctedAt).toBeNull();
+  });
+
+  it('keeps both rows off the family History while the audit rows stay', async () => {
+    const family = await seedFamily(db.database);
+    const scope = { familyId: family.familyId, parentUserId: family.parentUserId };
+    await recordCapabilityNotes(db.database, {
+      ...scope,
+      notes: { declined: ['spot_watch'], corrected: [] },
+      channelMessageId: 'msg-told',
+      now: TOLD,
+    });
+    await recordCapabilityNotes(db.database, {
+      ...scope,
+      notes: { declined: [], corrected: ['spot_watch'] },
+      channelMessageId: 'msg-fixed',
+      now: LATER,
+    });
+    // Positive control: a family-wide row on the same trail is shown.
+    await db.database.insert(schema.auditLog).values({
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'commitment_recorded',
+      targetTable: 'commitments',
+      targetId: family.familyId,
+    });
+
+    const audits = await db.database
+      .select({ action: schema.auditLog.actionTaken })
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.familyId, family.familyId),
+          eq(schema.auditLog.targetTable, 'capability_denials'),
+        ),
+      );
+    expect(audits.map((a) => a.action).sort()).toEqual([
+      'capability_denial_corrected',
+      'capability_denial_recorded',
+    ]);
+    const trail = await loadTrailForFamily(db.database, family.familyId);
+    expect(trail).toHaveLength(1);
+    expect(trail[0]?.summary).toContain(trailVerb('commitment_recorded').sentence);
   });
 });
 
