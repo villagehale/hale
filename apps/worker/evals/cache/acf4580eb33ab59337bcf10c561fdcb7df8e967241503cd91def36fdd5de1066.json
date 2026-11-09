@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgsGrADmw66QdnPHRwGZc",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStwYKEAgTGAI4AUIIdGhpbmtpbmcSDF8dTY5mBDL1JCBwtBoMQoNKPPWhJZghtztoIjDkKS0M5sienY6aPeAK2fJODS4/R8JH0+zufjYRWFE1OApzSor+vsKwJixDnEEYPDcq1AUbaxfnebYStaw1kBRt/iTvB6Rzusev4aqMBJUhs1t7Y0mNq3MAD/CPaS4H5QnfFMDkmZcb73GfTIsuJGO/VkNc1/XSgm/v1LwhuTmPTezo+E9mCM3L++f2Bz3Pb405zL//JGGwrcgHQnJynEzDTkX6wXi9/9CfYEIb5kp8Gn5mWEHOwM0IiOpKSTIpQoPFw0eQOKrYs/ZsFOoL/HZ1GJX/CTetOxbRjoe75JukjokTXYXlQSbGD5gcdQIGzfW5Chj0ueKILcEI3yXZXuI37aXC/GPdwY9G7zZFN63EUXojqUHiOqUK0TqY7Kj8ReoBDAHX2Ey+1y2gIe0NEmKJR4EgHzlSSIN9bT6qsb1GvtgLDLRtf+BrP90Ilt4niODj5oD86fGk56DILPWJG5zX3G5mO//H+CpYVEuWSnxFxNHyVNOfjPI5q481tlvADjSrY1JvmcnbWAkS7JAf+LYBP1pn2Azwtzb38R3MiyodrXeoHetHvcOzfq9GV94/l6O+9gX1Q3RU0pyCBdmFqsMFll0dZ+la/+85AAAqBCjtmNTE1zra63hItRJ9ZFdf8wSut7E3JRTdSqfQjOrIUlNsoOkZJDk5BYaCnV3+oipWQutk1FFSZkqR6kdSASy8AKFp/Wtsj8+nxtx8VMo37BLcw98YS/ZTId86SJJMAZvyv1BcBM+0eaUes8cgTN4280u3G5kbRaZ0npqTSmo1HwXM3kD+gFwpIwgSIfDC+YLSOWbZu4/J37dZtxiuVaoKF2FF/GHwWuLBZ1pVHkW438a7i1l7en1ib73BkuCwCK0rBg5YX8+FEgW72lECJFrAToHoNzK+frci4SzPa27S3M+pO4+uePIwFiNmiIklmZeGc6atCZAH7R81jYmcejbNOP/RHxBhz65MdtbYRb0Bpac/hlw3TD4OJVWaZMX2DS4w89hJb5nPWNB0rzjtaN21r1/1N0o8lscRGAE="
+      },
+      {
+        "type": "text",
+        "text": "Your one thing this weekend is the swim lesson at the community pool on Saturday at 10am. I couldn't pull up anything else going on around Columbus just now, so for now that's the only thing on."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 239,
+      "cache_read_input_tokens": 19669,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 239,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 104,
+      "output_tokens_details": {
+        "thinking_tokens": 39
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

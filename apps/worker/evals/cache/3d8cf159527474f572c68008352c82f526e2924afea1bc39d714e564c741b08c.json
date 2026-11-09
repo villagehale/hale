@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Since two swim lessons match, asking which one is the right move, and both are correctly recalled from the week. But it asks two questions in one message (which swim, and what day it should have said). It also carries padding: the apology, \"That email was mine\", and an explanation of its own limits (\"I can't see the text I sent\").",
+    "score": 3
+  }
+}
