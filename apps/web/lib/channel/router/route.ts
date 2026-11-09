@@ -94,7 +94,7 @@ import {
   type CoachJudgement,
   citedOnSurvivors,
   coachClaimLayout,
-  cutSegments,
+  cutSegmentSpans,
   inviteOnlyCut,
   judgeCoachRead,
   survivingMints,
@@ -105,9 +105,10 @@ import {
   type RegistrationWatchMint,
   reconcile,
   reconcileViolations,
+  refusedClaimSpans,
   violationsFor,
-  withoutRefusedClaims,
 } from '~/lib/channel/reconcile/reconcile';
+import { subtractSpans } from '~/lib/channel/reconcile/sentences';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots/store';
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
@@ -2607,11 +2608,12 @@ async function runAgentTurn(
  * rather than a correction.
  *
  * IF IT SAYS IT AGAIN, the offending SENTENCES are cut and the rest goes out verbatim
- * (`withoutRefusedClaims`). That is a subtraction, never a paraphrase: what the parent
+ * (`subtractSpans`). That is a subtraction, never a paraphrase: what the parent
  * reads is what the model wrote minus the parts nothing backs. A reply that was ENTIRELY
  * an unbacked claim leaves nothing to send, and that is a failed turn — the router's
  * apology path, which is the honest end of the road for a turn whose every sentence was
- * about a row that does not exist.
+ * about a row that does not exist. So is a cut that would leave a FRAGMENT (VIL-575):
+ * "…at St." with the rest of the sentence gone, or a clause pointing at what was cut.
  *
  * Every refusal is a LOG LINE and a RATE, per attempt and per reason (rule #11). A gate
  * that quietly rewrites the model's answer and reports nothing is a gate nobody can tell
@@ -2815,12 +2817,25 @@ async function composeReconciledReply(
     enforced,
   );
   const refusedVerdict = verdict as ReconcileVerdict;
-  const reply = withoutRefusedClaims(
-    enforced
-      ? cutSegments(composed.reply, enforced.read, enforced.judged.replyCut)
-      : composed.reply,
-    refusedVerdict,
-  );
+  // One subtraction over the reply as written, so every seam is judged against the text
+  // the model wrote rather than against a half-cut copy.
+  const subtracted = subtractSpans(composed.reply, [
+    ...(enforced ? cutSegmentSpans(composed.reply, enforced.read, enforced.judged.replyCut) : []),
+    ...refusedClaimSpans(composed.reply, refusedVerdict),
+  ]);
+  if (subtracted.status === 'fragment') {
+    deps.log.error(
+      { reason: 'cut_fragment' },
+      'channel router: cutting the unbacked sentences would leave a fragment - not sent',
+    );
+    await captureAgentError({
+      lane: 'reconcile',
+      reason: 'cut_fragment',
+      familyId: args.turn.familyId,
+    });
+    throw new Error('channel router: cutting the unbacked sentences would leave a fragment');
+  }
+  const reply = subtracted.text;
   if (reply === '') {
     // The whole reply was an unbacked invite. On Linq a number is not an
     // invite. The backstop is the locked co-parent ask, one bubble, so the

@@ -344,6 +344,8 @@ describe('alertParentForEmail', () => {
     expect(rows[0]).toMatchObject({
       category: 'email_alert',
       direction: 'out',
+      // No inbound phone turn yet: the parent's door is SMS.
+      channel: 'sms',
       templateKey: EMAIL_ALERT_TEMPLATE_KEY,
       status: 'suppressed_quiet_hours',
       // NEVER the key: the unique index is total over non-null keys, so a suppression
@@ -357,6 +359,26 @@ describe('alertParentForEmail', () => {
     const later = harness();
     await expect(alert(later)).resolves.toBe('sent');
     expect(later.transport.sent).toHaveLength(1);
+  });
+
+  it('a hold for a parent who texts on iMessage is recorded on iMessage, not SMS', async () => {
+    await db.database.insert(schema.channelMessages).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      templateKey: 'inbound',
+      providerChatId: 'chat-door',
+      status: 'delivered',
+    });
+
+    const held = harness({ verdict: { allowed: false, reason: 'quiet_hours' } });
+    await expect(alert(held)).resolves.toBe('gate_refused:quiet_hours');
+
+    const rows = await ledgerRows();
+    const hold = rows.find((r) => r.direction === 'out');
+    expect(hold).toMatchObject({ channel: 'imessage', status: 'suppressed_quiet_hours' });
   });
 
   it('names each gate hold separately and records it under its own suppression status', async () => {

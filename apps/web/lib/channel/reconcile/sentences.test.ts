@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type Segment, claimReadLocale, segmentSentences } from './sentences';
+import { type Segment, claimReadLocale, segmentSentences, subtractSpans } from './sentences';
 
 /**
  * VIL-581 · code owns the sentence boundaries the claim reader numbers. Expected values
  * come from ICU's sentence rules and the masking spec (URL and quote interiors masked,
- * terminators kept, no merge), not from this module's output.
+ * terminators kept, a period after an abbreviation merged), not from this module's output.
  */
 
 const texts = (segments: readonly Segment[]) => segments.map((s) => s.text);
@@ -128,11 +128,27 @@ describe('segmentSentences — no merge', () => {
     expect(seg('Sí. Tu cita está reservada.', 'es')).toHaveLength(2);
   });
 
-  it('pins ICU splitting "M." off its sentence (a later fix must be deliberate)', () => {
+  it('a period after an abbreviation or an initial is not a sentence end (VIL-575)', () => {
+    // Raw ICU splits all three (the control): its sentence rules know no abbreviations.
+    expect(rawIcu("Swim is at St. Mary's pool. Bring a towel.", 'en')).toBe(3);
+    expect(texts(seg("Swim is at St. Mary's pool. Bring a towel.", 'en'))).toEqual([
+      "Swim is at St. Mary's pool.",
+      'Bring a towel.',
+    ]);
     expect(texts(seg('M. Dupuis a confirmé. Merci.', 'fr'))).toEqual([
-      'M.',
-      'Dupuis a confirmé.',
+      'M. Dupuis a confirmé.',
       'Merci.',
+    ]);
+    expect(texts(seg('Dr. Lee moved it to Sat. Nov. 14. See you.', 'en'))).toEqual([
+      'Dr. Lee moved it to Sat. Nov. 14.',
+      'See you.',
+    ]);
+  });
+
+  it('a period after an ordinary word still ends the sentence (positive control)', () => {
+    expect(texts(seg('Swim is at the pool. Mary will be there.', 'en'))).toEqual([
+      'Swim is at the pool.',
+      'Mary will be there.',
     ]);
   });
 
@@ -185,5 +201,58 @@ describe('segmentSentences — tiling', () => {
         expect(s.text).toBe(body.slice(s.start, s.end).trim());
       }
     }
+  });
+});
+
+describe('subtractSpans — a cut never ships a fragment (VIL-575)', () => {
+  const spanOf = (body: string, text: string) => {
+    const start = body.indexOf(text);
+    if (start < 0) throw new Error(`no "${text}" in body`);
+    return { start, end: start + text.length };
+  };
+
+  it('cuts whole sentences and leaves the rest verbatim', () => {
+    const body = 'Swim is Saturday. Your visit is booked. Bring a towel.';
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'cut',
+      text: 'Swim is Saturday. Bring a towel.',
+    });
+  });
+
+  it('a cut that leaves the reply ending "at St." is a fragment', () => {
+    const body = "Swim is at St. Mary's pool.";
+    expect(subtractSpans(body, [spanOf(body, "Mary's pool.")])).toEqual({ status: 'fragment' });
+  });
+
+  it('a cut that leaves a sentence starting mid-clause is a fragment', () => {
+    const body = "Swim is at St. Mary's pool.";
+    expect(subtractSpans(body, [spanOf(body, 'Swim is at St.')])).toEqual({ status: 'fragment' });
+  });
+
+  it('a clause that introduced the cut sentence is left dangling: a fragment', () => {
+    const body = "Here's where things stand:\nYour visit is booked.";
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'fragment',
+    });
+  });
+
+  it('a line break is a boundary even without a period', () => {
+    const body = 'Have fun at swim 🎉\nYour visit is booked.';
+    expect(subtractSpans(body, [spanOf(body, 'Your visit is booked.')])).toEqual({
+      status: 'cut',
+      text: 'Have fun at swim 🎉',
+    });
+  });
+
+  it('two neighbouring cuts are one cut, so the seam between them is not judged', () => {
+    const body = "Swim is Saturday. Your visit at St. Mary's is booked.";
+    expect(
+      subtractSpans(body, [spanOf(body, 'Your visit at St.'), spanOf(body, "Mary's is booked.")]),
+    ).toEqual({ status: 'cut', text: 'Swim is Saturday.' });
+  });
+
+  it('cutting everything leaves nothing, which is not a fragment', () => {
+    const body = 'Your visit is booked.';
+    expect(subtractSpans(body, [spanOf(body, body)])).toEqual({ status: 'cut', text: '' });
   });
 });

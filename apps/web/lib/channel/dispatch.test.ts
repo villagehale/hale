@@ -697,7 +697,11 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
             return { status: 'error' as const, transient: false, code: 'blocked', message: 'x' };
           }
           calls.push(input.rendered.text);
-          return { status: 'sent' as const, providerMessageId: `m-${calls.length}` };
+          return {
+            status: 'sent' as const,
+            providerMessageId: `m-${calls.length}`,
+            transport: 'sms' as const,
+          };
         },
       },
     };
@@ -807,7 +811,11 @@ describe('VIL-467 · multi-text legs — in order, one row per text, retry sends
       async send(input: { userId: string; rendered: RenderedContent }) {
         const r = input.rendered as RenderedContent & { bold?: string };
         seen.push({ text: r.text, bold: r.bold });
-        return { status: 'sent' as const, providerMessageId: `m-${seen.length}` };
+        return {
+          status: 'sent' as const,
+          providerMessageId: `m-${seen.length}`,
+          transport: 'sms' as const,
+        };
       },
     };
     const { ports } = makePorts({ renderer: boldRenderer, channels: { sms: channel } });
