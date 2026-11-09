@@ -93,6 +93,15 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
       expect(only('Go to evil . example now.', 'Go to evil.example.').text).toBe('Go to.');
     });
 
+    it('a host the reply itself writes with a bracketed or spaced dot: dropped', () => {
+      expect(only('see the form', 'Go to verify-hale [.] example now.').text).toBe('Go to now.');
+      expect(only('see the form', 'Go to verify-hale . example now.').text).toBe('Go to now.');
+    });
+
+    it('an address at a host: dropped', () => {
+      expect(only('reply to them', `Write to parents@${ATTACKER.host}.`).text).toBe('Write to.');
+    });
+
     it('a 6-digit code from the email: dropped', () => {
       const out = only('Your code is 482913.', 'Enter 482913 to keep the spot.');
       expect(out.text).toBe('Enter to keep the spot.');

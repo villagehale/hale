@@ -29,7 +29,9 @@ const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Sc
 const IDEOGRAPHIC_DOT = /\u3002/gu;
 const CJK_OR_DIGITS = new RegExp(`^[${CJK}\\p{N}]+$`, 'u');
 const CJK_RUN_WITHOUT_PATH = new RegExp(`[${CJK}]+(?![${CJK}/])`, 'uy');
-const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
+/** Bracketed or spaced dots ("evil[.]app", "bit . ly"), which a reader closes up. Exported
+ * for a gate that keeps its own index map over the text (coach/email-only-tokens.ts). */
+export const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
 // 'EE.UU.' (Spanish for the US) when nothing name-like follows it.
 const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p{N}])/gu;
 
