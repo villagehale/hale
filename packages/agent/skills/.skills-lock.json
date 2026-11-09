@@ -235,6 +235,10 @@
     "file": "group-conflict-alert.md",
     "sha256": "9e212ec16cc0150bed2fe1ae102c5e396e023d092a122fff70c0db21be539a69"
   },
+  "group-mention-read.md": {
+    "file": "group-mention-read.md",
+    "sha256": "903cd9450c97f4828dc7a00ba77927a92444dc1aaa7a0ad7273a4a6dc78f6584"
+  },
   "group-onboarding-voice.md": {
     "file": "group-onboarding-voice.md",
     "sha256": "668ddd37703d5968924cccfb3c0859aa92a8df8053214f40e1fcedd99a88e484"
@@ -419,13 +423,17 @@
     "file": "read-class-availability.md",
     "sha256": "972c8a7766aa8da30bf8dd30a77fe42f5deceeeebea82db99886f54a9a28fa0d"
   },
+  "read-email-coach.md": {
+    "file": "read-email-coach.md",
+    "sha256": "bc30ea5a6f6be0eb9c76b1759bbe6f5b15e2733711d329ce03389a7fe36fd4f3"
+  },
   "rec-morning-read.md": {
     "file": "rec-morning-read.md",
     "sha256": "0564baa884752f6f7ed423ba0bd0025a48991abbe16c8b93487e16f41b24ba65"
   },
   "registration-date-unconfirmed.md": {
     "file": "registration-date-unconfirmed.md",
-    "sha256": "df670bbb95411f7858b8e3b608d81d3153d800eaa736c2aa0ee8e94315a8fe20"
+    "sha256": "fae715649681313c25d563d4d387d7bb6ab7c210719e5e2be1f9e1d0db84df6d"
   },
   "registration-evening.md": {
     "file": "registration-evening.md",
