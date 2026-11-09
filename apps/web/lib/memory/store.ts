@@ -13,6 +13,7 @@ import { renderMemoryGroupSync } from './group-sync';
 import {
   type MemoryKindEnv,
   type MemoryRecallItem,
+  type MemoryRecallSeenIn,
   type MemorySource,
   type PromotionSignal,
   applyPromotionSignal,
@@ -31,6 +32,12 @@ import {
   toFamilyMemoryExportFact,
 } from './kinds';
 import { isReceiptKey } from './lexicon';
+import {
+  type FactSource,
+  type FactSourceLabel,
+  loadFactSources,
+  readerTimeZone,
+} from './source-label';
 import { SYNTHESIS_WRITERS } from './synthesis';
 
 const BELIEF_WRITERS = new Set<string>(SYNTHESIS_WRITERS);
@@ -256,6 +263,7 @@ export interface RecallFact {
   source: string;
   sourcedAt: string;
   expiresAt: string | null;
+  sourceEventId: string | null;
 }
 
 async function teenIds(database: Database, familyId: string, now: Date): Promise<Set<string>> {
@@ -297,6 +305,7 @@ export async function recallFamilyMemory(
       sourcedAt: schema.familyMemoryFacts.sourcedAt,
       expiresAt: schema.familyMemoryFacts.expiresAt,
       validUntil: schema.familyMemoryFacts.validUntil,
+      sourceEventId: schema.familyMemoryFacts.sourceEventId,
     })
     .from(schema.familyMemoryFacts)
     .where(
@@ -323,6 +332,7 @@ export async function recallFamilyMemory(
         source: exported.source,
         sourcedAt: exported.sourcedAt,
         expiresAt: exported.expiresAt,
+        sourceEventId: row.sourceEventId,
       };
     });
 }
@@ -416,15 +426,43 @@ function displayFactValue(value: unknown): string | null {
   return null;
 }
 
-function recallItems(facts: readonly RecallFact[]): MemoryRecallItem[] {
+function recallSeenIn(
+  label: FactSourceLabel,
+  language: ReplyLanguage,
+  timeZone: string,
+): MemoryRecallSeenIn {
+  const on = new Intl.DateTimeFormat(language, {
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(label.on);
+  return label.kind === 'email'
+    ? { kind: 'email', from: label.from, on }
+    : { kind: 'calendar', title: label.title, on };
+}
+
+/**
+ * A fact Hale took from Gmail or Calendar is listed with where it was seen, or not at
+ * all: a connector fact whose source this reader may not hear is left out (VIL-429).
+ */
+function recallItems(
+  facts: readonly RecallFact[],
+  sources: ReadonlyMap<string, FactSource>,
+  language: ReplyLanguage,
+  timeZone: string,
+): MemoryRecallItem[] {
   const items: MemoryRecallItem[] = [];
   for (const fact of facts) {
     if (fact.source === 'receipt') continue;
     const value = displayFactValue(fact.factValue);
     if (!value) continue;
+    const found = fact.sourceEventId ? sources.get(fact.sourceEventId) : undefined;
+    if (found?.connector && !found.label) continue;
     const source = fact.source as MemoryRecallItem['source'];
     const kind = fact.kind as MemoryRecallItem['kind'];
-    items.push({ key: fact.factKey, value, source, kind });
+    const seenIn =
+      found?.connector && found.label ? recallSeenIn(found.label, language, timeZone) : null;
+    items.push({ key: fact.factKey, value, source, kind, seenIn });
   }
   return items;
 }
@@ -492,14 +530,32 @@ export async function handleParentMemory(
 
   if (intent.kind === 'recall') {
     const facts = await recallFamilyMemory(database, { familyId: input.familyId, now: input.now });
+    const [sources, timeZone] = await Promise.all([
+      loadFactSources(database, {
+        familyId: input.familyId,
+        readerUserId: input.parentUserId,
+        // A group turn always carries its Linq chat id; an SMS 1:1 carries none.
+        inGroup: door.groupChatId !== null && origin === door.groupChatId,
+        now: input.now,
+        sourceEventIds: facts.map((fact) => fact.sourceEventId),
+      }),
+      readerTimeZone(database, input.parentUserId),
+    ]);
+    const items = recallItems(facts, sources, language ?? 'en', timeZone);
     let reply: string | null = null;
     try {
-      const parts = templates ? memoryRecallParts(templates, recallItems(facts)) : null;
+      const parts = templates ? memoryRecallParts(templates, items) : null;
       let body: string | null;
       if (!parts) {
         body = await replyProse(layer, {
           fallback: '',
-          facts: recallItems(facts).map((item) => `${item.key}: ${item.value}`),
+          facts: items.map((item) => {
+            const seen = item.seenIn;
+            if (!seen) return `${item.key}: ${item.value}`;
+            const where =
+              seen.kind === 'email' ? `email from ${seen.from}` : `calendar: ${seen.title}`;
+            return `${item.key}: ${item.value} (seen in ${where}, ${seen.on})`;
+          }),
         });
       } else if (parts.empty) {
         body = await replyProse(layer, { fallback: parts.empty, facts: [] });

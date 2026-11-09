@@ -41,6 +41,8 @@ function args(over) {
     otherHaleFamiliesGoing: null,
     timeZone: ZONE,
     now: NOW,
+    // VIL-429: two days before NOW, so "when it arrived" is a day the text has to say.
+    receivedAt: '2026-09-15T12:30:00.000Z',
     ...over,
   };
 }

@@ -103,6 +103,10 @@
     "file": "coach-channel-sms.md",
     "sha256": "1aa711387e793204e5132fab93115832dd5945f902123613caed077d3cc5e745"
   },
+  "coach-fact-source.md": {
+    "file": "coach-fact-source.md",
+    "sha256": "20e86b9157be89631cfc16276ad8e945042e0e8f1731627b7c1fbd8108b480f4"
+  },
   "coach-find-private.md": {
     "file": "coach-find-private.md",
     "sha256": "bc99f01663dc3672c87e1ccdb7763f243c54e944d8292012d840228ac8aec49f"
@@ -145,7 +149,7 @@
   },
   "email-alert-notice.md": {
     "file": "email-alert-notice.md",
-    "sha256": "6a65176ee5e5fa835806d01ebffaf9080e6705949ef4d319b259f7405d3f5ec2"
+    "sha256": "ddc24c7f0be41323e5a9c21590e32a23c146b11cbace24896660bbb0e9900236"
   },
   "evening-request.md": {
     "file": "evening-request.md",
@@ -301,7 +305,7 @@
   },
   "infer-memory.md": {
     "file": "infer-memory.md",
-    "sha256": "bb9d105f941e29a4737ada757d82644409689c4a9013b7a622d40874133ca3af"
+    "sha256": "19ddfbe362f31e731b996221819939de5a9c88a9fa8fb89f2e4f3939d9e0361e"
   },
   "intake-answer.md": {
     "file": "intake-answer.md",

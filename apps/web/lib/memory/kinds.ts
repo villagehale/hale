@@ -73,6 +73,9 @@ export const MEMORY_KIND_LINES = {
     parent: '- {key}: {value} ({term}, you told me)',
     calendar: '- {key}: {value} ({term}, from your calendar)',
     inferred: '- {key}: I think {value} (for now)',
+    inferredEmail: '- {key}: I think {value} (from the {from} email on {on})',
+    inferredCalendar: '- {key}: I think {value} (from {title} on your calendar, {on})',
+    calendarTitled: '- {key}: {value} ({term}, from {title} on your calendar, {on})',
     termLasting: 'lasting',
     termTemporary: 'for now',
     forgottenMany: 'Done, I forgot {n} things.',
@@ -82,6 +85,9 @@ export const MEMORY_KIND_LINES = {
     parent: '- {key} : {value} ({term}, dit par un parent)',
     calendar: '- {key} : {value} ({term}, vu dans le calendrier)',
     inferred: "- {key} : je crois que {value} (pour l'instant)",
+    inferredEmail: '- {key} : je crois que {value} (vu dans le courriel de {from}, le {on})',
+    inferredCalendar: '- {key} : je crois que {value} (vu dans le calendrier : {title}, le {on})',
+    calendarTitled: '- {key} : {value} ({term}, vu dans le calendrier : {title}, le {on})',
     termLasting: 'durable',
     termTemporary: "pour l'instant",
     forgottenMany: "C'est oublie : {n} elements.",
@@ -143,11 +149,18 @@ function fillMemory(
   return rendered;
 }
 
+/** Where a connector fact was seen, already worded as data: `on` is the reader's day. */
+export type MemoryRecallSeenIn =
+  | { kind: 'email'; from: string; on: string }
+  | { kind: 'calendar'; title: string; on: string };
+
 export interface MemoryRecallItem {
   key: string;
   value: string;
   source: MemorySource;
   kind: MemoryKind;
+  /** Null when the fact did not come from Gmail or Calendar. */
+  seenIn: MemoryRecallSeenIn | null;
 }
 
 function recallParts(language: MemoryKindLanguage): { header: string; footer: string } {
@@ -165,6 +178,30 @@ function recallTerm(language: MemoryKindLanguage, kind: MemoryKind): string {
 function recallLine(language: MemoryKindLanguage, item: MemoryRecallItem): string {
   const key = item.key.trim();
   const value = item.value.replace(/\s+/g, ' ').trim();
+  const seen = item.seenIn;
+  if (seen?.kind === 'email') {
+    return fillMemory(
+      MEMORY_KIND_LINES[language].inferredEmail,
+      { key, value, from: seen.from, on: seen.on },
+      ['key', 'value', 'from', 'on'],
+      language,
+    );
+  }
+  if (seen?.kind === 'calendar') {
+    return item.source === 'calendar'
+      ? fillMemory(
+          MEMORY_KIND_LINES[language].calendarTitled,
+          { key, value, term: recallTerm(language, item.kind), title: seen.title, on: seen.on },
+          ['key', 'value', 'term', 'title', 'on'],
+          language,
+        )
+      : fillMemory(
+          MEMORY_KIND_LINES[language].inferredCalendar,
+          { key, value, title: seen.title, on: seen.on },
+          ['key', 'value', 'title', 'on'],
+          language,
+        );
+  }
   if (item.source === 'inferred') {
     return fillMemory(
       MEMORY_KIND_LINES[language].inferred,
