@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text accurately states Hale reached checkout, payment is the parent's job, link and 12-minute window match facts, confirmed=false is stated. However it says the spot may not stay 'réservée' after 12 minutes, which hints a spot is held before payment, contrary to the rule that an open browser holds no spot. Otherwise uses tu correctly, no personal details, no retry promise.",
+    "score": 3
+  }
+}
