@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says Hale will register and pay with the saved card, which contradicts assisted mode where the parent must submit and pay. It also omits the plan of texting the browser for the parent to check and pay, and it implies auto-payment.",
+    "score": 1
+  }
+}

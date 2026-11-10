@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The French message fits outcome_waitlisted with no deadline. It acknowledges the waitlist in Riverton and correctly notes that no list number was given (position is null). It says the town publishes no response window, so there is no reminder to set, which is the handed fact for a null responseHours. It tells the parent to watch their email for an offer, which is allowed. It asks nothing, names no child and invents no claims. The tone is friendly and natural, though slightly formal with \"vous\".",
+    "score": 5
+  }
+}

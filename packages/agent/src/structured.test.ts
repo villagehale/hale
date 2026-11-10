@@ -449,6 +449,111 @@ describe('forceToolJson — every failure is reported as itself', () => {
   });
 });
 
+describe('forceToolJson — a tool answer with call markup inside a string is refused (VIL-645)', () => {
+  // The onboarding reply's shape in small: an open object leaves it with no grammar, so
+  // it goes out as a plain tool, forced on Haiku.
+  const REPLY_SCHEMA = {
+    type: 'object',
+    properties: {
+      reply: { type: 'string' },
+      parentQuestion: { type: 'boolean' },
+      connectorsOffered: { type: 'array', items: { type: 'string' } },
+      children: {
+        type: 'array',
+        items: { type: 'object', properties: { name: { type: ['string', 'null'] } } },
+      },
+      extra: { type: 'object', additionalProperties: true },
+    },
+    required: ['reply', 'parentQuestion', 'connectorsOffered'],
+  } as const;
+  // As lenient as friend-voice's reader: any parentQuestion that is not `false` reads as a
+  // question, and a missing connectorsOffered reads as nothing offered.
+  const replySchema = z.object({
+    reply: z.string(),
+    parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
+    connectorsOffered: z.array(z.string()).optional().default([]),
+    children: z.array(z.object({ name: z.string().nullable() })).optional(),
+  });
+
+  function callReply(input: Record<string, unknown>) {
+    const { client, create } = fakeClient(
+      message([{ type: 'tool_use', id: 'tu_0', name: TOOL, input }], 'tool_use'),
+    );
+    const result = forceToolJson({
+      client,
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: REPLY_SCHEMA,
+      schema: replySchema,
+      maxTokens: 20,
+    });
+    return { result, create };
+  }
+
+  it('goes out as a forced tool, so the answer is read from the tool input', () => {
+    const req = structuredRequest({
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: REPLY_SCHEMA,
+      maxTokens: 20,
+    });
+    expect(req.tool_choice).toEqual({ type: 'tool', name: TOOL });
+  });
+
+  it('refuses the recorded draw: parentQuestion closed early and swallowing connectorsOffered', async () => {
+    const { result, create } = callReply({
+      reply: 'Got it, thanks.',
+      parentQuestion: 'true</parentQuestion>\n<parameter name="connectorsOffered">[]',
+    });
+    const error = await result.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(StructuredOutputError);
+    expect(error).toMatchObject({ outcome: 'tool_markup', stage: TOOL });
+    expect(String(error)).toMatch(/at parentQuestion/);
+    // Refused, not re-asked: the caller's own retry decides what happens next.
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a reply that closes its own field, which would reach the parent as text', async () => {
+    const { result } = callReply({
+      reply: 'See you Saturday!</reply>',
+      parentQuestion: false,
+      connectorsOffered: [],
+    });
+    await expect(result).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+
+  it('refuses markup nested inside an array of objects', async () => {
+    const { result } = callReply({
+      reply: 'Lovely.',
+      parentQuestion: false,
+      connectorsOffered: [],
+      children: [{ name: 'Sam</name>\n<parameter name="ageMonths">36' }],
+    });
+    const error = await result.catch((e: unknown) => e);
+    expect(error).toMatchObject({ outcome: 'tool_markup' });
+    expect(String(error)).toMatch(/at children\.0\.name/);
+  });
+
+  it('keeps a clean answer, angle brackets and tags that are not this tool’s fields included (positive control)', async () => {
+    const { result } = callReply({
+      reply: 'Ages 3 < 5 love it. <b>Saturday</b> works.',
+      parentQuestion: false,
+      connectorsOffered: ['gmail'],
+      children: [{ name: null }],
+      extra: { note: 'a </b> tag' },
+    });
+    await expect(result).resolves.toMatchObject({
+      value: { reply: 'Ages 3 < 5 love it. <b>Saturday</b> works.', parentQuestion: false },
+    });
+  });
+});
+
 describe('prompt caching', () => {
   it('wraps instructions in one ephemeral-cached text block', () => {
     expect(cachedSystem('SYSTEM INSTRUCTIONS')).toEqual([

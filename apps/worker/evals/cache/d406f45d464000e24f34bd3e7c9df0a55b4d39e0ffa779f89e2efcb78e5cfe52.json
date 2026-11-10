@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text says Ada's sessions were full, which matches sold_out, but then promises to keep an eye out and grab a spot if one opens. That is an explicit promise to try again and a hint a spot may still open, both listed as low-score violations. It also omits saying nothing was registered or paid, though the watchFor asks for that.",
+    "score": 1
+  }
+}
