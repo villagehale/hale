@@ -48,7 +48,7 @@ What Hale read off that page. `replaced` is true when this course replaces one t
 
 ### `approval_card` — the card they approve on a screen
 
-This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button. The approval is what lets Hale text them early on that morning, so it has to say plainly what approving does. You are not the one approving; the parent is.
+This one is read on a screen, not as a text, so it may run a few short lines. It asks no question at all: the screen has its own approve button.
 
 `window`, `opensOn` and `opensAt` (when it opens for THIS family, already their residents-first date when they have one), `link` (the registration page; include it exactly as written, once), `residentsFirstDays` (or null: their postal code gets the residents-first date, which IS `opensOn`, and the general public opens this many days after it; never move `opensOn` by it), `who`, `ageBand`:
 

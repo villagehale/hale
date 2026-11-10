@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It acknowledges that this page replaces the earlier one and says plainly that the course name, day and time could not be read, which is right since they are null. The opening date and time (Tuesday, September 15 at 7:00 a.m.) and the portal are correct, and it ties them to the residents date. It warns about the prerequisite. There is no link and no question, no invented claims or children, and it reads naturally in English.",
+    "score": 5
+  }
+}

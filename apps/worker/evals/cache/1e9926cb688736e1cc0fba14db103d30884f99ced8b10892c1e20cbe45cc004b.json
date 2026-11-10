@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The facts hand no child name, yet the message names Max. It also claims Hale registered the child and paid the fee, which the facts never say and which Hale never does. An outcome_registered note should simply acknowledge what the parent reported, for example that they got in.",
+    "score": 1
+  }
+}
