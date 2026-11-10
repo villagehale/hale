@@ -133,13 +133,56 @@ function hostsIn(read: string): string[] {
   return hosts;
 }
 
-const WORD_EDGE = /^[([{<"'“‘]+|[.,;:!?)\]}>"'”’]+$/gu;
+// A phone's linkifier stops a URL at these, so they are word edges the same as space.
+// Otherwise `villagehale.com/<evil.app>` reads as Hale's host while the phone links evil.app.
+const WORD = /[^\s<>"'“‘”’()[\]{},;]+/gu;
+const WORD_LEAD = /^[([{<"'“‘]+/u;
+const WORD_TAIL = /[.,;:!?)\]}>"'”’]+$/u;
+
+export interface WordSpan {
+  word: string;
+  /** Where the word sits in the reading it was read from. */
+  from: number;
+  to: number;
+}
+
+/** The words of a handset reading ({@link asHandsetReads}) with their prose edges dropped,
+ * and where each sits, so a gate can cut a word out of the very text it checked. */
+export function wordSpans(read: string): WordSpan[] {
+  const spans: WordSpan[] = [];
+  for (const match of read.matchAll(WORD)) {
+    const lead = match[0].match(WORD_LEAD)?.[0].length ?? 0;
+    const word = match[0].slice(lead).replace(WORD_TAIL, '');
+    const from = match.index + lead;
+    if (word) spans.push({ word, from, to: from + word.length });
+  }
+  return spans;
+}
 
 function wordsOf(read: string): string[] {
-  return read
-    .split(/\s+/)
-    .map((word) => word.replace(WORD_EDGE, ''))
-    .filter((word) => word.length > 0);
+  return wordSpans(read).map((span) => span.word);
+}
+
+const LEADING_SCHEME = /^[a-z][a-z\d+.-]*:\/\//i;
+
+/**
+ * The host a phone opens for a link-shaped word, lowercased, read by the URL parser a
+ * browser uses, so no gate reads a host differently from the browser: a scheme inside a
+ * query, a backslash or a port is the parser's to read. A word with no scheme is read as
+ * an http link. Null when the parser refuses the word, or when it carries a user part
+ * ('villagehale.com:443@evil.app', 'parents@evil.app'), whose host a reader mistakes;
+ * a gate treats null as a host it does not know.
+ */
+export function linkHostname(word: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(LEADING_SCHEME.test(word) ? word : `http://${word}`);
+  } catch (error) {
+    if (error instanceof TypeError) return null;
+    throw error;
+  }
+  if (url.username || url.password) return null;
+  return url.hostname.toLowerCase();
 }
 
 export function wordsAsHandsetReads(text: string): string[] {
