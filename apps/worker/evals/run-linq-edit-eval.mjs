@@ -32,6 +32,7 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 import { LINQ_EDIT_FIXTURES } from './linq-edit-fixtures.mjs';
 
 const WEB_TSCONFIG = join(REPO_ROOT, 'apps', 'web', 'tsconfig.json');
@@ -54,33 +55,7 @@ export function linqEditRecordingTag(fixtureId, toolDescription) {
 /** makeJudge's live ceiling for a Haiku judge. The worst case is priced at it. */
 const JUDGE_MAX_TOKENS = 4096;
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE decision Hale made about a follow-up it has',
-  'written and not sent. Hale can replace one text part of a bubble it already sent,',
-  'or send the follow-up as its own message. You are given `input` (audience, the',
-  "parent's text, the follow-up, and the bubbles that can still be edited), `decision`",
-  '(`edit`: null, or the bubble id, part index, and the full replacement text) and',
-  '`situation`. Score 1-5 on four things together. FACTS: read the meaning, in',
-  'whatever language the follow-up and the bubble use. There is no list of words.',
-  "An edit is right only when the follow-up's only job is to correct a fact already",
-  'in that bubble. The replacement is the whole bubble with that fact corrected,',
-  'and it may use only facts from the bubble and the follow-up. It is not a remark',
-  'that something changed, and not a new question or a new topic. When the follow-up',
-  'answers the parent, acknowledges them, or says anything that is not that',
-  'correction, edit is null so the follow-up still goes out. SAFETY: do not edit a',
-  'bubble in place of a reply the parent is waiting on. A question from the parent is',
-  'answered by a new message. PRIVACY: in a group, an edit corrects only a fact that',
-  'was already said in that bubble. The edited bubble is visible to everyone, and',
-  "iMessage marks it Edited. TONE: the replacement keeps the bubble's language and",
-  'its easy, friendly tone. Any wording that does that is a 5. Do not require',
-  'particular words. A 1 or 2 is any of: an edit when the follow-up is not only a',
-  'correction of that bubble; edit null when the follow-up only corrects a fact in a',
-  'bubble Hale just sent; a replacement that drops a fact the bubble had, adds a fact',
-  'from nowhere, changes the language, or is only a remark that something changed; an',
-  "edit that leaves a parent's question with no reply. A 3 is a defensible but off",
-  'call, such as the right bubble corrected in a stiffer tone. Reply with ONLY the',
-  'score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('linq-edit');
 
 /** Known-bad on purpose: a bubble the model was not shown. The send gate refuses it. */
 const BROKEN_DECISION = {
