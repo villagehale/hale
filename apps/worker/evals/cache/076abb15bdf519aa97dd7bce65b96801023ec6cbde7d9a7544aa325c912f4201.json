@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The pick list is empty, which is correct: no such program exists, and the pages were a hoax blog and a game wiki. The message is honest, plain text, has no link and asks no question. With watch TRUE, the first-person 'I'll keep watching and text you' is correct. It makes no negative claim about any page's schedule; 'I could not establish' is first person and fits page_has_schedule. It falls short of a 5 on specificity: 'the sources I checked' never says what was looked at (a hoax-history blog and a video-game wiki). It does at least say they were not local operator program pages, so it is honest but only moderately specific.",
+    "score": 4
+  }
+}

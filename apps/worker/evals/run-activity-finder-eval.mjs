@@ -82,6 +82,7 @@ import {
   evalRunTag,
   installEvalSpendCap,
   lazyAnthropic,
+  loadAgent,
   makeCost,
   makeJudge,
   noteUsage,
@@ -98,7 +99,6 @@ import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
-const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const ACTIVITY_SKILL = join(REPO_ROOT, 'packages', 'agent', 'skills', 'activity-finder.md');
 const TRAVEL_QUERY_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'travel', 'query.ts');
 
@@ -109,27 +109,20 @@ const MAX_INLINE_FETCHES = 3;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
 // ── the lane's request shapes, replicated from lane.ts ───────────────────────
 
-const PICKS_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    picks: {
-      type: 'array',
-      maxItems: MAX_PICKS,
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          age_fit: { type: 'string' },
-          when: { type: 'string' },
-          price: { type: 'string' },
-          source_name: { type: 'string' },
-        },
-        required: ['name', 'age_fit', 'source_name'],
-      },
-    },
-  },
-  required: ['picks'],
-};
+const {
+  activityPicksJsonSchema: PICKS_TOOL_SCHEMA,
+  bindActivityFacts,
+  activityDateRange,
+  activityCalendarDate,
+} = await tsImport(join(REPO_ROOT, 'apps/web/lib/channel/activity/facts.ts'), {
+  parentURL: import.meta.url,
+  tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+});
+const { renderTravelBrief } = await tsImport(join(REPO_ROOT, 'apps/web/lib/travel/copy.ts'), {
+  parentURL: import.meta.url,
+  tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+});
+export const EVAL_NOW = new Date('2026-10-15T12:00:00Z');
 
 const FOLLOWUP_TOOL_SCHEMA = {
   type: 'object',
@@ -169,7 +162,12 @@ function groundUserMessage(q) {
 }
 
 function composeUserMessage(q, researchNotes) {
-  return JSON.stringify({ ...JSON.parse(groundUserMessage(q)), research_notes: researchNotes });
+  return JSON.stringify({
+    ...JSON.parse(groundUserMessage(q)),
+    research_notes: researchNotes,
+    today: activityCalendarDate(EVAL_NOW, q.timeZone),
+    requested_date_range: activityDateRange(q.window, EVAL_NOW, q.timeZone, q.dateRange),
+  });
 }
 
 /** Mirrors `followUpUserMessage` in activity/followup-note.ts, INCLUDING `registration` —
@@ -196,11 +194,30 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
     subject,
     // `users.locale`, passed through. The composer never sees the parent's words.
     language,
-    // An empty search carries where it looked and what it read (lane.ts `EmptySearch`);
-    // a message with a find is composed from exactly the payload it always was.
+    // Only bound references survive; raw research may contain rejected facts.
     ...(picks.length === 0
-      ? { picks_empty: true, ...(searched ? { searched } : {}) }
+      ? {
+          picks_empty: true,
+          ...(searched
+            ? {
+                searched: {
+                  town: searched.town,
+                  ...(searched.references ? { references: searched.references } : {}),
+                  ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
+                },
+              }
+            : {}),
+        }
       : { page_evidence: pageEvidence }),
+    ...(picks.length > 0 && searched?.references?.length
+      ? {
+          searched: {
+            town: searched.town,
+            references: searched.references,
+            ...(searched.checkedSources ? { checkedSources: searched.checkedSources } : {}),
+          },
+        }
+      : {}),
     watch,
     picks: picks.map((pick) => ({
       name: pick.name,
@@ -210,6 +227,7 @@ function followUpUserMessage(subject, picks, pageEvidence, watch, searched, lang
       registration: pick.registration ?? null,
       source_name: pick.sourceName,
       source: 'web',
+      ...(pick.evidence ? { evidence: pick.evidence } : {}),
     })),
   });
 }
@@ -669,10 +687,24 @@ function decodePicks(value) {
   return value;
 }
 
-function normalizePicks(raw) {
+function normalizePicks(raw, ground, query) {
   const kept = [];
   const dropped = [];
-  const decoded = decodePicks(raw);
+  let decoded = decodePicks(raw);
+  let references = [];
+  if (ground && query) {
+    const bound = bindActivityFacts(
+      Array.isArray(decoded) ? decoded : [],
+      ground.pages ?? [],
+      query.window,
+      EVAL_NOW,
+      query.timeZone,
+      query.dateRange,
+      query.stages?.length ? query.stages : query.stage ? [query.stage] : undefined,
+    );
+    decoded = bound.picks;
+    references = bound.references;
+  }
   for (const item of Array.isArray(decoded) ? decoded : []) {
     const pick = {
       name: flatten(item?.name),
@@ -680,11 +712,12 @@ function normalizePicks(raw) {
       when: flatten(item?.when) || null,
       price: flatten(item?.price) || null,
       sourceName: flatten(item?.source_name),
+      ...(item?.evidence ? { evidence: item.evidence } : {}),
     };
     if (pick.name && pick.ageFit && pick.sourceName) kept.push(pick);
     else dropped.push(pick);
   }
-  return { kept, dropped };
+  return { kept, dropped, references };
 }
 
 /**
@@ -861,6 +894,39 @@ async function cachedGround(opts) {
   return value;
 }
 
+/** Same source URL budget and pinned reader as production, without trusting research prose. */
+export async function readSourcePages(ground, fetchPage, stripHtml) {
+  const urls = [
+    ...new Set([
+      ...(ground.pages ?? []).map((page) => page.url),
+      ...String(ground.evidence)
+        .split('\n')
+        .filter((line) => /^https?:\/\//.test(line)),
+    ]),
+  ].slice(0, MAX_INLINE_FETCHES);
+  const pages = (
+    await Promise.all(
+      urls.map(async (raw) => {
+        try {
+          const { url, text: html } = await fetchPage(raw);
+          const text = stripHtml(html).slice(0, 20_000);
+          return text.trim() ? { url, text } : null;
+        } catch {
+          return null;
+        }
+      }),
+    )
+  ).filter(Boolean);
+  return {
+    pages,
+    pagesRead: pages.length,
+    pagesRefused: urls.length - pages.length,
+    pagesStale: 0,
+    checkedAt: new Date().toISOString(),
+    notes: pages.map((page) => `SOURCE: ${page.url}\n${page.text}`).join('\n\n'),
+  };
+}
+
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
@@ -875,8 +941,7 @@ async function main() {
   const followupMaxTokensArg = process.argv
     .find((arg) => arg.startsWith('--followup-max-tokens='))
     ?.split('=')[1];
-  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);
-  const followupMaxTokens =
+  const picksMaxTokens = picksMaxTokensArg === undefined ? 1024 : Number(picksMaxTokensArg);  const followupMaxTokens =
     followupMaxTokensArg === undefined ? 1000 : Number(followupMaxTokensArg);
   if (!Number.isInteger(picksMaxTokens) || picksMaxTokens < 1) {
     throw new Error('--picks-max-tokens must be a positive integer');
@@ -888,13 +953,42 @@ async function main() {
   const getClient = lazyAnthropic('activity-finder');
   const cost = makeCost();
 
-  const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const agent = await loadAgent();
+  const { createActivityPageFetch } = await tsImport(
+    join(REPO_ROOT, 'apps/web/lib/channel/activity/page.ts'),
+    { parentURL: import.meta.url, tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json') },
+  );
+  const { stripHtml } = await tsImport(join(REPO_ROOT, 'apps/web/lib/registration/fetch.ts'), {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  });
+  const fetchPage = createActivityPageFetch();
+  const withSourcePages = async (ground) => {
+    const key = cacheKey(
+      'activity-official-pages',
+      JSON.stringify({
+        evidence: ground.evidence,
+        urls: (ground.pages ?? []).map((page) => page.url),
+      }),
+    );
+    let pages = await cacheGet(key);
+    if (!pages) {
+      if (cachedOnly)
+        throw new Error(`official-page cache miss ${key}; record real page reads before replay`);
+      pages = await readSourcePages(ground, fetchPage, stripHtml);
+      await cachePut(key, pages);
+    }
+    return { ...ground, ...pages };
+  };
   // THE TRAVEL FIXTURES' SUBJECT IS THE PRODUCT'S, READ FROM THE PRODUCT. A `.mjs`
   // corpus cannot import a TS constant, so the three travel fixtures carry a copy - and a
   // copy that has drifted is a corpus grading a query nobody sends, silently and forever.
   // The runner holds the seam instead: the strings are compared byte for byte before any
   // call is made, cached or live, and a drift is a hard exit rather than a warning.
-  const { TRAVEL_SUBJECT } = await tsImport(TRAVEL_QUERY_SRC, import.meta.url);
+  const { TRAVEL_SUBJECT } = await tsImport(TRAVEL_QUERY_SRC, {
+    parentURL: import.meta.url,
+    tsconfig: join(REPO_ROOT, 'apps/web/tsconfig.json'),
+  });
   for (const fixture of ACTIVITY_FIXTURES) {
     if (fixture.id.startsWith('travel-') && fixture.subject !== TRAVEL_SUBJECT) {
       console.error(
@@ -922,6 +1016,7 @@ async function main() {
   const daySkill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
   const model = candidateModel ?? agent.pickModel(skill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(skill.meta.task);
+  const extractLane = subjectLane ? (agent.withoutThinking(subjectLane) ?? subjectLane) : null;
   // SONNET, NOT HAIKU: this rubric is ~4k characters and Haiku was marking down two
   // behaviours the rubric states in so many words are correct (harness.mjs readJudgeModel).
   const judgeModel = await readJudgeModel('sonnet');
@@ -976,8 +1071,7 @@ async function main() {
       town: fixture.town,
       stage: fixture.stage,
       window: fixture.window,
-      ...(fixture.today ? { today: fixture.today } : {}),
-    };
+      ...(fixture.today ? { today: fixture.today } : {}),    };
     const laneSkill = query.today ? daySkill : skill;
 
     // ── the border: what actually leaves ─────────────────────────────────────
@@ -1004,6 +1098,7 @@ async function main() {
           getClient,
           cost,
         });
+    if (!broken) ground = await withSourcePages(ground);
     // Mirrors the lane's grounding invariant, BOTH halves of it (lane.ts): zero results is
     // ungrounded, and so is a turn that searched and wrote nothing down. The second half
     // exists because the corpus produced it - 24 real results and an empty notes string,
@@ -1026,8 +1121,7 @@ async function main() {
             model,
             lane: subjectLane,
             system: laneSkill.instructions,
-            userMessage: composeUserMessage(query, ground.notes),
-            toolName: 'activity_picks',
+            userMessage: composeUserMessage(query, ground.notes),            toolName: 'activity_picks',
             toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
             toolDescription: 'Return the concrete programs the search actually found.',
             maxTokens: picksMaxTokens,
@@ -1047,7 +1141,8 @@ async function main() {
       !broken &&
       ground.searchCount > 0 &&
       !namesAVenue(fixture.subject) &&
-      normalizePicks(extracted.picks).kept.length === 0
+      normalizePicks(extracted.picks, ground, query).kept.length === 0 &&
+      normalizePicks(extracted.picks, ground, query).references.length === 0
     ) {
       readPasses += 1;
       ground = await cachedGround({
@@ -1060,14 +1155,14 @@ async function main() {
         getClient,
         cost,
       });
+      ground = await withSourcePages(ground);
       extracted = (
         await cachedToolCall({
           tag: evalRunTag(`activity-picks-read:${fixture.id}`),
           model,
           lane: subjectLane,
           system: laneSkill.instructions,
-          userMessage: composeUserMessage(query, ground.notes),
-          toolName: 'activity_picks',
+          userMessage: composeUserMessage(query, ground.notes),          toolName: 'activity_picks',
           toolSchema: candidateModel ? STRICT_PICKS_TOOL_SCHEMA : PICKS_TOOL_SCHEMA,
           toolDescription: 'Return the concrete programs the search actually found.',
           maxTokens: picksMaxTokens,
@@ -1079,8 +1174,11 @@ async function main() {
         })
       ).value;
     }
-
-    const { kept, dropped } = normalizePicks(extracted.picks);
+    const { kept, dropped, references } = normalizePicks(
+      extracted.picks,
+      broken ? undefined : ground,
+      query,
+    );
     if (dropped.length > 0) failures.push(`half_find:${dropped.length}`);
     if (kept.length > MAX_PICKS) failures.push(`directory:${kept.length}`);
     const evidence = `${ground.notes}\n${ground.evidence}`;
@@ -1100,20 +1198,29 @@ async function main() {
 
     // ── phase 3: THE FOLLOW-UP TEXT — unless the caller writes its own ───────
     //
-    // `composesOwnText` is the travel brief, and skipping this phase for it is the same
-    // rule this file's header states about the tool list, one layer up: DO NOT SCORE A
-    // TURN PRODUCTION DOES NOT MAKE. `createActivityFinder` ends at the picks; the
-    // follow-up composer below is `followup-note.ts`, which the coach reaches and the
-    // travel sweep never does — it hands the picks to `renderTravelBrief`, which is
-    // deterministic, has no model call in it at all, and writes to a four-segment ceiling
-    // rather than this one's two. Running it here would have scored the travel query on
-    // the coach's composer and reported the result as a fact about the travel brief.
-    //
-    // Nothing is weakened by the skip: every HARD ZERO above — the identity leak, the
-    // grounding, the fabricated pick, the half find, the directory, and `no_picks` — runs
-    // on these fixtures exactly as it does on the rest, and the quality bar becomes
-    // TRAVEL_JUDGE_SYSTEM, which asks the question this query shape is actually for.
+    // Travel uses its real deterministic renderer, never the AI follow-up composer.
+    // References can be delivered honestly but never satisfy the expectPicks gate above.
     if (fixture.composesOwnText === true) {
+      let brief = { body: '', rendered: [], renderedReferences: [] };
+      const range = activityDateRange(query.window, EVAL_NOW, query.timeZone, query.dateRange);
+      if (!range) failures.push('travel_dates_unresolved');
+      else if (range.end < activityCalendarDate(EVAL_NOW, query.timeZone)) {
+        failures.push('travel_dates_past');
+      } else {
+        try {
+          brief = await renderTravelBrief({
+            city: fixture.town,
+            startsOn: range.start,
+            endsOn: range.end,
+            childNames: [],
+            teenNames: [],
+            picks: kept,
+            references,
+          });
+        } catch (err) {
+          failures.push(`travel_copy:${err instanceof Error ? err.message : 'refused'}`);
+        }
+      }
       // Skipped in broken mode for the same reason the other judge is: the deterministic
       // layer proves the calibration, and `brokenPicks` hands an `expectPicks` fixture an
       // empty list, so `no_picks` above is already red here.
@@ -1142,7 +1249,9 @@ async function main() {
       results.push({
         fixture,
         picks: kept,
-        body: '(the caller composes its own text)',
+        body: brief.body,
+        renderedPicks: brief.rendered,
+        renderedReferences: brief.renderedReferences,
         searchCount: ground.searchCount,
         pagesRead: ground.pagesRead,
         pagesRefused: ground.pagesRefused,
@@ -1186,6 +1295,8 @@ async function main() {
                   {
                     town: fixture.town,
                     notes: ground.notes.slice(0, EMPTY_SEARCH_NOTES_CAP),
+                    references,
+                    checkedSources: (ground.pages ?? []).map((page) => page.url),
                   },
                   fixture.language ?? 'en-CA',
                 ),
@@ -1216,8 +1327,7 @@ async function main() {
           cost,
         });
         if (searchLog) violations = [searchLog];
-      }
-      if (attempt === 1) firstDraftViolations = violations;
+      }      if (attempt === 1) firstDraftViolations = violations;
       // An unjudged draft is not redrafted: production sends nothing.
       if (violations.length === 0 || broken || violations[0]?.tag === 'process_unjudged') break;
     }
@@ -1349,7 +1459,9 @@ async function main() {
   process.exit(calibrated ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error('activity-finder eval harness error:', err);
-  process.exit(2);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error('activity-finder eval harness error:', err);
+    process.exit(2);
+  });
+}

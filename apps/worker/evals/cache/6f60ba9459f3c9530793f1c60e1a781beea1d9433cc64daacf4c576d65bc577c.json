@@ -1,0 +1,16 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Water Babies Halton, Waterloo and Guelph Offers year-round swimming lessons for babies and toddlers aged 0-5",
+        "name": "Water Babies baby & toddler swimming lessons (Halton, Waterloo and Guelph)",
+        "age_evidence": "Offers year-round swimming lessons for babies and toddlers aged 0-5",
+        "age_fit": "babies and toddlers aged 0-5",
+        "source_name": "Water Babies Canada",
+        "source_url": "https://www.waterbabies.ca/blog/baby-toddler-programs-in-halton/",
+        "indoor_outdoor": "indoor"
+      }
+    ]
+  },
+  "latencyMs": 2854
+}

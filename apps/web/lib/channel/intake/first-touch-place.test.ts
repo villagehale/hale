@@ -1,5 +1,25 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { placeFromMessage } from './first-touch-place';
+import { placeFromGivenFields, placeFromMessage } from './first-touch-place';
+
+it('keeps the onboarding coverage instruction consistent with US ZIP admission', () => {
+  const skill = readFileSync(
+    new URL('../../../../../packages/agent/skills/onboarding-friend.md', import.meta.url),
+    'utf8',
+  );
+  expect(skill).toContain('Canadian postal code or US ZIP');
+  expect(skill).toContain('Hale covers the US and Canada');
+  expect(skill).not.toContain('Hale covers the GTA');
+});
+
+it('accepts a model-extracted US ZIP without inventing an Ontario municipality', () => {
+  expect(placeFromGivenFields({ postalCode: '05401', city: null })).toMatchObject({
+    country: 'United States',
+    postalCode: '05401',
+    areaCoarse: '054',
+    municipality: null,
+  });
+});
 
 describe('placeFromMessage', () => {
   it('reads a postal code out of a sentence and does not ask the phone', () => {

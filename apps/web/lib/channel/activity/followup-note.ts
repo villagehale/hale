@@ -218,13 +218,20 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     // is not silence — `picks_empty` is the one fact this message is about, and an omitted
     // key reads to a model as a field it may fill in (rule #11).
     ...(grounding.picks.length === 0
-      ? {
-          picks_empty: true,
-          ...(grounding.searched
-            ? { searched: { town: grounding.searched.town, notes: grounding.searched.notes } }
-            : {}),
-        }
+      ? { picks_empty: true }
       : { page_evidence: grounding.pageEvidence }),
+    ...(grounding.searched &&
+    (grounding.picks.length === 0 || grounding.searched.references?.length)
+      ? {
+          searched: {
+            town: grounding.searched.town,
+            ...(grounding.searched.references ? { references: grounding.searched.references } : {}),
+            ...(grounding.searched.checkedSources
+              ? { checkedSources: grounding.searched.checkedSources }
+              : {}),
+          },
+        }
+      : {}),
     watch: grounding.watch,
   };
   if (grounding.moreRemaining > 0) {
@@ -239,6 +246,7 @@ export function followUpUserMessage(grounding: FollowUpGrounding): string {
     registration: pick.registration ?? null,
     source_name: pick.sourceName,
     source: pick.source,
+    ...(pick.evidence ? { evidence: pick.evidence } : {}),
   }));
   return JSON.stringify(payload);
 }
@@ -480,8 +488,7 @@ export function followUpViolations(
   }
   if (commitsToReturn && !grounding.watch) {
     violations.push(
-      'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
-    );
+      'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',    );
   }
   return violations;
 }

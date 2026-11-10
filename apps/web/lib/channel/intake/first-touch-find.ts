@@ -1,7 +1,6 @@
 import { deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
-import { activityPlaceOfPostal } from '~/lib/channel/activity/place';
-import type { FirstTouchPlace } from './first-touch-place';
+import { activityPlaceOfPostal } from '~/lib/channel/activity/place';import type { FirstTouchPlace } from './first-touch-place';
 import { asciiCopy } from './radar-decide';
 
 /**
@@ -41,8 +40,7 @@ export async function findThisWeek(input: {
   const query = deidentifyActivityQuery({
     subject: WEEK_FIND_SUBJECT,
     window: 'this week',
-    town: place.status === 'known' ? place.town : null,
-    stage: null,
+    town: place.status === 'known' ? place.town : null,    stage: null,
     householdNames: [],
   });
   if (!query.ok) {

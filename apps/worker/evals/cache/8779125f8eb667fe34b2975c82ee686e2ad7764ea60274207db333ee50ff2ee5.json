@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The research stays on the named venue, Cartwheels Gym Centre in Georgetown, Halton Hills. The message attributes to the venue's own site, has no link and no question. Because watch is true, the first-person 'I'll keep watching and text you' is legitimate. Under page_has_schedule, 'I couldn't confirm current dates' is correctly first person. However, the pick list is EMPTY while the message presents three programs as finds, so it is not grounded in the picks. It also quotes a price ($140 per term) that appears nowhere in the picks, which is an explicit low-score trigger. The same page says pricing varies by term and sits behind the registration login, so '$140' is shaky. Tumble & Learn is a drop-off program, not parent-and-tot. The page also publishes actual Tiny Gym times, yet the message gives no time and does not name the gap specifically. The mismatch between picks and message, plus the unsupported price, drags this down.",
+    "score": 2
+  }
+}

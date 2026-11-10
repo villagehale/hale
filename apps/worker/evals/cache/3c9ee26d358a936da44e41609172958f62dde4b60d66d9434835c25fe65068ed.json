@@ -1,0 +1,48 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Parent and Tot 18 months - 3.11 yrs This class involves parent participation and is led by a coach through a structured warm-up, games, music, and circuits on all gymnastic events.",
+        "name": "Parent and Tot Gymnastics (18 months - 3.11 yrs), Halton Hills Gymnastics Centre",
+        "age_evidence": "Parent and Tot 18 months - 3.11 yrs",
+        "age_fit": "18 months - 3.11 years",
+        "when": "Fall 2026 session: September 12 - December 18 (14 (13) weeks); Winter 2027 session: January 2 - April 1, registration begins October 27th. Tues, Wed, Thur and Sat classes run 12 weeks, Monday 11 weeks, Friday 10 weeks. 30 min class.",
+        "when_evidence": "Fall 2026 Session 14 (13) weeks: September 12 - December 18 Winter 2027 Session 12 (11/10) weeks: January 2 - April 1 - Registration begins October 27th 12 weeks - Tues, Wed, Thur and Sat classes, 11 weeks - Mon, 10 weeks - Fri",
+        "schedule_kind": "term",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://www.haltonhillsgymnastics.com/index.php/preschool-kinderfun/parent-tot-18-months-3-years",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      },
+      {
+        "name_evidence": "Pre-School Drop-in under 4 yrs Cost: $15, one parent/up to 4 children. No pre-registration neccessary and payment can be made in person.",
+        "name": "Pre-School Drop-In (under 4), Halton Hills Gymnastics Centre",
+        "age_evidence": "Pre-School Drop-in under 4 yrs",
+        "age_fit": "Under 4 years, with a parent",
+        "when": "Tuesday and Thursday 9:30 am - 12:00pm, September 15th to June 26 (closed Dec. 18 - Jan 5th, no drop-in on statutory holidays or March Break)",
+        "when_evidence": "Days and Times: Tuesday and Thursday 9:30 am - 12:00pm Drop In Begins September 15th and runs till June 26. (Closed Dec. 18 - Jan 5th, not running over March Break)",
+        "schedule_kind": "recurring",
+        "price_evidence": "Cost: $15, one parent/up to 4 children.",
+        "price": "$15 for one parent and up to 4 children",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://www.haltonhillsgymnastics.com/index.php/preschool-kinderfun",
+        "indoor_outdoor": "indoor",
+        "access": "drop_in"
+      },
+      {
+        "name_evidence": "Kindergym: 3-5 Years Boys & Girls age 3 – 5 years. Kindergym is a fun-filled, structured program that improves balance, flexibility, strength and coordination",
+        "name": "Kindergym (3-5 years), Halton Hills Gymnastics Centre",
+        "age_evidence": "Boys & Girls age 3 – 5 years.",
+        "age_fit": "3 - 5 years",
+        "when": "Fall 2026 session: September 12 - December 18 (14 (13) weeks); Winter 2027 session: January 2 - April 1, registration begins October 27th. 55 min class. Tues, Wed, Thur and Sat classes run 12 weeks, Monday 11 weeks, Friday 10 weeks.",
+        "when_evidence": "Fall 2026 Session 14 (13) weeks: September 12 - December 18 Winter 2027 Session 12 (11/10) weeks: January 2 - April 1 - Registration begins October 27th 12 weeks - Tues, Wed, Thur and Sat classes, 11 weeks - Mon, 10 weeks - Fri",
+        "schedule_kind": "term",
+        "source_name": "Halton Hills Gymnastics Centre",
+        "source_url": "https://www.haltonhillsgymnastics.com/index.php/preschool-kinderfun",
+        "indoor_outdoor": "indoor",
+        "access": "register_at_venue"
+      }
+    ]
+  },
+  "latencyMs": 37346
+}

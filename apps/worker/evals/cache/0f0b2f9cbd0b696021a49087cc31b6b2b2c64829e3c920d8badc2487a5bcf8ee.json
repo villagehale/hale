@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "It correctly takes the pasted course link and confirms the watch with the real ten-minute window, which does the job. But it adds two details nothing supports: a 'next morning if it opens overnight' behaviour and a waitlist-first claim. The waitlist line is speculative padding beyond what the parent needed.",
+    "score": 3
+  }
+}

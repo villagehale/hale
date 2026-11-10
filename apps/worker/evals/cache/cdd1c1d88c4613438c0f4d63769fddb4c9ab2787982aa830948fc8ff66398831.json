@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in Arabic, as watchFor requires; that tag overrides the plain-ASCII rule. Both slots are real on the page, with day, times, session dates and the registration window exactly as printed, each cited to the operator URL. Price is correctly null, since the page defers fees to the Recreation Guide. The message leads with the named slots and attributes the facts ('per the Town of Oakville site'). It carries the Aug 11 7 a.m. resident registration opening. Under page_has_schedule it phrases the price gap in the first person ('I could not determine the price'), which is correct. With watch true, the first-person 'I'll keep following up and message you when I find it' is a legitimate commitment. No question, no link, no claim of verification. Minor omissions are the Aug 4 browse date and a pointer to the Recreation Guide; neither is disqualifying.",
+    "score": 5
+  }
+}

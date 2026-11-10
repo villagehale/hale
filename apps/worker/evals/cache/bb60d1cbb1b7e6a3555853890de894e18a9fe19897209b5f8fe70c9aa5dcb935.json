@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots are faithful to the page: Saturday times, Sept 12 to Nov 28, ages 3-5, and the registration line are copied as printed and cited to the Oakville URL. Price is correctly null, since the page defers fees to the Recreation Guide. The message is in Arabic as the fixture requires, so the plain-ASCII rule yields to it. It leads with Preschool A by name, attributes the facts to the Town of Oakville site, and carries the Aug 11, 7 a.m. resident registration date. It contains no link and no question. The price gap is stated in the first person ('I could not pin down the price'), which is the correct form for page_has_schedule. With watch true, the first-person promise to keep watching is backed by a real row. Minor omissions, not faults: the Aug 4 browse date and the note that fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

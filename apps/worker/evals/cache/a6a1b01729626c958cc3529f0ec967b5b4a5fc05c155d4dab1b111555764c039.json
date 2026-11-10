@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message has many strengths. It leads with a real, local, age-fitting program named on the venue's own page: Halton Hills Gymnastics Centre's Parent and Tot, 18 months to 3.11 years. It attributes with \"their site says\", has no link and no question, and uses the first-person watch promise correctly given watch=true. The price gap is phrased in the first person (\"I could not pin down the price\"), which is right under page_has_schedule. There are two problems. First, the pick list is empty even though a genuine find exists, so every date in the message appears nowhere in the picks. Second, \"registration begins Oct 26\" is attached in a way that reads as applying to the program generally. On the page it is the Winter 2027 registration date. A parent could wrongly conclude fall registration doesn't open until after the fall session has started, which is a material misstatement of the source.",
+    "score": 3
+  }
+}
