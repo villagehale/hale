@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { toCoachOffer } from './calendar-offer-read';
-import { receiptLineOk } from './offer-receipt';
+import {
+  OFFER_RECEIPT_ADDRESS,
+  type OfferReceiptFacts,
+  offerReceiptUserMessage,
+} from './offer-receipt';
 
 describe('toCoachOffer', () => {
   it('keeps a past instant for the recorder to refuse', () => {
@@ -33,21 +37,30 @@ describe('toCoachOffer', () => {
   });
 });
 
-describe('receiptLineOk', () => {
-  const facts = {
-    happened: 'added' as const,
+describe('offerReceiptUserMessage', () => {
+  const facts: OfferReceiptFacts = {
+    happened: 'added',
     title: 'Gymnastics',
     when: 'Sunday, Oct 4 at 9:00 a.m.',
-    parentReply: '好的',
+    parentReply: 'Oui, ça me va',
+    language: 'en',
+    googleCalendarConnected: false,
+    placedOn: 'hale_family_calendar',
+    alsoOnGoogle: false,
   };
 
-  it('accepts a line that carries both facts', () => {
-    expect(receiptLineOk('Gymnastics is on your week, Sunday, Oct 4 at 9:00 a.m.', facts)).toBe(
-      true,
-    );
-  });
-
-  it('rejects a line that drops the rendered instant', () => {
-    expect(receiptLineOk('Gymnastics is on your week.', facts)).toBe(false);
+  it('hands the model the save facts, tu address, and the parent’s own words', () => {
+    expect(JSON.parse(offerReceiptUserMessage(facts))).toEqual({
+      happened: 'added',
+      title: 'Gymnastics',
+      when: 'Sunday, Oct 4 at 9:00 a.m.',
+      parentWords: 'Oui, ça me va',
+      language: 'en',
+      address: OFFER_RECEIPT_ADDRESS,
+      googleCalendarConnected: false,
+      placedOn: 'hale_family_calendar',
+      alsoOnGoogle: false,
+    });
+    expect(OFFER_RECEIPT_ADDRESS).toBe('tu');
   });
 });

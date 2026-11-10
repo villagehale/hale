@@ -69,11 +69,6 @@
     "version": null,
     "sha256": "27cea18015ddf86912a654ec57b02449f94ec644b414675bc439ad94a4eb37a8"
   },
-  "judges/carpool": {
-    "name": "judges/carpool",
-    "version": null,
-    "sha256": "80e4c5d204a3a01025497410ed1970d6820b913d113bc3650bd997bc3aedaa8f"
-  },
   "judges/coach-capability-correction": {
     "name": "judges/coach-capability-correction",
     "version": null,
@@ -283,6 +278,11 @@
     "name": "judges/nudge-ask",
     "version": null,
     "sha256": "d69dc1963baf19b20603b6269bdd2c9ff7568913edbc7d9af01e025854885cf0"
+  },
+  "judges/offer-receipt": {
+    "name": "judges/offer-receipt",
+    "version": null,
+    "sha256": "8de36a431c303f079a6603d6f473c84aac02ee6e355f2855b9040866e1fe13e8"
   },
   "judges/opt-out-read": {
     "name": "judges/opt-out-read",
