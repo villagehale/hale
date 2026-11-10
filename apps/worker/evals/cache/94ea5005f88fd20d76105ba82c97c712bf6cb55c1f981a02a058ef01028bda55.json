@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits outcome_waitlisted with no deadline. It acknowledges the waitlist in Riverton and correctly says no position number was handed. It says the town publishes no response window, so there is no clock or reminder to set. Telling the parent to watch their email for an offer is allowed. It asks no question, invents nothing, is in French and names no child. The tone is friendly. It is slightly stiff, but well within what the kind asks.",
+    "score": 5
+  }
+}
