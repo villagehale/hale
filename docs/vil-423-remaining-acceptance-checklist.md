@@ -202,6 +202,11 @@ Cheap inventory procedure: Finder and Coach `--cached-only --preflight` print co
 Downstream request keys depend on unavailable new model responses. Mark those **not yet derivable**, include their bounded call/cost envelope, and capture them only in the approved sequential pass. Never replay an old answer under a new key. **Do not run `HALE_ESTIMATE=1` for this offline exercise:** `spend-cap.mjs` calls provider `messages.countTokens` before its estimate branch and writes estimate entries to the shared ledger.
 
 ## Historical 2026-10-22 diagnostic inputs — not current execution freeze
+# VIL-423 — single remaining recording / acceptance checklist (2026-10-22)
+
+Status: **paid-call hold; no recording authorization**. This is the shared checklist for #875 and #877, not a request to run either suite live. It separates missing exact recordings from real quality failures. Documentation-only updates do not repair either kind.
+
+## Frozen diagnostic inputs
 
 - Finder #875 source head: `eed4d5713f8ce6d38b919465eec48aa82097e058`.
 - Registration #877 source head: `ee7dd93e2362e9563577c63c500b8d75084ac664`.
@@ -220,6 +225,7 @@ Downstream request keys depend on unavailable new model responses. Mark those **
 | Finder `apps/worker/evals/run-activity-finder-eval.mjs` | `214c3fd1a52b37d3c60009fd21fd3ccc72d36bd494155b176d7e890c9f896b99` |
 
 ## Historical missing recordings: observed first unanswered requests
+## Missing recordings: observed first unanswered requests
 
 Cloud evidence: [#875 Worker](https://github.com/villagehale/hale/actions/runs/39702566599/job/119575074022), [#877 Worker](https://github.com/villagehale/hale/actions/runs/39690991266/job/119536940859), [#877 workspace](https://github.com/villagehale/hale/actions/runs/39690991266/job/119536834179). Registration localized failures and Finder Coach miss were also reproduced locally.
 
@@ -259,6 +265,7 @@ The first 13 writer requests were captured from the real composers without suppl
 Root cause: replay hashes include the current model, thinking mode, skill text and projected user message. Existing historical answers are not answers to the changed request. The composers safely return no sendable copy on a miss; the tests deliberately assert there were no misses, so those catches cannot hide missing coverage. Restoring the old prompt or weakening that assertion is not a repair.
 
 ## Historical genuine quality failures — not recording-only
+## Genuine quality failures — not recording-only
 
 Direct #875 `node evals/run-activity-finder-eval.mjs --cached-only` completed at the source head above: **3/8 pass, 5/8 fail; 0 live API calls / $0**. No hidden original-cache fallback was loaded.
 
@@ -273,6 +280,7 @@ Direct #875 `node evals/run-activity-finder-eval.mjs --cached-only` completed at
 These remain failures. Re-recording might produce different answers but does not establish a fix. Do not weaken stage/source/price gates, promote unknown references into verified picks, or reroll until green. The shared evidence/selection/final-copy boundary needs a reviewed fix followed by approved model acceptance.
 
 ## Historical checks — current acceptance still pending
+## What is green / what remains
 
 - Fresh #877 local deterministic registration checks: **29 files, 696 pass / 2 skip**; additional Coach registration-tool + intake-answer checks **35 pass**. They cover mechanics, not real AI wording. The localized recording suite was run separately and remains **16/16 failed**.
 - #877 cloud workspace had **10,656 pass / 16 fail / 7 skip** in Web tests; all 16 failures are in that localized suite. Other diagnostic stderr from deliberate failure-injection tests is not another failing test.
@@ -292,6 +300,15 @@ This is the **one consolidated remaining request**, not another approved allowan
 - **Original estimate: US$18.25; amended planning estimate: US$19.45. Proposed hard additional ceiling: US$20.00.** Unchanged exact cache hits cost $0 and are reused; the table conservatively budgets every listed case. #877 still requires post-rebase input confirmation before running, and dependent keys can only be observed after approved new upstream responses.
 - Read-only original ledger snapshot: **US$14.233469475 spent, 576 calls, US$0 reserved**. Current cumulative cap is US$15, leaving **US$0.766530525**, which is neither enough for this proposal nor authorization to use it.
 - This is explicitly a request to increase the **same ledger's cumulative ceiling** to **US$34.233469475**, not to start a new ledger or claim another $20 is already approved. Preliminary amended estimated cumulative spend would be **US$33.683469475** (original estimate: US$32.483469475). If Barton does not approve that higher ceiling, nothing live runs; reduce/reprice the scope here instead.
+## Single priced request — proposal only, awaiting Barton's explicit approval
+
+This is the **one consolidated remaining request**, not another approved allowance. It replaces unpriced placeholders in this checklist; historical estimates in the original #872 docs are not current permission. No approval card has been tapped and no new paid call has run.
+
+### Amount and accounting
+
+- **Estimated additional allowance: US$18.25. Proposed hard additional ceiling: US$20.00.** Unchanged exact cache hits cost $0 and are reused; the table conservatively budgets every listed case.
+- Read-only original ledger snapshot: **US$14.233469475 spent, 576 calls, US$0 reserved**. Current cumulative cap is US$15, leaving **US$0.766530525**, which is neither enough for this proposal nor authorization to use it.
+- This is explicitly a request to increase the **same ledger's cumulative ceiling** to **US$34.233469475**, not to start a new ledger or claim another $20 is already approved. Estimated cumulative spend would be **US$32.483469475**. If Barton does not approve that higher ceiling, nothing live runs; reduce/reprice the scope here instead.
 - No environment variable, ledger content or configured cap was changed while preparing this request. Keep the historical refusal entry and all earlier usage; no reset, refund assumption or budget bypass.
 - Price is a planning allowance derived offline from returned historical usage and the repository's billing table, **not a newly verified provider quote or a token-count API call**. Search/result size, reasoning, cache misses and bounded production retries can change actual cost. Reserve each call's maximum charge before it runs; an insufficient reservation stops the run even if actual usage might have been lower.
 - One frozen pass per slice/case, not reroll-until-green. Existing runtime-bounded retries count toward the same ceiling; no manual quality reruns, paid new models, MinerU service or screenshot experiments. Real failures remain failures and are reported.
@@ -312,6 +329,7 @@ This is the **one consolidated remaining request**, not another approved allowan
 | Added journey writer envelope (table above) | 9 / 8 unique writers | $0.10 / unique writer | $0.80 |
 | Group privacy (new main, same Coach prompt) | 4 case executions | $0.10 | $0.40 |
 | **Amended planning envelope — #875 reconciled; #877 later re-freeze required** | **153 case executions** | | **$19.45** |
+| **Total planning envelope** | **140 case executions** | | **$18.25** |
 | **Hard additional ceiling requested** | | | **$20.00** |
 
 A case is **not** one API call. Coach can use up to six agent steps plus its existing bounded truncation recovery and three judge draws; Finder/deep include the relevant extraction, final copy and judge legs. Localized closing-soon includes the extra independent waitlist-deadline parse. The allowances cover those legs, not just the first missing key. The ceiling is not a guarantee that all cases finish.
@@ -453,6 +471,8 @@ Offline basis from the **same** historical ledger (multiple earlier passes, not 
 
 1. #876 is already merged/deployed; its earlier backup/window checkpoint is historical, not a remaining gate or new production approval. This request authorizes no production operation.
 2. Follow #875 → #877. Before executing each model phase, pin that slice's final head, prompt/tool/projection hashes and current exact misses. Do not buy recordings for the provisional integration worktree. If the priced case set/model/request contract changes, amend this **same** request for review before calling.
+1. #876 is first. Its exact documentation head `81d0273565a8f84e363c3754ea15d1dbd9e6f2fb` now has **all Actions checks green**, including workspace, cached Worker and Web E2E. Production backup/restore preflight and merge-window approval remain separate.
+2. Follow #876 → #875 → #877. Before executing each model phase, pin that slice's final head, prompt/tool/projection hashes and current exact misses. Do not buy recordings for the provisional integration worktree. If the priced case set/model/request contract changes, amend this **same** request for review before calling.
 3. Obtain Barton's explicit card approval for this amount/scope and ceiling. This document is not the card and does not approve itself. If separate slices require a different ceiling, stop and amend rather than quietly running against the old $15.
 4. Execute sequentially on the unchanged shared ledger, credentials available only after approval, SDK automatic retries disabled. Every paid model/judge leg and web-search fee is charged to this request. Never run a live whole-suite fallback just to discover what else is missing.
 5. Reuse exact hits; record actual calls/cost by case and stop at the proposed hard ceiling, a budget refusal, an unlisted request, or a required prompt/schema change. A failed acceptance is reported; it does not authorize another paid sample. Post verbatim successes/failures and requested language samples for review before committing recordings, then replay and require each PR's exact-head CI green.

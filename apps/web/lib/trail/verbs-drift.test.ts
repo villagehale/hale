@@ -46,6 +46,10 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'registration_sequence_leg_sent',
     'registration_date_moved_sent',
   ],
+  'apps/web/lib/registration/sequence/watch-storage.ts': [
+    'registration_watch_created',
+    'registration_watch_reused',
+  ],
   // VIL-559. The crisis pager writes its audit row from CRISIS_UNANSWERED_AUDIT_ACTION.
   'apps/web/lib/monitoring/failure-page.ts': ['crisis_unanswered'],
   // VIL-472 and VIL-473. One recorder writes the tapback, the sticker, and the effect.
