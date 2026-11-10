@@ -646,30 +646,46 @@ describe('VIL-543 · the leg notes are facts for the model', () => {
     });
   });
 
-  it('hands both waitlist guards the municipality’s own window and the stored deadline', () => {
-    // 03:00 UTC on 17 Sep is 23:00 on 16 Sep in Toronto.
+  it('hands both waitlist guards where the clock started and the deadline counted from it', () => {
+    // 15:00 UTC on 15 Sep is 11:00 in Toronto; 48h later is 11:00 on 17 Sep.
     const input = {
       ...LEG_INPUT,
       shortlist: shortlist({ waitlistResponseHours: 48 }),
-      waitlist: { position: 12, deadlineAt: new Date('2026-09-17T03:00:00.000Z') },
+      waitlist: { position: 12, startedAt: new Date('2026-09-15T15:00:00.000Z') },
     };
-    const deadline = { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' };
+    const clockFrom = { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' };
+    const deadline = { date: 'Thursday, September 17, 2026', time: '11:00 a.m.' };
     expect(legNoteFacts('waitlist_half', input)).toMatchObject({
       kind: 'waitlist_halfway',
       town: 'Richmond Hill',
       responseHours: 48,
+      clockFrom,
       deadline,
     });
     expect(legNoteFacts('waitlist_final', input)).toMatchObject({
       kind: 'waitlist_final',
       responseHours: 48,
+      clockFrom,
       deadline,
       hoursLeft: 2,
     });
-    // No clock on file is a null deadline, never a Hale default.
+    // No clock on file is a null deadline and a null start, never a Hale default.
     expect(
-      legNoteFacts('waitlist_half', { ...LEG_INPUT, waitlist: { position: 3, deadlineAt: null } }),
-    ).toMatchObject({ deadline: null });
+      legNoteFacts('waitlist_half', { ...LEG_INPUT, waitlist: { position: 3, startedAt: null } }),
+    ).toMatchObject({ clockFrom: null, deadline: null });
+  });
+
+  it('counts each guard’s deadline from its own start and the town’s own hours', () => {
+    // Positive control for the sum: the same start with 36h lands a day and a half on.
+    const facts = legNoteFacts('waitlist_final', {
+      ...LEG_INPUT,
+      shortlist: shortlist({ waitlistResponseHours: 36 }),
+      waitlist: { position: null, startedAt: new Date('2026-09-15T15:00:00.000Z') },
+    });
+    expect(facts).toMatchObject({
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
+      deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
+    });
   });
 });
 
@@ -683,36 +699,42 @@ describe('VIL-543 · the check-in answer is facts for the model', () => {
     });
   });
 
-  it('hands a waitlist its position and the deadline actually stored', () => {
+  it('hands a waitlist its position, where the clock started and the deadline from it', () => {
     expect(
       checkInOutcomeFacts({
         ...base,
         reply: {
           outcome: 'waitlisted',
           position: 12,
-          deadlineAt: new Date('2026-09-17T03:00:00.000Z'),
+          startedAt: new Date('2026-09-15T15:00:00.000Z'),
         },
       }),
     ).toMatchObject({
       kind: 'outcome_waitlisted',
       position: 12,
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
     });
   });
 
-  it('hands no deadline where the municipality publishes no response window', () => {
+  it('hands no clock where the municipality publishes no response window', () => {
     expect(
       checkInOutcomeFacts({
         shortlist: shortlist({ waitlistResponseHours: null }),
         timeZone: TZ,
         now: NOW,
-        reply: { outcome: 'waitlisted', position: null, deadlineAt: null },
+        reply: {
+          outcome: 'waitlisted',
+          position: null,
+          startedAt: new Date('2026-09-15T15:00:00.000Z'),
+        },
       }),
     ).toMatchObject({
       kind: 'outcome_waitlisted',
       position: null,
       responseHours: null,
+      clockFrom: null,
       deadline: null,
     });
   });

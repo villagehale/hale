@@ -19,6 +19,7 @@ import {
   type SequenceLeg,
   type SequenceOptIn,
   WAITLIST_FINAL_LEAD_HOURS,
+  waitlistDeadline,
 } from './schedule.js';
 import type { FitNote, Shortlist } from './shortlist.js';
 
@@ -68,12 +69,12 @@ export interface LegCopyInput {
    * does not read one. */
   prep: PrepCopyInput | null;
   /** Present only for the two waitlist guards. */
-  waitlist?: { position: number | null; deadlineAt: Date | null };
+  waitlist?: { position: number | null; startedAt: Date | null };
 }
 
 export type CheckInReplyRender =
   | { outcome: 'registered' }
-  | { outcome: 'waitlisted'; position: number | null; deadlineAt: Date | null }
+  | { outcome: 'waitlisted'; position: number | null; startedAt: Date }
   | { outcome: 'missed' };
 
 export interface CheckInReplyInput {
@@ -490,6 +491,21 @@ function moment(instant: Date, timeZone: string): Moment {
 }
 
 /**
+ * The waitlist clock as the writer is handed it: where the count started (the parent's
+ * own message; Hale never sees the offer email) and the deadline counted from there.
+ * Both or neither, so a note can never state a deadline without its start.
+ */
+function waitlistClock(
+  startedAt: Date | null,
+  responseHours: number | null,
+  timeZone: string,
+): { clockFrom: Moment | null; deadline: Moment | null } {
+  const deadline = startedAt === null ? null : waitlistDeadline(startedAt, responseHours);
+  if (startedAt === null || deadline === null) return { clockFrom: null, deadline: null };
+  return { clockFrom: moment(startedAt, timeZone), deadline: moment(deadline, timeZone) };
+}
+
+/**
  * VIL-543 · facts for the three legs that are not the heads-up, the evening or the
  * morning-of text: the readiness checklist, the check-in and the two waitlist guards.
  * The model writes the whole text (note-compose.ts). There is no code sentence.
@@ -527,11 +543,14 @@ export function legNoteFacts(
       return { kind: 'check_in_ask', now, window: windowPhrase(shortlist) };
     case 'waitlist_half':
     case 'waitlist_final': {
-      const deadline = input.waitlist?.deadlineAt ?? null;
       const clock = {
         town: townLabel(shortlist.windowRef.municipality),
         responseHours: shortlist.waitlistResponseHours,
-        deadline: deadline === null ? null : moment(deadline, input.timeZone),
+        ...waitlistClock(
+          input.waitlist?.startedAt ?? null,
+          shortlist.waitlistResponseHours,
+          input.timeZone,
+        ),
       };
       return leg === 'waitlist_half'
         ? { kind: 'waitlist_halfway', now, ...clock }
@@ -574,10 +593,7 @@ export function checkInOutcomeFacts(input: CheckInReplyInput): RegistrationNoteF
     town,
     position: reply.position,
     responseHours: shortlist.waitlistResponseHours,
-    deadline:
-      shortlist.waitlistResponseHours === null || reply.deadlineAt === null
-        ? null
-        : moment(reply.deadlineAt, input.timeZone),
+    ...waitlistClock(reply.startedAt, shortlist.waitlistResponseHours, input.timeZone),
   };
 }
 
