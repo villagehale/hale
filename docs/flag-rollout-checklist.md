@@ -58,6 +58,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `EMAIL_ALERT_HOLD_DEBT_ENABLED` | `apps/web/lib/integrations/email-alert-hold-flag.ts:14` | `true` | OFF | unset | Barton |
 | `F14_ENABLED` | `apps/web/lib/channel/f14.ts:26` | `true` | OFF | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | `apps/web/lib/memory/kinds.ts:96` | `true` | OFF | `false` | Noah |
+| `FINDER_SOURCE_BINDING_ENABLED` | `apps/web/lib/channel/activity/flag.ts:15` | `true` | OFF | unset, or anything except `true` | Eugene |
 | `FIRST_REPLY_ACTION_LINE` | `apps/web/lib/channel/intake/action-line.ts:106` | `true` | OFF | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:20` | `on` | OFF | empty, or `off` | Sloane |
 | `FIRST_TOUCH_LOCATION_CARD_ENABLED` | `apps/web/lib/channel/intake/first-touch-flag.ts:26` | `true` | OFF | `false` | Noah |
@@ -240,6 +241,7 @@ Code is merged for every row.
 | `EMAIL_ALERT_ENABLED` | Hale tells the parent what a parenting email says, in their 1:1, and the booked-detection backfill may run (lane notes under [Every flag](#every-flag)). | The common checks above. | unset | Barton |
 | `F14_ENABLED` | Hale may start a conversation (nudges, evening check-in, and the other proactive sweeps that read this flag). | Any outbound with no inbound from that parent the same day. | `false` | Noah |
 | `FAMILY_MEMORY_KINDS_ENABLED` | Memory reads start using kind and expiry. The model writes the parent reply. A miss holds it. | A "what do you know" reply that leaves while the model did not write it. | `false` | Noah |
+| `FINDER_SOURCE_BINDING_ENABLED` | Finder picks must quote the page they were read from. Unconfirmed finds stay references. Off keeps main's pick path. | A parent-facing sentence that names a date, age, or price the cited page does not carry. | unset | Eugene |
 | `FIRST_REPLY_ACTION_LINE` | The first radar reply may include the action URL. | Replies that contain a URL the parent did not ask for. | `false` | Sloane |
 | `FIRST_TOUCH_LADDER_ENABLED` | A new parent is asked for a place, then shown a week find, before the older hello. | First-session `channel_messages` with status `failed`. | empty, or `off` | Sloane |
 | `FOLLOWUP_ASKS_ENABLED` | Hale may check back after an introduction. | A second follow-up to the same family the same day. | `false` | Noah |

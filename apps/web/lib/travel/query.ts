@@ -1,3 +1,6 @@
+import { qualifyActivityLocation } from '~/lib/channel/activity/location';
+import usPostalPlaces from '~/lib/channel/off-domain/postal-cities/us.json';
+
 /**
  * WHAT HALE ASKS THE WEB ABOUT A DESTINATION — the subject, the window and the place, all
  * three composed by CODE.
@@ -74,10 +77,27 @@ export function travelWindow(startsOn: string, endsOn: string): string {
 }
 
 /**
- * THE PLACE. "New York, NY" — and THE COMMA IS CODE'S, composed here from two columns,
- * never written by the model. `destinationShape` refuses a comma in either column at the
- * parse boundary precisely so that this is the only place one can appear.
+ * Country qualification uses the existing postal geography, not a guess from a state
+ * abbreviation. Unmapped US city/state pairs remain unqualified and fail admission.
  */
 export function travelDestination(city: string, region: string | null): string {
-  return region === null || region.trim() === '' ? city : `${city}, ${region}`;
+  const state = usPostalPlaces.regions.findIndex(
+    (name, index) =>
+      name.toLowerCase() === region?.trim().toLowerCase() ||
+      usPostalPlaces.regionCodes[index] === region?.trim().toUpperCase(),
+  );
+  const town = usPostalPlaces.cities.findIndex(
+    (name) => name.toLowerCase() === city.trim().toLowerCase(),
+  );
+  const usPlace =
+    state >= 0 &&
+    town >= 0 &&
+    usPostalPlaces.cityOf.some(
+      (place, index) => place === town && usPostalPlaces.regionOf[index] === state,
+    );
+  return qualifyActivityLocation(
+    city,
+    usPlace ? usPostalPlaces.regionCodes[state] : region,
+    usPlace ? 'United States' : null,
+  );
 }

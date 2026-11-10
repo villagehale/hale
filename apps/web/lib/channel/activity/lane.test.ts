@@ -1,5 +1,5 @@
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { isStage } from '~/lib/testing/structured-reply';
 import type { ActivityQuery } from './deidentify';
@@ -12,6 +12,24 @@ import {
   stampReadPageUrl,
   toPicks,
 } from './lane';
+import * as activityPage from './page';
+
+const PROGRAM_TEXT =
+  'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre. 18 months - 3 years. Saturdays 9:15am, fall session from Sept 13. $142 for 12 weeks.';
+
+beforeEach(() => {
+  vi.stubEnv('FINDER_SOURCE_BINDING_ENABLED', 'true');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+vi.mock('./page', () => ({
+  createActivityPageFetch: () => async (url: string) => ({
+    url,
+    text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+  }),
+}));
 
 /**
  * THE LANE'S MECHANICS AND ITS INVARIANTS — not its judgement.
@@ -30,7 +48,7 @@ import {
 const QUERY: ActivityQuery = {
   subject: 'toddler gymnastics',
   window: 'this fall',
-  town: 'Halton Hills',
+  town: 'Halton Hills, Ontario, Canada',
   stage: 'toddler',
 };
 
@@ -69,18 +87,27 @@ const composeResult = (input: unknown) => ({
 });
 
 const WHOLE_PICK = {
+  name_evidence: 'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre.',
   name: 'Parent & Tot Gymnastics, Halton Hills Gymnastics Centre',
+  age_evidence: '18 months - 3 years.',
   age_fit: '18 months - 3 years',
+  when_evidence: 'Saturdays 9:15am, fall session from Sept 13.',
+  schedule_kind: 'recurring' as const,
   when: 'Saturdays 9:15am, fall session from Sept 13',
+  price_evidence: '$142 for 12 weeks.',
   price: '$142 for 12 weeks',
   source_name: 'Halton Hills Gymnastics Centre',
+  source_url: 'https://venue.example/0',
 };
 
 interface Seen {
-  tools?: Array<{ type?: string; max_uses?: number }>;
+  tools?: Array<{ name?: string; type?: string; max_uses?: number; input_schema?: unknown }>;
   toolChoice?: string;
   userMessage?: string;
-  system?: unknown;
+  system?: string;
+  outputSchema?: unknown;
+  thinking?: unknown;
+  maxTokens?: number;
 }
 
 type PhaseResponse = unknown | (() => unknown) | Error;
@@ -96,9 +123,15 @@ function makeClient(
         const isCompose = isStage(req, 'activity_picks', 'picks');
         seen.push({
           tools: req.tools,
-          toolChoice: isCompose ? 'activity_picks' : req.tools?.[0]?.name,
+          toolChoice: isCompose ? 'activity_picks' : undefined,
+          outputSchema: req.output_config?.format?.schema,
+          thinking: req.thinking,
+          maxTokens: req.max_tokens,
           userMessage: req.messages?.[0]?.content,
-          system: req.system,
+          system:
+            typeof req.system === 'string'
+              ? req.system
+              : req.system?.map((block: { text: string }) => block.text).join('\n'),
         });
         const pick = isCompose ? script.compose : script.ground;
         const resolved = typeof pick === 'function' ? (pick as () => unknown)() : pick;
@@ -119,16 +152,24 @@ function makeClient(
 const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
 
 describe('the payloads', () => {
+  it('keeps stored trip dates out of web search and uses them only for fact extraction', () => {
+    const query = { ...QUERY, dateRange: { start: '2026-10-16', end: '2026-10-17' } };
+    expect(groundUserMessage(query)).toBe(groundUserMessage(QUERY));
+    expect(
+      JSON.parse(composeUserMessage(query, 'the notes', new Date('2026-10-15T12:00:00Z')))
+        .requested_date_range,
+    ).toEqual(query.dateRange);
+  });
   it('sends the de-identified query and nothing else', () => {
     expect(groundUserMessage(QUERY)).toBe(
-      '{"subject":"toddler gymnastics","town":"Halton Hills","stage":"toddler","window":"this fall"}',
+      '{"subject":"toddler gymnastics","town":"Halton Hills, Ontario, Canada","stage":"toddler","window":"this fall"}',
     );
   });
 
   it('carries the family-local day when it is known, and no key when it is not (VIL-435)', () => {
     expect(JSON.parse(groundUserMessage({ ...QUERY, today: '2026-10-12 (Monday)' }))).toEqual({
       subject: 'toddler gymnastics',
-      town: 'Halton Hills',
+      town: QUERY.town,
       stage: 'toddler',
       window: 'this fall',
       today: '2026-10-12 (Monday)',
@@ -156,10 +197,8 @@ describe('the payloads', () => {
     const dated = await systems({ ...QUERY, today: '2026-10-12 (Monday)' });
     const plain = await systems(QUERY);
 
-    expect(dated.length).toBeGreaterThan(0);
-    for (const system of dated) expect(system).toContain(addendum);
-    expect(plain.length).toBeGreaterThan(0);
-    for (const system of plain) expect(system).not.toContain(addendum);
+    expect(dated.some((system) => system.includes(addendum))).toBe(true);
+    expect(plain.every((system) => !system.includes(addendum))).toBe(true);
   });
 
   it('omits a stage it does not have rather than sending a placeholder', () => {
@@ -172,11 +211,72 @@ describe('the payloads', () => {
     const payload = JSON.parse(composeUserMessage(QUERY, 'the notes'));
     expect(payload).toEqual({
       subject: 'toddler gymnastics',
-      town: 'Halton Hills',
+      town: 'Halton Hills, Ontario, Canada',
       stage: 'toddler',
       window: 'this fall',
       research_notes: 'the notes',
     });
+  });
+
+  it('sends only Step 2 to extraction and leaves the search prompt intact', async () => {
+    const seen: Seen[] = [];
+    await createActivityFinder(
+      makeClient(
+        { ground: groundResult(2), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    ).find(QUERY);
+    const ground = seen.find((call) => !call.toolChoice)?.system;
+    const compose = seen.find((call) => call.toolChoice === 'activity_picks')?.system;
+    expect(ground).toContain('## Step 1 — RESEARCH');
+    expect(ground).toContain('## Step 3 — THE FOLLOW-UP TEXT');
+    expect(ground).toContain('Tiny Gym Sundays 9:30');
+    const extractStart = ground?.indexOf('## Step 2 — EXTRACT') ?? -1;
+    expect(extractStart).toBeGreaterThan(0);
+    expect(compose).toBe(
+      ground?.slice(extractStart).split('\n## Step 3 — THE FOLLOW-UP TEXT')[0]?.trimEnd(),
+    );
+    expect(compose).toContain('## Step 2 — EXTRACT');
+    expect(compose).toContain('a verbatim');
+    expect(compose).toContain('quote the exact text');
+    expect(compose).toContain('Dated occurrences use `sessions`');
+    expect(compose).toContain('never invent a');
+    expect(compose).not.toContain('## Step 1');
+    expect(compose).not.toContain('Search NOW');
+    expect(compose).not.toContain('## Step 3');
+    expect(compose).not.toContain('Tiny Gym Sundays 9:30');
+    expect(compose).not.toContain('about 300');
+  });
+
+  it('requests optional price evidence before price without exposing it to callers', async () => {
+    const seen: Seen[] = [];
+    const result = await createActivityFinder(
+      makeClient(
+        {
+          ground: groundResult(2),
+          compose: composeResult({
+            picks: [{ ...WHOLE_PICK, price_evidence: '$142 for 12 weeks' }],
+          }),
+        },
+        seen,
+      ),
+    ).find(QUERY);
+    const compose = seen.find((call) => call.toolChoice === 'activity_picks');
+    const schema = compose?.outputSchema as {
+      properties: { picks: { items: { properties: Record<string, unknown>; required: string[] } } };
+    };
+    const item = schema.properties.picks.items;
+    const fields = Object.keys(item.properties);
+    expect(item.properties.price_evidence).toEqual({ type: 'string' });
+    expect(fields.indexOf('price_evidence')).toBe(fields.indexOf('price') - 1);
+    expect(item.required).not.toContain('price_evidence');
+    expect(item.required).not.toContain('price');
+    expect(compose?.system).toContain('"price_evidence": "$142 for 12 weeks"');
+    expect(compose?.system?.replace(/\s+/g, ' ')).toContain(
+      'omit both `price_evidence` and `price`',
+    );
+    expect(result).toMatchObject({ found: true, picks: [{ price: '$142 for 12 weeks' }] });
+    expect(result.found && result.picks[0]).not.toHaveProperty('price_evidence');
   });
 });
 
@@ -222,6 +322,155 @@ describe('the grounding request the eval corpus replays', () => {
 });
 
 describe('an ungrounded find never ships', () => {
+  it('extracts from the canonical moved page without first spending a call on thinking', async () => {
+    const current = 'https://venue.example/current';
+    const fetch = vi
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url: url === current ? url : current,
+        text: `Halton Hills, Ontario, Canada. ${PROGRAM_TEXT}`,
+      }));
+    const seen: Seen[] = [];
+    try {
+      const result = await createActivityFinder(
+        makeClient(
+          {
+            ground: groundResult(1),
+            compose: composeResult({ picks: [{ ...WHOLE_PICK, source_url: current }] }),
+          },
+          seen,
+        ),
+      ).find(QUERY);
+      expect(result).toMatchObject({ found: true, picks: [{ sourceUrl: current }] });
+      expect(seen).toHaveLength(2);
+      expect(seen[1]?.thinking).toEqual({ type: 'between_tools' });
+      expect(seen[1]?.maxTokens).toBe(2000);
+      expect(seen[1]?.userMessage).toContain(`SOURCE: ${current}`);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+  it('reads a region-qualified source ahead of same-name foreign search hits', async () => {
+    const officialUrl = 'https://attend.bpl.on.ca/event/123';
+    const ground = groundResult(4);
+    const results = ground.content[1]!.content as Array<{ url: string }>;
+    results[3]!.url = officialUrl;
+    const urls: string[] = [];
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async (url) => {
+      urls.push(url);
+      return {
+        url,
+        text:
+          url === officialUrl
+            ? `Burlington, ON, L7R 1J4. ${PROGRAM_TEXT}`
+            : 'Burlington, WA 98233 United States',
+      };
+    });
+    try {
+      const found = await createActivityFinder(
+        makeClient({
+          ground,
+          compose: composeResult({ picks: [{ ...WHOLE_PICK, source_url: officialUrl }] }),
+        }),
+      ).find({ ...QUERY, town: 'Burlington, Ontario, Canada' });
+      expect(found).toMatchObject({ found: true, picks: [{ sourceUrl: officialUrl }] });
+      expect(urls[0]).toBe(officialUrl);
+      expect(urls).toHaveLength(3);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('excludes wrong-region page text and cannot cite that page after composition', async () => {
+    const fetch = vi
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: url.endsWith('/0')
+          ? 'Burlington, WA 98233 United States'
+          : `2331 New Street, Burlington, ON L7R 1J4. Preschool storytime. ${PROGRAM_TEXT}`,
+      }));
+    const seen: Seen[] = [];
+    try {
+      const found = await createActivityFinder(
+        makeClient(
+          {
+            ground: groundResult(2),
+            compose: composeResult({
+              picks: [
+                WHOLE_PICK,
+                { ...WHOLE_PICK, name: 'Ontario storytime', source_url: 'https://venue.example/1' },
+              ],
+            }),
+          },
+          seen,
+        ),
+      ).find({ ...QUERY, town: 'Burlington, Ontario, Canada' });
+      expect(found).toMatchObject({ found: true, picks: [{ name: 'Ontario storytime' }] });
+      const compose = seen.find((call) => call.toolChoice === 'activity_picks');
+      expect(compose?.userMessage).not.toContain('United States');
+      expect(compose?.userMessage).toContain('Burlington, ON L7R 1J4');
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('holds the real wrong-country page before compose and admits its matching location', async () => {
+    const fetch = vi
+      .spyOn(activityPage, 'createActivityPageFetch')
+      .mockReturnValue(async (url) => ({
+        url,
+        text: `Burlington Public Library 820 E Washington Ave. Burlington , WA 98233 United States. ${PROGRAM_TEXT}`,
+      }));
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(1), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    try {
+      expect(await finder.find({ ...QUERY, town: 'Burlington, Ontario, Canada' })).toMatchObject({
+        found: false,
+        reason: 'location_unverified',
+        searched: { references: [], checkedSources: [expect.stringContaining('https://')] },
+      });
+      expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+      expect(await finder.find({ ...QUERY, town: 'Burlington, WA, United States' })).toMatchObject({
+        found: true,
+      });
+      expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(true);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('does not compose from date-bearing snippets when every fresh source read fails', async () => {
+    const fetch = vi.spyOn(activityPage, 'createActivityPageFetch').mockReturnValue(async () => {
+      throw Error('source unavailable');
+    });
+    const seen: Seen[] = [];
+    const finder = createActivityFinder(
+      makeClient(
+        { ground: groundResult(1), compose: composeResult({ picks: [WHOLE_PICK] }) },
+        seen,
+      ),
+    );
+    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
+    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+    fetch.mockRestore();
+  });
+  it('drops a composed URL that was not among the pages just read', async () => {
+    const finder = createActivityFinder(
+      makeClient({
+        ground: groundResult(1),
+        compose: composeResult({
+          picks: [{ ...WHOLE_PICK, source_url: 'https://another.org/schedule' }],
+        }),
+      }),
+    );
+    expect(await finder.find(QUERY)).toMatchObject({ found: false, reason: 'no_picks' });
+  });
   it('fails NAMED when the search returned no results, and never composes', async () => {
     const restore = quiet();
     const seen: Seen[] = [];
@@ -246,7 +495,7 @@ describe('an ungrounded find never ships', () => {
    * the lane composed from "" — and a composer handed no research either invents a venue
    * or shrugs, and shrugging is what a parent got. Search RESULTS are not RESEARCH.
    */
-  it('fails NAMED when the search ran but wrote no research to stand on', async () => {
+  it('fresh page text supports extraction even when search returned no prose', async () => {
     const restore = quiet();
     const seen: Seen[] = [];
     const finder = createActivityFinder(
@@ -256,8 +505,8 @@ describe('an ungrounded find never ships', () => {
       ),
     );
 
-    expect(await finder.find(QUERY)).toEqual({ found: false, reason: 'not_grounded' });
-    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(false);
+    expect(await finder.find(QUERY)).toMatchObject({ found: true });
+    expect(seen.some((call) => call.toolChoice === 'activity_picks')).toBe(true);
     restore.mockRestore();
   });
 
@@ -345,7 +594,15 @@ describe('a pick is whole or it is not a pick', () => {
     );
 
     const result = await finder.find(QUERY);
-    expect(result.found && result.picks[0]).toMatchObject({ name: WHOLE_PICK.name });
+    if (_l === 'WHEN') {
+      expect(result).toMatchObject({
+        found: false,
+        reason: 'no_picks',
+        searched: { references: [{ name: WHOLE_PICK.name, status: 'unconfirmed', when: null }] },
+      });
+    } else {
+      expect(result.found && result.picks[0]).toMatchObject({ name: WHOLE_PICK.name });
+    }
   });
 
   it('carries the unpublished detail as null rather than as a guess', async () => {
@@ -357,7 +614,11 @@ describe('a pick is whole or it is not a pick', () => {
     );
 
     const result = await finder.find(QUERY);
-    expect(result.found && result.picks[0]).toMatchObject({ when: null, price: null });
+    expect(result).toMatchObject({
+      found: false,
+      reason: 'no_picks',
+      searched: { references: [{ name: WHOLE_PICK.name, when: null, price: null }] },
+    });
   });
 
   it('keeps the whole ones and drops the broken one from the same list', async () => {
@@ -559,7 +820,7 @@ describe('the read pass: real search results never end empty without reading pag
     return () => composeResult(outs[Math.min(n++, outs.length - 1)]);
   };
   const fetchGranted = (s: Seen) => (s.tools ?? []).some((t) => t.type === 'web_fetch_20260209');
-  const grounds = (seen: Seen[]) => seen.filter((s) => s.toolChoice === 'web_search');
+  const grounds = (seen: Seen[]) => seen.filter((s) => !s.toolChoice);
 
   it('re-grounds once with the page budget when snippets alone gave no picks', async () => {
     quiet();
@@ -615,7 +876,7 @@ describe('an empty find says what it searched', () => {
     expect(result).toMatchObject({
       found: false,
       reason: 'no_picks',
-      searched: { town: 'Halton Hills' },
+      searched: { town: QUERY.town },
     });
     expect(result.found === false && result.searched?.notes.length).toBeGreaterThan(0);
   });

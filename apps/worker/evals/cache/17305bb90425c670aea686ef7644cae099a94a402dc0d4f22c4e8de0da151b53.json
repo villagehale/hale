@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Hale returned no picks. Nothing it returned is wrong: there are no TERM-style programmes, invented venues, aggregator sources or wrong-city picks. But the output gives the family nothing to turn up to. Hale read only one page and was refused two. That one page was a usable candidate: the Biosphère, from Parc Jean-Drapeau's own municipal page. It is a real, specific museum in Montréal. The notes show a December schedule of 9 a.m. to 5 p.m., though the text is cut off before it confirms the exact days. A null `when` or `price` would not have been a fault, so even with that uncertainty the Biosphère could reasonably have been offered as an open-in-December museum. An empty list for a late-December visit, when open venues exist and one was already in hand, is a meaningful miss rather than an honest 'nothing open'.",
+    "score": 2
+  }
+}

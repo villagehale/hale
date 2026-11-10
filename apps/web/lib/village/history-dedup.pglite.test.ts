@@ -44,7 +44,7 @@ describe('family-local recommendation history', () => {
     expect(find).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(find.mock.calls)).not.toContain(pick.sourceUrl);
     expect(JSON.stringify(find.mock.calls)).not.toContain('Private child name');
-    expect(find.mock.calls[0]?.[0].town).toBe('Toronto');
+    expect(find.mock.calls[0]?.[0].town).toBe('Toronto, Ontario, Canada');
   });
 
   it('VIL-451 · a repeat parent read still shows the current activity, on the same receipt', async () => {

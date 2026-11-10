@@ -6,7 +6,6 @@ import {
   deidentifyActivitySubject,
   refusalSentence,
 } from './deidentify';
-
 /**
  * PHASE 0 — the rule-#1 gate in front of a cross-border search.
  *
@@ -118,14 +117,11 @@ describe('a street-level location never crosses the border', () => {
       `drop-in at 12 Guelph Street ${FIXTURE_POSTAL}`,
       ['12 Guelph', 'K7L'],
     ],
+    ['a street and the postal code beside it', 'drop-in at 12 Guelph Street L7G 4A1', ['12 Guelph', 'L7G']],
     ['a named school', 'after school care at St. Brigid Catholic School', ['Brigid', 'Catholic']],
     // The forms below crossed intact while the four formal suffixes were the whole rule,
     // and each names the building a child is in five days a week just as precisely.
-    [
-      'a lowercase head-noun',
-      'gym near St. Catherine of Alexandria school',
-      ['Catherine', 'Alexandria'],
-    ],
+    ['a lowercase head-noun', 'gym near St. Catherine of Alexandria school', ['Catherine', 'Alexandria']],
     ['a suffix-less elementary', 'swim lessons by Holy Cross Elementary', ['Holy', 'Cross']],
     ['a Montessori', 'toddler music at Pineview Montessori', ['Pineview', 'Montessori']],
     ['an academy', 'after-care at Georgetown Christian Academy', ['Christian', 'Academy']],
@@ -171,14 +167,8 @@ describe('a street-level location never crosses the border', () => {
   });
 
   it('POSITIVE CONTROL - "after school" is an activity, not a school', () => {
-    const result = deidentifyActivityQuery({
-      ...base,
-      subject: 'after school program for toddlers',
-    });
-    expect(result).toMatchObject({
-      ok: true,
-      query: { subject: 'after school program for toddlers' },
-    });
+    const result = deidentifyActivityQuery({ ...base, subject: 'after school program for toddlers' });
+    expect(result).toMatchObject({ ok: true, query: { subject: 'after school program for toddlers' } });
   });
 });
 
@@ -249,6 +239,5 @@ describe('the shape of what may be sent', () => {
     expect(deidentifyActivitySubject('gymnastics for Noah', HOUSEHOLD)).toEqual({
       ok: false,
       refusal: 'names_a_person',
-    });
-  });
+    });  });
 });

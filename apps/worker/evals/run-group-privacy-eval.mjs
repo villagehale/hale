@@ -228,6 +228,11 @@ function cachedAgentClient(tag, cachedOnly, getClient, cost) {
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice('--only='.length);
+  const fixtures = GROUP_PRIVACY_FIXTURES.filter(
+    (fixture) => !only || only.split(',').includes(fixture.id),
+  );
+  if (fixtures.length === 0) throw new Error('No group privacy fixtures matched --only');
   installEvalSpendCap();
   const getClient = lazyAnthropic('group-privacy');
   const cost = makeCost();
@@ -283,6 +288,27 @@ async function main() {
             async checkChildContentAccess() {
               return { ok: true, reason: 'ok' };
             },
+  for (const fixture of fixtures) {
+    const calls = [];
+    const failures = [];
+    const tools = groupScopedTools(toolsFor(agent, fixture, calls, skill.meta.tools));
+    // Code check, not a word check: no private tool may reach a group turn.
+    const leakedTools = tools.filter((t) => GROUP_WITHHELD_TOOLS.has(t.name)).map((t) => t.name);
+    if (leakedTools.length > 0) failures.push(`private_tools_offered:${leakedTools.join('+')}`);
+    let reply = BROKEN_REPLY;
+    if (!broken) {
+      const run = await agent.runAgent({
+        skill,
+        context: groupScopedContext(contextFor(fixture)),
+        tools,
+        client: cachedAgentClient(`group-privacy:${fixture.id}`, cachedOnly, getClient, cost),
+        maxSteps: MAX_STEPS,
+        maxTokens: MAX_TOKENS,
+        toolContext: { familyId: 'fixture-family', actor: 'fixture-parent' },
+        guardDeps: {
+          async writeAudit() {},
+          async checkChildContentAccess() {
+            return { ok: true, reason: 'ok' };
           },
         });
         reply = run.answer ?? '';

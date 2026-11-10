@@ -1,0 +1,21 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name_evidence": "Planning your visit to CMOM is easy! Located in the heart of the Upper West Side of New York City, our flexible all-day tickets let you explore at your own pace.",
+        "name": "Children's Museum of Manhattan (CMOM), The Tisch Building, 212 West 83rd Street",
+        "age_evidence": "Designed for young learners ages 0–6, CMOM's ever-changing programs and exhibits make learning through play exciting.",
+        "age_fit": "Ages 0–6 (toddlers, preschoolers and early elementary)",
+        "when": "October – June: Tuesday – Sunday, 10 am – 5 pm and federal holiday Mondays; July – September: Monday – Sunday, 10 am – 5 pm. PlayWorks daily programs for ages 0–4 include Circle Time 10:30–11:00 am. The specific dates September 12 to 15 could not be confirmed on the page.",
+        "when_evidence": "July – September: Monday – Sunday, 10 am – 5 pm",
+        "schedule_kind": "hours",
+        "price_evidence": "Adults Tickets In-Person: $18 $17 Online Pricing ... Children (Ages 1–18) Tickets In-Person: $18 $17 Online Pricing ... Infant (Under 12 months old) Free",
+        "price": "$18 in person, $17 online for adults and children ages 1–18; infants under 12 months free",
+        "source_name": "Children's Museum of Manhattan",
+        "source_url": "https://cmom.org/plan-your-visit/",
+        "indoor_outdoor": "indoor"
+      }
+    ]
+  },
+  "latencyMs": 4100
+}

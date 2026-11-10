@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The single pick is real and local: Halton Hills Gymnastics Centre at 36 Armstrong Ave, Georgetown, taken from the venue's own page. It fits a toddler (under 4, with a parent). Its day, time, dates and price all match the page text. The message leads with the venue by name and attributes the details with \"their site says\". It is plain text with no link and no question. Since watch is false, it correctly makes no promise to come back, and it makes no negative claim about what the page carries. The gap: the same page lists the coach-led Parent and Tot class (18 months to 3.11 years, Fall session Sept 12 to Dec 18). That matches the parent-and-tot subject exactly, yet it was neither picked nor mentioned. It should have been named with the gap stated as \"I could not pin down the day or the price\". Leaving it out is a mild case of withholding a find. The message also omits the stat-holiday closure, which is minor.",
+    "score": 4
+  }
+}
