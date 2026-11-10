@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Position 12, the 36 hours and the Wednesday 11:00 p.m. deadline are all correct, and the message says the clock counts from the parent's own message and promises a reminder. But it frames the 36 hours as time 'to accept an offer if a spot opens up', which ties the fixed deadline to an offer still to come. That framing is an explicit failure for an outcome_waitlisted note with a deadline.",
-    "score": 2
-  }
-}

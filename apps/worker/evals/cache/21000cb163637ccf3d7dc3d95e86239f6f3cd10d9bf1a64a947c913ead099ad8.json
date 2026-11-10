@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_link_refused with page_unreadable asks. It explains plainly that Hale could not read the course page and says nothing changed, so nothing is saved. It asks once for the same link again, carries no link, invents no facts and uses natural French. One small issue: 'Je réessaierai dès que possible' is slightly ambiguous. It could suggest Hale will retry on its own rather than when the parent resends the link.",
+    "score": 4
+  }
+}

@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The facts are carried correctly: the date, the time, the link, Léa, the three texts with their timing, the no-registration statement and French. But the message ends with \"Approuvez-vous ce plan ?\", a question, and an approval_card asks nothing. Telling the parent to approve would have been fine; asking is not. \"pour tout le monde\" is a fair reading of residentsFirstDays being null, and the age-band caveat restates published:false. The question alone caps the score.",
-    "score": 2
-  }
-}

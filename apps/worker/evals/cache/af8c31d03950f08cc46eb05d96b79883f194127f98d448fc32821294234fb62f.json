@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message fits approval_card and keeps every fact right: Tuesday, September 15 at 7:00 a.m., both children, and the handed link. It restates the residents-first fact and the public opening 7 days later without moving the date. Max is in the band and Mia is correctly described as just outside it. It lists all four texts with their correct timings, says plainly Hale never registers, includes the course-link tip (courseLinkTip is true) and asks no question. Nothing is invented. The one weak spot is the phrasing \"Residents get their date first\", which is slightly awkward but not wrong.",
-    "score": 5
-  }
-}

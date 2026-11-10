@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message invents a price of $120 when the facts give price as null, which caps it at 2 or lower. It also calls the opening time 'opens' without noting it is the residents date, though that is minor. Course details are null, and the message does not say they could not be read. The swap, the date and time, and the prerequisite warning are correct, and there is no link and no question.",
-    "score": 2
-  }
-}

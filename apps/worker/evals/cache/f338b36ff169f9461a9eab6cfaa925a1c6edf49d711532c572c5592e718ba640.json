@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message gives the page opening as Tuesday, November 3, but the handed pageOpens is Tuesday, October 27, 2026 at 7:00 a.m. That wrong date earns a 2 or lower. The rest fits the kind: it names haleHas correctly, explains different_season, carries no link and asks nothing.",
-    "score": 2
-  }
-}

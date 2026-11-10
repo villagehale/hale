@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message is in French and says plainly why Hale did not take the link: the course page could not be read. It carries no link, saves nothing (\"rien n'a changé de mon côté\") and asks once for the same link again, which is what page_unreadable calls for. One weakness: \"Je réessaierai dès que possible\" could read as Hale retrying on its own, a promise the facts do not quite hand. The retry is only handed as reading the link once the parent sends it again.",
-    "score": 4
-  }
-}

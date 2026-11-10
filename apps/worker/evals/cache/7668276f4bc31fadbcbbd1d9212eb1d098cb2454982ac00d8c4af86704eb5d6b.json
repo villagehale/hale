@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message restates the page correctly: course, Wednesday 10:30 AM, ages 3 to 5, fits, both prices, the course code, residents Sep 8 and the public date Tuesday Sep 15 at 10:30 a.m. Because haleHad is set, it notes Hale previously had Monday the 14th and is now going by the page. With regForm true, it warns the parent to leave time for the form. It has no link, asks nothing and adds no invented claims. The tone is natural English.",
-    "score": 5
-  }
-}

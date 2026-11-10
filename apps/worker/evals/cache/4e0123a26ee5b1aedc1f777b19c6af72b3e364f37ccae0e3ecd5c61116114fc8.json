@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message does what course_link_refused asks for not_https. It says plainly why the link wasn't used (not secure), carries no link and saves nothing. It asks once for the course page from Springfield's portal, in English and in a friendly tone. Two minor nits: 'couldn't open' frames a deliberate refusal as a failure, and 'I'll pick it up from there' slightly extends the handed promise.",
-    "score": 4
-  }
-}

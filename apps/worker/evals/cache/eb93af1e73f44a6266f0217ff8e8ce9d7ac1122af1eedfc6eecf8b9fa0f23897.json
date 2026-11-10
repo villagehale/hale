@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message does what course_bound asks. It notes the replacement and says honestly that the course name, day and time could not be read, which is right when they are null. The opening date (Tuesday, September 15), the 7:00 a.m. time and the residents date are all correct. It warns to leave time because a prerequisite is listed, carries no link and asks nothing. One small issue: \"I'm going by what's on the portal\" is a slightly odd addition when haleHad is null, though it is not a false claim. The tone is friendly and natural English.",
-    "score": 4
-  }
-}

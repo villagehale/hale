@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "This fits check_in_ask. It asks once how the registration went and covers all three outcomes: got in, waitlisted with their number, or missed. It is in French, names the window correctly, adds no claims or children, and mentions no date that could be wrong against now. The tone leans slightly formal (vous, full sentences) rather than a casual friend's text, but that is acceptable.",
-    "score": 5
-  }
-}

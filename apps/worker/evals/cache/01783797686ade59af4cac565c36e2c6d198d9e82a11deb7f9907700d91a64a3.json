@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message fits course_link_refused with reason not_https. It plainly gives the reason (the link isn't secure), carries no link and says nothing was saved. It asks once for the course page from the handed portal. Saying 'couldn't open' is close to 'didn't take' and is not an invented claim. 'I'll pick it up from there' just follows from asking for the page. The tone is friendly and it is in English.",
-    "score": 5
-  }
-}

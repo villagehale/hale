@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Fits course_bound. It acknowledges the replacement and correctly says the course name, day and time could not be read. It keeps the opening date and time right (Tuesday, September 15 at 7:00 a.m.) with the residents date, and warns to leave time for the prerequisite. It carries no link, asks nothing and names no child. Small issue: with haleHad null, \"going by what's on the portal\" is a slightly odd framing, and \"opens ... on the residents date\" reads a bit stiffly. Neither is an invented claim.",
-    "score": 4
-  }
-}

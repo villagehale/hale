@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The facts are carried correctly. The window, the date (Saturday, September 12, 2026), the time, the link, the child Léa and the three text timings all match. With residentsFirstDays null, 'pour tout le monde' is fine. The message says plainly that Hale never registers, leaves out the course-link tip, and is in French. However, it ends with 'Approuvez-vous ce plan ?', which is a question. An approval_card must ask nothing; telling the parent to approve is allowed, but asking is not.",
-    "score": 2
-  }
-}

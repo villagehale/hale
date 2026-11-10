@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names both dates correctly (page opens Tuesday, October 27 at 7:00 a.m.; Hale has Tuesday, September 15 at 7:00 a.m.) and saves nothing. However, it ends by inviting a reply and promising an update (\"tell me and I'll update it\"). This kind asks nothing for different_season, and that promise is not in the facts.",
+    "score": 2
+  }
+}

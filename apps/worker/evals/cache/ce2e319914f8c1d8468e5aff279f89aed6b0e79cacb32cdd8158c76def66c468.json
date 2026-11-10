@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The French message is correct and natural. It states the reason plainly (the page could not be read), carries no link, says nothing was saved, and asks once for the same link again, as page_unreadable requires. The closing 'Je réessaierai dès que possible' is the only weak point: it can be read as Hale retrying on its own, a timing promise the facts don't make, though in context it most likely means after the resend.",
-    "score": 4
-  }
-}

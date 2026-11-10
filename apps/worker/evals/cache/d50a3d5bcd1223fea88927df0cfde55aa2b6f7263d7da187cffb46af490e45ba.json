@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is course_link_refused with reason wrong_municipality. The message says plainly why the link was not taken: the page belongs to another town and the registration is in Springfield. It includes no link, says nothing was saved, and asks once for the course page from Springfield's portal, which this reason calls for. It invents no facts, gets no date wrong, names no child, and reads like a friendly text in English.",
+    "score": 5
+  }
+}

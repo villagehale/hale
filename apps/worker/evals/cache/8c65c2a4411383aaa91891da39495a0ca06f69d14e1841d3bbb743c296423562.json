@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "The message states the price as $120, but the facts give price null. That is an invented number, so the score is 2 or lower. The rest is correct: the swap reflects replaced true, the Tuesday Sept 15 7 a.m. date and time match, the prerequisite warning is there, there is no link and no question, and the language is English. It does not mention that the course details could not be read, but the invented price is the decisive error.",
-    "score": 2
-  }
-}
