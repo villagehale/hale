@@ -234,7 +234,7 @@ export async function handleSequenceReply(
         timeZone: sequence.state.timeZone,
         now: input.now,
         reply: waitlisted
-          ? { outcome: 'waitlisted', position: intent.position, deadlineAt }
+          ? { outcome: 'waitlisted', position: intent.position, startedAt: input.now }
           : { outcome: intent.outcome },
       }),
     ),

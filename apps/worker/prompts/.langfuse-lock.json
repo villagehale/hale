@@ -309,6 +309,11 @@
     "version": null,
     "sha256": "e036c093b2e1e85e38a14c15ad912adc7b62ec350333a92a2d2e36174091a63c"
   },
+  "judges/registration-date-moved": {
+    "name": "judges/registration-date-moved",
+    "version": null,
+    "sha256": "c34600c43abe5e5d5737d0f34037d12392408ef52064d79f2c9b92acafd92fce"
+  },
   "judges/registration-date-unconfirmed": {
     "name": "judges/registration-date-unconfirmed",
     "version": null,
