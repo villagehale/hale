@@ -812,16 +812,32 @@ export async function rememberCalendarChanges(
     familyId: string;
     userId: string;
     changes: readonly CalendarChange[];
-    children: ReadonlyArray<{ id: string; name: string }>;
+    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
     seeding: boolean;
     bothCalendars: boolean;
     now: Date;
   },
 ): Promise<void> {
   const childNames = input.children.map((child) => child.name);
+  const teens = teenChildIds(input.children, input.now);
+  const teenNames = input.children
+    .filter((child) => teens.has(child.id))
+    .map((child) => child.name);
   for (const change of input.changes) {
     const stamp = changeStamp(change);
-    const kidRelated = classifyKidCalendarItem({ title: change.title, childNames });
+    // The teen check reads the arriving title, because someone else's title is dropped below
+    // and a reader could no longer see that it named a teenager (rule #1).
+    const [screened] = withoutTeenTitles(
+      [
+        {
+          title: change.title ?? null,
+          kidRelated: classifyKidCalendarItem({ title: change.title, childNames }),
+        },
+      ],
+      childNames,
+      teenNames,
+    );
+    const kidRelated = screened?.kidRelated === true;
     // The arriving title is read here to find the kid and is stored only when it is the
     // parent's own (VIL-651). An unanswered invite is kept, unannounced, so a later yes can be.
     const title = titleForStorage(kidRelated, spokenBlockTitle(change.standing, change.title));

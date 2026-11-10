@@ -303,7 +303,11 @@ describe('household calendars', () => {
       userId: seeded.primaryUserId,
       changes: [change({ eventId: 'budget', title: 'Quarterly budget review' })],
       children: await db.database
-        .select({ id: schema.children.id, name: schema.children.name })
+        .select({
+          id: schema.children.id,
+          name: schema.children.name,
+          dateOfBirth: schema.children.dateOfBirth,
+        })
         .from(schema.children),
       seeding: false,
       bothCalendars: true,
@@ -1184,7 +1188,46 @@ describe("someone else's event in the household group (VIL-651)", () => {
     expect(texts).toBe('[]');
     expect(await storedBlock('teen')).toMatchObject({
       title: null,
-      childId: await childId(seeded.familyId, 'Rowan'),
+      kidRelated: false,
+      childId: null,
+    });
+  });
+
+  it("never announces someone else's invite that names a teenager beside a younger sibling", async () => {
+    const seeded = await seedPair();
+    await db.database.insert(schema.children).values({
+      familyId: seeded.familyId,
+      name: 'Jo',
+      dateOfBirth: '2010-02-01',
+    });
+    const texts = await sweepOnce(seeded, [
+      change({ eventId: 'both', title: 'Maya and Jo swim', standing: 'accepted' }),
+    ]);
+    expect(texts).toBe('[]');
+    expect(await storedBlock('both')).toMatchObject({
+      title: null,
+      kidRelated: false,
+      childId: null,
+    });
+  });
+
+  it("still announces a younger sibling's accepted invite when the family has a teenager", async () => {
+    const seeded = await seedPair();
+    await db.database.insert(schema.children).values({
+      familyId: seeded.familyId,
+      name: 'Jo',
+      dateOfBirth: '2010-02-01',
+    });
+    const texts = await sweepOnce(seeded, [
+      change({ eventId: 'pickup', title: STRANGER_TITLE, standing: 'accepted' }),
+    ]);
+    expect(texts).toContain('Heads up:');
+    expect(texts).toContain('Maya');
+    for (const words of STRANGER_WORDS) expect(texts).not.toContain(words);
+    expect(await storedBlock('pickup')).toMatchObject({
+      title: null,
+      kidRelated: true,
+      childId: await childId(seeded.familyId, 'Maya'),
     });
   });
 
