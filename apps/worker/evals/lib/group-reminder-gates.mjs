@@ -50,13 +50,6 @@ function primaryTag(tag) {
  */
 export const ADDRESS_FORMS = ['none', 'one_form', 'plural_or_formal', 'familiar_singular'];
 
-/**
- * Languages whose register result is reported but does not fail the run (VIL-493). The
- * judge's read of French address was unstable (the same familiar-singular group confirm
- * scored 2, 5, 2, 4); it blocks again once it holds across re-records.
- */
-export const SOFT_REGISTER_LANGUAGES = new Set(['fr']);
-
 const ADDRESS_WORDS = {
   plural_or_formal: 'the plural or formal',
   familiar_singular: 'the familiar singular',
@@ -67,14 +60,13 @@ const ADDRESS_WORDS = {
  * any "you" is the plural or formal one, even when one person is named. `direct`: one
  * person, the familiar singular. No "you" at all always fits. Null when it fits.
  */
-export function registerFinding({ audience, language, address }) {
-  const soft = SOFT_REGISTER_LANGUAGES.has(primaryTag(language));
+export function registerFinding({ audience, address }) {
   if (!ADDRESS_FORMS.includes(address)) {
-    return { finding: 'register: the judge did not say how the text addresses its readers', soft };
+    return 'register: the judge did not say how the text addresses its readers';
   }
   const misfit = audience === 'group' ? 'familiar_singular' : 'plural_or_formal';
   if (address !== misfit) return null;
-  return { finding: `register: ${audience} text addressed in ${ADDRESS_WORDS[address]}`, soft };
+  return `register: ${audience} text addressed in ${ADDRESS_WORDS[address]}`;
 }
 
 const iso = (at) => (at ? at.toISOString() : 'none');
