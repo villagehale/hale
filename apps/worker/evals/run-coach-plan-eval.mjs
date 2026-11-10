@@ -42,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 import { playbookFor } from '@hale/types';
 import { tsImport } from 'tsx/esm/api';
 import { COACH_PLAN_FIXTURES } from './coach-plan-fixtures.mjs';
+import { coachEvalNOfMEnabled } from './lib/coach-eval-n-of-m-flag.mjs';
 import {
   JUDGE_MIN,
   cachedToolCall,
@@ -52,8 +53,15 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
-import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 import { judgePrompt } from './lib/judge-prompt.mjs';
+import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
+import {
+  SAMPLING_RULE,
+  drawTag,
+  foldSubjectDraws,
+  samplingLogLine,
+  subjectDrawCount,
+} from './lib/n-of-m.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -432,13 +440,17 @@ async function main() {
   // failure mode is a shade of generality, and Haiku flapped on exactly that class in
   // the coach-channel corpus. The run is cached, so the tier costs once.
   const judgeModel = (await readModelIds()).sonnet;
+  const nOfM = coachEvalNOfMEnabled();
+  const subjectDraws = subjectDrawCount(nOfM);
   if (preflight) {
     const plans = fixtures.filter((fixture) => fixture.kind === 'plan').length;
     console.log(
       `coach-plan preflight | fixtures=${fixtures.length} plans=${plans} notes=${fixtures.length - plans} plan=${planModel} planMaxTokens=${planMaxTokens}`,
     );
+    console.log(SAMPLING_RULE);
+    console.log(samplingLogLine(nOfM, 1));
     console.log(
-      `max API calls: plan subject=${plans * MAX_ATTEMPTS}, note subject=${(fixtures.length - plans) * MAX_ATTEMPTS}, judges=${fixtures.length}`,
+      `max API calls: plan subject=${plans * subjectDraws * MAX_ATTEMPTS}, note subject=${(fixtures.length - plans) * subjectDraws * MAX_ATTEMPTS}, judges=${fixtures.length * subjectDraws}`,
     );
     return;
   }
@@ -463,152 +475,170 @@ async function main() {
     `coach-plan eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | plan=${planModel} note=${noteModel} judge=${judgeModel}`,
   );
   console.log(`corpus: ${fixtures.length} fixtures\n`);
+  console.log(SAMPLING_RULE);
+  console.log(samplingLogLine(nOfM, 1));
 
   const results = [];
   const markdownSeen = new Set();
   for (const fixture of fixtures) {
-    const playbook = playbookFor(fixture.topic);
-    const isPlan = fixture.kind === 'plan';
+    const drawResults = [];
+    for (let draw = 0; draw < subjectDraws; draw += 1) {
+      const playbook = playbookFor(fixture.topic);
+      const isPlan = fixture.kind === 'plan';
 
-    // THE RECOMPOSE LOOP, run exactly as the runtime runs it, so what is graded is what
-    // a parent would actually receive rather than the model's first draft.
-    const base = isPlan ? planUserMessage(fixture, playbook) : noteUserMessage(fixture, playbook);
-    let violations = [];
-    let flat = [];
-    let checkInDays = null;
-    let attempts = 0;
+      // THE RECOMPOSE LOOP, run exactly as the runtime runs it, so what is graded is what
+      // a parent would actually receive rather than the model's first draft.
+      const base = isPlan ? planUserMessage(fixture, playbook) : noteUserMessage(fixture, playbook);
+      let violations = [];
+      let flat = [];
+      let checkInDays = null;
+      let attempts = 0;
 
-    for (let attempt = 1; attempt <= (broken ? 1 : MAX_ATTEMPTS); attempt += 1) {
-      attempts = attempt;
-      const value = broken
-        ? isPlan
-          ? BROKEN_PLAN
-          : BROKEN_NOTE
-        : (
-            await cachedToolCall({
-              tag: `${isPlan ? 'coach-plan' : 'coach-note'}:${fixture.id}`,
-              model: isPlan ? planModel : noteModel,
-              lane: isPlan ? planLane : noteLane,
-              system: isPlan ? planSkill.instructions : noteSkill.instructions,
-              userMessage: withViolations(base, violations),
-              toolName: isPlan ? 'plan' : 'note',
-              toolSchema: isPlan ? PLAN_TOOL_SCHEMA : NOTE_TOOL_SCHEMA,
-              toolDescription: isPlan
-                ? 'Return the plan as two or three text messages in order, plus how many days from today to check back.'
-                : 'Return the one message to send.',
-              maxTokens: isPlan ? planMaxTokens : NOTE_MAX_TOKENS,
-              toolChoice: isPlan && candidateModel ? { type: 'auto' } : undefined,
-              thinking: isPlan && candidateModel ? { type: 'adaptive' } : undefined,
-              effort: isPlan && candidateModel ? 'xhigh' : undefined,
-              cachedOnly,
-              getClient,
-              cost,
-            })
-          ).value;
+      for (let attempt = 1; attempt <= (broken ? 1 : MAX_ATTEMPTS); attempt += 1) {
+        attempts = attempt;
+        const value = broken
+          ? isPlan
+            ? BROKEN_PLAN
+            : BROKEN_NOTE
+          : (
+              await cachedToolCall({
+                tag: `${isPlan ? 'coach-plan' : 'coach-note'}:${drawTag(fixture.id, draw)}`,
+                model: isPlan ? planModel : noteModel,
+                lane: isPlan ? planLane : noteLane,
+                system: isPlan ? planSkill.instructions : noteSkill.instructions,
+                userMessage: withViolations(base, violations),
+                toolName: isPlan ? 'plan' : 'note',
+                toolSchema: isPlan ? PLAN_TOOL_SCHEMA : NOTE_TOOL_SCHEMA,
+                toolDescription: isPlan
+                  ? 'Return the plan as two or three text messages in order, plus how many days from today to check back.'
+                  : 'Return the one message to send.',
+                maxTokens: isPlan ? planMaxTokens : NOTE_MAX_TOKENS,
+                toolChoice: isPlan && candidateModel ? { type: 'auto' } : undefined,
+                thinking: isPlan && candidateModel ? { type: 'adaptive' } : undefined,
+                effort: isPlan && candidateModel ? 'xhigh' : undefined,
+                cachedOnly,
+                getClient,
+                cost,
+              })
+            ).value;
 
-      checkInDays = isPlan ? value.checkInDays : null;
-      const messages = isPlan
-        ? [value.first, value.second, ...(value.third === undefined ? [] : [value.third])]
-        : [value.message];
-      flat = messages.map(flatten).filter((body) => body !== '');
-      if (messages.some((body) => MARKDOWN_SHAPE.test(body))) markdownSeen.add(fixture.id);
+        checkInDays = isPlan ? value.checkInDays : null;
+        const messages = isPlan
+          ? [value.first, value.second, ...(value.third === undefined ? [] : [value.third])]
+          : [value.message];
+        flat = messages.map(flatten).filter((body) => body !== '');
+        if (messages.some((body) => MARKDOWN_SHAPE.test(body))) markdownSeen.add(fixture.id);
 
-      violations = runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan);
-      if (violations.length === 0) break;
-    }
-    const whole = flat.join(' ');
-    const failures = sendFailures(
-      flat,
-      smsSegments,
-      isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS,
-      {
-        allowMany: isPlan,
-        playbook,
-      },
-    );
-    if (markdownSeen.has(fixture.id)) failures.push('markdown');
-    failures.push(...citationFailures(whole, playbook));
-
-    if (isPlan) {
-      // Counted across the PLAN, not per message. The first message is the what/why by
-      // design — the skill puts the method and one line of evidence there — so requiring
-      // a label in two separate messages was forcing a timeframe into the rationale.
-      // Two labels anywhere is what "sequenced" actually means.
-      const labels = (whole.match(new RegExp(STAGE_LABEL.source, 'gi')) ?? []).length;
-      if (labels < MIN_LABELLED_STAGES) {
-        failures.push(`not_sequenced (${labels} stage labels in the whole plan)`);
+        violations = runtimeViolations(flat, playbook, checkInDays, smsSegments, isPlan);
+        if (violations.length === 0) break;
       }
-      const vague = flat
-        .slice(0, -1)
-        .map((body, i) => (hasSpecific(body) ? null : i))
-        .filter((i) => i !== null);
-      if (vague.length > 0) failures.push(`not_concrete (stages ${vague.join(', ')})`);
-      if (!namesTheMethod(whole, playbook)) {
-        failures.push(`UNNAMED METHOD (never says "${playbook.primaryMethod.name}")`);
-      }
-      const promised = CHECK_IN_DAY_NAMES[checkInDays];
-      if (!promised) {
-        failures.push(`checkInDays out of band: ${checkInDays}`);
-      } else if (!whole.toLowerCase().includes(promised.toLowerCase())) {
-        // The ledger row fires on the structured field. A plan that promised a
-        // different day than the one it chose is a broken promise by construction.
-        failures.push(`PROMISED DAY MISMATCH (chose ${checkInDays} = ${promised}, never said it)`);
-      }
-      // Grounding: an interval the playbook does not contain is the fabrication this
-      // whole pass exists to end, so the fixture names the ones that must survive.
-      for (const token of fixture.expect.mustGround ?? []) {
-        if (!whole.toLowerCase().includes(token.toLowerCase())) {
-          failures.push(`UNGROUNDED: dropped "${token}", which the playbook specifies`);
+      const whole = flat.join(' ');
+      const failures = sendFailures(
+        flat,
+        smsSegments,
+        isPlan ? MAX_PLAN_SEGMENTS : MAX_NOTE_SEGMENTS,
+        {
+          allowMany: isPlan,
+          playbook,
+        },
+      );
+      if (markdownSeen.has(fixture.id)) failures.push('markdown');
+      failures.push(...citationFailures(whole, playbook));
+
+      if (isPlan) {
+        // Counted across the PLAN, not per message. The first message is the what/why by
+        // design — the skill puts the method and one line of evidence there — so requiring
+        // a label in two separate messages was forcing a timeframe into the rationale.
+        // Two labels anywhere is what "sequenced" actually means.
+        const labels = (whole.match(new RegExp(STAGE_LABEL.source, 'gi')) ?? []).length;
+        if (labels < MIN_LABELLED_STAGES) {
+          failures.push(`not_sequenced (${labels} stage labels in the whole plan)`);
         }
+        const vague = flat
+          .slice(0, -1)
+          .map((body, i) => (hasSpecific(body) ? null : i))
+          .filter((i) => i !== null);
+        if (vague.length > 0) failures.push(`not_concrete (stages ${vague.join(', ')})`);
+        if (!namesTheMethod(whole, playbook)) {
+          failures.push(`UNNAMED METHOD (never says "${playbook.primaryMethod.name}")`);
+        }
+        const promised = CHECK_IN_DAY_NAMES[checkInDays];
+        if (!promised) {
+          failures.push(`checkInDays out of band: ${checkInDays}`);
+        } else if (!whole.toLowerCase().includes(promised.toLowerCase())) {
+          // The ledger row fires on the structured field. A plan that promised a
+          // different day than the one it chose is a broken promise by construction.
+          failures.push(
+            `PROMISED DAY MISMATCH (chose ${checkInDays} = ${promised}, never said it)`,
+          );
+        }
+        // Grounding: an interval the playbook does not contain is the fabrication this
+        // whole pass exists to end, so the fixture names the ones that must survive.
+        for (const token of fixture.expect.mustGround ?? []) {
+          if (!whole.toLowerCase().includes(token.toLowerCase())) {
+            failures.push(`UNGROUNDED: dropped "${token}", which the playbook specifies`);
+          }
+        }
+        // A pattern, where the playbook's specific is a SEQUENCE rather than a phrase.
+        // "Night 1: wait 3, then 5, then 10" is the playbook's own ladder written the way
+        // a person writes it, and a literal "3 minutes" gate called that a fabrication.
+        for (const [label, pattern] of Object.entries(fixture.expect.mustGroundPattern ?? {})) {
+          if (!pattern.test(whole)) failures.push(`UNGROUNDED: ${label}`);
+        }
+      } else if (fixture.kind === 'check_in') {
+        const questions = (whole.match(/\?/g) ?? []).length;
+        if (questions !== 1) failures.push(`${questions} questions (exactly one)`);
       }
-      // A pattern, where the playbook's specific is a SEQUENCE rather than a phrase.
-      // "Night 1: wait 3, then 5, then 10" is the playbook's own ladder written the way
-      // a person writes it, and a literal "3 minutes" gate called that a fabrication.
-      for (const [label, pattern] of Object.entries(fixture.expect.mustGroundPattern ?? {})) {
-        if (!pattern.test(whole)) failures.push(`UNGROUNDED: ${label}`);
+
+      for (const token of fixture.expect.mustMention ?? []) {
+        if (!whole.toLowerCase().includes(token.toLowerCase()))
+          failures.push(`never says "${token}"`);
       }
-    } else if (fixture.kind === 'check_in') {
-      const questions = (whole.match(/\?/g) ?? []).length;
-      if (questions !== 1) failures.push(`${questions} questions (exactly one)`);
-    }
+      for (const token of fixture.expect.forbidden ?? []) {
+        if (whole.toLowerCase().includes(token.toLowerCase())) failures.push(`says "${token}"`);
+      }
 
-    for (const token of fixture.expect.mustMention ?? []) {
-      if (!whole.toLowerCase().includes(token.toLowerCase()))
-        failures.push(`never says "${token}"`);
-    }
-    for (const token of fixture.expect.forbidden ?? []) {
-      if (whole.toLowerCase().includes(token.toLowerCase())) failures.push(`says "${token}"`);
-    }
+      const verdict = broken
+        ? null
+        : isPlan
+          ? await planJudge(drawTag(fixture.id, draw), {
+              question: fixture.question,
+              ageMonths: fixture.child?.ageMonths ?? null,
+              playbook: {
+                primaryMethod: playbook.primaryMethod,
+                alternativeMethod: playbook.alternativeMethod,
+                readinessSigns: playbook.readinessSigns,
+                neverDo: playbook.neverDo,
+                doctorTriggers: playbook.doctorTriggers,
+              },
+              plan: flat,
+              watchFor: fixture.expect.watchFor,
+            })
+          : await noteJudge(drawTag(fixture.id, draw), {
+              kind: fixture.kind,
+              ageMonths: fixture.child?.ageMonths ?? null,
+              ageGate: fixture.kind === 'too_young' ? playbook.primaryMethod.ageGate : null,
+              promise: fixture.promise ?? null,
+              message: whole,
+              watchFor: fixture.expect.watchFor,
+            });
+      if (verdict && verdict.score < JUDGE_MIN) {
+        failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      }
 
-    const verdict = broken
-      ? null
-      : isPlan
-        ? await planJudge(fixture.id, {
-            question: fixture.question,
-            ageMonths: fixture.child?.ageMonths ?? null,
-            playbook: {
-              primaryMethod: playbook.primaryMethod,
-              alternativeMethod: playbook.alternativeMethod,
-              readinessSigns: playbook.readinessSigns,
-              neverDo: playbook.neverDo,
-              doctorTriggers: playbook.doctorTriggers,
-            },
-            plan: flat,
-            watchFor: fixture.expect.watchFor,
-          })
-        : await noteJudge(fixture.id, {
-            kind: fixture.kind,
-            ageMonths: fixture.child?.ageMonths ?? null,
-            ageGate: fixture.kind === 'too_young' ? playbook.primaryMethod.ageGate : null,
-            promise: fixture.promise ?? null,
-            message: whole,
-            watchFor: fixture.expect.watchFor,
-          });
-    if (verdict && verdict.score < JUDGE_MIN) {
-      failures.push(`judge:${verdict.score} (${verdict.reason})`);
+      drawResults.push({
+        fixture,
+        flat,
+        failures,
+        score: verdict?.score ?? null,
+        checkInDays,
+        attempts,
+        passed: failures.length === 0,
+      });
     }
-
-    results.push({ fixture, flat, failures, score: verdict?.score ?? null, checkInDays, attempts });
+    const primary = drawResults[0];
+    const folded = nOfM ? foldSubjectDraws(fixture, drawResults) : primary.failures;
+    results.push({ ...primary, failures: folded });
   }
 
   console.log('--- outputs ---');

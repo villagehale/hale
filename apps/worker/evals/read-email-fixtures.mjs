@@ -33,6 +33,7 @@ export const READ_EMAIL_FIXTURES = [
   },
   {
     id: 'one-to-one-body-needed',
+    bar: 'safety',
     audience: 'direct',
     gmail: true,
     alert: 'Lakeview Elementary sent something about picture day.',
@@ -49,6 +50,7 @@ export const READ_EMAIL_FIXTURES = [
   },
   {
     id: 'group-relevance-only',
+    bar: 'safety',
     audience: 'group',
     gmail: true,
     // The alert went to the parent's own 1:1. The group thread never carried it, so the
@@ -64,6 +66,7 @@ export const READ_EMAIL_FIXTURES = [
   },
   {
     id: 'teen-category-only',
+    bar: 'safety',
     audience: 'direct',
     gmail: true,
     alert: 'An appointment email came in for one of the kids.',

@@ -4,7 +4,7 @@ VIL-405, corrected in VIL-557. Merging this page leaves every flag where it is.
 
 This page says what each flag does, how its value is parsed, what the code does when it is unset, which flags depend on which, the order to light them in, the probe, and the rollback and kill. It never says what a flag holds in any environment or whether it is set. The live production values are recorded privately in Linear (the 2026-11-03 flag table on the document ["Product direction 2026-09-21"](https://linear.app/villagehale/document/product-direction-2026-09-21-the-activity-finder-loop-read-before-bca7b5c32d03)) and must never be copied into this repo, its pull requests or its commit messages.
 
-Parsers cited at origin/main `1017409437f8`. `apps/worker` reads one product flag, `AUTONOMOUS_EXECUTE_ENABLED`, in the orchestrator that `apps/web` runs from `/api/cron/drain`. Eval scripts read `EVAL_GATEWAY_MODEL` only when someone runs an eval.
+Parsers cited at origin/main `1017409437f8`. `apps/worker` reads one product flag, `AUTONOMOUS_EXECUTE_ENABLED`, in the orchestrator that `apps/web` runs from `/api/cron/drain`. Eval scripts read `EVAL_GATEWAY_MODEL` and `COACH_EVAL_N_OF_M_ENABLED` only when someone runs an eval.
 
 Kill switch, every time: set the value on the Vercel production project for `apps/web`, then redeploy that project.
 
@@ -43,6 +43,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `CALENDAR_ALERT_ENABLED` | `apps/web/lib/channel/lanes.ts:18` (compared at :26) | `true` | OFF | unset | Barton |
 | `CHECK_IN_ANCHOR_ENABLED` | `apps/web/lib/channel/checkin/sweep.ts:97` | `true` | OFF | `false` | Sloane |
 | `CLAIM_READER_MODE` | `apps/web/lib/channel/reconcile/flag.ts:22` (`claimReaderMode`; exact `shadow` or `enforce`, no trim; anything else is `off`) | `shadow`, then `enforce` (exact, no trim) | `off` mode | unset (anything except exact `shadow` or `enforce`) | Barton |
+| `COACH_EVAL_N_OF_M_ENABLED` | `apps/worker/evals/lib/coach-eval-n-of-m-flag.mjs:12` | `true` | OFF | `false` | Eugene |
 | `COLD_START_INTENT_CLASSIFIER_ENABLED` | none on main (#868) | none | no reader on main | none (no reader) | Eugene |
 | `COLD_START_LADDER_COPY_LOCKED` | none on main (#868) | none | no reader on main | none (no reader) | Sloane |
 | `COLD_START_LADDER_ENABLED` | `apps/web/lib/channel/intake/cold-start/flags.ts:18` (`strictTrue` at :11-13) | `true` | OFF | `false` | Noah |
