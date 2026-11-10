@@ -1,12 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { z } from 'zod';
-import { forceToolJson, pickLane } from '@hale/agent';
+import { forceToolJson, markUntrusted, pickLane, untrustedSourceFor } from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
+import { z } from 'zod';
 import { anthropicClient } from '../anthropic/client.js';
-import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
-import { dedupHashFor } from './dedup.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { redactEventPayload } from '../redaction/redact.js';
+import { dedupHashFor } from './dedup.js';
+import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
 import { loadStagePacks, stagePackFor } from './stage-pack.js';
 
 const eventTypeSchema = z.enum([
@@ -172,7 +172,11 @@ export async function runClassifier(
   // still probes to the same row whether or not the family's names changed
   // between the two arrivals.
   const dedupHash = dedupHashFor(input.familyId, input.source, JSON.stringify(input.payload));
-  const redacted = JSON.stringify(redactEventPayload(input.payload, input.childNames));
+  const redacted = markUntrusted(
+    untrustedSourceFor(input.source),
+    'payload',
+    JSON.stringify(redactEventPayload(input.payload, input.childNames)),
+  );
 
   const userMessage = JSON.stringify({
     signal: { source: input.source, raw_content: redacted },

@@ -1,4 +1,4 @@
-import { type RegisteredTool, type Skill, defineTool } from '@hale/agent';
+import { type RegisteredTool, type Skill, defineTool, markUntrusted } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -104,7 +104,7 @@ export function coachEmailReader(deps: CoachEmailReaderDeps): CoachEmailReader {
       console.info({ outcome: 'read' }, 'coach: read_email');
       return {
         read: true,
-        body: body.slice(0, READ_EMAIL_MAX_CHARS),
+        body: markUntrusted('email', 'body', body.slice(0, READ_EMAIL_MAX_CHARS)),
         truncated: body.length > READ_EMAIL_MAX_CHARS,
       };
     },

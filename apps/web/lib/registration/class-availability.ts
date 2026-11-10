@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
 import { ZodError, z } from 'zod';
 import type { SpotState } from '~/lib/channel/spots/availability';
 import { checkedSchedule } from '~/lib/channel/spots/schedule';
@@ -108,8 +108,9 @@ export interface ClassAvailabilityQuery {
 export function classAvailabilityInput(query: ClassAvailabilityQuery, pageText: string): string {
   return JSON.stringify({
     class_label: query.label,
-    session_anchor: query.anchor,
-    page_text: pageText,
+    session_anchor:
+      query.anchor === null ? null : markUntrusted('web', 'session_anchor', query.anchor),
+    page_text: markUntrusted('web', 'page_text', pageText),
   });
 }
 

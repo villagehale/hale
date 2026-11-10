@@ -1,4 +1,4 @@
-import { type AgentClient, pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
@@ -65,9 +65,9 @@ async function runCurrentTriage(
   const skill = await loadTriageChildEventSkill();
   const userMessage = JSON.stringify({
     envelope: {
-      subject: envelope.subject,
-      from: envelope.from,
-      snippet: envelope.snippet,
+      subject: markUntrusted('email', 'subject', envelope.subject),
+      from: markUntrusted('email', 'from', envelope.from),
+      snippet: markUntrusted('email', 'snippet', envelope.snippet),
     },
     children: childNames,
   });

@@ -1,11 +1,10 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
+import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { ExtractionKind, FamilyChildRef, SentinelClassification } from '~/lib/sentinel';
-import { senderLabel } from '@hale/worker/sender-label';
 
 export { senderLabel } from '@hale/worker/sender-label';
 
@@ -174,7 +173,23 @@ export function emailAlertNoticeFacts(input: {
 
 /** The user turn. Shared with the eval, which replays this request shape. */
 export function emailAlertNoticeUserMessage(facts: EmailAlertNoticeFacts): string {
-  return JSON.stringify(facts);
+  return JSON.stringify({
+    ...facts,
+    email: {
+      ...facts.email,
+      sender:
+        facts.email.sender === null ? null : markUntrusted('email', 'sender', facts.email.sender),
+      subject:
+        facts.email.subject === null
+          ? null
+          : markUntrusted('email', 'subject', facts.email.subject),
+      title: markUntrusted('email', 'title', facts.email.title),
+      location:
+        facts.email.location === null
+          ? null
+          : markUntrusted('email', 'location', facts.email.location),
+    },
+  });
 }
 
 /**

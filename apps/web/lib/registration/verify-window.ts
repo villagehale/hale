@@ -1,5 +1,4 @@
-import type { AgentClient } from '@hale/agent';
-import { pickLane } from '@hale/agent';
+import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
 import type { Municipality, ProgramDomain } from '@hale/db';
 import { z } from 'zod';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -908,7 +907,7 @@ export function extractionInput(
     municipality: window.municipality,
     program_domain: window.programDomain,
     cycle_label: window.cycleLabel,
-    page_text: pageText,
+    page_text: markUntrusted('web', 'page_text', pageText),
   });
 }
 
