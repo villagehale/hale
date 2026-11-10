@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: Preschool A and B, ages 3-5 with no parent in the water, Saturdays at the printed times, Sept 12 to Nov 28. Each is cited to the Oakville page. Price is correctly null because the page prints no fee, and there is no invented third level. Registration (Tue Aug 11, 7 a.m., residents; browse from Aug 4) is in both slots, and the message carries Aug 11. The message names both slots up front and attributes them (\"Town of Oakville's site says\"). It is plain ASCII with no link and no question. Because the page has a schedule, the price gap is correctly stated in first person (\"I could not pin down the price\") rather than as \"not posted\". Since watch is true, \"I'll keep watching for it\" is a legitimate first-person commitment. The one small omission is that the page says fees are in the Recreation Guide, and nothing notes that it went unread, but it is not shown as a linked document.",
+    "score": 5
+  }
+}

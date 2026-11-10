@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says the clock starts 'once an offer comes in'. That is the clock-starts-on-offer error, so the score is capped at 2. The facts say the 36-hour window runs from the parent's own message (Tuesday 11:00 a.m.), and the message never says that. Saying the clock starts when an offer arrives also contradicts the fixed deadline of Wednesday 11:00 p.m. The rest is fine: position 12, the town, the 36 hours, the deadline date and time, the reminder promise, no question, and the right language.",
+    "score": 2
+  }
+}

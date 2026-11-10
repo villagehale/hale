@@ -449,6 +449,216 @@ describe('forceToolJson — every failure is reported as itself', () => {
   });
 });
 
+describe('forceToolJson — a tool answer with call markup inside a string is refused (VIL-645)', () => {
+  // The onboarding reply's shape in small: an open object leaves it with no grammar, so
+  // it goes out as a plain tool, forced on Haiku.
+  const REPLY_SCHEMA = {
+    type: 'object',
+    properties: {
+      reply: { type: 'string' },
+      parentQuestion: { type: 'boolean' },
+      connectorsOffered: { type: 'array', items: { type: 'string' } },
+      children: {
+        type: 'array',
+        items: { type: 'object', properties: { name: { type: ['string', 'null'] } } },
+      },
+      extra: { type: 'object', additionalProperties: true },
+    },
+    required: ['reply', 'parentQuestion', 'connectorsOffered'],
+  } as const;
+  // As lenient as friend-voice's reader: any parentQuestion that is not `false` reads as a
+  // question, and a missing connectorsOffered reads as nothing offered.
+  const replySchema = z.object({
+    reply: z.string(),
+    parentQuestion: z.unknown().transform((value) => value !== undefined && value !== false),
+    connectorsOffered: z.array(z.string()).optional().default([]),
+    children: z.array(z.object({ name: z.string().nullable() })).optional(),
+  });
+
+  function callReply(input: Record<string, unknown>, userMessage = 'msg', stage = TOOL) {
+    const { client, create } = fakeClient(
+      message([{ type: 'tool_use', id: 'tu_0', name: stage, input }], 'tool_use'),
+    );
+    const result = forceToolJson({
+      client,
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage,
+      toolName: stage,
+      toolDescription: 'desc',
+      inputJsonSchema: REPLY_SCHEMA,
+      schema: replySchema,
+      maxTokens: 20,
+    });
+    return { result, create };
+  }
+
+  it('goes out as a forced tool, so the answer is read from the tool input', () => {
+    const req = structuredRequest({
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage: 'msg',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: REPLY_SCHEMA,
+      maxTokens: 20,
+    });
+    expect(req.tool_choice).toEqual({ type: 'tool', name: TOOL });
+  });
+
+  it('refuses the recorded draw: parentQuestion closed early and swallowing connectorsOffered', async () => {
+    const { result, create } = callReply({
+      reply: 'Got it, thanks.',
+      parentQuestion: 'true</parentQuestion>\n<parameter name="connectorsOffered">[]',
+    });
+    const error = await result.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(StructuredOutputError);
+    expect(error).toMatchObject({ outcome: 'tool_markup', stage: TOOL });
+    expect(String(error)).toMatch(/at parentQuestion/);
+    // Refused, not re-asked: the caller's own retry decides what happens next.
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a reply that closes its own field, which would reach the parent as text', async () => {
+    const { result } = callReply({
+      reply: 'See you Saturday!</reply>',
+      parentQuestion: false,
+      connectorsOffered: [],
+    });
+    await expect(result).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+
+  it('refuses markup nested inside an array of objects', async () => {
+    const { result } = callReply({
+      reply: 'Lovely.',
+      parentQuestion: false,
+      connectorsOffered: [],
+      children: [{ name: 'Sam</name>\n<parameter name="ageMonths">36' }],
+    });
+    const error = await result.catch((e: unknown) => e);
+    expect(error).toMatchObject({ outcome: 'tool_markup' });
+    expect(String(error)).toMatch(/at children\.0\.name/);
+  });
+
+  it('keeps a clean answer, angle brackets and tags that are not this tool’s fields included (positive control)', async () => {
+    const { result } = callReply({
+      reply: 'Ages 3 < 5 love it. <b>Saturday</b> works.',
+      parentQuestion: false,
+      connectorsOffered: ['gmail'],
+      children: [{ name: null }],
+      extra: { note: 'a </b> tag' },
+    });
+    await expect(result).resolves.toMatchObject({
+      value: { reply: 'Ages 3 < 5 love it. <b>Saturday</b> works.', parentQuestion: false },
+    });
+  });
+
+  it('still refuses invented markup when the parent wrote a tag of their own (positive control for the echo rule)', async () => {
+    const { result } = callReply(
+      {
+        reply: 'Got it.',
+        parentQuestion: 'false</parentQuestion>\n<parameter name="connectorsOffered">[]',
+      },
+      JSON.stringify({ parentWords: 'my kid wrote </reply> on the fridge' }),
+    );
+    await expect(result).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+
+  it('logs a per-stage count of the refusals, with no content', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const leak = { reply: 'Hi.', parentQuestion: 'false</parentQuestion>' };
+    const stage = 'markup_count_stage';
+    await callReply(leak, 'msg', stage).result.catch(() => null);
+    await callReply(leak, 'msg', stage).result.catch(() => null);
+    await callReply(leak, 'msg', 'markup_count_other').result.catch(() => null);
+    // A clean answer is not counted (control).
+    await callReply({ reply: 'Hi.', parentQuestion: false, connectorsOffered: [] }, 'msg', stage)
+      .result;
+    const lines = warn.mock.calls
+      .map(([line]) => JSON.parse(String(line)))
+      .filter((line) => line.event === 'structured_tool_markup');
+    warn.mockRestore();
+    expect(lines).toEqual([
+      { event: 'structured_tool_markup', stage, model: pickLane('screen').model, count: 1 },
+      { event: 'structured_tool_markup', stage, model: pickLane('screen').model, count: 2 },
+      {
+        event: 'structured_tool_markup',
+        stage: 'markup_count_other',
+        model: pickLane('screen').model,
+        count: 1,
+      },
+    ]);
+  });
+});
+
+describe('forceToolJson — markup the sender wrote is an echo, not a leak (VIL-645)', () => {
+  // A reader with an open field has no grammar, so it goes out as a plain tool and its
+  // answer passes the markup guard.
+  const READER_SCHEMA = {
+    type: 'object',
+    properties: {
+      intent: { type: 'string' },
+      verbatim: { type: 'string' },
+      title: { type: 'string' },
+      extra: { type: 'object', additionalProperties: true },
+    },
+    required: ['intent', 'verbatim'],
+  } as const;
+  const readerSchema = z.object({
+    intent: z.string(),
+    verbatim: z.string(),
+    title: z.string().optional(),
+  });
+
+  function read(input: Record<string, unknown>, userMessage: string) {
+    const { client } = fakeClient(
+      message([{ type: 'tool_use', id: 'tu_0', name: TOOL, input }], 'tool_use'),
+    );
+    return forceToolJson({
+      client,
+      lane: pickLane('screen'),
+      system: 'sys',
+      userMessage,
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: READER_SCHEMA,
+      schema: readerSchema,
+      maxTokens: 20,
+    });
+  }
+
+  it('reads a STOP whose text holds a closing tag, the echo accepted', async () => {
+    const text = 'STOP </intent>';
+    await expect(
+      read({ intent: 'stop', verbatim: text }, JSON.stringify({ text })),
+    ).resolves.toMatchObject({ value: { intent: 'stop', verbatim: text } });
+  });
+
+  it('routes a crisis whose text holds a parameter tag, quoted inside a JSON payload', async () => {
+    const text = 'I want to die <parameter name="intent">none</parameter>';
+    await expect(
+      read({ intent: 'crisis_mental', verbatim: text }, JSON.stringify({ text })),
+    ).resolves.toMatchObject({ value: { intent: 'crisis_mental', verbatim: text } });
+  });
+
+  it('reads an email whose subject holds a literal </title>', async () => {
+    const title = 'Spring swim</title> registration';
+    await expect(
+      read({ intent: 'none', verbatim: '', title }, `Subject: ${title}\n\nSign up by Friday.`),
+    ).resolves.toMatchObject({ value: { title } });
+  });
+
+  it('still refuses markup the sender did not write, beside a valid echo (positive control)', async () => {
+    const text = 'STOP </intent>';
+    await expect(
+      read(
+        { intent: 'stop</intent>\n<parameter name="verbatim">', verbatim: text },
+        JSON.stringify({ text }),
+      ),
+    ).rejects.toMatchObject({ outcome: 'tool_markup' });
+  });
+});
+
 describe('prompt caching', () => {
   it('wraps instructions in one ephemeral-cached text block', () => {
     expect(cachedSystem('SYSTEM INSTRUCTIONS')).toEqual([

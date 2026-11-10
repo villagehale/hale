@@ -38,17 +38,23 @@ const RUN_AFTER_DOT = /[\p{L}\p{M}\p{N}]+/uy;
 const LETTERS_ONLY = /^[\p{L}\p{M}]{2,}$/u;
 const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
 
-/** A gate that splits or filters a draft splits this reading, never the raw text, so it
- * decides from the same words {@link hasLinkShape} reads. */
-export function asHandsetReads(text: string): string {
+const NOTHING_TRUSTED: ReadonlySet<string> = new Set();
+
+function readAsHandset(text: string, trusted: ReadonlySet<string>): string {
   return text
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')
     .replace(IDEOGRAPHIC_DOT, (dot, at: number, whole: string) =>
-      endsACjkSentence(whole, at) ? dot : '.',
+      endsACjkSentence(whole, at, trusted) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
     )
     .replace(BRACKETED_OR_SPACED_DOT, '.')
     .replace(DOUBLED_PAIR_ABBREVIATION, ' ');
+}
+
+/** A gate that splits or filters a draft splits this reading, never the raw text, so it
+ * decides from the same words {@link hasLinkShape} reads. */
+export function asHandsetReads(text: string): string {
+  return readAsHandset(text, NOTHING_TRUSTED);
 }
 
 /** The name run ending at `at`, read backwards a code point at a time so a long text
@@ -64,9 +70,36 @@ function nameBefore(text: string, at: number): string {
   return text.slice(start, at);
 }
 
-function endsACjkSentence(text: string, at: number): boolean {
+const LATIN_RUNS = /[\p{Script=Latin}\p{M}]+/gu;
+
+/** A trusted word inside the CJK run before the stop ("Hale这边不会代办。") is no host label;
+ * one right before it ("我是Hale。") still is. */
+function endsACjkSentence(text: string, at: number, trusted: ReadonlySet<string>): boolean {
+  const name = nameBefore(text, at);
+  const last = [...name].pop() ?? '';
+  const rest = name.replace(LATIN_RUNS, (run) => (trusted.has(run.toLowerCase()) ? '' : run));
   CJK_RUN_WITHOUT_PATH.lastIndex = at + 1;
-  return CJK_OR_DIGITS.test(nameBefore(text, at)) && CJK_RUN_WITHOUT_PATH.test(text);
+  return CJK_OR_DIGITS.test(last) && CJK_OR_DIGITS.test(rest) && CJK_RUN_WITHOUT_PATH.test(text);
+}
+
+const CJK_CHAR = new RegExp(`^[${CJK}]$`, 'u');
+const LATIN_RUN = /[\p{Script=Latin}\p{M}]+/uy;
+// After the trusted word: anything that could carry a host on is a dot after all.
+const HOST_CONTINUES = /^[\p{L}\p{M}\p{N}._@/:'’-]$/u;
+
+/**
+ * "日历上。Ana、Sam" or "没有空位了。Hale不会": a full stop after a CJK character and before
+ * exactly one trusted word ends the sentence. "例子。app" and "evil。app" stay dots.
+ */
+function endsBeforeTrustedWord(text: string, at: number, trusted: ReadonlySet<string>): boolean {
+  if (trusted.size === 0) return false;
+  const before = [...text.slice(Math.max(0, at - 2), at)].pop() ?? '';
+  if (!CJK_CHAR.test(before)) return false;
+  LATIN_RUN.lastIndex = at + 1;
+  const run = LATIN_RUN.exec(text)?.[0];
+  if (run === undefined || !trusted.has(run.toLowerCase())) return false;
+  const next = [...text.slice(at + 1 + run.length, at + 3 + run.length)][0] ?? '';
+  return next === '' || CJK_CHAR.test(next) || !HOST_CONTINUES.test(next);
 }
 
 /** Whether the dot at `at` joins a name to a domain ending, in any script or case. */
@@ -78,23 +111,39 @@ function dotEndsAHost(text: string, at: number): boolean {
 }
 
 export function hasLinkShape(text: string): boolean {
-  const read = asHandsetReads(text);
-  if (SCHEME.test(read) || WWW.test(read) || PUNYCODE.test(read) || DOTTED_QUAD.test(read)) {
-    return true;
-  }
+  return readHasLinkShape(asHandsetReads(text));
+}
+
+function readHasLinkShape(read: string): boolean {
+  return hasMarkedLink(read) || hostsIn(read).length > 0;
+}
+
+function hasMarkedLink(read: string): boolean {
+  return SCHEME.test(read) || WWW.test(read) || PUNYCODE.test(read) || DOTTED_QUAD.test(read);
+}
+
+/** Each 'name.ending' a handset would link, as read. */
+function hostsIn(read: string): string[] {
+  const hosts: string[] = [];
   for (let at = read.indexOf('.'); at !== -1; at = read.indexOf('.', at + 1)) {
-    if (dotEndsAHost(read, at)) return true;
+    if (!dotEndsAHost(read, at)) continue;
+    RUN_AFTER_DOT.lastIndex = at + 1;
+    hosts.push(`${nameBefore(read, at)}.${RUN_AFTER_DOT.exec(read)?.[0] ?? ''}`);
   }
-  return false;
+  return hosts;
 }
 
 const WORD_EDGE = /^[([{<"'“‘]+|[.,;:!?)\]}>"'”’]+$/gu;
 
-export function wordsAsHandsetReads(text: string): string[] {
-  return asHandsetReads(text)
+function wordsOf(read: string): string[] {
+  return read
     .split(/\s+/)
     .map((word) => word.replace(WORD_EDGE, ''))
     .filter((word) => word.length > 0);
+}
+
+export function wordsAsHandsetReads(text: string): string[] {
+  return wordsOf(asHandsetReads(text));
 }
 
 /**
@@ -146,4 +195,63 @@ function sameLink(token: string, handed: readonly string[]): boolean {
 export function hasLinkBeyond(text: string, handed: readonly string[]): boolean {
   const rest = text.replace(SCHEME_TOKEN, (token) => (sameLink(token, handed) ? ' ' : token));
   return hasLinkShape(rest);
+}
+
+/** Hale's own name, which every writer may say. */
+const HALE_NAME = 'Hale';
+
+/** What code itself gave the writer. Page, email and invite text never go here. */
+export interface TrustedFacts {
+  /** The links code handed the writer; each counts only as itself, compared as a URL. */
+  handed: readonly string[];
+  /** The parent's own email from Hale's records, trusted only as that exact whole word. */
+  email: string | null;
+  /** Names from Hale's records. A person picks their own, so a link-shaped one is never trusted. */
+  words: readonly string[];
+}
+
+const CARRIES_A_HOST = /[@/]/;
+
+function trustedNames(words: readonly string[]): string[] {
+  return [HALE_NAME, ...words]
+    .flatMap(wordsAsHandsetReads)
+    .filter((word) => !CARRIES_A_HOST.test(word) && !hasLinkShape(word))
+    .map((word) => word.toLowerCase());
+}
+
+// Chinese or Japanese written up to a trusted word ("家长邮箱:sam@example.test"), and the
+// punctuation that may close it. Never a dot, '@' or '/', which would carry a host on.
+const CJK_LEAD = new RegExp(`^[${CJK}\u3001\u300C-\u300F:;,()]+`, 'u');
+const CJK_TAIL = /[\u3001\u300C-\u300F:;,()]+$/u;
+
+function isTrustedWord(word: string, trusted: ReadonlySet<string>): boolean {
+  const lower = word.toLowerCase();
+  return trusted.has(lower) || trusted.has(lower.replace(CJK_LEAD, '').replace(CJK_TAIL, ''));
+}
+
+/**
+ * The link-shaped words in a draft beyond what code gave the writer, as the draft wrote
+ * them, so a retry can be told exactly what to change. A trusted word counts only whole,
+ * the way {@link linksOutside} compares, and a full stop before one reads as a sentence
+ * end only after a CJK character. With no words trusted it refuses what
+ * {@link hasLinkBeyond} refuses, save Hale's own name after such a full stop.
+ */
+export function foreignLinks(text: string, trusted: TrustedFacts): string[] {
+  const names = new Set(trustedNames(trusted.words));
+  const email = trusted.email?.trim().toLowerCase();
+  const known = email ? new Set([...names, email]) : names;
+  const rest = text.replace(SCHEME_TOKEN, (token) =>
+    sameLink(token, trusted.handed) ? ' ' : token,
+  );
+  const found = wordsOf(readAsHandset(rest, names))
+    .filter((word) => readHasLinkShape(word) && !isTrustedWord(word, known))
+    .flatMap(namedPart);
+  return [...new Set(found)];
+}
+
+const HAS_CJK = new RegExp(`[${CJK}]`, 'u');
+
+/** Unspaced CJK writing makes one 'word' of a whole sentence; name just its hosts there. */
+function namedPart(word: string): string[] {
+  return HAS_CJK.test(word) && !hasMarkedLink(word) ? hostsIn(word) : [word];
 }

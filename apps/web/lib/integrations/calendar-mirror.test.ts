@@ -108,6 +108,20 @@ describe('classifyCalendarMirrorItem', () => {
     ],
     ['the parent organized it with no one else on it', { organizer: { self: true } }, 'organizer'],
     [
+      'the parent organized it and kept guests from editing it',
+      { organizer: { self: true }, guestsCanModify: false },
+      'organizer',
+    ],
+    [
+      'the parent organized it and let the guests edit it',
+      {
+        organizer: { self: true },
+        guestsCanModify: true,
+        attendees: [{ self: true, responseStatus: 'accepted' }, { email: 'a@example.test' }],
+      },
+      'accepted',
+    ],
+    [
       'other people on it and no answer from the parent at all',
       { organizer: { email: 'a@example.test' }, attendees: [{ email: 'a@example.test' }] },
       'invited',

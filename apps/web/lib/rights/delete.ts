@@ -7,6 +7,7 @@ import {
   redactErasedIntake,
   releaseErasedHolds,
 } from '../channel/intake/opt-out-hold.js';
+import { forgetSharedGroupPeople } from '../channel/linq/multi-family.js';
 import { removeDocument } from '../docs/storage.js';
 import {
   type ErasureGoogleOutcome,
@@ -445,6 +446,17 @@ export async function runDeletionSweep(
   await releaseErasedCrisisMarks(database, familyIds, erasedHolds.intakeInboundIds);
   // Their pre-signup intake has no family for the cascade to reach.
   await redactErasedIntake(database, erasedHolds, now);
+
+  // A shared chat's people rows only SET NULL on the family delete, which would keep the
+  // erased family's numbers and first names as anonymous rows. A stopped row stays as its
+  // STOP alone, so the erased number is still not texted if it comes back to that chat.
+  if (familyIds.length > 0) {
+    await forgetSharedGroupPeople(
+      database,
+      inArray(schema.linqSharedGroupPeople.familyId, familyIds),
+      now,
+    );
+  }
 
   let purgedObjects = 0;
   for (const familyId of familyIds) {

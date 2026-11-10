@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fits outcome_missed. It acknowledges the miss, makes the handed promise to flag the next window early, names the correct town, asks nothing, and invents nothing. The tone is friendly and the message is in English as handed.",
+    "score": 5
+  }
+}

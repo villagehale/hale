@@ -31,7 +31,7 @@ vi.mock('~/lib/monitoring/failure-page', () => ({
 }));
 vi.mock('~/lib/channel/checkin/notes', () => ({ purgeExpiredCheckInNotes: async () => 0 }));
 vi.mock('~/lib/channel/linq/roster-retention', () => ({
-  sweepRosterRetention: async () => ({ outcome: 'flag_off' }),
+  sweepRosterRetention: async () => ({ outcome: 'not_migrated' }),
 }));
 vi.mock('~/lib/signup/browser-use/runner', () => ({ remoteProfileDeleterFromEnv: () => null }));
 vi.mock('~/lib/signup/browser-use/vault', () => ({

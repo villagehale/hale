@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, specific programs at a named local venue (Halton Hills Gymnastics Centre, Georgetown), drawn from the centre's own site, age-appropriate for a toddler, and there are only two. The message leads with the best fit by name, Parent and Tot. It gives the session dates and attributes everything with \"their site says\" rather than claiming to have confirmed it. The missing price is named in first person (\"I could not pin down the price\"), which suits no_page_read, and there is no unearned \"not posted\" claim. With watch=true, it correctly states the first-person continuation (\"I'll keep watching and text you\"). It is plain text, with no link and no question. One minor looseness: \"$15 per family\" paraphrases \"one parent and up to 4 children\", but no time or price is invented.",
+    "score": 5
+  }
+}

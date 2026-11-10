@@ -1,13 +1,17 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { linqChatAuditKey } from './family-audit';
-import { type FamilyPrivateSlice, readFamilySliceForAudience } from './multi-family';
+import {
+  type FamilyPrivateSlice,
+  presentHouseholds,
+  readFamilySliceForAudience,
+} from './multi-family';
 import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledger';
 
 /**
@@ -26,12 +30,12 @@ import { lastDeliveredAside, privateAsideDedupeKey } from './private-aside-ledge
  *      text. Another family asking about someone's kid is NOT a reason: that family gets
  *      nothing (Sloane, #934) and the group reply stays busy/free.
  *   2. DRAFT (`group-private-aside-draft`), once per picked family: sees ONLY that family's
- *      consented slice, the public group text, that family's last delivered aside, and
+ *      own slice, the public group text, that family's last delivered aside, and
  *      the same clock-shaped plan/event times. It writes the text, or declines, including
  *      when nothing overlaps or it would repeat the last aside with nothing changed. Code
  *      never compares texts or topics, and never decides a clash by keyword.
  *
- * Code checks facts only: each ref is a live, consented join in THIS chat; one aside per
+ * Code checks facts only: each ref is a household present in THIS chat; one aside per
  * (group message, family), keyed on the audit row; the draft is non-empty. A failed read
  * or draft sends nothing (no fixed copy, no fallback).
  */
@@ -163,24 +167,6 @@ export const PRIVATE_ASIDE_DRAFT_SCHEMA = {
 export const PRIVATE_ASIDE_READ_MAX_TOKENS = 100;
 export const PRIVATE_ASIDE_DRAFT_MAX_TOKENS = 400;
 
-/** Live, consented joins for this chat, in join order: refs are f1, f2, ... in that order. */
-async function joinedFamilies(database: Database, chatId: string): Promise<string[]> {
-  const rows = await database
-    .select({
-      familyId: schema.linqMultiFamilyJoins.familyId,
-      consentRecordId: schema.linqMultiFamilyJoins.consentRecordId,
-    })
-    .from(schema.linqMultiFamilyJoins)
-    .where(
-      and(
-        eq(schema.linqMultiFamilyJoins.chatId, chatId),
-        isNull(schema.linqMultiFamilyJoins.leftAt),
-      ),
-    )
-    .orderBy(asc(schema.linqMultiFamilyJoins.joinedAt), asc(schema.linqMultiFamilyJoins.createdAt));
-  return rows.filter((r) => r.consentRecordId).map((r) => r.familyId);
-}
-
 /** The cap: one aside per (group message, family). */
 async function alreadyHandled(
   database: Database,
@@ -286,7 +272,12 @@ export async function runPrivateAside(
     language: string | null;
   },
 ): Promise<PrivateAsideOutcome> {
-  const familyIds = await joinedFamilies(database, input.chatId);
+  // Presence, not a join: a household hears about its own facts 1:1 while someone from it
+  // is here, has not stopped Hale here, and its parent has not said it is out.
+  const familyIds = await presentHouseholds(database, input.chatId, {
+    includeStopped: false,
+    includeLeft: false,
+  });
   if (familyIds.length === 0) return { outcome: 'no_families' };
 
   const slices = new Map<string, FamilyPrivateSlice>();
