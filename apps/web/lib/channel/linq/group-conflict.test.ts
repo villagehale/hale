@@ -326,6 +326,27 @@ describe('findGroupClashes', () => {
 });
 
 describe('clashCalendar', () => {
+  it('joins an untitled copy to the plan its titled copy on the other calendar made (VIL-651)', () => {
+    const calendar = clashCalendar({
+      blocks: [
+        block({
+          eventId: 'shared-id',
+          integrationId: 'gcal-sam',
+          userId: 'sam',
+          title: null,
+        }),
+        block({ eventId: 'shared-id', title: 'Maya swim pickup' }),
+        block({ eventId: 'other-id', integrationId: 'gcal-sam', userId: 'sam', title: null }),
+      ],
+      events: [],
+      decided: noDecision,
+    });
+    expect(calendar.plans.map((row) => [row.title, [...row.holders].sort()])).toEqual([
+      ['Maya swim pickup', ['barton', 'sam']],
+    ]);
+    expect(calendar.busy.map((row) => row.key)).toEqual(['busy:gcal-sam:other-id']);
+  });
+
   it("hides a private plan's copy on every calendar, even another parent's invite copy", () => {
     const calendar = clashCalendar({
       blocks: [

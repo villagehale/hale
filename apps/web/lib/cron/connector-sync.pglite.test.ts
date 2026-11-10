@@ -87,6 +87,7 @@ function change(eventId: string): CalendarChange {
     // pass as `outside_window`.
     start: { dateTime: new Date(Date.now() + 86_400_000).toISOString() },
     end: { dateTime: new Date(Date.now() + 90_000_000).toISOString() },
+    standing: 'organizer',
   };
 }
 
