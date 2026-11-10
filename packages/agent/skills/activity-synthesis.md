@@ -70,7 +70,7 @@ Each of `when`, `price` and `registration` comes with two companions:
 {
   "slots": [
     {
-      "name": "Tiny Gym, Cartwheels Gym Centre",
+      "name": "Tiny Gym, Riverbend Gym Centre",
       "age_fit": "walking to 3.5 years, with a parent",
       "when": "Sundays 9:30-10:15, Sept 14 to Oct 26",
       "when_quote": "Tiny Gym | Sun | 9:30-10:15 AM | Sep 14 - Oct 26",
@@ -78,9 +78,9 @@ Each of `when`, `price` and `registration` comes with two companions:
       "price_quote": "Tiny Gym (10 wks) .......... $124.00",
       "registration": "Registration opened July 22",
       "registration_quote": "Fall registration opens Tuesday, July 22 at 7:00 a.m.",
-      "registration_source": "https://haltonhills.ca/recreation/register",
-      "source_name": "Cartwheels Gym Centre",
-      "source_url": "https://example.ca/programs.php"
+      "registration_source": "https://town.example/recreation/register",
+      "source_name": "Riverbend Gym Centre",
+      "source_url": "https://riverbendgym.example/programs"
     }
   ]
 }

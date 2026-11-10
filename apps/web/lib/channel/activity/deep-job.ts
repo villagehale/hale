@@ -13,9 +13,8 @@ import { type DueCommitment, loadOpenCommitmentById } from '~/lib/commitments/le
 import { cancelActivityPromise } from './commitment';
 import { type DeepLaneDeps, type DeepLaneRun, defaultDeepLaneDeps, runDeepLane } from './deep-lane';
 import { deidentifyActivityQuery } from './deidentify';
-import { type FollowUpDelivery, deliverFollowUp } from './deliver';
+import { type FollowUpDelivery, deliverFollowUp, textSlots } from './deliver';
 import { type ActivityFamilyReader, productionActivityFamilyReader } from './reader';
-import { SLOTS_IN_TEXT } from './share-page';
 import { defaultActivityFollowUpDeps, resolveFollowUpRecipient } from './sweep';
 
 /**
@@ -234,8 +233,7 @@ export async function runDeepResearchJob(
       dedupeKey,
       optOut: verdict.optOut,
       // The text carries the best one or two. The rest stay in the chat until the parent asks.
-      picks: run.result.slots.slice(0, SLOTS_IN_TEXT),
-      held: run.result.slots.slice(SLOTS_IN_TEXT),
+      ...textSlots(run.result.slots),
       // READ OFF THE PAGES BY THE LANE (deep-lane.ts), not recomputed here from counts:
       // a second reader of "may Hale report an absence" is a second answer waiting to
       // disagree with the first.
