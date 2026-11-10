@@ -39,4 +39,23 @@ describe('reminderFacts move direction', () => {
     expect(f.movedBecause).toBeNull();
     expect(f.sendsAt).toBe(f.now);
   });
+
+  it('a reminder for the asker speaks to them; one for someone else does not', () => {
+    const forAsker = facts(base('2026-10-29T19:00:00Z', '2026-10-29T19:00:00Z'));
+    expect(forAsker.asker).toBe('Ruth');
+    expect(forAsker.speakTo).toBe('Ruth');
+    expect(forAsker.askedByName).toBeNull();
+
+    const forSomeone = reminderFacts({
+      reminder: { ...base('2026-10-29T19:00:00Z', '2026-10-29T19:00:00Z'), forKind: 'person' },
+      askerName: 'Priya',
+      recipientName: 'Dan',
+      now: new Date('2026-10-29T19:00:00Z'),
+      timeZone: tz,
+    });
+    expect(forSomeone.asker).toBeNull();
+    expect(forSomeone.speakTo).toBe('Dan');
+    expect(forSomeone.forName).toBe('Dan');
+    expect(forSomeone.askedByName).toBe('Priya');
+  });
 });

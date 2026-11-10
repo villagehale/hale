@@ -46,6 +46,8 @@ export interface ConfirmFacts {
   language: ReplyLanguage;
   audience: 'group';
   asker: string | null;
+  /** Who this confirm is addressing: the person who asked. */
+  speakTo: string | null;
   memberWords: string;
   now: string;
   set: ConfirmSetFact[];
@@ -59,6 +61,8 @@ export interface ReminderTextFacts {
   language: ReplyLanguage;
   audience: 'group' | 'direct';
   asker: string | null;
+  /** Who this reminder is addressing: `forName`, or null when it is for everyone. */
+  speakTo: string | null;
   memberWords: null;
   now: string;
   forName: string | null;

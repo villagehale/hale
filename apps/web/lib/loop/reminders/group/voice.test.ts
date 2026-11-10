@@ -24,6 +24,7 @@ const FACTS: ConfirmFacts = {
   language: 'en',
   audience: 'group',
   asker: 'Ruth',
+  speakTo: 'Ruth',
   memberWords: 'Hale, remind me Thursday at 4 to grab Maya from swim',
   now: 'Wednesday, October 28, 2026 at 2:00 PM',
   set: [
