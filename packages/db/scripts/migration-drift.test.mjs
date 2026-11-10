@@ -56,9 +56,10 @@ describe('catalog history cutover', () => {
       '0223_authorized_signup_plan_resume',
       '0224_linq_shared_group_people_phone_nullable',
       '0225_messages_provider_message_id',
-      '0225_linq_group_plan_calendar_consent',
-      '0225_email_alert_holds',
-      '0225_opt_out_held_messages_kind',
+      '0226_linq_group_plan_calendar_consent',
+      '0227_team_schedule_changes',
+      '0228_email_alert_holds',
+      '0229_opt_out_held_messages_kind',
     ]);
   });
 });
