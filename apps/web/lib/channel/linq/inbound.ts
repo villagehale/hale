@@ -44,6 +44,7 @@ import { considerSocialForward } from '~/lib/social/forward';
 import { considerCarpoolTapback, considerCarpoolTurn } from './carpool';
 import type { CarpoolReader } from './carpool-reading';
 import type { CarpoolComposer } from './carpool-voice';
+import { type CommonTimePlanPorts, productionCommonTimePlanPorts } from './common-time-plan';
 import {
   linqGroupCarpoolEnabled,
   linqGroupCoparentEnabled,
@@ -225,6 +226,8 @@ export async function handleLinqInboundRequest(
     privateAsideModel?: PrivateAsideModel;
     /** VIL-471 test seam. Production sends the native card through sendChoicePoll. */
     groupPollCard?: GroupPollCardPort;
+    /** VIL-459 test seam. Production places a picked common time with the real invite sender. */
+    commonTimePlan?: CommonTimePlanPorts;
   },
 ): Promise<Response> {
   if (!linqInboundConfigured()) {
@@ -650,6 +653,15 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
       },
       {
         ...multiFamilyPorts(deps),
+        commonTimePlan:
+          deps.commonTimePlan ??
+          productionCommonTimePlanPorts(
+            deps.database,
+            privateAsideOneToOne(deps.database, {
+              now: deps.now?.() ?? new Date(),
+              send: deps.oneToOne,
+            }),
+          ),
         optOut: async (text) => {
           const intent = await optOutIntentOf(text);
           return intent === 'stop' || intent === 'start' ? intent : 'none';
