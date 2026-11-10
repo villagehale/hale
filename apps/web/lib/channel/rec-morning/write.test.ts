@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   EFUN_GONE,
+  REC_MORNING_MODEL_TOPIC_ENABLED_ENV,
   TORONTO_REC_PORTAL,
   recMorningReply,
   resolveRecMorningWhere,
   writeRecMorningIntakeReply,
   writeRecMorningReply,
 } from './index';
+import type { RecMorningPicked } from './topic';
 
 /** A family whose stored postal is a Toronto FSA: rec-morning answers only a GTA family. */
 const TORONTO_FSA = 'M5V';
@@ -149,6 +151,146 @@ describe('VIL-545 · the lane speaks only when the model reads that its facts an
         reading('other'),
       ),
     ).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * VIL-545 leftover. The word test claimed a pickup because it said "swim". Behind
+ * REC_MORNING_MODEL_TOPIC_ENABLED the model picks the topic from the family's
+ * catalog; dinner and pickup both reach it, and only a catalog id lets the lane
+ * speak. Off, the word test still keeps dinner out without a model call.
+ */
+describe('VIL-545 · flag on, the model picks the topic and the word test is not consulted', () => {
+  const PICKUP = "Hale, can you loop in Sam about Saturday's swim pickup? I can't make it.";
+  const ASK = 'when does swim registration open?';
+  const DINNER = 'what time is dinner';
+  const picking = (value: RecMorningPicked | null) => vi.fn(async () => value);
+  const unusedRead = () => vi.fn(async (): Promise<'answers'> => 'answers');
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('flag off, dinner still never reaches a model', async () => {
+    const write = vi.fn(async () => 'x');
+    const pick = picking('none');
+    expect(
+      await writeRecMorningReply(
+        DINNER,
+        new Date(),
+        AT_TORONTO_FSA,
+        null,
+        write,
+        unusedRead(),
+        pick,
+      ),
+    ).toBeNull();
+    expect(pick).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('a pickup is left to the coach when the picker returns none', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const write = vi.fn(async () => 'model words');
+    const pick = picking('none');
+    const read = unusedRead();
+    expect(
+      await writeRecMorningReply(PICKUP, new Date(), AT_TORONTO_FSA, null, write, read, pick),
+    ).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(pick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: PICKUP,
+        homeCity: 'toronto',
+        topics: expect.arrayContaining([
+          expect.objectContaining({
+            topic: 'toronto_swim',
+            facts: expect.stringContaining(TORONTO_REC_PORTAL),
+          }),
+        ]),
+      }),
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('dinner reaches the picker too: the word test is not the gate', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const write = vi.fn(async () => 'model words');
+    const pick = picking('none');
+    const read = unusedRead();
+    expect(
+      await writeRecMorningReply(DINNER, new Date(), AT_TORONTO_FSA, null, write, read, pick),
+    ).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(pick).toHaveBeenCalledWith(expect.objectContaining({ text: DINNER }));
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('a catalog id is written from those facts', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const write = vi.fn(async () => 'model words');
+    const pick = picking('toronto_swim');
+    const read = unusedRead();
+    const now = new Date('2026-11-08T14:00:00.000Z');
+    expect(await writeRecMorningReply(ASK, now, AT_TORONTO_FSA, null, write, read, pick)).toBe(
+      'model words',
+    );
+    expect(read).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'rec_morning',
+        facts: expect.objectContaining({
+          parentWords: ASK,
+          answer: expect.stringContaining(TORONTO_REC_PORTAL),
+        }),
+      }),
+    );
+  });
+
+  it('a failed pick sends nothing from this lane and names it in the log', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const write = vi.fn(async () => 'model words');
+    const read = unusedRead();
+    expect(
+      await writeRecMorningReply(ASK, new Date(), AT_TORONTO_FSA, null, write, read, picking(null)),
+    ).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      { outcome: 'read_failed' },
+      expect.stringContaining('rec-morning'),
+    );
+    vi.restoreAllMocks();
+  });
+
+  it('intake skips the word test too: dinner still reaches the picker', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const write = vi.fn(async () => 'model words');
+    const pick = picking('none');
+    const read = unusedRead();
+    expect(
+      await writeRecMorningIntakeReply(
+        { parentWords: DINNER, pendingAsk: '', postal: TORONTO_FSA },
+        write,
+        read,
+        pick,
+      ),
+    ).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+    expect(pick).toHaveBeenCalledWith(expect.objectContaining({ text: DINNER }));
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('no GTA place, no picker call', async () => {
+    vi.stubEnv(REC_MORNING_MODEL_TOPIC_ENABLED_ENV, 'true');
+    const write = vi.fn(async () => 'x');
+    const pick = picking('toronto_rec');
+    const read = unusedRead();
+    expect(await writeRecMorningReply(ASK, new Date(), null, null, write, read, pick)).toBeNull();
+    expect(pick).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
   });
 });
