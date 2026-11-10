@@ -1927,8 +1927,8 @@ async function main() {
     await agent.loadSkill(SKILL_PATH),
     await agent.loadSkill(join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-nearby-find.md')),
   );
-  // Production appends this on every channel turn. The standing corpus does not, so
-  // those recordings keep their keys. The postal-home fixture does, matching production.
+  // Production appends this on every channel turn (VIL-542). Re-record the standing
+  // corpus with the next paid run; this change re-keys every coach-channel subject.
   const homePlaceSkill = await agent.loadSkill(
     join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-home-place.md'),
   );
@@ -2061,7 +2061,7 @@ async function main() {
           : []),
       ];
       let turnSkill = augmentCoachSkillForAutonomySwitchOff(skill, fixture.autonomy === true);
-      if (fixture.postalTown) turnSkill = withAddendum(turnSkill, homePlaceSkill);
+      turnSkill = withAddendum(turnSkill, homePlaceSkill);
       // VIL-500: only these fixtures see the card verb and the lit addendum. Every other
       // turn keeps the disk skill and the tool list the cache was recorded against.
       if (fixture.experienceCard) {
