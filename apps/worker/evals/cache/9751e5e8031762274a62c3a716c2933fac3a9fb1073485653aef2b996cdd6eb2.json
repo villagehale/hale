@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgV2VJ3H2eq7BK6YnccSV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/gkKEAgTGAI4AUIIdGhpbmtpbmcSDNqL8bVKcS0bLVQsdRoMkKFGdcxNx3jWr1FoIjBsx4Y3NwdYlv3C/arfStLnCw5ukzU3hBJtHUCCxq3T6HFW0GBKiNm74EqZj3apAMMqmwkDHMWPwZlzIH9T1A7uPqR+7TE6JJIVQob+hXaaIoZen5e+KchDoSl83L8ilCgSsGdGANVUxbz1VYWu/tDt1waZtjYqqXh0xuc6399cypiNbrm8gTLnmTFbAbKBEootJx6YM9lK41mqxCL//tep8q6ctYHQupXHxqugifgtbXNCU6HyQUUsJyF2ZOYazKcwdGlXNWMjQquUwYWO3wGbpdwTd9yXRSHuTYoTM96mDU5jzlWnvtW1h+4mXYpEwo/JzgHMl1AWGugcuLT28dPjpCrDjepLHEzZ+xf5iN18Txl8WMOMNJhje53/4PXbF91mLGy5yY9eypFufVaLCClK0IF0UgUTS9sCpLXVRMqBjjHIvNtMGtK9rG7BnZI99bafoS4nFqtspUKk6A4yA6OcXS5hbBD8Lu+Ct8VsplVPAcR/jq+kg9ULIEdtUVDKSGjwbyUSMiCaBBzpys6Zsurca8XIdRuc8Q3deauU0i1N6RUTxBgRPMYPksDxcB0Dp2ODi/qjglojMn4fJ+qJWOGY4FBQGkCqXCb99RvOtxEC8e+RNAtaCQebcQ8SdVWutIze/XflW0D+zHRlS0h//M6wAPKJixQo/C8uSzYWxqZJ1nqZQE/1z1BMZEO/xdb5UEE3Er/eu9K9ylGCmfRjYlkUFMtXi3rw94Ko+hew4r9f4n7MYldE6lISVGynPTNl3bzqE+9au6vTGV57Iv3Djeiup0Mewn4e0wwaieCKevarJABxSJFplLCs72U5nyVu6kkuZJXSF8OOa4qHIg8rPunXIoU7o9sz2CyaVNOTl7tQOHLSY9jCqsBp/pUKeQrq6JyIhy2fS6deCDpRfLVMI9AOJhQdnFR6eM1lvZPpLpkosjCmderBBulqLRWBSntATaorSZ1Z9jLgVE+cSRbG3LMauXGirzjL1XyKeKGbQspI2vgBoJQAAiNtWtVdZMzPmUkrOTo++eKuzeIkMBIXRFNbLm5uKylWoKBLN7nIuwHsUybUBzsMq6CQZY7J74BPS/tXxPiWkc+zyVjDGnPI92/1dUzsSzBhwMWMtklaoPYg/9L9mywLn+V8tJNkMMJqCsuozsyNwm1Dtd5WwnKFK/ovbE+6qHhwNC3yBe3s7Zwzjx0KFxW0Q6e54pEUh+ZHBXEmS2gMLC7iAUB0W5mjilamOKoznyiGsxM0lv0j/dYT0CWZwZEVL9++EvnDUnKAUa/nT1V6u23cI/oXluxgV6IrOXnOMQvM3jYFVyAFbNibv2m+5KhVm7KvrRaR/AuXNT06j6wFp7TxrD/vw3tdIOePCBUVXwUFaU7/9lr5/bvSZo5Yy4BN8yVwtWoOvWg2CgS+A/lD+ujcaq+Swkj2Oct0Za9lwVt5bU5fhiNhxKVeHohUrHFHrd/CNTw0T0jjXiPPDQKCQlumIQX5FdtkQRx9uNcBO9evRbqAnsqZPLOmZKaL1blopRPQfTN8Wlg1VRJkkls/adKUKDX9iNXNVtT2S35Qess8YOF0tuYYG6c4icTgLzGsRIceude4JDBlvKLeeh0rbbwrZxbYBRkX+VPeId5EJKIYIvUO6+bKKMEYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "I don't have anything from Priya about the school thing, so I can't say what she told me. If it matters for the week, she can say it here and I'll work it in."
+      }
+    ],
+    "usage": {
+      "input_tokens": 383,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 17664,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 283,
+      "output_tokens_details": {
+        "thinking_tokens": 234
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

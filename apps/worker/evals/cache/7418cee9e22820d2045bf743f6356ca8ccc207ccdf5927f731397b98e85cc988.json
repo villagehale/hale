@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the sign-up succeeded and the provider confirmed the Saturday 9:30 session, which matches confirmed=true and outcome=completed. It carries no link, no personal details, no retry or follow-up promise, and is in zh with a warm, plain tone. It does not say what the parent should do next, which is a minor gap since no next step was given in the facts.",
+    "score": 4
+  }
+}

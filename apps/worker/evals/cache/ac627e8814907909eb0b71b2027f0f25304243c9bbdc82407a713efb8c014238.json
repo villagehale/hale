@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply offers the verified find whole: exact title, venue, day and time, all matching its own `when`. The URL is the offerable's own page, so it is recall. It correctly flags that the 6-12 age range fits Ada (8) but not Milo (5), and it doesn't push the activity on the younger child. The soccer mention is traceable to the week and gives useful context for planning. No greeting, sign-off, extra questions or machinery talk.",
+    "score": 5
+  }
+}

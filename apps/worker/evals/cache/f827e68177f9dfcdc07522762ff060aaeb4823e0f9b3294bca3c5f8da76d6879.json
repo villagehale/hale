@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply hands over the web find under its exact title, \"Fanous lantern craft\", with its own day, its price and the library's attribution. It correctly targets Ada (8) and rules out Milo (5), since the program is for ages 6-12. The URL is the webFind's own page, so it is recall. The soccer line is grounded in the week. Small blemishes: the attribution is said twice (\"program page lists\" and then \"That's from their site, not something I've confirmed\"), and the soccer mention adds length.",
+    "score": 4
+  }
+}

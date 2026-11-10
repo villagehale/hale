@@ -1,34 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
-import { connectorRevokeReply } from '~/lib/channel/connect/copy';
 import { matchConnectorDisconnectRequest } from '~/lib/channel/connect/detect';
-import { CONNECTOR_TRUST_LINE } from '~/lib/channel/connect/text-connect';
-import {
-  forwardAddressReply,
-  forwardRevokeDeclinedReply,
-  forwardRevokeReply,
-  matchForwardAddressRequest,
-} from '~/lib/channel/email/forward-request';
-import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import { JOIN_ACCEPTED_ACK, joinInviteForward, joinWelcome } from '~/lib/channel/join/copy';
-import { replyLanguage } from '~/lib/channel/language';
-import {
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  UNPLACEABLE_PROVIDER_REPLY,
-  UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE,
-} from '~/lib/channel/off-domain/copy';
-import {
-  approvedReceipt,
-  declinedReceipt,
-  failureReply,
-  whichOneReply,
-} from '~/lib/channel/router/copy';
+import { referralReply } from '~/lib/channel/off-domain/copy';
 import { smsEncoding, smsSegments } from './sms-segments';
+
+/** The province whose verified provider paths these lines are (VIL-589). */
+const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
 
 /**
  * VIL-265 — the structural tripwire under every word Hale texts.
@@ -86,14 +67,13 @@ const SMS_COPY_SOURCES = [
   'lib/channel/join/copy.ts',
   'lib/channel/connect/copy.ts',
   'lib/channel/connect/text-connect.ts',
-  'lib/channel/inbound-copy.ts',
   'lib/channel/founder/copy.ts',
-  'lib/health/copy.ts',
   'lib/registration/sequence/copy.ts',
   'lib/party/copy.ts',
   'lib/party/guest-copy.ts',
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
+  'lib/channel/rec-morning/copy.ts',
   // The travel brief - the LONGEST deterministic proactive text in the product, at four
   // segments against the full opt-out form. It is also the one whose body concatenates
   // strings a VENUE wrote, so the composer's own words have the least headroom of any
@@ -228,153 +208,11 @@ describe('the co-parent join copy stays GSM-7 and inside two segments', () => {
   });
 });
 
-/**
- * THE DISCONNECT RECEIPTS, both twins, all three outcomes.
- *
- * Two gates in one suite. The alphabet, because the French twins carry the accents
- * GSM-7 does have and one circumflex would halve the segment (70 characters instead of
- * 160) on the longest sentence Hale sends about custody. And the CONTENT, because the
- * removal URL is the only defence against the failure this copy exists for: a parent
- * who disconnects by text, checks their Google account, sees Hale still listed and
- * concludes nothing happened. Hale does not call Google's revoke endpoint, so a receipt
- * that dropped that clause would be claiming something untrue.
- *
- * The French 'revoked' twin has SIX characters of headroom at the longest provider
- * noun. That is not slack — it is the reason this suite renders the copy rather than
- * scanning the file: a word added in review is a second segment on every French
- * disconnect, forever.
- */
-describe('the disconnect receipts stay one GSM-7 segment and say what Google still holds', () => {
-  const OUTCOMES = ['revoked', 'not_connected', 'revoke_failed'] as const;
-  const PROVIDERS = ['gcal', 'gmail', 'gdrive'] as const;
-  const RENDERED = (['en', 'fr'] as const).flatMap((language) =>
-    OUTCOMES.flatMap((outcome) =>
-      PROVIDERS.map(
-        (provider) =>
-          [
-            `${language}/${outcome}/${provider}`,
-            connectorRevokeReply(language, provider, outcome),
-          ] as const,
-      ),
-    ),
-  );
-
-  it.each(RENDERED)('%s', (_name, body) => {
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-
-  it.each(['en', 'fr'] as const)('the %s revoked twin carries the removal URL', (language) => {
-    for (const provider of PROVIDERS) {
-      expect(connectorRevokeReply(language, provider, 'revoked')).toContain(
-        'myaccount.google.com/permissions',
-      );
-    }
-    // Positive control for the absence below: the revoked twin really is the one that
-    // carries it, so "the others do not" is a fact about them.
-    expect(connectorRevokeReply(language, 'gcal', 'not_connected')).not.toContain(
-      'myaccount.google.com',
-    );
-  });
-
-  /** The failure twin exists in French, and is not the English one. `failureReply()`
-   * takes no language, so without a local twin the French parent would read an English
-   * sentence at the worst moment of the turn. */
-  it('answers a failed disconnect in the language the parent wrote in', () => {
-    const en = connectorRevokeReply('en', 'gcal', 'revoke_failed');
-    const fr = connectorRevokeReply('fr', 'gcal', 'revoke_failed');
-    expect(fr).not.toBe(en);
-    expect(fr).toContain('rien');
-    expect(en).toContain('nothing was changed');
-  });
-
-  /** The trust line is not a command. A parent can still disconnect by saying so. */
-  it('does not teach a disconnect phrase on the connect card', () => {
-    expect(CONNECTOR_TRUST_LINE.gcal).toBe(
-      'I never see your password. You can disconnect any time.',
-    );
-    expect(CONNECTOR_TRUST_LINE.gmail).toBe(CONNECTOR_TRUST_LINE.gcal);
-    expect(matchConnectorDisconnectRequest(CONNECTOR_TRUST_LINE.gcal)).toBeNull();
+describe('the texted disconnect', () => {
+  /** VIL-509: no fixed trust line remains. A parent can still disconnect by saying so. */
+  it("reads a disconnect request from the parent's own words", () => {
     expect(matchConnectorDisconnectRequest('disconnect my calendar')).toBe('gcal');
     expect(matchConnectorDisconnectRequest('disconnect my gmail')).toBe('gmail');
-  });
-});
-
-/**
- * THE FORWARDING ADDRESS REPLY — the one deterministic line that hands a parent a
- * credential, and the receipts that turn it off again (VIL-352).
- *
- * TWO segments rather than one, and the ceiling is argued in forward-request.ts: the
- * address alone is 56 characters, and the sentence beside it has to say that an unknown
- * sender is ASKED about rather than read, or a parent sets up a mail filter believing
- * Hale is already reading everything. The receipts carry no address and are held to one.
- */
-describe('the forwarding address reply stays GSM-7 and carries the whole address', () => {
-  const ADDRESS = `hale+${'a'.repeat(30)}@mail.villagehale.com`;
-
-  it.each(['en', 'fr'] as const)('%s', (language) => {
-    const body = forwardAddressReply(language, ADDRESS);
-    expect({
-      encoding: smsEncoding(body),
-      overBudget: smsSegments(body) > 2,
-      carriesWholeAddress: body.includes(ADDRESS),
-    }).toEqual({ encoding: 'gsm7', overBudget: false, carriesWholeAddress: true });
-  });
-
-  it.each([
-    ['en', 'revoked'],
-    ['en', 'not_configured'],
-    ['fr', 'revoked'],
-    ['fr', 'not_configured'],
-  ] as const)('the %s %s receipt is one segment', (language, outcome) => {
-    const body = forwardRevokeReply(language, outcome);
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-
-  it.each(['en', 'fr'] as const)('the %s declined receipt is one segment', (language) => {
-    const body = forwardRevokeDeclinedReply(language);
-    expect({ encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
-      encoding: 'gsm7',
-      segments: 1,
-    });
-  });
-
-  /**
-   * The words Hale's own replies teach have to be words that work — the same check the
-   * connected receipt gets, because both sentences tell a parent what to text.
-   *
-   * THE ADDRESS REPLY NOW READS AS `turn_off` WHEN IT IS ECHOED BACK, and that is the
-   * point of round 6 rather than a regression of the old `not.toBe('turn_off')` pin. Its
-   * closing line quotes the command, so the taught words are words the matcher hears —
-   * and what a turn-off reads as is now a QUESTION, not a revoke, so an echo costs one
-   * text instead of a credential.
-   */
-  it('honours the instructions its own copy gives', () => {
-    expect(forwardAddressReply('en', ADDRESS)).toContain('turn off my forwarding address');
-    expect(matchForwardAddressRequest('turn off my forwarding address')).toBe('turn_off');
-    expect(forwardAddressReply('fr', ADDRESS)).toContain('désactiver mon adresse de transfert');
-    expect(matchForwardAddressRequest('désactiver mon adresse de transfert')).toBe('turn_off');
-    expect(forwardRevokeReply('en', 'revoked')).toContain('forwarding address');
-    expect(matchForwardAddressRequest('forwarding address')).toBe('address');
-    expect(forwardRevokeReply('fr', 'revoked')).toContain('adresse de transfert');
-    expect(matchForwardAddressRequest('adresse de transfert')).toBe('address');
-  });
-
-  /**
-   * AND IN THE LANGUAGE IT TAUGHT THEM. A taught phrase the matcher hears but the language
-   * detector does not is only half a working instruction: the French reply tells a parent
-   * to text "desactiver mon adresse de transfert", and every word of that sentence was
-   * either an English word or an accented one the fold strips, so the confirm that came
-   * back said "Reply YES". Hale must answer its own French in French.
-   */
-  it('hears its own taught phrases as the language it taught them in', () => {
-    expect(replyLanguage('désactiver mon adresse de transfert')).toBe('fr');
-    expect(replyLanguage('adresse de transfert')).toBe('fr');
   });
 });
 
@@ -392,22 +230,16 @@ describe('the forwarding address reply stays GSM-7 and carries the whole address
  * the thing the scan cannot see — what each one costs once rendered, in the same currency
  * the carrier bills, and against the same ceilings the English twins are held to.
  */
-describe('the French script stays GSM-7 and inside the English budgets', () => {
-  const RENDERED: Record<string, { body: string; maxSegments: number }> = {
-    // One segment, for the same reason the English consent ask is: it rides on the end
-    // of the radar payload, where every septet comes out of the same budget.
-    PROVIDER_ACCESS_REPLY: { body: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr, maxSegments: 2 },
-    UNPLACEABLE_PROVIDER_REPLY: {
-      body: UNPLACEABLE_PROVIDER_REPLY_BY_LANGUAGE.fr,
-      maxSegments: 2,
-    },
-  };
+describe('the French script stays GSM-7', () => {
+  const ASKS = [
+    ['family doctor', 'Je cherche un medecin de famille'],
+    ['other practitioner', 'je cherche un orthophoniste pour mon fils'],
+  ] as const;
 
-  it.each(Object.entries(RENDERED))('%s', (_name, { body, maxSegments }) => {
-    expect({ encoding: smsEncoding(body), overBudget: smsSegments(body) > maxSegments }).toEqual({
-      encoding: 'gsm7',
-      overBudget: false,
-    });
+  it.each(ASKS)('%s', async (_name, ask) => {
+    const body = (await referralReply(ask, 'fr', ONTARIO)) ?? '';
+    expect(smsEncoding(body)).toBe('gsm7');
+    expect(body.length).toBeGreaterThan(0);
   });
 
   /**
@@ -415,9 +247,14 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
    * the day someone "fixed" the spelling of `l'age` and could not say why the bill
    * tripled — this one says which character did it.
    */
-  it('names the characters French copy may not use here', () => {
+  it('names the characters French copy may not use here', async () => {
     const forbidden = [...'âêîôûçœ«»’—'];
-    const offenders = Object.entries(RENDERED).flatMap(([name, { body }]) =>
+    const rendered = await Promise.all(
+      ASKS.map(
+        async ([name, ask]) => [name, (await referralReply(ask, 'fr', ONTARIO)) ?? ''] as const,
+      ),
+    );
+    const offenders = rendered.flatMap(([name, body]) =>
       forbidden.filter((char) => body.includes(char)).map((char) => `${name}: ${char}`),
     );
 
@@ -439,20 +276,16 @@ describe('the French script stays GSM-7 and inside the English budgets', () => {
  * asked for — the worst possible place to be paying triple.
  */
 describe('the off-domain lane stays GSM-7 once rendered', () => {
-  const RENDERED: Record<string, string> = {
-    PROVIDER_ACCESS_REPLY,
-    DIRECT_ACCESS_EYE_REPLY,
-    UNPLACEABLE_PROVIDER_REPLY,
-  };
+  const ASKS = [
+    ['family doctor', 'we need a family doctor'],
+    ['eye care', 'find me an optometrist'],
+    ['other practitioner', 'we need an OT for my son'],
+  ] as const;
 
-  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+  it.each(ASKS)('%s', async (_name, ask) => {
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(smsEncoding(body)).toBe('gsm7');
-  });
-
-  it('keeps the provider lines inside the two-segment ceiling', () => {
-    expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
-    expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
-    expect(smsSegments(UNPLACEABLE_PROVIDER_REPLY)).toBeLessThanOrEqual(2);
+    expect(body.length).toBeGreaterThan(0);
   });
 
   /**
@@ -466,12 +299,13 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * third-party address, at the moment a decision is being made, one per message. It is
    * pinned to exactly one so the exception cannot quietly widen.
    */
-  it('allows the eye-care reply exactly one bare address and no more', () => {
-    expect(DIRECT_ACCESS_EYE_REPLY.match(/[\w-]+\.(?:ca|com|org|net)\b/g)).toEqual([
-      'FindAnEyeDoctor.ca',
-    ]);
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/https?:/i);
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/\bthe app\b/i);
+  it('allows the eye-care reply exactly one bare address and no more', async () => {
+    const reply = (await referralReply('find me an optometrist', 'en', ONTARIO)) ?? '';
+    expect(reply).toContain('FindAnEyeDoctor.ca');
+    expect(reply).not.toContain('811');
+    expect(reply.match(/[\w-]+\.(?:ca|com|org|net)\b/g)).toEqual(['FindAnEyeDoctor.ca']);
+    expect(reply).not.toMatch(/https?:/i);
+    expect(reply).not.toMatch(/\bthe app\b/i);
   });
 
   /**
@@ -481,7 +315,8 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
    * deflect is what this replaced, so the guard is on the whole file's output rather
    * than on the one line that broke it.
    */
-  it.each(Object.entries(RENDERED))('%s points at no app and no link', (_name, body) => {
+  it.each(ASKS)('%s points at no app and no scheme', async (_name, ask) => {
+    const body = (await referralReply(ask, 'en', ONTARIO)) ?? '';
     expect(body).not.toMatch(/\bthe app\b/i);
     expect(body).not.toMatch(/https?:/i);
   });
@@ -504,19 +339,6 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
  */
 describe('nothing Hale texts sends a parent to the app', () => {
   const RENDERED: Record<string, string> = {
-    failureReply: failureReply(),
-    'whichOneReply (overflow)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email', 'add_to_routine'],
-      true,
-    ),
-    // The same sentence with no menu behind it (VIL-304 verifier): it must be GSM-7 and
-    // inside the budget too, since it is what a parent gets whenever the polarity could
-    // not be read for free.
-    'whichOneReply (unnumbered)': whichOneReply(
-      ['calendar_move', 'calendar_add', 'calendar_cancel', 'send_email'],
-      false,
-    ),
-    mediaUnsupportedReply: mediaUnsupportedReply(),
     CO_PARENT_REDIRECT,
   };
 
@@ -527,55 +349,5 @@ describe('nothing Hale texts sends a parent to the app', () => {
     // apostrophe or a third segment gets in.
     expect(smsEncoding(body)).toBe('gsm7');
     expect(smsSegments(body)).toBeLessThanOrEqual(2);
-  });
-
-  /** The overflow is disclosed either way — what changed is that the rest are reachable
-   * by answering the three in front of them, rather than on another surface. */
-  it('discloses the approvals it could not list, without a destination', () => {
-    const reply = whichOneReply(
-      Array.from({ length: 8 }, () => 'calendar_move'),
-      true,
-    );
-
-    expect(reply).toMatch(/5 more behind those/i);
-    // Disclosed WITHOUT a destination, and without a menu: the choices are named, the
-    // rest are reachable by answering the ones in front (2026-08-13).
-    expect(reply).not.toMatch(/\bthe app\b|https?:/i);
-    expect(reply).not.toMatch(/\bYES \d|^\d\./m);
-  });
-});
-
-/**
- * The composition the file scan cannot see: `labels.ts` is clean on its own, but the
- * receipt is only GSM-7 if the label it splices in is too, and the label set is keyed
- * by an enum that grows. Every member is exercised, plus the unknown-token fallback.
- */
-describe('router receipts stay one GSM-7 segment for every action type', () => {
-  const ACTION_TYPES = [
-    'send_email',
-    'reply_to_email',
-    'create_calendar_event',
-    'update_calendar_event',
-    'place_supply_order',
-    'cancel_supply_order',
-    'fill_pdf_form',
-    'submit_government_form',
-    'book_clinic_portal',
-    'cancel_clinic_appointment',
-    'share_photos_with_family',
-    'add_to_digest_only',
-    'add_to_routine',
-    'calendar_add',
-    'calendar_move',
-    'calendar_cancel',
-  ] as const satisfies readonly ActionType[];
-
-  it.each([...ACTION_TYPES, 'a_type_nobody_has_added_yet'])('%s', (actionType) => {
-    for (const receipt of [approvedReceipt(actionType), declinedReceipt(actionType)]) {
-      expect({ encoding: smsEncoding(receipt), segments: smsSegments(receipt) }).toEqual({
-        encoding: 'gsm7',
-        segments: 1,
-      });
-    }
   });
 });

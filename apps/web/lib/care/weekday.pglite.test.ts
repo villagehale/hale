@@ -1,9 +1,8 @@
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { loadAgentContext } from '~/lib/coach/context';
 import { readCandidates } from '~/lib/channel/intake/radar';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
+import { loadAgentContext } from '~/lib/coach/context';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
@@ -25,7 +24,7 @@ import {
  * whatever rows it was handed and would pass with the pin removed.
  *
  * `readCandidates` is here for the sibling reason (the "pin production wiring" rule):
- * the weekday claim rests on `village_candidates.source`, and a column the reader does
+ * the weekday claim rests on `family_activity_history.source`, and a column the reader does
  * not SELECT is a gate that silently always fails. The decide's own suite cannot see
  * that, because it is handed candidates directly.
  */
@@ -85,6 +84,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'daycare', provider: 'Little Sprouts' },
       confidence: 1,
       inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      heard: 'unrecorded',
       validFrom: NOW,
     });
 
@@ -116,6 +116,7 @@ describe('loadWeekdayCare', () => {
         factValue: { care: 'daycare', provider },
         confidence: 1,
         inferredBy: WEEKDAY_CARE_FACT_WRITER,
+        heard: 'unrecorded',
         validFrom,
       });
     await write('Little Sprouts', NOW);
@@ -149,6 +150,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'daycare', provider: null },
       confidence: 1,
       inferredBy: 'ask-hale',
+      heard: 'unrecorded',
       validFrom: NOW,
     });
     await writeFact(db.database, {
@@ -159,6 +161,7 @@ describe('loadWeekdayCare', () => {
       factValue: { care: 'home', provider: null },
       confidence: 1,
       inferredBy: WEEKDAY_CARE_FACT_WRITER,
+      heard: 'unrecorded',
       validFrom: NOW,
     });
 
@@ -178,6 +181,7 @@ describe('loadWeekdayCare', () => {
         factValue: { care, provider: null },
         confidence: 1,
         inferredBy: WEEKDAY_CARE_FACT_WRITER,
+        heard: 'unrecorded',
         validFrom,
       });
     await write('home', NOW);
@@ -195,15 +199,15 @@ describe('loadWeekdayCare', () => {
 });
 
 describe('readCandidates — the column the weekday claim rests on', () => {
-  it('carries `source` through, so a civic row can be told from an LLM one', async () => {
+  it('does not treat historical civic or LLM receipts as current weekday dates', async () => {
     const { familyId } = await seedFamily();
-    await db.database.insert(schema.villageCandidates).values([
+    await db.database.insert(schema.familyActivityHistory).values([
       {
         familyId,
         title: 'EarlyON drop-in',
         kind: 'drop_in',
         summary: 'Free drop-in at Armour Heights - 9:30 a.m.-11:00 a.m.',
-        source: CIVIC_SOURCE,
+        source: 'civic_registry', // historical receipt tag
         runType: 'civic',
         eventDate: '2026-09-15',
         confidence: 0.9,
@@ -221,7 +225,7 @@ describe('readCandidates — the column the weekday claim rests on', () => {
     ]);
 
     const rows = await readCandidates(db.database, familyId);
-    expect(rows.map((row) => row.source).sort()).toEqual([CIVIC_SOURCE, 'llm']);
+    expect([...rows]).toEqual([]);
   });
 });
 
@@ -236,10 +240,7 @@ describe('recordWeekdayCare', () => {
   }
 
   async function audits(familyId: string) {
-    return db.database
-      .select()
-      .from(schema.auditLog)
-      .where(eq(schema.auditLog.familyId, familyId));
+    return db.database.select().from(schema.auditLog).where(eq(schema.auditLog.familyId, familyId));
   }
 
   it('writes one fact and one audit row', async () => {
@@ -356,7 +357,7 @@ describe('recordWeekdayCare', () => {
    * but the table is shared, so the redaction that guards the coach is asserted here
    * against a row only a direct call could produce.
    */
-  it("is redacted from the coach when the child is 13+, key and value both", async () => {
+  it('is redacted from the coach when the child is 13+, key and value both', async () => {
     const { familyId, parentUserId } = await seedFamily();
     const [teen] = await db.database
       .insert(schema.children)

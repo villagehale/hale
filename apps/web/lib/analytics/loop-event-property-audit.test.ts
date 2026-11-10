@@ -58,9 +58,9 @@ const TARGETS: AuditTarget[] = [
     pattern: /capture\(\s*'loop_undo'\s*,\s*args\.revertedBy\s*,\s*\{([\s\S]*?)\}\s*\)/,
   },
   {
-    file: '../loop/stop-alert.ts',
+    file: '../../app/unsubscribe/page.tsx',
     event: 'loop_stop',
-    pattern: /captureServerEvent\(\s*'loop_stop'\s*,\s*input\.userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
+    pattern: /captureServerEvent\(\s*'loop_stop'\s*,\s*userId\s*,\s*\{([\s\S]*?)\}\s*\)/,
   },
 ];
 
@@ -87,26 +87,50 @@ describe('loop_* analytics property audit — every call site passes only whitel
     it(`${target.event} (${target.file}) carries no key outside the whitelist`, () => {
       const source = readFileSync(fileURLToPath(new URL(target.file, import.meta.url)), 'utf8');
       const match = source.match(target.pattern);
-      expect(match, `expected to find the ${target.event} capture call in ${target.file}`).toBeTruthy();
+      expect(
+        match,
+        `expected to find the ${target.event} capture call in ${target.file}`,
+      ).toBeTruthy();
 
       const keys = extractKeys(match?.[1] as string);
       expect(keys.length).toBeGreaterThan(0);
       for (const key of keys) {
-        expect(ALLOWED_LOOP_EVENT_PROPERTY_KEYS.has(key), `unexpected property key "${key}" in ${target.file}`).toBe(
-          true,
-        );
+        expect(
+          ALLOWED_LOOP_EVENT_PROPERTY_KEYS.has(key),
+          `unexpected property key "${key}" in ${target.file}`,
+        ).toBe(true);
       }
     });
   }
 
   it('the whitelist itself contains no PII-shaped key (defence in depth on the audit list itself)', () => {
-    const forbiddenFragments = ['name', 'email', 'phone', 'address', 'dob', 'birth', 'child', 'teen', 'message', 'content', 'body', 'text', 'question', 'answer', 'note', 'location', 'ip', 'token'];
+    const forbiddenFragments = [
+      'name',
+      'email',
+      'phone',
+      'address',
+      'dob',
+      'birth',
+      'child',
+      'teen',
+      'message',
+      'content',
+      'body',
+      'text',
+      'question',
+      'answer',
+      'note',
+      'location',
+      'ip',
+      'token',
+    ];
     for (const key of ALLOWED_LOOP_EVENT_PROPERTY_KEYS) {
       const lower = key.toLowerCase();
       for (const fragment of forbiddenFragments) {
-        expect(lower.includes(fragment), `whitelisted key "${key}" looks identifying (matches "${fragment}")`).toBe(
-          false,
-        );
+        expect(
+          lower.includes(fragment),
+          `whitelisted key "${key}" looks identifying (matches "${fragment}")`,
+        ).toBe(false);
       }
     }
   });

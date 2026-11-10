@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply matches the connect-link shape exactly. It says the link is a text away, quotes the plain words that trigger it, and gives the fifteen-minute window. It writes out no URL, doesn't refuse, and has no greeting or sign-off. It is short and correct.",
+    "score": 5
+  }
+}

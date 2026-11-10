@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Chinese, that Hale stop sending email on its own. The autonomy switch was turned off this turn for both send_email and reply_to_email, so the reply's confirmation is true and backed by state. It answers in the parent's language in two plain sentences, with no greeting and no machinery talk. Replying to email is covered by 'every email'.",
+    "score": 5
+  }
+}

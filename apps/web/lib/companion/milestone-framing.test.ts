@@ -28,7 +28,7 @@ function developmentCopy(): Array<{ where: string; text: string }> {
 
   for (const months of AGES_MONTHS) {
     const dob = new Date(now.getFullYear(), now.getMonth() - months, now.getDate());
-    const view = companionForChild({ dateOfBirth: dob }, now);
+    const view = companionForChild({ dateOfBirth: dob, country: 'CA' }, now);
     const at = `${months}mo (${view.stage as FamilyStage})`;
 
     for (const line of view.whatsNow) corpus.push({ where: `${at} whatsNow`, text: line });

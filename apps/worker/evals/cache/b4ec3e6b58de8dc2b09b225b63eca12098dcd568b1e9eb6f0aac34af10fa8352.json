@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Sam asked in Chinese for Hale to stop sending email on its own. Autonomy was turned off this turn for both sending and replying to email, so the reply's promise is backed by state. It confirms in one plain Chinese sentence that Hale will ask before every email and send only once Sam agrees, then stops. No greeting, no machinery, nothing invented.",
+    "score": 5
+  }
+}

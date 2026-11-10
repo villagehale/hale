@@ -1,22 +1,24 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type CopyLanguage, type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
-import { normalizePhoneE164 } from '~/lib/channels/phone';
-import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { linqFromE164 } from './config';
-import { haleContactImageUrl } from './contact-card';
-import { groupAudienceAllows } from './group-audience';
 import {
-  LinqSendError,
   addLinqParticipant,
   createLinqChat,
-  listLinqParticipantHandles,
+  outboundLineFrom,
   removeLinqParticipant,
   sendLinqChatMessage,
   updateLinqGroupChat,
-} from './transport';
+} from '~/lib/channel/outbound-transport';
+import { speak } from '~/lib/channel/spoken-line';
+import { normalizePhoneE164 } from '~/lib/channels/phone';
+import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
+import { haleContactImageUrl } from './contact-card';
+import { type GroupLineClass, groupAudienceAllows } from './group-audience';
+import { resolveGroupMention } from './group-mention-reader';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * VIL-335 phase (b) — one household group, not a classmate-logistics brand.
@@ -28,20 +30,36 @@ import {
  */
 
 /**
- * DESIGN LOCK PENDING (Sloane). First bubble when Hale opens the co-parent
- * group. No URL: Linq rejects a link on the create-chat message.
+ * First bubble when Hale opens (or claims) the co-parent group. The model writes it
+ * (VIL-506); a miss sends nothing. No URL: Linq rejects a link on the create-chat message.
  */
-export const LINQ_GROUP_OPEN_TEXT = "This thread is your kids' year — both of you, and me.";
+export function linqGroupOpenLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_open', language });
+}
 
 /** DESIGN LOCK PENDING (Sloane). Group icon / name. Household dad+mom only, not a logistics brand. */
 export const LINQ_GROUP_DISPLAY_NAME = "Kids' year";
 
+/** The family's own language for a group line (Design #973: never an English default).
+ * Local, not family-outbound's reader, because that module imports this one. */
+async function groupLineLanguage(
+  database: Database,
+  familyId: string,
+): Promise<ReplyLanguage | null> {
+  const rows = await database
+    .select({ id: schema.families.id, primaryLanguage: schema.families.primaryLanguage })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId));
+  return acceptReplyLanguage(rows.find((row) => row.id === familyId)?.primaryLanguage);
+}
+
 /**
- * DESIGN LOCK PENDING (Sloane). Sent in the 1:1 when Linq will not open the
- * group. The sandbox requires the co-parent to have texted the line first.
+ * Sent in the 1:1 when Linq will not open the group (the co-parent has to have texted
+ * the line first). The model writes it (VIL-506); a miss sends nothing.
  */
-export const LINQ_GROUP_UNREACHABLE_TEXT =
-  "I couldn't open the group yet. Ask them to text this number once, then tell me to try again.";
+export function linqGroupUnreachableLine(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_unreachable', language });
+}
 
 /**
  * An unclaimed group has no parent to name. Hale sends nothing about the
@@ -54,7 +72,7 @@ export const LINQ_GROUP_UNREACHABLE_TEXT =
  * this arrives from an enrolled parent. A sentence that merely contains it
  * is not the trigger.
  */
-export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
+export const LINQ_GROUP_TRIGGER_PHRASE: Record<CopyLanguage, string> = {
   en: 'this is our year',
   fr: 'cest notre annee',
 };
@@ -63,54 +81,78 @@ export const LINQ_GROUP_TRIGGER_PHRASE: Record<ReplyLanguage, string> = {
  * Design locked (2026-09-24, #706). Told in the 1:1 after the co-parent number.
  * Hale does not text that number and does not create the group.
  */
-export function linqGroupMakeInstruction(line: string, language: ReplyLanguage): string {
-  const phrase = LINQ_GROUP_TRIGGER_PHRASE[language];
-  return language === 'fr'
-    ? `Ouvre un groupe iMessage avec eux et ce numero: ${line}. Dans ce groupe, envoie: ${phrase}.`
-    : `Start an iMessage group with them and this number: ${line}. In that group, send: ${phrase}.`;
+export function linqGroupMakeInstruction(
+  line: string,
+  language: ReplyLanguage | null,
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_group_make',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
 /**
  * Design locked (Sloane, 2026-09-25). The co-parent ask on Linq, one bubble.
  * `{line}` is Hale's number. No "text me their number", no invite promise.
  */
-export function linqCoParentAsk(line: string, language: ReplyLanguage): string {
-  const lead =
-    language === 'fr'
-      ? "Tu veux l'autre parent sur l'annee des enfants aussi?"
-      : "Want the other parent on the kids' year too?";
-  return `${lead} ${linqGroupMakeInstruction(line, language)}`;
+export function linqCoParentAsk(
+  line: string,
+  language: ReplyLanguage | null,
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_coparent_ask',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
 /**
  * Design locked (2026-09-24, #706). The trigger arrived in the 1:1. Hale does
  * not claim a group from that chat.
  */
-export function linqGroupTriggerInOneToOne(line: string, language: ReplyLanguage): string {
-  const phrase = LINQ_GROUP_TRIGGER_PHRASE[language];
-  return language === 'fr'
-    ? `Cette phrase va dans le groupe. Ouvrez un groupe iMessage avec eux et ${line}, puis envoyez: ${phrase}.`
-    : `That phrase belongs in the group. Start an iMessage group with them and ${line}, then send: ${phrase}.`;
+export function linqGroupTriggerInOneToOne(
+  line: string,
+  language: ReplyLanguage | null,
+): Promise<string | null> {
+  const phrase =
+    language === 'fr' || (language ?? '').startsWith('fr-')
+      ? LINQ_GROUP_TRIGGER_PHRASE.fr
+      : LINQ_GROUP_TRIGGER_PHRASE.en;
+  return speak({
+    purpose: 'linq_group_trigger_1to1',
+    language,
+    facts: { line, phrase },
+    verbatim: [line, phrase],
+  });
 }
 
-/** Design locked (2026-09-24, #706). This chat cannot become the household thread. */
-export const LINQ_GROUP_CLAIM_REFUSED_TEXT: Record<ReplyLanguage, string> = {
-  en: "I can't use this thread as your kids' year.",
-  fr: "Je ne peux pas utiliser ce fil comme l'annee de vos enfants.",
-};
+/** This chat cannot become the household thread. The model writes the sentence. */
+export function linqGroupClaimRefused(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_claim_refused', language });
+}
 
-/** Ack after a claim. The body is {@link LINQ_GROUP_OPEN_TEXT}. */
+/** Ack after a claim. The body is {@link linqGroupOpenLine}. */
 export const LINQ_GROUP_CLAIMED_TEMPLATE_KEY = 'linq:group_claimed';
 /** Refusal when this chat is already another household, or this household already has one. */
 export const LINQ_GROUP_CLAIM_REFUSED_TEMPLATE_KEY = 'linq:group_claim_refused';
 /** The trigger arrived in the 1:1. The body is {@link linqGroupTriggerInOneToOne}. */
 export const LINQ_GROUP_TRIGGER_1TO1_TEMPLATE_KEY = 'linq:group_trigger_1to1';
 
-/** Design locked (2026-09-24, #706). Hale has no line to tell the parent to add. */
-export const LINQ_GROUP_LINE_MISSING_TEXT: Record<ReplyLanguage, string> = {
-  en: "I don't have a number for you to add to a group yet.",
-  fr: "Je n'ai pas encore de numero a ajouter a un groupe.",
-};
+/** Hale has no line to tell the parent to add. The model writes the sentence. */
+export function linqGroupLineMissing(language: ReplyLanguage | null): Promise<string | null> {
+  return speak({ purpose: 'linq_group_line_missing', language });
+}
 
 /** A parent-facing rendering of Hale's E.164. NANP numbers read as a phone. */
 export function formatLinqLineForParent(e164: string): string {
@@ -122,7 +164,7 @@ export function formatLinqLineForParent(e164: string): string {
 }
 
 /** The trigger, or null. Trailing punctuation does not count as a different phrase. */
-export function matchLinqGroupTrigger(body: string): ReplyLanguage | null {
+export function matchLinqGroupTrigger(body: string): CopyLanguage | null {
   const normalized = body
     .trim()
     .replace(/[.!]+$/u, '')
@@ -243,15 +285,46 @@ export async function deliverLinqGroupNotice(
     now: Date;
     fetch?: typeof fetch;
     send?: (notice: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
+    /**
+     * Audience class. A direct reply in the turn is `reply`; a proactive line
+     * (e.g. a ride reminder) names its content class so an incomplete roster
+     * holds it instead of treating it as a reply.
+     */
+    lineClass: GroupLineClass;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<'sent' | 'not_sent' | 'group_audience_refused'> {
-  if (!(await groupAudienceAllows(database, input.chatId, 'reply')).allowed) {
+  const listChatHandles: ListChatHandles =
+    input.listChatHandles ?? ((i) => listLinqParticipantHandles({ ...i, fetch: input.fetch }));
+  if (
+    !(await groupAudienceAllows(database, input.chatId, input.lineClass, listChatHandles)).allowed
+  ) {
     return 'group_audience_refused';
   }
+  let sent: { providerMessageId: string };
   try {
-    const sent = input.send
+    const mention = input.send
+      ? undefined
+      : await resolveGroupMention({ database, chatId: input.chatId, text: input.text });
+    sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
-      : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
+      : await sendLinqChatMessage({
+          chatId: input.chatId,
+          text: input.text,
+          ...(mention ? { mention } : {}),
+          fetch: input.fetch,
+        });
+  } catch (err) {
+    const code = err instanceof LinqSendError ? err.code : 'unknown';
+    console.warn(
+      { familyId: input.familyId, code },
+      'linq group: the household-thread notice did not land',
+    );
+    return 'not_sent';
+  }
+  // The text left. A ledger failure past this point is logged, never reported
+  // as not_sent, so no caller replays a line the group already has.
+  try {
     const [row] = await database
       .insert(schema.channelMessages)
       .values({
@@ -276,15 +349,13 @@ export async function deliverLinqGroupNotice(
       targetTable: 'channel_messages',
       targetId: id,
     });
-    return 'sent';
   } catch (err) {
-    const code = err instanceof LinqSendError ? err.code : 'unknown';
-    console.warn(
-      { familyId: input.familyId, code },
-      'linq group: the household-thread notice did not land',
+    console.error(
+      { familyId: input.familyId, err: err instanceof Error ? err.name : 'unknown' },
+      'linq group: notice sent but not ledgered',
     );
-    return 'not_sent';
   }
+  return 'sent';
 }
 
 export type OpenHouseholdGroupOutcome =
@@ -298,7 +369,9 @@ export type OpenHouseholdGroupOutcome =
         | 'no_chat'
         | 'not_configured'
         | 'same_number'
-        | 'unavailable';
+        | 'unavailable'
+        /** VIL-506: the model wrote no opening line, so no group was opened. */
+        | 'no_line';
     }
   | { status: 'degraded'; reason: 'coparent_not_reachable'; code: string; httpStatus: number };
 
@@ -334,7 +407,7 @@ export async function openHouseholdLinqGroup(
       };
     }
     chatIdForDegrade = door.chatId;
-    const from = linqFromE164();
+    const from = outboundLineFrom();
     if (!from) {
       console.warn(
         { familyId: args.familyId },
@@ -362,10 +435,18 @@ export async function openHouseholdLinqGroup(
       return { status: 'added', chatId: groupId };
     }
 
+    const openText = await linqGroupOpenLine(await groupLineLanguage(database, args.familyId));
+    if (!openText) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written opening line - group not opened, nothing sent',
+      );
+      return { status: 'skipped', reason: 'no_line' };
+    }
     const created = await createLinqChat({
       from,
       to: [parent, coParent],
-      text: LINQ_GROUP_OPEN_TEXT,
+      text: openText,
       fetch: args.fetch,
     });
     await updateLinqGroupChat({
@@ -421,9 +502,17 @@ async function tellParentTheGroupDidNotOpen(
   chatId: string,
 ): Promise<void> {
   try {
+    const text = await linqGroupUnreachableLine(await groupLineLanguage(database, args.familyId));
+    if (!text) {
+      console.warn(
+        { familyId: args.familyId },
+        'linq group: no model-written degrade line - nothing sent',
+      );
+      return;
+    }
     const sent = await sendLinqChatMessage({
       chatId,
-      text: LINQ_GROUP_UNREACHABLE_TEXT,
+      text,
       fetch: args.fetch,
     });
     await database.insert(schema.channelMessages).values({

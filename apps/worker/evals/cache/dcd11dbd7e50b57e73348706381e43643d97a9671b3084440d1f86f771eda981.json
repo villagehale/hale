@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Parking reading faithfully captures both stated facts (no venue parking on pedestrian street; Green P on Queen is closest) in the source language. The bring field is correctly empty since gifts are explicitly optional and nothing else is stated to bring.",
+    "score": 5
+  }
+}

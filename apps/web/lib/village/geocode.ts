@@ -103,8 +103,7 @@ function parseFirstPlace(raw: unknown): GeocodeResult | null {
     placeId: place?.id,
     // Only surface a rating Places actually returned — never a default/placeholder.
     rating: typeof place?.rating === 'number' ? place.rating : undefined,
-    ratingCount:
-      typeof place?.userRatingCount === 'number' ? place.userRatingCount : undefined,
+    ratingCount: typeof place?.userRatingCount === 'number' ? place.userRatingCount : undefined,
   };
 }
 

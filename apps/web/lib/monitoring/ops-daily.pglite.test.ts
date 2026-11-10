@@ -7,6 +7,8 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { METRICS_EXCLUDED_FAMILIES_ENV } from '~/lib/loop/metrics-scope';
 import { DEAD_LETTER_PAGE_ROUTE, FIRST_HELLO_PAGE_ROUTE } from '~/lib/monitoring/failure-page';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
+import { PROVIDER_INCIDENT_ROUTE } from '~/lib/monitoring/provider-health';
+import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import {
   OPS_DAILY_ROUTE,
@@ -358,8 +360,9 @@ describe('aggregateOpsDaily', () => {
     expect(text).toContain('W4: no cohort has finished week 4');
     expect(text).toContain('Promises: ledger empty');
     expect(text).toContain('Medical (7d): no medical answers');
-    expect(text).toContain('Registration checks (7d): no watch observations');
+    expect(text).toContain('Re-verify (7d): did not run');
     expect(text).toContain('Linq chat IDs (DB): 1 of 200');
+    expect(text).toContain('Inbound queue: unreadable');
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 });
@@ -379,6 +382,104 @@ describe('aggregateOpsDaily — spend across families', () => {
     expect(spend.medianUsd).toBeCloseTo(0.5, 6);
     expect(spend.p95Usd).toBeCloseTo(1.4, 6);
     expect(spend.maxUsd).toBeCloseTo(1.4, 6);
+  });
+});
+
+describe('aggregateOpsDaily — the loop week (retired weekly emails)', () => {
+  it('counts plans, incidents, unmet intents and papercuts over the trailing 7 days', async () => {
+    const day = new Date('2026-06-20T13:14:00Z');
+    const inWeek = new Date('2026-06-17T10:00:00Z');
+    const beforeWeek = new Date('2026-06-10T10:00:00Z');
+    const family = await seedFamilyWithPhone('Loop Week Household', '+15555550177');
+
+    await db.database.insert(schema.weekPlans).values([
+      { familyId: family.familyId, weekStart: '2026-06-15', composedAt: inWeek },
+      { familyId: family.familyId, weekStart: '2026-06-08', composedAt: beforeWeek },
+    ]);
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'provider_health:billing',
+      route: PROVIDER_INCIDENT_ROUTE,
+      windowStart: inWeek,
+      count: 1,
+    });
+    const base = {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      channel: 'sms' as const,
+      sentAt: inWeek,
+      createdAt: inWeek,
+    };
+    const [unmet] = await db.database
+      .insert(schema.channelMessages)
+      .values([
+        {
+          ...base,
+          direction: 'in' as const,
+          category: 'reply' as const,
+          status: 'delivered' as const,
+          unmetLane: 'off_domain_general' as const,
+          unmetCategory: 'weather' as const,
+        },
+        {
+          ...base,
+          direction: 'in' as const,
+          category: 'reply' as const,
+          status: 'delivered' as const,
+          unmetLane: 'off_domain_general' as const,
+          unmetCategory: 'weather' as const,
+        },
+        {
+          ...base,
+          direction: 'out' as const,
+          category: 'reply' as const,
+          status: 'sent' as const,
+          medicalReplySource: 'fixed' as const,
+        },
+        {
+          ...base,
+          direction: 'out' as const,
+          category: 'reply' as const,
+          status: 'sent' as const,
+          replySource: 'model_failed' as const,
+        },
+      ])
+      .returning({ id: schema.channelMessages.id });
+    await db.database.insert(schema.agentRuns).values({
+      familyId: family.familyId,
+      agentName: 'reminder-voice',
+      modelUsed: 'test-model',
+      promptTokens: 1,
+      completionTokens: 1,
+      costUsd: '0.000000',
+      latencyMs: 1,
+      startedAt: inWeek,
+      completedAt: inWeek,
+      status: 'failed',
+    });
+    await ledger(family, 'sms_turn_failed', unmet?.id ?? 'missing', inWeek, {
+      reason: 'apology_sent',
+    });
+
+    const report = await aggregateOpsDaily(db.database, day);
+
+    expect(report.week).toEqual({
+      plansComposed: 1,
+      providerIncidents: [{ reason: 'billing', count: 1 }],
+      unmetIntents: [{ reason: 'off_domain_general_weather', count: 2 }],
+      papercuts: {
+        unmet_intent: 2,
+        medical_fallback: 1,
+        reply_fallback: 1,
+        voice_failure: 1,
+        turn_failure: 1,
+      },
+    });
+    const text = composeOpsDailyPost(report);
+    expect(text).toContain('Loop (7d): week plans composed 1 | provider incidents: billing 1');
+    expect(text).toContain('Unmet intents (7d): off_domain_general_weather 2');
+    expect(text).toContain(
+      'Papercuts (7d): unmet 2 | medical fallback 1 | reply fallback 1 | voice fallback 1 | turn failures 1',
+    );
   });
 });
 
@@ -567,16 +668,19 @@ describe('aggregateOpsDaily — the founder counts', () => {
     await derivableIntake(slowB, '+15555550203', 10);
     await intakeSession('+15555550192', IN_TRAILING_WEEK, null);
 
-    await db.database.insert(schema.registrationSequences).values(
-      Array.from({ length: 4 }, (_, i) => ({
-        familyId: kept.familyId,
-        parentUserId: kept.parentUserId,
-        courseUrl: `https://example.org/registration/${i}`,
-        lastReadAt: IN_TRAILING_WEEK,
-        lastReading: { status: i === 3 ? 'unverified' : 'verified' },
-        pendingChange: i === 0 ? { kind: 'earlier' } : null,
-      })),
-    );
+    await db.database.insert(schema.rateLimits).values({
+      identifier: 'weekly-sweep',
+      route: REGISTRATION_VERIFY_ROUTE,
+      windowStart: new Date('2026-06-08T00:00:00Z'),
+      count: 1,
+    });
+    await db.database.insert(schema.registrationVerifyRuns).values({
+      weekStart: new Date('2026-06-08T00:00:00Z'),
+      checked: 4,
+      confirmed: 3,
+      discrepancies: 1,
+      unverified: 0,
+    });
 
     vi.stubEnv(
       METRICS_EXCLUDED_FAMILIES_ENV,
@@ -595,7 +699,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
     expect(excluded.medical).toEqual({ answered: 2, fallbacks: 1 });
     expect(excluded.reverify).toEqual({
       ran: true,
-      outcomes: { checked: 4, verified: 3, changed: 1, unverified: 1 },
+      outcomes: { checked: 4, confirmed: 3, discrepancies: 1, unverified: 0 },
     });
     expect(excluded.linqChatIds).toBe(2);
 
@@ -607,7 +711,7 @@ describe('aggregateOpsDaily — the founder counts', () => {
     expect(text).toContain('Promises: 2 open | 1 overdue (1 family)');
     expect(text).toContain('Medical (7d): 1 of 2 answers used the fixed 811/911 line');
     expect(text).toContain(
-      'Registration checks (7d): checked 4 | verified 3 | changed 1 | unverified 1',
+      'Re-verify (7d): ran | checked 4 | confirmed 3 | discrepancies 1 | unverified 0',
     );
     expect(text).toContain('Linq chat IDs (DB): 2 of 200');
 
@@ -625,15 +729,15 @@ describe('aggregateOpsDaily — the founder counts', () => {
     vi.stubEnv(METRICS_EXCLUDED_FAMILIES_ENV, listed.familyId);
   });
 
-  it('does not count a historical sweep claim as a current source check', async () => {
+  it('reports a claimed sweep that left no tally as ran, not as a clean week', async () => {
     await db.database.insert(schema.rateLimits).values({
       identifier: 'weekly-sweep',
-      route: 'cron:registration-verify',
+      route: REGISTRATION_VERIFY_ROUTE,
       windowStart: new Date('2026-01-05T00:00:00Z'),
       count: 1,
     });
     const day = await aggregateOpsDaily(db.database, new Date('2026-01-12T13:14:00Z'));
-    expect(day.reverify).toEqual({ ran: false, outcomes: null });
-    expect(composeOpsDailyPost(day)).toContain('Registration checks (7d): no watch observations');
+    expect(day.reverify).toEqual({ ran: true, outcomes: null });
+    expect(composeOpsDailyPost(day)).toContain('Re-verify (7d): ran | no tally');
   });
 });

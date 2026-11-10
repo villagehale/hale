@@ -2,12 +2,10 @@ import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type InviteEventRow,
-  composeEventInvite,
   composeEventLink,
   eventInviteToken,
   eventInviteUrl,
   icsSequence,
-  inviteAttachment,
   loadEventInvite,
   mintEventInviteLink,
   toInviteEvent,
@@ -158,7 +156,9 @@ describe('eventInviteToken — a one-way handle that dies with the family feed t
 describe('eventInviteUrl — the app domain, never the marketing domain', () => {
   it('builds the absolute link on the app base URL', () => {
     const url = eventInviteUrl(eventInviteToken(EVENT_ID, SHARE_TOKEN));
-    expect(url).toBe(`https://app.villagehale.com/api/ics/event/${eventInviteToken(EVENT_ID, SHARE_TOKEN)}`);
+    expect(url).toBe(
+      `https://app.villagehale.com/api/ics/event/${eventInviteToken(EVENT_ID, SHARE_TOKEN)}`,
+    );
   });
 
   it('mints the SMS leg’s link off the family’s existing feed token, resolvable by the same route', async () => {
@@ -281,94 +281,5 @@ describe('composeEventLink — the SMS leg’s link', () => {
     expect(await composeEventLink(input, { database: db, now: NOW })).toEqual({
       status: 'not_found',
     });
-  });
-});
-
-describe('composeEventInvite — the email leg\u2019s bytes', () => {
-  const input = {
-    familyId: FAMILY_ID,
-    familyEventId: EVENT_ID,
-    parentUserId: PARENT_ID,
-    to: 'parent@example.com',
-    note: 'Added from your week plan.',
-  };
-
-  it('composes a REQUEST addressed to the recipient, and becomes a text/calendar part', async () => {
-    const { db } = fakeDb({
-      events: [row()],
-      audit: [{ value: 1 }],
-      prefs: [{ childNameLevel: 'first_name' }],
-    });
-
-    const result = await composeEventInvite(input, { database: db, now: NOW });
-
-    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
-    expect(result.sequence).toBe(1);
-    expect(result.method).toBe('REQUEST');
-    expect(result.summary).toBe('Maya — Swim class');
-    expect(result.ics).toContain('METHOD:REQUEST');
-    expect(result.ics).toContain('SUMMARY:Maya — Swim class');
-    expect(result.ics).toContain('ATTENDEE');
-    expect(result.ics).toContain('mailto:parent@example.com');
-    expect(result.ics).toContain('ORGANIZER;CN=Hale:mailto:aloha@villagehale.com');
-
-    const part = inviteAttachment(result);
-    expect(part.filename).toBe('invite.ics');
-    expect(part.contentType).toBe('text/calendar; charset=utf-8; method=REQUEST');
-    expect(Buffer.from(part.content, 'base64').toString('utf8')).toBe(result.ics);
-  });
-
-  it('honors the recipient parent\u2019s dial and the teen floor above it', async () => {
-    const { db } = fakeDb({
-      events: [row({ childDob: TEEN_DOB })],
-      prefs: [{ childNameLevel: 'first_name' }],
-    });
-
-    const result = await composeEventInvite(input, { database: db, now: NOW });
-
-    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
-    // The SUMMARY the caller builds a subject line from is redacted too, so the
-    // envelope cannot out-reveal the attachment.
-    expect(result.summary).toBe('an appointment');
-    expect(result.ics).toContain('SUMMARY:an appointment');
-    expect(result.ics).not.toContain('Maya');
-    expect(result.ics).not.toContain('LOCATION:');
-    expect(result.ics).not.toContain('DESCRIPTION:');
-  });
-
-  it('composes a CANCEL for a soft-deleted event at a sequence above the last invite', async () => {
-    const { db } = fakeDb({
-      events: [row({ deletedAt: new Date('2026-07-21T09:00:00.000Z') })],
-      audit: [{ value: 2 }],
-      prefs: [{ childNameLevel: 'generic' }],
-    });
-
-    const result = await composeEventInvite({ ...input, method: 'CANCEL' }, { database: db, now: NOW });
-
-    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
-    expect(result.sequence).toBe(3);
-    expect(result.ics).toContain('METHOD:CANCEL');
-    expect(result.ics).toContain('STATUS:CANCELLED');
-    expect(result.ics).toContain('SEQUENCE:3');
-    expect(inviteAttachment(result).contentType).toBe('text/calendar; charset=utf-8; method=CANCEL');
-  });
-
-  it('never composes a REQUEST for an event that is gone', async () => {
-    const { db } = fakeDb({ events: [] });
-    expect(await composeEventInvite(input, { database: db, now: NOW })).toEqual({
-      status: 'not_found',
-    });
-  });
-
-  it('refuses an event that resolves to another family (family scope, rule #1)', async () => {
-    // The row exists, but under a different family than the caller claims.
-    const { db } = fakeDb({ events: [row()], prefs: [{ childNameLevel: 'first_name' }] });
-
-    const result = await composeEventInvite(
-      { ...input, familyId: '99999999-9999-4999-8999-999999999999' },
-      { database: db, now: NOW },
-    );
-
-    expect(result).toEqual({ status: 'not_found' });
   });
 });

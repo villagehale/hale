@@ -1,13 +1,19 @@
 import type { AnalyticsEvent } from '~/lib/analytics/events';
 import type { CaptureOutcome } from '~/lib/analytics/server-capture';
+import { boldTextIndex } from '~/lib/channel/bold';
+import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
+import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
+import { sendTexts } from './outbound-transport';
 import type {
   Channel,
   ChannelKind,
+  ChannelSendOutcome,
+  DeliveredChannel,
   LoopCategory,
   LoopMessage,
   RenderedContent,
@@ -18,11 +24,12 @@ import type {
  * F11 · The Sunday Loop — the dispatch (VIL-213 · A2). THE one place loop policy
  * is enforced: no caller reaches a provider except through here, so consent, the
  * A5 per-category enables, quiet hours, dedupe, the channel_messages ledger,
- * audit rows, and the email CASL dual-write all happen exactly once.
+ * and audit rows all happen exactly once.
  *
- * Delivery model: the exchange send goes via the parent's loop_channel (email or
- * sms). The Expo push mirror leg died with the mobile app (VIL-318); historical
- * 'push' ledger rows keep their persisted enum value.
+ * Delivery model: the exchange send goes by SMS. The email leg is retired (Hale no
+ * longer sends email), so a persisted loop_channel of 'email' no longer routes
+ * anywhere; the Expo push mirror leg died with the mobile app (VIL-318). Historical
+ * 'email' and 'push' ledger rows keep their persisted enum values.
  *
  * Policy is evaluated PER LEG through this single point, and every leg writes its
  * own ledger row. Dedupe is per (parent, category, CHANNEL) so a re-drain can't
@@ -33,6 +40,17 @@ import type {
  * no live provider.
  */
 
+/** The one leg the dispatch sends on. A sent row records the pipe the adapter names
+ * instead (`ChannelSendOutcome.transport`). */
+const EXCHANGE_CHANNEL: ChannelKind = 'sms';
+
+/**
+ * VIL-562 · why a leg was held for quiet hours, stored in `channel_messages.error_code`
+ * and counted there. DATA, not code names: never renamed along with the code.
+ */
+export const PROACTIVE_FLOOR_HOLD = 'proactive_floor';
+export const PARENT_WINDOW_HOLD = 'parent_window';
+
 export type SuppressionStatus =
   | 'suppressed_pref'
   | 'suppressed_consent'
@@ -42,7 +60,7 @@ export type SuppressionStatus =
 export interface LedgerWrite {
   familyId: string;
   parentUserId: string;
-  channel: ChannelKind;
+  channel: DeliveredChannel;
   category: LoopCategory;
   templateKey: string;
   dedupeKey: string | null;
@@ -53,6 +71,8 @@ export interface LedgerWrite {
   relatedActionId?: string | null;
   relatedConversationId?: string | null;
   sentAt?: Date | null;
+  /** The sent text, only for a rendered message that asks for it (`recordBody`). */
+  body?: string | null;
 }
 
 /** The seam's dependencies, injected so the dispatch is a pure decision engine.
@@ -60,9 +80,10 @@ export interface LedgerWrite {
 export interface DispatchPorts {
   now(): Date;
   loadPrefs(userId: string): Promise<LoopPrefsView>;
-  loadParent(userId: string): Promise<{ email: string | null; timezone: string }>;
-  /** CASL email opt-out for a loop stream (absence of opt-out = consent). */
-  emailOptedOut(userId: string, emailType: string): Promise<boolean>;
+  loadParent(userId: string): Promise<{ timezone: string }>;
+  /** The parent's sendable number. Read only for a reminder while cadence is armed, when a
+   * Florida or Oklahoma number starts the proactive floor at 20:00. */
+  parentPhone(userId: string): Promise<string | null>;
   /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
   /** A prior send (not a suppression) already carries this per-channel dedupe key. */
@@ -77,13 +98,6 @@ export interface DispatchPorts {
     distinctId: string,
     properties?: Record<string, unknown>,
   ): Promise<CaptureOutcome>;
-  recordEmailSend(input: {
-    userId: string;
-    familyId: string;
-    emailType: string;
-    recipient: string;
-    providerMessageId: string | null;
-  }): Promise<void>;
   audit(row: {
     familyId: string;
     actor: string;
@@ -99,15 +113,17 @@ export interface DispatchPorts {
    * said. `channel_messages` carries no body (rule #1), so a leg that skips this leaves
    * the parent's reply with no antecedent.
    *
-   * The SMS leg ONLY, and that is a decision rather than an omission: the thread is the
-   * SMS thread (coach/note-key.ts), and an email is a different surface whose
-   * unification is its own piece of work.
-   *
    * No db handle, like every other port here: the dispatch stays a decision engine and
    * wiring.ts binds the real writer (lib/channel/thread.ts).
    */
   threadMessage(input: { familyId: string; parentUserId: string; body: string }): Promise<void>;
   channels: Partial<Record<ChannelKind, Channel>>;
+  /**
+   * VIL-581 · the claim reader in shadow, for model-written bodies. Required (rule #11);
+   * it starts detached, never throws, and the leg's outcome never reads it. No db
+   * handle here either: wiring.ts binds it.
+   */
+  claimShadow: DispatchClaimShadow;
   renderer: {
     render: (
       m: LoopMessage,
@@ -124,9 +140,10 @@ export interface LegResult {
   outcome: LegOutcome;
   /**
    * The ledger's `error_code` behind a 'failed' leg — the channel's own skip reason
-   * ('not_configured' | 'no_address' | 'disabled') or the provider's error code. A
-   * caller that must tell "nothing is wired" from "the provider refused" reads this
-   * instead of re-reading the row it just caused (VIL-249).
+   * ('not_configured' | 'no_address' | 'disabled') or the provider's error code — or
+   * which quiet window held a 'suppressed_quiet_hours' leg ({@link PROACTIVE_FLOOR_HOLD}
+   * | {@link PARENT_WINDOW_HOLD}). A caller that must tell "nothing is wired" from "the
+   * provider refused" reads this instead of re-reading the row it just caused (VIL-249).
    */
   reason?: string;
   /**
@@ -175,10 +192,9 @@ export async function dispatchLoopMessage(
     ports.loadParent(msg.parentUserId),
   ]);
 
-  // One leg: the exchange channel. A channel-PINNED message (msg.channel — the ICS
-  // invite) rides that channel alone: its content exists there and nowhere else.
-  // See LoopMessage.channel.
-  const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
+  // One leg: SMS, the only channel Hale sends on. A channel-PINNED message
+  // (msg.channel) rides that channel alone. See LoopMessage.channel.
+  const legs: ChannelKind[] = [msg.channel ?? EXCHANGE_CHANNEL];
 
   const results: LegResult[] = [];
   for (const channel of legs) {
@@ -205,8 +221,7 @@ export async function recordAbandonedDispatch(
   msg: LoopMessage,
   ports: DispatchPorts,
 ): Promise<DispatchResult> {
-  const prefs = await ports.loadPrefs(msg.parentUserId);
-  const channel = msg.channel ?? prefs.loopChannel;
+  const channel = msg.channel ?? EXCHANGE_CHANNEL;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: SEND_RETRIES_EXHAUSTED });
   return { legs: [{ channel, outcome: 'failed', reason: SEND_RETRIES_EXHAUSTED }] };
 }
@@ -215,15 +230,16 @@ async function dispatchLeg(
   msg: LoopMessage,
   channel: ChannelKind,
   prefs: LoopPrefsView,
-  parent: { email: string | null; timezone: string },
+  parent: { timezone: string },
   now: Date,
   ports: DispatchPorts,
 ): Promise<LegResult> {
-  const suppressed = async (status: SuppressionStatus): Promise<LegResult> => {
+  const suppressed = async (status: SuppressionStatus, errorCode?: string): Promise<LegResult> => {
     // A suppression never carries the dedupe key — a legitimate re-attempt (e.g.
     // after quiet hours) must not be blocked; only a real send consumes the key.
-    await writeLedgerRow(ports, msg, channel, status, { dedupeKey: null });
-    return { channel, outcome: status };
+    const named = errorCode === undefined ? {} : { errorCode };
+    await writeLedgerRow(ports, msg, channel, status, { dedupeKey: null, ...named });
+    return { channel, outcome: status, ...(errorCode === undefined ? {} : { reason: errorCode }) };
   };
 
   if (!categoryEnabled(prefs, msg.category)) {
@@ -232,7 +248,20 @@ async function dispatchLeg(
 
   const timeSensitive = msg.urgency === 'time_sensitive';
   if (!deliverableNow(prefs, now, parent.timezone, timeSensitive)) {
-    return suppressed('suppressed_quiet_hours');
+    return suppressed('suppressed_quiet_hours', PARENT_WINDOW_HOLD);
+  }
+  // VIL-562 · the floor the run checked before it enqueued, checked again where the text
+  // actually leaves: a retry or a drain backlog can carry a send past 21:00, and the
+  // parent's own window (and its urgent bypass) is narrower than the floor.
+  if (
+    msg.category === 'reminder' &&
+    (await proactiveQuietNow({
+      now,
+      timeZone: parent.timezone,
+      phone: () => ports.parentPhone(msg.parentUserId),
+    }))
+  ) {
+    return suppressed('suppressed_quiet_hours', PROACTIVE_FLOOR_HOLD);
   }
 
   // Per-channel dedupe: this exact leg already sent / is in flight → no-op (a
@@ -242,9 +271,6 @@ async function dispatchLeg(
     return { channel, outcome: 'deduped' };
   }
 
-  if (channel === 'email' && (await ports.emailOptedOut(msg.parentUserId, msg.category))) {
-    return suppressed('suppressed_consent');
-  }
   if (channel === 'sms' && !(await ports.smsConsentLive(msg.parentUserId))) {
     return suppressed('suppressed_consent');
   }
@@ -253,7 +279,7 @@ async function dispatchLeg(
   // Carried on every leg from here down, the failures included: a template whose voice the
   // fold refused and a template whose send the provider refused are two different things
   // to go and look at, and reading one from the other is guesswork (rule #11).
-  const voice = rendered.kind === 'sms' ? rendered.voice : undefined;
+  const voice = rendered.voice;
   // THE CHOKE POINT'S OWN HONESTY GATE (VIL-293), and it is the ledger-FREE half of the
   // reconciliation primitive on purpose. This seam has no database handle by design — it
   // is a decision engine over injected ports — so it cannot ask whether a promise has a
@@ -266,6 +292,15 @@ async function dispatchLeg(
   // template, and trimming a sentence out of a weekly plan would ship a subtly wrong
   // artifact instead of a loud row saying the template needs fixing.
   const unbacked = claimsNoLedgerCanBack(claimText(rendered));
+  if (rendered.modelWritten) {
+    ports.claimShadow.dispatch({
+      familyId: msg.familyId,
+      parentUserId: msg.parentUserId,
+      body: claimText(rendered),
+      now,
+      claims: unbacked,
+    });
+  }
   if (unbacked.length > 0) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'unbacked_claim' });
     return { channel, outcome: 'failed', reason: 'unbacked_claim', voice };
@@ -274,6 +309,10 @@ async function dispatchLeg(
   if (!adapter) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
     return { channel, outcome: 'failed', reason: 'channel_unavailable', voice };
+  }
+
+  if (rendered.texts && rendered.texts.length > 0) {
+    return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
   }
 
   const result = await adapter.send({ userId: msg.parentUserId, rendered });
@@ -287,21 +326,19 @@ async function dispatchLeg(
     // channel with no receipt wired is terminal here (channel/ledger.ts). The LEG's
     // outcome stays 'sent' either way — the leg did hand the message over, and that is
     // the question a caller composing legs is asking.
-    const id = await writeLedgerRow(ports, msg, channel, acceptedStatus(channel), {
-      dedupeKey: legKey,
-      providerMessageId: result.providerMessageId,
-      providerChatId: result.providerChatId ?? null,
-      sentAt: now,
-    });
-    if (channel === 'email' && parent.email) {
-      await ports.recordEmailSend({
-        userId: msg.parentUserId,
-        familyId: msg.familyId,
-        emailType: msg.category,
-        recipient: parent.email,
+    const id = await writeLedgerRow(
+      ports,
+      msg,
+      result.transport,
+      acceptedStatus(result.transport),
+      {
+        dedupeKey: legKey,
         providerMessageId: result.providerMessageId,
-      });
-    }
+        providerChatId: result.providerChatId ?? null,
+        sentAt: now,
+        ...(rendered.recordBody ? { body: rendered.text } : {}),
+      },
+    );
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
     // the household's week to a third party the parents authorised, and the generic row
     // renders on the family's trail as "Hale sent you a message" — which is false about
@@ -319,7 +356,12 @@ async function dispatchLeg(
       // an immutable PIPEDA-exportable row — and it is the only DURABLE count there is:
       // the drain discards the DispatchResult, so an outcome that stopped at the leg
       // would be the same silence in production that naming it exists to end.
-      after: { channel, category: msg.category, templateKey: msg.templateKey, voice },
+      after: {
+        channel: result.transport,
+        category: msg.category,
+        templateKey: msg.templateKey,
+        voice,
+      },
     });
     // THE THREAD, which is where the parent's answer will be read. AFTER the send, like
     // every other post-send write here: a leg that a suppression or a refusal stopped is
@@ -341,9 +383,112 @@ async function dispatchLeg(
   return { channel, outcome: 'failed', reason: errorCode, voice };
 }
 
-/** The words a parent will actually read, whatever the channel renders them into. An
- * email's HTML is not checked — its plain-text alternative carries the same sentences
- * and is the one a regex can read honestly. */
+/**
+ * VIL-467 · A multi-text leg. Quiet hours, the category pref and consent were checked
+ * once above for the whole set. Each text is its own send and its own ledger row keyed
+ * `<legKey>:<i>`, so a retry after a transient failure sends only the unsent texts,
+ * starting at the first one that did not go. A failure stops the set; nothing is sent
+ * in its place.
+ */
+async function dispatchTexts(
+  msg: LoopMessage,
+  channel: ChannelKind,
+  rendered: RenderedContent,
+  texts: readonly string[],
+  legKey: string | null,
+  now: Date,
+  ports: DispatchPorts,
+  adapter: Channel,
+): Promise<LegResult> {
+  const voice = rendered.voice;
+  // VIL-474 · at most one bold per message: only the first text holding the words.
+  const boldAt = boldTextIndex(texts, rendered.bold);
+  type Sent = Extract<ChannelSendOutcome, { status: 'sent' }>;
+  class Refused extends Error {
+    constructor(readonly outcome: Exclude<ChannelSendOutcome, Sent>) {
+      super('channel refused');
+    }
+  }
+  const outcome = await sendTexts<Sent>({
+    texts,
+    setKey: legKey,
+    alreadySent: (key) => ports.activeDedupe(key),
+    send: async (text, index) => {
+      // By position, not by text: two identical texts must not both carry the bold.
+      const bolded = index === boldAt ? rendered.bold : undefined;
+      const result = await adapter.send({
+        userId: msg.parentUserId,
+        rendered: {
+          kind: 'sms',
+          text,
+          modelWritten: rendered.modelWritten,
+          recordBody: rendered.recordBody,
+          ...(bolded ? { bold: bolded } : {}),
+        },
+      });
+      if (result.status === 'error' && result.transient) {
+        throw new ChannelRetryableError(channel, result.code, result.message);
+      }
+      if (result.status !== 'sent') throw new Refused(result);
+      return result;
+    },
+    isTransient: (err) => err instanceof ChannelRetryableError,
+    record: async ({ key, text, result }) => {
+      const id = await writeLedgerRow(
+        ports,
+        msg,
+        result.transport,
+        acceptedStatus(result.transport),
+        {
+          dedupeKey: key,
+          providerMessageId: result.providerMessageId,
+          providerChatId: result.providerChatId ?? null,
+          sentAt: now,
+          ...(rendered.recordBody ? { body: text } : {}),
+        },
+      );
+      await ports.audit({
+        familyId: msg.familyId,
+        actor: 'system',
+        actionTaken: isCaregiverTemplateKey(msg.templateKey)
+          ? 'caregiver_schedule_sent'
+          : 'channel_sent',
+        targetTable: 'channel_messages',
+        targetId: id,
+        after: {
+          channel: result.transport,
+          category: msg.category,
+          templateKey: msg.templateKey,
+          voice,
+        },
+      });
+      if (channel === 'sms') {
+        await ports.threadMessage({
+          familyId: msg.familyId,
+          parentUserId: msg.parentUserId,
+          body: text,
+        });
+      }
+    },
+  });
+  if (outcome.status === 'sent') {
+    if (outcome.sent.length === 0) return { channel, outcome: 'deduped' };
+    return { channel, outcome: 'sent', voice };
+  }
+  if (outcome.status === 'held') {
+    // Unreachable today (quiet hours were checked above); kept total for the type.
+    await writeLedgerRow(ports, msg, channel, 'suppressed_quiet_hours', { dedupeKey: null });
+    return { channel, outcome: 'suppressed_quiet_hours' };
+  }
+  const err = outcome.error;
+  if (!(err instanceof Refused)) throw err;
+  const refused = err.outcome;
+  const errorCode = refused.status === 'error' ? refused.code : refused.reason;
+  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
+  return { channel, outcome: 'failed', reason: errorCode, voice };
+}
+
+/** The words a parent will actually read. */
 function claimText(rendered: RenderedContent): string {
   return rendered.text;
 }
@@ -357,7 +502,7 @@ function claimText(rendered: RenderedContent): string {
 async function writeLedgerRow(
   ports: DispatchPorts,
   msg: LoopMessage,
-  channel: ChannelKind,
+  channel: DeliveredChannel,
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): Promise<string> {
@@ -378,7 +523,7 @@ async function writeLedgerRow(
 
 function rowFor(
   msg: LoopMessage,
-  channel: ChannelKind,
+  channel: DeliveredChannel,
   status: LedgerWrite['status'],
   extra: Partial<LedgerWrite> = {},
 ): LedgerWrite {

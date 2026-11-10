@@ -3,11 +3,7 @@ import { eq } from 'drizzle-orm';
 import type PgBoss from 'pg-boss';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import {
-  CALENDAR_ALERT_TEMPLATE_KEY,
-  type CalendarChange,
-  calendarAlertDedupeKey,
-} from '~/lib/integrations/calendar-alert';
+import type { CalendarChange } from '~/lib/integrations/calendar-alert';
 import {
   EMAIL_ALERT_TEMPLATE_KEY,
   type GmailAlertEnvelope,
@@ -46,6 +42,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // The mirror's kid gate hashes each input with a keyed blind index (VIL-548).
+  vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
   family = await seedFamily(db.database);
   CONNECTION = await seedIntegration(db.database, family.familyId, family.parentUserId);
   vi.stubEnv('F14_ENABLED', 'true');
@@ -89,6 +87,7 @@ function change(eventId: string): CalendarChange {
     // pass as `outside_window`.
     start: { dateTime: new Date(Date.now() + 86_400_000).toISOString() },
     end: { dateTime: new Date(Date.now() + 90_000_000).toISOString() },
+    standing: 'organizer',
   };
 }
 
@@ -183,37 +182,14 @@ describe('connectorSyncDeps — the calendar alert wiring', () => {
     expect(sweep).toEqual({ changes: ['seeding_run'], reoffers: [] });
   });
 
-  it('keys the dedupe read on THIS connection, THIS event and Google\'s own stamp', async () => {
-    // Pre-placed, so the only way to reach `already_sent` is for the wiring to have built
-    // the very same key from connection.id + eventId + updated.
+  it('VIL-527: never sends the fixed-copy calendar sentence, whatever the stamp', async () => {
     const conn = connection({ provider: 'gcal' });
     const moved = change('ev1');
-    await db.database.insert(schema.channelMessages).values({
-      familyId: family.familyId,
-      parentUserId: family.parentUserId,
-      channel: 'sms',
-      direction: 'out',
-      category: 'calendar_alert',
-      templateKey: CALENDAR_ALERT_TEMPLATE_KEY,
-      dedupeKey: calendarAlertDedupeKey(conn.id, moved.eventId, moved.updated),
-      status: acceptedStatus('sms'),
-      sentAt: new Date(),
-    });
-
-    await expect(
-      calendarAlertPort()({ connection: conn, seeding: false, changes: [moved] }),
-    ).resolves.toEqual({ changes: ['already_sent'], reoffers: [] });
-    // ...and the SAME event with a new stamp is a new key, so a move is heard. The
-    // concrete outcome rather than `not.toEqual('already_sent')`: an absence assertion
-    // passes just as happily on a wiring that stopped producing outcomes at all. This
-    // family has no verified channel, so the real gate is the next thing it meets.
-    await expect(
-      calendarAlertPort()({
-        connection: conn,
-        seeding: false,
-        changes: [{ ...moved, updated: '2026-09-17T15:40:00.000Z' }],
-      }),
-    ).resolves.toEqual({ changes: ['gate_refused:not_enrolled'], reoffers: [] });
+    for (const updated of [moved.updated, '2026-09-17T15:40:00.000Z']) {
+      await expect(
+        calendarAlertPort()({ connection: conn, seeding: false, changes: [{ ...moved, updated }] }),
+      ).resolves.toEqual({ changes: ['not_material'], reoffers: [] });
+    }
   });
 });
 
@@ -241,6 +217,25 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       .where(eq(schema.familyEvents.familyId, family.familyId));
   }
 
+  /** The parent's own word that an event is the kids'. Read with no model and no key, so
+   * these cases reach a real mirror write without a network. */
+  async function seedParentKidVerdict(eventId: string): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.kidRelevanceVerdicts)
+      .values({
+        familyId: family.familyId,
+        source: 'google_calendar',
+        integrationId: CONNECTION,
+        itemKey: eventId,
+        inputHash: 'a-parent-row-ignores-the-hash',
+        verdict: 'kid',
+        decidedBy: 'parent',
+      })
+      .returning({ id: schema.kidRelevanceVerdicts.id });
+    if (!row) throw new Error('verdict seed returned no row');
+    return row.id;
+  }
+
   it('writes no family_events and reports the window held while the mirror lane is off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', undefined);
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -258,6 +253,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: true,
       heldReason: 'lane_off',
     });
@@ -268,8 +266,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
     );
   });
 
-  it('mirrors the window as before when the lane is exactly true', async () => {
+  it('with no model key and nothing stored, mirrors nothing and names it unjudgedNoJudge (VIL-548)', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
 
     const counts = await mirrorPort()({
       connection: connection({ provider: 'gcal' }),
@@ -278,9 +277,30 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       now: NOW,
     });
 
-    expect(counts).toMatchObject({ mirrored: 1, held: false });
+    expect(counts).toMatchObject({ mirrored: 0, unjudgedNoJudge: 1, held: false });
+    await expect(familyEventRows()).resolves.toEqual([]);
+    expect(info).toHaveBeenCalledWith(
+      { integrationId: CONNECTION },
+      'calendar mirror: no kid judge client, stored verdicts only',
+    );
+  });
+
+  it("with no model key, mirrors an event the parent said is the kids', linked to that verdict (VIL-548)", async () => {
+    vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const verdictId = await seedParentKidVerdict('ev-swim');
+
+    const counts = await mirrorPort()({
+      connection: connection({ provider: 'gcal' }),
+      items: [swim()],
+      trustWindow: true,
+      now: NOW,
+    });
+
+    expect(counts).toMatchObject({ mirrored: 1, unjudgedNoJudge: 0, held: false });
     const rows = await familyEventRows();
     expect(rows.map((row) => [row.source, row.googleEventId])).toEqual([['parent', 'ev-swim']]);
+    expect(rows[0]?.kidVerdictId).toBe(verdictId);
   });
 
   it('names a connection with no parent user as held for no_parent_user', async () => {
@@ -317,7 +337,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
 
   it("places an all-day occasion on the family's own local midnight", async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     await setParentTimezone('America/Vancouver');
+    await seedParentKidVerdict('ev-fair');
 
     await mirrorPort()({
       connection: connection({ provider: 'gcal' }),
@@ -349,6 +371,9 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
       removed: 0,
       alreadyKnown: 0,
       skipped: 0,
+      notKid: 0,
+      unjudged: 0,
+      unjudgedNoJudge: 0,
       held: true,
       heldReason: 'no_timezone',
     });
@@ -361,6 +386,8 @@ describe('connectorSyncDeps — the calendar mirror wiring', () => {
 
   it('leaves mirrors already written in place when the lane goes off', async () => {
     vi.stubEnv('PARENT_CALENDAR_MIRROR_ENABLED', 'true');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await seedParentKidVerdict('ev-swim');
     const conn = connection({ provider: 'gcal' });
     await mirrorPort()({ connection: conn, items: [swim()], trustWindow: true, now: NOW });
 

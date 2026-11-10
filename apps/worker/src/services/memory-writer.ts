@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { schema, type Database } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import type {
-  EventType,
   ActionType,
-  ReviewerVerdict,
   ClassifierSuggestion,
+  EventType,
   FamilyStage,
+  ReviewerVerdict,
 } from '@hale/types';
 import { ageInMonths, deriveStage } from '@hale/types';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -16,6 +16,7 @@ import {
   autonomyDeniedForKind,
   streakSatisfiesAutonomy,
 } from '../orchestrator/autonomy-gate.js';
+import { episodesForContext, factsForContext } from './memory-context.js';
 
 /**
  * A Drizzle transaction handle — the same query surface as Database, scoped to
@@ -215,7 +216,10 @@ export async function recordEvent(
     if (!existingId) {
       throw new Error('event conflict but no existing row found — investigate');
     }
-    logger.debug({ familyId: input.familyId, eventId: existingId }, 'memory: duplicate event ignored');
+    logger.debug(
+      { familyId: input.familyId, eventId: existingId },
+      'memory: duplicate event ignored',
+    );
     // The classifier still ran (and was billed) even though the event is a
     // re-delivery; record its standalone run so cost accounting stays honest.
     await recordAgentRun(
@@ -232,26 +236,23 @@ export async function recordEvent(
   const eventId = insertedRow.id;
   logger.debug({ familyId: input.familyId, eventId }, 'memory: event recorded');
 
-  await recordTransition(
-    async (tx) => {
-      await recordAgentRun(
-        { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
-        tx,
-      );
-      return {
-        value: undefined,
-        audit: {
-          familyId: input.familyId,
-          actor: 'system',
-          actionTaken: 'event.classified',
-          targetTable: 'events',
-          targetId: eventId,
-          after: { eventType: input.eventType, confidence: input.classifierConfidence },
-        },
-      };
-    },
-    database,
-  );
+  await recordTransition(async (tx) => {
+    await recordAgentRun(
+      { familyId: input.familyId, eventId, metrics: input.classifierMetrics },
+      tx,
+    );
+    return {
+      value: undefined,
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'event.classified',
+        targetTable: 'events',
+        targetId: eventId,
+        after: { eventType: input.eventType, confidence: input.classifierConfidence },
+      },
+    };
+  }, database);
 
   return { eventId, duplicate: false };
 }
@@ -389,8 +390,7 @@ export async function recordReviewerVerdict(
           ok: r.ok,
           result: r.result,
         })),
-        userVisibleState:
-          input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
+        userVisibleState: input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
       })
       .where(eq(schema.actions.id, input.actionId));
 
@@ -455,10 +455,7 @@ export async function recordExecution(
  * previously returned silently. Updates the event's status and writes the audit
  * row so PIPEDA right-to-access shows why nothing happened (hard rule #6).
  */
-export async function recordDrop(
-  input: RecordDropInput,
-  database: Database = db(),
-): Promise<void> {
+export async function recordDrop(input: RecordDropInput, database: Database = db()): Promise<void> {
   const actionTaken = `event.dropped.${input.reason}` as const;
   // unknown_action_type is an automated-handling failure; low_confidence and
   // needs_human are routed onward to the human queue. Both are existing
@@ -528,7 +525,9 @@ export type ActionGateReason =
   | 'parent_commitment'
   | 'lane_off'
   | 'autonomy_denied_kind'
-  | 'autonomy_notice_pending';
+  | 'autonomy_notice_pending'
+  /** VIL-357 · the approval landed outside the family's action window. */
+  | 'outside_time_window';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -1526,136 +1525,40 @@ export async function markEventStage(
 
 // ─── Memory graph: longitudinal family-context read path ──────────────────
 
-/** How many most-recent episodes a memory slice carries to an agent. Bounded so
- * the slice that goes into a drafter prompt stays small. */
+/** How much a memory slice carries to the drafter. Bounded so the prompt stays small. */
+const MEMORY_SLICE_FACT_LIMIT = 40;
 const MEMORY_SLICE_EPISODE_LIMIT = 20;
 
 export interface MemorySlice {
-  facts: schema.FamilyMemoryFact[];
+  facts: Omit<schema.FamilyMemoryFact, 'sourceAudience' | 'sourceUserId'>[];
   episodes: schema.FamilyMemoryEpisode[];
 }
 
 /**
- * Reads a family's current memory: every currently-valid fact (valid_until IS
- * NULL — the lookup index is partial on exactly this predicate) plus the most
- * recent episodes. This is the snapshot the drafter consults for context and the
- * inferencer diffs against. An empty family returns {facts:[],episodes:[]} — the
- * callers skip gracefully rather than null-masking.
+ * The family memory the drafter consults for context, through the shared prompt read
+ * (`memory-context.ts`): live, unexpired, non-teen facts and live, non-teen episodes.
+ * An empty family returns {facts:[],episodes:[]} — the callers skip gracefully rather
+ * than null-masking.
+ *
+ * Read for every adult (VIL-599): a draft is the household's, so it carries nothing one
+ * adult said in their own 1:1, and no fact from a mailbox or calendar.
  */
 export async function getMemorySlice(
   familyId: string,
   database: Database = db(),
+  now: Date = new Date(),
 ): Promise<MemorySlice> {
-  const facts = await database
-    .select()
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, familyId),
-        sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
-      ),
-    );
-
-  const episodes = await database
-    .select()
-    .from(schema.familyMemoryEpisodes)
-    .where(eq(schema.familyMemoryEpisodes.familyId, familyId))
-    .orderBy(sql`${schema.familyMemoryEpisodes.occurredAt} DESC`)
-    .limit(MEMORY_SLICE_EPISODE_LIMIT);
-
-  return { facts, episodes };
+  const [facts, episodes] = await Promise.all([
+    factsForContext(database, familyId, {
+      now,
+      reader: 'every_adult',
+      limit: MEMORY_SLICE_FACT_LIMIT,
+    }),
+    episodesForContext(database, familyId, { now, limit: MEMORY_SLICE_EPISODE_LIMIT }),
+  ]);
+  // Who said each fact steered the read; the draft has no use for it.
+  const rows = facts.map(
+    ({ seenIn: _seenIn, sourceAudience: _audience, sourceUserId: _speaker, ...row }) => row,
+  );
+  return { facts: rows, episodes };
 }
-
-// ─── Village: discovery + routine persistence ────────────────────────────
-
-/** One discovered candidate to persist. The `kind` is supplied by the caller
- * (the discovery scheduler), since a provider's `DiscoveredCandidate` models an
- * activity without a category column. */
-export interface DiscoveryCandidateWrite {
-  title: string;
-  kind: string;
-  summary: string;
-  sourceUrl?: string;
-  source: string;
-  confidence: number;
-  coverageNote?: string;
-  /** How the activity recurs — "seasonal" | "one-time" | "ongoing". Optional:
-   * a provider that does not classify cadence leaves it null (no chip). */
-  cadence?: string;
-  /** ISO YYYY-MM-DD of a dated one-time event, so the feed can drop past events.
-   * Null for ongoing/undated candidates — never fabricated. */
-  eventDate?: string;
-  /** Which seasons a seasonal activity runs, so the feed can hide out-of-season
-   * candidates. Null for one-time/ongoing. */
-  seasons?: string[];
-  /** Null = family-wide; otherwise the attributed child (already validated). */
-  childId: string | null;
-}
-
-/**
- * Persists a discovery run's candidates and ONE audit row in a single
- * transaction (hard rule #6: no village_candidates row without its audit trail).
- * A run with no candidates writes nothing — there is no transition to audit.
- *
- * Privacy (rule #1): the audit `after` carries only the coarse area, provider,
- * and a count — never a child name, DOB, or any candidate's raw text.
- */
-export async function recordDiscovery(
-  input: {
-    familyId: string;
-    areaCoarse: string;
-    provider: string;
-    candidates: DiscoveryCandidateWrite[];
-  },
-  database: Database = db(),
-): Promise<{ insertedCount: number }> {
-  if (input.candidates.length === 0) {
-    return { insertedCount: 0 };
-  }
-  return recordTransition<{ insertedCount: number }>(async (tx) => {
-    // REPLACE, don't accumulate: soft-retire this family's prior active set so a
-    // fresh discovery run swaps in. Soft (not DELETE) so an endorsed / shared
-    // candidate and its share token survive; the live feed filters
-    // superseded_at IS NULL. Sets ONLY superseded_at — never clears shareToken.
-    await tx
-      .update(schema.villageCandidates)
-      .set({ supersededAt: new Date() })
-      .where(
-        and(
-          eq(schema.villageCandidates.familyId, input.familyId),
-          isNull(schema.villageCandidates.supersededAt),
-        ),
-      );
-    await tx.insert(schema.villageCandidates).values(
-      input.candidates.map((c) => ({
-        familyId: input.familyId,
-        childId: c.childId,
-        title: c.title,
-        kind: c.kind,
-        summary: c.summary,
-        sourceUrl: c.sourceUrl,
-        source: c.source,
-        confidence: c.confidence,
-        coverageNote: c.coverageNote,
-        cadence: c.cadence,
-        eventDate: c.eventDate,
-        seasons: c.seasons,
-      })),
-    );
-    return {
-      value: { insertedCount: input.candidates.length },
-      audit: {
-        familyId: input.familyId,
-        actor: 'system',
-        actionTaken: 'village.discovery.recorded',
-        targetTable: 'village_candidates',
-        after: {
-          areaCoarse: input.areaCoarse,
-          provider: input.provider,
-          count: input.candidates.length,
-        },
-      },
-    };
-  }, database);
-}
-

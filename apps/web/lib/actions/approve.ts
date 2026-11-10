@@ -1,8 +1,7 @@
-import { eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { type ApprovedActionPayload, approvedActionPayloadSchema } from '@hale/tools-contracts';
+import { eq } from 'drizzle-orm';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
-import { verifyRegistrationDateApproval } from '~/lib/registration/sequence/date-approval';
 
 /**
  * Minimal queue surface the approve flow needs — just `send`. Injected so the
@@ -46,7 +45,6 @@ export async function approveDraftedAction(
       familyId: schema.actions.familyId,
       userVisibleState: schema.actions.userVisibleState,
       reviewerVerdict: schema.actions.reviewerVerdict,
-      payload: schema.actions.payload,
     })
     .from(schema.actions)
     .where(eq(schema.actions.id, args.actionId))
@@ -64,15 +62,6 @@ export async function approveDraftedAction(
   }
   if (action.reviewerVerdict !== 'approved') {
     return { status: 409, error: 'action_not_reviewer_approved' };
-  }
-
-  if (action.payload?.intentKind === 'registration_date_review') {
-    const verified = await verifyRegistrationDateApproval(database, {
-      familyId: args.familyId,
-      actionId: args.actionId,
-      now: new Date(),
-    });
-    if (verified !== 'verified') return { status: 409, error: `registration_date_${verified}` };
   }
 
   const payload: ApprovedActionPayload = approvedActionPayloadSchema.parse({

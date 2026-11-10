@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { RegistrationNoteFacts } from './note-compose.js';
 import {
   type AwaitingSequence,
   type SequenceReplyDeps,
@@ -78,10 +79,17 @@ interface Recorded {
   outcomes: Array<Record<string, unknown>>;
   reasks: string[];
   loads: number;
+  /** The facts every note was written from, in order. */
+  notes: RegistrationNoteFacts[];
 }
 
-function deps(sequence: AwaitingSequence | null): { deps: SequenceReplyDeps; recorded: Recorded } {
-  const recorded: Recorded = { outcomes: [], reasks: [], loads: 0 };
+/** The composer seam. It returns the note's kind as its "text", or null for a write that
+ * failed; what the model writes is the eval's (vil543-note-eval.mjs). */
+function deps(
+  sequence: AwaitingSequence | null,
+  written: (facts: RegistrationNoteFacts) => string | null = (facts) => `note:${facts.kind}`,
+): { deps: SequenceReplyDeps; recorded: Recorded } {
+  const recorded: Recorded = { outcomes: [], reasks: [], loads: 0, notes: [] };
   return {
     recorded,
     deps: {
@@ -94,6 +102,10 @@ function deps(sequence: AwaitingSequence | null): { deps: SequenceReplyDeps; rec
       },
       recordReask: async (_db, sequenceId) => {
         recorded.reasks.push(sequenceId);
+      },
+      writeNote: async (_db, _familyId, facts) => {
+        recorded.notes.push(facts);
+        return written(facts);
       },
     },
   };
@@ -219,7 +231,13 @@ describe('handleSequenceReply', () => {
     const result = await outcome;
     if (result.status !== 'recorded') throw new Error('expected a recorded outcome');
     expect(result.outcome).toBe('registered');
-    expect(result.reply).toContain('Toronto');
+    expect(result.reply).toBe('note:outcome_registered');
+    expect(recorded.notes).toEqual([
+      expect.objectContaining({
+        kind: 'outcome_registered',
+        window: expect.stringContaining('Toronto'),
+      }),
+    ]);
     expect(recorded.outcomes).toEqual([
       {
         sequenceId: 'seq-1',
@@ -247,8 +265,14 @@ describe('handleSequenceReply', () => {
       // Toronto publishes 36h; 36h after 11:00 on 15 Sept is 23:00 local on 16 Sept.
       waitlistDeadlineAt: new Date('2026-09-17T03:00:00.000Z'),
     });
-    expect(result.reply).toContain('15');
-    expect(result.reply).toContain('36h');
+    // The note is written from the SAME deadline that was stored.
+    expect(recorded.notes[0]).toMatchObject({
+      kind: 'outcome_waitlisted',
+      position: 15,
+      responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
+      deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
+    });
   });
 
   it('uses the municipality’s own response window, never a Hale default', async () => {
@@ -271,7 +295,7 @@ describe('handleSequenceReply', () => {
       // 48h after 11:00 on 15 Sept is 11:00 on 17 Sept.
       waitlistDeadlineAt: new Date('2026-09-17T15:00:00.000Z'),
     });
-    expect(result.reply).toContain('48h');
+    expect(recorded.notes[0]).toMatchObject({ kind: 'outcome_waitlisted', responseHours: 48 });
   });
 
   it('sets NO clock where the municipality publishes no response window', async () => {
@@ -283,8 +307,13 @@ describe('handleSequenceReply', () => {
     const result = await outcome;
     if (result.status !== 'recorded') throw new Error('expected a recorded outcome');
     expect(recorded.outcomes[0]).toMatchObject({ outcome: 'waitlisted', waitlistDeadlineAt: null });
-    // And says so, rather than implying a guard it cannot keep.
-    expect(result.reply.toLowerCase()).toContain('no published');
+    // And hands no deadline, so the note cannot imply a guard Hale cannot keep.
+    expect(recorded.notes[0]).toMatchObject({
+      kind: 'outcome_waitlisted',
+      responseHours: null,
+      clockFrom: null,
+      deadline: null,
+    });
   });
 
   it('records a missed window without pretending otherwise', async () => {
@@ -293,13 +322,27 @@ describe('handleSequenceReply', () => {
     if (result.status !== 'recorded') throw new Error('expected a recorded outcome');
     expect(result.outcome).toBe('missed');
     expect(recorded.outcomes[0]).toMatchObject({ outcome: 'missed' });
+    expect(recorded.notes[0]).toMatchObject({ kind: 'outcome_missed', town: 'Toronto' });
+  });
+
+  it('still records the outcome when the note cannot be written, and sends nothing', async () => {
+    const sequence = awaiting();
+    const failed = deps(sequence, () => null);
+    const result = await handleSequenceReply(
+      db(),
+      { familyId: 'fam-1', parentUserId: 'user-1', body: 'we got in', now: REPLY_AT },
+      failed.deps,
+    );
+    expect(result).toEqual({ status: 'recorded', outcome: 'registered', reply: null });
+    expect(failed.recorded.outcomes).toHaveLength(1);
   });
 
   it('re-asks ONCE when the answer is unreadable, then goes quiet', async () => {
     const first = reply('idk it was chaos');
     const firstResult = await first.outcome;
-    if (firstResult.status !== 'reasked') throw new Error('expected a re-ask');
-    expect(firstResult.reply.toLowerCase()).toContain('got in');
+    // The coach answers it (VIL-221 · C2); this module writes no note of its own.
+    expect(firstResult).toEqual({ status: 'reasked' });
+    expect(first.recorded.notes).toEqual([]);
     expect(first.recorded.reasks).toEqual(['seq-1']);
 
     // The stamp is what spends it. A second unreadable message inside the same window
@@ -358,8 +401,10 @@ describe('loadAwaitingSequence · the anchor', () => {
             from: () => ({
               innerJoin: () => ({
                 innerJoin: () => ({
-                  where: () => ({
-                    orderBy: () => ({ limit: async () => [sequenceRow] }),
+                  innerJoin: () => ({
+                    where: () => ({
+                      orderBy: () => ({ limit: async () => [sequenceRow] }),
+                    }),
                   }),
                 }),
               }),

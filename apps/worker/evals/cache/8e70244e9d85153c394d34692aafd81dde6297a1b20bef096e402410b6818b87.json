@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every given fact is present and correct: the event title \"PD Day\" is kept as-is, the day (tomorrow, Monday) is true from Sunday evening, the start 9:30 AM and end 12:00 PM are correct with AM/PM right, and the venue \"Northside community centre\" is named. No address was given in the facts, so none is missing. Nothing is invented, no clock time issues, no inferences, no extra link, and it is in English as requested.",
+    "score": 5
+  }
+}

@@ -2,10 +2,11 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import type { CoachingPlaybook } from '@hale/types';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanTopic } from './topics';
 
@@ -39,8 +40,6 @@ export const MAX_NOTE_SEGMENTS = 2;
 export const MAX_NOTE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 400;
-
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 export type NoteKind = 'too_young' | 'check_in';
 
@@ -122,12 +121,7 @@ export function noteViolations(body: string, grounding: NoteGrounding): string[]
       `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_NOTE_SEGMENTS}. Cut it to about 300 characters.`,
     );
   }
-  if (smsEncoding(text) !== 'gsm7') {
-    violations.push(
-      'The message contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.',
-    );
-  }
-  if (LINK_SHAPE.test(text)) {
+  if (hasLinkShape(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
 
@@ -216,7 +210,10 @@ export function createNoteComposer(client: () => AgentClient): NoteComposer {
 }
 
 function deferred(reason: NoteFallback, violations: readonly string[]): NoteComposeOutcome {
-  console.error({ reason, violations }, 'coach plan note: deferring rather than sending a canned line');
+  console.error(
+    { reason, violations },
+    'coach plan note: deferring rather than sending a canned line',
+  );
   return { status: 'deferred', reason, violations };
 }
 

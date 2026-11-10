@@ -1,15 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { namesAMentalCrisis, namesAnEmergency } from '~/lib/channel/off-domain/copy';
-import { logCrisisUnanswered } from '~/lib/channel/voice/said-line';
 
 /**
  * The outage smoke alarm.
  *
- * When the model API is UNREACHABLE and a parent's text carries an unambiguous
- * emergency or crisis token, there is no model to write a reply and, since #868
- * (Barton, 2026-10-14), no fixed crisis line to send instead — the "Call 911 now."
- * exception is gone. What remains is the alarm itself: an urgent, body-free log so
- * #ops reaches the parent, claimed once per inbound.
+ * When the model API is unreachable there is no model to judge a crisis and no fixed
+ * line to send. The turn is held. A word list does not page from the parent's text.
  *
  * It fires only when there is no LLM ({@link modelIsUnreachable} is a POSITIVE list).
  *
@@ -18,13 +13,13 @@ import { logCrisisUnanswered } from '~/lib/channel/voice/said-line';
 
 /** Why the alarm did or did not ring. Four outcomes, none of them silence (rule #11). */
 export type SmokeAlarmOutcome =
-  /** An outage met a crisis token: nothing went out (no line is fixed, #868), the
-   * urgent #ops log fired, and the inbound is claimed so a re-drive pages once. */
+  /** Never produced: no word list decides a crisis, so the alarm does not fire. Kept for
+   * the outcome vocabulary; nothing pages from it. */
   | 'fired'
   /** The turn broke, but the provider was reachable — an ordinary failed turn. */
   | 'not_an_outage'
-  /** An outage, and nothing in the text is an unambiguous emergency. */
-  | 'no_emergency_token'
+  /** An outage. A word list does not decide it is a crisis, so the turn is held. */
+  | 'unjudged'
   /** This same inbound already rang it: a queue re-drive, not a second emergency. */
   | 'already_fired';
 
@@ -136,22 +131,7 @@ export async function considerSmokeAlarm(input: SmokeAlarmInput): Promise<SmokeA
   if (!modelIsUnreachable(input.err)) {
     return 'not_an_outage';
   }
-  if (!namesAnEmergency(input.body) && !namesAMentalCrisis(input.body)) {
-    return 'no_emergency_token';
-  }
-  const { familyId, parentUserId, channelMessageId } = input;
-  if (await input.claim.alreadyFired({ familyId, channelMessageId })) {
-    return 'already_fired';
-  }
-
-  // SEND, THEN CLAIM — the router's own ordering rule (route.ts sendReply), for the same
-  // reason turned up one notch. A claim written first would turn a send that failed into
-  // a text the parent never gets at all: the re-drive would read the claim and stay
-  // quiet about an emergency nobody answered.
-  // #868 (Barton, 2026-10-14): the fixed "Call 911 now." outage line is gone; there is
-  // no fixed crisis line anywhere. With no model to write one, nothing is sent and #ops
-  // is paged urgently, once per inbound (the claim still dedupes the re-drive).
-  logCrisisUnanswered(namesAnEmergency(input.body) ? 'emergency' : 'mental', 'model_outage');
-  await input.claim.recordFired({ familyId, parentUserId, channelMessageId });
-  return 'fired';
+  // The model judges a crisis, and it cannot run. The parent's words are not a list
+  // to match. Hold the turn so the drain can retry; send nothing.
+  return 'unjudged';
 }

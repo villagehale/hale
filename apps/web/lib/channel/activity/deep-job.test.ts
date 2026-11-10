@@ -40,6 +40,7 @@ const OPEN: DueCommitment = {
   summary: 'A promise to come back with what I find on Cartwheels Gym Centre fall schedule',
   createdFrom: 'msg-9',
   subjectChildId: null,
+  heardFacts: null,
   dueAt: new Date('2026-08-25T18:00:00.000Z'),
 };
 
@@ -172,7 +173,7 @@ function harness(
       language: 'en-CA',
     }),
     reader: {
-      municipality: async () => 'halton_hills',
+      place: async () => ({ status: 'known', town: 'Halton Hills' }),
       stage: async () => 'toddler',
       householdNames: async () => ['Noah'],
     },
@@ -197,7 +198,11 @@ function harness(
         async compose(grounding) {
           composed.push(grounding);
           return (
-            overrides.compose ?? { status: 'composed', message: 'Tiny Gym runs Sundays 9:30.' }
+            overrides.compose ?? {
+              status: 'composed',
+              message: 'Tiny Gym runs Sundays 9:30.',
+              mentionsWatch: false,
+            }
           );
         },
       },
@@ -241,12 +246,36 @@ describe('runDeepResearchJob', () => {
     expect(h.transport.sent).toHaveLength(1);
     // Threaded, so the parent's reply arrives as an ordinary coach turn with the finds
     // above it (#531).
-    expect(h.threaded).toEqual([
-      `Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`,
-    ]);
+    expect(h.threaded).toEqual([`Tiny Gym runs Sundays 9:30.\n${SLOT.sourceUrl}`]);
     // KEPT, against the message that kept it.
     expect(h.fulfilled).toEqual([
       { familyId: FAMILY, kind: 'activity_followup', channelMessageId: 'msg-out-1', now: NOW },
+    ]);
+  });
+
+  it('carries a registration date the merge put past the text cut', async () => {
+    const undated = { ...SLOT, registration: null };
+    const registrationRow = {
+      ...SLOT,
+      name: 'Fall registration (covers Tiny Gym)',
+      when: null,
+      price: null,
+      registration: 'Open since July 22',
+    };
+    const h = harness({
+      result: {
+        ...READ,
+        slots: [undated, { ...undated, name: 'Tiny Gym (schedule)' }, registrationRow],
+      },
+    });
+
+    await runDeepResearchJob(database, PAYLOAD, h.deps, NOW);
+
+    const picks = (h.composed[0] as { picks: { name: string }[] }).picks;
+    expect(picks.map((pick) => pick.name)).toEqual([
+      'Tiny Gym, Cartwheels Gym Centre',
+      'Tiny Gym (schedule)',
+      'Fall registration (covers Tiny Gym)',
     ]);
   });
 

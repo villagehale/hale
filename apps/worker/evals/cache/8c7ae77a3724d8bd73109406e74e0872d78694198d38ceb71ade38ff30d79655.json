@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text drops the end time (4:00 PM / 16 h) and the location (Georgetown library), both given in the facts. It also states the day is a break with breathing room, which is an opinion and implies the day is free despite a timed event; the title 'Jour de congé' is recast as what the day is rather than an event at the library. Also the time is written as 3:00 with no 'h' or PM and the French is unnatural and mixes English-style time formatting.",
+    "score": 1
+  }
+}

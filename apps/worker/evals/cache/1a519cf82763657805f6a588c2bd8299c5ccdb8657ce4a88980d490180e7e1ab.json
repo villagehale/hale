@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message names both pickups and the time, but asks two things (who takes it, or skip one) and includes a link and a reply-with-number instruction, which the rubric penalizes. It also never asks Sam by name to take Maya's swim pickup as the single ask. The poll's last option is a duplicate \"Barton\" instead of a neutral non-name choice, and the message's poll reference conflicts with the required single-ask structure.",
+    "score": 1
+  }
+}

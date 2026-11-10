@@ -12,6 +12,7 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const SMS: Extract<RenderedContent, { kind: 'sms' }> = {
   kind: 'sms',
   text: 'A check-up is coming up',
+  modelWritten: false,
 };
 const PHONE = '+14165550100';
 
@@ -38,7 +39,7 @@ describe('createSmsChannel().send', () => {
       configured: true,
     }).send({ userId: USER_ID, rendered: SMS });
 
-    expect(outcome).toEqual({ status: 'sent', providerMessageId: 'fake-out-1' });
+    expect(outcome).toEqual({ status: 'sent', providerMessageId: 'fake-out-1', transport: 'sms' });
     expect(transport.sent).toEqual([{ to: PHONE, body: SMS.text }]);
   });
 
@@ -90,7 +91,7 @@ describe('createSmsChannel().send', () => {
       resolveTarget: async () => PHONE,
     }).send({ userId: USER_ID, rendered: SMS });
 
-    expect(sent).toEqual({ status: 'sent', providerMessageId: 'fake-out-1' });
+    expect(sent).toEqual({ status: 'sent', providerMessageId: 'fake-out-1', transport: 'sms' });
   });
 
   it('sends a family with no group through Linq, and does not call Twilio', async () => {
@@ -111,6 +112,7 @@ describe('createSmsChannel().send', () => {
     expect(outcome).toEqual({
       status: 'sent',
       providerMessageId: 'msg-1',
+      transport: 'imessage',
       providerChatId: 'chat-1',
     });
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -165,14 +167,5 @@ describe('createSmsChannel().send', () => {
         configured: true,
       }).send({ userId: USER_ID, rendered: SMS }),
     ).rejects.toThrow(/fetch is not a function/);
-  });
-
-  it('refuses content that is not SMS — a wiring bug, not a runtime condition', async () => {
-    await expect(
-      createSmsChannel({ resolveTarget: async () => PHONE, configured: true }).send({
-        userId: USER_ID,
-        rendered: { kind: 'email', subject: 'x', html: '<p>y</p>', text: 'y' },
-      }),
-    ).rejects.toThrow(/received email content/);
   });
 });

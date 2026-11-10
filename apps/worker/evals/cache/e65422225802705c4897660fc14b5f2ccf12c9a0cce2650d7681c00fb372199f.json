@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNPL6Sw5NjFtzdvJWXBu",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS1AgKEAgTGAI4AUIIdGhpbmtpbmcSDI3SFN76YnXFj7SoLRoMoVea5YX9byrAKeKIIjBHnHyskrZbzTf7gfHA2ln4CEirc2Cf9yX7BDSe6wZ2YIuqfyMlmA3XZMQNzyEgZqEq8QdwmjUhirTuRH71lNimUN+tEdlbNlqHG56hfCDohW5sFH2mMWmFEOiEgP4avpyGwS525XqPu6VDZeKRVAgVIDF0vgpBSHh6A/cYlvGiUEdQ9S1NmKewctTn6pt3xabjAERVwy3trWdXcC/oqIQK7T9BlWok2wUdxrAiBxbDFzaBajkp+tmoKyGjkzS8r/sL2p1w5ZjG7hiQx/fIf8bHJRwaF/2cpH5ELrrGFU2geCVp+h+8eiJyDVZExOYEUBLVQXTwmCl2mZ07XVLHerz8AalvzDHv7zhltw7/rSOQ6bobVLSCv1rnf1B1An1BqSzRzbM4gbk3cUUwH0rE8YkXZYXfpUngN7VvbHj+sj97bSZSGqnvqI9/cTkrRjKQJMhLcpgwoEbGGslHI4KmVSCinHsKqvjh+aZmo3zAjo474wOvZee9GgAjuSqufBBlIbluFn2NQI4VtA7n4a23VQMQxV3s7Si/+Qbo7Dkjpgw1TotKkYKVPVuQLvGhie3RHlOFhLG1KZ6YyOOqMG4r/7FseZAxwhfGJU5Y6hSnZQOMlGBgDORlvsrnesnsHg7pS+EbfAVQ8w0xDVoXf2DugzTeBYe/owOgiORxba4n0aTWr8YDIKXTz9GQMLuh69Wpkvcj9Gp1CvO8x+vV6ZXhxh4+RTmWABBODxmmg00HSBANSv7wKzfXADwbl0OFkvlE88N3eqRhD8uyNIyXhE/d9i+f+oQvsfY+GhxKTorTfkaX5sj1VvYfJ7gQcXXLvkU165FKdrO1qwgZ/6/N8tVY5sEFXB6iJeV3k+Kwf6+b8rQG5kExjvK52NYK2oHCa5PBpoerFUg2mo1GevoZfHdUQX9ih06FUkFhdidwmeZucFFLtmSRz2IMkqzREjSA3anPqaMPXFzpAuCb4pCZON+GKOH7eJQbpLe6J2nv9kMhy31aBrWCRcnf8oLyWu5ZXnhzxGvFmCC1mvUAGchMb7AXiNMFkSq1Zqhw+xjCSm/bdr2TKBJbTYTkI6ax1pWN/GC5DkLJalzCn8Z0Mb8w1ELB+zT+Ai1/kbFIAYryEK1ZJhVbkmF5qH3+plrnOXGuZh4n6UMDqUfEycy2iihlky4D3cNxa/7Ri7P4KpHFNpX2efnIucwZXYhssKLXBekjceuqu/y0Vcct+g/SQmBhaGsEtWL+WqZ1QGgybDCTAYpAg90kyIXqBnc/woj3UmB5msX5GjFpyvzUYGDA9oDMfgtLMYMv539eMeeCx/5eW7AQWbsh1MvHOnNm/NaW1khVNh3HIsvLGuZ7KpQIKLG/lhFK4zCFj8lflfNoSxqsDi7g7p6JrTQbn2ZqKpVzOzQldJWY7eUse0s0GAE="
+      },
+      {
+        "type": "text",
+        "text": "Cedarvale Park is already on your week for soccer practice Sat 10:00am. If you want something a bit different, Riverdale Farm is a free outdoor farm, open daily, and it's on Sun, Aug 9. It's a farm rather than a park."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1230,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 254,
+      "output_tokens_details": {
+        "thinking_tokens": 168
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2730
+}

@@ -6,6 +6,7 @@ import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { readSmsNumber } from '~/lib/text-entry';
+import { aboutJsonLd } from '~/lib/site/structured-data';
 
 interface PageProps {
   params: Promise<{ locale: Locale }>;
@@ -28,11 +29,18 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function AboutPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
   return (
-    <RedesignAbout
+    <>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd(locale)) }}
+      />
+      <RedesignAbout
       locale={locale}
       smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
       prefill={intakePrefill(locale)}
       source={await pageSource(searchParams)}
-    />
+      />
+    </>
   );
 }

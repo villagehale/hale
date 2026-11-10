@@ -1,28 +1,89 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { REGISTRATION_COURSE_URL_MAX_CHARS } from '@hale/db';
+import { REGISTRATION_COURSE_URL_MAX_CHARS, schema } from '@hale/db';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect, getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import { MAX_URL_CHARS } from './url';
 
 const ROOT = path.resolve(__dirname, '../../../../..');
+const DRIZZLE = path.join(ROOT, 'packages/db/drizzle');
 
-/** Spot links still use the original 200-char bound; registration watches now accept
- * other public course URLs without widening the spot allowlist or its copy budget. */
+/** The DB bound on registration_sequences.course_url started as the app's MAX_URL_CHARS
+ * (the PerfectMind SMS bound) and was widened to REGISTRATION_COURSE_URL_MAX_CHARS once a
+ * watch could hold any public course link. Each number is written twice; this keeps each
+ * pair the same number. The widened bound counts BYTES: the live-watch unique index is a
+ * btree on the raw text, and a btree row tops out at 2704 bytes. */
 describe('course_url length bound', () => {
-  it('keeps the historical spot-only bound', () => {
+  it('0111 bounds course_url at the spots MAX_URL_CHARS', () => {
     const source = readFileSync(
-      path.join(ROOT, 'packages/db/drizzle/0111_registration_sequence_course_url_length.sql'),
+      path.join(DRIZZLE, '0111_registration_sequence_course_url_length.sql'),
       'utf8',
     );
     expect(source).toMatch(new RegExp(`length\\("course_url"\\) <= ${MAX_URL_CHARS}\\b`));
   });
-  it('keeps the new migration and storage bound aligned', () => {
+
+  it('the watch-storage migration bounds course_url at REGISTRATION_COURSE_URL_MAX_CHARS', () => {
+    const file = readdirSync(DRIZZLE).find((f) =>
+      f.endsWith('_registration_live_watch_storage.sql'),
+    );
+    expect(file).toMatch(/^\d{4}_registration_live_watch_storage\.sql$/);
+    const source = readFileSync(path.join(DRIZZLE, file as string), 'utf8');
+    expect(source).toContain(
+      `octet_length("course_url") BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+    );
+  });
+
+  it('the Drizzle mirror spells the same bound and the window-scoped pairing', () => {
     const source = readFileSync(
-      path.join(ROOT, 'packages/db/drizzle/0172_registration_live_watch_storage.sql'),
+      path.join(ROOT, 'packages/db/src/schema/registration-sequences.ts'),
       'utf8',
     );
     expect(source).toContain(
-      `length("course_url") BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+      'octet_length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}',
     );
+    expect(source).toContain(
+      '${table.windowId} IS NULL OR (${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)',
+    );
+  });
+
+  it('the Drizzle mirror renders the predicates, index columns and child cascade the migration adds', () => {
+    const file = readdirSync(DRIZZLE).find((f) =>
+      f.endsWith('_registration_live_watch_storage.sql'),
+    );
+    const migration = readFileSync(path.join(DRIZZLE, file as string), 'utf8').replace(/\s+/g, ' ');
+    const config = getTableConfig(schema.registrationSequences);
+    const dialect = new PgDialect();
+    const render = (value: SQL) =>
+      dialect.sqlToQuery(value).sql.replaceAll('"registration_sequences".', '');
+
+    for (const name of [
+      'registration_sequences_target_check',
+      'registration_sequences_date_review_check',
+    ]) {
+      const mirror = config.checks.find((c) => c.name === name);
+      expect(mirror, name).toBeDefined();
+      expect(migration).toContain(
+        `ADD CONSTRAINT "${name}" CHECK (${render(mirror?.value as SQL)}) NOT VALID;`,
+      );
+    }
+
+    for (const name of [
+      'registration_sequences_live_url_uniq',
+      'registration_sequences_check_idx',
+    ]) {
+      const mirror = config.indexes.find((i) => i.config.name === name)?.config;
+      expect(mirror?.where, name).toBeDefined();
+      const columns = mirror?.columns.map((c) => `"${(c as { name: string }).name}"`).join(', ');
+      expect(migration).toContain(
+        `"${name}" ON "registration_sequences" (${columns}) WHERE ${render(mirror?.where as SQL)};`,
+      );
+    }
+
+    const childFk = config.foreignKeys.find((fk) =>
+      fk.reference().columns.some((c) => c.name === 'child_id'),
+    );
+    expect(childFk?.onDelete).toBe('cascade');
+    expect(migration).toContain('"child_id" uuid REFERENCES "children"("id") ON DELETE cascade,');
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message tells the parent a lot came in at once and it isn't answering this one now, and invites them to text again later, all in the first person and in English. However, it says 'Send it again in a bit and I'll take a look,' which effectively promises Hale will answer later and implies a vague wait, which the watchFor explicitly forbids.",
+    "score": 2
+  }
+}

@@ -1,0 +1,863 @@
+import { describe, expect, it } from 'vitest';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { townLabel } from '~/lib/channel/town-label';
+import { REGISTRATION_WINDOWS } from '~/lib/registration/registration-windows-data';
+import {
+  EFUN_GONE,
+  JACK_OF_SPORTS_PAGE,
+  type RecHelloCity,
+  TORONTO_FOLLOW,
+  TORONTO_REC_PORTAL,
+  TORONTO_WAITLIST_HOURS,
+  YMCA_FOLLOW,
+  YMCA_PORTAL,
+  cityRecLine,
+  matchRecMorning,
+  recMorningIntakeReply,
+  recMorningReply,
+  resolveHelloCity,
+  resolveRecMorningWhere,
+} from './index';
+
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const COLD_START_ASK = 'cold start ask (test fixture)';
+/** #868: the fixed ask is gone; any pending-ask text is a fixture. */
+const WATCH_OFFER_ASK = 'watch offer ask (test fixture)';
+
+/** Same ceiling as intake/answer.ts MAX_REPLY_CHARS — kept local so this spec does not
+ * pull the model composer (and @hale/agent) into a copy test. */
+const INTAKE_MAX_REPLY_CHARS = 300;
+
+/** 10 a.m. on the morning these lines were re-derived: Brampton's non-resident swim
+ * date is still to come, Toronto's non-resident date is still to come, and every
+ * other GTA fall cycle has gone. */
+const THIS_MORNING = new Date('2026-09-17T14:00:00.000Z');
+/** Five days on, past the Sep 21 Brampton morning and nothing else. */
+const NEXT_WEEK = new Date('2026-09-22T14:00:00.000Z');
+
+/** A week before Aug 27 2026, the morning YMCA GTA opened fall swim. */
+const BEFORE_YMCA_OPENS = new Date('2026-08-20T14:00:00.000Z');
+/** Hand-derived: Aug 27 2026 is a Thursday, and the Y opened at 9:00 a.m. */
+const YMCA_OPEN_FACT =
+  'YMCA GTA swim registration opens Thursday, Aug 27, 2026 at 9:00 a.m. Sign in at MyY.YMCAGTA.ORG.';
+
+type StoredPlace = {
+  city?: string | null;
+  postal?: string | null;
+  country?: string | null;
+  province?: string | null;
+};
+
+/** The zone a GTA family's parent has on file in these fixtures. */
+const FAMILY_ZONE = 'America/Toronto';
+
+/** A family whose stored city is Toronto: the GTA family most of these asks come from. */
+const TORONTO_HOME: StoredPlace = { city: 'Toronto' };
+
+/** These fixtures are Canadian families unless a test says otherwise. */
+function at(place: StoredPlace) {
+  return resolveRecMorningWhere({
+    city: place.city ?? null,
+    postal: place.postal ?? null,
+    country: place.country === undefined ? 'Canada' : place.country,
+    province: place.province ?? null,
+    timeZone: FAMILY_ZONE,
+  });
+}
+
+const AT_TORONTO_HOME = at(TORONTO_HOME);
+
+function reply(text: string, now: Date = THIS_MORNING, place: StoredPlace = TORONTO_HOME): string {
+  const body = recMorningReply(text, now, at(place));
+  if (body === null) throw new Error(`expected a rec-morning reply for: ${text}`);
+  return body;
+}
+
+/** Mid-signup the only place Hale holds is the postal the parent texted: a Toronto FSA. */
+function intake(parentWords: string, pendingAsk = WATCH_OFFER_ASK, postal = 'M5V'): string {
+  const body = recMorningIntakeReply({
+    parentWords,
+    pendingAsk,
+    now: THIS_MORNING,
+    postal,
+  });
+  if (body === null) throw new Error(`expected an intake rec-morning reply for: ${parentWords}`);
+  return body;
+}
+
+function firstAnswerIsClean(body: string): void {
+  expect(body.toLowerCase()).not.toContain('activeto');
+  expect(body.toLowerCase()).not.toContain('unofficial');
+  expect(body).not.toMatch(/https?:\/\//i);
+  expect(body.toLowerCase()).not.toMatch(/\bwww\./);
+  expect(body).not.toMatch(/I'm an AI/i);
+  expect(body.toLowerCase()).not.toMatch(/\bapp\b/);
+  expect(body.toLowerCase()).not.toContain('jack of sports');
+}
+
+/**
+ * Every city line as of THIS_MORNING, read off registration-windows-data by hand the
+ * way the code reads it: the town, the cycle the TOWN labels, and the dates the town
+ * published. These are evidence about the dataset, not strings anyone may edit to
+ * taste - a date here that is not in a row for that town is a fabrication.
+ */
+const TORONTO_LINE =
+  'Toronto Fall 2026 registration: residents opened Sep 15, non-residents Friday Sep 25 at 7 a.m. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.';
+
+/** Brampton is the one town that runs aquatics on its own calendar, so a rec ask and a
+ * swim ask are two different mornings and two different lines. */
+const BRAMPTON_REC_LINE =
+  'Brampton Fall 2026 registration already opened Aug 24 - the next dates are not posted yet. I can watch leftovers and the waitlist.';
+
+const BRAMPTON_SWIM_LINE =
+  'Brampton Fall 2026 (Learn to Swim and Learn to Skate) registration: residents opened Sep 9, non-residents Monday Sep 21 at 7 a.m. I can watch leftovers and the waitlist.';
+
+const CITY_LINES = {
+  brampton: BRAMPTON_REC_LINE,
+  richmond_hill:
+    'Richmond Hill Winter 2026-2027 registration: residents Tuesday Nov 24, non-residents Tuesday Dec 1.',
+  halton_hills:
+    'Halton Hills Fall 2026 registration already opened Sep 1 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  whitchurch_stouffville:
+    'Stouffville Fall 2026 registration already opened Aug 25 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  vaughan:
+    'Vaughan Fall Session 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  markham:
+    'Markham 2026 Fall Programs, Swim Lessons and Winter Break Camps registration already opened Aug 11 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  mississauga:
+    'Mississauga Fall 2026 Programs and Winter Camps registration already opened Aug 11 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  pickering:
+    'Pickering Fall 2026 registration already opened Aug 20 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  oakville:
+    'Oakville Fall 2026 registration already opened Aug 11 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  burlington:
+    'Burlington Fall 2026 and Winter 2027 youth programs registration already opened Aug 22 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  caledon:
+    'Caledon Fall 2026 registration already opened Aug 19 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  ajax: 'Ajax Fall 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  whitby:
+    'Whitby Fall 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  oshawa:
+    'Oshawa Fall 2026 registration already opened Aug 18 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+  newmarket:
+    'Newmarket Fall 2026 registration already opened Aug 19 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  east_gwillimbury:
+    'East Gwillimbury Fall 2026 registration already opened Aug 20 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  georgina:
+    'Georgina Fall 2026 registration already opened Aug 18 - Winter 2027 dates are not posted yet. I can watch leftovers and the waitlist.',
+  uxbridge: 'Uxbridge Winter 2027 registration: Tuesday Nov 10 at 9 a.m.',
+} as const satisfies Partial<Record<RecHelloCity, string>>;
+
+/**
+ * King is out of CITY_LINES because the loop below asks "when does <town> rec open?"
+ * and the matcher deliberately does NOT answer to a bare "King" - see the King entry in
+ * NAMED_CITIES. Its line is asserted in its own block, against the names a King parent
+ * actually types.
+ */
+const KING_LINE = 'King Winter 2027 rec registration: Monday Dec 7.';
+
+describe('VIL-591 · the GTA topics answer only a family whose place is in the GTA', () => {
+  it('matches nothing at all without a resolved GTA place', () => {
+    expect(matchRecMorning('waitlist', null)).toBeNull();
+    expect(matchRecMorning('YMCA swim', null)).toBeNull();
+    expect(matchRecMorning('both parents need the login', null)).toBeNull();
+    expect(matchRecMorning('do I still use eFun for rec?', null)).toBeNull();
+    // No keyword door: naming Toronto in the text does not stand in for the family's place.
+    expect(matchRecMorning('when does Toronto swim registration open?', null)).toBeNull();
+  });
+
+  it('mid-signup, a Texas ZIP or a Vancouver FSA is not a GTA place', () => {
+    const at = (parentWords: string, postal: string | null) =>
+      recMorningIntakeReply({ parentWords, pendingAsk: '', now: THIS_MORNING, postal });
+    expect(at('waitlist', '78701')).toBeNull();
+    expect(at('YMCA swim', '78701')).toBeNull();
+    expect(at('both parents need the login', 'V6B')).toBeNull();
+    expect(at('YMCA swim', null)).toBeNull();
+    // Positive control: the same asks from a Toronto FSA still get the reviewed facts.
+    expect(at('waitlist', 'M5V')).toBe(TORONTO_FOLLOW);
+    expect(
+      recMorningIntakeReply({
+        parentWords: 'YMCA swim',
+        pendingAsk: '',
+        now: BEFORE_YMCA_OPENS,
+        postal: 'M5V',
+      }),
+    ).toBe(YMCA_OPEN_FACT);
+  });
+
+  it('a GTA town name on file does not outvote a stored US ZIP', () => {
+    // Richmond Hill is also a town in Georgia: the ZIP says where this family lives.
+    expect(at({ city: 'Richmond Hill', postal: '31324' })).toBeNull();
+    expect(
+      recMorningReply('YMCA swim', THIS_MORNING, at({ city: 'Burlington', postal: '05401' })),
+    ).toBeNull();
+    // Positive controls: the town alone, and a covered village whose rural FSA resolves
+    // to nothing, still place the family in the GTA.
+    expect(at({ city: 'Richmond Hill', postal: null })).toEqual({
+      municipality: 'richmond_hill',
+      postal: null,
+      timeZone: FAMILY_ZONE,
+    });
+    expect(at({ city: 'Nobleton', postal: 'L0G' })).toEqual({
+      municipality: 'king',
+      postal: 'L0G',
+      timeZone: FAMILY_ZONE,
+    });
+  });
+});
+
+describe('VIL-591 · a GTA town name alone places a family only when it is in Canada', () => {
+  it('does not place a US family whose stored town shares a GTA name', () => {
+    // Burlington is a town in Vermont too. No postal on file, so only the country can tell.
+    expect(at({ city: 'Burlington', country: 'United States' })).toBeNull();
+    expect(at({ city: 'Richmond Hill', country: 'US' })).toBeNull();
+    // Nothing on file says which country: no guessed town.
+    expect(at({ city: 'Burlington', country: null })).toBeNull();
+    expect(
+      recMorningReply(
+        'Burlington fall rec dates?',
+        THIS_MORNING,
+        at({ city: 'Burlington', country: null }),
+      ),
+    ).toBeNull();
+    // Positive controls: the same town in Canada, or in Ontario, is the GTA town.
+    expect(at({ city: 'Burlington', country: 'Canada' })?.municipality).toBe('burlington');
+    expect(at({ city: 'Burlington', country: null, province: 'ON' })?.municipality).toBe(
+      'burlington',
+    );
+    expect(at({ city: 'Burlington', country: null, postal: 'L7R' })?.municipality).toBe(
+      'burlington',
+    );
+  });
+});
+
+describe("VIL-591 · Toronto's own facts go only to a family asking about Toronto", () => {
+  const AT_MARKHAM_HOME = at({ city: 'Markham' });
+
+  it('leaves the two-parents, wishlist and eFun asks of another GTA town to the coach', () => {
+    expect(matchRecMorning('both parents need the login', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('the wishlist looks frozen is that broken', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('is eFun still a thing?', AT_MARKHAM_HOME)).toBeNull();
+    // Positive controls: a Toronto family, and a Markham family naming Toronto.
+    expect(matchRecMorning('both parents need the login', AT_TORONTO_HOME)).toBe('two_parents');
+    expect(matchRecMorning('the wishlist looks frozen is that broken', AT_TORONTO_HOME)).toBe(
+      'toronto_wishlist',
+    );
+    expect(matchRecMorning('is eFun still a thing?', AT_TORONTO_HOME)).toBe('toronto_efun');
+    expect(matchRecMorning('is the Toronto wishlist frozen?', AT_MARKHAM_HOME)).toBe(
+      'toronto_wishlist',
+    );
+  });
+});
+
+describe('VIL-591 · a dated fact is handed out only until its date', () => {
+  const ASK = 'when does ymca swim open';
+  const BEFORE_OPEN = BEFORE_YMCA_OPENS;
+  const inZone = (timeZone: string | null) =>
+    resolveRecMorningWhere({ city: null, postal: 'M5V', country: null, province: null, timeZone });
+
+  it('stops handing out the YMCA open date once that day has passed', () => {
+    expect(
+      recMorningReply(ASK, new Date('2026-11-04T14:00:00.000Z'), inZone(FAMILY_ZONE)),
+    ).toBeNull();
+    // Positive control: before the morning, the fact with its year, clock and portal.
+    expect(recMorningReply(ASK, BEFORE_OPEN, inZone(FAMILY_ZONE))).toBe(YMCA_OPEN_FACT);
+    expect(smsEncoding(YMCA_OPEN_FACT)).toBe('gsm7');
+  });
+
+  it("reads today in the family's own zone", () => {
+    // 02:00Z on Aug 28 is still the evening of Aug 27 for a family in Eastern time.
+    const lateOnTheDay = new Date('2026-08-28T02:00:00.000Z');
+    expect(recMorningReply(ASK, lateOnTheDay, inZone(FAMILY_ZONE))).toBe(YMCA_OPEN_FACT);
+    expect(recMorningReply(ASK, lateOnTheDay, inZone('UTC'))).toBeNull();
+    // No zone on file: Hale cannot know the day is still ahead, so it does not say it is.
+    expect(recMorningReply(ASK, BEFORE_OPEN, inZone(null))).toBeNull();
+  });
+
+  it('mid-signup, reads the day in the zone of the postal collected', () => {
+    const ask = (postal: string | null) =>
+      recMorningIntakeReply({ parentWords: ASK, pendingAsk: '', now: BEFORE_OPEN, postal });
+    expect(ask('M5V')).toBe(YMCA_OPEN_FACT);
+    expect(ask(null)).toBeNull();
+    // Undated facts do not need a zone (positive control for the zone-less null above).
+    expect(recMorningReply('YMCA otter or Ultra?', BEFORE_OPEN, inZone(null))).toBe(YMCA_FOLLOW);
+  });
+});
+
+describe('VIL-591 · a waitlist ask is claimed only where Hale holds a waitlist fact', () => {
+  const AT_MARKHAM_HOME = at({ city: 'Markham' });
+
+  it("leaves another town's waitlist to the coach", () => {
+    expect(matchRecMorning('waitlist', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('how does the swim waitlist work?', AT_MARKHAM_HOME)).toBeNull();
+    expect(matchRecMorning('is there a Markham waitlist?', AT_TORONTO_HOME)).toBeNull();
+    expect(matchRecMorning('YMCA swim waitlist?', AT_TORONTO_HOME)).toBeNull();
+    // Positive controls: Toronto's waitlist, and a Markham rec ask, are still this lane's.
+    expect(matchRecMorning('waitlist', AT_TORONTO_HOME)).toBe('toronto_waitlist');
+    expect(matchRecMorning('is there a Toronto waitlist?', AT_MARKHAM_HOME)).toBe(
+      'toronto_waitlist',
+    );
+    expect(matchRecMorning('Markham fall rec dates?', AT_MARKHAM_HOME)).toBe('markham');
+  });
+});
+
+describe('rec-morning matcher', () => {
+  it('reads Toronto swim, rec, waitlist, wishlist, and eFun', () => {
+    expect(matchRecMorning('when does Toronto swim registration open?', AT_TORONTO_HOME)).toBe(
+      'toronto_swim',
+    );
+    expect(matchRecMorning('Toronto fall rec registration dates?', AT_TORONTO_HOME)).toBe(
+      'toronto_rec',
+    );
+    expect(matchRecMorning('how long is the Toronto waitlist?', AT_TORONTO_HOME)).toBe(
+      'toronto_waitlist',
+    );
+    expect(matchRecMorning('the wishlist looks frozen is that broken', AT_TORONTO_HOME)).toBe(
+      'toronto_wishlist',
+    );
+    expect(matchRecMorning('do I still use eFun for rec?', AT_TORONTO_HOME)).toBe('toronto_efun');
+    expect(matchRecMorning('is the portal ActiveTO?', AT_TORONTO_HOME)).toBe('toronto_rec');
+  });
+
+  it('reads YMCA clock vs levels, Brampton, two phones, and Jack of Sports', () => {
+    expect(matchRecMorning('when does YMCA swim open?', AT_TORONTO_HOME)).toBe('ymca_gta_swim');
+    expect(matchRecMorning('YMCA otter or Ultra?', AT_TORONTO_HOME)).toBe('ymca_follow');
+    expect(matchRecMorning('does YMCA need membership?', AT_TORONTO_HOME)).toBe('ymca_follow');
+    expect(matchRecMorning('Brampton learn to swim - is it Aug 24?', AT_TORONTO_HOME)).toBe(
+      'brampton_swim',
+    );
+    expect(matchRecMorning('when does Brampton rec open?', AT_TORONTO_HOME)).toBe('brampton_rec');
+    expect(matchRecMorning('Markham fall rec dates?', AT_TORONTO_HOME)).toBe('markham');
+    expect(matchRecMorning('do we both text from one phone or two', AT_TORONTO_HOME)).toBe(
+      'two_parents',
+    );
+    expect(
+      matchRecMorning('what about Jack of Sports if the city lane is gone', AT_TORONTO_HOME),
+    ).toBe('jack_of_sports');
+  });
+
+  it('does not steal a registration report, a watch ask, or a calendar instruction', () => {
+    expect(matchRecMorning('waitlisted #3', AT_TORONTO_HOME)).toBeNull();
+    expect(matchRecMorning('we got in', AT_TORONTO_HOME)).toBeNull();
+    expect(
+      matchRecMorning('can you watch swim registration for Milo this fall?', AT_TORONTO_HOME),
+    ).toBeNull();
+    expect(matchRecMorning('cancel Thursday swim', AT_TORONTO_HOME)).toBeNull();
+    expect(matchRecMorning('what a morning', AT_TORONTO_HOME)).toBeNull();
+  });
+});
+
+describe('rec-morning SMS · the Toronto line, derived', () => {
+  it('names the dates the city published, for swim AND rec, and keeps the portal', () => {
+    // Read off registration-windows-data: Toronto Fall 2026, residents Sep 15 at
+    // 7 a.m. (gone by this morning), non-residents ten days later on Sep 25.
+    expect(reply('When does Toronto swim registration open?')).toBe(TORONTO_LINE);
+    expect(reply('when is Toronto fall recreation registration?')).toBe(TORONTO_LINE);
+    expect(TORONTO_LINE).toContain(TORONTO_REC_PORTAL);
+    firstAnswerIsClean(TORONTO_LINE);
+    expect(TORONTO_LINE.toLowerCase()).not.toContain('efun');
+    expect(
+      String(intake('When does Toronto swim registration open?')).startsWith(TORONTO_LINE),
+    ).toBe(true);
+    expect(
+      String(intake('when is Toronto fall recreation registration?', COLD_START_ASK)).startsWith(
+        TORONTO_LINE,
+      ),
+    ).toBe(true);
+  });
+
+  it('says "opened" about a morning that has gone, and never offers it as upcoming', () => {
+    // The whole defect (VIL-334, and every town after it): a locked string kept
+    // offering Sept 15 as the morning still to come once it was behind us.
+    expect(TORONTO_LINE).toContain('residents opened Sep 15');
+    expect(TORONTO_LINE).not.toContain('residents Tuesday Sep 15');
+    // The day before, the same code offers it as the morning it then was.
+    expect(cityRecLine('toronto', new Date('2026-09-14T14:00:00.000Z'))).toContain(
+      'residents Tuesday Sep 15 at 7 a.m.',
+    );
+  });
+
+  it('never names ActiveTO on the first Toronto answer, even if they asked for it', () => {
+    const body = reply('is the portal ActiveTO?');
+    expect(body).toBe(TORONTO_LINE);
+    firstAnswerIsClean(body);
+  });
+
+  it('names eFun only if they said eFun', () => {
+    expect(EFUN_GONE).toBe('eFun is gone. Rec is toronto.ca/OnlineReg now.');
+    expect(reply('do I log into eFun for Toronto rec?')).toBe(EFUN_GONE);
+    expect(reply('When does Toronto swim registration open?').toLowerCase()).not.toContain('efun');
+    expect(reply('is the portal ActiveTO?').toLowerCase()).not.toContain('efun');
+  });
+
+  it('sends the locked follow only when they need waitlist, wishlist, or two phones', () => {
+    expect(TORONTO_FOLLOW).toBe(
+      "Wishlist can look frozen, so wait, don't mash refresh. Waitlist email takes about 36 hours and there's no queue number. Two parents means two phones.",
+    );
+    expect(reply('how long is the Toronto rec waitlist? is there a queue number?')).toBe(
+      TORONTO_FOLLOW,
+    );
+    expect(reply('the wishlist looks frozen, should I keep refreshing?')).toBe(TORONTO_FOLLOW);
+    expect(reply('can both parents use one login?')).toBe(TORONTO_FOLLOW);
+    expect(TORONTO_FOLLOW).toContain(String(TORONTO_WAITLIST_HOURS));
+    expect(reply('When does Toronto swim registration open?')).not.toBe(TORONTO_FOLLOW);
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('activeto');
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('unofficial');
+    expect(TORONTO_FOLLOW.toLowerCase()).not.toContain('efun');
+  });
+
+  it('sends the YMCA first answer before its morning, and the follow only for levels or membership', () => {
+    expect(reply('when does YMCA GTA swim registration open?', BEFORE_YMCA_OPENS)).toBe(
+      YMCA_OPEN_FACT,
+    );
+    expect(YMCA_OPEN_FACT.toLowerCase()).not.toContain('today');
+    expect(YMCA_OPEN_FACT).toContain(YMCA_PORTAL);
+    firstAnswerIsClean(YMCA_OPEN_FACT);
+    expect(YMCA_OPEN_FACT.toLowerCase()).not.toContain('efun');
+    expect(YMCA_FOLLOW).toBe(
+      'Search Otter, Seal, Dolphin, Star, not Ultra. Membership is still needed for a lot of group classes, and kids 9 and under need an adult 16+ on deck.',
+    );
+    expect(YMCA_FOLLOW.toLowerCase()).not.toContain('today');
+    expect(reply('YMCA otter or Ultra?')).toBe(YMCA_FOLLOW);
+    expect(reply('does YMCA need membership?')).toBe(YMCA_FOLLOW);
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS)).not.toBe(YMCA_FOLLOW);
+    firstAnswerIsClean(YMCA_FOLLOW);
+  });
+});
+
+describe('rec-morning SMS · Brampton and Jack of Sports when asked', () => {
+  it("names Brampton's own swim morning, the one date in the GTA still to come", () => {
+    // Aquatics and skating register 16 days after general rec: residents Sep 9 (gone),
+    // non-residents Sep 21. The general rec cycle opened Aug 24 / Sep 7 and is over.
+    const body = reply('is Brampton swim Aug 24?');
+    expect(body).toBe(BRAMPTON_SWIM_LINE);
+    expect(body).toContain('non-residents Monday Sep 21 at 7 a.m.');
+    expect(body).toContain('residents opened Sep 9');
+    firstAnswerIsClean(body);
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(body.toLowerCase()).not.toContain('unofficial');
+  });
+
+  it('points Jack of Sports only when they ask, with no hours, app URL, or unofficial', () => {
+    const body = reply('Jack of Sports if city swim is gone?');
+    expect(body.toLowerCase()).toContain('backup');
+    expect(body).toContain(JACK_OF_SPORTS_PAGE);
+    expect(body.toLowerCase()).not.toContain('unofficial');
+    expect(body).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(body).not.toMatch(/https?:\/\//i);
+    expect(body.toLowerCase()).not.toContain('activeto');
+    expect(body.toLowerCase()).not.toContain('efun');
+    expect(reply('When does Toronto swim registration open?').toLowerCase()).not.toContain(
+      'jack of sports',
+    );
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS).toLowerCase()).not.toContain(
+      'jack of sports',
+    );
+  });
+});
+
+function mustNotBeTorontoClock(body: string): void {
+  expect(body).not.toContain('7:00');
+  expect(body).not.toMatch(/Sept?\s*15/i);
+  expect(body.toLowerCase()).not.toContain('activeto');
+  expect(body.toLowerCase()).not.toContain("i'm an ai");
+  expect(body.toLowerCase()).not.toContain('6:32');
+  expect(body.toLowerCase()).not.toContain('6:30');
+}
+
+describe('rec-morning SMS · a city line is derived, never locked', () => {
+  it('answers every covered town with the cycle and dates its own page published', () => {
+    for (const [city, line] of Object.entries(CITY_LINES)) {
+      const town = townLabel(city);
+      expect(reply(`when does ${town} rec open?`), town).toBe(line);
+      expect(line, town).toContain(town);
+      mustNotBeTorontoClock(line);
+      firstAnswerIsClean(line);
+      expect(smsEncoding(line), town).toBe('gsm7');
+    }
+  });
+
+  it('routes Markham by name, by stored city, and by FSA, to the one derived line', () => {
+    expect(reply('Markham swim registration?')).toBe(CITY_LINES.markham);
+    expect(reply('Markham winter-break camps?')).toBe(CITY_LINES.markham);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3R' })).toBe(CITY_LINES.markham);
+    expect(reply('when is fall rec?', THIS_MORNING, { city: 'Markham' })).toBe(CITY_LINES.markham);
+    expect(reply('L3R rec dates?')).toBe(CITY_LINES.markham);
+    expect(String(intake('Markham fall rec dates?')).startsWith(CITY_LINES.markham)).toBe(true);
+  });
+
+  it('names the cycle Hale is waiting on where there is one, and "the next" where there is not', () => {
+    // discovery-targets watches Halton Hills and Stouffville for Winter 2027; nobody
+    // is watching a Vaughan or Markham winter, so no season is named for them.
+    expect(CITY_LINES.halton_hills).toContain('Winter 2027 dates are not posted yet');
+    expect(CITY_LINES.whitchurch_stouffville).toContain('Winter 2027 dates are not posted yet');
+    expect(CITY_LINES.vaughan).toContain('the next dates are not posted yet');
+    expect(CITY_LINES.markham).toContain('the next dates are not posted yet');
+  });
+
+  it('drops the Vaughan November dates that were in no row at all', () => {
+    // The locked line claimed "winter swim Nov 17 residents / Nov 24 non-residents";
+    // Vaughan has only a Fall Session 2026, opened Aug 18 and Aug 20.
+    const body = reply('Vaughan winter swim?');
+    expect(body).toBe(CITY_LINES.vaughan);
+    expect(body).not.toMatch(/Nov/);
+    expect(body).toContain('already opened Aug 18');
+  });
+
+  it('calls Whitchurch-Stouffville what the town calls itself', () => {
+    const body = reply('Stouffville swim?');
+    expect(body).toBe(CITY_LINES.whitchurch_stouffville);
+    expect(body).toContain('Stouffville');
+    expect(body).not.toContain('Whitchurch');
+  });
+
+  it('answers King by village, never by the bare word "king"', () => {
+    // "King" alone is King Street, King West and the king. The villages are the way in
+    // precisely because their L0G postal code resolves to nothing.
+    expect(reply('King City rec registration?')).toBe(KING_LINE);
+    expect(reply('Nobleton swim lessons?')).toBe(KING_LINE);
+    expect(reply('Schomberg rec dates?')).toBe(KING_LINE);
+    expect(resolveHelloCity('swim lessons near King and Spadina?', null)).toBeNull();
+    expect(resolveHelloCity('any rec on King West?', null)).toBeNull();
+    expect(smsEncoding(KING_LINE)).toBe('gsm7');
+    firstAnswerIsClean(KING_LINE);
+    // No clock, because King published none: a borrowed "7 a.m." would be seven hours
+    // wrong. And rec, not swim - both ride the label "Winter 2027" on different dates.
+    expect(KING_LINE).not.toMatch(/a\.m\.|p\.m\./);
+    expect(KING_LINE).toContain('rec registration');
+  });
+
+  it('does not answer a neighbouring town, or a person, as one of the five', () => {
+    // Bradford WEST Gwillimbury is not East Gwillimbury, Sutton is a surname before it
+    // is a village, and Sharon is a name before it is East Gwillimbury's village.
+    expect(resolveHelloCity('Bradford West Gwillimbury rec dates?', null)).toBeNull();
+    expect(resolveHelloCity('can Sutton take him to swim?', null)).toBeNull();
+    expect(resolveHelloCity('Sharon is doing swim pickup, when is rec?', null)).toBeNull();
+    // The positive control: the qualified village names DO answer.
+    expect(reply('Sutton West rec?')).toBe(CITY_LINES.georgina);
+    expect(reply('East Gwillimbury rec?')).toBe(CITY_LINES.east_gwillimbury);
+  });
+
+  it('routes each new town by its own FSA, and the rural codes to nothing', () => {
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3X' })).toBe(CITY_LINES.newmarket);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L3Y' })).toBe(CITY_LINES.newmarket);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L7B' })).toBe(KING_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L9N' })).toBe(
+      CITY_LINES.east_gwillimbury,
+    );
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L4P' })).toBe(CITY_LINES.georgina);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'L9P' })).toBe(CITY_LINES.uxbridge);
+    // The coverage hole, named out loud: a Nobleton, Sharon or Sutton postal code is a
+    // rural aggregate spanning uncovered towns, so it resolves to nothing.
+    for (const rural of ['L0G', 'L0E', 'L0C']) {
+      expect(at({ postal: rural })).toBeNull();
+    }
+  });
+
+  it('flips a town to between-cycles the moment its last morning goes by', () => {
+    expect(reply('Brampton skate lessons?', NEXT_WEEK)).toBe(
+      'Brampton Fall 2026 (Learn to Swim and Learn to Skate) registration already opened Sep 9 - the next dates are not posted yet. I can watch leftovers and the waitlist.',
+    );
+    expect(reply('Brampton skate lessons?', NEXT_WEEK)).not.toContain('Sep 21');
+    // Right up to the morning itself it is still the date to act on.
+    expect(reply('Brampton skate lessons?', new Date('2026-09-21T10:59:00.000Z'))).toBe(
+      BRAMPTON_SWIM_LINE,
+    );
+  });
+
+  it('splits exactly what Brampton splits, by name and by FSA alike', () => {
+    expect(reply('when does Brampton rec open?')).toBe(BRAMPTON_REC_LINE);
+    expect(reply('Brampton skate lessons?')).toBe(BRAMPTON_SWIM_LINE);
+    expect(reply('when is rec?', THIS_MORNING, { postal: 'L6T' })).toBe(BRAMPTON_REC_LINE);
+    expect(reply('when is swim?', THIS_MORNING, { postal: 'L6T' })).toBe(BRAMPTON_SWIM_LINE);
+    // Toronto registers swim inside the seasonal cycle, so there is nothing to split.
+    expect(reply('when is Toronto rec?')).toBe(reply('When does Toronto swim registration open?'));
+  });
+
+  it('keeps Toronto and YMCA answers when they asked Toronto or YMCA', () => {
+    expect(reply('When does Toronto swim registration open?')).toBe(TORONTO_LINE);
+    expect(reply('when is Toronto rec?', THIS_MORNING, { postal: 'L3R' })).toBe(TORONTO_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
+    expect(reply('when does YMCA swim open?', BEFORE_YMCA_OPENS, { postal: 'L3R' })).toBe(
+      YMCA_OPEN_FACT,
+    );
+  });
+
+  it('VIL-334: M1B (Scarborough) is a Toronto FSA and gets the Scarborough morning', () => {
+    // VIL-360. Scarborough registered Wednesday Sep 16; downtown (M5V) and
+    // Etobicoke (M8V) stayed on Tuesday Sep 15. A postal in the ask is enough.
+    const scarborough =
+      'Toronto Fall 2026 registration: residents opened Sep 16, non-residents Saturday Sep 26 at 7 a.m. I can watch leftovers and the waitlist. Sign in at toronto.ca/OnlineReg.';
+    expect(resolveHelloCity('M1B', null)).toBe('toronto');
+    expect(resolveHelloCity('Theo is 3, Cruz is 18-months, M1B', null)).toBe('toronto');
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M1B' })).toBe(scarborough);
+    expect(reply('M1B rec dates?')).toBe(scarborough);
+    // The district they asked about wins over the one on file.
+    expect(reply('M1B rec dates?', THIS_MORNING, { postal: 'M5V' })).toBe(scarborough);
+    // A postal in the ask that is not a Toronto district does not displace the one on file.
+    expect(reply('when is fall rec? we are near L3T', THIS_MORNING, { postal: 'M1B' })).toBe(
+      scarborough,
+    );
+    expect(reply('Toronto rec, my sister is in L4G', THIS_MORNING, { postal: 'M1B' })).toBe(
+      scarborough,
+    );
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M5V' })).toBe(TORONTO_LINE);
+    expect(reply('when is fall rec?', THIS_MORNING, { postal: 'M8V' })).toBe(TORONTO_LINE);
+    const dayBefore = new Date('2026-09-14T14:00:00.000Z');
+    const northYork = cityRecLine('toronto', dayBefore, 'rec_program', undefined, 'M2N');
+    expect(northYork).toContain('Wednesday Sep 16');
+    expect(northYork).not.toContain('Sep 15');
+    expect(reply('Halton Hills rec registration?')).toBe(CITY_LINES.halton_hills);
+    expect(reply('when does Brampton rec open?')).toBe(CITY_LINES.brampton);
+  });
+
+  it('does not invent a clock when the city is unknown', () => {
+    expect(recMorningReply('when is fall rec?', THIS_MORNING, null)).toBeNull();
+    expect(at({ postal: 'L4G' })).toBeNull();
+    expect(resolveHelloCity('Aurora rec dates?', null)).toBeNull();
+    expect(at({ postal: 'L3T' })).toBeNull();
+    expect(at({ postal: 'H2X' })).toBeNull();
+  });
+
+  it('says nothing about a town the dataset has no window for', () => {
+    // Milton is a town the matcher can name and the dataset has never held a date
+    // for. The locked copy told a Milton parent their fall rec "already opened" and
+    // their winter "isn't posted" - two claims with no row behind either.
+    expect(matchRecMorning('when does Milton rec open?', AT_TORONTO_HOME)).toBe('milton');
+    expect(cityRecLine('milton', THIS_MORNING)).toBeNull();
+    expect(recMorningReply('when does Milton rec open?', THIS_MORNING, AT_TORONTO_HOME)).toBeNull();
+    // The positive control: the same ask for a town that IS in the dataset answers.
+    expect(recMorningReply('when does Oakville rec open?', THIS_MORNING, AT_TORONTO_HOME)).toBe(
+      CITY_LINES.oakville,
+    );
+  });
+
+  it('lets a named city win over a stored postal', () => {
+    expect(reply('Markham rec?', THIS_MORNING, { postal: 'M5V' })).toBe(CITY_LINES.markham);
+    expect(reply('Toronto rec?', THIS_MORNING, { postal: 'L3R' })).toBe(TORONTO_LINE);
+  });
+});
+
+describe('rec-morning SMS · the program the parent actually named', () => {
+  it("answers a Brampton rec ask about Brampton's rec cycle, not its swim morning", () => {
+    // Brampton runs aquatics on a calendar of its own, sixteen days behind general
+    // rec. Answering "when does Brampton rec open?" with the Learn to Swim morning
+    // answers a question nobody asked, and leaves the rec parent - whose cycle is
+    // over - with no offer at all.
+    const body = reply('when does Brampton rec open?');
+    expect(body).toBe(BRAMPTON_REC_LINE);
+    expect(body).not.toContain('Learn to Swim');
+    expect(body).not.toContain('Sep 21');
+    expect(reply('Brampton skate lessons?')).toBe(BRAMPTON_SWIM_LINE);
+  });
+
+  it('names the program only where the town gives two cycles the same name', () => {
+    // Vaughan runs a "Fall Session 2026" for rec and another for swim, two days
+    // apart: the label alone does not say which morning this is. Every Richmond Hill
+    // and Mississauga label is already unique, so a noun after it says nothing.
+    expect(cityRecLine('vaughan', new Date('2026-08-19T14:00:00.000Z'))).toBe(
+      'Vaughan Fall Session 2026 swim registration: residents Thursday Aug 20 at 7 a.m., non-residents Thursday Aug 27 at 7 a.m.',
+    );
+    expect(CITY_LINES.richmond_hill).toBe(
+      'Richmond Hill Winter 2026-2027 registration: residents Tuesday Nov 24, non-residents Tuesday Dec 1.',
+    );
+    expect(cityRecLine('mississauga', new Date('2026-08-15T14:00:00.000Z'))).toContain(
+      'Mississauga Fall 2026 Programs and Winter Camps registration:',
+    );
+  });
+
+  it('falls back to the town when the program a parent named has no row at all', () => {
+    // A domain the dataset has nothing in is not a town the dataset has nothing for:
+    // Brampton still has a rec cycle to talk about, and null here would say it did not.
+    const swimless = REGISTRATION_WINDOWS.filter(
+      (seed) => !(seed.municipality === 'brampton' && seed.programDomain === 'swim'),
+    );
+    expect(cityRecLine('brampton', THIS_MORNING, 'swim', swimless)).toBe(BRAMPTON_REC_LINE);
+  });
+
+  it('offers leftovers to the parent whose own morning has already gone', () => {
+    // A Toronto resident reading this on Sep 17 missed Sep 15, and Sep 25 is not their
+    // date. Without the offer the line holds nothing they can act on.
+    expect(TORONTO_LINE).toContain('residents opened Sep 15');
+    expect(TORONTO_LINE).toContain('I can watch leftovers and the waitlist.');
+    // Nobody has missed a Richmond Hill morning yet, so there is nothing to leave over.
+    expect(CITY_LINES.richmond_hill).not.toContain('leftovers');
+  });
+});
+
+const ALL_HELLO_CITIES: readonly RecHelloCity[] = [
+  'newmarket',
+  'king',
+  'east_gwillimbury',
+  'georgina',
+  'uxbridge',
+  'toronto',
+  'markham',
+  'vaughan',
+  'richmond_hill',
+  'mississauga',
+  'oakville',
+  'burlington',
+  'halton_hills',
+  'brampton',
+  'caledon',
+  'ajax',
+  'pickering',
+  'whitby',
+  'oshawa',
+  'whitchurch_stouffville',
+  'milton',
+];
+
+const MONTH_DAY_TOKEN = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b\s+\d{1,2}\b/g;
+
+const TORONTO_DAY = new Intl.DateTimeFormat('en-CA', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'America/Toronto',
+});
+
+/** Every instant the dataset can change an answer at - a minute either side of every
+ * published date. A line only moves at one of these, so this is the whole state space,
+ * not a sample of it. */
+function boundaryInstants(): Date[] {
+  const instants: Date[] = [];
+  for (const seed of REGISTRATION_WINDOWS) {
+    for (const iso of [seed.residentOpenAt, seed.openAt]) {
+      if (iso === null) continue;
+      const at = new Date(iso).getTime();
+      instants.push(new Date(at - 60_000), new Date(at + 60_000));
+    }
+  }
+  return instants;
+}
+
+/** Every line this town can produce: the whole-town ask, and the narrowed one a parent
+ * who named a program gets (Toronto's and Brampton's topics both name a domain). */
+function linesFor(city: RecHelloCity, now: Date): (string | null)[] {
+  return [
+    cityRecLine(city, now),
+    cityRecLine(city, now, 'rec_program'),
+    cityRecLine(city, now, 'swim'),
+    cityRecLine(city, now, 'camp'),
+  ];
+}
+
+/** The month-days this town actually published - the only ones it may be told. */
+function publishedDays(city: RecHelloCity): Set<string> {
+  const days = new Set<string>();
+  for (const seed of REGISTRATION_WINDOWS) {
+    if (seed.municipality !== city) continue;
+    for (const iso of [seed.residentOpenAt, seed.openAt]) {
+      if (iso !== null) days.add(TORONTO_DAY.format(new Date(iso)));
+    }
+  }
+  return days;
+}
+
+describe('rec-morning SMS · what a derived line may never do', () => {
+  it('enrols every town the dataset holds dates for in the checks below', () => {
+    // The property tests below walk ALL_HELLO_CITIES, which is hand-kept: a town added
+    // to the dataset and forgotten here is a town whose line nothing checks, and these
+    // absence tests would pass by never looking at it.
+    const seeded = new Set(REGISTRATION_WINDOWS.map((seed) => seed.municipality));
+    // Aurora is the one seeded town resolveHelloCity refuses (its line is not written).
+    seeded.delete('aurora');
+    const missing = [...seeded].filter((town) => !ALL_HELLO_CITIES.includes(town as RecHelloCity));
+    expect(missing).toEqual([]);
+  });
+
+  it('never names a date that town did not publish, at any boundary the dataset has', () => {
+    const instants = boundaryInstants();
+    expect(instants.length).toBeGreaterThan(40);
+    for (const city of ALL_HELLO_CITIES) {
+      const allowed = publishedDays(city);
+      for (const now of instants) {
+        for (const line of linesFor(city, now)) {
+          if (line === null) {
+            expect(allowed.size, city).toBe(0);
+            continue;
+          }
+          const named = line.match(MONTH_DAY_TOKEN) ?? [];
+          expect(named.length, `${city} @ ${now.toISOString()}: ${line}`).toBeGreaterThan(0);
+          for (const day of named) {
+            expect(allowed.has(day), `${city} @ ${now.toISOString()} named ${day}: ${line}`).toBe(
+              true,
+            );
+          }
+        }
+      }
+    }
+  });
+
+  it('stays GSM-7, inside two segments, and inside the intake cap, at every boundary', () => {
+    for (const city of ALL_HELLO_CITIES) {
+      for (const now of boundaryInstants()) {
+        for (const line of linesFor(city, now)) {
+          if (line === null) continue;
+          const where = `${city} @ ${now.toISOString()}: ${line}`;
+          expect(smsEncoding(line), where).toBe('gsm7');
+          expect(smsSegments(line), where).toBeLessThanOrEqual(2);
+          expect(line, where).toContain(townLabel(city));
+          // The intake reply appends Hale's longest outstanding ask and THROWS over cap.
+          expect(`${line} ${COLD_START_ASK}`.length, where).toBeLessThanOrEqual(
+            INTAKE_MAX_REPLY_CHARS,
+          );
+        }
+      }
+    }
+  });
+});
+
+describe('rec-morning SMS · budgets and the intake return', () => {
+  it('keeps every C1 body GSM-7 and inside two segments', () => {
+    const texts = [
+      'When does Toronto swim registration open?',
+      'when is Toronto fall recreation registration?',
+      'how long is the Toronto rec waitlist?',
+      'the wishlist looks frozen, should I keep refreshing?',
+      'do I log into eFun for Toronto rec?',
+      'YMCA otter or Ultra?',
+      'is Brampton swim Aug 24?',
+      'when does Brampton rec open?',
+      'Markham fall rec dates?',
+      'can both parents use one login?',
+      'Jack of Sports if city swim is gone?',
+    ];
+    for (const text of texts) {
+      const body = reply(text);
+      expect({ text, encoding: smsEncoding(body), segments: smsSegments(body) }).toEqual({
+        text,
+        encoding: 'gsm7',
+        segments: expect.any(Number),
+      });
+      expect(smsSegments(body), text).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("answers mid-signup, returns to Hale's ask, and stays inside the intake cap", () => {
+    const texts = [
+      'When does Toronto swim registration open?',
+      'when is Toronto fall recreation registration?',
+      'how long is the Toronto rec waitlist?',
+      'the wishlist looks frozen, should I keep refreshing?',
+      'do I log into eFun for Toronto rec?',
+      'YMCA otter or Ultra?',
+      'is Brampton swim Aug 24?',
+      'when does Brampton rec open?',
+      'Markham fall rec dates?',
+      'can both parents use one login?',
+      'Jack of Sports if city swim is gone?',
+    ];
+    for (const text of texts) {
+      const body = intake(text);
+      expect(body, text).not.toContain(WATCH_OFFER_ASK);
+      expect(body.length, text).toBeLessThanOrEqual(INTAKE_MAX_REPLY_CHARS);
+      expect(smsEncoding(body), text).toBe('gsm7');
+    }
+
+    expect(
+      String(intake('When does Toronto swim registration open?')).startsWith(TORONTO_LINE),
+    ).toBe(true);
+  });
+});

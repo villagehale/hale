@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgNHvoD84MjM4x3TegSS9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Central Library story time is a free indoor drop-in at the Bloor/Gladstone branch on Sat, Aug 8. Riverdale Farm is a free outdoor outing on Sun, Aug 9."
+      }
+    ],
+    "usage": {
+      "input_tokens": 630,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20637,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 71,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 5555
+}

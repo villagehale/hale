@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The French text states Sam's swim handoff for tomorrow, Monday September 28, 15h to 16h30 at Centre Jean-Claude Malépart, 2633 rue Ontario E, Montréal, which matches the facts. It correctly calls Monday 'demain' relative to Sunday September 27. It states the Tuesday 10am piano has no one yet, which matches the unowned entry with kid null. It names no child, adds no unhanded claims, and uses French as required. The one issue: asking 'Quelqu'un peut le prendre ?' for the unowned piano is appropriate, not a wrong fact, so no deduction applies.",
+    "score": 5
+  }
+}

@@ -35,7 +35,7 @@ import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
  * that can throw before its first ledger write), and a door this type cannot name is
  * a door the invariant cannot cover — which is exactly how the email route shipped
  * without it (audit P1-5a; webhook-boundary.test.ts holds the inventory). */
-export type WebhookRoute = 'email_inbound' | 'linq_inbound';
+export type WebhookRoute = 'linq_inbound';
 
 export type AnalyticsAlertOutcome = 'sent' | 'skipped_not_configured' | 'failed';
 

@@ -4,11 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
 import { assembleFamilyExport } from '~/lib/rights/export';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { registrationSourceFixture } from '~/lib/testing/registration-source';
+import { registrationWindowFixture } from '~/lib/testing/registration-source';
 import { loadClaimedWindowIds } from './claims';
 import { claimRegistrationWatch, recordRegistrationRead } from './watch-storage';
-
-const MIGRATION = '0172_registration_live_watch_storage.sql';
 const NOW = new Date('2026-10-10T12:00:00Z');
 let db: TestDb;
 let familyId: string;
@@ -19,7 +17,7 @@ let legacyWindowId: string;
 let legacyActionId: string;
 
 beforeAll(async () => {
-  db = await createTestDb('0160_kid_interests.sql');
+  db = await createTestDb();
   ({ familyId, parentUserId } = await seedFamily(db.database, 'Registration watch family'));
   const child = await db.client.query<{ id: string }>(
     'INSERT INTO children (family_id, name, date_of_birth) VALUES ($1, $2, $3) RETURNING id',
@@ -49,8 +47,6 @@ beforeAll(async () => {
     [familyId, parentUserId, legacyWindowId, legacyActionId],
   );
   legacyId = legacy.rows[0]?.id ?? '';
-  await db.applyMigration(MIGRATION);
-  await db.applyMigration('0173_drop_registration_catalog.sql');
 });
 
 afterAll(async () => {
@@ -95,7 +91,7 @@ async function sequence(id: string) {
 }
 
 describe('registration watch storage migration', () => {
-  it('preserves watch identity, opt-in and outcome while dropping the global catalog', async () => {
+  it('preserves watch identity, opt-in and outcome on a catalog-backed row', async () => {
     const row = await sequence(legacyId);
     expect(row).toMatchObject({
       windowId: legacyWindowId,
@@ -104,16 +100,6 @@ describe('registration watch storage migration', () => {
       actionId: legacyActionId,
     });
     expect(row.lastReading).toBeNull();
-    expect(row.nextCheckAt).toBeInstanceOf(Date);
-    expect(row.courseUrl).toBe('https://example.test/legacy');
-    expect(row.sourceContext).toMatchObject({
-      id: legacyWindowId,
-      municipality: 'markham',
-      sourceUrl: 'https://example.test/legacy',
-    });
-    expect(
-      (await db.client.query("SELECT to_regclass('registration_windows') AS retired")).rows[0],
-    ).toEqual({ retired: null });
     expect(row.dateReviewActionId).toBeNull();
   });
 
@@ -158,7 +144,7 @@ describe('registration watch storage migration', () => {
 
   it('reuses a legacy bound sequence without changing its original opt-in', async () => {
     const sourceUrl = 'https://classes.example.test/legacy-bound';
-    const window = registrationSourceFixture({
+    const window = registrationWindowFixture({
       municipality: 'markham',
       programDomain: 'swim',
       cycleLabel: 'Legacy bound cycle',
@@ -166,13 +152,13 @@ describe('registration watch storage migration', () => {
       sourceUrl,
       verifiedAt: NOW,
     });
+    await db.database.insert(schema.registrationWindows).values(window);
     const [existing] = await db.database
       .insert(schema.registrationSequences)
       .values({
         familyId,
         parentUserId,
         windowId: window.id,
-        sourceContext: window,
         courseUrl: sourceUrl,
         courseOpensAt: NOW,
         actionId: legacyActionId,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present: tomorrow (lundi) is correctly described, the all-day congé is named, and Léa's swimming 10 h to 11 h at Piscine Main is given with the correct morning time in French 24-hour style. No invented details, no wrong times, no link, no filler. The French reads naturally (\"Demain, lundi, c'est un jour de congé\" and \"Léa a natation de 10 h à 11 h à la Piscine Main\" are idiomatic). Minor point: 'natation' without an article is normal in this context, so no penalty.",
+    "score": 5
+  }
+}

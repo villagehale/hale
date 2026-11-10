@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly carries the runtime-appended referral link and tells Sam to forward it himself, which is exactly the required shape. It invents nothing and does not send him to the app. One blemish: it runs several sentences where a shorter text would do, and explains a little about how friends join.",
+    "score": 4
+  }
+}

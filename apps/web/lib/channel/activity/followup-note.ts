@@ -1,9 +1,13 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
+import {
+  followUpProcessViolation,
+  judgeFollowUpProcess,
+} from '~/lib/channel/coach/find-reasoning-judge';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
-import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
 import type { EmptySearch } from './lane';
@@ -29,12 +33,9 @@ import type { ActivityPick } from './lane';
  *   that silently drops every disappointing promise (rule #11 — the absence of the effect
  *   is a first-class outcome, and here it is an outcome the PARENT is told about).
  *
- * THE TOP PICK LANDS IN SEGMENT ONE, as a gate. A carrier bills 153 GSM-7 characters a
- * part and a phone shows the first of them; every trim in this codebase drops from the end
- * (coach/reply.ts `fitToBudget`). So an answer whose best find is in the last sentence is
- * an answer whose best find is the first thing to disappear — which is the shape of the
- * "later answers trimmed off the end" defect this product already has a name for.
- * Requiring the name in the first segment costs the model nothing and cannot be lost.
+ * THE TOP PICK LANDS EARLY, as a gate. A phone shows the start of a message first, so the
+ * name of the best find belongs in the opening. Chat replies are no longer cut to two
+ * segments (VIL-434); the name still leads because that is what a parent reads first.
  *
  * NEVER CLAIMS WHAT IT DID NOT DO. Every pick here came off the WEB, and
  * {@link claimsVerification} refuses a body that says otherwise. It is deliberately narrow
@@ -48,19 +49,11 @@ import type { ActivityPick } from './lane';
  * that started all this.
  */
 
-/** One SMS, two segments — the same ceiling every other unprompted message keeps. */
-export const MAX_FOLLOWUP_SEGMENTS = 2;
-
-/** GSM-7 characters in one segment. The budget the top pick has to land inside. */
-const FIRST_SEGMENT_CHARS = 153;
-
 /** Same reasoning as the plan note's: a model that cannot fix a named mechanical fault in
  * three tries will not fix it on the fourth. */
 export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
 const MAX_TOKENS = 1000;
-
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 /**
  * Told to the model only when options were held back. It is an instruction, not a
@@ -76,11 +69,16 @@ export type FollowUpFallback =
   | 'model_unreachable'
   | 'model_failed'
   | 'gates_exhausted'
+  | 'process_unjudged'
   | 'quiet_hours'
   | 'coparent_ask';
 
+/**
+ * `mentionsWatch` is the model's own `commits_to_return` for the text it wrote: whether it
+ * tells the parent Hale will come back. Delivery logs a watch row whose text does not.
+ */
 export type FollowUpComposeOutcome =
-  | { status: 'composed'; message: string }
+  | { status: 'composed'; message: string; mentionsWatch: boolean }
   | { status: 'deferred'; reason: FollowUpFallback; violations: readonly string[] };
 
 /**
@@ -129,7 +127,7 @@ export interface FollowUpGrounding {
   /**
    * IS THERE A CONTINUATION ROW BEHIND THIS MESSAGE — the sweep has already registered a
    * fresh `activity_followup` promise against the text about to go out, so the message
-   * must SAY so.
+   * MAY say so, and without one it may not.
    *
    * The two halves are one fact on purpose. On 2026-08-22 the sweep fulfilled its
    * promise, sent "Want me to check back once they're up?", and wrote nothing down: the
@@ -250,11 +248,11 @@ function message(err: unknown): string {
 }
 
 /**
- * Whether the best find survives a phone's first screen — and therefore any trim.
+ * Whether the message names the best find.
  *
  * Matched on the pick's NAME rather than on sentence order, because "the top pick leads"
- * is about what a parent SEES, and a body that opens with a clause of preamble and then
- * names the place is fine. What is not fine is the name arriving in segment two.
+ * is about what a parent can tell, and a body that opens with a clause of preamble and then
+ * names the place is fine. Replies are sent whole (VIL-434), so the name may land anywhere.
  *
  * Matched on the name's distinctive WORDS, not the field verbatim and not its phrases.
  * `name` is a composite assembled for a structured payload — "Kinderfun (Toddler Program),
@@ -267,7 +265,7 @@ function message(err: unknown): string {
  * guard.
  *
  * So the question is the one a parent would ask: can I tell WHICH find this is? Two or
- * more of the name's identifying words landing in the first segment is a yes. Programme
+ * more of the name's identifying words anywhere in the message is a yes. Programme
  * nouns are not identifying — a body leading with "a toddler program" has named nothing.
  * (The eval mirrors this rule and mirrors it word for word; it replicates rather than
  * imports, like every other gate here.)
@@ -345,7 +343,7 @@ function identifyingWords(name: string): string[] {
 export function topPickLeads(body: string, picks: readonly ActivityPick[]): boolean {
   const top = picks[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   const venue = identifyingWords(top.sourceName ?? '');
   if (venue.length > 0 && venue.every((word) => head.includes(word))) return true;
   const words = identifyingWords(top.name);
@@ -428,7 +426,9 @@ export function waitsOnAPageItCouldNotRead(body: string): boolean {
  * a question to the parent, so those addresses are set aside before the check.
  */
 export function asksTheParent(body: string): boolean {
-  return plainText(body).replace(/https?:\/\/\S+/gi, '').includes('?');
+  return plainText(body)
+    .replace(/https?:\/\/\S+/gi, '')
+    .includes('?');
 }
 
 /**
@@ -444,38 +444,7 @@ export function followUpViolations(
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  // ONE RULER, AND IT IS THIS ONE. The skill used to teach the model to predict the fit
-  // and pre-drop for it ("when it will not fit, cut the SECOND find"), which is a model
-  // eyeballing segment arithmetic it cannot do: on 2026-08-24 it dropped a complete
-  // second find — a price and a schedule — out of a 263-character message with room for
-  // it, and nothing downstream could tell that answer from one that had only one find.
-  // Fit is measured HERE, and the correction says what to give up, so the model never has
-  // to guess whether it is in the losing case.
-  //
-  // AND IT SAYS WHAT MAY NOT GO, because a correction that names only the cut leaves
-  // everything it did not name looking spare. The first version of this sentence ended
-  // "and keep the rest as they are": handed it, the composer kept both finds intact and
-  // deleted the continuation sentence instead — the one thing `watch` had already written
-  // a row for — then spent its last attempt without putting it back and the promise went
-  // out silent about itself. A length correction that can be satisfied by breaking a
-  // different gate is a recompose loop that ends in silence, so the two things a trim may
-  // never reach are named here, in the same breath as the cut.
-  //
-  // LENGTH, NOT AN ASCII GATE. A follow-up is written in the language this parent writes
-  // in, and a GSM-7 refusal would throw out every one of those.
-  if (smsSegments(text) > MAX_FOLLOWUP_SEGMENTS) {
-    const keep = grounding.watch
-      ? 'never the facts of the find you led with, and never the sentence saying Hale will keep watching - that one stays whatever else goes'
-      : 'never the facts of the find you led with';
-    violations.push(
-      `The message is ${smsSegments(text)} SMS segments; it must be at most ${MAX_FOLLOWUP_SEGMENTS}. ${
-        grounding.picks.length > 1
-          ? `Drop the LAST find whole - ${keep}.`
-          : `Shorten the wording around the facts, never the facts themselves - ${keep}.`
-      }`,
-    );
-  }
-  if (LINK_SHAPE.test(text)) {
+  if (hasLinkShape(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
   if (claimsVerification(text)) {
@@ -485,9 +454,7 @@ export function followUpViolations(
   }
   if (!topPickLeads(text, grounding.picks)) {
     const top = grounding.picks[0];
-    violations.push(
-      `The best find (${top?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
-    );
+    violations.push(`The best find (${top?.name}) is not named. Lead with it.`);
   }
   // NO OFFER, BECAUSE AN OFFER IS A PROPOSAL AND A PROPOSAL IS A ROW. Nothing in this
   // lane can write one: the sweep has already decided what it will do next and put THAT
@@ -500,29 +467,20 @@ export function followUpViolations(
       'The message asks the parent a question. This message keeps a promise; it never asks for permission. Say what you found and what you are already doing about it, and end on a statement.',
     );
   }
-  // BOTH DIRECTIONS, and the second one is not symmetry for its own sake. The first live
-  // re-recording of this composer, handed a complete find and `watch: false`, wrote
-  // "I'll keep looking and text you what it says" anyway — a promise to come back with
-  // no row behind it, which is the 2026-08-20 defect verbatim, produced by the very
-  // change that was fixing it. A sentence claiming a commitment is only true when the
-  // commitment exists, and `watch` is the one value that knows.
+  // A PROMISE WITH NO ROW BEHIND IT IS FALSE. The first live re-recording of this
+  // composer, handed a complete find and `watch: false`, wrote "I'll keep looking and
+  // text you what it says" anyway — the 2026-08-20 defect verbatim. The other direction
+  // is not a gate: when a row exists, whether the watch is worth a sentence is the
+  // model's call, and forcing one ended follow-ups on bookkeeping (VIL-571).
   // AND THE COMING-BACK SENTENCE CARRIES THE SAME ATTRIBUTION AS THE GAP SENTENCE.
   if (waitsOnAPageItCouldNotRead(text)) {
     violations.push(
       'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     );
   }
-  if (grounding.watch !== commitsToReturn) {
-    // THE EXAMPLE IS PAGE-STATE-AWARE OR THE TWO CORRECTIONS FIGHT: under
-    // `page_has_schedule` the page contradicts the very sentence this one used to hand
-    // the model as the remedy, and a composer bounced between two contradictory fixes
-    // spends its three attempts and sends nothing.
+  if (commitsToReturn && !grounding.watch) {
     violations.push(
-      grounding.watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
-            grounding.pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
-          }.`
-        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
+      'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     );
   }
   return violations;
@@ -568,7 +526,16 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
 
         violations = followUpViolations(value.message, grounding, value.commits_to_return);
         if (violations.length === 0) {
-          return { status: 'composed', message: plainText(value.message) };
+          // THE FIND AND THE NEXT STEP, NOT THE RESEARCH LOG (VIL-571). Read by a model,
+          // in any language, only once the mechanical gates pass; a judge that could not
+          // read the draft sends nothing rather than letting it through unread.
+          const body = plainText(value.message);
+          const judged = await judgeFollowUpProcess(() => resolved, body);
+          if (judged.verdict === 'unjudged') return deferred('process_unjudged', [judged.reason]);
+          if (judged.verdict === 'clean') {
+            return { status: 'composed', message: body, mentionsWatch: value.commits_to_return };
+          }
+          violations = [followUpProcessViolation(judged.sentences)];
         }
         console.error(
           { attempt, picks: grounding.picks.length, violations: violations.length },
@@ -582,7 +549,7 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
 
 function deferred(reason: FollowUpFallback, violations: readonly string[]): FollowUpComposeOutcome {
   console.error(
-    { reason, violations },
+    { reason, violations: violations.length },
     'activity follow-up: deferring rather than sending a canned line',
   );
   return { status: 'deferred', reason, violations };

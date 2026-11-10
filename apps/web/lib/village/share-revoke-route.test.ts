@@ -93,7 +93,9 @@ describe('GET /api/village/shares', () => {
   });
 
   it('returns the family-scoped list of shared links', async () => {
-    const links = [{ kind: 'activity', id: LINK_ID, token: 'tok', title: 'Toddler music at the library' }];
+    const links = [
+      { kind: 'activity', id: LINK_ID, token: 'tok', title: 'Toddler music at the library' },
+    ];
     listMock.mockResolvedValue(links);
     const res = await callList();
     expect(res.status).toBe(200);

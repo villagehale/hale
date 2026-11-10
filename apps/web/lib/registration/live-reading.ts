@@ -1,266 +1,282 @@
 import { fragment, readCourseModel } from '~/lib/channel/spots/availability';
+import type { RegistrationPageFetch } from './page';
+import type { RegistrationPdfRead, RegistrationPdfRefusal } from './pdf';
+import { isBookMe4ErrorPage, readCourseFacts } from './sequence/prepare';
 import {
-  type PrepInput,
-  type UnreadableReason,
-  isBookMe4ErrorPage,
-  readCourseFacts,
-} from './sequence/prepare';
-import {
+  type AiDateKind,
+  DATE_ONLY_WALL_CLOCK,
   type ExtractedWindow,
   MIN_VERIFY_CONFIDENCE,
   type PartialRegistrationDate,
-  type PublishedDate,
   type UnfoundReason,
   corroborationFailure,
+  normalizeQuote,
 } from './verify-window';
 
-/** Metadata from this fetch, not a stored window or the parent's display zone.
- * URL validation remains at the fetch boundary; these adapters perform no I/O. */
+/**
+ * VIL-423 — what one live read of a registration page says, in a shape that cannot
+ * carry a date it did not verify.
+ *
+ * Only the `verified` variant has `dates` and `timeZone`, so a failed, refused or
+ * unproven read has no field a stored date could be copied into, and a verified read
+ * without a zone the page (or the portal's own registry entry) states cannot be
+ * expressed. Every other outcome is named.
+ */
+
+/** This read's own metadata — never a stored window, never the family's zone. */
 export interface RegistrationReadSource {
   sourceUrl: string;
   checkedAt: Date;
-  timeZone: string | null;
 }
 
-export type RegistrationDateKind =
-  | 'preview'
-  | 'resident_open'
-  | 'member_open'
-  | 'general_open'
-  | 'unclassified_open';
+export type RegistrationDateKind = AiDateKind | 'member_open';
 
-export interface LiveRegistrationDate extends PublishedDate {
+export interface LiveRegistrationDate {
   kind: RegistrationDateKind;
+  date: string;
+  /** Null when the page prints no time: the anchor is then the start of that local day,
+   * and a later composer must say the time is unknown rather than read one off it. */
+  time: string | null;
+  /** The page words this date stands on. */
   evidence: readonly string[];
 }
 
-export interface LivePartialRegistrationDate extends PartialRegistrationDate {
-  evidence: readonly string[];
-}
+export type UnverifiedReadingReason =
+  | UnfoundReason
+  | 'no_reason_given'
+  | 'no_dates_for_cycle'
+  | 'low_confidence'
+  | 'uncorroborated'
+  | 'invalid_date'
+  | 'unknown_time_zone'
+  | 'incomplete_date';
 
-/** No date field exists on a failed/unverified read, so it cannot carry a DB fallback.
- * Keep local date/time separate: a date-only page does not publish a midnight instant. */
-export type LiveRegistrationReading = RegistrationReadSource & {
-  reader: 'ai' | 'perfectmind';
-  partialDates?: LivePartialRegistrationDate[];
-  note?: string | null;
-} & (
-    | { status: 'verified'; dates: LiveRegistrationDate[] }
-    | {
-        status: 'unverified';
-        reason:
-          | UnfoundReason
-          | 'no_dates_for_cycle'
-          | 'low_confidence'
-          | 'uncorroborated'
-          | 'invalid_date'
-          | 'unknown_time_zone'
-          | 'eligibility_unverified'
-          | 'incomplete_date';
-      }
-    | {
-        status: 'unreadable';
-        reason:
-          | UnreadableReason
-          | 'extract_failed'
-          | 'read_budget'
-          | 'pdf_unreadable'
-          | 'pdf_no_text'
-          | 'pdf_read_budget';
-      }
-    | { status: 'gone'; evidence: readonly string[] }
-  );
+/** The fetcher's own refusal or failure name: `non_public_host`, `http_status`, `timeout`… */
+type PageFetchFailure = Extract<RegistrationPageFetch, { outcome: 'refused' | 'failed' }>['reason'];
 
-export type RegistrationExtractionInput =
-  | { ok: true; extracted: ExtractedWindow; pageText: string }
-  | { ok: false; reason: 'fetch_failed' | 'extract_failed' };
+export type UnreadableReadingReason =
+  | PageFetchFailure
+  | 'redirected'
+  | 'extract_failed'
+  | RegistrationPdfRefusal
+  | 'pdf_reader_fault'
+  | 'no_model'
+  | 'bad_model'
+  | 'wrong_course';
 
-function validPublishedDate({ date, time }: PublishedDate): boolean {
+export type BusyReadingReason =
+  | Extract<RegistrationPageFetch, { outcome: 'busy' }>['reason']
+  | Extract<RegistrationPdfRead, { outcome: 'busy' }>['reason'];
+
+type Reader = 'ai' | 'perfectmind';
+
+export type VerifiedRegistrationReading = RegistrationReadSource & {
+  reader: Reader;
+  status: 'verified';
+  timeZone: string;
+  dates: LiveRegistrationDate[];
+  partialDates: readonly PartialRegistrationDate[];
+};
+
+export type LiveRegistrationReading =
+  | VerifiedRegistrationReading
+  | (RegistrationReadSource & { reader: Reader } & (
+        | {
+            status: 'unverified';
+            reason: UnverifiedReadingReason;
+            partialDates: readonly PartialRegistrationDate[];
+          }
+        | { status: 'unreadable'; reason: UnreadableReadingReason }
+        /** Hale is out of fetch or PDF capacity right now: retry later. Says nothing
+         * about the page, so it is never an unreadable page and never a stored date. */
+        | { status: 'busy'; reason: BusyReadingReason }
+        | { status: 'gone' }
+      ));
+
+function validCalendarDate(date: string, time: string | null): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const day = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== date) return false;
   return time === null || /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
 }
 
-/** A real quote containing a real year is not proof of the model's month/day/hour. */
-function publishedValueIsQuoted(value: PublishedDate, evidence: string): boolean {
-  const [year, month, day] = value.date.split('-').map(Number);
-  const months = [
-    'jan(?:uary)?',
-    'feb(?:ruary)?',
-    'mar(?:ch)?',
-    'apr(?:il)?',
-    'may',
-    'jun(?:e)?',
-    'jul(?:y)?',
-    'aug(?:ust)?',
-    'sep(?:t(?:ember)?)?',
-    'oct(?:ober)?',
-    'nov(?:ember)?',
-    'dec(?:ember)?',
-  ];
-  const monthName = months[month! - 1];
-  if (!monthName) return false;
-  const datePattern = new RegExp(
-    `(?:${value.date}|\\b(?:${monthName})[.,]?\\s+0?${day}(?:st|nd|rd|th)?\\b|\\b0?${day}(?:st|nd|rd|th)?\\s+(?:${monthName})\\b|\\b0?${day}[/.-]0?${month}[/.-]${year}\\b|\\b0?${month}[/.-]0?${day}[/.-]${year}\\b)`,
-    'ig',
+/** The wall clock `timeZone` shows at `at`, read as if it were UTC (epoch ms). */
+function wallClockAsUtc(at: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
+  return Date.parse(
+    `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00Z`,
   );
-  const text = evidence.replace(/\s+/g, ' ');
-  for (const match of text.matchAll(datePattern)) {
-    if (value.time === null) return true;
-    const following = text.slice(
-      (match.index ?? 0) + match[0].length,
-      (match.index ?? 0) + match[0].length + 60,
-    );
-    const clock = following.match(
-      /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b|\b(noon|midnight)\b/i,
-    );
-    if (!clock) continue;
-    // A neighbouring class/registration row's clock is not evidence for this date.
-    if (
-      new RegExp(
-        `\\b(?:class(?:es)?|sessions?|preview|register|registration|resident|public|general|member)\\b|\\b(?:${months.join('|')})[.,]?\\s+\\d|\\b\\d{1,2}\\s+(?:${months.join('|')})\\b|\\b\\d{4}-\\d{2}-\\d{2}\\b`,
-        'i',
-      ).test(following.slice(0, clock.index))
-    )
-      continue;
-    let hour: number;
-    let minute = 0;
-    if (clock[6]) hour = clock[6].toLowerCase() === 'noon' ? 12 : 0;
-    else if (clock[4]) {
-      hour = Number(clock[4]);
-      minute = Number(clock[5]);
-    } else {
-      hour = (Number(clock[1]) % 12) + (/^p/i.test(clock[3] ?? '') ? 12 : 0);
-      minute = Number(clock[2] ?? 0);
-    }
-    if (`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` === value.time)
-      return true;
-  }
-  return false;
 }
 
-function verifiedReading(
-  source: RegistrationReadSource,
-  reader: LiveRegistrationReading['reader'],
-  dates: LiveRegistrationDate[],
-): LiveRegistrationReading {
-  const base = { ...source, reader };
-  if (dates.length === 0) return { ...base, status: 'unverified', reason: 'no_dates_for_cycle' };
-  if (dates.some((date) => !validPublishedDate(date))) {
-    return { ...base, status: 'unverified', reason: 'invalid_date' };
-  }
-  try {
-    if (!source.timeZone) throw new Error('missing source time zone');
-    new Intl.DateTimeFormat('en-US', { timeZone: source.timeZone });
-  } catch {
-    return { ...base, status: 'unverified', reason: 'unknown_time_zone' };
-  }
-  return { ...base, status: 'verified', dates };
+/**
+ * The instant a local wall clock names in `timeZone`, or null when that zone skips the
+ * clock (a DST gap). Two passes of "subtract the zone's offset at the current guess"
+ * land on the right side of a transition whatever zone the server runs in; the round
+ * trip must then show the same clock, or the clock does not exist.
+ */
+function wallClockInstant(date: string, time: string, timeZone: string): Date | null {
+  const target = Date.parse(`${date}T${time}:00Z`);
+  let at = target;
+  for (let pass = 0; pass < 2; pass++) at = target - (wallClockAsUtc(at, timeZone) - at);
+  return wallClockAsUtc(at, timeZone) === target ? new Date(at) : null;
 }
 
-/** Normalize the existing AI extractor's output after its page/year evidence gates.
- * Extraction still uses verify-registration-window; no new prompt or model route. */
+/** The instant a verified date opens at. A date with no printed time anchors at the
+ * start of that local day (DATE_ONLY_WALL_CLOCK). */
+export function registrationAnchor(
+  reading: VerifiedRegistrationReading,
+  date: LiveRegistrationDate,
+): Date {
+  const at = wallClockInstant(date.date, date.time ?? DATE_ONLY_WALL_CLOCK, reading.timeZone);
+  if (at === null) throw new Error('registration: the source zone skips this wall clock');
+  return at;
+}
+
+function everyClockExists(dates: readonly LiveRegistrationDate[], timeZone: string): boolean {
+  return dates.every(
+    (date) => wallClockInstant(date.date, date.time ?? DATE_ONLY_WALL_CLOCK, timeZone) !== null,
+  );
+}
+
+/** Canonical zone ids only. Offsets (`+05:00`), the fixed-offset legacy ids (`EST`,
+ * `MST`), `Etc/` zones and aliases (`US/Eastern`) are not in it: a model that answers
+ * `EST` for "Eastern" would put every summer date an hour off. */
+const CANONICAL_TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
+/** A zone quote must carry a word, so a lone letter or number that happens to be on the
+ * page cannot select a zone. */
+const LETTER_RUN = /\p{L}{3}/u;
+
+/** The zone the page itself states: a quote that is on the page and carries a word,
+ * naming a canonical zone. Anything else is no zone at all — never a guessed one. That
+ * the quote names this zone is the model's reading. */
+function quotedTimeZone(extracted: ExtractedWindow, pageText: string): string | null {
+  const { timeZone, timeZoneEvidence } = extracted;
+  if (timeZone === null || timeZoneEvidence === null) return null;
+  if (!CANONICAL_TIME_ZONES.has(timeZone)) return null;
+  const quote = normalizeQuote(timeZoneEvidence);
+  if (!LETTER_RUN.test(quote) || !normalizeQuote(pageText).includes(quote)) return null;
+  return timeZone;
+}
+
+/**
+ * The AI reader's gate. The model's slot IS the eligibility verdict: code reads no
+ * label, so an opening the model left unlabelled stays `unclassified_open`.
+ */
 export function normalizeExtractedRegistration(
-  input: RegistrationExtractionInput,
+  extracted: ExtractedWindow,
+  pageText: string,
   source: RegistrationReadSource,
 ): LiveRegistrationReading {
   const base = { ...source, reader: 'ai' as const };
-  if (!input.ok) return { ...base, status: 'unreadable', reason: input.reason };
-  const { extracted, pageText } = input;
+  const unverified = (
+    reason: UnverifiedReadingReason,
+    partialDates: readonly PartialRegistrationDate[] = [],
+  ): LiveRegistrationReading => ({ ...base, status: 'unverified', reason, partialDates });
+
   if (!extracted.found) {
-    return { ...base, status: 'unverified', reason: extracted.reason ?? 'not_published' };
+    return unverified(extracted.reason === null ? 'no_reason_given' : extracted.reason);
   }
-  if (!Number.isFinite(extracted.confidence) || extracted.confidence < MIN_VERIFY_CONFIDENCE) {
-    return { ...base, status: 'unverified', reason: 'low_confidence' };
-  }
-  const publishedDates = [
-    extracted.preview,
-    extracted.residentOpen,
-    extracted.generalOpen,
-    extracted.unclassifiedOpen,
-  ].filter((date): date is PublishedDate => date != null);
-  if (publishedDates.some((date) => !validPublishedDate(date)))
-    return { ...base, status: 'unverified', reason: 'invalid_date' };
-  if (
-    !extracted.evidence ||
-    (publishedDates.length > 0 && !extracted.yearEvidence) ||
-    corroborationFailure(pageText, extracted, source.checkedAt) !== null ||
-    publishedDates.some(
-      (date) =>
-        !publishedValueIsQuoted(date, extracted.evidence ?? '') ||
-        (date.dateText && !extracted.evidence?.includes(date.dateText)),
-    )
-  ) {
-    return { ...base, status: 'unverified', reason: 'uncorroborated' };
-  }
-  const evidence = extracted.evidence;
-  const dates: LiveRegistrationDate[] = [];
-  // A model label alone cannot turn an unlabelled opening into public eligibility.
-  const generalKind =
-    !extracted.residentOpen &&
-    !/\b(?:(?:non[- ]?residents?|public|general)\s+registration|registration\s+for\s+non[- ]?residents?)\b/i.test(
-      extracted.evidence,
-    )
-      ? 'unclassified_open'
-      : 'general_open';
-  for (const [kind, published] of [
+  if (!(extracted.confidence >= MIN_VERIFY_CONFIDENCE)) return unverified('low_confidence');
+
+  const slots = [
     ['preview', extracted.preview],
     ['resident_open', extracted.residentOpen],
-    [generalKind, extracted.generalOpen],
+    ['general_open', extracted.generalOpen],
     ['unclassified_open', extracted.unclassifiedOpen],
-  ] as const) {
-    if (published)
-      dates.push({
-        kind,
-        ...published,
-        evidence: [evidence, ...(extracted.yearEvidence ? [extracted.yearEvidence] : [])],
-      });
+  ] as const;
+  const published = slots.flatMap(([kind, date]) => (date ? [{ kind, ...date }] : []));
+  if (published.some((date) => !validCalendarDate(date.date, date.time))) {
+    return unverified('invalid_date');
   }
-  const partialDates = extracted.partialDates?.map((date) => ({ ...date, evidence: [evidence] }));
+  if (corroborationFailure(pageText, extracted) !== null) return unverified('uncorroborated');
+  if (published.length === 0) {
+    return extracted.partialDates.length > 0
+      ? unverified('incomplete_date', extracted.partialDates)
+      : unverified('no_dates_for_cycle');
+  }
+
+  const timeZone = quotedTimeZone(extracted, pageText);
+  if (timeZone === null) return unverified('unknown_time_zone', extracted.partialDates);
+
+  const sectionEvidence = [extracted.evidence, extracted.yearEvidence].filter(
+    (quote): quote is string => quote !== null,
+  );
+  const dates = published.map(({ kind, quote, date, time }) => ({
+    kind,
+    date,
+    time,
+    evidence: [quote, ...sectionEvidence],
+  }));
+  if (!everyClockExists(dates, timeZone)) return unverified('invalid_date');
   return {
-    ...(dates.length === 0 && partialDates?.length
-      ? { ...base, status: 'unverified' as const, reason: 'incomplete_date' as const }
-      : verifiedReading(source, 'ai', dates)),
-    ...(partialDates?.length ? { partialDates } : {}),
-    ...(extracted.note !== undefined ? { note: extracted.note } : {}),
+    ...base,
+    status: 'verified',
+    timeZone,
+    dates,
+    partialDates: extracted.partialDates,
   };
 }
 
-/** Read only the registration clocks: no family-specific age/drift verdict and no
- * course start date masquerading as registration. Keep the existing model-ID check. */
+const PORTAL_CLOCKS = [
+  ['resident_open', 'ResidentsRegistrationDateValue'],
+  ['member_open', 'MembersRegistrationDateValue'],
+  ['general_open', 'PublicRegistrationStartDateValue'],
+] as const;
+
+/**
+ * The PerfectMind reader: the course's own published clocks, read deterministically
+ * from the vendor model in the bytes, in the portal's own zone. No family-specific
+ * verdict, and no course start date standing in for a registration date.
+ */
 export function readCourseRegistration(
-  input: PrepInput,
-  context: RegistrationReadSource & { courseId: string },
+  raw: string,
+  context: RegistrationReadSource & { courseId: string; portalTimeZone: string },
 ): LiveRegistrationReading {
-  const { courseId, ...source } = context;
+  const { courseId, portalTimeZone, ...source } = context;
   const base = { ...source, reader: 'perfectmind' as const };
-  if (!input.ok) return { ...base, status: 'unreadable', reason: input.reason };
-  const read = readCourseModel(input.raw, courseId);
+  const unverified = (reason: UnverifiedReadingReason): LiveRegistrationReading => ({
+    ...base,
+    status: 'unverified',
+    reason,
+    partialDates: [],
+  });
+
+  const read = readCourseModel(raw, courseId);
   if (!read.ok) {
-    if (read.reason === 'no_model' && isBookMe4ErrorPage(input.raw)) {
-      return { ...base, status: 'gone', evidence: ['<title>BookMe4 Error Page', 'was not found'] };
-    }
+    // The vendor's own not-found signature, never an inference from other page text.
+    if (read.reason === 'no_model' && isBookMe4ErrorPage(raw)) return { ...base, status: 'gone' };
     return { ...base, status: 'unreadable', reason: read.reason };
   }
   const { facts } = readCourseFacts(read.model, read.blob);
   const dates: LiveRegistrationDate[] = [];
-  for (const [kind, key] of [
-    ['resident_open', 'ResidentsRegistrationDateValue'],
-    ['member_open', 'MembersRegistrationDateValue'],
-    ['general_open', 'PublicRegistrationStartDateValue'],
-  ] as const) {
+  for (const [kind, key] of PORTAL_CLOCKS) {
     const value = facts[key];
     if (value == null) continue;
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::00)?$/.test(value)) {
-      return { ...base, status: 'unverified', reason: 'invalid_date' };
+    const date = value.slice(0, 10);
+    const time = value.slice(11, 16);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::00)?$/.test(value) || !validCalendarDate(date, time)) {
+      return unverified('invalid_date');
     }
     const evidence = fragment(key, value);
-    if (!read.blob.includes(evidence)) {
-      return { ...base, status: 'unverified', reason: 'uncorroborated' };
-    }
-    dates.push({ kind, date: value.slice(0, 10), time: value.slice(11, 16), evidence: [evidence] });
+    if (!read.blob.includes(evidence)) return unverified('uncorroborated');
+    dates.push({ kind, date, time, evidence: [evidence] });
   }
-  if (dates.length === 0) return { ...base, status: 'unverified', reason: 'not_published' };
-  return verifiedReading(source, 'perfectmind', dates);
+  if (dates.length === 0) return unverified('not_published');
+  if (!everyClockExists(dates, portalTimeZone)) return unverified('invalid_date');
+  return {
+    ...base,
+    status: 'verified',
+    timeZone: portalTimeZone,
+    dates,
+    partialDates: [],
+  };
 }

@@ -24,12 +24,12 @@ import {
   makeFakeDb,
 } from './fakes';
 import type { IntentReading } from './intent';
-import { type IntakeDeps, handleInboundSms } from './machine';
+import { type IntakeDeps, handleInboundSms, writeChannelMessage } from './machine';
+import { acceptOptOutReading } from './opt-out-reader';
 import { scriptedFriendVoice } from './scripted-friend-voice.fixture';
 import { FakeTransport } from './transport';
 import { claimIntakeTurn } from './turn-claim';
 import { IMPLIED_WATCH_BASIS } from './watch-consent';
-import { WELCOME_CARD_BODY } from './welcome-card';
 
 /** #868: the fixed ask is gone; any pending-ask text is a fixture. */
 const COLD_START_ASK = 'cold start ask (test fixture)';
@@ -52,13 +52,11 @@ function assent(reply: string): IntentReading {
 
 /** The M5V (downtown Toronto) FSA centroid the fake geocoder returns, so the
  * seeding assertions can tell "placed here" from "could not be placed". */
-const M5V_CENTRE = { lat: 43.6426, lng: -79.3871 };
 
 function harness(options: {
   extractions?: IntakeCollected[];
   intents?: IntentReading[];
   limiter?: FakeRateLimiter;
-  resolveCenter?: IntakeDeps['resolveCenter'];
   identityAsk?: FakeIdentityAsk;
   /** Defaults to the composer that finds nothing to answer — every test written before
    * the escape existed is asserting the script, and that is the script. */
@@ -116,15 +114,6 @@ function harness(options: {
       answerComposer: options.answerComposer ?? fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk,
-      seedCivic: async (_db, familyId, areaCoarse, center) => {
-        const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
-        steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
-        return 0;
-      },
-      resolveCenter: options.resolveCenter ?? (async () => M5V_CENTRE),
-      discoveryTrigger: (familyId) => {
-        steps.push(`discovery:${familyId ? 'family' : 'none'}`);
-      },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       ...(options.capture ? { capture: options.capture } : {}),
       now: NOW,
@@ -182,6 +171,33 @@ describe('intake · happy path', () => {
     for (const row of inbound) {
       expect(row.handedOffAt).toBeInstanceOf(Date);
     }
+  });
+
+  it("writes the door's group bit on an inbound row, and an absent bit as unknown", async () => {
+    const fake = makeFakeDb();
+    const owner = { familyId: 'family-1', parentUserId: 'parent-1' };
+    const entry = {
+      direction: 'in' as const,
+      body: 'hi',
+      providerId: 'in-1',
+      at: NOW.toISOString(),
+      channel: 'imessage' as const,
+      chatId: 'chat-direct',
+    };
+    await writeChannelMessage(fake.db, owner, { ...entry, inGroup: false }, NOW);
+    await writeChannelMessage(fake.db, owner, { ...entry, providerId: 'in-2' }, NOW);
+    await writeChannelMessage(
+      fake.db,
+      owner,
+      { ...entry, direction: 'out', providerId: 'out-1', inGroup: false },
+      NOW,
+    );
+
+    expect(inserts(fake, schema.channelMessages).map((r) => [r.direction, r.inGroup])).toEqual([
+      ['in', false],
+      ['in', null],
+      ['out', null],
+    ]);
   });
 
   it('records the consent evidence BEFORE the family is flipped to sms_active', async () => {
@@ -275,46 +291,24 @@ describe('intake · the age the parent stated', () => {
  * VIL-260 · WS1 — the first reply is the one message a stranger is guaranteed to read,
  * and a family four milliseconds old has nothing on file for it to be built from.
  */
-describe('intake · seeding the first radar', () => {
-  it('places the family near its civic sessions BEFORE composing, and kicks discovery', async () => {
-    const { fake, transport, deps, steps } = harness({});
-    await text(fake, transport, deps, 'hi');
-    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
-    // Order is the assertion: an inline projection composed AFTER the radar could not
-    // have reached it, which is exactly the bug. The centroid rides along, so the
-    // FIRST radar is distance-filtered like every later one (VIL-260 · WS5).
-    expect(steps).toEqual([
-      `civic:family:M5V:${M5V_CENTRE.lat},${M5V_CENTRE.lng}`,
-      'discovery:family',
-      'radar:M5V',
-    ]);
-  });
-
-  it('still seeds — unplaced — when the coarse area cannot be geocoded', async () => {
-    // A Places miss must cost this family PROXIMITY, not their first radar: an
-    // unplaced projection still has its municipality gate to fall back on.
-    const { fake, transport, deps, steps } = harness({ resolveCenter: async () => null });
-    await text(fake, transport, deps, 'hi');
-    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
-    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
-  });
-
-  it('seeds unplaced rather than dying when the geocoder itself throws', async () => {
-    const { fake, transport, deps, steps } = harness({
-      resolveCenter: async () => {
-        throw new Error('places quota exhausted');
-      },
-    });
+describe('intake · the first radar needs no discovery catalog', () => {
+  it('composes immediately from family context without seeding or queued discovery', async () => {
+    const { fake, transport, deps, steps, threaded } = harness({});
     await text(fake, transport, deps, 'hi');
     const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-
     expect(result.status).toBe('provisioned');
-    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
+    expect(steps).toEqual(['radar:M5V']);
+    expect(fake.rows(schema.familyActivityHistory)).toEqual([]);
+    if (result.status !== 'provisioned') throw new Error('expected a provisioned family');
+    expect(
+      threaded.some(
+        (message) =>
+          message.familyId === result.familyId && transport.bodies().includes(message.body),
+      ),
+    ).toBe(true);
   });
 
-  it('does not seed anything for a conversation that never provisioned', async () => {
+  it('does not compose for a conversation that never provisioned', async () => {
     const { fake, transport, deps, steps } = harness({
       extractions: [{ children: MAYA_AND_LEO.children, postalCode: '10001' }],
     });
@@ -588,6 +582,52 @@ describe('intake · CASL keywords', () => {
     expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
   });
 
+  /** Rule #11: a start whose confirmation was withheld (it carried a number) still
+   * re-enrols, and the outcome names that nothing went out instead of claiming 'sent'. */
+  it('START whose confirmation was withheld re-enrols and names voice_unsent, sending nothing', async () => {
+    const { fake, transport, deps } = harness({});
+    const familyId = '00000000-0000-4000-8000-0000000000f4';
+    const userId = '00000000-0000-4000-8000-0000000000u4';
+    await fake.db.insert(schema.parentChannels).values({
+      userId,
+      familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+    await fake.db
+      .insert(schema.familyMembers)
+      .values({ familyId, userId, role: 'primary_parent' } as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    deps.optOutReader = {
+      read: async (input) =>
+        acceptOptOutReading(
+          {
+            intent: 'start',
+            verbatim: input.text,
+            language: 'en',
+            confirmation: 'Welcome back! Questions? Call 555 0100.',
+          },
+          input.text,
+        ),
+    };
+    const before = transport.bodies().length;
+
+    // Its own words: the text-read cache is shared, and other tests read 'START'.
+    const result = await text(fake, transport, deps, 'ok you can text me again, withheld case');
+
+    expect(result).toEqual({ status: 'restarted', ack: 'voice_unsent' });
+    expect(transport.bodies()).toHaveLength(before);
+    expect(fake.rows(schema.parentChannels).filter((r) => r.revokedAt === null)).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      { intent: 'start', reason: 'other_number' },
+      'opt-out reader: confirmation carried a number or link - not sent',
+    );
+    error.mockRestore();
+  });
+
   it('never routes a keyword through the model', async () => {
     const extractor = new FakeExtractor([MAYA_AND_LEO]);
     const intentReader = new FakeIntentReader([assent('yes')]);
@@ -799,9 +839,15 @@ describe('intake · the funnel milestones', () => {
       event: string;
       distinctId: string;
       properties: Record<string, unknown>;
+      options?: { setOnce?: Record<string, unknown> };
     }> = [];
-    const capture: IntakeDeps['capture'] = async (event, distinctId, properties = {}) => {
-      calls.push({ event, distinctId, properties });
+    const capture: IntakeDeps['capture'] = async (event, distinctId, properties, options) => {
+      calls.push({
+        event,
+        distinctId,
+        properties: properties ?? {},
+        ...(options ? { options } : {}),
+      });
       return 'sent';
     };
     return { calls, capture };
@@ -812,10 +858,42 @@ describe('intake · the funnel milestones', () => {
     const { fake, transport, deps } = harness({ capture });
 
     await text(fake, transport, deps, 'hi');
-    expect(calls.map((c) => c.event)).toEqual(['intake_started']);
+    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'first_text_received']);
 
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
-    expect(calls.map((c) => c.event)).toEqual(['intake_started', 'intake_completed']);
+    expect(calls.map((c) => c.event)).toEqual([
+      'intake_started',
+      'first_text_received',
+      'intake_completed',
+    ]);
+  });
+
+  it('records the first text with its door, locale and source, and sets first_source_code once', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
+
+    const first = calls.find((c) => c.event === 'first_text_received');
+    expect(first?.properties).toEqual({
+      source_code: 'earlyon-richmondhill',
+      door: 'sms',
+      channel: 'sms',
+      locale: 'en',
+    });
+    expect(first?.options).toEqual({ setOnce: { first_source_code: 'earlyon-richmondhill' } });
+    // Same key as the rest of intake: the session, never the phone.
+    expect(first?.distinctId).toBe(calls[0]?.distinctId);
+  });
+
+  it('fires first_text_received once — the second text is not a first text', async () => {
+    const { calls, capture } = recorder();
+    const { fake, transport, deps } = harness({ capture });
+
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(calls.filter((c) => c.event === 'first_text_received')).toHaveLength(1);
   });
 
   it('keys both ends on the same intake session, so they join into one funnel', async () => {
@@ -825,7 +903,9 @@ describe('intake · the funnel milestones', () => {
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
-    const [started, completed] = calls;
+    const started = calls[0];
+    const completed = calls.at(-1);
+    expect(completed?.event).toBe('intake_completed');
     expect(started?.distinctId).toBe(completed?.distinctId);
     expect(started?.distinctId).toBeTruthy();
   });
@@ -852,7 +932,12 @@ describe('intake · the funnel milestones', () => {
     await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
-    expect(calls.at(-1)?.properties).toEqual({ source_code: 'earlyon-richmondhill' });
+    expect(calls.at(-1)?.properties).toEqual({
+      source_code: 'earlyon-richmondhill',
+      // Two parent texts, and the seconds between the first and provisioning.
+      step_count: 2,
+      duration_s: expect.any(Number),
+    });
   });
 
   it('leaves source_code ABSENT when nobody handed out a card', async () => {
@@ -864,7 +949,11 @@ describe('intake · the funnel milestones', () => {
 
     // Null, not the string 'direct': a bucket meaning "no card" must not be able to
     // look like a card that exists. buildEvent drops it on the way out.
-    expect(calls.at(-1)?.properties).toEqual({ source_code: null });
+    expect(calls.at(-1)?.properties).toEqual({
+      source_code: null,
+      step_count: 2,
+      duration_s: expect.any(Number),
+    });
   });
 });
 
@@ -1044,7 +1133,6 @@ describe('intake · one ladder job per reply', () => {
       `${chatId}/messages`,
       `${chatId}/share_contact_card`,
     ]);
-    expect(h.transport.bodies()).not.toContain(WELCOME_CARD_BODY);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });

@@ -1,0 +1,49 @@
+{
+  "response": {
+    "id": "msg_011CgNPZNpYD74vnWo5iK2jB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSgQYKEAgTGAI4AUIIdGhpbmtpbmcSDHJNcJMOO7fdZygIDBoM4P7orX8Wvvj2TAUqIjCF8KCxetP8e+8BbxUkEqNrgVKUYB4QBRL9cfJ3KzdpkC500lEICPYwSc7WXDr3OJkqngWOiq0p2ZU8+AvVMtTbOOC+ujVCfve/BBLnhEJ1YJJIGvm8UfmIALoeem65q1BqJ6schdTfNjiWW5AgpRA/kWpLhgGn7YQegugVuJJq8Shj6LvfrEz/s0T0edtzMh29PQB00vSRejoBO/YxYGRCUPe6RCotOfY0bzv/I6K+puG3bXLF+5kehnGUoT0XkgaVAsjYYBIRZPmtMlNog3PeywXTv4cYyKtQSsL9nK7ZcotQwjjxuoNhy3VPZf3pKExiTjhSzxm6fBl2g+OEgZXB1N5JVZ1enV9aW84wpE8ZDqa4YSJVTwdzqBXhGB4qbLrixkYuN/o08n3/XorV71KQ5mR2IMV8JeMA2rqTmfiTodXtRA+EVy4+P+TnuykAooXvvim9/7hh+Vj9MKudUnmtl7ZbjmNbFPDPpoqfzPrHctYig6M1etppW0mzrIcSrTbt3Y6UJu+Ik37KoPfZA59FpABgflU0R4Rc5gMTzMRfBCuXsH8AQr9hKV5fBs7pMvFxajtAFyRyxG/afk4388C3mCpIIxkyv/2M8Bo7e4GDDWu4szGB+TS2M83A87PixJPHY+CahLGNfUm47TU7pv/vMhxXJGMic6mce+M89uoXCHR1UH8MGqEeLqNuOMMh/HkfntU7olzeGOW26nnd6IEWMBffYEG6jcP6qjaXAgHBw+jhhgkPkG3C0EoiwL1IKjZ2mMuCd3RNqbV1zxLEPucK7KI1ltMIC1wRmLhKO1bdGImCkawU4TMGhI0Z8WdVcLSNFcbGOcjdbMMU1b1iAcSh1buLQxZRVyGoA7QXtEl5W0hR65KMA7ppUqcoDPUJj3NAY4DZSRRSSTB+Qip9NNcOsVz3yZiDiVLSuVNgGmQhCKuQP5vcoUEhzHL21tcSLOnTGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_018aqsp7o6AQJ6ghmVF2Kftr",
+        "name": "turn_off_autonomy",
+        "input": {
+          "kinds": [
+            "send_email",
+            "reply_to_email"
+          ],
+          "interpretation": "They want Hale to stop sending emails on their behalf without asking first."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 389,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 21443,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 182,
+      "output_tokens_details": {
+        "thinking_tokens": 68
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1866
+}

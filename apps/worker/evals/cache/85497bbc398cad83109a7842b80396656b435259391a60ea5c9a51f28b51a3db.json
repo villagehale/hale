@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Event facts are correct: piano lesson today at 7:00 PM to 8:00 PM, in about an hour, at Ms. Chen's studio, all in Chinese with no invented details. The time is given as '7:00 PM' in an otherwise Chinese sentence, which is acceptable as a clear evening time, though a native 晚上7点 would read more naturally. Tone is calm and short, not template-like. Minor deduction for the mixed-format time notation.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Says a reminder is set, which contradicts facts (notSet, name_shared). Omits the reason about multiple Sams and never asks Grace which Sam she meant."
+  }
+}

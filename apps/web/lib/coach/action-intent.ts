@@ -187,30 +187,27 @@ const INPUT_ACTION_RULES: readonly IntentRule[] = [
 ];
 
 /** episode → the phrasings that name a logged observation, imperative or reported. */
-const QUICK_LOG_EPISODE_RULES: readonly { episode: QuickLogEpisode; patterns: readonly RegExp[] }[] =
-  [
-    {
-      episode: 'feed',
-      patterns: [/\b(?:had|took|gave|log(?:ged)?)\s+(?:a\s+)?(?:feed|bottle|nurse|nursing)\b/i],
-    },
-    {
-      episode: 'nap',
-      patterns: [/\b(?:had|took|went\s+down\s+for|log(?:ged)?)\s+(?:a\s+)?nap\b/i, /\bnapped\b/i],
-    },
-    {
-      episode: 'diaper',
-      patterns: [
-        /\bdiaper\b/i,
-        /\bnappy\b/i,
-        /\b(?:pooped|poop|soiled)\b/i,
-        /\bpee(?:d|ing)?\b/i,
-      ],
-    },
-    {
-      episode: 'milestone',
-      patterns: [/\bhit\s+a\s+milestone\b/i, /\b(?:reached|log(?:ged)?)\s+(?:a\s+)?milestone\b/i],
-    },
-  ];
+const QUICK_LOG_EPISODE_RULES: readonly {
+  episode: QuickLogEpisode;
+  patterns: readonly RegExp[];
+}[] = [
+  {
+    episode: 'feed',
+    patterns: [/\b(?:had|took|gave|log(?:ged)?)\s+(?:a\s+)?(?:feed|bottle|nurse|nursing)\b/i],
+  },
+  {
+    episode: 'nap',
+    patterns: [/\b(?:had|took|went\s+down\s+for|log(?:ged)?)\s+(?:a\s+)?nap\b/i, /\bnapped\b/i],
+  },
+  {
+    episode: 'diaper',
+    patterns: [/\bdiaper\b/i, /\bnappy\b/i, /\b(?:pooped|poop|soiled)\b/i, /\bpee(?:d|ing)?\b/i],
+  },
+  {
+    episode: 'milestone',
+    patterns: [/\bhit\s+a\s+milestone\b/i, /\b(?:reached|log(?:ged)?)\s+(?:a\s+)?milestone\b/i],
+  },
+];
 
 /** Author-a-plan phrasings: the parent writes their OWN private plan. Distinct
  * from add_to_plan (which pins Hale's suggestion to the routine via the approval
@@ -264,7 +261,10 @@ function parsePlan(question: string): PlanLogParse {
 
   const rawTitle =
     question.match(PLAN_TITLE_NOUN_RE)?.[1] ?? question.match(PLAN_TITLE_VERB_RE)?.[1];
-  const title = rawTitle?.replace(PLAN_CHILD_RE, '').replace(/\s{2,}/g, ' ').trim();
+  const title = rawTitle
+    ?.replace(PLAN_CHILD_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   if (title) parsed.title = title;
   return parsed;
 }

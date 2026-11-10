@@ -1,3 +1,5 @@
+import { deflateSync } from 'node:zlib';
+
 /** Tiny in-memory PDF for parser contracts; no model or external fixture download. */
 export function registrationPdfFixture(pages: string[]): Buffer {
   const objects = [
@@ -28,4 +30,45 @@ export function registrationPdfFixture(pages: string[]): Buffer {
   return Buffer.from(
     `${body}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`,
   );
+}
+
+const NO_OP_TRANSFORM = '1 0 0 1 0 0 cm ';
+
+/**
+ * One text-free page whose FlateDecode content stream inflates to `inflatedBytes` of a
+ * no-op transform: a small file under every byte and page ceiling that still costs the
+ * parser unbounded CPU and memory.
+ */
+export function registrationPdfFlateFixture(inflatedBytes: number): Buffer {
+  const content = deflateSync(Buffer.alloc(inflatedBytes, NO_OP_TRANSFORM), { level: 9 });
+  const objects = [
+    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),
+    Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
+    Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>'),
+    Buffer.concat([
+      Buffer.from(`<< /Length ${content.byteLength} /Filter /FlateDecode >>\nstream\n`),
+      content,
+      Buffer.from('\nendstream'),
+    ]),
+  ];
+  const header = Buffer.from('%PDF-1.4\n');
+  const parts = [header];
+  const offsets: number[] = [];
+  let length = header.byteLength;
+  for (const [index, object] of objects.entries()) {
+    offsets.push(length);
+    const part = Buffer.concat([
+      Buffer.from(`${index + 1} 0 obj\n`),
+      object,
+      Buffer.from('\nendobj\n'),
+    ]);
+    parts.push(part);
+    length += part.byteLength;
+  }
+  const xref = [
+    `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`,
+    ...offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`),
+    `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`,
+  ].join('');
+  return Buffer.concat([...parts, Buffer.from(xref)]);
 }

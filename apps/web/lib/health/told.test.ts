@@ -1,10 +1,6 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  checkpointToldKey,
-  loadToldCheckpointRefs,
-  recordCheckpointTold,
-} from './told';
+import { checkpointToldKey, loadToldCheckpointRefs, recordCheckpointTold } from './told';
 
 /**
  * The told-marker's own contract. The cross-surface behaviour it buys is proved in

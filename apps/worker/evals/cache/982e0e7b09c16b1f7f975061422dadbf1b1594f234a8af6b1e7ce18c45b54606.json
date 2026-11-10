@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNWP4FNRnUJHnj2xjTbM",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6gYKEAgTGAI4AUIIdGhpbmtpbmcSDBbHsjw7GjKfdsl40BoMtdHARzetatB+43xHIjB+hUgdPFleAIshWyy5CRtpDogcqyRlZ7Bzgto9sBTPAbnB2k3PfuZV3/FsoLebUYsqhwZbEOUak8kTkSiULcUQT5IJtf/8GfuMzscGAv0TV2j7J1rZmCxM52s7LLF9/OWwSluGNxvVcaXPPBZ0mJZO2/abs+76A55cxv1OXBmGLV5BGl/Ry18ZWWmqNRFnu2JlCHsDOEVFRIeAWh2fIZ/eSFYyVkGEcKwYtjUR7u1KFwfa0IqSS3j9YggyFaAAl54U958zIIzjEdqMIuaNb1/mwZnvf9Ld8Il8BxfcT6KuGXPl5DbZiAPUPGqrCurVBnXUu1W47nYMgOiaFmDW1gTsrQ2hJ3QBYQeSx70tCefBz9gQpjC9jWr6Jwvds1NF+XoCdTFViJW/WEe3eGaCkH5flJVebH8o7+dzHweNiySkIqa+ko+TuzY0kZFYuXCvZKiTBXblgHBk5nSjFfkHJLnFpRB/8desHLUjYatJ4FjZz8juNVkYsID71opwnaUM1c2BAxkTtB9oowTjV0cM4N8297VpC0JoqZ0C13NRj3/G7e3vQXOpv+ogu+ZJ5WQDUCeWTwtIMYAltTzUzbWqv2sgwAs+GrIcZbW5zWoA/v3R9F+rK4oc/YegMK1/lqzE3sdH67V0iUmlSMTjce1LPCxA689pHtXj0CljsbTYVljlif3yCT8Ukn5KU9DUk8QWQ+Xr5/b4FrqEX74XUNkQhbSVqNWxoT8XujV4bRDMJm31s6HDPW5oYilP/jDk6FvVH67fCIPWo9V/vYotrsJMjXFA3x0HerGTUL7GTbWGNBqSsqYzqtTZZxVQT/8A/FaLOPUo80PBi1bos3BzVm8cPMJrvk24Mo/lER5NKI9DpW89G993gtz+C2NxTWe08vjDu3RfAGJaW+M0dSd2frYuWFPYqF4MUtK7UbcmrX8x7FDj3u76A4/YAP7iNjsytEL89vsJ178WEWK5kfO1qsTS3bsanPogU0jEbgAKedsMdqyzYB+/+OI7ovJ66/dIpHLCUEldc/uz0fhFgH6ux7DDqF0qOYe1v86CTRS7Sv0SyB3tBWyRsBRWFGCMyLQtfWCKL1GpThecBrpZWC98GAE="
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. For after that, High Park is free: Jamie Bell Adventure Playground, the animal display with bison, llamas and peacocks, and the wading pool and splash pads. Water play is seasonal, so check what's running before you go."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1204,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20824,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 172,
+      "output_tokens_details": {
+        "thinking_tokens": 72
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2125
+}

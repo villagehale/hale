@@ -59,16 +59,16 @@ export function RedesignPricing({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
-    <h3>{t("$19 CAD/mo")}</h3>
-    <p className="hs-tier-meta">{t("or $159 CAD/yr, about three months free")}</p>
+    <h3>{t("$19 CAD/mo")}<span className="hs-tier-usd">{t("$15 USD/mo")}</span></h3>
+    <p className="hs-tier-meta">{t("or $159 CAD / $129 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Free")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Year memory, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Sign-ups done for you, when you say yes")}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
-    <h3>{t("$39 CAD/mo")}</h3>
-    <p className="hs-tier-meta">{t("or $329 CAD/yr, about three months free")}</p>
+    <h3>{t("$39 CAD/mo")}<span className="hs-tier-usd">{t("$29 USD/mo")}</span></h3>
+    <p className="hs-tier-meta">{t("or $329 CAD / $259 USD a year, about three months free")}</p>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches and spot watches")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{keepCardTail(t("Sign-ups for a whole season in one go"))}</span></li></ul>
     <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>

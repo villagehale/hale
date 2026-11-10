@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgPHk6eKZSARK6NSuNBua",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjgYKEAgTGAI4AUIIdGhpbmtpbmcSDE7/ytByCtSD07Xc3hoMV/fefhIuuhUomn2/IjAxeLYEzXurqMaIIgdhiPTbNgLIS0UiAQBCpqRzZ5NIoSGrBIHaTx0YnCEg1WTTKHQqqwU7cNFZk1IVG9NnwOhgpgqyfo8MrtFLFDkZC7Uz5B55vhV9lQ330D/U5TztJkoQfihY7YU12D/OVemAma1ufTRmzorfZNU4FRNhGZVgrVNJOLDsyOuZFCWlmi1r+L7FiD5wKi3ESli443KD3FsBirhX40SmkD5V9KDPR7Ucb7R1LULenlQvMkGLOYXhsn2nh6gyfHvxMkTlWxTWsBbSbAOMS1Z5DIEkVV/DvNPgVqI94TIyEsVvkboGQ/v5Nwd3xOytNnt18whwt+WdR6mHW0JHmzCjz+yWTFyVZ0ubET0AGBrRf3CMT1JoLN0xKYeLsyDqpACW5y/+AZHJ5gdIV0+RzrY6s1w1+8q5EOOrdZX1CB3eYfDNKyxhJSsDx3t8uVX3+QBViuy2oGO0jJZSN9uSHL3r7KNwuIL4nndtAl7pI0lK3Zd9IHuN2VQ2Wh3Xt9wYPdh5YD5yJOWEj0wdYnlcRIh75B9V/95q3EtA9ppZAbtb6EuMMoB0CYN9xMuCQC5Eex+QFxJCKblfKkwNv6x0aEmuRc702l1XE40oe48JuJ8Mk1x4SUzmG8Jsp+I2hVhPFKTKSE/A8L9yDA1bVyAnPMaCkx95pvWXMexSWhcXB+5NQxs1H6GgOlhuEYMB8SCOUWvqpT2yDG8bzNhTu8D+qCmyY6Y6TaLYafdA4Wuad4Uab+g7OGq/Nj2SFDz35Hu7THiI6s/LdqIU4chLlcjRll5lAKA8yRgtcBZeCSbSBv4FSH56pSil09g+mH2No/9TWR0Ko4ZIJidIoyaJQZ8TtmiDrGq760dP7KtQEQBCQS54vw6ZJTNQIAzHc5qhnySmT5vs5Gn3xUWpGOo+ZXg0HEXlXfziLitgZiL2YlU7lNx9iRkylTjojQ9hsu3jUU24dXkird0MZPWE6RgB"
+      },
+      {
+        "type": "text",
+        "text": "That email was mine, and I'm sorry it had the wrong day. I'll send the swim school a correction. Which day and time should it have said: Mon 4:30 at West pool, or Thu 5:15 at East pool?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1224,
+      "cache_read_input_tokens": 21535,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1224,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 109,
+      "output_tokens_details": {
+        "thinking_tokens": 37
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2207
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reply": "Pas de souci, je comprends. Est-ce que tu as des enfants, et quel âge ils ont à peu près?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "placeAsk": "none",
+    "placeDeclined": true
+  },
+  "latencyMs": 1479
+}

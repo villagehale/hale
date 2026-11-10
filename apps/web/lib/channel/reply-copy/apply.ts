@@ -4,16 +4,15 @@ import { type ReplyCopySurface, composeReplyCopy } from './compose';
 import type { ReplyCopyLanguage } from './validate';
 
 /**
- * The model-written layer over the locked duty and family-memory sentences.
+ * The model-written layer over a duty or family-memory turn.
  *
- * Flag off, or no injected client: the locked string goes out and the model
- * is not called. Flag on: the model writes from the facts, the validator runs,
- * and any miss sends the locked string.
+ * No client, or a miss from the model: nothing is sent. The locked sentence
+ * is the shape the validator compares against. It is not a reply.
  *
- * Not this layer: compliance replies, a refused memory edit, group sync, and
- * the recall list lines. Group sync stays the fixed sentence so a remembered
- * value never rides into the group. The recall list lines stay locked; the
- * model writes only the opening and the closing around them.
+ * Not this layer: compliance replies, group sync, and the recall list lines.
+ * Group sync stays the fixed sentence so a remembered value never rides into
+ * the group. The recall list lines stay fixed; the model writes only the
+ * opening and the closing around them.
  *
  * The ask budget is the locked line's. A line that is not already a question
  * may not grow one.
@@ -25,17 +24,27 @@ export interface ReplyLayerDeps {
   familyId: string;
   language: ReplyCopyLanguage;
   audience: 'direct' | 'group';
-  /** `COPARENT_DUTY_COPY_LOCKED` or `FAMILY_MEMORY_KINDS_COPY_LOCKED`, already compared to `'true'`. */
-  flagOn: boolean;
   surface: ReplyCopySurface;
   skill?: Skill;
 }
 
 export async function replyProse(
   deps: ReplyLayerDeps,
-  input: { fallback: string; facts: readonly string[]; sealedValues?: readonly string[] },
-): Promise<string> {
-  if (!deps.flagOn || !deps.client) return input.fallback;
+  input: {
+    /** Legacy shape hint (memory surface). Never sent, never shown to the model. */
+    fallback?: string;
+    /** VIL-507: say outright whether the one next step may be a question. */
+    questionAllowed?: boolean;
+    /** VIL-507: what the line is for, read by the model; there is no sentence behind it. */
+    purpose?: string;
+    facts: readonly string[];
+    sealedValues?: readonly string[];
+  },
+): Promise<string | null> {
+  if (!deps.client) {
+    console.info({ reason: 'not_configured', surface: deps.surface }, 'reply-copy: model unread');
+    return null;
+  }
   const result = await composeReplyCopy({
     client: deps.client,
     database: deps.database,
@@ -46,10 +55,11 @@ export async function replyProse(
     shape: 'prose',
     facts: input.facts,
     sealedValues: input.sealedValues,
-    questionAllowed: input.fallback.includes('?'),
-    fallback: input.fallback,
+    questionAllowed: input.questionAllowed ?? (input.fallback ?? '').includes('?'),
+    purpose: input.purpose,
     skill: deps.skill,
   });
+  if (result.source !== 'model' || result.text.length === 0) return null;
   return result.text;
 }
 
@@ -61,8 +71,11 @@ export async function replyFrame(
     facts: readonly string[];
     sealedValues?: readonly string[];
   },
-): Promise<{ header: string; footer: string }> {
-  if (!deps.flagOn || !deps.client) return { header: input.header, footer: input.footer };
+): Promise<{ header: string; footer: string } | null> {
+  if (!deps.client) {
+    console.info({ reason: 'not_configured', surface: deps.surface }, 'reply-copy: model unread');
+    return null;
+  }
   const result = await composeReplyCopy({
     client: deps.client,
     database: deps.database,
@@ -78,8 +91,6 @@ export async function replyFrame(
     fallbackClosing: input.footer,
     skill: deps.skill,
   });
-  if (result.source !== 'model' || !result.closing) {
-    return { header: input.header, footer: input.footer };
-  }
+  if (result.source !== 'model' || !result.closing) return null;
   return { header: result.text, footer: result.closing };
 }

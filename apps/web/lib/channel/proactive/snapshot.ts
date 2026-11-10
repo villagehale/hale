@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, sql } from
 import { PROACTIVE_CATEGORY } from '~/lib/channel/outbound-gate';
 import { familyHasTeenager } from '~/lib/dashboard/trail-query';
 import { dayKeyOf, formatSnapshotLocalNow } from '~/lib/format/datetime';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { type CadencePreference, readCadencePreference } from './preference';
 import { boundedLine } from './tools';
 
@@ -291,6 +292,8 @@ export interface LoadedFamilyContext {
   declines: ({ what: string } & Owned)[];
   /** A child here is 13 or older. */
   teenInHousehold: boolean;
+  /** VIL-393 · the family's stored language tag, for the writer. Never a sentence. */
+  language?: string | null;
 }
 
 /**
@@ -304,7 +307,11 @@ export async function loadFamilyContext(
   now: Date,
 ): Promise<LoadedFamilyContext | null> {
   const [zone] = await database
-    .select({ timezone: schema.users.timezone, areaCoarse: schema.families.areaCoarse })
+    .select({
+      timezone: schema.users.timezone,
+      areaCoarse: schema.families.areaCoarse,
+      language: schema.families.primaryLanguage,
+    })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
     .innerJoin(schema.families, eq(schema.families.id, schema.familyMembers.familyId))
@@ -409,6 +416,7 @@ export async function loadFamilyContext(
     .where(and(eq(schema.watchedSpots.familyId, familyId), isNull(schema.watchedSpots.releasedAt)))
     .limit(WATCH_ROWS);
   return {
+    language: zone.language ?? null,
     timeZone,
     household: {
       areaCoarse: zone.areaCoarse,
@@ -618,7 +626,10 @@ export async function loadFamilySnapshot(
     parentUserId === owner ? what : WITHHELD_LABEL;
   const shown = newTexts
     .reverse()
-    .map((row) => ({ author: row.parentUserId, text: boundedLine(row.body ?? '') }))
+    .map((row) => ({
+      author: row.parentUserId,
+      text: boundedLine(withoutLiveViewLinks(row.body ?? '')),
+    }))
     .filter((row) => row.text.length > 0);
   const snapshot: FamilySnapshot = {
     timeZone: context.timeZone,

@@ -1,101 +1,61 @@
 import { describe, expect, it } from 'vitest';
-import { activityLinkSuffix, restoreActivityLinks } from './activity-links';
+import { attachLinks, linkRef } from './activity-links';
 
-const FANOUS = {
-  title: 'Fanous lantern craft',
-  url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-  venue: 'North York Central Library',
-};
+const PAGE = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
+const OTHER = 'https://www.torontopubliclibrary.ca/robotics';
 
-const RIVERDALE = {
-  title: 'Riverdale story time',
-  url: 'https://www.torontopubliclibrary.ca/riverdale-story-time',
-  venue: 'Riverdale Library',
-};
-
-const ROBOTICS = {
-  title: 'Robotics workshops',
-  url: 'https://www.torontopubliclibrary.ca/robotics',
-};
-
-describe('activityLinkSuffix', () => {
-  it('does not treat a different case-sensitive query value as the exact source', () => {
-    const link = { title: 'STEAM Storytime', url: 'https://www.lpl.ca/whats-on?audience=Kids' };
-    expect(
-      activityLinkSuffix('STEAM Storytime: https://www.lpl.ca/whats-on?audience=kids', [link]),
-    ).toBe(link.url);
-  });
-  it('does not treat a longer query value as the exact source', () => {
-    const link = { title: 'STEAM Storytime', url: 'https://www.lpl.ca/whats-on?page=1' };
-    expect(activityLinkSuffix('STEAM Storytime: https://www.lpl.ca/whats-on?page=12', [link])).toBe(
-      link.url,
-    );
-  });
-
-  it('appends the Fanous page when the reply says lantern craft and drops the first word', () => {
-    const suffix = activityLinkSuffix('Saturday afternoon there is a lantern craft.', [
-      FANOUS,
-      ROBOTICS,
-    ]);
-    expect(suffix).toBe(FANOUS.url);
-  });
-
-  it('appends the Riverdale page when the reply names the library and story time', () => {
-    const suffix = activityLinkSuffix('Riverdale Library has story time on Saturday.', [
-      RIVERDALE,
-      ROBOTICS,
-    ]);
-    expect(suffix).toBe(RIVERDALE.url);
-  });
-
-  it('appends the only offered page when the title was shortened to one distinctive word', () => {
-    const suffix = activityLinkSuffix('The lantern thing is on Saturday afternoon.', [FANOUS]);
-    expect(suffix).toContain(FANOUS.url);
-  });
-
-  it('does not append a page the reply never referred to', () => {
-    const suffix = activityLinkSuffix('Thanks, that is plenty.', [FANOUS]);
-    expect(suffix).toBe('');
+describe('linkRef', () => {
+  it('is stable per URL and different across URLs', () => {
+    expect(linkRef(PAGE)).toBe(linkRef(PAGE));
+    expect(linkRef(PAGE)).not.toBe(linkRef(OTHER));
+    expect(linkRef(PAGE)).toMatch(/^link-[0-9a-f]{6}$/);
   });
 });
 
-describe('restoring exact offered activity URLs', () => {
-  const full = 'https://www.lpl.ca/whats-on?audience=Kids&date=2026-10#events';
-  const link = { title: 'STEAM Storytime', url: full };
+describe('attachLinks', () => {
+  const links = [
+    { ref: linkRef(PAGE), url: PAGE },
+    { ref: linkRef(OTHER), url: OTHER },
+  ];
 
-  it.each([
-    'https://www.lpl.ca/whats-on',
-    'https://lpl.ca/whats-on',
-    'www.lpl.ca/whats-on',
-    'lpl.ca/whats-on',
-  ])('restores a unique shortened page: %s', (short) => {
-    expect(restoreActivityLinks(`Source: ${short}.`, [link])).toBe(`Source: ${full}.`);
+  it('returns the page for each cited ref once, in citation order', () => {
+    const out = attachLinks(
+      `A [${linkRef(OTHER)}] and B [${linkRef(PAGE)}] and A again [${linkRef(OTHER)}].`,
+      links,
+    );
+    expect(out.urls).toEqual([OTHER, PAGE]);
+    expect(out.body).toBe('A and B and A again.');
   });
 
-  it('leaves complete source bytes, other queries and longer paths unchanged', () => {
-    for (const url of [
-      full,
-      'https://www.lpl.ca/whats-on?audience=Adults',
-      'https://www.lpl.ca/whats-on/other',
-      'https://www.lpl.ca/whats-on.other',
-    ]) {
-      expect(restoreActivityLinks(`Source: ${url}`, [link])).toBe(`Source: ${url}`);
-    }
+  it('removes every typed URL, including one a tool returned', () => {
+    expect(attachLinks(`See ${PAGE} and https://made.up/page.`, links)).toEqual({
+      body: 'See and.',
+      urls: [],
+    });
   });
 
-  it('does not choose between different filtered pages sharing a path', () => {
-    const body = 'Source: lpl.ca/whats-on.';
-    expect(
-      restoreActivityLinks(body, [link, { title: 'Other storytime', url: `${full}&other=1` }]),
-    ).toBe(body);
+  it('drops an unknown ref', () => {
+    expect(attachLinks('Swim. [link-000000]', links)).toEqual({ body: 'Swim.', urls: [] });
   });
 
-  it('does not invent a link for an unrelated reply or accept invalid tool URLs', () => {
-    expect(restoreActivityLinks('Thanks, that is plenty.', [link])).toBe('Thanks, that is plenty.');
-    expect(
-      restoreActivityLinks('Source: lpl.ca/whats-on', [
-        { title: 'Bad link', url: 'javascript:alert(1)' },
-      ]),
-    ).toBe('Source: lpl.ca/whats-on');
+  it('does not attach a cited page that is not absolute https (VIL-501)', () => {
+    const http = 'http://example.com/swim';
+    expect(attachLinks(`Swim. [${linkRef(http)}]`, [{ ref: linkRef(http), url: http }])).toEqual({
+      body: 'Swim.',
+      urls: [],
+    });
+    expect(attachLinks('Swim. [link-abcdef]', [{ ref: 'link-abcdef', url: 'not-a-url' }])).toEqual({
+      body: 'Swim.',
+      urls: [],
+    });
+  });
+
+  it('leaves the word ref in the prose', () => {
+    expect(attachLinks('The ref is at the field at 4.', links).body).toBe(
+      'The ref is at the field at 4.',
+    );
+    expect(attachLinks('A ref came back this time, so I can attach the page.', links).body).toBe(
+      'A ref came back this time, so I can attach the page.',
+    );
   });
 });

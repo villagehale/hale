@@ -1,3 +1,4 @@
+import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -5,11 +6,11 @@ import {
   flushGroupDecisionSyncs,
   queueGroupActivityDecision,
 } from '~/lib/channel/linq/family-outbound';
+import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { writeFact } from '~/lib/memory/facts';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { DUTY_BURDEN_FACT_KEY, burdenMayLeave, defaultOwnerOffer, noteDutyBurden } from './burden';
 import { projectDutyOnFamilyEvent } from './calendar';
-import { COPARENT_DUTY_COPY_LOCKED_ENV } from './copy';
 import { COPARENT_DUTY_BURDEN_SURFACE_ENABLED_ENV, COPARENT_DUTY_MEMORY_ENABLED_ENV } from './flag';
 import { loadDutyMetrics, recordDutyAnswered, recordDutyUndone } from './metrics';
 import { type DutyState, commitDutyUpdate } from './model';
@@ -20,6 +21,55 @@ const PERSONAL = 'chat-one-to-one';
 const GROUP_MESSAGES = `https://api.linqapp.com/api/partner/v3/chats/${GROUP}/messages`;
 const START = new Date('2026-09-29T19:00:00.000Z');
 const DAY = new Date('2026-09-24T15:00:00.000Z');
+const KEY = Buffer.alloc(32, 4).toString('base64');
+const PARENT_PHONE = '+15555550151';
+
+/**
+ * The family holds GROUP, its confirmed roster is the one parent, and the live GET
+ * (through the global fetch: the decision queue has no fetch seam) lists only them.
+ */
+async function claimGroupOfOne(familyId: string): Promise<void> {
+  vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+  vi.stubEnv('LINQ_GROUP_ONBOARDING_V2_ENABLED', 'true');
+  await db.database
+    .update(schema.families)
+    .set({ linqGroupChatId: GROUP })
+    .where(eq(schema.families.id, familyId));
+  const [roster] = await db.database
+    .insert(schema.linqGroupRosters)
+    .values({ chatId: GROUP, familyId, source: 'added_to_existing', status: 'confirmed' })
+    .returning({ id: schema.linqGroupRosters.id });
+  await db.database.insert(schema.linqGroupRosterMembers).values({
+    rosterId: roster?.id as string,
+    chatId: GROUP,
+    phoneE164Hash: phoneBlindIndex(PARENT_PHONE),
+    status: 'known_parent',
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json({ chat: { id: GROUP, is_group: true, handles: [{ handle: PARENT_PHONE }] } }),
+    ),
+  );
+}
+
+function scriptedDutyLines(activities: readonly string[]): AgentClient {
+  let index = 0;
+  return {
+    messages: {
+      create: vi.fn(async () => {
+        const activity = activities[index] ?? activities[0] ?? 'swim';
+        index += 1;
+        const text = `Barton has Maya's ${activity} on Saturday at 3:00pm. Say so here if that changes.`;
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ text }) }],
+          usage: { input_tokens: 12, output_tokens: 8 },
+          stop_reason: 'end_turn',
+        };
+      }),
+    },
+  } as unknown as AgentClient;
+}
 
 let db: TestDb;
 
@@ -34,7 +84,7 @@ afterAll(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-  await db.exec('truncate table families, users cascade');
+  await db.exec('truncate table families, users, linq_group_rosters cascade');
 });
 
 async function secondParent(familyId: string, name: string): Promise<string> {
@@ -184,7 +234,11 @@ describe('duty calendar memory', () => {
       .from(schema.familyMemoryFacts)
       .where(eq(schema.familyMemoryFacts.factKey, dutyKey));
     expect(beforeFacts).toHaveLength(1);
+    // Never a real send: a fake key and a mocked transport, whatever the shell holds.
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const tapbackFetch = vi.fn(async () => new Response('{}', { status: 201 }));
     const settled = await settleDutyMemory(db.database, {
+      fetch: tapbackFetch as unknown as typeof fetch,
       familyId: family.familyId,
       actorUserId: family.parentUserId,
       text: 'never mind',
@@ -216,14 +270,10 @@ describe('duty calendar memory', () => {
 describe('duty group sync', () => {
   it('echoes every 1:1 duty decision to the group after 10 minutes, in one bubble', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const family = await seedFamily(db.database, 'Sync');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: GROUP })
-      .where(eq(schema.families.id, family.familyId));
+    await claimGroupOfOne(family.familyId);
     await db.database
       .update(schema.users)
       .set({ name: 'Barton' })
@@ -261,6 +311,7 @@ describe('duty group sync', () => {
     const flushed = await flushGroupDecisionSyncs(db.database, {
       now: new Date(DAY.getTime() + 10 * 60 * 1000 + 4000),
       fetch: fetchMock as unknown as typeof fetch,
+      replyClient: scriptedDutyLines(activities),
     });
     expect(flushed.sent).toBe(1);
     expect(urls).toEqual([GROUP_MESSAGES]);
@@ -269,10 +320,10 @@ describe('duty group sync', () => {
     };
     const spoken = (payload.message?.parts?.[0]?.value ?? '').split('\n');
     expect(spoken).toEqual([
-      "Barton has Maya's swim, Saturday at 3:00pm. Say so here if that changes.",
-      "Barton has Maya's daycare, Saturday at 3:00pm. Say so here if that changes.",
-      "Barton has Maya's soccer, Saturday at 3:00pm. Say so here if that changes.",
-      "Barton has Maya's piano, Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's swim on Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's daycare on Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's soccer on Saturday at 3:00pm. Say so here if that changes.",
+      "Barton has Maya's piano on Saturday at 3:00pm. Say so here if that changes.",
     ]);
     for (const line of spoken) {
       expect(line.endsWith('Say so here if that changes.')).toBe(true);
@@ -282,14 +333,10 @@ describe('duty group sync', () => {
 
   it('holds the echo in quiet hours and does not queue a non-kid title or a group-originated 1:1', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
     vi.stubEnv('LINQ_GROUP_COPARENT', 'on');
     const family = await seedFamily(db.database, 'Quiet');
-    await db.database
-      .update(schema.families)
-      .set({ linqGroupChatId: GROUP })
-      .where(eq(schema.families.id, family.familyId));
+    await claimGroupOfOne(family.familyId);
     await db.database
       .update(schema.users)
       .set({ name: 'Barton' })
@@ -373,6 +420,7 @@ describe('duty burden and metrics', () => {
         },
         confidence: 1,
         inferredBy: 'coparent_duty_test',
+        heard: 'unrecorded',
         validFrom: new Date(iso),
       });
     }
@@ -381,7 +429,7 @@ describe('duty burden and metrics', () => {
     expect(offer?.takes).toBeGreaterThanOrEqual(3);
     expect(offer?.mayLeave).toBe(false);
     expect(offer?.text).not.toMatch(/\d/);
-    expect(burdenMayLeave()).toBe(false);
+    expect(burdenMayLeave()).toBe(true);
     const asked = await settleDutyMemory(db.database, {
       familyId: family.familyId,
       actorUserId: family.parentUserId,
@@ -393,7 +441,7 @@ describe('duty burden and metrics', () => {
     });
     expect(asked).toEqual({
       status: 'skipped',
-      reason: 'burden_internal',
+      reason: 'burden_surface_unlocked',
       sent: false,
       spoken: null,
     });
@@ -436,6 +484,7 @@ describe('duty burden and metrics', () => {
       factValue: { eventKey: factKey },
       confidence: 1,
       inferredBy: 'coparent_duty_test',
+      heard: 'unrecorded',
       validFrom: new Date(DAY.getTime() - 30 * 60 * 1000),
     });
     await recordDutyAnswered(db.database, {

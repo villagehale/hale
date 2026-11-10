@@ -360,6 +360,7 @@ describe('a weekday-care answer, through the router', () => {
       channel_message_id: row?.id as string,
       provider_message_id: providerMessageId,
       received_at: SAME_DAY.toISOString(),
+      in_group: false,
     });
     return { result, warnings, coachCalls: coach.calls };
   }

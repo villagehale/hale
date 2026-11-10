@@ -49,6 +49,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     searchSeason: null,
     supersededAt: null,
     discoveredAt: new Date('2026-07-04T12:00:00Z'),
+    offeredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };
 }

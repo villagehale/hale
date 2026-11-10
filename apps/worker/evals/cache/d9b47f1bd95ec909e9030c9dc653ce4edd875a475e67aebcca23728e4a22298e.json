@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNWQNhfU3sqhcCpxBKzJ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/QcKEAgTGAI4AUIIdGhpbmtpbmcSDAPGxOyfrXr17/sMbRoMn899CwAdgA1XPkixIjBmpx30SAAOUvHhsAVI+LFAHLNFI4NDMQHKsCH+wZRie7UQ2BMEYuv2Z91qxXps87YqmgdG+rmWRo1QJiH9NWnaWJnWc56qgbjzrrws2BYtI5gdszJ5iJicvGAXRdSfMEGYHPQyojLKKUxsWZV6HlQ0CHZ8yDDe2anw6AfxnPhCpoaCvNsBJGMKGOYCh3abL+TvPYpeFPQVvH05z4xXbJzrtgeWskkWxNfSngsO8hgX0rF0iP3pEN9nn6Ds+uYmtc0LyFmxYrQ0tEM9ReP2vzQEKVIxT9Gd0OWxaXFW9leASsMZsGfZ0CT020WnpOoU5KSqIZKXlqpBnN8uJ8z98yHJ4jQ5QyG8uKLNGgT6P8fPKlol54BIAlSzM5sMq+sHoFsPfguLLR2F0gJVdEHtj5X16dIgAVq19DjocU8Q/DSMTmzFUknbCQG7oyrh+/5y4iau2+eTDK3NjsDIfLERdhWuVEf4S91qe0Vsj8mdUHbvF999oVv5H44c1pflgrMqmvBDAdFIjqAqVSbm/0bRCA3Y/VisoAUcIQa9FLDyYfhzwHpR4bylHgjjH1R1kzfhLqnxQLVcd+bBCh2gQXlMCqgVjIEY5dSUsV+rtb4qcoLMimhX5jEGzI8L5lVUY1yK6wIexNBlTBtH7FLyZWFkVC8sFx3ErAvT7MYR69lDLQsuodVA1y2ujIhhdfG0KbATykeL/fC82cvOhiJARy9Kmwu8am/SD0cZMl/SG8OxwgTzh0YD9eOxcVRRvU613ut/valXIhP4elfJytAClJg03ZwpvdCGvvjf40enabMkzNh/k+kDmzhg42ikvH5L5i0OTRDvTBjdDYu9YDyZs8Uc9fjFRgyFzcm5HeaHvZnxhfmEGFHDI+UTqOBtpCgyGLl45JlnalsNiJrCtNUfVETcCzEijfRgHS5MNwYFGHJv0KIeGlX09pozMcs7snxGQr2tWMh7xKuY6/W2aB0gIZTjSVwdavIyPbsnPq4efTnZsI+4vogQnlI3c06rEtHJ215VJe83bd4QmzgtRFsrsPlhfWsKWhyI3bECcZKhitnvHOv4ZSMoChOaDEOSozlLUJyIHc32tHqPeJIFJvC7PJdkCso3Hc+eU3hVIlkyYRp/kbq43KRsXk96ruSFJTVJPyaS7GGngWB0PDr2aNxHYIjwUaS9EkWAg6M5/A9avBwxwCtn1fddbnuh7BKQnkQA/YGgP1ATkS2KdTKaPum2nOV94KWQ/VG1xNAma0SmxjTsSibSPcM3pLoPOtp2/aWNjgw4KrY2Gi9kWfE5zUZvI2+0GAE="
+      },
+      {
+        "type": "text",
+        "text": "Central Library story time at the Bloor/Gladstone branch is on Sat, Aug 8. It's a free indoor drop-in and all ages are welcome, so Milo and Ada can both go. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 585,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20824,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 223,
+      "output_tokens_details": {
+        "thinking_tokens": 147
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2734
+}

@@ -6,7 +6,7 @@ describe('router reply transport — iMessage', () => {
   it('sends into the Linq chat and does not touch the phone transport', async () => {
     const phone: ChannelTransport = { send: vi.fn() };
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-1' }));
-    const transport = createReplyTransport({ phone, email: null, imessage });
+    const transport = createReplyTransport({ phone, imessage });
 
     const sent = await transport.send({
       route: {
@@ -30,7 +30,7 @@ describe('router reply transport — iMessage', () => {
   it('answers a parent-started 1:1 in that chat, not the household group', async () => {
     const phone: ChannelTransport = { send: vi.fn() };
     const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-2' }));
-    const transport = createReplyTransport({ phone, email: null, imessage });
+    const transport = createReplyTransport({ phone, imessage });
     const groupChatId = 'chat-household-group';
 
     await transport.send({
@@ -50,5 +50,30 @@ describe('router reply transport — iMessage', () => {
     });
     expect(JSON.stringify(imessage.mock.calls)).not.toContain(groupChatId);
     expect(phone.send).not.toHaveBeenCalled();
+  });
+
+  it('asks who to mention, then sends that handle into the chat', async () => {
+    const phone: ChannelTransport = { send: vi.fn() };
+    const imessage = vi.fn(async () => ({ providerMessageId: 'msg-out-3' }));
+    const mentionFor = vi.fn(async () => '+14155551234');
+    const transport = createReplyTransport({ phone, imessage, mentionFor });
+
+    await transport.send({
+      route: {
+        channel: 'imessage',
+        to: '+12025559876',
+        chatId: 'chat-group',
+        replyToMessageId: 'msg-in-3',
+      },
+      body: 'Swim is at 4.',
+    });
+
+    expect(mentionFor).toHaveBeenCalledWith({ chatId: 'chat-group', body: 'Swim is at 4.' });
+    expect(imessage).toHaveBeenCalledWith({
+      chatId: 'chat-group',
+      body: 'Swim is at 4.',
+      replyToMessageId: 'msg-in-3',
+      mention: '+14155551234',
+    });
   });
 });

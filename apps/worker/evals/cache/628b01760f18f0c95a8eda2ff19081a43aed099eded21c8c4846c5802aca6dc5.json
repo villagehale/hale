@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "\"Cancel swim\" matches two visible events, so asking which one and drafting nothing is the required handling. The reply names both with their days and times, both traceable to the week, and asks one plain question with no greeting or padding.",
+    "score": 5
+  }
+}

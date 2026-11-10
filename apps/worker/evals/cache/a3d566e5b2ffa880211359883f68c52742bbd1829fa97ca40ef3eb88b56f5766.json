@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly states Hale won't add or text the person first, and that the person can text Hale directly by SMS. It uses French with accents, but the register is 'vous'-adjacent formal in tone and uses 'Je ne peux pas' which is fine; however the request asked for tu and the message uses 'm'' which is fine. Minor issue: 'Elle peut m'écrire' correctly points to Hale. No invented name or role. Slightly stiff phrasing 'pour commencer' is acceptable. Score 4.",
+    "score": 4
+  }
+}

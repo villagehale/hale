@@ -70,7 +70,8 @@ describe('acceptVillageCandidate', () => {
           candidate_id: CANDIDATE_ID,
           title: 'Infant swim drop-in',
           kind: 'drop_in',
-          summary: 'Saturday parent-and-baby swim at the community centre.',
+          summary:
+            'Parent selected this activity. Read the source for current dates and availability.',
           source_url: 'https://example.org/swim',
           coverage_note: 'serves your area',
         }),
@@ -169,7 +170,10 @@ describe('listFamilyAcceptedCandidateIds', () => {
   });
 
   it('drops a row whose joined event payload carries no candidate_id (non-village action)', async () => {
-    const db = fakeAcceptedDb([acceptedRow({ candidateId: 'cand-a' }), acceptedRow({ candidateId: null })]);
+    const db = fakeAcceptedDb([
+      acceptedRow({ candidateId: 'cand-a' }),
+      acceptedRow({ candidateId: null }),
+    ]);
 
     const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
 

@@ -10,17 +10,22 @@ import {
   lastInboundFact,
   pageOncePerDay,
   speakFriend,
+  turnsFromTranscript,
 } from '~/lib/channel/intake/friend-voice';
+import { isSenderHeld } from '~/lib/channel/intake/opt-out-hold';
 import {
   type FirstTouchPersisted,
+  type TranscriptEntry,
   appendTranscript,
   decodeIntakeForRecovery,
   loadOpenSession,
+  placeSettled,
   saveSession,
   transcriptHasOutbound,
+  transcriptOwesReply,
 } from '~/lib/channel/intake/session';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import {
   createOutboundTransport,
@@ -39,23 +44,30 @@ import {
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
-import { FOUNDER_PAIR_SESSION_IDS, SITTING_REMINDER_TIMEZONE } from './sitting-reminder';
+import { placeZone } from './sitting-reminder';
 
 /**
  * VIL-332 — one first reply for a new parent whose first text got none.
  *
- * The invariant, owned by code: an open pre-family session whose transcript holds an
- * inbound and no outbound is owed one reply, whatever state the turn left it in. The
+ * The invariant, owned by code: an open pre-family session is owed one reply when
+ * {@link transcriptOwesReply} says so, whatever state the turn left it in: the opening
+ * text that heard nothing (no outbound anywhere, unchanged since VIL-332), and a text
+ * mid-onboarding whose turn sent nothing and marked it `unsent` (`first_touch_unsent`).
+ * Mid-onboarding the follow-up is opt-in: an unmarked text is never owed. A text that
+ * took the crisis path is never owed an onboarding ask (`TranscriptEntry.crisis`). The
  * transcript is the record (pre-family outbound has no channel_messages row to occupy —
- * family_id is NOT NULL there), so it is what this sweep reads; never a marker a turn
- * writes. `first_reply_recovered_at` is this sweep's claim and nothing else, and only
+ * family_id is NOT NULL there), so it is what this sweep reads.
+ * `first_reply_recovered_at` is this sweep's claim and nothing else, and only
  * {@link claimFirstReplyRecovery} writes it.
  *
  * Not VIL-324's 8am Still here: that is next-morning only. This runs every minute from
- * the drain, except through proactive quiet hours (21:00–08:00 America/Toronto, the
- * same window and the same pre-family zone the sitting reminder uses). A row owed a
- * reply stays owed overnight and is not claimed; the first tick after 08:00 answers
- * it, and the 24h window still covers a text that arrived late the night before.
+ * the drain, except through proactive quiet hours (21:00–08:00) on the family's own
+ * clock, read from the place the session stored, the same zone the sitting reminder
+ * uses. A row owed a reply stays owed overnight and is not claimed; the first tick
+ * after 08:00 there answers it, and the 24h window still covers a text that arrived
+ * late the night before. A session with no postal place has no zone, and none is
+ * guessed: its reply answers the text they just sent, whenever the sweep reaches it,
+ * and the tick counts it as `zoneUnknownAnswered`.
  * The reply is the first-touch ladder's own step, written by the model when
  * friend voice is on: the ages when a place is known (the silent turn stored one, or the
  * venue gives one), otherwise the place. The brief tells the model how long ago the
@@ -118,6 +130,15 @@ export interface FirstReplyRecoveryResult {
   deferred: number;
   /** The tick did not speak: the provider cannot serve any family right now. */
   held?: AbortedWindow;
+  /** VIL-553 · owed rows not claimed because the number has an unread opt-out read. */
+  optOutHeld?: number;
+  /** Owed rows not claimed because it is night on the family's own clock. Still owed. */
+  quietHeld?: number;
+  /**
+   * Rows answered with no zone to read the night in: the session holds no postal place
+   * and none is guessed, so the reply answers the parent's own text whenever it is owed.
+   */
+  zoneUnknownAnswered?: number;
 }
 
 export interface FirstReplyRecoveryRow {
@@ -126,8 +147,8 @@ export interface FirstReplyRecoveryRow {
   firstReplyRecoveredAt: Date | null;
   familyId: string | null;
   lastProviderId: string | null;
-  hasInbound: boolean;
-  hasOutbound: boolean;
+  /** {@link transcriptOwesReply}: an unanswered opening text, or a text marked unsent. */
+  owesReply: boolean;
 }
 
 export function firstReplyRecoveryEligible(row: FirstReplyRecoveryRow): boolean {
@@ -136,9 +157,7 @@ export function firstReplyRecoveryEligible(row: FirstReplyRecoveryRow): boolean 
   if (row.firstReplyRecoveredAt !== null) return false;
   if (row.familyId !== null) return false;
   if (!row.lastProviderId) return false;
-  if (!row.hasInbound) return false;
-  if (row.hasOutbound) return false;
-  return true;
+  return row.owesReply;
 }
 
 /**
@@ -159,13 +178,12 @@ export function firstReplyRecoveryDeps(
 }
 
 /**
- * Pre-family sessions have no family timezone. Quiet hours are the proactive
- * floor, read in the same America/Toronto default the sitting reminder uses.
- * Inside the window the sweep does nothing: no claim, so the row is still owed
- * when the window ends.
+ * Quiet hours are the proactive floor, read in the zone the session's own place
+ * gives. Inside the window the row is not claimed, so it is still owed when the
+ * window ends.
  */
-export function firstReplyRecoveryQuiet(now: Date): boolean {
-  return inProactiveQuietHours(now, SITTING_REMINDER_TIMEZONE);
+export function firstReplyRecoveryQuiet(now: Date, timeZone: string): boolean {
+  return inProactiveQuietHours(now, timeZone);
 }
 
 export async function runFirstReplyRecoveryCron(
@@ -181,15 +199,9 @@ export async function runFirstReplyRecoveryCron(
     failed: 0,
     deferred: 0,
   };
-  if (firstReplyRecoveryQuiet(now)) return result;
 
-  const owed: Array<FirstReplyCandidate & { recovery: RecoveryView }> = [];
+  const owed: Array<FirstReplyCandidate & { recovery: RecoveryView; timeZone: string | null }> = [];
   for (const row of await loadFirstReplyCandidates(database, now)) {
-    if (FOUNDER_PAIR_SESSION_IDS.has(row.id)) {
-      await claimFirstReplyRecovery(database, row.id, row.state, now);
-      result.skipped += 1;
-      continue;
-    }
     const recovery = decodeIntakeForRecovery(row.dataEncrypted);
     if (
       !firstReplyRecoveryEligible({
@@ -198,14 +210,26 @@ export async function runFirstReplyRecoveryCron(
         firstReplyRecoveredAt: row.firstReplyRecoveredAt,
         familyId: row.familyId,
         lastProviderId: row.lastProviderId,
-        hasInbound: recovery.transcript.some((entry) => entry.direction === 'in'),
-        hasOutbound: transcriptHasOutbound(recovery.transcript),
+        owesReply: transcriptOwesReply(recovery.transcript),
       })
     ) {
       result.skipped += 1;
       continue;
     }
-    owed.push({ ...row, recovery });
+    const timeZone = placeZone(recoveryPlace(recovery.firstTouch, row.sourceCode));
+    if (timeZone !== null && firstReplyRecoveryQuiet(now, timeZone)) {
+      result.quietHeld = (result.quietHeld ?? 0) + 1;
+      continue;
+    }
+    if (await isSenderHeld(database, row.phoneHash)) {
+      result.optOutHeld = (result.optOutHeld ?? 0) + 1;
+      console.info(
+        { skipped: 'opt_out_unread' },
+        'first-reply recovery: number held - not claimed',
+      );
+      continue;
+    }
+    owed.push({ ...row, recovery, timeZone });
     if (owed.length === MAX_FIRST_REPLY_RECOVERIES_PER_RUN) break;
   }
   if (owed.length === 0) return result;
@@ -235,13 +259,13 @@ export async function runFirstReplyRecoveryCron(
       const transcript = row.recovery.transcript;
       const language = row.recovery.ladderLanguage ?? languageFromTranscript(transcript);
       const inbound = [...transcript].reverse().find((entry) => entry.direction === 'in');
-      const waited = inbound?.at
-        ? lastInboundFact(new Date(inbound.at), now, SITTING_REMINDER_TIMEZONE)
-        : null;
+      const waited = inbound?.at ? lastInboundFact(new Date(inbound.at), now, row.timeZone) : null;
       const body = await firstTouchRecoveryBody(deps, row.id, {
         language,
         parentWords: inbound?.body ?? '',
+        transcript,
         place: recoveryPlace(row.recovery.firstTouch, row.sourceCode),
+        placeSettled: recoverySettled(row.recovery.firstTouch, row.sourceCode),
         knownVenue: recoveryVenuePlace(row.sourceCode) != null,
         ...(waited ? { lastInbound: waited } : {}),
       });
@@ -255,6 +279,9 @@ export async function runFirstReplyRecoveryCron(
       const wireBody = sent.linkOmitted ? plainTextWithoutLinks(body) : body;
       await recordFirstReplyOutbound(database, phoneE164, wireBody, sent.providerMessageId, now);
       result.sent += 1;
+      if (row.timeZone === null) {
+        result.zoneUnknownAnswered = (result.zoneUnknownAnswered ?? 0) + 1;
+      }
     } catch (err) {
       await reportFirstHelloFailure(database, {
         sessionId: row.id,
@@ -277,6 +304,12 @@ export async function runFirstReplyRecoveryCron(
       console.error({ code: refusal?.code ?? 'unknown' }, 'first-reply recovery send failed');
     }
   }
+  if (result.zoneUnknownAnswered) {
+    console.info(
+      { zoneUnknownAnswered: result.zoneUnknownAnswered },
+      'first-reply recovery: answered with no zone for the session',
+    );
+  }
   return result;
 }
 
@@ -287,24 +320,26 @@ async function firstTouchRecoveryBody(
   deps: FirstReplyRecoveryDeps,
   sessionId: string,
   input: {
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     parentWords: string;
+    transcript: readonly TranscriptEntry[];
     place: RecoveryPlace;
+    placeSettled: boolean;
     knownVenue: boolean;
     lastInbound?: LastInboundFact;
   },
 ): Promise<string> {
-  const placed = input.place != null;
+  // Mid-onboarding, the model reads the thread so far and does not introduce Hale again.
   const spoken = await speakFriend(
     deps.friendVoice,
     {
-      step: placed ? 'ages' : 'place',
+      step: input.placeSettled ? 'ages' : 'place',
       language: input.language,
       address: 'tu',
-      introduce: true,
+      introduce: !transcriptHasOutbound(input.transcript),
       parentWords: input.parentWords,
       ...(input.lastInbound ? { lastInbound: input.lastInbound } : {}),
-      recentTurns: [],
+      recentTurns: turnsFromTranscript(input.transcript),
       placeLabel: input.place ? input.place.city || input.place.areaCoarse : null,
       agesLabel: null,
       ageMonths: [],
@@ -327,20 +362,25 @@ function recoveryPlace(
   return touch?.place ?? recoveryVenuePlace(sourceCode);
 }
 
+/** A place is stored or venue-given, or the parent declined one: the next ask is the ages. */
+function recoverySettled(touch: FirstTouchPersisted | null, sourceCode: string | null): boolean {
+  return placeSettled({ place: recoveryPlace(touch, sourceCode), given: touch?.given ?? null });
+}
+
 function recoveryVenuePlace(sourceCode: string | null): ReturnType<typeof placeFromVenue> {
   const venue = venueForCode(sourceCode);
   return venue ? placeFromVenue(venue) : null;
 }
 
 function languageFromTranscript(
-  transcript: Array<{ direction: 'in' | 'out'; body: string }>,
-): ReplyLanguage {
-  const inbound = [...transcript].reverse().find((entry) => entry.direction === 'in');
-  return inbound ? replyLanguage(inbound.body) : 'en';
+  _transcript: Array<{ direction: 'in' | 'out'; body: string }>,
+): ReplyLanguage | null {
+  return null;
 }
 
 interface FirstReplyCandidate {
   id: string;
+  phoneHash: string;
   phoneEncrypted: string;
   state: string;
   closedAt: Date | null;
@@ -358,6 +398,7 @@ async function loadFirstReplyCandidates(
   return database
     .select({
       id: schema.smsIntakeSessions.id,
+      phoneHash: schema.smsIntakeSessions.phoneHash,
       phoneEncrypted: schema.smsIntakeSessions.phoneEncrypted,
       state: schema.smsIntakeSessions.state,
       closedAt: schema.smsIntakeSessions.closedAt,
@@ -435,7 +476,9 @@ async function recordFirstReplyOutbound(
     database,
     session,
     {
-      state: place ? 'awaiting_ages' : 'awaiting_place',
+      state: recoverySettled(session.firstTouch, session.sourceCode)
+        ? 'awaiting_ages'
+        : 'awaiting_place',
       ladderLanguage: language,
       firstTouch: session.firstTouch
         ? { ...session.firstTouch, place }

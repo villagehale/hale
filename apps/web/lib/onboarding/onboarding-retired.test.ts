@@ -49,6 +49,7 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/complete-onboarding.ts',
     'lib/onboarding/welcome-email.ts',
     'lib/onboarding/send-welcome.ts',
+    'lib/onboarding/trigger-discovery.ts',
   ])('%s no longer exists', (rel) => {
     expect(existsSync(webPath(rel))).toBe(false);
   });
@@ -59,7 +60,6 @@ describe('the /onboarding surface is gone', () => {
     'lib/onboarding/persist.ts',
     'lib/onboarding/children.ts',
     'lib/onboarding/founding.ts',
-    'lib/onboarding/trigger-discovery.ts',
   ])('%s survives — it was never the wizard’s', (rel) => {
     expect(existsSync(webPath(rel))).toBe(true);
   });
@@ -82,10 +82,10 @@ describe('every /onboarding URL forwards, permanently, off the app', () => {
     }
   });
 
-  it('leaves the /terms and /privacy forwards alone', async () => {
+  it('leaves the /terms forward alone, and /privacy to the app', async () => {
     const sources = (await redirects()).map((r) => r.source);
     expect(sources).toContain('/terms');
-    expect(sources).toContain('/privacy');
+    expect(sources).not.toContain('/privacy');
   });
 });
 

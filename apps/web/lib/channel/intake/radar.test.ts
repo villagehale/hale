@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { makeFakeDb } from './fakes.js';
 import {
@@ -25,28 +26,34 @@ import { YEAR_OPEN_SUBJECT } from './year-open';
 const NOW = new Date('2026-07-31T15:00:00.000Z'); // a Friday
 const FAMILY_ID = 'fam-1';
 
-function seedCandidate(db: ReturnType<typeof makeFakeDb>, overrides: Record<string, unknown> = {}) {
-  db.db.insert(schema.villageCandidates).values({
-    familyId: FAMILY_ID,
-    title: 'Library story time',
-    kind: 'activity',
-    summary: 'A weekly drop-in for little ones.',
-    source: 'llm_only',
-    confidence: 0.8,
-    priceLevel: 'free',
-    indoorOutdoor: 'indoor',
-    ageRange: '3-5 years',
-    childId: null,
-    eventDate: null,
-    seasons: null,
-    venueName: null,
-    ...overrides,
-  } as never);
+const freshPicks = new WeakMap<ReturnType<typeof makeFakeDb>, ActivityPick[]>();
+
+function setFinderPicks(
+  db: ReturnType<typeof makeFakeDb>,
+  overrides: Record<string, unknown> = {},
+) {
+  freshPicks.set(db, [
+    {
+      name: String(overrides.title ?? 'Library story time'),
+      ageFit: String(overrides.ageRange ?? '3-5 years'),
+      when: 'Saturday 10 a.m.',
+      price: 'free',
+      sourceName: 'Public Library',
+      source: 'web',
+      sourceUrl: 'https://library.example/storytime',
+      eventDate: '2026-08-01',
+    },
+  ]);
+}
+
+function finder(db: ReturnType<typeof makeFakeDb>): ActivityFinder {
+  return { find: async () => ({ found: true, picks: freshPicks.get(db) ?? [] }) };
 }
 
 function composer(db: ReturnType<typeof makeFakeDb>) {
   return createRadarComposer({
     database: db.db,
+    yearFinder: finder(db),
     weather: fakeWeather([]),
     client: null,
     now: () => NOW,
@@ -55,15 +62,30 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
 
 const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
+const TOWNS: Record<string, string> = { M5V: 'Toronto', L7G: 'Halton Hills', M1B: 'Toronto' };
+
+/** The area, the place the finds search, and the family zone, as intake hands them in. */
+function at(areaCoarse: string | null) {
+  const town = areaCoarse === null ? undefined : TOWNS[areaCoarse];
+  return {
+    areaCoarse,
+    place:
+      town === undefined
+        ? ({ status: 'unknown', reason: 'no_postal' } as const)
+        : ({ status: 'known', town } as const),
+    timeZone: 'America/Toronto',
+  };
+}
+
 describe('createRadarComposer', () => {
-  it('names a real age-fit session and not the registration date beside it', async () => {
+  it('names a fresh age-fit session without a stored registration date', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: 'M5V',
+      ...at('M5V'),
     });
 
     expect(payload.message).toContain('Library story time');
@@ -82,7 +104,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: 'L7G',
+      ...at('L7G'),
     });
 
     expect(payload.weekendPickOffered).toBe(false);
@@ -90,15 +112,16 @@ describe('createRadarComposer', () => {
 
   it('does not call the voice model', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
     const create = vi.fn();
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: { messages: { create } } as unknown as AgentClient,
       now: () => NOW,
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('M5V') });
 
     expect(create).not.toHaveBeenCalled();
     expect(payload.message).toContain('Library story time');
@@ -112,7 +135,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: 'L7G',
+      ...at('L7G'),
     });
 
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
@@ -134,10 +157,11 @@ describe('createRadarComposer', () => {
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-17T15:00:00.000Z'),
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('L7G') });
 
     // #868: no fixed empty-radar line; an empty search hands the voice nothing.
     expect(payload.message).toBe('');
@@ -158,10 +182,11 @@ describe('createRadarComposer', () => {
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-23T15:00:00.000Z'),
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'L7G' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('L7G') });
 
     expect(payload.message).not.toContain('registration already opened');
     expect(payload.message).not.toContain('Winter 2027');
@@ -175,10 +200,11 @@ describe('createRadarComposer', () => {
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: fakeWeather([]),
       client: null,
       now: () => new Date('2026-09-17T15:00:00.000Z'),
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M1B' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('M1B') });
 
     expect(payload.message).not.toContain('registration opened Sep 8, 7:00 a.m.');
     expect(payload.message).not.toContain('Sept 9');
@@ -196,7 +222,7 @@ describe('createRadarComposer', () => {
         { name: 'Theo', ageMonths: 36, agePrecision: 'years' },
         { name: 'Cruz', ageMonths: 18, agePrecision: 'months' },
       ],
-      areaCoarse: 'M1B',
+      ...at('M1B'),
     });
 
     // Nothing read, nothing past: the honest empty-handed answer, with the first-find
@@ -216,7 +242,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: 'M5V',
+      ...at('M5V'),
     });
 
     expect(payload.message).not.toContain('Sept 9');
@@ -229,12 +255,12 @@ describe('createRadarComposer', () => {
     db.db
       .insert(schema.children)
       .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never);
-    seedCandidate(db, { ageRange: '6-24 months' });
+    setFinderPicks(db, { ageRange: '6-24 months' });
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
-      areaCoarse: 'L7G',
+      ...at('L7G'),
     });
 
     // The first find IS the pre-consent message — the watch offer rides on it. An
@@ -257,7 +283,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
-      areaCoarse: 'L7G',
+      ...at('L7G'),
     });
 
     // Halton Hills: no civic adapter, no registration windows, nothing discovered yet.
@@ -275,7 +301,7 @@ describe('createRadarComposer', () => {
 
   it('tells no checkpoint when the two leads already fill the message', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
     // Four years old in Toronto: three Ontario rows admit her, and none of them fits.
     db.db
       .insert(schema.children)
@@ -284,7 +310,7 @@ describe('createRadarComposer', () => {
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: 'M5V',
+      ...at('M5V'),
     });
 
     expect(payload.itemCount).toBe(1);
@@ -296,34 +322,35 @@ describe('createRadarComposer', () => {
 
   it('sends only the COARSE area to the weather port — never a postal code (rule #1)', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
     const getDailyOutlook = vi.fn(
       async (_area: string, _days: number): Promise<DailyOutlook[]> => [],
     );
 
     await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: { getDailyOutlook },
       client: null,
       now: () => NOW,
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('M5V') });
 
     expect(getDailyOutlook).toHaveBeenCalledTimes(1);
     expect(getDailyOutlook.mock.calls[0]?.[0]).toBe('M5V');
   });
 
-  it('never surfaces a candidate belonging to a 13+ child (rule #1)', async () => {
+  it('never searches on behalf of a 13+ child (rule #1)', async () => {
     const db = makeFakeDb();
     const [teen] = (await db.db
       .insert(schema.children)
       .values({ familyId: FAMILY_ID, name: 'Ava', dateOfBirth: '2011-01-01' } as never)
       .returning()) as Array<{ id: string }>;
-    seedCandidate(db, { title: 'Teen climbing night', childId: teen?.id, ageRange: 'all ages' });
+    setFinderPicks(db, { title: 'Teen climbing night', childId: teen?.id, ageRange: 'all ages' });
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Ava', ageMonths: 180, agePrecision: 'years' }],
-      areaCoarse: 'M5V',
+      ...at('M5V'),
     });
 
     expect(payload.message).not.toContain('Teen climbing night');
@@ -336,13 +363,50 @@ describe('createRadarComposer', () => {
     expect(payload.itemCount).toBe(0);
   });
 
+  it('searches the place it is handed, for a family outside the GTA', async () => {
+    const db = makeFakeDb();
+    const towns: string[] = [];
+    await createRadarComposer({
+      database: db.db,
+      yearFinder: {
+        find: async (query) => {
+          towns.push(query.town);
+          return { found: false, reason: 'no_picks' };
+        },
+      },
+      weather: fakeWeather([]),
+      client: null,
+      now: () => NOW,
+    }).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: '981',
+      place: { status: 'known', town: 'Seattle, Washington, United States' },
+      timeZone: 'America/Los_Angeles',
+    });
+    expect(towns).toEqual(['Seattle, Washington, United States']);
+  });
+
+  it('never searches when the family has no place', async () => {
+    const db = makeFakeDb();
+    const find = vi.fn<ActivityFinder['find']>();
+    await createRadarComposer({
+      database: db.db,
+      yearFinder: { find },
+      weather: fakeWeather([]),
+      client: null,
+      now: () => NOW,
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at(null) });
+    expect(find).not.toHaveBeenCalled();
+  });
+
   it('still composes when the family has no postal-derived area at all', async () => {
     const db = makeFakeDb();
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
       children: [MAYA],
-      areaCoarse: null,
+      ...at(null),
     });
 
     expect(payload.message).toBe('');
@@ -351,10 +415,11 @@ describe('createRadarComposer', () => {
 
   it('never lets a weather outage fail the intake', async () => {
     const db = makeFakeDb();
-    seedCandidate(db);
+    setFinderPicks(db);
 
     const payload = await createRadarComposer({
       database: db.db,
+      yearFinder: finder(db),
       weather: {
         getDailyOutlook: async () => {
           throw new Error('open-meteo is down');
@@ -362,7 +427,7 @@ describe('createRadarComposer', () => {
       },
       client: null,
       now: () => NOW,
-    }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
+    }).compose({ familyId: FAMILY_ID, children: [MAYA], ...at('M5V') });
 
     expect(payload.message).toContain('Library story time');
   });
@@ -399,7 +464,7 @@ describe('createRadarComposer', () => {
     }).compose({
       familyId: FAMILY_ID,
       children: [{ name: 'Seb', ageMonths: 17, agePrecision: 'months' }],
-      areaCoarse: 'L7G',
+      ...at('L7G'),
     });
 
     expect(payload.findWon).toBe(true);
@@ -408,6 +473,42 @@ describe('createRadarComposer', () => {
     expect(payload.message).not.toMatch(/registration opens|registration opened/i);
     expect(payload.message).not.toContain('Seb');
     expect(payload.message.toLowerCase()).not.toContain('activity finder');
+  });
+});
+
+describe('createRadarComposer age fit for a stated age', () => {
+  const babyCircle: ActivityPick = {
+    name: 'Baby rhyme circle',
+    ageFit: 'Ages 0-1',
+    when: 'Tuesdays',
+    price: 'free',
+    sourceName: 'Town library',
+    source: 'web',
+  };
+  const toddlerGym: ActivityPick = { ...babyCircle, name: 'Toddler gym', ageFit: '1-3 years' };
+
+  async function titlesFor(child: { ageMonths: number; agePrecision: 'months' | 'years' }) {
+    const db = makeFakeDb();
+    const payload = await createRadarComposer({
+      database: db.db,
+      weather: fakeWeather([]),
+      client: null,
+      now: () => NOW,
+      yearFinder: { find: async () => ({ found: true, picks: [babyCircle, toddlerGym] }) },
+    }).compose({ familyId: FAMILY_ID, children: [{ name: 'Wren', ...child }], ...at('L7G') });
+    return payload.titles;
+  }
+
+  it('reads "18 months" as the age the parent narrowed to, so Ages 0-1 is left out', async () => {
+    expect(await titlesFor({ ageMonths: 18, agePrecision: 'months' })).toEqual(['Toddler gym']);
+  });
+
+  it('keeps the tolerance for an age stated in years (control)', async () => {
+    // "she's 1" is 12 to 23 months, so Ages 0-1 may still fit.
+    expect(await titlesFor({ ageMonths: 12, agePrecision: 'years' })).toEqual([
+      'Baby rhyme circle',
+      'Toddler gym',
+    ]);
   });
 });
 

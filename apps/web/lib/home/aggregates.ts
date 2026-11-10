@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
-import { db as defaultDb } from '~/lib/db';
 import { companionForFamily } from '~/lib/companion/queries';
 import { _internal as recentInternal } from '~/lib/companion/recent-logs';
+import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { listFamilySavedCandidateIds } from '~/lib/village/save';
 

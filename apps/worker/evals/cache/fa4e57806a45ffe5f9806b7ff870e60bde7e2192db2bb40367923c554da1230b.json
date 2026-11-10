@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNMmR9YYooPQwaBuTF2v",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS8wUKEAgTGAI4AUIIdGhpbmtpbmcSDMzJqEoFP2uwBTFniBoMCetDkN5JhOfQSTtcIjDQQQc5STVfiSqG4sYBXbBnJyYNvej8yTEkvv4vO7FjHbERjlfzw9f6S3kOYMJDgGYqkAWJnx6+Ju7EZAmJo1tY/lYWt18ajQi/YG6PTux2G6wYlBDSVromgUWt2ShGLym+7z1ckwE+9MjuDvGcsuh4AnxvlVeCEkSAftOg6qgJkAZdVLjPzKs0995bSMca6XVrKJpyznLg+b0dFBNjZwA+gSZiX87BM2eyTgDGmvup/w6Rv/nEZwH9KebRwgAPh8mZZ1r/G2PX5LSZK4f1xiTTLL2o6GbYGRZHhPHmIfolx+Kd53UxOWpSpzfm+DsuKAaSMXPD4iuoXxOCvkFWhVBkxQRANxwl2R5QYsBpAWygic3cWX/6ks3dRiRHDrbUb86AiNdtVA25OSNYqtx6WXirKf2GiiPapwKBfOESvd1cdsjx96l8S2nxQysYHjtIQDTYDIj15wdryqi5TII669DDFeQqHSQ/mNwgXwmtf9gGkAeENekddvN2TJ3pepTXmtE1senvLCxVQiOqYLD9uGXuISO1axk6akaBvq8W6F2x67sJPsG4amVYpVmsmH3bIOWCEpoPQKT0g7BTDpO6P1hJZLsrVhhat3kpJg14AfXSStaUmZVgP0Zo8Vool3lwoRJmu0sMrZG8oRUegFx1X85aBlFnUAALkQ4cgRU0LLI++tZK5urFlPScVWtgtu8TVCUq1ZDZo4wEgNhNkZdLU5Ru0xQil2GZJx5VHdzvDrhSJSTBpiq3glnCv6CnJKDAmh6Du56U/U4WkqW1S/tkTtwrhJ0G3zKL+PnbM83BLFBtovbCiMbj5HgTK2wg9AC2EQRLxrGdRshxnCCWzJ2+YBRxQaHOlvSl4EGN5OkNctgevXo0pgNlVWAA3kkdYVjfu499BYvkycka8LNcIpFGN/BK4u/wYE/S3IEK2ftkfNhOEea1YhgB"
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm on it. For Remy, Tiny Tumblers parent & tot runs Saturday mornings this fall, their page says, though it didn't list a price."
+      }
+    ],
+    "usage": {
+      "input_tokens": 812,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20769,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 140,
+      "output_tokens_details": {
+        "thinking_tokens": 56
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2039
+}

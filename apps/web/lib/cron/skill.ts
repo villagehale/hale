@@ -23,10 +23,6 @@ export function loadInferMemorySkill(): Promise<Skill> {
   return loadCronSkill('infer-memory');
 }
 
-export function loadReminderVoiceSkill(): Promise<Skill> {
-  return loadCronSkill('reminder-voice');
-}
-
 export function loadRadarVoiceSkill(): Promise<Skill> {
   return loadCronSkill('radar-voice');
 }

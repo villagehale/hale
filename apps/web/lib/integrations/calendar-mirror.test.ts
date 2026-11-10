@@ -22,6 +22,117 @@ function item(overrides: Record<string, unknown> = {}): Record<string, unknown> 
 }
 
 describe('classifyCalendarMirrorItem', () => {
+  it('hands the description to the notes reader in memory, and reads no facts itself (VIL-468)', () => {
+    const classified = classifyCalendarMirrorItem(
+      item({ description: '  Coach notes here.\nParking: Lot B  ' }),
+      NOW,
+      TZ,
+    );
+    expect(classified).toMatchObject({
+      kind: 'eligible',
+      candidate: { description: 'Coach notes here.\nParking: Lot B' },
+    });
+    expect(classified.kind === 'eligible' && 'notes' in classified.candidate).toBe(false);
+    const plain = classifyCalendarMirrorItem(item(), NOW, TZ);
+    expect(plain.kind === 'eligible' && 'description' in plain.candidate).toBe(false);
+  });
+
+  it.each([
+    ['no one else on it', {}, 'own'],
+    ['only the parent on it', { attendees: [{ self: true, responseStatus: 'accepted' }] }, 'own'],
+    [
+      'the parent organized it',
+      {
+        organizer: { self: true },
+        attendees: [{ self: true }, { email: 'a@example.test', responseStatus: 'needsAction' }],
+      },
+      'organizer',
+    ],
+    [
+      "the parent accepted someone else's invite",
+      {
+        organizer: { email: 'a@example.test' },
+        attendees: [{ self: true, responseStatus: 'accepted' }, { email: 'a@example.test' }],
+      },
+      'accepted',
+    ],
+    [
+      "someone else's invite, unanswered",
+      {
+        organizer: { email: 'a@example.test' },
+        attendees: [{ self: true, responseStatus: 'needsAction' }, { email: 'a@example.test' }],
+      },
+      'invited',
+    ],
+    [
+      "someone else's invite, tentative",
+      {
+        organizer: { email: 'a@example.test' },
+        attendees: [{ self: true, responseStatus: 'tentative' }, { email: 'a@example.test' }],
+      },
+      'invited',
+    ],
+    [
+      "a stranger's invite with only the parent's row on it, unanswered",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'needsAction' }],
+      },
+      'invited',
+    ],
+    [
+      "a stranger's invite with only the parent's row on it, tentative",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'tentative' }],
+      },
+      'invited',
+    ],
+    [
+      "a stranger's event with no attendee list",
+      { organizer: { email: 'x@example.test' } },
+      'invited',
+    ],
+    [
+      "a stranger's invite with only the parent's row on it, accepted",
+      {
+        organizer: { email: 'x@example.test' },
+        attendees: [{ self: true, responseStatus: 'accepted' }],
+      },
+      'accepted',
+    ],
+    [
+      'only the parent on it, unanswered, no organizer field',
+      { attendees: [{ self: true, responseStatus: 'needsAction' }] },
+      'invited',
+    ],
+    ['the parent organized it with no one else on it', { organizer: { self: true } }, 'organizer'],
+    [
+      'the parent organized it and kept guests from editing it',
+      { organizer: { self: true }, guestsCanModify: false },
+      'organizer',
+    ],
+    [
+      'the parent organized it and let the guests edit it',
+      {
+        organizer: { self: true },
+        guestsCanModify: true,
+        attendees: [{ self: true, responseStatus: 'accepted' }, { email: 'a@example.test' }],
+      },
+      'accepted',
+    ],
+    [
+      'other people on it and no answer from the parent at all',
+      { organizer: { email: 'a@example.test' }, attendees: [{ email: 'a@example.test' }] },
+      'invited',
+    ],
+  ])('reads where the parent stands when %s (VIL-633)', (_name, overrides, standing) => {
+    expect(classifyCalendarMirrorItem(item(overrides), NOW, TZ)).toMatchObject({
+      kind: 'eligible',
+      candidate: { standing },
+    });
+  });
+
   it('keeps a timed event the parent has not declined', () => {
     const classified = classifyCalendarMirrorItem(item(), NOW, TZ);
     expect(classified).toMatchObject({
@@ -137,6 +248,7 @@ describe('knownEventCovers', () => {
     startsAt: new Date(LATER),
     endsAt: null,
     location: null,
+    standing: 'own' as const,
   };
 
   it('matches a Hale row with the same title and a start within a minute', () => {

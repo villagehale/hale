@@ -84,7 +84,7 @@ All of these are Vercel Cron routes under `apps/web/app/api/cron`, listed in `ap
 
 | Route | Schedule | What it does for iMessage |
 | --- | --- | --- |
-| `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. |
+| `/api/cron/drain` | every minute | Drains the queue. Onboarding replies are sent inside the webhook. Replies after onboarding are queued, then drained here. Each run expires active jobs past their expiry before it fetches, so one stuck inbound job cannot stall every family until queue-maintenance is called. |
 | `/api/cron/inbound-canary` | every 10 minutes | Posts a Linq-signed inbound at the real webhook and checks the previous tick's `channel_messages` row (`provider_message_id` prefix `hale-canary-`). |
 | `/api/cron/queue-maintenance` | every 10 minutes | Re-drives inbound `channel_messages` rows whose `handed_off_at` is still null, and pages #ops when the Linq line crosses 70% or 90% of its chat IDs ([linq-chat-capacity.md](linq-chat-capacity.md)). |
 | `/api/cron/intake-sitting-reminder` | hourly | One nudge for a parent who stopped on the place or ages question. |
@@ -117,11 +117,21 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_COPARENT` | `off` | In-group co-parent seating stops. Any other value, including empty, leaves it on. |
 | `LINQ_GROUP_MEMBERS_ENABLED` | empty | Extra household seats stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_ONBOARDING_V2_ENABLED` | empty | Hale's own add to a group is acknowledged and nothing else happens (`signal_from_me`; a `chat.created` answers `chat.created`). No roster is read and no chat is claimed. Rosters and claims already written stay. Trimmed `true` enables it. |
+| `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them only when `VERCEL_ENV` is `preview`. Production stays dark. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
+| `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 
 Migrations are additive. A bad migration is fixed forward. Do not drop columns from this runbook.
+
+## Rotating APP_ENCRYPTION_KEY
+
+There is no re-encryption or re-index job yet, so a rotation breaks what the old key made. Rotate it only if the key leaked.
+
+- Encrypted values (phone numbers, signup vaults, invites) no longer decrypt.
+- Every blind index changes: phone, email, Google account, Linq chat and email-alert keys. A parent's texts no longer match their number until it is re-indexed.
+- A calendar add drafted in a household group is keyed by its chat (`chatKey`). After a rotation no chat matches it, so it is listed nowhere and cannot be approved. It fails closed: nothing is placed. The parent asks again and a new draft is made.
 
 ## On call
 
@@ -160,7 +170,7 @@ A Linq chat-ID capacity page has its own runbook: [linq-chat-capacity.md](linq-c
 
 **Slack #ops.** A thrown webhook posts `Hale ALERT: linq_inbound threw`. The page is at most once per 15 minutes per instance. The inbound canary and cron dead-man also post here. The webhook URL is `OPS_SLACK_WEBHOOK_URL`.
 
-**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. Counts only. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
+**Daily #ops post.** At 13:14 UTC, `/api/cron/ops-daily` posts one `Hale daily` summary. The 24h block is over every real family (probe-range households, `METRICS_EXCLUDED_FAMILY_IDS` and the founder excluded): reply p50/p95, gaps over 15 minutes, unanswered steps, failed and held sends, failed turns, cache reads and recorded spend. The same post carries the founder counts: W4 retention and open promises as of the window end, and over the trailing 7 days the intake funnel with median time to first answer, medical answers that used the fixed 811/911 line, whether the registration re-verify sweep ran (and the tally that run recorded), plus the database's Linq chat-ID count against the 200 limit. It also reports the inbound queue: jobs still active past their expiry, unfinished jobs, and the age of the oldest. A stalled queue is named in that line. Counts only. Slack only — this post does not email. Set `METRICS_EXCLUDED_FAMILY_IDS` to the QA family ids before the first post; an empty list counts those households. A post that did not land is retried by `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/ops-daily`; a day already posted answers `already_posted`. It needs `APP_ENCRYPTION_KEY` and throws without it.
 
 ## Linq webhook failure
 
@@ -194,3 +204,69 @@ Also confirm `LINQ_API_KEY` and `LINQ_FROM_E164` are set. The door stays dark if
 2. Page **@barton**.
 3. Page **@eugene** when the log is `model_failed`, a 500 from the database, or a migration.
 4. Page **@noah** when the fix is a code change on the webhook, the intake machine, or a flag rollback that needs a deploy.
+
+## Poster QR codes and PostHog attribution
+
+Every poster QR URL carries `?src=<poster-slug>&utm_source=poster&utm_medium=qr&utm_campaign=<poster-slug>`. The site reads `s`, then `src`, then (on `utm_source=poster` links only) `utm_campaign` (apps/site/lib/analytics/source-code.ts), keeps the first touch in sessionStorage, and registers it as the `source_code` super property on every site event. The text CTA pre-writes `(via <slug>)` into the SMS body (apps/site/lib/text-entry.ts `buildSmsBody`); intake reads it back (`sourceCodeFromBody`) onto `first_text_received.source_code` and `$set_once.first_source_code`. A slug must be registered in `SOURCE_VENUES` (apps/web/lib/channel/intake/copy.ts) and match `^[a-z0-9]+(-[a-z0-9]+)*$` (max 48).
+
+| slug | poster location | QR URL |
+|---|---|---|
+| `earlyon-richmondhill` | Richmond Hill | `https://villagehale.com/?src=earlyon-richmondhill&utm_source=poster&utm_medium=qr&utm_campaign=earlyon-richmondhill` |
+| `earlyon-georgetown` | Georgetown | `https://villagehale.com/?src=earlyon-georgetown&utm_source=poster&utm_medium=qr&utm_campaign=earlyon-georgetown` |
+| `earlyon-acton` | Acton | `https://villagehale.com/?src=earlyon-acton&utm_source=poster&utm_medium=qr&utm_campaign=earlyon-acton` |
+| `ossington` | Ossington | `https://villagehale.com/?src=ossington&utm_source=poster&utm_medium=qr&utm_campaign=ossington` |
+| `markham` | Markham | `https://villagehale.com/?src=markham&utm_source=poster&utm_medium=qr&utm_campaign=markham` |
+| `earlyon-markham` | Markham | `https://villagehale.com/?src=earlyon-markham&utm_source=poster&utm_medium=qr&utm_campaign=earlyon-markham` |
+| `poster-bayview-sheppard` | Bayview & Sheppard | `https://villagehale.com/?src=poster-bayview-sheppard&utm_source=poster&utm_medium=qr&utm_campaign=poster-bayview-sheppard` |
+| `poster-yonge-sheppard` | Yonge & Sheppard | `https://villagehale.com/?src=poster-yonge-sheppard&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-sheppard` |
+| `poster-yonge-hollywood` | Yonge & Hollywood | `https://villagehale.com/?src=poster-yonge-hollywood&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-hollywood` |
+| `poster-north-york-centre` | North York Centre | `https://villagehale.com/?src=poster-north-york-centre&utm_source=poster&utm_medium=qr&utm_campaign=poster-north-york-centre` |
+| `poster-yonge-ellerslie` | Yonge & Ellerslie | `https://villagehale.com/?src=poster-yonge-ellerslie&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-ellerslie` |
+| `poster-kensington` | Kensington Market | `https://villagehale.com/?src=poster-kensington&utm_source=poster&utm_medium=qr&utm_campaign=poster-kensington` |
+| `poster-spadina-dundas` | Spadina & Dundas | `https://villagehale.com/?src=poster-spadina-dundas&utm_source=poster&utm_medium=qr&utm_campaign=poster-spadina-dundas` |
+| `poster-grange-park` | Grange Park | `https://villagehale.com/?src=poster-grange-park&utm_source=poster&utm_medium=qr&utm_campaign=poster-grange-park` |
+| `poster-queen-john` | Queen & John | `https://villagehale.com/?src=poster-queen-john&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-john` |
+| `poster-queen-spadina` | Queen & Spadina | `https://villagehale.com/?src=poster-queen-spadina&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-spadina` |
+| `poster-queen-bathurst` | Queen & Bathurst | `https://villagehale.com/?src=poster-queen-bathurst&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-bathurst` |
+| `poster-leslieville-carlaw` | Leslieville - Queen & Carlaw | `https://villagehale.com/?src=poster-leslieville-carlaw&utm_source=poster&utm_medium=qr&utm_campaign=poster-leslieville-carlaw` |
+| `poster-leslieville-jones` | Leslieville - Queen & Jones | `https://villagehale.com/?src=poster-leslieville-jones&utm_source=poster&utm_medium=qr&utm_campaign=poster-leslieville-jones` |
+| `poster-queen-coxwell` | Queen & Coxwell | `https://villagehale.com/?src=poster-queen-coxwell&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-coxwell` |
+| `poster-beaches-woodbine` | The Beaches - Queen & Woodbine | `https://villagehale.com/?src=poster-beaches-woodbine&utm_source=poster&utm_medium=qr&utm_campaign=poster-beaches-woodbine` |
+| `poster-beaches-lee` | The Beaches - Queen & Lee | `https://villagehale.com/?src=poster-beaches-lee&utm_source=poster&utm_medium=qr&utm_campaign=poster-beaches-lee` |
+| `poster-high-park-humberside` | High Park & Humberside | `https://villagehale.com/?src=poster-high-park-humberside&utm_source=poster&utm_medium=qr&utm_campaign=poster-high-park-humberside` |
+| `poster-high-park-annette` | High Park & Annette | `https://villagehale.com/?src=poster-high-park-annette&utm_source=poster&utm_medium=qr&utm_campaign=poster-high-park-annette` |
+| `poster-junction-pacific` | The Junction - Dundas & Pacific | `https://villagehale.com/?src=poster-junction-pacific&utm_source=poster&utm_medium=qr&utm_campaign=poster-junction-pacific` |
+| `poster-junction-clendenan` | The Junction - Dundas & Clendenan | `https://villagehale.com/?src=poster-junction-clendenan&utm_source=poster&utm_medium=qr&utm_campaign=poster-junction-clendenan` |
+| `poster-leaside-laird` | Leaside - Eglinton & Laird | `https://villagehale.com/?src=poster-leaside-laird&utm_source=poster&utm_medium=qr&utm_campaign=poster-leaside-laird` |
+| `poster-leaside-rumsey` | Leaside - Millwood & Rumsey | `https://villagehale.com/?src=poster-leaside-rumsey&utm_source=poster&utm_medium=qr&utm_campaign=poster-leaside-rumsey` |
+| `poster-bayview-belsize` | Bayview & Belsize | `https://villagehale.com/?src=poster-bayview-belsize&utm_source=poster&utm_medium=qr&utm_campaign=poster-bayview-belsize` |
+| `poster-bayview-fleming` | Bayview & Fleming | `https://villagehale.com/?src=poster-bayview-fleming&utm_source=poster&utm_medium=qr&utm_campaign=poster-bayview-fleming` |
+| `poster-queen-broadview` | Riverdale - Queen & Broadview | `https://villagehale.com/?src=poster-queen-broadview&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-broadview` |
+| `poster-queen-logan` | Riverdale - Queen & Logan | `https://villagehale.com/?src=poster-queen-logan&utm_source=poster&utm_medium=qr&utm_campaign=poster-queen-logan` |
+| `poster-danforth-broadview` | The Danforth - Broadview | `https://villagehale.com/?src=poster-danforth-broadview&utm_source=poster&utm_medium=qr&utm_campaign=poster-danforth-broadview` |
+| `poster-danforth-playter` | The Danforth - Playter Estates | `https://villagehale.com/?src=poster-danforth-playter&utm_source=poster&utm_medium=qr&utm_campaign=poster-danforth-playter` |
+| `poster-danforth-pape` | The Danforth - 975 Danforth Ave | `https://villagehale.com/?src=poster-danforth-pape&utm_source=poster&utm_medium=qr&utm_campaign=poster-danforth-pape` |
+| `poster-roncesvalles-marion` | Roncesvalles - Marion | `https://villagehale.com/?src=poster-roncesvalles-marion&utm_source=poster&utm_medium=qr&utm_campaign=poster-roncesvalles-marion` |
+| `poster-roncesvalles-galley` | Roncesvalles - Galley | `https://villagehale.com/?src=poster-roncesvalles-galley&utm_source=poster&utm_medium=qr&utm_campaign=poster-roncesvalles-galley` |
+| `poster-roncesvalles-fermanagh` | Roncesvalles - Fermanagh | `https://villagehale.com/?src=poster-roncesvalles-fermanagh&utm_source=poster&utm_medium=qr&utm_campaign=poster-roncesvalles-fermanagh` |
+| `poster-roncesvalles-grenadier` | Roncesvalles - Grenadier | `https://villagehale.com/?src=poster-roncesvalles-grenadier&utm_source=poster&utm_medium=qr&utm_campaign=poster-roncesvalles-grenadier` |
+| `poster-roncesvalles-howard-park` | Roncesvalles - Howard Park | `https://villagehale.com/?src=poster-roncesvalles-howard-park&utm_source=poster&utm_medium=qr&utm_campaign=poster-roncesvalles-howard-park` |
+| `poster-bloor-parkside` | High Park - Bloor & Parkside | `https://villagehale.com/?src=poster-bloor-parkside&utm_source=poster&utm_medium=qr&utm_campaign=poster-bloor-parkside` |
+| `poster-bloor-west-glendonwynne` | Bloor West Village - Glendonwynne | `https://villagehale.com/?src=poster-bloor-west-glendonwynne&utm_source=poster&utm_medium=qr&utm_campaign=poster-bloor-west-glendonwynne` |
+| `poster-bloor-west-willard` | Bloor West Village - Willard | `https://villagehale.com/?src=poster-bloor-west-willard&utm_source=poster&utm_medium=qr&utm_campaign=poster-bloor-west-willard` |
+| `poster-bloor-west-riverview` | Bloor West Village - Riverview Gardens | `https://villagehale.com/?src=poster-bloor-west-riverview&utm_source=poster&utm_medium=qr&utm_campaign=poster-bloor-west-riverview` |
+| `poster-bloor-west-old-mill` | Old Mill & Swansea | `https://villagehale.com/?src=poster-bloor-west-old-mill&utm_source=poster&utm_medium=qr&utm_campaign=poster-bloor-west-old-mill` |
+| `poster-yonge-davisville` | Davisville - Yonge & Davisville | `https://villagehale.com/?src=poster-yonge-davisville&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-davisville` |
+| `poster-yonge-millwood` | Davisville - Yonge & Millwood | `https://villagehale.com/?src=poster-yonge-millwood&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-millwood` |
+| `poster-mt-pleasant-manor` | Mount Pleasant - Manor Rd | `https://villagehale.com/?src=poster-mt-pleasant-manor&utm_source=poster&utm_medium=qr&utm_campaign=poster-mt-pleasant-manor` |
+| `poster-yonge-eglinton` | Yonge & Eglinton | `https://villagehale.com/?src=poster-yonge-eglinton&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-eglinton` |
+| `poster-yonge-lawrence-park` | Lawrence Park - 3060 Yonge | `https://villagehale.com/?src=poster-yonge-lawrence-park&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-lawrence-park` |
+| `poster-yonge-bedford-park` | Bedford Park - Yonge & Woburn | `https://villagehale.com/?src=poster-yonge-bedford-park&utm_source=poster&utm_medium=qr&utm_campaign=poster-yonge-bedford-park` |
+| `poster-beaches-kew` | The Beaches - Kew Gardens | `https://villagehale.com/?src=poster-beaches-kew&utm_source=poster&utm_medium=qr&utm_campaign=poster-beaches-kew` |
+| `poster-kingston-waverley` | The Beaches - Kingston & Waverley | `https://villagehale.com/?src=poster-kingston-waverley&utm_source=poster&utm_medium=qr&utm_campaign=poster-kingston-waverley` |
+| `poster-upper-beaches` | Upper Beaches | `https://villagehale.com/?src=poster-upper-beaches&utm_source=poster&utm_medium=qr&utm_campaign=poster-upper-beaches` |
+| `poster-high-park-glenlake` | High Park - Glenlake | `https://villagehale.com/?src=poster-high-park-glenlake&utm_source=poster&utm_medium=qr&utm_campaign=poster-high-park-glenlake` |
+| `poster-high-park-dundas` | High Park - Dundas | `https://villagehale.com/?src=poster-high-park-dundas&utm_source=poster&utm_medium=qr&utm_campaign=poster-high-park-dundas` |
+| `poster-st-clair-christie` | St Clair West - Christie | `https://villagehale.com/?src=poster-st-clair-christie&utm_source=poster&utm_medium=qr&utm_campaign=poster-st-clair-christie` |
+| `poster-st-clair-rushton` | St Clair West - Rushton | `https://villagehale.com/?src=poster-st-clair-rushton&utm_source=poster&utm_medium=qr&utm_campaign=poster-st-clair-rushton` |
+| `poster-st-clair-atlas` | St Clair West - Atlas | `https://villagehale.com/?src=poster-st-clair-atlas&utm_source=poster&utm_medium=qr&utm_campaign=poster-st-clair-atlas` |

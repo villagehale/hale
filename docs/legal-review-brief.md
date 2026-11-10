@@ -28,7 +28,6 @@ We drafted these for review. We need them validated and corrected before public 
 - **Anthropic** — AI model processing — **United States**.
 - **Vercel** — app hosting + cookieless analytics — **US / global edge**.
 - **Google Maps/Places** — coarse-area + public-venue lookups only (never the precise home).
-- **Resend** — transactional/digest email — **US**.
 - **PostHog** — product analytics; coarse non-identifying events only (no child data, no message content; opaque id).
 - **Langfuse** — AI observability; teen raw content + contact details masked before sending.
 

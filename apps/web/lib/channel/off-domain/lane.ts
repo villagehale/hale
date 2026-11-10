@@ -1,10 +1,13 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, desc, eq, inArray, lte } from 'drizzle-orm';
-import { replyLanguage } from '~/lib/channel/language';
+import type { HealthPlace } from '~/lib/channel/health-line';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { isUndefinedTable } from '~/lib/channel/linq/roster';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { type CrisisReplyMark, noteCrisisReplyLeaving } from '~/lib/monitoring/failure-page';
 import {
   type FamilyFacts,
   type FamilyPlace,
@@ -21,8 +24,13 @@ import { referralReply } from './copy';
 import { type MedicalComposer, type MedicalReplySource, createMedicalComposer } from './medical';
 import { type Moment, type MomentWriter, createMomentReply } from './moment-reply';
 import { type MomentPlace, UNKNOWN_MOMENT_PLACE } from './moment-request';
-import { readFamilyPlace } from './place';
-import { type InboundLaneScreen, type LaneScreenFallback, createInboundLaneScreen } from './screen';
+import { readFamilyPlace, readHealthPlace } from './place';
+import {
+  type InboundLaneScreen,
+  type LaneReading,
+  type LaneScreenFallback,
+  createInboundLaneScreen,
+} from './screen';
 
 /**
  * VIL-273 — the off-domain capability lane, end to end minus the sending.
@@ -91,7 +99,13 @@ export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
    * existed — carrying WHY, when the screen could not run (rule #11).
    * `language` is present only when the screen read a tag. */
-  | { status: 'in_domain'; fallback: LaneScreenFallback | null; language?: string }
+  | {
+      status: 'in_domain';
+      fallback: LaneScreenFallback | null;
+      language?: string;
+      /** VIL-572 · a language the parent explicitly asked for. Omitted otherwise. */
+      languageRequest?: string;
+    }
   /** The lane finished the turn itself. See the module note on why this kept its name
    * now that one of the three branches is an answer rather than a refusal. */
   | {
@@ -102,6 +116,8 @@ export type OffDomainVerdict =
       replySource: ReplySource;
       /** The BCP-47 tag the screen read, when it read one. Omitted otherwise. */
       language?: string;
+      /** VIL-572 · a language the parent explicitly asked for. Omitted otherwise. */
+      languageRequest?: string;
       /**
        * The medical lane's own outcome, for the router to stamp on the reply it sends —
        * and null on every other branch, which is what MARKS a sent row as a medical
@@ -121,6 +137,9 @@ export type OffDomainVerdict =
        * sets it.
        */
       pendingAsk: PendingAsk | null;
+      /** This reply answers a crisis ({@link crisisMarkingLane}): the router marks it
+       * answered once the transport accepted it, and never before (VIL-602). */
+      crisisReply?: true;
     }
   /** The moment reply could not be written. Nothing preset goes out, and the ordinary
    * answer does not resume. */
@@ -178,6 +197,10 @@ export interface OffDomainPorts {
    * the family is. Non-nullable (rule #11): a place that is not known is an answer this
    * read gives by name, not a reader that is missing. */
   place(familyId: string): Promise<FamilyPlace>;
+  /** The country, and for Canada the province, that picks the health line a medical
+   * answer and the provider door may name (VIL-589). Null is a family Hale cannot place,
+   * which is answered as one outside Ontario. Read only in the parent's own thread. */
+  healthPlace(familyId: string): Promise<HealthPlace | null>;
   /**
    * The question Hale's last word to this parent left open, when that word was said in
    * the thread this text arrived in. Read at most once a turn, after the screen, and only
@@ -199,6 +222,8 @@ export interface OffDomainPorts {
   medical: MedicalComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
+  /** The family's stored language tag. Absent: the fixed provider lines do not guess one. */
+  language?(familyId: string): Promise<ReplyLanguage | null>;
   recordUnmetIntent(input: {
     channelMessageId: string;
     familyId: string;
@@ -229,6 +254,9 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         today: () => ports.today(input.familyId),
         place: () => homePlaceIn(input.thread, () => ports.place(input.familyId)),
       };
+      // A group reply goes to everyone in it, so the province it names is not said there.
+      const healthPlace = () =>
+        input.thread.inGroup === false ? ports.healthPlace(input.familyId) : Promise.resolve(null);
 
       // THE SCREEN READS EVERY TEXT FIRST, a reply to a question Hale left open included.
       // The sanitizer that judges whether a text answers "which city?" is not a safety
@@ -268,7 +296,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
                 medicalSource: null,
                 signal: 'not_applicable',
               },
-              reading.language,
+              reading,
             );
           }
         }
@@ -277,7 +305,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       if (reading.lane === 'in_domain' || reading.category === null) {
         return withSeenLanguage(
           { status: 'in_domain', fallback: reading.fallback },
-          reading.language,
+          reading,
         );
       }
       const lane = reading.lane;
@@ -291,7 +319,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // Every OTHER safety_critical category stops the ordinary answer and a moment
       // reply is written below.
       if (lane === 'safety_critical' && reading.category === 'medical-symptom') {
-        const { reply, replySource } = await ports.medical.answer(input.text);
+        const { reply, replySource } = await ports.medical.answer(input.text, await healthPlace());
         return withSeenLanguage(
           {
             status: 'deflected',
@@ -303,7 +331,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
             signal: 'not_applicable',
             pendingAsk: null,
           },
-          reading.language,
+          reading,
         );
       }
 
@@ -319,14 +347,23 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // not vague but WRONG (founder, live gate, 2026-08-13, on an optometrist). The
       // table's miss branch says so instead, which is a correct answer where a guessed
       // registry is a wasted phone call.
-      // Which LANGUAGE those fixed sentences go out in is decided the same way and for
-      // the same reason — off the words in front of it, with no model consulted.
-      const language = replyLanguage(input.text);
+      // The stored tag picks an English or French template. Any other tag is the
+      // coach's, not an English sentence guessed from the words. Only the
+      // provider door reads it: a weather reply and a group thread do not.
+      const language =
+        lane === 'provider_access' && ports.language ? await ports.language(input.familyId) : null;
+      const providerLine =
+        lane === 'provider_access'
+          ? await referralReply(input.text, language, await healthPlace())
+          : null;
+      if (lane === 'provider_access' && !providerLine) {
+        return { status: 'in_domain', fallback: null };
+      }
       const lined =
         lane === 'safety_critical'
           ? await momentDoor(ports, family, reading.category, input.text)
           : lane === 'provider_access'
-            ? fixedLine(referralReply(input.text, language))
+            ? fixedLine(providerLine ?? '')
             : await replyFor(
                 ports,
                 family,
@@ -365,7 +402,7 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
           signal,
           pendingAsk,
         },
-        reading.language,
+        reading,
       );
     },
   };
@@ -398,11 +435,19 @@ async function coarseMomentPlace(family: FamilyFacts): Promise<MomentPlace> {
  * Absent means the router writes nothing. A fail-open, a timeout, and the emergency
  * short-circuit never invent a language (rule #11).
  */
-function withSeenLanguage(verdict: OffDomainVerdict, language: string | null): OffDomainVerdict {
-  if (language === null || language.trim() === '') return verdict;
+function withSeenLanguage(
+  verdict: OffDomainVerdict,
+  reading: Pick<LaneReading, 'language' | 'languageRequest'>,
+): OffDomainVerdict {
   // An unwritten moment has no language field. The screen's tag is not invented onto it.
   if (verdict.status === 'unwritten') return verdict;
-  return { ...verdict, language: language.trim() };
+  const language = reading.language?.trim() ?? '';
+  const requested = reading.languageRequest?.trim() ?? '';
+  return {
+    ...verdict,
+    ...(language === '' ? {} : { language }),
+    ...(requested === '' ? {} : { languageRequest: requested }),
+  };
 }
 
 /**
@@ -788,14 +833,74 @@ export function productionOffDomainLane(
   database: Database,
   client: () => AgentClient,
 ): OffDomainLane {
-  return offDomainLane({
+  return crisisMarkingLane(database, {
     screen: createInboundLaneScreen(client),
     answer: createGeneralAnswer(client),
     today: async (familyId) => localDate(new Date(), await readFamilyTimezone(database, familyId)),
     place: (familyId) => readFamilyPlace(database, familyId),
+    healthPlace: (familyId) => readHealthPlace(database, familyId),
     pendingAsk: readPendingAsk(database),
     medical: createMedicalComposer(client),
     moment: createMomentReply(client),
     recordUnmetIntent: recordUnmetIntent(database),
+    language: (familyId) => familySpeechLanguage(database, familyId),
   });
+}
+
+/** The moments that answer a crisis. */
+const CRISIS_MOMENTS: ReadonlySet<Moment> = new Set(['mental_crisis', 'emergency']);
+
+/**
+ * The lane, with every crisis reply it writes marked as leaving before it is returned to
+ * be sent, and the verdict saying so (VIL-602). A text whose opt-out read failed is held
+ * and read again later. The leaving mark keeps that held copy back while the turn sends;
+ * the router turns it to answered only once the transport accepted the reply, so a held
+ * crisis whose live reply never left is still answered late. A mark that did not land is
+ * logged by name and never holds the reply back.
+ */
+export function crisisMarkingLane(database: Database, ports: OffDomainPorts): OffDomainLane {
+  return {
+    async consider(input) {
+      let crisisWritten = false;
+      const moment: MomentWriter = {
+        async write(text, which, place) {
+          const written = await ports.moment.write(text, which, place);
+          if (written.status === 'written' && CRISIS_MOMENTS.has(which)) {
+            crisisWritten = true;
+            const mark = await markLedgerInbound(database, input.channelMessageId, input.now);
+            if (mark !== 'marked') {
+              console.info({ mark, moment: which }, 'off-domain lane: crisis reply mark');
+            }
+          }
+          return written;
+        },
+      };
+      const verdict = await offDomainLane({ ...ports, moment }).consider(input);
+      return crisisWritten && verdict.status === 'deflected'
+        ? { ...verdict, crisisReply: true }
+        : verdict;
+    },
+  };
+}
+
+/** The mark is keyed by the provider's inbound id, read off the text's ledger row. */
+async function markLedgerInbound(
+  database: Database,
+  channelMessageId: string,
+  now: Date,
+): Promise<CrisisReplyMark> {
+  try {
+    const [row] = await database
+      .select({ providerMessageId: schema.channelMessages.providerMessageId })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, channelMessageId))
+      .limit(1);
+    return noteCrisisReplyLeaving(database, row?.providerMessageId ?? '', now);
+  } catch (err) {
+    console.error(
+      { mark: 'not_marked', err: err instanceof Error ? err.name : 'unknown' },
+      'off-domain lane: crisis reply mark',
+    );
+    return 'not_marked';
+  }
 }

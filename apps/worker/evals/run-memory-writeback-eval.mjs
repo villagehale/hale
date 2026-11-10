@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { register } from 'tsx/esm/api';
 import { capSdkClient } from '../../web/lib/testing/spend-cap.mjs';
-import { installEvalSpendCap, priceRates } from './lib/harness.mjs';
+import { installEvalSpendCap, priceRates, withoutMessageCacheMarkers } from './lib/harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -90,7 +90,10 @@ function cachingClient({ cachedOnly, cost }) {
   return {
     messages: {
       create: async (request) => {
-        const canonical = JSON.stringify(request);
+        const canonical = JSON.stringify({
+          ...request,
+          messages: withoutMessageCacheMarkers(request.messages),
+        });
         const key = cacheKey(canonical);
         const cached = await cacheGet(key);
         if (cached) return cached.response;
@@ -234,6 +237,23 @@ async function runNightly({ fixture, mode, cachedOnly, cost, modules }) {
       })),
     );
 
+    // VIL-429: connector items the inferencer reads, at fixed ids and times so the request
+    // (the cache key) is the same every run.
+    if (fixture.events?.length) {
+      await test.database.insert(db.schema.events).values(
+        fixture.events.map((event) => ({
+          id: event.id,
+          familyId,
+          source: event.source,
+          eventType: event.eventType,
+          payload: event.payload,
+          dedupHash: event.id,
+          status: 'classified',
+          receivedAt: new Date(now.getTime() - event.minutesBefore * 60_000),
+        })),
+      );
+    }
+
     const calls = [];
     const inner =
       mode === 'broken' ? mislabelingNightlyClient(fixture) : cachingClient({ cachedOnly, cost });
@@ -289,6 +309,12 @@ function checkNightly(fixture, { calls, rows }, classify) {
       if (kind !== expected.kind || disposition !== expected.disposition) {
         failures.push(
           `${expected.item} ('${row.factKey}') stored ${kind}/${disposition}, expected ${expected.kind}/${expected.disposition}`,
+        );
+      }
+      // VIL-429: a fact that rests on an email names it, so Hale can say where it saw it.
+      if (expected.sourceEvents && !expected.sourceEvents.includes(row.sourceEventId)) {
+        failures.push(
+          `${expected.item} ('${row.factKey}') names source ${row.sourceEventId}, expected one of ${expected.sourceEvents.join(', ')}`,
         );
       }
     }

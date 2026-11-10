@@ -31,7 +31,7 @@ function clean(): LiveReplay {
         inbound: 'Seb is 1, Mia is 6',
         bubbles: [
           'Here is what is on.',
-          `Worth a look.\n1. ${LINES[0]}\n2. ${LINES[1]}`,
+          `Worth a look.\n${LINES.join('\n')}`,
           'What should I call you?',
         ],
         ms: 30,
@@ -122,7 +122,7 @@ describe('liveViolations', () => {
     expect(out).toContain('calendar link sent 2 times');
   });
 
-  it('refuses booking claims, false privacy claims, STOP wording and long bubbles', () => {
+  it('refuses booking claims, false privacy claims and STOP wording', () => {
     const replay = clean();
     replay.turns.push({
       inbound: 'ok',
@@ -135,7 +135,7 @@ describe('liveViolations', () => {
     expect(out.some((line) => line.startsWith('booking claim:'))).toBe(true);
     expect(out.some((line) => line.startsWith('false privacy claim:'))).toBe(true);
     expect(out.some((line) => line.startsWith('STOP wording:'))).toBe(true);
-    expect(out.some((line) => line.startsWith('bubble over 220 chars (230)'))).toBe(true);
+    expect(out.some((line) => line.startsWith('bubble over'))).toBe(false);
   });
 
   it('wants the company named when they ask who this is, and the right lines scheduled', () => {

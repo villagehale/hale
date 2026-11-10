@@ -125,10 +125,10 @@ describe('identityAskRefusals', () => {
     expect(identityAskRefusals(body, START)).toContain('not_a_sentence');
   });
 
-  it('refuses a curly apostrophe, which doubles what the message costs to send', () => {
+  it('sends a curly apostrophe', () => {
     expect(
       identityAskRefusals('What name should I use for you’s introduction?', INTRO_NAME),
-    ).toContain('not_gsm7');
+    ).not.toContain('not_gsm7');
   });
 
   it('reports every problem at once, so one recompose can fix them all', () => {

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is entirely in Chinese, correctly states the piano lesson is tonight at 7 and ends at 8, places it at the studio, and says leave in an hour, which matches the -PT1H offset. Minor issue: '陈老师' is a translated rendering of 'Ms. Chen', acceptable. No invented details, no link, calm tone.",
+    "score": 5
+  }
+}

@@ -46,6 +46,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -54,6 +55,7 @@ import { dayKeyOf } from '~/lib/format/datetime';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { postOpsSlack } from '~/lib/monitoring/ops-slack';
 import { addDaysToKey, zonedLocalInstant } from '~/lib/plan/spine';
+import { closeBriefedTrip, tripIdFromBriefDedupeKey } from '~/lib/travel/sweep';
 import { type WriterResult, composeProactiveBatch } from './compose';
 import {
   type DecideResult,
@@ -128,6 +130,7 @@ export interface ProactiveReviewDeps {
   compose(input: {
     items: readonly ToolCandidate[];
     client: AgentClient | null;
+    language?: string | null;
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -264,7 +267,7 @@ export async function runProactiveReview(
       // are only that kind is decided as live, so the model can keep a pace it heard.
       // A nudge sitting beside it stays on the shadow path.
       const familyMode: 'shadow' | 'live' =
-        mode === 'shadow' && items.every((item) => item.kind === 'evening_check_in')
+        mode === 'shadow' && items.every((item) => DECIDER_ONLY_KINDS.includes(item.kind))
           ? 'live'
           : mode;
       await reviewFamily(database, deps, { familyId, items, now, mode: familyMode, summary });
@@ -296,7 +299,7 @@ async function reviewEveningCheckIns(
     .where(
       and(
         inArray(schema.proactiveCandidates.status, ['queued', 'held']),
-        eq(schema.proactiveCandidates.kind, 'evening_check_in'),
+        inArray(schema.proactiveCandidates.kind, [...DECIDER_ONLY_KINDS]),
       ),
     );
   for (const { familyId } of families) {
@@ -307,7 +310,7 @@ async function reviewEveningCheckIns(
         now,
         'live',
         summary,
-        'evening_check_in',
+        DECIDER_ONLY_KINDS,
       );
       if (items.length === 0) continue;
       summary.families += 1;
@@ -323,7 +326,7 @@ async function reviewEveningCheckIns(
  * This family's actionable rows, oldest first and at most `FAMILY_ROWS` of them, then its
  * holds still on their clock, newest first and at most `WAITING_ROWS` of them.
  *
- * `onlyKind` limits both reads. The off-flag pass uses it so a nudge is neither offered
+ * `onlyKinds` limits both reads. The off-flag pass uses it so a nudge is neither offered
  * nor settled.
  */
 async function loadOpenItems(
@@ -332,9 +335,10 @@ async function loadOpenItems(
   now: Date,
   mode: 'shadow' | 'live',
   summary: ProactiveReviewSummary,
-  onlyKind?: ProactiveSendKind,
+  onlyKinds?: readonly ProactiveSendKind[],
 ): Promise<QueuedItem[]> {
-  const kindIs = onlyKind === undefined ? undefined : eq(schema.proactiveCandidates.kind, onlyKind);
+  const kindIs =
+    onlyKinds === undefined ? undefined : inArray(schema.proactiveCandidates.kind, [...onlyKinds]);
   const actionable = await database
     .select()
     .from(schema.proactiveCandidates)
@@ -459,6 +463,12 @@ async function loadOpenItems(
   }
   return items;
 }
+
+/**
+ * Kinds with no sweep of their own left to send them: the evening check-in and the
+ * VIL-393 mid-activity ask. They are reviewed live even while the cadence flag is off.
+ */
+const DECIDER_ONLY_KINDS: readonly ProactiveSendKind[] = ['evening_check_in', 'mid_activity_ask'];
 
 function isProactiveSendKind(kind: string): kind is ProactiveSendKind {
   return Object.hasOwn(PROACTIVE_CATEGORY, kind);
@@ -926,8 +936,8 @@ async function reviewFamily(
   if (mode === 'shadow') {
     // A check-in in a mixed batch has no old path left. The rest of the batch is
     // still shadowed: lighting shadow must not start sending nudges.
-    const checkIns = chosen.filter((item) => item.kind === 'evening_check_in');
-    const rest = chosen.filter((item) => item.kind !== 'evening_check_in');
+    const checkIns = chosen.filter((item) => DECIDER_ONLY_KINDS.includes(item.kind));
+    const rest = chosen.filter((item) => !DECIDER_ONLY_KINDS.includes(item.kind));
     if (rest.length > 0) {
       await mark(
         database,
@@ -944,11 +954,17 @@ async function reviewFamily(
       summary.shadowed += 1;
     }
     if (checkIns.length > 0) {
-      await sendChosen(database, deps, { familyId, chosen: checkIns, now, summary });
+      await sendChosen(database, deps, {
+        familyId,
+        chosen: checkIns,
+        now,
+        summary,
+        language: context.language,
+      });
     }
     return;
   }
-  await sendChosen(database, deps, { familyId, chosen, now, summary });
+  await sendChosen(database, deps, { familyId, chosen, now, summary, language: context.language });
 }
 
 /**
@@ -974,11 +990,37 @@ function keptCadence(
   return cadencePreference(author, heard.direction);
 }
 
+/** Each class's own sent verb, so the trail reads a decider send as its sweep's. */
+const SEND_VERB: Partial<Record<ProactiveSendKind, string>> = {
+  nudge: 'proactive_nudge_sent',
+  evening_check_in: 'evening_check_in_sent',
+  co_parent_departed: 'co_parent_departure_notice_sent',
+  travel_brief: 'travel_brief_sent',
+};
+
 /** The trail verb for one sent batch. A mixed batch stays the generic cadence send. */
 function sendAuditVerb(items: readonly QueuedItem[]): string {
-  if (items.every((item) => item.kind === 'nudge')) return 'proactive_nudge_sent';
-  if (items.every((item) => item.kind === 'evening_check_in')) return 'evening_check_in_sent';
-  return 'proactive_cadence_sent';
+  const kinds = new Set(items.map((item) => item.kind));
+  const [only] = kinds;
+  return (kinds.size === 1 && only !== undefined && SEND_VERB[only]) || 'proactive_cadence_sent';
+}
+
+/**
+ * What a class's own sweep does after its text leaves, done here for a decider send:
+ * a travel brief closes its trip and the trips it overlaps (travel/sweep.ts).
+ */
+async function afterClassSend(
+  database: Database,
+  items: readonly QueuedItem[],
+  channelMessageId: string,
+  now: Date,
+): Promise<void> {
+  for (const item of items) {
+    if (item.kind !== 'travel_brief') continue;
+    const tripId = tripIdFromBriefDedupeKey(item.dedupeKey);
+    if (tripId === null) throw new Error('proactive review: a travel brief with no trip key');
+    await closeBriefedTrip(database, { tripId, channelMessageId, now });
+  }
 }
 
 async function sendChosen(
@@ -989,6 +1031,8 @@ async function sendChosen(
     chosen: QueuedItem[];
     now: Date;
     summary: ProactiveReviewSummary;
+    /** The family's stored language tag, for the writer (VIL-393). */
+    language?: string | null;
   },
 ): Promise<void> {
   const { familyId, now, summary } = input;
@@ -1073,10 +1117,20 @@ async function sendChosen(
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [...distinct.keys()].sort().join('\n\n');
+    // VIL-572 · a parent's own copy is written in that parent's proactive language. The
+    // household's one group copy stays in the family's.
+    const language =
+      target.channel === 'group'
+        ? (input.language ?? null)
+        : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
+    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}`;
     let written = writtenFor.get(setKey);
     if (!written) {
-      written = await deps.compose({ items: [...distinct.values()], client: deps.client });
+      written = await deps.compose({
+        items: [...distinct.values()],
+        client: deps.client,
+        language,
+      });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
@@ -1117,7 +1171,7 @@ async function sendChosen(
     const covered = copy.items;
     const coveredIds = covered.map((item) => item.id);
     const labels = [...new Set(covered.map((item) => item.why))];
-    // The sweep's own verb for a nudge, so the trail reads a decider send the same way.
+    // The sweep's own verb, so the trail reads a decider send the same way.
     const messageId = await finalizeProactiveSend(database, finalizer, {
       familyId,
       recipientUserId: copy.parentUserId,
@@ -1138,6 +1192,7 @@ async function sendChosen(
       },
     });
     if (firstMessageId === null) firstMessageId = messageId;
+    await afterClassSend(database, covered, messageId, now);
     if (covered.some((item) => item.kind === 'evening_check_in')) {
       // The ask clock starts when the text leaves, not when it was queued. A review
       // that holds tonight does not count as an ask.

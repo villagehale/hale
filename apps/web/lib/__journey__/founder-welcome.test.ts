@@ -145,9 +145,6 @@ describe("the founder's welcome note", () => {
       answerComposer: fakeSilentAnswerComposer,
       friendVoice: scriptedFriendVoice,
       identityAsk: new FakeIdentityAsk(),
-      seedCivic: async () => 0,
-      resolveCenter: async () => null,
-      discoveryTrigger: () => {},
       limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
       consentAsk: askWriter(),
       now: INTAKE_AT,
@@ -310,7 +307,7 @@ describe("the founder's welcome note", () => {
       ),
       // The production adapter over the fake pipe: the router hands it a resolved sms
       // route, the fake records the send — the same recorder the founder lane writes to.
-      transport: createReplyTransport({ phone: transport, email: null }),
+      transport: createReplyTransport({ phone: transport }),
       replyResolver: resolver,
       coach: silentCoach,
       offDomain: { consider: async () => ({ status: 'in_domain' as const, fallback: null }) },
@@ -348,6 +345,7 @@ describe("the founder's welcome note", () => {
       channel_message_id: (row as { id: string }).id,
       provider_message_id: `SM-founder-${n}`,
       received_at: at.toISOString(),
+      in_group: false,
     });
     return transport;
   }
@@ -429,11 +427,24 @@ describe("the founder's welcome note", () => {
     // message actually reached.
     expect(await auditVerbs(familyId)).toContain('founder_welcome_sent');
 
-    // Closed by the NOTE, not by the ack: a kept promise points at the message that kept
-    // it, and that message is in the other family's thread.
+    // Closed by the founder's OWN ack, never by the note: the note is a row in another
+    // household, and the founder's offer row and its audit row are on his family's
+    // access export (rule #1).
     const [closed] = await offers();
     expect(closed?.fulfilledAt).not.toBeNull();
-    expect(closed?.fulfilledBy).toBe(note?.id);
+    const [keptBy] = await database
+      .select({ familyId: schema.channelMessages.familyId })
+      .from(schema.channelMessages)
+      .where(eq(schema.channelMessages.id, closed?.fulfilledBy as string));
+    expect(keptBy?.familyId).toBe(founderFamilyId);
+    expect(closed?.fulfilledBy).not.toBe(note?.id);
+
+    const founderAudit = await database
+      .select({ verb: schema.auditLog.actionTaken, after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, founderFamilyId));
+    expect(founderAudit.map((row) => row.verb)).toContain('commitment_fulfilled');
+    expect(JSON.stringify(founderAudit)).not.toContain(note?.id as string);
     expect((await openQuestions(REPLY_AT)).map((q) => q.kind)).toEqual([]);
   });
 

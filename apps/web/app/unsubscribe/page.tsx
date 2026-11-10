@@ -7,7 +7,6 @@ import {
   unsubscribeStreamLabel,
 } from '~/lib/cron/email-compliance';
 import { db } from '~/lib/db';
-import { createLoopStopNotifier, dispatchLoopStopSideEffects } from '~/lib/loop/stop-alert';
 
 // Node runtime: verifying the unsubscribe signature uses node:crypto, and the
 // opt-out is written through the Drizzle client — neither works on the edge.
@@ -24,8 +23,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** One-click unsubscribe (CASL). The link in every digest email lands here; we
- * verify the signature and record the opt-out on load. No DATABASE_URL (static
+/** One-click unsubscribe (CASL). Hale no longer sends email, but links already in
+ * parents' inboxes must keep working, so this page still verifies the signature and records the opt-out on load. No DATABASE_URL (static
  * preview) → treat as invalid rather than fabricating success. */
 async function unsubscribe(params: {
   u?: string;
@@ -36,15 +35,16 @@ async function unsubscribe(params: {
     return { status: 'invalid' };
   }
   const result = await processUnsubscribe(db(), { u: params.u, t: params.t, sig: params.sig });
-  // X1 (VIL-227) STOP guardrail: page the founder + fire loop_stop the FIRST time a
-  // loop-category stream is unsubscribed (never on a repeat click of the same
-  // link — `firstTime` is the idempotency gate). Best-effort: a failure here must
-  // never turn a successful unsubscribe into a broken confirmation page.
+  // X1 (VIL-227): fire loop_stop the FIRST time a loop-category stream is unsubscribed
+  // (never on a repeat click — `firstTime` is the idempotency gate). Best-effort: a
+  // telemetry failure must never turn a recorded opt-out into a broken confirmation.
   if (result.status === 'unsubscribed' && result.firstTime && isLoopEmailType(result.emailType)) {
-    await dispatchLoopStopSideEffects(
-      { userId: params.u as string, category: result.emailType },
-      { founder: createLoopStopNotifier(), captureServerEvent },
-    );
+    const userId = params.u as string;
+    await captureServerEvent('loop_stop', userId, { category: result.emailType }).catch((err) => {
+      console.error('loop_stop analytics failed (unsubscribe unaffected)', {
+        message: err instanceof Error ? err.message : 'unknown error',
+      });
+    });
   }
   return result;
 }

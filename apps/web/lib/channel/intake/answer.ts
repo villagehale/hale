@@ -1,39 +1,23 @@
-import { type AgentClient, pickLane, pickModel } from '@hale/agent';
+import { type AgentClient, cachedSystem, pickLane, pickModel } from '@hale/agent';
 import { z } from 'zod';
+import { readEvidence } from '~/lib/channel/activity/evidence';
 import { plainText } from '~/lib/channel/coach/reply';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsEncoding } from '~/lib/channel/sms-segments';
+import { writeRecMorningIntakeReply } from '~/lib/channel/rec-morning';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
-import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
-import { registrationPageUrl } from '~/lib/registration/page';
-import {
-  type RegistrationReader,
-  createRegistrationReader,
-  registrationDate,
-  unclassifiedRegistrationDate,
-} from '~/lib/registration/read';
-import {
-  type RegistrationRequestReader,
-  createRegistrationRequestReader,
-} from '~/lib/registration/request-read';
 import { adultLearnIntakeReply } from './adult-learn';
 import type { ExtractedChild } from './extract';
-import {
-  groundCurrentSource,
-  isCheerUpAsk,
-  isLiveLookupAsk,
-  liveLookupReplyFromNotes,
-} from './live-lookup';
+import { groundUserMessage } from './ground-message';
+import { groundCurrentSource, groundPlaceOf, liveLookupReplyFromNotes } from './live-lookup';
 import {
   deidentifyOfficialQuery,
-  isOfficialPageAsk,
-  officialPageFallbackReply,
-  officialPageReply,
+  notesGroundADate,
+  officialPageReplyFromNotes,
 } from './official-page';
-import { townLabel } from './radar-voice';
 
 /**
  * THE ESCAPE FROM THE SCRIPT — what Hale says when a parent mid-signup asks a question
@@ -59,12 +43,10 @@ import { townLabel } from './radar-voice';
  *
  * FOUR THINGS MAKE IT SAFE TO PUT ON A STRANGER'S THIRD TEXT:
  *
- *   AN EMERGENCY NEVER REACHES A MODEL. `namesAnEmergency` is checked first, before the
- *   client is even resolved, and returns {@link IntakeAnswerOutcome} `safety` — the
- *   machine then sends the model-written crisis reply (#868: routed and written by the turn reader), with no return-to-script
- *   tacked onto it. Intake has never had the screened safety lane the router has
- *   (off-domain/lane.ts), so this is the whole of it, and it works during a provider
- *   outage because it is a substring test.
+ *   A CRISIS IS JUDGED BY THE MODEL. A word list does not stop the turn before the
+ *   client is resolved. The machine sends the model-written crisis reply (#868), with
+ *   no return-to-script tacked onto it. When the model cannot write one, nothing preset
+ *   goes out.
  *
  *   NOTHING IS AGREED TO YET, and the gates say so in code. Consent is the question
  *   still outstanding on the seam that calls this, so a composed line claiming Hale is
@@ -79,29 +61,7 @@ import { townLabel } from './radar-voice';
  *   written for exactly that — goes out instead.
  */
 
-/**
- * ONE budget for the whole message, not one per half.
- *
- * 300 GSM-7 characters is two SMS segments (153 each) — the same ceiling the coach's own
- * replies and the off-domain answer are fitted to. Two rather than intake's usual one
- * because this turn is inherently two things, an answer and a question, and cutting the
- * answer to fit one segment would produce the terse non-reply the stage exists to
- * replace.
- *
- * IT WAS TWO CAPS (220/80, then 200/100) and both live recordings refused a perfectly
- * sendable pair on one half alone — a 105-character return line riding behind a
- * 58-character answer, well inside the message a carrier would have delivered as one
- * ordinary two-part text. The split was a budget invented for the model's convenience,
- * and what a carrier actually bills is the joined body; measuring anything else refuses
- * good messages for failing a rule nothing downstream enforces.
- */
-export const MAX_REPLY_CHARS = 300;
-
 const MAX_TOKENS = 300;
-
-/** No links, held structurally: this stage has no tool it could have gotten one from,
- * so a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /**
  * The doctrine's standing rule (skill audit P0 #4), and doubly true here: a parent three
@@ -146,11 +106,10 @@ const DISCLOSES_AI = /\b(ai|a\.i\.|bot|software|a program|not a (real )?(person|
 
 /**
  * Why a composed pair may not be sent. Mechanical, and each one is a different story in
- * the log: the first six are a model writing something a carrier mangles or a shape the
+ * the log: the first five are a model writing something a carrier mangles or a shape the
  * turn cannot use, and the last four are a model writing something FALSE.
  */
 export type IntakeAnswerRefusal =
-  | 'over_char_cap'
   | 'not_gsm7'
   | 'carries_link'
   | 'answer_carries_question'
@@ -164,14 +123,22 @@ export type IntakeAnswerRefusal =
 /** Why the stage produced no words. Four separate operational stories, none of them
  * silence (rule #11): `skill_unavailable` is a deploy bug, `model_failed` an outage,
  * `unusable` the model getting it wrong and the gates catching it. */
-export type IntakeAnswerFallback =
-  | 'skill_unavailable'
-  | 'model_failed'
-  | 'unusable'
-  /** Search found nothing sendable; the machine has the model say so (#868). */
-  | 'ungrounded'
-  /** A caregiver venting; the machine has the model write the warmth (#868). */
-  | 'cheer_up';
+export type IntakeAnswerFallback = 'skill_unavailable' | 'model_failed' | 'unusable' | OwedLine;
+
+/**
+ * The fallbacks that owe the parent a model-written line, named for the line the
+ * machine has the model write (#868). The composer's read of the ask picks one, never
+ * the parent's words.
+ */
+export const OWED_LINES = [
+  /** A program date the official pages have not posted. */
+  'not_posted',
+  /** A current fact search could not ground. */
+  'no_source',
+  /** A caregiver venting: warmth, not a method. */
+  'cheer_up',
+] as const;
+export type OwedLine = (typeof OWED_LINES)[number];
 
 export type IntakeAnswerOutcome =
   /** The whole message: the answer, then Hale's question again in different words. */
@@ -204,17 +171,44 @@ export interface IntakeAnswerInput {
    * only — never shown to the model (see {@link intakeAnswerContext}).
    */
   postalCode?: string | null;
+  /**
+   * The session's stored language, when intake has one. Null means the rec-morning
+   * line is written in the language of `parentWords`, not English.
+   */
+  language?: ReplyLanguage | null;
+  /**
+   * The first Canadian or US code the session holds (VIL-592). The searches are told its
+   * country and province or state, never the code; the answer model is told nothing.
+   */
+  regionToken?: string | null;
 }
 
 export interface IntakeAnswerComposer {
   compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome>;
 }
 
-const answerSchema = z.object({ answer: z.string(), returnLine: z.string() });
+/**
+ * What the parent is asking for, read by the model in whatever language they wrote
+ * (VIL-555: four English keyword matchers chose this before). `answer_here` is the
+ * composed pair; the other three are answered from a search or a model-written line.
+ */
+export const ASK_KINDS = ['answer_here', 'program_dates', 'current_source', 'cheer_up'] as const;
+
+const answerSchema = z.object({
+  askKind: z.enum(ASK_KINDS),
+  answer: z.string(),
+  returnLine: z.string(),
+});
 
 const answerJsonSchema = {
   type: 'object',
   properties: {
+    askKind: {
+      type: 'string',
+      enum: [...ASK_KINDS],
+      description:
+        'What the parent is asking for, decided before writing anything. For anything but answer_here, leave answer and returnLine empty.',
+    },
     answer: {
       type: 'string',
       description:
@@ -225,7 +219,7 @@ const answerJsonSchema = {
       description: "Hale's own pending question again, in different words, ending in '?'.",
     },
   },
-  required: ['answer', 'returnLine'],
+  required: ['askKind', 'answer', 'returnLine'],
 } as const;
 
 /**
@@ -266,9 +260,7 @@ export function refusals(
 ): IntakeAnswerRefusal[] {
   const found: IntakeAnswerRefusal[] = [];
   const joined = `${answer} ${returnLine}`;
-  if (joined.length > MAX_REPLY_CHARS) found.push('over_char_cap');
-  if (smsEncoding(joined) !== 'gsm7') found.push('not_gsm7');
-  if (LINK_SHAPE.test(joined)) found.push('carries_link');
+  if (hasLinkShape(joined)) found.push('carries_link');
   if (answer.includes('?')) found.push('answer_carries_question');
   if (!returnLine.endsWith('?')) found.push('return_asks_nothing');
   if (returnLine === input.pendingAsk.trim()) found.push('return_repeats_the_ask');
@@ -292,12 +284,8 @@ function unavailable(reason: IntakeAnswerFallback, detail?: string): IntakeAnswe
 }
 
 /**
- * Read the model's pair.
- *
- * The health-line tripwire runs BEFORE every other gate because it SUBSTITUTES where
- * the rest refuse: a parent who turns out to be describing a hurt child must get the
- * reviewed 811/911 line, never the flat signup question a refusal would send them
- * (skill audit P0 #3, the same ordering off-domain/answer.ts uses).
+ * Read the model's pair. The health-line tripwire is not here: it runs over every
+ * outcome in {@link screenedForTheHealthLine}, after this has refused or passed.
  */
 export function readPair(
   raw: { answer: string; returnLine: string },
@@ -305,12 +293,8 @@ export function readPair(
 ): IntakeAnswerOutcome {
   const answer = plainText(raw.answer);
   const returnLine = plainText(raw.returnLine);
-  if (reachesForTheHealthLine(`${answer} ${returnLine}`)) {
-    console.error('intake answer: composer reached for a referral; sent the fixed line');
-    return { status: 'safety' };
-  }
   // Read before the gates, not after: an empty answer is the model declining, which is
-  // a correct outcome, and grading a declined turn against a character cap would log a
+  // a correct outcome, and grading a declined turn against the gates would log a
   // refusal for a stage that did its job.
   if (answer === '') return { status: 'nothing_to_answer' };
 
@@ -331,79 +315,83 @@ const MAX_OFFICIAL_SEARCHES = 2;
 const OFFICIAL_GROUND_MAX_TOKENS = 2048;
 
 type OfficialGround =
-  | { status: 'grounded'; reading: LiveRegistrationReading }
-  | { status: 'ungrounded'; reason: string; sourceUrl?: string };
+  | { status: 'grounded'; notes: string }
+  | { status: 'ungrounded'; reason: string };
 
+/**
+ * GROUND a rec/camp clock against official pages. Zero searches, empty notes,
+ * or notes with no date are the same parent-facing sentence — not posted yet —
+ * and each reason is named in the log (rule #11). The search is Anthropic's US
+ * tool, so the query is de-identified first.
+ */
 async function groundOfficialPages(
   client: AgentClient,
   input: IntakeAnswerInput,
-  reader: RegistrationReader,
-  readRequest: RegistrationRequestReader,
 ): Promise<OfficialGround> {
+  let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  try {
+    skill = await loadCronSkill('intake-official-ground');
+  } catch (err) {
+    return { status: 'ungrounded', reason: `skill_unavailable:${message(err)}` };
+  }
+
   const query = deidentifyOfficialQuery(input.parentWords, input.children);
-  const urls: string[] = input.parentWords.match(/https:\/\/[^\s<>]+/g) ?? [];
-  if (!urls.length) {
-    try {
-      const skill = await loadCronSkill('intake-official-ground');
-      const cities = input.postalCode ? resolveMunicipalities(input.postalCode) : [];
-      const location = cities.length === 1 ? townLabel(cities[0]!) : null;
-      if (!location) {
-        const request = await readRequest({ text: query, sourceUrl: null, location });
-        if (!request || request.confidence !== 'high' || request.needsLocation)
-          return { status: 'ungrounded', reason: 'location_required' };
-      }
-      const research = await client.messages.create({
-        model: pickModel(skill.meta.task),
-        max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
-        system: skill.instructions,
-        tools: [
-          { name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES },
-        ],
-        messages: [{ role: 'user', content: location ? `${query} in ${location}` : query }],
-      });
-      for (const block of research.content) {
-        if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content)) continue;
-        for (const result of block.content) {
-          if (result.type === 'web_search_result') urls.push(result.url);
-        }
-      }
-    } catch (err) {
-      return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
-    }
+  if (!query.ok) return { status: 'ungrounded', reason: query.refusal };
+  try {
+    const place = await groundPlaceOf(input.regionToken ?? null);
+    const research = await client.messages.create({
+      model: pickModel(skill.meta.task),
+      max_tokens: OFFICIAL_GROUND_MAX_TOKENS,
+      system: cachedSystem(skill.instructions),
+      tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_OFFICIAL_SEARCHES }],
+      messages: [{ role: 'user', content: groundUserMessage(query.text, place) }],
+    });
+    const evidence = readEvidence(new Date(), research.content);
+    if (evidence.searchResults === 0) return { status: 'ungrounded', reason: 'not_grounded' };
+    if (evidence.notes === '') return { status: 'ungrounded', reason: 'empty_research' };
+    if (!notesGroundADate(evidence.notes)) return { status: 'ungrounded', reason: 'no_date' };
+    return { status: 'grounded', notes: evidence.notes };
+  } catch (err) {
+    return { status: 'ungrounded', reason: `ground_failed:${message(err)}` };
   }
-  let sourceUrl: string | undefined;
-  for (const url of [...new Set(urls)].slice(0, 3)) {
-    try {
-      const safeUrl = registrationPageUrl(url.replace(/[.,;]+$/, ''));
-      sourceUrl ??= safeUrl;
-      const reading = await reader(
-        {
-          municipality: new URL(safeUrl).hostname,
-          programDomain: 'registration',
-          cycleLabel: query.replace(/https:\/\/\S+/g, '').trim(),
-          sourceUrl: safeUrl,
-          timeZone: null,
-        },
-        new Date(),
-      );
-      if (
-        registrationDate(reading, false) ||
-        unclassifiedRegistrationDate(reading) ||
-        reading.partialDates?.length
-      )
-        return { status: 'grounded', reading };
-    } catch {
-      // A refused source is not evidence of an unpublished date.
-    }
-  }
-  return { status: 'ungrounded', reason: 'date_unverified', sourceUrl };
 }
 
-export function createIntakeAnswerComposer(
+async function answerFromOfficialPages(
   client: AgentClient,
-  reader: RegistrationReader = createRegistrationReader(),
-  readRequest: RegistrationRequestReader = createRegistrationRequestReader(client),
-): IntakeAnswerComposer {
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  const ground = await groundOfficialPages(client, input);
+  if (ground.status === 'ungrounded') {
+    console.error({ reason: ground.reason }, 'intake answer: official page not grounded');
+    return { status: 'unavailable', reason: 'not_posted' };
+  }
+  const body = officialPageReplyFromNotes(ground.notes, input.pendingAsk);
+  return body === null
+    ? { status: 'unavailable', reason: 'not_posted' }
+    : { status: 'answered', body };
+}
+
+async function answerFromCurrentSource(
+  client: AgentClient,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  const ground = await groundCurrentSource(
+    client,
+    input.parentWords,
+    input.children,
+    input.regionToken ?? null,
+  );
+  if (ground.status === 'ungrounded') {
+    console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
+    return { status: 'unavailable', reason: 'no_source' };
+  }
+  const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
+  return body === null
+    ? { status: 'unavailable', reason: 'no_source' }
+    : { status: 'answered', body };
+}
+
+export function createIntakeAnswerComposer(client: AgentClient): IntakeAnswerComposer {
   return {
     async compose(input) {
       // FIRST, and with no model in the loop. See the module note: intake has never had
@@ -426,50 +414,17 @@ export function createIntakeAnswerComposer(
       });
       if (adultLearn !== null) return { status: 'answered', body: adultLearn };
 
-      // VIL-326: a rec/camp/registration clock that missed the city pins. Search
-      // official pages; if a date is not on them, say so. Never invent a clock,
-      // and never return unavailable — that was the greet/ask-alone leak.
-      if (isOfficialPageAsk(input.parentWords)) {
-        const ground = await groundOfficialPages(client, input, reader, readRequest);
-        if (ground.status === 'ungrounded') {
-          console.error(
-            { reason: ground.reason },
-            'intake answer: official page date could not be verified',
-          );
-          return {
-            status: 'answered',
-            body:
-              ground.reason === 'location_required'
-                ? 'Which city or course link should I check?'
-                : officialPageFallbackReply(input.pendingAsk, ground.sourceUrl),
-          };
-        }
-        return {
-          status: 'answered',
-          body: officialPageReply(ground.reading, input.pendingAsk),
-        };
-      }
-
-      // VIL-327 caregiver cheer-up: reviewed warmth, not a clinician, then
-      // one return ask. Crisis already left above. Therapist-find is live lookup.
-      if (isCheerUpAsk(input.parentWords)) {
-        return { status: 'unavailable', reason: 'cheer_up' };
-      }
-
-      // VIL-327: raising-kids, leftover current-source facts, therapist-find.
-      // Live lookup only. The SMS may only restate what search returned.
-      // Framework-only / model memory is not a path.
-      if (isLiveLookupAsk(input.parentWords)) {
-        const ground = await groundCurrentSource(client, input.parentWords, input.children);
-        if (ground.status === 'ungrounded') {
-          console.error({ reason: ground.reason }, 'intake answer: current source not grounded');
-          return { status: 'unavailable', reason: 'ungrounded' };
-        }
-        const body = liveLookupReplyFromNotes(ground.notes, input.pendingAsk);
-        return body === null
-          ? { status: 'unavailable', reason: 'ungrounded' }
-          : { status: 'answered', body };
-      }
+      // Rec-morning clock and portal are reviewed copy, not a composition. A first-time
+      // texter asking which morning / which login must not wait on a model that still
+      // remembers ActiveTO. Same shape as the emergency tripwire: no client, no skill.
+      // VIL-508: reviewed facts, model-written words; a miss falls through, nothing fixed.
+      const recMorning = await writeRecMorningIntakeReply({
+        parentWords: input.parentWords,
+        pendingAsk: input.pendingAsk,
+        postal: input.postalCode,
+        language: input.language ?? null,
+      });
+      if (recMorning !== null) return { status: 'answered', body: recMorning };
 
       // Loaded INSIDE the fallback boundary, like intake-voice's: this sits in the
       // middle of a stranger's first conversation, and no deploy problem is worth
@@ -481,23 +436,70 @@ export function createIntakeAnswerComposer(
         return unavailable('skill_unavailable', message(err));
       }
 
+      let value: z.infer<typeof answerSchema>;
       try {
-        const { value } = await forceToolJson({
+        ({ value } = await forceToolJson({
           client,
           lane: pickLane(skill.meta.task),
           system: skill.instructions,
           userMessage: JSON.stringify(intakeAnswerContext(input)),
           toolName: 'reply',
           toolDescription:
-            "Return the answer to the parent's question and the line back to Hale's.",
+            "Return what kind of ask this is, the answer to the parent's question and the line back to Hale's.",
           inputJsonSchema: answerJsonSchema,
           schema: answerSchema,
           maxTokens: MAX_TOKENS,
-        });
-        return readPair(value, input);
+        }));
       } catch (err) {
         return unavailable('model_failed', message(err));
       }
+
+      return screenedForTheHealthLine(value, await answerTheRead(client, value, input));
     },
   };
+}
+
+/**
+ * VIL-326 / VIL-327: a program date, a raising-kids question, a current fact or a
+ * care-find is answered from what search returned, never from model memory, and a miss
+ * owes the line saying so. Cheer-up is the model's warmth (#868).
+ */
+async function answerTheRead(
+  client: AgentClient,
+  value: z.infer<typeof answerSchema>,
+  input: IntakeAnswerInput,
+): Promise<IntakeAnswerOutcome> {
+  switch (value.askKind) {
+    case 'program_dates':
+      return answerFromOfficialPages(client, input);
+    case 'current_source':
+      return answerFromCurrentSource(client, input);
+    case 'cheer_up':
+      return { status: 'unavailable', reason: 'cheer_up' };
+    case 'answer_here':
+      return readPair(value, input);
+  }
+}
+
+/**
+ * THE HEALTH-LINE TRIPWIRE, OVER EVERY OUTCOME the model read can lead to (VIL-629).
+ *
+ * It SUBSTITUTES where the gates refuse: a parent who turns out to be describing a hurt
+ * child must get the health line, never the flat signup question a refusal or an owed
+ * line would send them (skill audit P0 #3). It used to sit inside {@link readPair}, so
+ * it ran only on an `answer_here` read: a sick-child text the model read as a date, a
+ * look-up or a bad day went down that path with a 911 in the read or in the restated
+ * search notes, unscreened. Here it reads the model's own two fields on every read, and
+ * the body any path built, after the path has run, so no path can be added without it.
+ */
+function screenedForTheHealthLine(
+  read: { answer: string; returnLine: string },
+  outcome: IntakeAnswerOutcome,
+): IntakeAnswerOutcome {
+  const body = outcome.status === 'answered' ? outcome.body : '';
+  if (!reachesForTheHealthLine(`${plainText(read.answer)} ${plainText(read.returnLine)} ${body}`)) {
+    return outcome;
+  }
+  console.error('intake answer: composer reached for a referral; sent the fixed line');
+  return { status: 'safety' };
 }

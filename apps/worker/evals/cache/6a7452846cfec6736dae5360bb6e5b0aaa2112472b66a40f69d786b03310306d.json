@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy was turned off this turn for both send_email and reply_to_email, so the plain confirmation is true. The reply states it clearly, matches the parent's wish, and stops. 'Send any emails' slightly underspecifies replies but reasonably covers both. The last two sentences overlap a little, but it is short and correct.",
+    "score": 5
+  }
+}

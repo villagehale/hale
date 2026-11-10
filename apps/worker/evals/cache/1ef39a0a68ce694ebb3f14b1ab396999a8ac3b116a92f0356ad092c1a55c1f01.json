@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states registration is closed per the page, but the facts only say pageShows is null and situation is registration_closed; it does not make the wrong claim, and it correctly states the earlier 10:30 a.m. time and the link. However it says the page 'now shows the swim course closed to online registration', which matches situation registration_closed. Text is accurate, friendly, in English, and names no child. It fits a morning-of registration text with registration_closed and the handed time and link are correct.",
+    "score": 4
+  }
+}

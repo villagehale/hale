@@ -184,9 +184,11 @@ describe('teen handling (rule #1)', () => {
           children: [child({ id: 't', name: null, ageMonths, isTeen: true })],
           areaCoarse: TORONTO,
         }).map((m) => m.checkpoint.id);
-        expect({ id: checkpoint.id, ageMonths, emitted: matched.includes(checkpoint.id) }).toEqual(
-          { id: checkpoint.id, ageMonths, emitted: false },
-        );
+        expect({ id: checkpoint.id, ageMonths, emitted: matched.includes(checkpoint.id) }).toEqual({
+          id: checkpoint.id,
+          ageMonths,
+          emitted: false,
+        });
       }
     }
   });

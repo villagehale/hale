@@ -54,4 +54,20 @@ export const PROACTIVE_WRITER_FIXTURES = [
     cadenceNote: 'text me less',
     expect: { names: ['craft'], urls: ['https://library.example.test/craft'] },
   },
+  {
+    // VIL-393 · the one ask the evening after a first class: facts only on the item.
+    id: 'mid-activity-ask',
+    items: [
+      {
+        id: 'mid-ask',
+        what: 'Parent and tot swim',
+        why: 'mid_activity_ask start=signup first_session_ended=2026-10-06T16:00:00.000Z',
+        sourceUrl: null,
+        worthlessAfter: '2026-10-07T12:00:00.000Z',
+        parentRequested: false,
+      },
+    ],
+    cadenceNote: null,
+    expect: { names: ['swim'], urls: [] },
+  },
 ];

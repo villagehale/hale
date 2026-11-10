@@ -11,7 +11,7 @@ import type { CaregiverReminderEvent, CaregiverReminderPayload } from './payload
  * and diverges in the two places the recipient differs. It carries the LOCATION, which is
  * the half of "event logistics" the parents' copy never needed. And it runs no voice
  * stage: the reminder voice is composed once per parent batch against that parent's own
- * name dial (loop/voice/reminder-voice.ts), so pointing it at a caregiver would spend a
+ * name dial (loop/reminders/compose.ts), so pointing it at a caregiver would spend a
  * model call to write a stranger a sentence in somebody else's register.
  *
  * No genericization branch here, and that is not an omission: an event a caregiver may
@@ -35,18 +35,18 @@ export function renderCaregiverReminderSms(payload: CaregiverReminderPayload): R
   const send = (body: string) => gsmSafe(`${lead} - ${body}`);
 
   const full = send(lines.join(LINE_SEP));
-  if (smsSegments(full) <= SEGMENT_CAP) return { kind: 'sms', text: full };
+  if (smsSegments(full) <= SEGMENT_CAP) return { kind: 'sms', text: full, modelWritten: false };
 
   for (let shown = lines.length - 1; shown >= 1; shown--) {
     const text = send(`${lines.slice(0, shown).join(LINE_SEP)} +${lines.length - shown} more`);
-    if (smsSegments(text) <= SEGMENT_CAP) return { kind: 'sms', text };
+    if (smsSegments(text) <= SEGMENT_CAP) return { kind: 'sms', text, modelWritten: false };
   }
   // One event whose freeform title is longer than the ceiling on its own. Give way at a
   // word boundary rather than send five segments (the parents' renderer's own trade).
   const words = (lines[0] ?? '').split(' ');
   for (let count = words.length - 1; count >= 1; count--) {
     const text = send(`${words.slice(0, count).join(' ')}...`);
-    if (smsSegments(text) <= SEGMENT_CAP) return { kind: 'sms', text };
+    if (smsSegments(text) <= SEGMENT_CAP) return { kind: 'sms', text, modelWritten: false };
   }
-  return { kind: 'sms', text: send('...') };
+  return { kind: 'sms', text: send('...'), modelWritten: false };
 }

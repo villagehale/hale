@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetPosthogClientsForTests } from './posthog-node';
+import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   type AgentError,
   buildAgentErrorPayload,
@@ -176,6 +178,10 @@ describe('reporting never makes a failure worse', () => {
     resetAnalyticsAbsenceLogForTests();
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_test');
     vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://ph.example.com');
+    vi.stubEnv('POSTHOG_HOST', '');
+    // Error tracking stays dark here; this block is about the product event.
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
+    resetPosthogClientsForTests();
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -216,10 +222,11 @@ describe('reporting never makes a failure worse', () => {
 
     await captureAgentError({ lane: 'coach', reason: POISON.parentText, familyId: FAMILY });
 
-    const body = String(fetchMock.mock.calls[0]?.[1]?.body);
-    expect(body).not.toContain('fever');
-    expect(body).not.toContain(FAMILY);
-    expect(JSON.parse(body).properties).toEqual({
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const { text, events } = decodeBatch(fetchMock.mock.calls[0]?.[1]);
+    expect(text).not.toContain('fever');
+    expect(text).not.toContain(FAMILY);
+    expect(ours(events[0]?.properties ?? {})).toEqual({
       lane: 'coach',
       error_class: 'unclassified',
       family_hash: hashFamilyId(FAMILY),

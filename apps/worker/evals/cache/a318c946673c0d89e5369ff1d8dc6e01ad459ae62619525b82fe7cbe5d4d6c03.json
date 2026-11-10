@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNP1bSfm74HTQbgGbxjG",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQStwYKEAgTGAI4AUIIdGhpbmtpbmcSDApAJbwU89NM09kCJxoMniSbIG5Zu2SUz9n1IjCTQwprdiJ5CV9nFTEsSHJ/zlwU3RH7RWU3Szsk9932TrTfqIcL5vfqEvIOuFlphmoq1AUKKY8EWv4yFMVlckXtZ/uiTzzE4iqXp4/hAZ5BY1wYI8+btiO+/kiJA8GOf5NPIimnHJq/09o6BMpHr+5IHDMzahYbMb7FjBAmlXW2tlVa5EjzHLZSMwIe2mydNpZavRFklUxRgSW91jEHNqRSTJr3O/kdtEkWirVinJQW5WY7Ppnt7m7DYsYUdTchv0pB/9s6YmyR13IJQ7JGavZB8HDOr1esg8s/yZcvO+cHM7u1AiY1DnVlO3ZeXsdTchgZbGkEv+rzQ0h96uytXa/LScy2Z7FTmEeGPHNHb5uyad7QsqLBR772u6e6/cN8GGW0RwhI79MS2XbH+mYdchcQxA0JeLVIK+rfrf7GgyO3O2LmILLKJTlwrLGOazu8oRBMVkMGjVnAuhsj9xdzF/Xpjex7e27rULvakuL3sx34XFI9EAS5+oOfpQrl0BXT4YagXwpUwikj0E+soVLnv6MTlT3s2sNfKU2dcaY7aZpBxMuexVFtiOX5yBZNBNFusnF1XbbhjgXfY3CkPpY3SE+Rfhz26hDthtWfZneb6x/Y5Pr5LcveSBGiTcBSz60dfVVb3OgekU6hVvGwWG1T2YiXJunBkIPxNbQ3+E/y6iRf3nGJuf02KDo2z1+WkR9DoAQrBgLJMUkNrIrohuwO+rOK+FIybqJ2oVqwLwd+mSrlIsLI2kuBM9iN7wXYgaguHc+cBp3sQX/IFhyD7rHzI/sG3P5SRVFw0ZqctS3Amf40MCONySqX9tEhR+tNcWPPB3IlSxT3F97I/DQuHvlnFUOYH2bFhytgM69M3RKeSdlgcTLFuusshVElhgdOqKI5PLPE9/h8+Hemy7U1OYwyM8DFeksgjT9HGzzpb7woVd8tWAl9fs3RVCwJsIW0z9Fn0gVEopmlfaoVJ9BFf0/r5FrKL7NxfgfrvbBIpdrIuTUlbLx+gWvz47yB4HS2GSZ5VGDVbE7gJ/MGGAE="
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share."
+      }
+    ],
+    "usage": {
+      "input_tokens": 859,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 116,
+      "output_tokens_details": {
+        "thinking_tokens": 88
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1774
+}

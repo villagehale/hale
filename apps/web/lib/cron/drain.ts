@@ -1,5 +1,4 @@
 import {
-  type ChannelMessageReceivedPayload,
   type DeepResearchPayload,
   type QueueCreateOptions,
   approvedActionPayloadSchema,
@@ -27,6 +26,7 @@ import {
 import { dispatchAutonomyNotices } from '~/lib/channel/autonomy/dispatch';
 import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import {
+  CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
   CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_EXPIRE_SECONDS,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -38,8 +38,11 @@ import {
   SEND_RETRIES_EXHAUSTED,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import type { LoopMessage } from '~/lib/channel/types';
 import { POLICY_VERSION } from '~/lib/consent';
+import { bindInboundQueue } from '~/lib/cron/singleton-fetch';
+import { queueSchema } from '~/lib/preview/family-scope';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -59,9 +62,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 
 const EVENTS_QUEUE = 'events.ingested';
 const ACTIONS_QUEUE = 'actions.approved';
-/** Background feed-rank materialization: a job carries {family_id}; the handler
- * runs the ~25s ranker OUT of the request path and stores the order in
- * village_feed_rank, so the home feed read is a pure DB lookup. */
+/** Acknowledge already queued rerank jobs without rebuilding the retired catalog. */
 const RERANK_QUEUE = 'village.rerank';
 
 /**
@@ -116,19 +117,19 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 900;
 const BATCH_SIZE = 10;
 
 /**
- * The inbound queue is fetched with the FULL batch window, on purpose.
+ * The inbound queue is claimed one turn at a time ({@link CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE}).
  *
- * pg-boss gates a singleton-policy queue per key INSIDE the fetched batch (plans.js
- * fetchNextJob: LIMIT first, then one row per singleton_key), so a one-row window that
- * lands on a key whose earlier job is still active returns nothing at all — and the
- * whole queue, the canary included, sits behind it. Observed 2026-09-17 04:43–04:49 with a
- * window of one: four turns and the canary stayed `created` while the minute cron logged
- * processed: 0. Ten is the window that has drained this queue for months.
+ * pg-boss 10.4.2's own fetch gates a singleton key only inside the fetched batch, so a
+ * one-row window that landed on a held key used to come back empty (2026-09-17). The
+ * production boss does not use that fetch for this queue: singleton-fetch.ts skips held
+ * keys before it claims, so a one-row claim takes the oldest FREE parent. Claiming one at
+ * a time is what keeps a claimed job `active` only while its own turn runs, which is the
+ * premise of the 180s expiry every drain sweeps before it fetches. A batch fetched ahead
+ * of its turns aged the unstarted ones into that sweep.
  *
- * A run works its batch one turn at a time. That is safe again because a kicked run no
- * longer lives only as long as the kick (route.ts answers 202 and works in after()), so a
- * ten-turn batch finishes inside maxDuration instead of dying at the kick's 60s. What a
- * burst costs is the turns' own time, in fetch order; what it never costs is a lost turn.
+ * A kicked run no longer lives only as long as the kick (route.ts answers 202 and works in
+ * after()), so a burst of turns finishes inside maxDuration. The wall-clock budget is
+ * checked before every inbound turn.
  */
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
@@ -153,6 +154,13 @@ export interface DrainBoss {
   fetch<T>(name: string, options: { batchSize: number }): Promise<Array<{ id: string; data: T }>>;
   complete(name: string, id: string): Promise<void>;
   fail(name: string, id: string, data: object): Promise<void>;
+  /**
+   * Fail or retry active jobs whose expire_in has elapsed, and return how many
+   * inbound jobs were in that state. pg-boss only does this from maintain();
+   * the drain calls it itself so a stuck turn does not wait on
+   * /api/cron/queue-maintenance (VIL-535).
+   */
+  expire(): Promise<number>;
 }
 
 export interface DrainHandlers {
@@ -176,7 +184,7 @@ export interface DrainHandlers {
    * the caller. A throw re-queues the job; the parent's message is already durably on
    * the ledger, so a retry re-reads it rather than losing it. Injected so the drain
    * loop is testable without a transport, a model, or a db. */
-  channelMessage: (job: ChannelMessageReceivedPayload) => Promise<void>;
+  channelMessage: (job: ChannelMessageReceivedJob) => Promise<void>;
   /**
    * Keep ONE activity promise, now — three concurrent research legs, an Opus merge and
    * an adversarial refutation, bound to a db by the caller.
@@ -217,6 +225,9 @@ export interface DrainSummary {
   processed: number;
   failed: number;
   dropped: number;
+  /** Inbound jobs found active past their expiry, then reaped, before this run
+   * fetched. Zero means the sweep looked and found none. */
+  expiredActive: number;
 }
 
 /**
@@ -361,7 +372,10 @@ async function processChannelMessageJob(
     );
     return 'dropped';
   }
-  await deps.handlers.channelMessage(parsed.data);
+  // A job queued before the bit existed has no `in_group`; it is passed on as unknown
+  // (VIL-463), never as a 1:1 turn. Not a no-op: the schema's `in_group` is optional and
+  // the job's is REQUIRED (`boolean | undefined`), so the key is written out explicitly.
+  await deps.handlers.channelMessage({ ...parsed.data, in_group: parsed.data.in_group });
   return 'processed';
 }
 
@@ -612,7 +626,11 @@ const DRAIN_PLAN = [
   // Each dead letter drains right behind its queue — an unread DLQ is a silent drop
   // with extra steps (rule #11). All are near-empty near-free reads on a healthy tick.
   { queue: CHANNEL_SEND_DLQ, process: processDeadSendJob },
-  { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
+  {
+    queue: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    process: processChannelMessageJob,
+    batchSize: CHANNEL_MESSAGE_RECEIVED_BATCH_SIZE,
+  },
   { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
   { queue: EVENTS_QUEUE, process: processIngestedJob },
   { queue: EVENTS_DLQ, process: processDeadJobFor(EVENTS_DLQ) },
@@ -714,9 +732,12 @@ export async function drainHotQueues(
     deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
   });
 
+  // Before any fetch. An expired active singleton key otherwise makes pg-boss's
+  // own fetch return an empty batch for every family (VIL-535).
+  const expiredActive = await deps.boss.expire();
   const startedMs = deps.now();
   const deadlineMs = startedMs + WALL_CLOCK_BUDGET_MS;
-  const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
+  const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0, expiredActive };
 
   const slice = options.queues;
   for (const step of DRAIN_PLAN) {
@@ -757,13 +778,74 @@ export function isConnectionExhaustion(err: unknown): boolean {
   );
 }
 
+/** The production {@link DrainBoss} over a started pg-boss: the inbound queue claims
+ * through {@link bindInboundQueue}, every other call is pg-boss's own. */
+export function drainBossFrom(boss: PgBoss): DrainBoss {
+  const inbound = bindInboundQueue(boss);
+  // P0-3: createQueueWithPolicy is the only caller. Pass the methods through;
+  // queue-policy-guard rejects an invocation written in this file.
+  const queueBoss = boss as unknown as DrainBoss;
+  return {
+    createQueue: queueBoss.createQueue.bind(queueBoss),
+    updateQueue: queueBoss.updateQueue.bind(queueBoss),
+    fetch: (name, options) => inbound.fetch(name, options),
+    complete: async (name, id) => {
+      await boss.complete(name, id);
+    },
+    fail: async (name, id, data) => {
+      await boss.fail(name, id, data);
+    },
+    expire: () => inbound.expire(),
+  };
+}
+
+/**
+ * The drain's pg-boss options, one source for the run and the launch load probe
+ * (scripts/drain-load-probe.ts), so the probe measures the pool production opens.
+ *
+ * ONE connection, let go of as soon as it is idle, and no scheduler. The session pooler
+ * behind DATABASE_DIRECT_URL has 15 server connections, and every web function's
+ * transaction-mode queries share them; a session client holds one for as long as it is
+ * open. pg-boss's default pool of ten per instance meant two concurrent runs could
+ * exhaust it (EMAXCONNSESSION, 2026-09-17). Two, kept for pg's default ten idle seconds,
+ * still did at launch load: a run holds its client through the start of every turn,
+ * and a burst of texts is a burst of runs (launch load probe, VIL-314: 30 runs refused,
+ * 32 webhook enqueues refused, p95 drain delay 126 s with 60 families texting inside a
+ * minute). A run claims, works and completes one statement at a time, so one connection
+ * is all it can use, and dropping it after {@link DRAIN_POOL_IDLE_MS} gives it back for
+ * the model time of the turn, which is most of the run.
+ *
+ * The scheduler is pg-boss's cron Timekeeper, which this repo never uses (vercel.json is
+ * the schedule) and which kept a poller alive past the run's end, crashing the process
+ * on the way out ("Unhandled Rejection … Timekeeper.onCron").
+ */
+export function drainBossConfig(
+  connectionString: string,
+): PgBoss.ConstructorOptions & { idleTimeoutMillis: number } {
+  return {
+    connectionString,
+    schema: queueSchema(),
+    supervise: false,
+    schedule: false,
+    max: 1,
+    // pg-boss hands its config to pg.Pool, which reads this.
+    idleTimeoutMillis: DRAIN_POOL_IDLE_MS,
+  };
+}
+
+/** How long a drain run keeps an idle session connection. Short against a turn's model
+ * time (tens of seconds), long against the gap between a run's own statements. */
+export const DRAIN_POOL_IDLE_MS = 1_000;
+
 /**
  * Connection (recipe #4): pg-boss requires prepared statements, which Supabase's
  * TRANSACTION pooler (port 6543) breaks. We connect via DATABASE_DIRECT_URL —
  * the direct/session 5432 URL already used for DDL/migrations — falling back to
  * DATABASE_URL only when it is unset. `supervise: false` (recipe #1): no
- * background maintenance loop in the drain function; the separate
- * queue-maintenance cron owns boss.maintain().
+ * background maintenance loop in the drain function. The run calls
+ * `boss.expire()` once before it fetches, so a stuck active job is failed or
+ * retried without waiting for the queue-maintenance cron. That cron still owns
+ * archive and purge, on the schedule in vercel.json — this does not change it.
  */
 export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSummary> {
   const connectionString = process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
@@ -776,22 +858,28 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // that imports a drain constant. The runtime entrypoint is the only place that
   // needs the real handler, so the import stays scoped to it.
   const { db } = await import('~/lib/db');
-  const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
+  // Drain pre-migration queued rank jobs without rebuilding a retired catalog.
+  const upsertFeedRank = async (_database: unknown, familyId: string) => {
+    console.info({ familyId }, 'retired village rerank job: skipped');
+  };
 
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
   const { noteDeadLetteredTurn } = await import('~/lib/monitoring/failure-page');
   const { keepPromiseNow } = await import('~/lib/channel/activity/deep-job');
-  const { dispatchLoopMessage, recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
+  const { recordAbandonedDispatch } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
+  const { dispatchAndReleaseHold } = await import('~/lib/loop/reminders/held-at-send');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
+  const { productionCalendarCancelVoice } = await import('~/lib/loop/voice/calendar-cancel-voice');
+  const { productionCalendarInviteVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
   const { createGoogleCalendarPlacement } = await import(
     '~/lib/integrations/google-calendar-placement'
   );
-  const { productionCalendarVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
+  const { createGmailEmailSender } = await import('~/lib/integrations/gmail-send-service');
 
   const channels = productionChannels(db());
 
@@ -799,45 +887,54 @@ export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSum
   // through. Both execution paths get it: an approved placement (actions.approved) and
   // an autonomous one (events.ingested). Unbound, a placement would land on Hale's
   // calendar and nowhere else, which is the hole this closes.
-  const googlePlacement = createGoogleCalendarPlacement(db());
-  const calendarInvites = createCalendarInviteSender(db(), {
-    channels,
-    renderer: loopTemplateRenderer,
-    voice: productionCalendarVoice(),
-  });
+  const { productionCalendarWriteNoticePorts, withCalendarWriteNotice } = await import(
+    '~/lib/channel/calendar-write/send'
+  );
+  // VIL-454 (T6): the parent hears how the write to their own calendar went. The
+  // decorator returns the report untouched and only texts when
+  // CALENDAR_WRITE_NOTICE_ENABLED is exactly `true` (default off).
+  const googlePlacement = withCalendarWriteNotice(
+    createGoogleCalendarPlacement(db()),
+    productionCalendarWriteNoticePorts(db()),
+  );
+  const { productionGroupPlanReportPorts, withGroupPlanReport } = await import(
+    '~/lib/channel/group-plan/send'
+  );
+  // VIL-443 (T17): a plan the family group made is reported back to that group, one
+  // AI-written text with the add-to-calendar link, instead of a link to each parent.
+  // Only when GROUP_PLAN_CALENDAR_REPORT_ENABLED is exactly `true` (default off).
+  const calendarInvites = withGroupPlanReport(
+    createCalendarInviteSender(db(), {
+      channels,
+      renderer: loopTemplateRenderer,
+      inviteVoice: productionCalendarInviteVoice(),
+      cancelVoice: productionCalendarCancelVoice(),
+    }),
+    productionGroupPlanReportPorts(db()),
+  );
+  // Approved send_email actions leave from the approving parent's own Gmail.
+  const sendEmail = createGmailEmailSender(db());
 
-  // Two connections, and no scheduler. The session pooler behind DATABASE_DIRECT_URL
-  // admits 15 clients in total; pg-boss's default pool of ten per instance meant two
-  // concurrent runs could exhaust it, and on 2026-09-17 a burst of kicked runs did
-  // (EMAXCONNSESSION), killing the runs that lost the race before their first fetch. A
-  // run fetches, works, completes — sequentially — so two is enough. The scheduler is
-  // pg-boss's cron Timekeeper, which this repo never uses (vercel.json is the schedule)
-  // and which kept a poller alive past the run's end, crashing the process on the way
-  // out ("Unhandled Rejection … Timekeeper.onCron").
-  const boss = new PgBoss({
-    connectionString,
-    schema: 'pgboss',
-    supervise: false,
-    schedule: false,
-    max: 2,
-  });
+  const boss = new PgBoss(drainBossConfig(connectionString));
   await boss.start();
   try {
     return await drainHotQueues(
       {
-        boss: boss as unknown as DrainBoss,
+        boss: drainBossFrom(boss),
         handlers: {
           runOrchestrator: (job) =>
-            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement }),
+            runOrchestrator(job, { calendarInvites, googleCalendar: googlePlacement, sendEmail }),
           executeApprovedAction: (input) =>
             executeApprovedAction(input, {
               ...defaultExecuteApprovedDeps(),
               calendarInvites,
               googleCalendar: googlePlacement,
+              sendEmail,
             }),
           rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
           channelSend: (message) =>
-            dispatchLoopMessage(
+            dispatchAndReleaseHold(
+              db(),
               message,
               buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
             ).then(() => undefined),

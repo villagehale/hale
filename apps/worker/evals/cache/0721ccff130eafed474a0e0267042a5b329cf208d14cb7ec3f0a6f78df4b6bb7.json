@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start (15 h) and the end (jusqu'à 16 h), keeps the title \"Jour de congé\" quoted as-is, and names the venue Georgetown library. It omits the street address, 9 Church St, which the facts gave. A given fact is missing, so this is a fact failure. Nothing was invented and the language is French. Bold is none, which is fine.",
+    "score": 2
+  }
+}

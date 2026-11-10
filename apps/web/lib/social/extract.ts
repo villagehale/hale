@@ -1,9 +1,9 @@
 import type { AgentClient } from '@hale/agent';
 import { pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { parseStatedAgeBand } from '~/lib/civic/age-band';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { parseStatedAgeBand } from './age-band';
 
 /**
  * VIL-378 — caption to a structured spot.

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, asc, eq, gt, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   type IdentityAskVoice,
   type IdentityGap,
@@ -8,6 +8,7 @@ import {
 } from '~/lib/channel/identity/ask-voice';
 import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound, notePermanentSkip } from '~/lib/channel/linq/family-outbound';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -20,15 +21,23 @@ import {
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { sanitizeSpotUrl } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import {
   familyHasSyntheticProbeChannel,
   resolveSendablePhone,
 } from '~/lib/channels/sms-consent-core';
-import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
-import { INTRO_SOFT_CLOSE, stageWord } from './copy';
-import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
+import { stageWord } from './copy';
+import {
+  INTRO_GROUP_TEMPLATE_KEY,
+  type OpenIntroGroup,
+  createLinqIntroGroupOpener,
+  introFirstName,
+  introGroupDedupeKey,
+  villageIntroGroupsEnabled,
+} from './group';
+import { type IntroGroupVoice, productionIntroGroupVoice } from './group-voice';
 import {
   type IntroMatchSignal,
   type IntroSkipReason,
@@ -38,7 +47,13 @@ import {
   normalizeFsa,
   pairKey,
 } from './matcher';
-import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
+import { writeIntroReply } from './reply';
+import {
+  type IntroAskRequest,
+  type IntroVoice,
+  introVoiceClient,
+  productionIntroVoice,
+} from './voice';
 
 /**
  * Village intros v1 — the sweep. Three phases, run in order, every tick.
@@ -135,7 +150,6 @@ export const INTRO_EXPIRY_DAYS = 7;
 
 /** How far ahead a civic session may be and still be worth anchoring on. Same horizon
  * as the expiry: an activity after the card has lapsed is not a shared plan. */
-const ANCHOR_HORIZON_DAYS = 7;
 
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their FSA forever. */
@@ -156,6 +170,9 @@ export interface IntroSweepFamily {
   parentEmail: string | null;
   areaCoarse: string | null;
   timeZone: string;
+  /** The family's stored language tag (`families.primary_language`), or null when the
+   * stored value is not a tag. The soft close is written in it (VIL-450). */
+  language: ReplyLanguage | null;
 }
 
 /** A live proposal, with the anchor already resolved to its title and instant so the
@@ -278,7 +295,6 @@ export interface IntroSweepDeps {
    * quietly fail to deliver it is the worst version of this feature: both families are
    * told yes, audited as disclosed-to, and never hear from each other. */
   transport: ChannelTransport;
-  email: IntroEmailSender;
   /** The words of the gap-fill ask. REQUIRED (rule #11): a sweep that can discover it is
    * missing an address and has no way to ask for one is the stall this feature shipped
    * with. Its own DEFERRAL is the named absence — nothing sent, nothing recorded, asked
@@ -288,6 +304,20 @@ export interface IntroSweepDeps {
    * under either of them, so a sweep with no composer has nothing to say and must not be
    * constructible. A composer that cannot run says so by DEFERRING, per send. */
   introVoice: IntroVoice;
+  /** The introduction's words (group-voice.ts). REQUIRED (rule #11): there is no fixed
+   * copy under it; a composer that cannot run DEFERS and the pair waits. */
+  introGroupVoice: IntroGroupVoice;
+  /** The soft close's words (said-line `intro_reply`, VIL-450). REQUIRED: there is no
+   * fixed sentence under it. A null write sends nothing (said-line logs it); the pair
+   * still closes, exactly as it does when the gate holds the send. */
+  saidLine: SaidLineWriter;
+  /** The parent's latest inbound texts, oldest first, for the soft close's LANGUAGE only
+   * (VIL-450): the model infers the language from them, so a family whose stored tag is
+   * missing or stale is not answered in English by default. REQUIRED (rule #11). */
+  recentParentWords(database: Database, familyId: string, parentUserId: string): Promise<string[]>;
+  /** Opens the three-way iMessage group whose first message is the introduction. Its
+   * absence is the named `not_configured`, never a missing dependency. */
+  openIntroGroup: OpenIntroGroup;
 }
 
 /**
@@ -320,7 +350,8 @@ export interface IntroSweepResult {
   classKeyed: number;
   carded: number;
   introduced: number;
-  /** Both sides said yes and the email did not go. The pair stays open on purpose. */
+  /** Both sides said yes and no introduction went (no channel since email was retired).
+   * The pair stays open on purpose. */
   introFailed: number;
   /** SIDES still owing Hale a fact before their introduction can be written. Counted
    * every tick they are owed, not once when asked — this is a level, not an event. */
@@ -845,30 +876,122 @@ async function introduce(
     return;
   }
 
-  const nameA = familyA.parentName;
-  const nameB = familyB.parentName;
-  const emailA = familyA.parentEmail;
-  const emailB = familyB.parentEmail;
-  if (!nameA?.trim() || !nameB?.trim() || !emailA || !emailB) {
+  if (!familyA.parentName?.trim() || !familyB.parentName?.trim()) {
     await awaitIdentity(database, deps, scope, proposal, byId, result, now);
     return;
   }
 
-  const outcome = await deps.email.send({
-    parentA: { firstName: introFirstName(nameA), email: emailA },
-    parentB: { firstName: introFirstName(nameB), email: emailB },
-    stage: proposal.stage,
-    anchorTitle: proposal.anchorTitle,
-  });
-  if (outcome.status !== 'sent') {
-    // NOT closed and NOT audited as disclosed. Nothing was disclosed, so saying it was
-    // would put a false entry in the one record PIPEDA right-to-access reads.
+  if (!villageIntroGroupsEnabled()) {
+    // Dark: the group intro is the only introduction channel. NOT closed and NOT audited
+    // as disclosed: nothing was disclosed, and the pair stays open until the channel is
+    // lit (rule #11 — counted, never a silent close).
     result.introFailed += 1;
     console.error(
-      { proposalId: proposal.id, outcome: outcome.status },
-      'village intros: introduction not delivered',
+      { proposalId: proposal.id, outcome: 'no_intro_channel' },
+      'village intros: introduction not delivered - the group intro is dark',
     );
     return;
+  }
+
+  await introduceInGroup(database, deps, proposal, familyA, familyB, result, now);
+}
+
+/** Every failure below leaves the pair OPEN and unaudited as disclosed: nothing crossed,
+ * so saying it did would put a false entry in the record PIPEDA right-to-access reads. */
+function introNotDelivered(
+  result: IntroSweepResult,
+  proposalId: string,
+  outcome: string,
+  detail?: Record<string, unknown>,
+): void {
+  result.introFailed += 1;
+  console.error({ proposalId, outcome, ...detail }, 'village intros: introduction not delivered');
+}
+
+/**
+ * The introduction as a three-way iMessage group: one Linq chat holding both parents,
+ * whose first message is the composed introduction. What crosses is exactly what both
+ * parents said yes to twice — first names, the shared stage, the activity — plus each
+ * parent's number, by being in the group.
+ */
+async function introduceInGroup(
+  database: Database,
+  deps: IntroSweepDeps,
+  proposal: SweepProposal,
+  familyA: IntroSweepFamily,
+  familyB: IntroSweepFamily,
+  result: IntroSweepResult,
+  now: Date,
+): Promise<void> {
+  // A group opened on an earlier tick whose close did not land: finish the close rather
+  // than open a second group (the ledger row is written right after the open).
+  if (await deps.dedupeActive(database, introGroupDedupeKey(proposal.id, 'a'))) {
+    await deps.setStatus(database, proposal.id, 'both_accepted', true, now);
+    result.introduced += 1;
+    return;
+  }
+
+  for (const family of [familyA, familyB]) {
+    const verdict = await assertProactiveSendAllowed(
+      { familyId: family.familyId, parentUserId: family.parentUserId, kind: 'village_intro', now },
+      deps.buildGate(database),
+    );
+    if (!verdict.allowed) {
+      result.held[verdict.reason] += 1;
+      return;
+    }
+  }
+
+  const toA = await deps.resolveSendablePhone(database, familyA.parentUserId);
+  const toB = await deps.resolveSendablePhone(database, familyB.parentUserId);
+  if (!toA || !toB) {
+    introNotDelivered(result, proposal.id, 'no_sendable_phone');
+    return;
+  }
+
+  const composed = await deps.introGroupVoice.compose({
+    parentAFirstName: introFirstName(familyA.parentName ?? ''),
+    parentBFirstName: introFirstName(familyB.parentName ?? ''),
+    stageWord: stageWord(proposal.stage),
+    anchorTitle: proposal.anchorTitle,
+    anchorDay:
+      proposal.anchorStartsAt === null
+        ? null
+        : weekdayIn(proposal.anchorStartsAt, familyA.timeZone),
+  });
+  if (composed.status === 'deferred') {
+    // A deferral is a retry: nothing opened, nothing recorded, the next tick composes again.
+    console.error(
+      { proposalId: proposal.id, outcome: 'composer_deferred', reason: composed.reason },
+      'village intros: group intro deferred',
+    );
+    return;
+  }
+
+  const opened = await deps.openIntroGroup({ to: [toA, toB], text: composed.body });
+  if (opened.status === 'not_configured') {
+    introNotDelivered(result, proposal.id, 'no_intro_channel');
+    return;
+  }
+  if (opened.status === 'refused') {
+    introNotDelivered(result, proposal.id, 'group_refused', { code: opened.code });
+    return;
+  }
+
+  for (const [side, family] of [
+    ['a', familyA],
+    ['b', familyB],
+  ] as const) {
+    await deps.recordSend(database, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      templateKey: INTRO_GROUP_TEMPLATE_KEY,
+      dedupeKey: introGroupDedupeKey(proposal.id, side),
+      providerMessageId: opened.providerMessageId,
+      sentAt: now,
+      channel: 'imessage',
+      providerChatId: opened.chatId,
+    });
   }
 
   for (const [self, other] of [
@@ -881,13 +1004,11 @@ async function introduce(
       actionTaken: 'village_intro_disclosed',
       targetTable: 'village_intro_proposals',
       targetId: proposal.id,
-      // EXACTLY what crossed the household boundary, field by field. A disclosure the
-      // trail describes only as "an intro was sent" is unanswerable in a right-to-access
-      // request, which is the one question this row exists to answer (rule #6).
+      // EXACTLY what crossed the household boundary, field by field (rule #6).
       after: {
         counterpartFamilyId: other,
-        channel: 'email',
-        disclosedFields: ['parent_first_name', 'parent_email', 'child_stage', 'activity_title'],
+        channel: 'imessage_group',
+        disclosedFields: ['parent_first_name', 'parent_phone', 'child_stage', 'activity_title'],
         anchored: proposal.anchorTitle !== null,
       },
     });
@@ -897,11 +1018,10 @@ async function introduce(
   result.introduced += 1;
 }
 
-/** What Hale is missing before it can write the introduction email for a side. */
+/** What Hale is missing before it can write the introduction for a side. */
 function identityGaps(family: IntroSweepFamily): IdentityGap[] {
   const missing: IdentityGap[] = [];
   if (!family.parentName?.trim()) missing.push('name');
-  if (!family.parentEmail) missing.push('email');
   return missing;
 }
 
@@ -1037,7 +1157,19 @@ async function softClose(
     const outcome = await sendIntroSms(database, deps, scope, {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
-      body: INTRO_SOFT_CLOSE,
+      // The SAME facts whatever killed the pair (declined, silent, expired): the reason is
+      // never handed to the writer, so no wording can carry it.
+      // The family's OWN language (VIL-450): its stored tag plus its latest texts, so the
+      // model writes in the language they text in. Never an English default.
+      body: async () =>
+        writeIntroReply(deps.saidLine, 'soft_close', null, {
+          language: family.language,
+          recentParentWords: await deps.recentParentWords(
+            database,
+            family.familyId,
+            family.parentUserId,
+          ),
+        }),
       templateKey: 'village_intro:soft_close',
       dedupeKey: `village_intro:close:${proposal.id}:${side.key}`,
       now,
@@ -1106,8 +1238,9 @@ export async function runVillageIntroSweep(
  * Consent, enrolment, volume and the clock are the GATE's business — selecting on them
  * here would put the same policy in two places and let them disagree. */
 async function selectIntroFamilies(database: Database): Promise<IntroSweepFamily[]> {
-  return database
+  const rows = await database
     .select({
+      primaryLanguage: schema.families.primaryLanguage,
       familyId: schema.families.id,
       areaCoarse: schema.families.areaCoarse,
       parentUserId: schema.users.id,
@@ -1130,6 +1263,39 @@ async function selectIntroFamilies(database: Database): Promise<IntroSweepFamily
         isNull(schema.families.scheduledDeletionAt),
       ),
     );
+  return rows.map(({ primaryLanguage, ...row }) => ({
+    ...row,
+    language: acceptReplyLanguage(primaryLanguage),
+  }));
+}
+
+/** How many of the parent's latest texts the soft close reads for its language. */
+const RECENT_PARENT_WORDS = 3;
+
+/** The parent's latest inbound bodies in this family, oldest first (VIL-450). Scoped to
+ * the one family and parent: no other household's words can reach the writer. */
+async function readRecentParentWords(
+  database: Database,
+  familyId: string,
+  parentUserId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({ body: schema.channelMessages.body })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        eq(schema.channelMessages.direction, 'in'),
+        isNotNull(schema.channelMessages.body),
+      ),
+    )
+    .orderBy(desc(schema.channelMessages.createdAt))
+    .limit(RECENT_PARENT_WORDS);
+  return rows
+    .map((row) => row.body?.trim() ?? '')
+    .filter((body) => body.length > 0)
+    .reverse();
 }
 
 async function readIntroChildren(database: Database, familyId: string): Promise<IntroSweepChild[]> {
@@ -1255,49 +1421,6 @@ async function readPairedBefore(database: Database): Promise<Set<string>> {
   return new Set(rows.map((row) => pairKey(row.familyAId, row.familyBId)));
 }
 
-/**
- * The soonest free civic session inside the pair's match area that both families could
- * plausibly be at.
- *
- * Occurrence rows only. A weekly EarlyON slot has no date of its own — expanding it
- * into one is the civic projection's job, and an anchor that names a day Hale computed
- * rather than a day the venue published is the kind of small wrongness that makes a
- * parent show up on the wrong morning.
- *
- * The venue's FSA is derived in SQL from its own published postal code — a venue's
- * address is public, and it is the only postal code in this query.
- */
-async function readAnchorSession(
-  database: Database,
-  fsas: readonly string[],
-  now: Date,
-): Promise<{ id: string; title: string; startsAt: Date } | null> {
-  const horizon = new Date(now.getTime() + ANCHOR_HORIZON_DAYS * 24 * 3_600_000);
-  const [row] = await database
-    .select({
-      id: schema.civicSessions.id,
-      title: schema.civicSessions.title,
-      startsAt: schema.civicSessions.startsAt,
-    })
-    .from(schema.civicSessions)
-    .innerJoin(schema.civicVenues, eq(schema.civicVenues.id, schema.civicSessions.venueId))
-    .where(
-      and(
-        eq(schema.civicSessions.recurrence, 'occurrence'),
-        eq(schema.civicSessions.isCancelled, false),
-        isNull(schema.civicSessions.supersededAt),
-        gte(schema.civicSessions.confidence, MIN_SURFACE_CONFIDENCE),
-        gte(schema.civicSessions.startsAt, now),
-        lte(schema.civicSessions.startsAt, horizon),
-        inArray(sql`upper(left(replace(${schema.civicVenues.postalCode}, ' ', ''), 3))`, [...fsas]),
-      ),
-    )
-    .orderBy(asc(schema.civicSessions.startsAt))
-    .limit(1);
-  if (!row?.startsAt) return null;
-  return { id: row.id, title: row.title, startsAt: row.startsAt };
-}
-
 async function insertProposal(
   database: Database,
   input: Parameters<IntroSweepDeps['createProposal']>[1],
@@ -1336,28 +1459,16 @@ async function readLiveProposals(database: Database): Promise<SweepProposal[]> {
       familyAReply: schema.villageIntroProposals.familyAReply,
       familyBReply: schema.villageIntroProposals.familyBReply,
       expiresAt: schema.villageIntroProposals.expiresAt,
-      anchorTitle: schema.civicSessions.title,
-      anchorStartsAt: schema.civicSessions.startsAt,
-      anchorCancelled: schema.civicSessions.isCancelled,
-      anchorSuperseded: schema.civicSessions.supersededAt,
+      // Historical catalog IDs cannot establish a currently happening activity.
+      anchorTitle: sql<string | null>`null::text`,
+      anchorStartsAt: sql<Date | null>`null::timestamptz`,
     })
     .from(schema.villageIntroProposals)
-    .leftJoin(
-      schema.civicSessions,
-      eq(schema.civicSessions.id, schema.villageIntroProposals.civicSessionId),
-    )
     .where(isNull(schema.villageIntroProposals.closedAt));
 
   return rows.map((row) => ({
     ...row,
     stage: row.stage as FamilyStage,
-    // An anchor that has since been cancelled or retired is dropped rather than
-    // repeated: a card that names a session which is not happening is worse than one
-    // with no anchor at all.
-    anchorTitle:
-      row.anchorCancelled === true || row.anchorSuperseded !== null ? null : row.anchorTitle,
-    anchorStartsAt:
-      row.anchorCancelled === true || row.anchorSuperseded !== null ? null : row.anchorStartsAt,
   }));
 }
 
@@ -1381,7 +1492,8 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       (await loadLoopPrefsView(parentUserId, database)).childNameLevel,
     loadOpenProposalFamilyIds: readOpenProposalFamilyIds,
     loadPairedBefore: readPairedBefore,
-    loadAnchorSession: readAnchorSession,
+    // Pairing still works without its optional, now-retired catalog activity anchor.
+    loadAnchorSession: async () => null,
     createProposal: insertProposal,
     loadLiveProposals: (database) => readLiveProposals(database),
     markAsked: async (database, proposalId, side, now) => {
@@ -1434,8 +1546,11 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createOutboundTransport(),
-    email: createIntroEmailSender(),
     identityAsk: productionIdentityAskVoice(),
     introVoice: productionIntroVoice(),
+    introGroupVoice: productionIntroGroupVoice(),
+    saidLine: createSaidLineWriter(introVoiceClient),
+    recentParentWords: readRecentParentWords,
+    openIntroGroup: createLinqIntroGroupOpener(),
   };
 }

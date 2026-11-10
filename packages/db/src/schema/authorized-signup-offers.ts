@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -24,6 +26,25 @@ export interface AuthorizedSignupSession {
   partySize?: number | null;
   seatingNote?: string | null;
 }
+
+/**
+ * VIL-558 · where a plan's Browser Use run stands when a sweep ends before the run does.
+ * Browser Use ids, the cart total and the choice rank only; never a person or a link.
+ * `paying` is written before the payment run is created, so a resume that finds it with
+ * no run id never creates a second one.
+ */
+export type AuthorizedSignupPlanResume =
+  | { phase: 'signup'; runId: string | null; sessionId: string | null; browserId: string | null }
+  | {
+      phase: 'paying';
+      runId: string | null;
+      sessionId: string;
+      browserId: string | null;
+      choiceIndex: number;
+      cartTotalCents: number;
+      holdExpiresAt: string | null;
+      costUsd: string | null;
+    };
 
 /**
  * VIL-375 — the activity a parent may authorize Hale to register, and nothing else.
@@ -51,11 +72,31 @@ export const authorizedSignupOffers = pgTable(
     sessions: jsonb('sessions').$type<AuthorizedSignupSession[]>().notNull(),
     /** The only price the parent has approved, in cents. Null means none. */
     approvedPriceCents: integer('approved_price_cents'),
-    /** pending, submitting, completed, or handed_back. */
+    /** pending, planned, submitting, completed, or handed_back. */
     status: text('status').notNull().default('pending'),
     authorizedSessionId: text('authorized_session_id'),
     /** The inbound channel_messages id, never the body. */
     authorizingMessageId: text('authorizing_message_id'),
+    /** Browser Use session cost in USD (model, search, browser, proxy), once its browser stopped. */
+    browserUseCostUsd: numeric('browser_use_cost_usd', { precision: 12, scale: 6 }),
+    /**
+     * VIL-558 · the day-before plan (status `planned`). Session ids from `sessions`,
+     * best first; the first one open at the open time is the one Hale registers.
+     */
+    planChoiceIds: text('plan_choice_ids').array(),
+    /** The most the parent approved for this registration, in cents. */
+    planMaxPriceCents: integer('plan_max_price_cents'),
+    /** When registration opens. Hale joins the open from just before it. */
+    planOpensAt: timestamp('plan_opens_at', { withTimezone: true }),
+    /** True only when the parent said Hale may tick the provider's activity waiver. */
+    planWaiverAccepted: boolean('plan_waiver_accepted'),
+    planApprovedAt: timestamp('plan_approved_at', { withTimezone: true }),
+    /** Set from the claim on: the plan's run resumes from here on a later sweep. */
+    planResume: jsonb('plan_resume').$type<AuthorizedSignupPlanResume>(),
+    /** A sweep is carrying the plan until then. Null once it checkpointed and let go. */
+    planLeaseUntil: timestamp('plan_lease_until', { withTimezone: true }),
+    /** The parent took the plan back while its run was going: no payment starts after it. */
+    planCancelRequestedAt: timestamp('plan_cancel_requested_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -64,6 +105,13 @@ export const authorizedSignupOffers = pgTable(
     onePending: uniqueIndex('authorized_signup_offers_one_pending')
       .on(table.familyId)
       .where(sql`${table.status} = 'pending'`),
+    /** One registration per family at a time, held under concurrent sweeps (VIL-558). */
+    oneSubmitting: uniqueIndex('authorized_signup_offers_one_submitting')
+      .on(table.familyId)
+      .where(sql`${table.status} = 'submitting'`),
+    plannedIdx: index('authorized_signup_offers_planned_idx')
+      .on(table.planOpensAt)
+      .where(sql`${table.status} = 'planned'`),
   }),
 );
 

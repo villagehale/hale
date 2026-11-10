@@ -22,6 +22,7 @@ import {
   evalSubjectRequest,
   noteLatency,
   noteUsage,
+  withoutMessageCacheMarkers,
 } from './harness.mjs';
 
 /** Guard deps that satisfy the signature and never fire: a no-tools skill dispatches no
@@ -64,7 +65,7 @@ export async function cachedAgentAnswer({
         const canonical = JSON.stringify({
           model: request.model,
           system: request.system,
-          messages: request.messages,
+          messages: withoutMessageCacheMarkers(request.messages),
           max_tokens: request.max_tokens,
           ...(process.env.EVAL_GATEWAY_MODEL ? { thinking: request.thinking } : {}),
         });

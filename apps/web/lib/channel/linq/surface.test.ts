@@ -2,8 +2,11 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { linqContactCardShareBlocked } from '~/lib/channel/intake/session';
+import { speak } from '~/lib/channel/spoken-line';
+import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import {
   CONTACT_CARD_SHARE_LOOKBACK,
   HALE_CONTACT_FIRST_NAME,
@@ -13,17 +16,14 @@ import {
   shareHaleContactCardOnce,
 } from './contact-card';
 import {
-  LINQ_GROUP_OPEN_TEXT,
-  LINQ_GROUP_UNREACHABLE_TEXT,
+  linqGroupOpenLine,
+  linqGroupUnreachableLine,
   mapGroupHandlesToFamily,
   openHouseholdLinqGroup,
 } from './group';
 import { linkPreviewUrl, sendLinqLinkPreview } from './link-preview';
 import { considerLinqReply } from './moments';
 import {
-  SANDBOX_YEAR_FIND_TITLES,
-  YEAR_FIND_POLL_NONE,
-  YEAR_FIND_POLL_PROMPT,
   offerSandboxYearFindPoll,
   offerYearFindPoll,
   sandboxYearFindPollOptions,
@@ -53,6 +53,20 @@ function enrol(
     phoneE164Encrypted: encryptString(phone),
     phoneE164Hash: phoneBlindIndex(phone),
     verifiedAt: NOW,
+  } as never);
+}
+
+/** The parent's own inbound in CHAT, as the door writes it: Linq said `is_group: false`. */
+function recordOneToOne(fake: ReturnType<typeof makeFakeDb>): void {
+  fake.db.insert(schema.channelMessages).values({
+    familyId: FAMILY,
+    parentUserId: USER,
+    channel: 'imessage',
+    direction: 'in',
+    category: 'reply',
+    providerChatId: CHAT,
+    status: 'delivered',
+    inGroup: false,
   } as never);
 }
 
@@ -919,6 +933,49 @@ describe('Linq household group', () => {
     ).resolves.toEqual({ status: 'mixed_family' });
   });
 
+  it('VIL-506: opens no group and sends nothing when the model writes no opening line', async () => {
+    process.env.APP_ENCRYPTION_KEY = ENC_KEY;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_FROM_E164', '+15555550100');
+    const fake = makeFakeDb();
+    enrol(fake, PARENT, { familyId: FAMILY, userId: USER });
+    await fake.db.insert(schema.families).values({ id: FAMILY, displayName: 'Fixture' } as never);
+    await fake.db.insert(schema.channelMessages).values({
+      familyId: FAMILY,
+      parentUserId: USER,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      providerChatId: CHAT,
+      providerMessageId: 'in-1',
+    } as never);
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({}, { status: 200 }),
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setSharedSpokenLineWriter({ write: async () => null });
+    try {
+      const opened = await openHouseholdLinqGroup(fake.db, {
+        familyId: FAMILY,
+        parentUserId: USER,
+        parentPhoneE164: PARENT,
+        coParentPhoneE164: COPARENT,
+        now: NOW,
+        fetch: fetchMock,
+      });
+      expect(opened).toEqual({ status: 'skipped', reason: 'no_line' });
+      expect(
+        fetchMock.mock.calls.filter(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+        ),
+      ).toEqual([]);
+    } finally {
+      setSharedSpokenLineWriter(scriptedSpokenLineWriter);
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('creates the group from the co-parent invite, and names a sandbox refusal', async () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
@@ -957,7 +1014,7 @@ describe('Linq household group', () => {
     const created = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(created.from).toBe('+15555550100');
     expect(created.to).toEqual([PARENT, COPARENT]);
-    expect(created.message.parts[0].value).toBe(LINQ_GROUP_OPEN_TEXT);
+    expect(created.message.parts[0].value).toBe(await linqGroupOpenLine(null));
     expect(created.message.parts[0].value).not.toMatch(/https?:\/\//);
     expect(fake.rows(schema.families).find((row) => row.id === FAMILY)?.linqGroupChatId).toBe(
       'group-1',
@@ -976,7 +1033,7 @@ describe('Linq household group', () => {
     });
     expect(again.status).toBe('degraded');
     const degrade = JSON.parse(String(refused.mock.calls.at(-1)?.[1]?.body));
-    expect(degrade.message.parts[0].value).toBe(LINQ_GROUP_UNREACHABLE_TEXT);
+    expect(degrade.message.parts[0].value).toBe(await linqGroupUnreachableLine(null));
   });
 });
 
@@ -1043,17 +1100,18 @@ describe('Linq polls', () => {
     });
     expect(off).toEqual({ status: 'skipped', reason: 'flag_off' });
     expect(quiet).not.toHaveBeenCalled();
-    expect(yearFindPollOptions('en', ['Only one'])).toBeNull();
-    expect(yearFindPollOptions('en', [])).toBeNull();
-    expect(yearFindPollOptions('fr', ['Nage', 'Conte', 'Zoo', 'Fourth'])).toEqual([
-      'Nage',
-      'Conte',
-      'Zoo',
-      YEAR_FIND_POLL_NONE.fr,
+    expect(await yearFindPollOptions('en', ['Only one'])).toBeNull();
+    expect(await yearFindPollOptions('en', [])).toBeNull();
+    expect(await yearFindPollOptions('fr', ['Nage', 'Conte', 'Zoo', 'Fourth'])).toEqual([
+      { text: 'Nage' },
+      { text: 'Conte' },
+      { text: 'Zoo' },
+      { text: 'Aucun de ceux-la', choiceKind: 'none' },
     ]);
 
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    recordOneToOne(fake);
     const sending = pollFetch();
     const sent = await offerYearFindPoll(fake.db, {
       channel: 'imessage',
@@ -1067,13 +1125,15 @@ describe('Linq polls', () => {
     });
     expect(sent.status).toBe('sent');
     const question = JSON.parse(String(sending.mock.calls[0]?.[1]?.body));
-    expect(question.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.en);
+    expect(question.message.parts[0].value).toBe(
+      await speak({ purpose: 'year_find_prompt', language: 'en' }),
+    );
     const poll = JSON.parse(String(sending.mock.calls[1]?.[1]?.body));
     expect(poll.poll.options.map((option: { text: string }) => option.text)).toEqual([
       'Parent and tot swim',
       'Story time',
       'U12 soccer tryouts',
-      YEAR_FIND_POLL_NONE.en,
+      'None of these',
     ]);
     expect(String(sending.mock.calls[1]?.[0])).toContain(`/chats/${CHAT}/polls`);
     expect(fake.rows(schema.linqPollOptions)).toHaveLength(4);
@@ -1091,12 +1151,14 @@ describe('Linq polls', () => {
     });
     expect(sentFr.status).toBe('sent');
     const questionFr = JSON.parse(String(french.mock.calls[0]?.[1]?.body));
-    expect(questionFr.message.parts[0].value).toBe(YEAR_FIND_POLL_PROMPT.fr);
+    expect(questionFr.message.parts[0].value).toBe(
+      await speak({ purpose: 'year_find_prompt', language: 'fr' }),
+    );
     const pollFr = JSON.parse(String(french.mock.calls[1]?.[1]?.body));
     expect(pollFr.poll.options.map((option: { text: string }) => option.text)).toEqual([
       'Nage',
       'Conte',
-      YEAR_FIND_POLL_NONE.fr,
+      'Aucun de ceux-la',
     ]);
   });
 
@@ -1104,16 +1166,18 @@ describe('Linq polls', () => {
     process.env.APP_ENCRYPTION_KEY = ENC_KEY;
     vi.stubEnv('LINQ_POLLS', 'on');
     vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
-    expect(sandboxYearFindPollOptions('en')).toEqual([
-      ...SANDBOX_YEAR_FIND_TITLES.en,
-      YEAR_FIND_POLL_NONE.en,
+    expect(await sandboxYearFindPollOptions('en')).toEqual([
+      { text: 'Swim at the rec centre' },
+      { text: 'Library storytime' },
+      { text: 'None of these', choiceKind: 'none' },
     ]);
-    expect(sandboxYearFindPollOptions('fr')).toEqual([
-      'Nage au centre recreatif',
-      'Heure du conte a la bibliotheque',
-      'Aucun de ceux-la',
+    expect(await sandboxYearFindPollOptions('fr')).toEqual([
+      { text: 'Nage au centre recreatif' },
+      { text: 'Heure du conte a la bibliotheque' },
+      { text: 'Aucun de ceux-la', choiceKind: 'none' },
     ]);
     const fake = makeFakeDb();
+    recordOneToOne(fake);
     const sending = pollFetch();
     const sent = await offerSandboxYearFindPoll(fake.db, {
       channel: 'imessage',

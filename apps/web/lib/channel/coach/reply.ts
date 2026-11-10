@@ -1,16 +1,16 @@
 import { distinctiveWords, mentionsActivity } from '~/lib/channel/followup/screen';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
-import { type NamedActivityLink, activityLinkSuffix, restoreActivityLinks } from './activity-links';
+import { type RefLink, attachLinks } from './activity-links';
 
 /**
  * VIL-221 · C2 — everything that happens to the model's answer between the loop
  * returning it and the carrier taking it.
  *
- * The skill already asks for short, plain, ASCII prose (see coach-channel-sms.md), so
- * none of this fires on a well-behaved answer. It exists for the answers that are not,
- * because the model is the one component on this path that cannot be made to behave by
- * construction — and each of the three things below is a real cost when it slips:
+ * The skill asks for short, plain prose in the parent's language (see
+ * coach-channel-sms.md). Accents and other scripts stay. Typographic punctuation
+ * is still folded to the plain mark, because one curly quote flips the carrier
+ * encoding and none of that fires as a cut: a long answer leaves whole.
  *
  *   MARKDOWN is rendered literally by a phone. "**Two swims**" arrives with the
  *   asterisks, which reads as broken software rather than as emphasis.
@@ -48,7 +48,8 @@ export interface SmsReplyArgs {
    * The offer sentence this turn registered through `offer_full_plan`, already gated by
    * that tool, or absent when the turn offered nothing.
    *
-   * Appended by code, with a duplicate at the end of the model's answer removed.
+   * Appended by code after the model's answer. Nothing on this path shortens either
+   * half: a long coaching answer goes out whole, and so does the offer.
    */
   planOffer?: string;
   /**
@@ -56,18 +57,15 @@ export interface SmsReplyArgs {
    * `share_referral_link` and already gated by it, or absent when the turn shared
    * nothing (referral/share.ts `referralBlock`).
    *
-   * Appended by code so the family's real URL is always included.
+   * Appended by code so the family's real URL is always included. Code never cuts the
+   * answer to make room for it.
    */
   referral?: string;
-  /** A read watch's source, included even when its date is unverified. */
-  sourceUrl?: string;
-  /** Current read's date and eligibility warning, included beside another action. */
-  registrationCaveat?: string;
   /**
-   * Pages for activities this turn offered. Appended only when the reply names the
-   * activity. The model does not write the URL.
+   * Pages for the finds this turn's tools returned, by ref. A page is appended only when
+   * the reply cites its ref; the model never writes a URL (activity-links.ts).
    */
-  activityLinks?: readonly NamedActivityLink[];
+  activityLinks?: readonly RefLink[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about ONE of the activities this turn offered, and
    * the offered titles it must not be confused with.
@@ -147,9 +145,9 @@ const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
  *
  * Exported for the off-domain lane's general answer (boundary v3), which is the second
  * model-composed body Hale texts back. It needs this treatment and none of the rest of
- * `toSmsReply`: it never sees a child to redact, and it refuses an over-long answer
- * rather than trimming one. A second copy of the substitution table is the thing to avoid — two
- * readers of "what is safe to send" would disagree the first time one of them is edited.
+ * `toSmsReply`: it never sees a child to redact. A second copy of the substitution table
+ * is the thing to avoid — two readers of "what is safe to send" would disagree the first
+ * time one of them is edited.
  */
 export function plainText(text: string): string {
   let out = text;
@@ -169,36 +167,45 @@ export function plainText(text: string): string {
 }
 
 /**
- * The full outbound treatment, in the order the steps depend on each other: flatten to
- * plain prose first, redact teen names second, then append tool-supplied facts and links.
- * No character or segment cap: complete facts take precedence over message length.
+ * The full outbound treatment: flatten to plain prose, redact teen names, then append
+ * tool-supplied facts and links. No character or segment cap. Code never truncates what
+ * the model wrote, including at an abbreviation such as "St." or "p.m.".
  *
- * An empty body THROWS rather than sending whitespace: the router reads a throw as a
- * failed turn and answers with the honesty template, which is the correct outcome for a
- * model that returned nothing (rule #8 — no silent no-op).
+ * An empty body THROWS rather than sending whitespace (rule #8 — no silent no-op).
+ * The router treats that throw as a failed turn. The words the parent may then get
+ * are composed by the turn-apology model (`apology.ts`); if that composer cannot
+ * speak, the turn is deferred and the parent is sent nothing. There is no fixed
+ * honesty sentence on this path.
  */
 export function toSmsReply(raw: string, args: SmsReplyArgs): string {
-  const flattened = restoreActivityLinks(plainText(raw), args.activityLinks);
+  const flattened = plainText(raw);
   if (flattened === '') {
     throw new Error('channel coach: model answer was empty after post-processing');
   }
-  const redacted = redactTeenNames(flattened, args.children, args.now);
+  const cited = attachLinks(
+    redactTeenNames(flattened, args.children, args.now),
+    args.activityLinks,
+  );
+  const redacted = cited.body;
+  if (redacted === '' && cited.urls.length === 0) {
+    throw new Error('channel coach: model answer was only an uncited link');
+  }
   if (reachesForTheHealthLine(redacted)) {
     // The model wrote a health-line number in its own words. That is the reply. The
     // log counts the screen miss; the body never reaches it (rule #1).
     console.error('channel coach: model composed a safety referral; sent what it wrote');
   }
-  // Tool-accepted offers and current registration caveats must always be included.
-  // Keep them together: composing both must never hide either.
+  // Tool-accepted offers and links are appended whole. They are joined rather than made
+  // exclusive: a turn that registered both is a turn where the parent must see both.
   //
   // Redacted with the answer, not after it: the referral line is composed by the model
   // and is the one piece of outbound text a parent forwards to somebody outside the
   // family, so the age-derived teen floor (rule #1) has to cover it too.
-  const link = activityLinkSuffix(redacted, args.activityLinks);
-  // A plan offer or a referral still crowds the count out. An activity URL does not:
+  const link = cited.urls.join(' ');
+  // A plan offer or a referral drops the nearby count. An activity URL does not:
   // the count is about that find, and the URL is that find's page, so both go out.
   const protectedTail = redactTeenNames(
-    [args.planOffer, args.referral, args.registrationCaveat, args.sourceUrl]
+    [args.planOffer, args.referral]
       .map((part) => part?.trim() ?? '')
       .filter((part) => part !== '')
       .join(' '),
@@ -207,8 +214,14 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   );
   if (protectedTail === '') {
     const answer = dropDuplicateOffer(redacted, link);
-    const tail = [nearbyClause(answer, args.nearby), link].filter(Boolean).join(' ');
-    return [answer, tail].filter(Boolean).join(' ');
+    const nearby = nearbyClause(answer, args.nearby);
+    const tail = [nearby ?? '', link]
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .join(' ');
+    if (tail === '') return answer;
+    if (answer === '') return tail;
+    return `${answer} ${tail}`;
   }
 
   const suffix = redactTeenNames(
@@ -222,44 +235,18 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   const answer = dropDuplicateOffer(redacted, suffix);
   // Nothing but the suffix left: the model answered with it and nothing else, so it IS
   // the reply. Joining an empty answer to it would send a leading space.
-  // PRECEDENCE, and it is deliberate rather than an omission: when this turn also made
-  // a promise or handed over a link, the nearby count is dropped. A count is the least
-  // important thing in any message that also carries one of those.
-  let reply = answer === '' ? suffix : `${answer} ${suffix}`;
-  // Exact source URLs only: query strings, fragments and longer paths are distinct.
-  for (const url of new Set(args.sourceUrl?.split(/\s+/).filter(Boolean))) {
-    let seen = false;
-    reply = reply.replace(
-      new RegExp(`(^|[\\s(])${escapeRegExp(url)}(?=$|\\s|[.,;)](?=\\s|$))`, 'g'),
-      (match, before: string) => {
-        if (seen) return before;
-        seen = true;
-        return match;
-      },
-    );
-  }
-  if (args.registrationCaveat) {
-    const caveat = redactTeenNames(args.registrationCaveat.trim(), args.children, args.now);
-    const canonicalAt = reply.lastIndexOf(caveat);
-    // Keep the code-supplied caveat; remove only identical earlier standalone statements.
-    reply = reply.replace(new RegExp(escapeRegExp(caveat), 'g'), (match, offset: number) => {
-      const before = reply.slice(0, offset).trimEnd();
-      const after = reply.slice(offset + match.length);
-      return offset < canonicalAt &&
-        (before === '' || /[.!?]$/.test(before)) &&
-        (after === '' || /^\s/.test(after))
-        ? ''
-        : match;
-    });
-  }
-  return reply.replace(/\s+/g, ' ').trim();
+  if (answer === '') return suffix;
+  // PRECEDENCE: a plan offer or a referral drops the nearby count. A count is the least
+  // important thing in a message that also carries a promise. The activity URL still
+  // rides along — it is the find, not a second ask.
+  return `${answer} ${suffix}`;
 }
 
 /**
  * The nearby count, appended only when it is UNAMBIGUOUS — the gate is deterministic and
  * every failure is silence.
  *
- * The body must name the subject of the count and must name no other activity the
+ * The fitted body must name the subject of the count and must name no other activity the
  * turn offered — and the two tests are DELIBERATELY ASYMMETRIC, because both fail closed
  * in opposite directions. Naming the target takes EVERY distinctive word of its title;
  * naming another offer takes any one of them (`mentionsActivity`, the follow-up screen's

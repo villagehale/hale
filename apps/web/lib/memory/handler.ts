@@ -12,9 +12,8 @@ import { handleParentMemory } from './store';
 /**
  * Claims "what do you know" / "forget …" / "correct …" only while the kinds
  * flag is exactly on. Flag off returns before a read, so the coach still
- * owns the turn. The reply string is null unless the copy gate is also
- * exactly true — the placeholder must not reach the transport before Sloane
- * locks it. A group mirror goes through the ledgered group door, which
+ * owns the turn. The reply string is null when the model does not write one.
+ * A group mirror goes through the ledgered group door, which
  * refuses any chat that is not this family's claimed group.
  */
 export function familyMemoryKindsHandler(env?: MemoryKindEnv): DeterministicHandler {

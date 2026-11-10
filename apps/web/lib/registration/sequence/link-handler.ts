@@ -8,10 +8,11 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { getQueue } from '~/lib/queue';
 import type { LiveRegistrationReading } from '../live-reading';
+import { registrationLiveWatchEnabled } from '../live-watch-flag';
 import { registrationPageUrl } from '../page';
 import {
   type RegistrationReader,
-  createRegistrationReader,
+  createLiveRegistrationReader,
   registrationDate,
   registrationHasOpened,
 } from '../read';
@@ -48,7 +49,7 @@ export function registrationLinkHandler(
   } = {
     readRequest: createRegistrationRequestReader(pipelineClient),
     compose: composeRegistrationLinkReply,
-    reader: createRegistrationReader,
+    reader: () => createLiveRegistrationReader(pipelineClient()),
     draft: async (database, input) =>
       (
         await draftInlineAction(
@@ -75,6 +76,7 @@ export function registrationLinkHandler(
   return {
     name: 'registration_link',
     async handle(database, ctx) {
+      if (!registrationLiveWatchEnabled()) return { claimed: false };
       const pasted = registrationLinkIn(ctx.body);
       if (!pasted || !f14EnabledFor(ctx.familyId)) return { claimed: false };
       const [member] = await database
@@ -112,7 +114,9 @@ export function registrationLinkHandler(
       };
       try {
         const spot = sanitizeSpotUrl(pasted);
-        sourceUrl = registrationPageUrl(spot.ok ? spot.url : pasted);
+        const checked = registrationPageUrl(spot.ok ? spot.url : pasted);
+        if (checked.outcome !== 'allowed') return reply('unsafe_registration_url');
+        sourceUrl = checked.url;
       } catch {
         return reply('unsafe_registration_url');
       }
@@ -126,23 +130,12 @@ export function registrationLinkHandler(
         if (preparing?.municipality === SPOT_PORTAL_HOSTS[spot.host]?.municipality)
           return { claimed: false };
       }
-      const givenZone =
-        ctx.body.match(
-          /\b(?:America|Europe|Asia|Australia|Pacific|Africa)\/[A-Za-z_]+(?:\/[A-Za-z_]+)?\b/,
-        )?.[0] ?? null;
-      let timeZone: string | null = givenZone;
-      try {
-        if (timeZone) new Intl.DateTimeFormat('en-US', { timeZone });
-      } catch {
-        timeZone = null;
-      }
       reading = await ports.reader()(
         {
           sourceUrl,
-          municipality: new URL(sourceUrl).hostname,
+          municipality: 'toronto',
           cycleLabel: 'the single course shown on this page',
-          programDomain: 'course',
-          timeZone,
+          programDomain: 'rec_program',
         },
         ctx.now,
       );

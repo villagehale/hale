@@ -1,9 +1,10 @@
 import type { AgentClient } from '@hale/agent';
-import { type Database, type RegistrationSourceState, schema } from '@hale/db';
+import { type Database, type RegistrationWindow, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, lte } from 'drizzle-orm';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import { loadWeekdayCareContext, weekdayCareEnabled } from '~/lib/care/weekday';
+import type { ActivityPick } from '~/lib/channel/activity/lane';
 import { dutyOverviewForWeeklyBubble } from '~/lib/channel/coparent/duty/asks';
 import { absorbDutyLine } from '~/lib/channel/coparent/duty/copy';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
@@ -22,14 +23,11 @@ import {
 } from '~/lib/channel/identity/parent-call-name';
 import { createFriendVoiceComposer } from '~/lib/channel/intake/friend-voice';
 import {
-  readWindows as readRegistrationWindows,
+  type LiveCandidates,
   readCandidates as readVillageCandidates,
 } from '~/lib/channel/intake/radar';
-import {
-  type RadarCandidate,
-  type RadarChild,
-  upcomingWeekend,
-} from '~/lib/channel/intake/radar-decide';
+import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
+import { type RadarChild, upcomingWeekend } from '~/lib/channel/intake/radar-decide';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
@@ -69,21 +67,25 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
-import {
-  type CheckupOfferRecordOutcome,
-  defaultCheckupOfferPorts,
-  recordCheckupOffer,
-} from '~/lib/health/offer';
-import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
-import { TOLD_RECIPIENT_SEPARATOR, checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { addDaysToKey, weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
+import {
+  DATE_CHECK_OUTCOMES,
+  type DateCheckOutcome,
+  type DateChecker,
+  createDateChecker,
+  liveDateReader,
+} from '~/lib/registration/date-check';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type HouseholdFindBias, readHouseholdFindBias } from '~/lib/reviews/household-bias';
+import { proactiveSearchSubject } from '~/lib/seasonal/moments';
+import { recordActivityOffers } from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, type NudgeDecision, type NudgeSkipCounts, decideNudge } from './nudge-decide';
 import { composeNudgeMessage } from './nudge-voice';
@@ -162,6 +164,9 @@ export interface NudgeFamily {
   areaCoarse: string | null;
   timeZone: string;
   provisionedAt: Date;
+  /** `families.primary_language`, handed to the live search so the model can weigh the
+   * holidays this household is likely to keep. Optional so older fixtures stay valid. */
+  language?: string | null;
 }
 
 export interface NudgeChildRow {
@@ -195,10 +200,16 @@ export interface NudgeAuditRow {
 export interface NudgeRunDeps {
   selectFamilies(database: Database, now: Date): Promise<NudgeFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
-  loadCandidates(database: Database, familyId: string): Promise<RadarCandidate[]>;
-  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationSourceState[]>;
-  /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
-  loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
+  /** Live web finds for the coming weekend (no stored catalog). `timeZone` lets the
+   * search name seasonal moments (Halloween) that fall inside the window. */
+  loadCandidates(
+    database: Database,
+    familyId: string,
+    now?: Date,
+    timeZone?: string,
+    language?: string | null,
+  ): Promise<LiveCandidates>;
+  loadWindows(database: Database, areaCoarse: string, now?: Date): Promise<RegistrationWindow[]>;
   /** Registration windows an M7 sequence (VIL-242) is already preparing this family
    * for — the sequence announces those itself, on its own ladder. */
   loadClaimedWindowIds(database: Database, familyId: string): Promise<Set<string>>;
@@ -250,6 +261,7 @@ export interface NudgeRunDeps {
    * the same question, never the thing that makes this one safe. */
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: NudgeLedgerWrite): Promise<string>;
+  recordActivityOffers: typeof recordActivityOffers;
   audit(database: Database, row: NudgeAuditRow): Promise<void>;
   /**
    * MEM-10 · close the open-loops promise this sweep exists to make good on. REQUIRED
@@ -258,19 +270,6 @@ export interface NudgeRunDeps {
    * that is wrong in the direction that wastes a founder's attention every week.
    */
   fulfillCommitment: typeof fulfillCommitment;
-  /**
-   * Register the standing question a health nudge's own close makes ("want me to add
-   * booking it to your week?"). REQUIRED for the same reason the two around it are
-   * (rule #11): a sweep that could be assembled without it would text a parent an offer
-   * and leave nothing for their acceptance to resolve against — which is the defect this
-   * dependency exists to make unexpressible. Every health nudge calls it, and the module
-   * answers `not_an_offer` for the paperwork checkpoints, so the send site holds no
-   * second copy of the rule that decides which close went out.
-   */
-  recordCheckupOffer(
-    database: Database,
-    input: { familyId: string; ref: string; channelMessageId: string | null; now: Date },
-  ): Promise<CheckupOfferRecordOutcome>;
   /**
    * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
    * so a caller could decide + compose without sending, and the three P0s this sweep
@@ -336,6 +335,11 @@ export interface NudgeRunDeps {
     },
   ): Promise<{ text: string; commit: () => Promise<void> } | null>;
   client: AgentClient | null;
+  /**
+   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
+   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
+   */
+  createDateReader(): RegistrationReader | null;
 }
 
 export interface NudgeRunResult {
@@ -372,6 +376,9 @@ export interface NudgeRunResult {
    * ran and did not hit that case.
    */
   skips: NudgeSkipCounts;
+  /** VIL-423 · send-time date checks of a registration window's page, by outcome. Zero
+   * everywhere while REGISTRATION_DATE_CHECK is off. */
+  dateCheck: Record<DateCheckOutcome, number>;
   /** Present when the provider pre-flight cancelled the window (VIL-255). */
   aborted?: AbortedWindow;
 }
@@ -388,6 +395,10 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     failed: 0,
     held: { not_enrolled: 0, opt_out_unread: 0, no_watch_consent: 0, quiet_hours: 0 },
     skips: {},
+    dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+      DateCheckOutcome,
+      number
+    >,
   };
 }
 
@@ -429,12 +440,6 @@ export function dedupeKeyFor(
   switch (nudge.kind) {
     case 'registration':
       return `nudge:${familyId}:registration:${nudge.windowRef.id}:${parentUserId}`;
-    case 'health_checkpoint':
-      // A health nudge's send-idempotency key IS its told-marker (lib/health/told.ts),
-      // so this row tells every other surface what this family has heard. The ref the
-      // MATCHER minted is carried through untouched: per child for a one-time visit,
-      // per household per school year for the annual records check.
-      return `${checkpointToldKey(familyId, nudge.ref)}${TOLD_RECIPIENT_SEPARATOR}${parentUserId}`;
     case 'weather_swap':
       return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}:${parentUserId}`;
     case 'weekday_dropin':
@@ -476,7 +481,6 @@ function nudgeDay(nudge: Nudge, now: Date, timeZone: string): string | null {
       return slot.date;
     }
     case 'registration':
-    case 'health_checkpoint':
     case 'weekday_care':
       return null;
     default:
@@ -557,8 +561,14 @@ async function decideForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  checker: DateChecker,
   now: Date,
-): Promise<NudgeDecision> {
+): Promise<
+  NudgeDecision & {
+    offeredPick?: ActivityPick;
+    search?: { searchReason: string | null; dropped: Record<string, number> };
+  }
+> {
   const childRows = await deps.loadChildren(database, family.familyId);
   const { children, teenChildIds, healthChildren } = splitByStage(childRows, now);
   // A family with no children on file has nothing any nudge class could rest on.
@@ -577,19 +587,19 @@ async function decideForFamily(
     candidates,
     windowRows,
     weather,
-    suppressedCheckpointRefs,
     claimedWindowIds,
     weekdayCare,
     saturdayPlans,
     householdBias,
   ] = await Promise.all([
-    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+    weekendPossible
+      ? deps.loadCandidates(database, family.familyId, now, family.timeZone, family.language)
+      : Promise.resolve([] as LiveCandidates),
+    area && weekendPossible ? deps.loadWindows(database, area, now) : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
     area && weekendPossible
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
       : Promise.resolve([]),
-    deps.loadSuppressedCheckpoints(database, family.familyId),
     deps.loadClaimedWindowIds(database, family.familyId),
     weekdayArmed
       ? deps.loadWeekdayCareContext(database, family.familyId)
@@ -609,22 +619,71 @@ async function decideForFamily(
       })
     : [];
 
-  return decideNudge({
-    children,
-    candidates,
-    windows,
-    weather,
-    teenChildIds,
-    healthChildren,
-    areaCoarse: area,
-    suppressedCheckpointRefs,
-    claimedWindowIds,
-    weekdayCare,
-    saturdayPlans,
-    householdBias,
-    now,
-    timeZone: family.timeZone,
-  });
+  const decideWith = (excludedWindowIds: Set<string>) =>
+    decideNudge({
+      children,
+      candidates,
+      windows,
+      weather,
+      teenChildIds,
+      healthChildren,
+      areaCoarse: area,
+      claimedWindowIds: excludedWindowIds,
+      weekdayCare,
+      saturdayPlans,
+      householdBias,
+      now,
+      timeZone: family.timeZone,
+    });
+  let decision = decideWith(claimedWindowIds);
+  // VIL-423 · the send-time date check. A registration nudge states the window's opening,
+  // so the window's page is read first. Shadow logs and changes nothing. Enforce keeps
+  // the nudge only when the page agrees; otherwise that window is set aside and the
+  // decide runs again, so the family hears the next thing worth saying or nothing.
+  let excluded = claimedWindowIds;
+  while (checker.mode !== 'off' && decision.nudge?.kind === 'registration') {
+    const windowId = decision.nudge.windowRef.id;
+    const match = windows.find((candidate) => candidate.window.id === windowId);
+    if (!match) throw new Error(`nudge: decided window ${windowId} is not a match`);
+    const check = await checker.check(
+      {
+        window: match.window,
+        resident: match.isResidentWindow,
+        stated: match.opensForFamilyAt,
+        sender: 'nudge',
+      },
+      now,
+    );
+    if (checker.mode === 'shadow' || check.outcome === 'agree') break;
+    excluded = new Set([...excluded, windowId]);
+    decision = decideWith(excluded);
+  }
+  const search = {
+    searchReason: candidates.searchReason ?? null,
+    dropped: candidates.dropped ?? {},
+  };
+  if (decision.nudge?.kind !== 'weather_swap' && decision.nudge?.kind !== 'weekday_dropin')
+    return { ...decision, search };
+  const selectedId = decision.nudge.candidateRef.id;
+  const selected = candidates.find((candidate) => candidate.id === selectedId);
+  return {
+    ...decision,
+    search,
+    offeredPick: selected?.sourceUrl
+      ? {
+          name: selected.title,
+          ageFit: selected.ageRange ?? '',
+          when: selected.whenLabel,
+          price: selected.priceLevel === 'free' ? 'free' : null,
+          sourceName: selected.venueName ?? '',
+          source: 'web',
+          sourceUrl: selected.sourceUrl,
+          eventDate: selected.eventDate ?? undefined,
+          placeId: selected.placeId ?? undefined,
+          civicVenueId: selected.civicVenueId ?? undefined,
+        }
+      : undefined,
+  };
 }
 
 /**
@@ -665,6 +724,7 @@ async function runForFamily(
   database: Database,
   family: NudgeFamily,
   deps: NudgeRunDeps,
+  checker: DateChecker,
   now: Date,
 ): Promise<FamilyTally> {
   // BOTH NUMBERS. `selectFamilies` keys on the primary parent because that is what a
@@ -694,7 +754,7 @@ async function runForFamily(
   if (allowed.length === 0) return emptyTally({ held });
 
   const cohort = cohortOf(family, now);
-  const decision = await decideForFamily(database, family, deps, now);
+  const decision = await decideForFamily(database, family, deps, checker, now);
   if (decision.nudge === null) {
     // Silence is the outcome, and it is recorded: an absent row is indistinguishable
     // from a family the sweep never looked at, and the difference is the whole metric.
@@ -707,7 +767,13 @@ async function runForFamily(
       actionTaken: 'proactive_nudge_skipped',
       targetTable: 'families',
       targetId: family.familyId,
-      after: { reason: 'nothing_worth_saying', cohort, skips: decision.skips },
+      after: {
+        reason: 'nothing_worth_saying',
+        cohort,
+        skips: decision.skips,
+        // Why the live search came back short, and why picks were dropped.
+        search: decision.search ?? null,
+      },
     });
     return emptyTally({ quiet: true, skips: decision.skips });
   }
@@ -929,7 +995,6 @@ async function runForFamily(
           // Which SEAT this copy went to. The row already names the parent; this names
           // the relationship, which is what a founder reading the trail is asking.
           role: recipient.role,
-          ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
         },
       },
     });
@@ -1018,6 +1083,8 @@ async function runForFamily(
   // ONCE PER HOUSEHOLD, not once per number: both ledgers below record a fact about the
   // FAMILY, and a second write would be Hale asserting twice what happened once.
   if (firstMessageId !== null) {
+    if (decision.offeredPick)
+      await deps.recordActivityOffers(database, family.familyId, [decision.offeredPick], now);
     await recordFamilyLedgers(database, { family, nudge, messageId: firstMessageId, now }, deps);
   }
   return { quiet: false, sent, deduped, queued: 0, shadowUnqueued, held, skips: decision.skips };
@@ -1033,24 +1100,7 @@ async function recordFamilyLedgers(
   args: { family: NudgeFamily; nudge: Nudge; messageId: string; now: Date },
   deps: NudgeRunDeps,
 ): Promise<void> {
-  const { family, nudge, messageId, now } = args;
-  // THE OFFER IS A PROPOSAL. A health checkpoint whose task is booking closes by ASKING
-  // ("want me to add booking it to your week?"), and an ask with no row behind it is a
-  // question the reply resolver cannot see — so the parent's acceptance lands on whatever
-  // else happens to be standing (the 2026-08-20 incident; see lib/health/offer.ts).
-  // Registered AFTER the send, against the row that carried it, exactly like the
-  // told-marker and the promise below: a compose that never reached a transport offered
-  // nobody anything. Not branched on — the parent already has the text — and never
-  // silent: a lost row is logged as "a YES will not resolve to it" (rule #11).
-  if (nudge.kind === 'health_checkpoint') {
-    await deps.recordCheckupOffer(database, {
-      familyId: family.familyId,
-      ref: nudge.ref,
-      channelMessageId: messageId,
-      now,
-    });
-  }
-
+  const { family, messageId, now } = args;
   // MEM-10 · this sweep is what makes the intake radar's forward beat true, so a send —
   // ANY send — is what pays that promise off. Not narrowed to the weekend class on
   // purpose: what the beat promised a geo-empty family is that Hale would come back with
@@ -1088,10 +1138,11 @@ export async function runNudgeCron(
     return { ...result, aborted: { ...preflight.abort, skipped: families.length } };
   }
 
+  const checker = createDateChecker(deps.createDateReader);
   for (const family of families) {
     result.evaluated += 1;
     try {
-      const outcome = await runForFamily(database, family, deps, now);
+      const outcome = await runForFamily(database, family, deps, checker, now);
       // The DECISION is per family and the SENDING is per recipient, so the two are
       // added differently and deliberately.
       if (outcome.quiet) result.quiet += 1;
@@ -1115,6 +1166,7 @@ export async function runNudgeCron(
       );
     }
   }
+  result.dateCheck = { ...checker.tally };
   return result;
 }
 
@@ -1130,6 +1182,7 @@ async function selectNudgeFamilies(database: Database, now: Date): Promise<Nudge
     .select({
       familyId: schema.families.id,
       areaCoarse: schema.families.areaCoarse,
+      language: schema.families.primaryLanguage,
       provisionedAt: schema.families.createdAt,
       parentUserId: schema.users.id,
       timeZone: schema.users.timezone,
@@ -1174,10 +1227,14 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
   return {
     selectFamilies: selectNudgeFamilies,
     loadChildren: readNudgeChildren,
-    loadCandidates: (database, familyId) => readVillageCandidates(database, familyId),
+    recordActivityOffers,
+    loadCandidates: (database, familyId, now, timeZone, language) =>
+      readVillageCandidates(database, familyId, {
+        window: 'this coming weekend',
+        subject: proactiveSearchSubject(now ?? new Date(), timeZone ?? DEFAULT_TIMEZONE, language),
+        now,
+      }),
     loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
-    loadSuppressedCheckpoints: (database, familyId) =>
-      loadSuppressedCheckpointRefs(database, familyId),
     loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     loadWeekdayCareContext,
@@ -1193,13 +1250,12 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     outboundTarget: familyOutboundTarget,
     client: voiceClient(),
     fulfillCommitment,
-    recordCheckupOffer: (database, input) =>
-      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     threadMessage: threadProactiveMessage,
     loadParentCallName,
     composeNameAsk: (input) =>
       composeParentCallNameAsk(createFriendVoiceComposer(voiceClient()), input),
     pendingHowItWent: howItWentLinesForGroupWeekly,
     pendingDutyOverview: dutyOverviewForWeeklyBubble,
+    createDateReader: liveDateReader,
   };
 }

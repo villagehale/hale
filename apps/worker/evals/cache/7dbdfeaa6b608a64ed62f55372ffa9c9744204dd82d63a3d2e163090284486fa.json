@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives tomorrow, 15 h to 16 h, and the Georgetown library, all correct. However, it renders the title \"Jour de congé\" as if it were a closure: \"il y a un jour de congé à la bibliothèque\" reads as the library being on a day off, which is an unstated inference and changes the event's meaning (the facts say it is an event the family attends at the library, not a closure). Per the rules, recasting the title as what the place or day is is a fact failure, so this is a LOW score.",
+    "score": 2
+  }
+}

@@ -66,13 +66,16 @@ const GOOD_ACTIVITY = 'How was Swim class? No pressure to reply.';
 describe('refusals', () => {
   it('passes a one-question, in-budget, subject-naming ask', () => {
     expect(refusals(GOOD_ACTIVITY, ACTIVITY)).toEqual([]);
+    expect(refusals('How was Swim class? Hope it’s been a good week.', ACTIVITY)).toEqual([]);
   });
 
   it.each([
     ['empty', '', ['empty']],
     ['over the one-segment budget', `${'How was Swim class, and '.repeat(9)}?`, ['over_char_cap']],
-    ['a curly apostrophe', 'How was Swim class? Hope it’s been a good week.', ['not_gsm7']],
     ['a link', 'How was Swim class? More at www.example.com', ['carries_link']],
+    ['a title-case host', 'How was Swim class? More at evil.Com', ['carries_link']],
+    ['a title-case name and host', 'How was Swim class? More at Abc.Com', ['carries_link']],
+    ['a capitalised short link', 'How was Swim class? More at Bit.Ly', ['carries_link']],
     ['a second question', 'How was Swim class? Going again?', ['not_one_question']],
     ['no question at all', 'Hope Swim class went well.', ['not_one_question']],
     ['a different activity', 'How was gymnastics? No pressure.', ['subject_missing']],
@@ -166,7 +169,7 @@ describe('createFollowupVoice', () => {
 
     expect(await voice.compose(ACTIVITY)).toEqual({
       status: 'composed',
-      body: howItWentAsk('Swim class'),
+      body: await howItWentAsk('Swim class'),
     });
     expect(seen).toEqual([]);
   });
@@ -189,7 +192,7 @@ describe('createFollowupVoice', () => {
     restore.mockRestore();
     expect(outcome).toEqual({ status: 'deferred', reason: 'gate_exhausted' });
     expect(seen).toEqual([]);
-    expect(lockedActivityFollowup('x'.repeat(200)).status).toBe('deferred');
+    expect((await lockedActivityFollowup('x'.repeat(200))).status).toBe('deferred');
   });
 
   /**

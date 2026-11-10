@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reminder correctly states the event is tomorrow, Monday October 26, from 15 h to 16 h at the Georgetown library, in French, with no invented details and no link. It keeps the title Jour de congé without implying the day is free, and the time is correctly afternoon. Tone is calm and short. Minor point: it reads a bit like a template, but facts are accurate.",
+    "score": 5
+  }
+}

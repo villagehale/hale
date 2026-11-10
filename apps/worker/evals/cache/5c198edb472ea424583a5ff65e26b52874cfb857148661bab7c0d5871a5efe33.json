@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow, start 15 h, end 16 h, venue name 'Georgetown library', address '9 Church St', in French. No invented logistics, no closure claim, and bold is none. The title 'Jour de congé' is kept as an event name ('il y a un jour de congé à Georgetown library') and does not say the library is closed or call the day free; it stays an event at that venue. The phrasing is slightly ambiguous but does not change a fact.",
+    "score": 5
+  }
+}

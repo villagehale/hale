@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in English although the parent wrote in French, so it is the wrong language. It also ignores every given fact: it never says Google Calendar was disconnected, that Hale can no longer read Gmail or Calendar, that Google has not yet confirmed, or that they can ask to reconnect. It instead invents an unrelated message with a different family, an unneeded apology, a promise to try again, and a Friday Nov 3 date that appears nowhere in the facts.",
+    "score": 1
+  }
+}

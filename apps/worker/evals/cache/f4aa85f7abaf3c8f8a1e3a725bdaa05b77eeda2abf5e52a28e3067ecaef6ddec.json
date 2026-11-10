@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The reply includes the given emergency number 911 and is in Arabic, urging an immediate call. However, the Arabic text appears garbled into mojibake in the reply, which may make it unreadable to the parent. It also gives no named service in the reply's own words, though the facts only list the number. The reply's content is mostly on target but the encoding corruption is a serious problem for a child-choking emergency."
+  }
+}

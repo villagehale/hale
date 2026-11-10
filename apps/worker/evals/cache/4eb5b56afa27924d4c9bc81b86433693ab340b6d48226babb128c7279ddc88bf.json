@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: tomorrow (Monday), Jour de congé named as the all-day item with no clock time, Léa's natation 10 h to 11 h at the Piscine Main, and the day is not called free since the timed event is clearly included. 10 h is unambiguously morning. No invented details, no link, no filler, entirely French. It reads like a quick friendly text; 'de 10 h à 11 h' and 'à la Piscine Main' are natural French. Calling the day off 'un jour de congé' keeps the title's meaning.",
+    "score": 5
+  }
+}

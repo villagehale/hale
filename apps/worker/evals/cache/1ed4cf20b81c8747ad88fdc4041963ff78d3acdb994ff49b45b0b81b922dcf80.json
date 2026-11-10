@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text covers both events with correct times (10 h to 11 h), location, and French language, and correctly says tomorrow. However, it writes '10 h AM', which mixes 24-hour French notation with the English AM marker, a mixed-language/ambiguous time error. Also it does not explicitly mention the all-day event's facts beyond saying it is also a day off, which is acceptable. The AM mix-up and language mixing lower the score.",
+    "score": 2
+  }
+}

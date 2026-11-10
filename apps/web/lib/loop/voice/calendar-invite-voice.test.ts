@@ -1,237 +1,371 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { smsSegments } from '~/lib/channel/sms-segments';
+import type { LoopMessage } from '~/lib/channel/types';
 import {
-  ASK_USER_MESSAGE,
-  MAX_ASK_CHARS,
-  MAX_COMPOSE_ATTEMPTS,
-  askViolations,
-  createCalendarVoice,
-  inviteNoteUserMessage,
-  noteViolations,
+  calendarInviteSmsRenderer,
+  splitInviteSms,
+} from '~/lib/loop/templates/calendar-invite/sms';
+import {
+  type CalendarInviteTimeJudge,
+  type CalendarInviteVoiceRequest,
+  INVITE_LINK_SLOT,
+  MAX_INVITE_SEGMENTS,
+  MAX_INVITE_SUMMARY_CHARS,
+  calendarInviteRefusals,
+  calendarInviteTimeInput,
+  calendarInviteTimeUserMessage,
+  calendarInviteUserMessage,
+  createCalendarInviteVoice,
+  fillCalendarInvite,
+  prepareCalendarInvite,
+  timeJsonSchema,
 } from './calendar-invite-voice';
 
-/**
- * VIL-249 — the composed surfaces' MECHANICS. Not their judgement.
- *
- * Whether the ask reads like Hale is decided by a real model and measured in
- * apps/worker/evals/run-calendar-voice-eval.mjs against real cached Claude (rule #8).
- * What is proven here is what the eval cannot reach: that every gate refuses what it
- * says it refuses, that a refusal is handed BACK to the model rather than shipped or
- * swallowed, and that a composer which never clears the gates DEFERS by name instead
- * of falling back to words nobody composed.
- */
+const LINK = `https://app.villagehale.com/api/ics/event/${'a'.repeat(36)}.${'b'.repeat(43)}`;
 
-const NOTE_CONTEXT = {
-  summary: 'Maya — Swim class',
+/** Thu, Jul 23 2026, 10:30 AM in New York. */
+const STARTS = new Date('2026-07-23T14:30:00.000Z');
+
+const REQUEST: CalendarInviteVoiceRequest = {
+  summary: 'Swim class',
   when: 'Thu, Jul 23 at 10:30 AM',
-  method: 'added' as const,
+  url: LINK,
+  startsAt: STARTS,
+  timeZone: 'America/New_York',
+  language: 'en',
 };
 
-const GOOD_ASK =
-  "Want this in your real calendar too? Text me your email and I'll send invites there.";
-const GOOD_NOTE = {
-  subject: 'Maya — Swim class is on your calendar',
-  body: "Maya — Swim class is set for Thu, Jul 23 at 10:30 AM. I've attached the invite so your calendar can add it.",
-};
+const PASSING = `Swim class on Thu, Jul 23 at 10:30 AM is on the week. Open this: ${INVITE_LINK_SLOT}`;
 
-/** A client that answers with each scripted tool input in turn, recording the turns. */
-function scriptedClient(inputs: unknown[]): {
-  client: () => AgentClient;
-  turns: string[];
-} {
-  const turns: string[] = [];
-  let call = 0;
-  return {
-    turns,
-    client: () =>
-      ({
-        messages: {
-          async create(request: { messages: Array<{ content: string }> }) {
-            turns.push(request.messages[0]?.content ?? '');
-            const input = inputs[Math.min(call, inputs.length - 1)];
-            call += 1;
-            return {
-              content: [{ type: 'text', text: JSON.stringify(input) }],
-              stop_reason: 'end_turn',
-              usage: { input_tokens: 10, output_tokens: 5 },
-            };
-          },
-        },
-      }) as unknown as AgentClient,
-  };
-}
-
-const quiet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
-
-describe('askViolations — what may never be texted', () => {
-  it('passes a one-question, plain-ASCII, link-free ask', () => {
-    expect(askViolations(GOOD_ASK)).toEqual([]);
+describe('calendarInviteRefusals', () => {
+  it('passes a line that names the event, states its clock, and leaves the link as a slot', () => {
+    expect(calendarInviteRefusals(PASSING, REQUEST)).toEqual([]);
+    const filled = fillCalendarInvite(PASSING, LINK);
+    expect(filled).toContain(LINK);
+    expect(filled).not.toContain(INVITE_LINK_SLOT);
   });
 
-  /** The shape the model actually reaches for, and the reason the gate counts a
-   * SECOND question rather than requiring a first (calibrated on the live run). */
-  it('passes an offer that asks without a question mark at all', () => {
+  it('does not treat digits inside the url as numbers the model invented', () => {
+    const numbered = `https://app.villagehale.com/api/ics/event/${'1'.repeat(36)}.${'2'.repeat(43)}`;
+    expect(calendarInviteRefusals(PASSING, { ...REQUEST, url: numbered })).not.toContain(
+      'invented_number',
+    );
+  });
+
+  it('refuses a text that types a url or skips the slot', () => {
+    expect(calendarInviteRefusals('Open this Thu, Jul 23 at 10:30 AM.', REQUEST)).toEqual([
+      'link_missing',
+    ]);
     expect(
-      askViolations(
-        "I can send real calendar invites by email - text me your address and I'll use it.",
+      calendarInviteRefusals(`Swim class on Thu, Jul 23 at 10:30 AM: ${LINK}`, REQUEST),
+    ).toEqual(expect.arrayContaining(['carries_destination', 'link_missing']));
+  });
+
+  it('refuses a repeated slot, a second placeholder, and an invented time', () => {
+    expect(
+      calendarInviteRefusals(
+        `We put Swim class at 4:15 on Thu, Jul 23 ${INVITE_LINK_SLOT} and ${INVITE_LINK_SLOT}`,
+        REQUEST,
+      ),
+    ).toEqual(expect.arrayContaining(['link_repeated', 'invented_number']));
+    expect(
+      calendarInviteRefusals(
+        `Swim class on Thu, Jul 23 at 10:30 AM ${INVITE_LINK_SLOT} [[map]]`,
+        REQUEST,
+      ),
+    ).toContain('stray_slot');
+  });
+
+  it('does not refuse a long line inside the bound, a lowercase start, or we', () => {
+    const long = `${'Swim class '.repeat(40)}on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT}`;
+    expect(smsSegments(fillCalendarInvite(long, LINK))).toBeLessThanOrEqual(MAX_INVITE_SEGMENTS);
+    expect(calendarInviteRefusals(long, REQUEST)).toEqual([]);
+    expect(
+      calendarInviteRefusals(
+        `we put Swim class on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
+        REQUEST,
       ),
     ).toEqual([]);
   });
 
-  it.each([
-    ['', 'empty'],
-    ['a'.repeat(MAX_ASK_CHARS + 1), 'characters'],
-    ['Want your email? I can send invites — say the word?', 'questions'],
-    ["Want this in your calendar? Text me your email — I'll send invites there.", 'plain ASCII'],
-    ['Text me your address and I will send invites there.', 'email'],
-    ['Want invites by email? See https://villagehale.com', 'link'],
-    ['Want invites by email, like you@example.com?', '@ address'],
-    ['Want invites by email? It takes 2 seconds?', 'questions'],
-    ['Want invites by email in 2 seconds?', 'digit'],
-  ])('refuses %j', (text, expected) => {
-    const violations = askViolations(text);
-    expect(violations.length).toBeGreaterThan(0);
-    expect(violations.join(' | ')).toContain(expected);
+  it('does not force a HH:MM clock, in English or any other way of saying the hour', () => {
+    for (const line of [
+      `Swim class at 10am. ${INVITE_LINK_SLOT}`,
+      `Swim class à 10 h. ${INVITE_LINK_SLOT}`,
+      `Swim class 上午10点 ${INVITE_LINK_SLOT}`,
+      `Swim class on Jul 10 at 23:30. ${INVITE_LINK_SLOT}`,
+    ]) {
+      expect(calendarInviteRefusals(line, REQUEST)).not.toContain('when_missing');
+    }
+  });
+
+  it('keeps an em dash in the summary as the fact, and does not fold it away', () => {
+    const named: CalendarInviteVoiceRequest = {
+      ...REQUEST,
+      summary: 'Maya \u2014 Swim class',
+    };
+    const raw = `Maya \u2014 Swim class on Thu, Jul 23 at 10:30 AM is on the week. Open this: ${INVITE_LINK_SLOT}`;
+    expect(calendarInviteRefusals(raw, named)).toEqual([]);
+  });
+
+  it('does not refuse a text that names the event in translation: the time judge reads that', () => {
+    expect(
+      calendarInviteRefusals(`Cours de natation jeudi \u00e0 10 h 30. ${INVITE_LINK_SLOT}`, {
+        ...REQUEST,
+        language: 'fr',
+      }),
+    ).toEqual([]);
   });
 });
 
-describe('noteViolations — the containment gate', () => {
-  it('passes a note that reproduces the summary and the time', () => {
-    expect(noteViolations(GOOD_NOTE, NOTE_CONTEXT)).toEqual([]);
-  });
-
-  it('refuses a subject that paraphrases the redacted summary', () => {
-    // The dial gave "an appointment"; "Maya's therapy intake" is the leak this stops.
-    const context = { ...NOTE_CONTEXT, summary: 'an appointment' };
-    const violations = noteViolations(
-      {
-        subject: "Maya's therapy intake is on your calendar",
-        body: "Maya's therapy intake is set for Thu, Jul 23 at 10:30 AM. The invite is attached.",
-      },
-      context,
-    );
-    expect(violations.join(' | ')).toContain('"an appointment" exactly as given');
-  });
-
-  it('refuses a body that drops the time it was given', () => {
+describe('VIL-588 · the only destination in the text is the slot', () => {
+  it('refuses a draft that echoes a summary carrying a bare domain call to action', () => {
+    const hostile: CalendarInviteVoiceRequest = {
+      ...REQUEST,
+      summary: 'Swim class - sign up at kids-swim.example.org',
+    };
     expect(
-      noteViolations(
-        { subject: GOOD_NOTE.subject, body: 'Maya — Swim class is on. The invite is attached.' },
-        NOTE_CONTEXT,
-      ).join(' | '),
-    ).toContain('"Thu, Jul 23 at 10:30 AM" exactly as given');
+      calendarInviteRefusals(
+        `Swim class - sign up at kids-swim.example.org on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT}`,
+        hostile,
+      ),
+    ).toContain('carries_destination');
   });
 
-  it('refuses an invented clock time even when the given one is present too', () => {
-    const violations = noteViolations(
-      {
-        subject: GOOD_NOTE.subject,
-        body: 'Maya — Swim class is set for Thu, Jul 23 at 10:30 AM. Doors open at 10:15.',
-        // 10:15 was in no slot — a specific the model made up.
-      },
-      NOTE_CONTEXT,
-    );
-    expect(violations.join(' | ')).toContain('10:15');
+  it('refuses a draft that adds a bare domain of its own', () => {
+    for (const line of [
+      `Swim class on Thu, Jul 23 at 10:30 AM, see swim.example.test/kids for more. ${INVITE_LINK_SLOT}`,
+      `Swim class on Thu, Jul 23 at 10:30 AM. ${INVITE_LINK_SLOT} or Pool.Example.ORG`,
+      `Swim class on Thu, Jul 23 at 10:30 AM, write to desk@example.test ${INVITE_LINK_SLOT}`,
+    ]) {
+      expect(calendarInviteRefusals(line, REQUEST)).toContain('carries_destination');
+    }
   });
 
-  it('refuses a link', () => {
+  it('positive control: dotted abbreviations and decimals are not a destination', () => {
+    const dotted: CalendarInviteVoiceRequest = {
+      ...REQUEST,
+      summary: 'Jr. Lifeguards 2.5 km swim, e.g. U.S. rules',
+    };
     expect(
-      noteViolations(
-        { subject: GOOD_NOTE.subject, body: `${GOOD_NOTE.body} More at https://villagehale.com` },
-        NOTE_CONTEXT,
-      ).join(' | '),
-    ).toContain('link');
+      calendarInviteRefusals(
+        `Jr. Lifeguards 2.5 km swim, e.g. U.S. rules on Thu, Jul 23 at 10:30 a.m. ${INVITE_LINK_SLOT}`,
+        dotted,
+      ),
+    ).not.toContain('carries_destination');
+    expect(calendarInviteRefusals(PASSING, REQUEST)).not.toContain('carries_destination');
+  });
+
+  it('reads the removed slot as a gap, so its neighbours never join into a domain', () => {
+    expect(
+      calendarInviteRefusals(
+        `Swim class Thu, Jul 23 at 10:30 AM. Add it.${INVITE_LINK_SLOT}ca va`,
+        REQUEST,
+      ),
+    ).not.toContain('carries_destination');
+    expect(
+      calendarInviteRefusals(
+        `Swim class Thu, Jul 23 at 10:30 AM. Add it. ${INVITE_LINK_SLOT} kids.example.org`,
+        REQUEST,
+      ),
+    ).toContain('carries_destination');
   });
 });
 
-describe('createCalendarVoice — retry, then defer', () => {
-  it('composes the ask the model wrote, in one attempt', async () => {
-    const { client, turns } = scriptedClient([{ text: GOOD_ASK }]);
-
-    expect(await createCalendarVoice(client).composeAsk()).toEqual({
-      status: 'composed',
-      text: GOOD_ASK,
-      attempts: 1,
-    });
-    // Blind: the model is handed nothing about this family (rule #1).
-    expect(turns).toEqual([ASK_USER_MESSAGE]);
+describe('VIL-588 · an over-long text is refused, not sent', () => {
+  it('refuses a filled text over the segment bound', () => {
+    const tooLong = `${'Swim class on Thu, Jul 23 at 10:30 AM. '.repeat(30)}${INVITE_LINK_SLOT}`;
+    expect(smsSegments(fillCalendarInvite(tooLong, LINK))).toBeGreaterThan(MAX_INVITE_SEGMENTS);
+    expect(calendarInviteRefusals(tooLong, REQUEST)).toContain('too_long');
+    expect(calendarInviteRefusals(PASSING, REQUEST)).not.toContain('too_long');
   });
+});
 
-  it('hands a violation back and takes the fixed second attempt', async () => {
-    const { client, turns } = scriptedClient([
-      { text: 'Want invites by email? Check https://villagehale.com/settings' },
-      { text: GOOD_ASK },
-    ]);
-
-    const outcome = await createCalendarVoice(client).composeAsk();
-
-    expect(outcome).toEqual({ status: 'composed', text: GOOD_ASK, attempts: 2 });
-    // The retry turn names the problem in words the model can act on.
-    expect(turns[1]).toContain('carried a link');
-    expect(turns[1]).toContain('yourLastAttempt');
-  });
-
-  it('DEFERS by name after the attempt budget, sending nothing', async () => {
-    const restore = quiet();
-    const { client, turns } = scriptedClient([
-      { text: 'Want invites? Reply with @ your email 24/7!!' },
-    ]);
-
-    const outcome = await createCalendarVoice(client).composeAsk();
-
-    expect(turns).toHaveLength(MAX_COMPOSE_ATTEMPTS);
-    expect(outcome.status).toBe('deferred');
-    if (outcome.status !== 'deferred') throw new Error('expected a defer');
-    expect(outcome.attempts).toBe(MAX_COMPOSE_ATTEMPTS);
-    expect(outcome.reason).toContain('@ address');
-    restore.mockRestore();
-  });
-
-  it('names an unresolvable client rather than composing nothing quietly', async () => {
-    const outcome = await createCalendarVoice(() => {
-      throw new Error('ANTHROPIC_API_KEY is not set');
-    }).composeAsk();
-
-    expect(outcome).toEqual({
-      status: 'deferred',
-      reason: 'client_unavailable: ANTHROPIC_API_KEY is not set',
-      attempts: 0,
-    });
-  });
-
-  it('retries a model outage inside the same budget, then defers naming it', async () => {
-    const restore = quiet();
+describe('VIL-588 · the summary is checked before any model call', () => {
+  function countingWriter(): { client: AgentClient; calls: () => number } {
     let calls = 0;
-    const client = () =>
-      ({
-        messages: {
-          async create() {
-            calls += 1;
-            throw new Error('upstream 529');
+    const create = async (body: { messages: { content: string }[] }) => {
+      calls += 1;
+      const facts = JSON.parse(body.messages[0]?.content ?? '{}');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ text: `${facts.summary}, ${facts.when}. ${facts.linkSlot}` }),
           },
-        },
-      }) as unknown as AgentClient;
+        ],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      };
+    };
+    return { client: { messages: { create } } as unknown as AgentClient, calls: () => calls };
+  }
+  const agrees: CalendarInviteTimeJudge = { matches: async () => true };
 
-    const outcome = await createCalendarVoice(client).composeNote(NOTE_CONTEXT);
-
-    expect(calls).toBe(MAX_COMPOSE_ATTEMPTS);
-    expect(outcome).toEqual({
-      status: 'deferred',
-      reason: 'model_failed: upstream 529',
-      attempts: MAX_COMPOSE_ATTEMPTS,
+  it('defers summary_too_long over the bound and never calls the writer', async () => {
+    const writer = countingWriter();
+    const voice = createCalendarInviteVoice(() => writer.client, agrees);
+    const outcome = await voice.compose({
+      ...REQUEST,
+      summary: 'S'.repeat(MAX_INVITE_SUMMARY_CHARS + 1),
     });
-    restore.mockRestore();
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_too_long' });
+    expect(writer.calls()).toBe(0);
   });
 
-  it('composes the note over the redacted event, and hands the model only that', async () => {
-    const { client, turns } = scriptedClient([GOOD_NOTE]);
+  it('positive control: a summary at the bound reaches the writer and is sent', async () => {
+    const writer = countingWriter();
+    const voice = createCalendarInviteVoice(() => writer.client, agrees);
+    const summary = 'S'.repeat(MAX_INVITE_SUMMARY_CHARS);
+    const outcome = await voice.compose({ ...REQUEST, summary });
+    expect(writer.calls()).toBe(1);
+    expect(outcome).toEqual({
+      status: 'composed',
+      body: `${summary}, Thu, Jul 23 at 10:30 AM. ${LINK}`,
+    });
+  });
 
-    const outcome = await createCalendarVoice(client).composeNote(NOTE_CONTEXT);
+  it('defers summary_carries_destination for a summary carrying a domain and never calls the writer', async () => {
+    const writer = countingWriter();
+    const voice = createCalendarInviteVoice(() => writer.client, agrees);
+    const outcome = await voice.compose({
+      ...REQUEST,
+      summary: 'Swim class - sign up at kids-swim.example.org',
+    });
+    expect(outcome).toEqual({ status: 'deferred', reason: 'summary_carries_destination' });
+    expect(writer.calls()).toBe(0);
+  });
+});
 
-    expect(outcome).toEqual({ status: 'composed', ...GOOD_NOTE, attempts: 1 });
-    expect(turns).toEqual([inviteNoteUserMessage(NOTE_CONTEXT)]);
-    expect(turns[0]).toBe(
-      '{"summary":"Maya — Swim class","when":"Thu, Jul 23 at 10:30 AM","method":"added"}',
+describe('VIL-588 · the time judge gives its reason before its verdict', () => {
+  it('requires reason and match, reason first', () => {
+    expect(Object.keys(timeJsonSchema.properties)).toEqual(['reason', 'match']);
+    expect(timeJsonSchema.required).toEqual(['reason', 'match']);
+  });
+});
+
+describe('prepareCalendarInvite', () => {
+  it('fills the slot and leaves accents, dashes, and other scripts as written', () => {
+    const prepared = prepareCalendarInvite(
+      `Swim class on Thu, Jul 23 at 10:30 AM \u2014 Chlo\u00e9 \u5468 ${INVITE_LINK_SLOT}`,
+      REQUEST,
     );
+    expect(prepared.status).toBe('accepted');
+    if (prepared.status !== 'accepted') return;
+    expect(prepared.body).toContain('\u2014');
+    expect(prepared.body).toContain('Chlo\u00e9');
+    expect(prepared.body).toContain('\u5468');
+    expect(prepared.body.endsWith(LINK)).toBe(true);
+    expect(prepared.body).not.toContain(INVITE_LINK_SLOT);
+  });
+});
+
+describe('calendarInviteUserMessage', () => {
+  it('hands the language and the slot, never the url or a segment budget', () => {
+    const payload = JSON.parse(calendarInviteUserMessage(REQUEST)) as Record<string, unknown>;
+    expect(payload).toEqual({
+      summary: REQUEST.summary,
+      when: REQUEST.when,
+      language: 'en',
+      linkSlot: INVITE_LINK_SLOT,
+    });
+    expect(calendarInviteUserMessage({ ...REQUEST, language: 'fr' })).toContain('"language":"fr"');
+    expect(calendarInviteUserMessage(REQUEST)).not.toContain(LINK);
+    expect(calendarInviteUserMessage(REQUEST)).not.toContain('maxSegments');
+    expect(
+      JSON.parse(calendarInviteUserMessage(REQUEST, [{ text: 'x', problems: ['empty'] }])).rejected,
+    ).toEqual([{ text: 'x', problems: ['empty'] }]);
+  });
+});
+
+describe('splitInviteSms', () => {
+  it('sends a short line whole and splits a long one without cutting the link', () => {
+    const short = `Swim class. ${LINK}`;
+    expect(splitInviteSms(short)).toEqual([short]);
+    const long = `${'Swim class on Thu, Jul 23 at 10:30 AM. '.repeat(8)}${LINK}`;
+    const parts = splitInviteSms(long);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.join(' ')).toBe(long);
+    expect(parts.filter((part) => part.includes('https://'))).toEqual([
+      parts.find((part) => part.includes(LINK)),
+    ]);
+    expect(parts.some((part) => part.includes(LINK))).toBe(true);
+  });
+
+  it('does not fold the model line on the way out', () => {
+    const line = `Swim class on Thu, Jul 23 at 10:30 AM \u2014 Chlo\u00e9 \u5468 ${LINK}`;
+    const rendered = calendarInviteSmsRenderer.render(
+      {
+        templateKey: 'calendar_invite_sms',
+        familyId: 'fam',
+        parentUserId: 'parent',
+        category: 'approval',
+        urgency: 'time_sensitive',
+        channel: 'sms',
+        payload: {
+          summary: 'Swim class',
+          when: 'Thu, Jul 23 at 10:30 AM',
+          url: LINK,
+          line,
+        },
+      } satisfies LoopMessage,
+      'sms',
+      'generic',
+    );
+    const wire = rendered.texts?.join(' ') ?? rendered.text;
+    expect(wire).toContain('\u2014');
+    expect(wire).toContain('Chlo\u00e9');
+    expect(wire).toContain('\u5468');
+    expect(wire).toContain(LINK);
+  });
+});
+
+describe('the time judge request', () => {
+  it('shows the stated time and the real start, never the url', () => {
+    const line = `Swim class at 10am. ${INVITE_LINK_SLOT}`;
+    const message = calendarInviteTimeUserMessage(calendarInviteTimeInput(line, REQUEST));
+    const payload = JSON.parse(message) as {
+      text: string;
+      starts: { hour: number; minute: number };
+    };
+    expect(payload.text).toContain('10am');
+    expect(payload.starts).toEqual({
+      year: 2026,
+      month: 7,
+      day: 23,
+      hour: 10,
+      minute: 30,
+      weekday: 'Thursday',
+    });
+    expect(message).not.toContain(LINK);
+  });
+});
+
+describe('VIL-515 · the invite template authors no fixed confirmation', () => {
+  it('has no parent-facing Added line left in the sms module', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('../templates/calendar-invite/sms.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(source).not.toContain('Added -');
+    expect(source).not.toContain("Tap to put it on your phone's calendar");
+    expect(source).not.toContain('gsmSafe');
+  });
+
+  it('does not tell the parent the event is already on their calendar', () => {
+    const skill = readFileSync(
+      fileURLToPath(
+        new URL('../../../../../packages/agent/skills/calendar-invite-voice.md', import.meta.url),
+      ),
+      'utf8',
+    );
+    expect(skill).not.toContain('on the calendar now');
+    expect(skill).toContain(
+      "Hale has it in their plans, and opening the link adds it to their phone's calendar",
+    );
+    expect(skill).toContain('friend texting');
   });
 });

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { COPARENT_DUTY_COPY_LOCKED_ENV } from '~/lib/channel/coparent/duty/copy';
 import { COPARENT_DUTY_MEMORY_ENABLED_ENV } from '~/lib/channel/coparent/duty/flag';
 import { loadIcsFeed, mintIcsToken, revokeIcsToken } from './ics-feed.js';
 
@@ -196,9 +195,8 @@ describe('loadIcsFeed — token resolution + teen gate (rule #1)', () => {
     expect(feed).not.toContain('DESCRIPTION:');
   });
 
-  it('puts a kid-event owner in DESCRIPTION only when memory and copy are locked on', async () => {
+  it('does not put the fixed owner sentence on a kid event', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     const { db } = fakeLoadDb(
       [{ id: FAMILY_ID }],
       [
@@ -216,17 +214,15 @@ describe('loadIcsFeed — token resolution + teen gate (rule #1)', () => {
       ],
     );
     const feed = (await loadIcsFeed(db, TOKEN, NOW)) as string;
-    const unfolded = feed.replace(/\r\n[ \t]/g, '');
-    expect(unfolded).toContain('DESCRIPTION:');
-    expect(unfolded).toContain("Barton has Maya's swim");
-    expect(unfolded).toContain('Say so here if that changes.');
-    expect(unfolded).not.toContain('Reply STOP');
+    expect(feed).not.toContain('DESCRIPTION:');
+    expect(feed).not.toContain("Barton has Maya's swim");
+    expect(feed).not.toContain('Say so here if that changes.');
+    expect(feed).toContain('SUMMARY:Maya swim');
     expect(feed).not.toContain('ATTENDEE');
   });
 
   it('does not speak a non-kid title or a teen owner in the duty field', async () => {
     vi.stubEnv(COPARENT_DUTY_MEMORY_ENABLED_ENV, 'true');
-    vi.stubEnv(COPARENT_DUTY_COPY_LOCKED_ENV, 'true');
     const { db } = fakeLoadDb(
       [{ id: FAMILY_ID }],
       [

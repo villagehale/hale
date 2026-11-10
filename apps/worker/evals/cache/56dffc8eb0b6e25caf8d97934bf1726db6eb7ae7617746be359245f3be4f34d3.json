@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgsGmiKviGPNZbcdY7Rha",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Bed-hopping is really common at this age. Here's one thing to try tonight. Walk them back to bed every time, calmly and with almost no talking, and don't turn it into a chat or a negotiation. Boring and predictable is what makes it stop working for them. It helps to tell them the rule at bedtime, something like \"after hugs, you stay in bed, and I'll check on you.\""
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 113,
+      "cache_read_input_tokens": 21064,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 113,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 124,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

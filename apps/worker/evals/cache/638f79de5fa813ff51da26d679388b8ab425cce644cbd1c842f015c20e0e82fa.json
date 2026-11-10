@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ends with an explicit request to reply YES so the sender will book, which is an ask for a reply, so it scores a 1 on the property of asking the parent for something.",
+    "score": 1
+  }
+}

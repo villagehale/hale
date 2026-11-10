@@ -5,11 +5,13 @@ import type { GoogleCalendarSyncReport } from '@hale/worker/google-calendar-plac
 import { and, eq, isNull } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { productionChannels } from '~/lib/channel/adapters/production';
+import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/channel/group-plan/send';
 import { createGoogleCalendarPlacement } from '~/lib/integrations/google-calendar-placement';
 import { googleWriteScopesEnabledFor } from '~/lib/integrations/google-write-flag';
 import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
-import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
+import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
+import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './undo-window';
 
 // The window and the reversible-type set live in undo-window.ts, so the surfaces that
@@ -202,12 +204,16 @@ export async function reverseExecutedCalendarAction(
 
 /** The real withdrawal: the same dispatch-backed sender the executor is given, so an
  * undo's CANCEL gets the identical consent / ledger / audit treatment as the invite it
- * takes back. */
+ * takes back. A group's plan is taken back in that group (VIL-443). */
 function defaultWithdrawInvites(database: Database): WithdrawInvites {
-  const sender = createCalendarInviteSender(database, {
-    channels: productionChannels(database),
-    renderer: loopTemplateRenderer,
-    voice: productionCalendarVoice(),
-  });
+  const sender = withGroupPlanReport(
+    createCalendarInviteSender(database, {
+      channels: productionChannels(database),
+      renderer: loopTemplateRenderer,
+      inviteVoice: productionCalendarInviteVoice(),
+      cancelVoice: productionCalendarCancelVoice(),
+    }),
+    productionGroupPlanReportPorts(database),
+  );
   return (request) => sender.send(request);
 }

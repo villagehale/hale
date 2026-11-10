@@ -1,6 +1,10 @@
 'use server';
 
-import { type LoopPrefUpdate, type SetLoopPrefResult, setLoopPref } from '~/lib/settings/loop-prefs';
+import {
+  type LoopPrefUpdate,
+  type SetLoopPrefResult,
+  setLoopPref,
+} from '~/lib/settings/loop-prefs';
 
 /**
  * The web Settings → Notifications loop-prefs control. A thin server-action seam

@@ -1,22 +1,29 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { type SQL, and, eq, inArray, isNull } from 'drizzle-orm';
 import { dutySyncLine, dutyTitleMayBeSpoken } from '~/lib/channel/coparent/duty/sync-line';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
+  outboundChatConfigured,
   readSendRefusal,
+  sendLinqChatMessage,
   sendResolvingNewChat,
 } from '~/lib/channel/outbound-transport';
+import { replyProse } from '~/lib/channel/reply-copy/apply';
+import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
-import { linqApiKey, linqGroupCoparentEnabled } from './config';
+import { scopeFamilies } from '~/lib/preview/family-scope';
+import { linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
 import { namesTeen } from './kid-event';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import type { ListChatHandles } from './roster';
+import { LinqSendError, listLinqParticipantHandles } from './transport';
 
 /**
  * Where a Hale-initiated message for this family goes.
@@ -27,9 +34,8 @@ import { LinqSendError, sendLinqChatMessage } from './transport';
  * A parent who texts Hale 1:1 is answered in that thread; this resolver is not
  * the reply door.
  *
- * With `LINQ_GROUP_ONBOARDING_V2_ENABLED`, a claimed chat is the target only for
- * a `contentClass` everyone in it may see (group-audience.ts); otherwise the
- * caller's 1:1 door, with the hold named in `reason`.
+ * A claimed chat is the target only for a `contentClass` everyone in it may see
+ * (group-audience.ts); otherwise the caller's 1:1 door, with the hold named in `reason`.
  */
 export type FamilyOutboundTarget =
   | { channel: 'group'; chatId: string; familyId: string }
@@ -63,7 +69,7 @@ export type GroupBubbleKind =
 export async function familyOutboundTarget(
   database: Database,
   familyId: string,
-  options: { contentClass?: ContentClass } = {},
+  options: { contentClass?: ContentClass; listChatHandles?: ListChatHandles } = {},
 ): Promise<FamilyOutboundTarget> {
   if (!linqGroupCoparentEnabled()) return { channel: 'legacy' };
   // A unit double with no query surface has no group to claim. Production
@@ -80,6 +86,7 @@ export async function familyOutboundTarget(
     database,
     chatId,
     options.contentClass ?? 'unclassified',
+    options.listChatHandles ?? listLinqParticipantHandles,
   );
   if (!audience.allowed) return { channel: 'legacy', reason: audience.reason };
   return { channel: 'group', chatId, familyId };
@@ -308,8 +315,8 @@ export async function familySpeech(
   database: Database,
   familyId: string,
   userId: string,
-): Promise<{ name: string | null; language: ReplyLanguage }> {
-  if (typeof database.select !== 'function') return { name: null, language: 'en' };
+): Promise<{ name: string | null; language: ReplyLanguage | null }> {
+  if (typeof database.select !== 'function') return { name: null, language: null };
   const language = await familySpeechLanguage(database, familyId);
   const [user] = await database
     .select({ name: schema.users.name })
@@ -324,13 +331,14 @@ export async function familySpeech(
 export async function familySpeechLanguage(
   database: Database,
   familyId: string,
-): Promise<ReplyLanguage> {
+): Promise<ReplyLanguage | null> {
+  if (typeof database.select !== 'function') return null;
   const [family] = await database
     .select({ primaryLanguage: schema.families.primaryLanguage })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
-  return family?.primaryLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  return acceptReplyLanguage(family?.primaryLanguage);
 }
 
 /** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
@@ -345,6 +353,24 @@ async function familyTeenNames(database: Database, familyId: string, now: Date):
     .where(eq(schema.children.familyId, familyId));
   const teens = teenChildIds(children, now);
   return children.filter((child) => teens.has(child.id)).map((child) => child.name);
+}
+
+/**
+ * The claimed chat a decision sync is queued for. A participant read that could not be
+ * made is no answer about the audience: the sync still waits, and the flush reads again.
+ */
+async function decisionSyncChatId(database: Database, familyId: string): Promise<string | null> {
+  const target = await familyOutboundTarget(database, familyId, {
+    contentClass: DECISION_SYNC_CLASS,
+  });
+  if (target.channel === 'group') return target.chatId;
+  if (target.reason !== 'participants_unverified') return null;
+  const [family] = await database
+    .select({ linqGroupChatId: schema.families.linqGroupChatId })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  return family?.linqGroupChatId ?? null;
 }
 
 /**
@@ -363,11 +389,9 @@ export async function queueGroupActivityDecision(
     now: Date;
   },
 ): Promise<'queued' | 'skipped'> {
-  const target = await familyOutboundTarget(database, input.familyId, {
-    contentClass: DECISION_SYNC_CLASS,
-  });
-  if (target.channel !== 'group') return 'skipped';
-  if (input.originChatId !== null && input.originChatId === target.chatId) return 'skipped';
+  const groupChatId = await decisionSyncChatId(database, input.familyId);
+  if (!groupChatId) return 'skipped';
+  if (input.originChatId !== null && input.originChatId === groupChatId) return 'skipped';
   const { decision } = input;
   if (!decision.activity.trim() || !decision.kid.trim()) return 'skipped';
   const timed = decision.decision === 'picked' || decision.decision === 'duty';
@@ -450,11 +474,9 @@ export async function noteGroupSyncConversation(
   input: { familyId: string; originChatId: string | null; now: Date },
 ): Promise<void> {
   if (typeof database.update !== 'function') return;
-  const target = await familyOutboundTarget(database, input.familyId, {
-    contentClass: DECISION_SYNC_CLASS,
-  });
-  if (target.channel !== 'group') return;
-  if (input.originChatId !== null && input.originChatId === target.chatId) return;
+  const groupChatId = await decisionSyncChatId(database, input.familyId);
+  if (!groupChatId) return;
+  if (input.originChatId !== null && input.originChatId === groupChatId) return;
   await database
     .update(schema.groupDecisionSync)
     .set({ flushAfter: new Date(input.now.getTime() + SETTLE_MS) })
@@ -466,15 +488,44 @@ export async function noteGroupSyncConversation(
     );
 }
 
+/** Close still-open syncs unsent and write their one body-free audit row, in one transaction. */
+async function closeSyncsUnsent(
+  database: Database,
+  input: {
+    familyId: string;
+    reason: GroupHoldReason | 'legacy_channel' | 'teen_withheld';
+    now: Date;
+    rows: SQL;
+  },
+): Promise<void> {
+  await database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    const closed = await tx
+      .update(schema.groupDecisionSync)
+      .set({ flushedAt: input.now })
+      .where(and(input.rows, isNull(schema.groupDecisionSync.flushedAt)))
+      .returning({ id: schema.groupDecisionSync.id });
+    if (closed.length === 0) return;
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: 'system',
+      actionTaken: 'group_decision_sync_closed_unsent',
+      targetTable: 'group_decision_sync',
+      after: { reason: input.reason, count: closed.length },
+    });
+  });
+}
+
 /**
  * Send the waiting decisions whose 1:1 has been quiet. One bubble, every due
- * line, never a second bubble for the same sitting. Quiet hours hold the
- * bubble; the rows stay queued. A row about a child who is 13+ by now is
- * withheld: marked flushed and never said.
+ * line, never a second bubble for the same sitting. Quiet hours, or a participant
+ * read that could not be made, hold the bubble; the rows stay queued. Any other
+ * reason the group may not hear it closes the rows unsent. A row about a child
+ * who is 13+ by now is withheld: marked flushed and never said.
  */
 export async function flushGroupDecisionSyncs(
   database: Database,
-  input: { now: Date; fetch?: typeof fetch },
+  input: { now: Date; fetch?: typeof fetch; replyClient?: AgentClient | null },
 ): Promise<{ sent: number; held: number }> {
   if (typeof database.select !== 'function') return { sent: 0, held: 0 };
   const waiting = await database
@@ -493,8 +544,10 @@ export async function flushGroupDecisionSyncs(
     })
     .from(schema.groupDecisionSync)
     .where(isNull(schema.groupDecisionSync.flushedAt));
-  const due = waiting.filter(
-    (row) => row.flushedAt === null && row.flushAfter.getTime() <= input.now.getTime(),
+  const due = scopeFamilies(
+    waiting.filter(
+      (row) => row.flushedAt === null && row.flushAfter.getTime() <= input.now.getTime(),
+    ),
   );
   const byFamily = new Map<string, typeof due>();
   for (const row of due) {
@@ -508,16 +561,27 @@ export async function flushGroupDecisionSyncs(
     const target = await familyOutboundTarget(database, familyId, {
       contentClass: DECISION_SYNC_CLASS,
     });
+    if (target.channel !== 'group' && target.reason === 'participants_unverified') {
+      held += 1;
+      console.info(
+        { familyId, queued: queued.length, reason: target.reason },
+        'family outbound: sync held, participants not read',
+      );
+      continue;
+    }
     if (target.channel !== 'group') {
-      await database
-        .update(schema.groupDecisionSync)
-        .set({ flushedAt: input.now })
-        .where(
-          and(
-            eq(schema.groupDecisionSync.familyId, familyId),
-            isNull(schema.groupDecisionSync.flushedAt),
-          ),
-        );
+      // No reason means no group to hear it at all: the kill switch, or no chat claimed now.
+      const reason = target.reason ?? 'legacy_channel';
+      await closeSyncsUnsent(database, {
+        familyId,
+        reason,
+        now: input.now,
+        rows: eq(schema.groupDecisionSync.familyId, familyId),
+      });
+      console.info(
+        { familyId, queued: queued.length, reason },
+        'family outbound: sync closed unsent',
+      );
       continue;
     }
     const teens = await familyTeenNames(database, familyId, input.now);
@@ -525,10 +589,12 @@ export async function flushGroupDecisionSyncs(
       .filter((row) => namesTeen(`${row.activity} ${row.kid}`, teens))
       .map((row) => row.id);
     if (withheld.length > 0) {
-      await database
-        .update(schema.groupDecisionSync)
-        .set({ flushedAt: input.now })
-        .where(inArray(schema.groupDecisionSync.id, withheld));
+      await closeSyncsUnsent(database, {
+        familyId,
+        reason: 'teen_withheld',
+        now: input.now,
+        rows: inArray(schema.groupDecisionSync.id, withheld),
+      });
       console.info({ familyId, withheld: withheld.length }, 'family outbound: teen sync withheld');
     }
     const rows = queued.filter((row) => !withheld.includes(row.id));
@@ -540,36 +606,66 @@ export async function flushGroupDecisionSyncs(
     rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const speech = await familySpeech(database, familyId, rows[0]?.parentUserId ?? '');
     const lines: string[] = [];
+    let dutyUnvoiced = false;
+    const replyClient = await resolveReplyClient(input.replyClient);
     for (const row of rows) {
-      const name = speech.name ?? (speech.language === 'fr' ? 'Un parent' : 'A parent');
+      const name =
+        speech.name ?? (copyLanguage(speech.language) === 'fr' ? 'Un parent' : 'A parent');
       if (row.decision === 'picked' && row.day && row.time) {
-        lines.push(
-          groupPickedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-            day: row.day,
-            time: row.time,
-          }),
-        );
-      } else if (row.decision === 'passed') {
-        lines.push(
-          groupPassedSyncLine(speech.language, {
-            name,
-            activity: row.activity,
-            kid: row.kid,
-          }),
-        );
-      } else if (row.decision === 'duty' && row.day && row.time) {
-        const line = dutySyncLine(speech.language, {
-          name: speech.name,
+        const line = await groupPickedSyncLine(speech.language, {
+          name,
           activity: row.activity,
           kid: row.kid,
           day: row.day,
           time: row.time,
         });
-        if (line && line.split('\n').length <= 1) lines.push(line);
+        if (line) lines.push(line);
+      } else if (row.decision === 'passed') {
+        const line = await groupPassedSyncLine(speech.language, {
+          name,
+          activity: row.activity,
+          kid: row.kid,
+        });
+        if (line) lines.push(line);
+      } else if (row.decision === 'duty' && row.day && row.time) {
+        const copy = copyLanguage(speech.language);
+        const plan = copy
+          ? dutySyncLine(copy, {
+              name: speech.name,
+              activity: row.activity,
+              kid: row.kid,
+              day: row.day,
+              time: row.time,
+            })
+          : null;
+        const voiced =
+          plan && copy
+            ? await replyProse(
+                {
+                  client: replyClient,
+                  database,
+                  familyId,
+                  language: copy,
+                  audience: 'group',
+                  surface: 'duty',
+                },
+                {
+                  purpose: plan.purpose,
+                  questionAllowed: plan.questionAllowed,
+                  facts: [name, row.activity, row.kid, row.day, row.time],
+                },
+              )
+            : null;
+        if (!voiced || voiced.includes('\n')) {
+          dutyUnvoiced = true;
+          break;
+        }
+        lines.push(voiced);
       }
+    }
+    if (dutyUnvoiced) {
+      held += 1;
+      continue;
     }
     if (lines.length === 0) continue;
     const actor = rows[0]?.parentUserId;
@@ -643,6 +739,7 @@ export async function sendClaimedGroupLine(
     dedupeKey: string;
     templateKey: string;
     contentClass: ContentClass;
+    listChatHandles?: ListChatHandles;
   },
 ): Promise<
   | 'sent'
@@ -652,7 +749,7 @@ export async function sendClaimedGroupLine(
   | 'not_sent'
   | 'group_audience_refused'
 > {
-  if (!linqApiKey()) return 'not_configured';
+  if (!outboundChatConfigured()) return 'not_configured';
   const [family] = await database
     .select({ linqGroupChatId: schema.families.linqGroupChatId })
     .from(schema.families)
@@ -661,7 +758,11 @@ export async function sendClaimedGroupLine(
   if (!family?.linqGroupChatId || family.linqGroupChatId !== input.chatId) {
     return 'not_the_group';
   }
-  if (!(await groupAudienceAllows(database, input.chatId, input.contentClass)).allowed) {
+  const listChatHandles = input.listChatHandles ?? listLinqParticipantHandles;
+  if (
+    !(await groupAudienceAllows(database, input.chatId, input.contentClass, listChatHandles))
+      .allowed
+  ) {
     return 'group_audience_refused';
   }
   const [claimed] = await database

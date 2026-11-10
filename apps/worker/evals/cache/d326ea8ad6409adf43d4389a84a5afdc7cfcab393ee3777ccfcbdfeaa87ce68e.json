@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Autonomy for send_email and reply_to_email was actually turned off this turn, so saying \"Done\" is true. The reply confirms the new behaviour in one plain sentence. It has no greeting, no machinery talk and no question.",
+    "score": 5
+  }
+}

@@ -1,12 +1,20 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import {
+  SeatGrantChangedError,
+  closeInviteOnGroupSeat,
+  recordedSeatGrant,
+  unlessSeatGrantChanged,
+} from '~/lib/channel/caregiver/invites';
 import { matchConnectorRequest } from '~/lib/channel/connect/detect';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { soleGivenName } from '~/lib/channel/identity/name-reply';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
-import { type ReplyLanguage, replyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { NAME_CAPTURED_REPLY } from '~/lib/channel/router/copy';
+import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
+import { outboundLineFrom, sendLinqChatMessage } from '~/lib/channel/outbound-transport';
 import {
   type SaidLineWriter,
   createSaidLineWriter,
@@ -25,8 +33,8 @@ import {
   linqGroupOnboardingV2Enabled,
 } from './config';
 import {
-  LINQ_GROUP_LINE_MISSING_TEXT,
   formatLinqLineForParent,
+  linqGroupLineMissing,
   linqGroupMakeInstruction,
   matchLinqGroupTrigger,
 } from './group';
@@ -41,7 +49,7 @@ import { planBothFreeAsk, rememberBothFreeAsked } from './household-calendar';
 import { sendLinqLinkPreview } from './link-preview';
 import type { LinqInboundText } from './payload';
 import { sendChoicePoll } from './poll';
-import { LinqSendError, sendLinqChatMessage } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Seat a co-parent inside a claimed Linq group. SMS is not this module.
@@ -74,7 +82,6 @@ export type GroupCoparentEffect =
       type: 'claim';
       familyId: string;
       userId: string;
-      language: 'en' | 'fr';
     }
   | {
       type: 'done';
@@ -107,7 +114,7 @@ export async function considerGroupCoparent(
   if (!senderPhone) return { type: 'none' };
   const sender = await resolveVerifiedChannelByPhone(database, senderPhone);
   const owner = await familyForChat(database, message.chatId);
-  const language = replyLanguage(message.text);
+  const language = owner ? await familySpeechLanguage(database, owner.familyId) : null;
 
   if (sender && owner && sender.familyId === owner.familyId) {
     if (
@@ -127,14 +134,14 @@ export async function considerGroupCoparent(
     return { type: 'route_member' };
   }
 
-  if (sender && matchLinqGroupTrigger(message.text)) {
+  const trigger = matchLinqGroupTrigger(message.text);
+  if (sender && trigger) {
     const allowed = await humansAllowClaim(database, sender.familyId, message.otherHandles);
     if (allowed) {
       return {
         type: 'claim',
         familyId: sender.familyId,
         userId: sender.userId,
-        language: matchLinqGroupTrigger(message.text) ?? language,
       };
     }
   }
@@ -144,7 +151,10 @@ export async function considerGroupCoparent(
   if (!owner) {
     const noted = await notedInviteForPhone(database, senderPhone, ports.now);
     if (!noted) return { type: 'none' };
-    return sayUnclaimed(database, message, noted, language, ports);
+    // No claimed chat, so the inviting household's stored language writes the
+    // instruction. The chat owner is absent here, and that null is not a language.
+    const notedLanguage = await familySpeechLanguage(database, noted.familyId);
+    return sayUnclaimed(database, message, noted, notedLanguage, ports);
   }
 
   // V2 asks who they are and seats only on their reply. Flag off keeps today's
@@ -155,10 +165,8 @@ export async function considerGroupCoparent(
 
   const seated = await seatAppearingCoparent(database, {
     familyId: owner.familyId,
-    invitedByUserId: await primaryParentId(database, owner.familyId),
-    phoneE164: senderPhone,
     chatId: message.chatId,
-    verbatim: message.text,
+    ownReply: { senderPhoneE164: senderPhone, text: message.text },
     now: ports.now,
   });
   if (seated.status !== 'seated') return { type: 'none' };
@@ -179,7 +187,7 @@ export async function considerGroupCoparent(
     familyId: owner.familyId,
     parentUserId: seated.userId,
     chatId: message.chatId,
-    text: groupWelcome(language),
+    text: await groupWelcome(language),
     templateKey: WELCOME_KEY,
     dedupeKey: `linq:coparent_welcome:${seated.userId}`,
     now: ports.now,
@@ -209,11 +217,11 @@ export async function steerNotedCoparentOneToOne(
   if (await resolveVerifiedChannelByPhone(database, senderPhone)) return { type: 'none' };
   const noted = await notedInviteForPhone(database, senderPhone, ports.now);
   if (!noted) return { type: 'none' };
-  const language = replyLanguage(message.text);
-  const from = linqFromE164();
+  const language = await familySpeechLanguage(database, noted.familyId);
+  const from = outboundLineFrom();
   const text = from
-    ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
-    : LINQ_GROUP_LINE_MISSING_TEXT[language];
+    ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+    : await linqGroupLineMissing(language);
   const notice = await sendLine(database, {
     familyId: noted.familyId,
     parentUserId: noted.invitedByUserId,
@@ -236,7 +244,7 @@ async function advanceSeatedCoparent(
   database: Database,
   message: LinqInboundText,
   sender: { familyId: string; userId: string },
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect | null> {
   const [step] = await database
@@ -295,16 +303,8 @@ async function advanceSeatedCoparent(
       });
     }
     await setStep(database, sender.userId, 'awaiting_calendar', ports.now);
-    const notice = await sendLine(database, {
-      familyId: sender.familyId,
-      parentUserId: sender.userId,
-      chatId: message.chatId,
-      text: NAME_CAPTURED_REPLY,
-      templateKey: 'parent_name_captured',
-      dedupeKey: `linq:coparent_name_ack:${sender.userId}`,
-      now: ports.now,
-      fetch: ports.fetch,
-    });
+    // VIL-504 · no fixed name ack: the write is the receipt; nothing is sent.
+    const notice = null;
     return {
       type: 'done',
       outcome: 'group_coparent_named',
@@ -383,7 +383,7 @@ async function answerDoneStep(
   database: Database,
   message: LinqInboundText,
   sender: { familyId: string; userId: string },
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect | null> {
   const asked = matchConnectorRequest(message.text);
@@ -487,7 +487,7 @@ async function sendAskWithLink(
     parentUserId: string;
     groupChatId: string;
     name: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     saidLine?: SaidLineWriter;
     templateKey: string;
     dedupeKey: string;
@@ -636,16 +636,16 @@ export async function sendCoparentGroupCalendarReceipt(
     .limit(1);
   const name = user?.name?.trim();
   if (!name) return 'skipped';
-  const language: ReplyLanguage = family.primaryLanguage?.toLowerCase().startsWith('fr')
-    ? 'fr'
-    : 'en';
+  const language = acceptReplyLanguage(family.primaryLanguage);
   const gmail = input.provider === 'gmail';
   const templateKey = gmail ? GMAIL_RECEIPT_KEY : RECEIPT_KEY;
   const notice = await sendLine(database, {
     familyId: input.familyId,
     parentUserId: input.userId,
     chatId: family.linqGroupChatId,
-    text: gmail ? groupGmailReceipt(language, name) : groupCalendarReceipt(language, name),
+    text: gmail
+      ? await groupGmailReceipt(language, name)
+      : await groupCalendarReceipt(language, name),
     templateKey,
     dedupeKey: `${templateKey}:${input.connectId}`,
     now: input.now,
@@ -683,7 +683,7 @@ async function sendGmailAskOnce(
     parentUserId: string;
     chatId: string;
     name: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     fetch?: typeof fetch;
     saidLine?: SaidLineWriter;
@@ -712,13 +712,13 @@ async function sayUnclaimed(
   database: Database,
   message: LinqInboundText,
   noted: NotedInvite,
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   ports: GroupCoparentPorts,
 ): Promise<GroupCoparentEffect> {
   const from = linqFromE164();
   const text = from
-    ? linqGroupMakeInstruction(formatLinqLineForParent(from), language)
-    : LINQ_GROUP_LINE_MISSING_TEXT[language];
+    ? await linqGroupMakeInstruction(formatLinqLineForParent(from), language)
+    : await linqGroupLineMissing(language);
   const notice = await sendLine(database, {
     familyId: noted.familyId,
     parentUserId: noted.invitedByUserId,
@@ -826,37 +826,78 @@ async function humansAllowClaim(
   return true;
 }
 
-async function primaryParentId(database: Database, familyId: string): Promise<string | null> {
-  const rows = await database
-    .select({
-      userId: schema.familyMembers.userId,
-      role: schema.familyMembers.role,
-      familyId: schema.familyMembers.familyId,
-    })
-    .from(schema.familyMembers)
-    .where(eq(schema.familyMembers.familyId, familyId));
-  return (
-    rows.find((row) => row.familyId === familyId && row.role === 'primary_parent')?.userId ?? null
+type LabelRefusal = 'not_a_person' | 'family_has_coparent' | 'number_verified';
+
+/**
+ * A Linq add, or a handle beside the parent who claimed the chat, carries none of that
+ * person's own words, so it never seats them (VIL-582). The audit row is the label; their
+ * own message in the chat is what can reach {@link seatAppearingCoparent}. Only someone
+ * who could hold the empty co-parent seat is labelled: Hale's line, a non-phone, a number
+ * already verified anywhere, or a family that has its co-parent is `refused` unlabelled.
+ */
+export async function labelAppearingCoparent(
+  database: Database,
+  input: {
+    familyId: string;
+    handle: string;
+    via: 'participant_added' | 'second_handle';
+  },
+): Promise<{ status: 'needs_own_reply' } | { status: 'refused'; reason: LabelRefusal }> {
+  const refuse = (reason: LabelRefusal) => {
+    console.info(
+      { outcome: 'label_refused', reason, via: input.via },
+      'linq group co-parent: not labelled',
+    );
+    return { status: 'refused' as const, reason };
+  };
+  const phone = realHumanPhone(input.handle);
+  if (!phone) return refuse('not_a_person');
+  if (await familyHasCoParent(database, input.familyId)) return refuse('family_has_coparent');
+  if (await resolveVerifiedChannelByPhone(database, phone)) return refuse('number_verified');
+  await database.insert(schema.auditLog).values({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'linq_group_member_refused',
+    targetTable: 'linq_group_members',
+    targetId: input.familyId,
+    after: { reason: 'seat_needs_own_reply', via: input.via },
+  });
+  console.info(
+    { outcome: 'seat_needs_own_reply', via: input.via },
+    'linq group co-parent: not seated',
   );
+  return { status: 'needs_own_reply' };
 }
 
 /**
- * Seat the second real person in a claimed Linq group. No prior phone.
- * A legacy `identity_noted` invite for this number is closed when one exists.
+ * Seat the person who just spoke in a claimed Linq group as its co-parent, on both keys
+ * (VIL-582): their own words, from their own handle, are their consent; and a household
+ * parent's recorded co-parent grant for that phone through the 1:1 invite, which closes
+ * `accepted` with the seat and names who invited them. A legacy `identity_noted` invite
+ * for this number is closed when one exists.
  */
 export async function seatAppearingCoparent(
   database: Database,
   input: {
     familyId: string;
-    invitedByUserId: string | null;
-    phoneE164: string;
     chatId: string;
-    verbatim: string;
+    /** The person's own message: its sender is who is seated, its words the consent. */
+    ownReply: { senderPhoneE164: string; text: string };
     now: Date;
   },
-): Promise<{ status: 'seated'; userId: string } | { status: 'refused' }> {
-  const phone = realHumanPhone(input.phoneE164);
+): Promise<
+  | { status: 'seated'; userId: string }
+  | { status: 'refused' }
+  | { status: 'needs_own_reply' }
+  | { status: 'needs_parent_grant' }
+  | { status: 'grant_changed_during_seat' }
+> {
+  const phone = realHumanPhone(input.ownReply.senderPhoneE164);
   if (!phone) return { status: 'refused' };
+  if (input.ownReply.text.trim() === '') {
+    console.info({ outcome: 'seat_needs_own_reply' }, 'linq group co-parent: not seated');
+    return { status: 'needs_own_reply' };
+  }
   if (await familyHasCoParent(database, input.familyId)) return { status: 'refused' };
   const existing = await resolveVerifiedChannelByPhone(database, phone);
   if (existing) return { status: 'refused' };
@@ -865,11 +906,35 @@ export async function seatAppearingCoparent(
   // A live note for a different household stays on that household.
   if (noted && noted.familyId !== input.familyId) return { status: 'refused' };
   const phoneHash = phoneBlindIndex(phone);
-  const userId = await database.transaction(async (rawTx) => {
+  const grant = await recordedSeatGrant(database, {
+    familyId: input.familyId,
+    phoneE164Hash: phoneHash,
+    role: 'co_parent',
+    now: input.now,
+  });
+  if (!grant) {
+    console.info({ outcome: 'seat_needs_parent_grant' }, 'linq group co-parent: not seated');
+    return { status: 'needs_parent_grant' };
+  }
+  const seat = database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    const held = await recordedSeatGrant(tx, {
+      familyId: input.familyId,
+      phoneE164Hash: phoneHash,
+      role: 'co_parent',
+      now: input.now,
+    });
+    if (held?.inviteId !== grant.inviteId || held.open !== grant.open) {
+      throw new SeatGrantChangedError();
+    }
     await tx
       .insert(schema.users)
-      .values({ externalAuthId: `sms:${phoneHash}`, email: null, name: null })
+      .values({
+        externalAuthId: `sms:${phoneHash}`,
+        email: null,
+        name: null,
+        timezone: await householdTimezone(tx, input.familyId),
+      })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
     const [user] = await tx
       .select({ id: schema.users.id })
@@ -884,7 +949,7 @@ export async function seatAppearingCoparent(
         familyId: input.familyId,
         userId: user.id,
         role: 'co_parent',
-        invitedByUserId: input.invitedByUserId,
+        invitedByUserId: held.grantedByUserId,
       })
       .onConflictDoNothing();
 
@@ -903,7 +968,7 @@ export async function seatAppearingCoparent(
         consentScope: 'sms_coparent_invite_reply',
         policyVersion: POLICY_VERSION,
         evidence: {
-          verbatimReply: input.verbatim,
+          verbatimReply: input.ownReply.text,
           interpretation:
             'the second person in the household iMessage group the other parent started',
           channel: 'imessage',
@@ -921,6 +986,18 @@ export async function seatAppearingCoparent(
       verifiedAt: input.now,
       consentRecordId: consent.id,
     });
+    if (
+      held.open &&
+      !(await closeInviteOnGroupSeat(tx, {
+        inviteId: held.inviteId,
+        role: 'co_parent',
+        familyId: input.familyId,
+        seatedUserId: user.id,
+        now: input.now,
+      }))
+    ) {
+      throw new SeatGrantChangedError();
+    }
 
     await tx.insert(schema.linqGroupOnboarding).values({
       familyId: input.familyId,
@@ -958,6 +1035,11 @@ export async function seatAppearingCoparent(
     });
     return user.id;
   });
+  const userId = await unlessSeatGrantChanged(seat);
+  if (!userId) {
+    console.info({ outcome: 'grant_changed_during_seat' }, 'linq group co-parent: not seated');
+    return { status: 'grant_changed_during_seat' };
+  }
 
   return { status: 'seated', userId };
 }
@@ -997,13 +1079,20 @@ async function sendLine(
     familyId: string;
     parentUserId: string;
     chatId: string;
-    text: string;
+    text: string | null;
     templateKey: string;
     dedupeKey: string;
     now: Date;
     fetch?: typeof fetch;
   },
 ): Promise<'sent' | 'already_sent' | 'not_sent'> {
+  if (!input.text) {
+    console.info(
+      { familyId: input.familyId, templateKey: input.templateKey, reason: 'model_unreachable' },
+      'linq group coparent: spoken line unreachable',
+    );
+    return 'not_sent';
+  }
   const [claimed] = await database
     .insert(schema.channelMessages)
     .values({

@@ -1,5 +1,6 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
+import type { NamedArea, NamedAreaReader } from '~/lib/channel/named-area';
 import type { ActivityPromise } from './commitment';
 import type { ActivityFinder, ActivityPick } from './lane';
 import type { BoundActivityReader } from './reader';
@@ -40,7 +41,7 @@ function guardDeps(): GuardDeps {
 
 function reader(overrides: Partial<BoundActivityReader> = {}): BoundActivityReader {
   return {
-    municipality: async () => 'halton_hills',
+    place: async () => ({ status: 'known', town: 'Halton Hills' }),
     stage: async () => 'toddler',
     householdNames: async () => ['Noah'],
     ...overrides,
@@ -68,8 +69,8 @@ describe('find_activities', () => {
       onPromise: () => {},
     });
 
-    // The model supplies only the activity and the window. There is no argument on this
-    // tool through which it could name a place or an age.
+    // The model supplies only the activity and the window. No argument names an age, and
+    // a place enters only as `area`, read and gated first (below).
     await call(tool, { subject: 'toddler gymnastics', window: 'this fall' });
 
     expect(seen[0]).toEqual({
@@ -77,6 +78,152 @@ describe('find_activities', () => {
       window: 'this fall',
       town: 'Halton Hills',
       stage: 'toddler',
+    });
+  });
+
+  it('adds the family-local day from the record when it is known (VIL-435)', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({ today: async () => '2026-10-12 (Monday)' }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+
+    await call(tool, { subject: 'drop-in playgroup', window: 'today' });
+    await call(
+      findActivitiesTool({
+        reader: reader({ today: async () => null }),
+        finder: fakeFinder(seen),
+        onPromise: () => {},
+      }),
+      { subject: 'drop-in playgroup', window: 'today' },
+    );
+
+    expect(seen[0]).toEqual({
+      subject: 'drop-in playgroup',
+      window: 'today',
+      town: 'Halton Hills',
+      stage: 'toddler',
+      today: '2026-10-12 (Monday)',
+    });
+    expect(seen[1]).not.toHaveProperty('today');
+  });
+
+  describe('a place the parent named (VIL-523)', () => {
+    function areaReader(named: NamedArea | null, read: string[] = []): NamedAreaReader {
+      return {
+        async read(text) {
+          read.push(text);
+          return named;
+        },
+      };
+    }
+    const TERRACE: NamedArea = {
+      locality: 'Terrace',
+      region: 'British Columbia',
+      granularity: 'locality',
+    };
+
+    it('searches the place the model read instead of the home town', async () => {
+      const seen: unknown[] = [];
+      const read: string[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE, read),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'trick or treat', window: 'this weekend', area: 'Terrace BC' });
+
+      expect(read).toEqual(['Terrace BC']);
+      expect(seen).toEqual([
+        {
+          subject: 'trick or treat',
+          window: 'this weekend',
+          town: 'Terrace, British Columbia',
+          stage: 'toddler',
+        },
+      ]);
+    });
+
+    it('does not read a place when the model names none, and searches home', async () => {
+      const seen: unknown[] = [];
+      const read: string[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE, read),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'story time' });
+
+      expect(read).toEqual([]);
+      expect(seen).toMatchObject([{ town: 'Halton Hills' }]);
+    });
+
+    it('searches a named place even when the family has no home town on file', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader({ place: async () => ({ status: 'unknown', reason: 'no_postal' }) }),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(TERRACE),
+        onPromise: () => {},
+      });
+
+      await call(tool, { subject: 'story time', area: 'Terrace BC' });
+
+      expect(seen).toMatchObject([{ town: 'Terrace, British Columbia' }]);
+    });
+
+    it('refuses a street and does not search home instead', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader({
+          locality: null,
+          region: 'British Columbia',
+          granularity: 'street',
+        }),
+        onPromise: () => {},
+      });
+
+      await expect(call(tool, { subject: 'story time', area: 'Wallace St BC' })).rejects.toThrow(
+        /no street, no postal code/,
+      );
+      expect(seen).toHaveLength(0);
+    });
+
+    it('refuses a place that names someone in the household without repeating the name', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader({ locality: 'Noah', region: null, granularity: 'locality' }),
+        onPromise: () => {},
+      });
+
+      const refused = call(tool, { subject: 'story time', area: 'Noah' });
+      await expect(refused).rejects.toThrow(/names somebody in the family/);
+      await expect(refused).rejects.not.toThrow(/Noah/);
+      expect(seen).toHaveLength(0);
+    });
+
+    it('says the place could not be read when the read fails, and searches nothing', async () => {
+      const seen: unknown[] = [];
+      const tool = findActivitiesTool({
+        reader: reader(),
+        finder: fakeFinder(seen),
+        areaReader: areaReader(null),
+        onPromise: () => {},
+      });
+
+      const result = await call(tool, { subject: 'story time', area: 'Terrace BC' });
+
+      expect(result).toEqual({ found: false, reason: 'area_unread' });
+      expect(seen).toHaveLength(0);
     });
   });
 
@@ -316,5 +463,42 @@ describe('promise_activity_followup', () => {
     expect(promises).toHaveLength(1);
     expect(promises[0]?.subject).toContain('toddler gymnastics');
     expect(promises[0]?.subject).not.toContain('18 months');
+  });
+});
+
+describe('find_activities family slice (VIL-518)', () => {
+  const FIT = {
+    children: [{ childId: CHILD, name: 'Zephyrina', stage: 'toddler' as const, ageYears: 3 }],
+    homeArea: 'halton_hills' as const,
+    preferences: [{ childId: CHILD, key: 'indoor', value: { prefers: 'indoor' } }],
+  };
+
+  it('hands the family slice back beside the picks, and never sends it to the search', async () => {
+    const seen: unknown[] = [];
+    const tool = findActivitiesTool({
+      reader: reader({ familyFit: async () => FIT }),
+      finder: fakeFinder(seen),
+      onPromise: () => {},
+    });
+    const result = (await call(tool, { subject: 'toddler gymnastics' })) as unknown as {
+      found: boolean;
+      family?: unknown;
+    };
+    expect(JSON.stringify(result)).toContain('Zephyrina');
+    expect(JSON.stringify(seen)).not.toContain('Zephyrina');
+    expect(JSON.stringify(seen)).not.toContain('indoor');
+  });
+
+  it('still finds when there is no slice or the read fails', async () => {
+    for (const familyFit of [undefined, async () => Promise.reject(new Error('db'))]) {
+      const tool = findActivitiesTool({
+        reader: reader(familyFit ? { familyFit } : {}),
+        finder: fakeFinder([]),
+        onPromise: () => {},
+      });
+      const result = JSON.stringify(await call(tool, { subject: 'toddler gymnastics' }));
+      expect(result).toContain('Halton Hills Gymnastics');
+      expect(result).not.toContain('"family"');
+    }
   });
 });

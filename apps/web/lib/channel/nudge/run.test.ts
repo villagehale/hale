@@ -1,10 +1,6 @@
 import { inspect } from 'node:util';
 import { schema } from '@hale/db';
-import type {
-  Municipality,
-  ProgramDomain,
-  RegistrationSourceState as RegistrationWindow,
-} from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WeekdayCareContext } from '~/lib/care/weekday';
 import type { FamilyTextRecipient } from '~/lib/channel/family-recipients';
@@ -13,6 +9,8 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import type { LiveRegistrationReading } from '~/lib/registration/live-reading';
+import type { RegistrationReader } from '~/lib/registration/read';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
@@ -167,6 +165,9 @@ function harness(
     parentCallName?: ParentCallNameState;
     /** The model could not write the name ask this run. */
     nameAskUnwritten?: boolean;
+    /** VIL-423 · the date check's reader factory. The default throws, so a read while
+     * REGISTRATION_DATE_CHECK is off is a failure rather than a silent page fetch. */
+    createDateReader?: NudgeRunDeps['createDateReader'];
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -202,16 +203,6 @@ function harness(
     // Mirrors prod: the suppression set is the union of what the family was already
     // TOLD (read back off the ledger the sweep itself writes) and what they said is
     // DONE. Faking only the latter would hide the fall-through this feature depends on.
-    loadSuppressedCheckpoints: async (_db, familyId) => {
-      const prefix = `nudge:${familyId}:health:`;
-      // SEAM: prod's reader strips the recipient qualifier before parsing the ref
-      // (health/told.ts loadToldCheckpointRefs) — two parents told the same checkpoint
-      // is one fact about the household, written twice because the key is unique.
-      const told = [...dedupeKeys]
-        .filter((key) => key.startsWith(prefix))
-        .map((key) => key.slice(prefix.length).split('#')[0] as string);
-      return new Set([...told, ...(options.doneCheckpoints ?? [])]);
-    },
     loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
     loadWeekdayCareContext: async () =>
       options.weekdayCare ?? { stated: [], askedBefore: false, weekendFindSent: false },
@@ -273,9 +264,10 @@ function harness(
       return { status: 'none_open' };
     },
     // The offer half of the same seam, recorded rather than executed for the same reason.
-    recordCheckupOffer: async (_db, input) => {
-      offers.push({ ref: input.ref, channelMessageId: input.channelMessageId });
-      return { status: 'not_an_offer' };
+    recordActivityOffers: async (_db, familyId, picks) => {
+      for (const pick of picks)
+        writes.push({ table: schema.familyActivityHistory, payload: { familyId, ...pick } });
+      return [];
     },
     threadMessage: async (_db, input) => {
       threaded.push(input);
@@ -287,6 +279,11 @@ function harness(
         alreadyAsked: false,
         googleGivenName: null,
       },
+    createDateReader:
+      options.createDateReader ??
+      (() => {
+        throw new Error('unexpected date read');
+      }),
   };
 
   return { deps, transport, writes, dedupeKeys, closed, offers, threaded };
@@ -601,6 +598,14 @@ describe('runNudgeCron — the outbound gate', () => {
     const loadCandidates = vi.fn(async () => []);
     await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
     expect(loadCandidates).not.toHaveBeenCalled();
+  });
+
+  it("hands the family's language to the live search", async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ families: [family({ language: 'zh' })] });
+    const loadCandidates = vi.fn(async () => []);
+    await runNudgeCron(db(), { ...h.deps, loadCandidates }, FRIDAY_10AM);
+    expect(loadCandidates).toHaveBeenCalledWith(expect.anything(), 'fam-1', FRIDAY_10AM, TZ, 'zh');
   });
 });
 
@@ -1017,8 +1022,8 @@ describe('runNudgeCron — the weekday drop-in', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1052,7 +1057,11 @@ describe('runNudgeCron — the weekday drop-in', () => {
     const h = harness({
       families: NO_REGION,
       children: SIX_MONTH_OLD,
-      candidates: CIVIC,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
       weekdayCare: AT_HOME,
     });
 
@@ -1066,6 +1075,29 @@ describe('runNudgeCron — the weekday drop-in', () => {
     // family's find would have been deduped against a swap and vanished.
     expect(String(write?.payload.dedupeKey)).toContain(':weekday_dropin:');
     expect(String(write?.payload.dedupeKey)).not.toContain('weather_swap');
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(1);
+  });
+
+  it('does not consume the live recommendation when delivery fails', async () => {
+    armed();
+    const h = harness({
+      families: NO_REGION,
+      children: SIX_MONTH_OLD,
+      candidates: CIVIC.map((pick) => ({
+        ...pick,
+        source: 'web',
+        sourceUrl: 'https://venue.example/dropin',
+      })),
+      weekdayCare: AT_HOME,
+    });
+    h.deps.transport = {
+      send: async () => {
+        throw new Error('delivery failed');
+      },
+    };
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(0);
+    expect(h.writes.filter((w) => w.table === schema.familyActivityHistory)).toHaveLength(0);
   });
 
   it('a second fire in the same week sends nothing a second time', async () => {
@@ -1136,8 +1168,8 @@ describe('runNudgeCron — the weekday-care ask', () => {
       seasons: null,
       childId: null,
       confidence: 0.9,
-      source: 'civic_registry',
-      sourceUrl: null,
+      source: 'web',
+      sourceUrl: 'https://venue.example/dropin',
       access: null,
       whenLabel: null,
     },
@@ -1316,7 +1348,7 @@ describe('the call-name line after a find', () => {
           seasons: null,
           childId: null,
           confidence: 0.9,
-          source: 'civic_registry',
+          source: 'web',
           sourceUrl: null,
           access: null,
           whenLabel: null,
@@ -1346,7 +1378,7 @@ describe('runNudgeCron — empty Saturday', () => {
         candidate({
           id: 'sat-1',
           title: 'EarlyON Saturday',
-          source: 'civic_registry',
+          source: 'web',
           eventDate: SATURDAY,
           sourceUrl: 'https://tpl.example/earlyon',
         }),
@@ -1370,13 +1402,103 @@ describe('runNudgeCron — empty Saturday', () => {
     const h = harness({
       enrolled: false,
       saturdayPlans: { householdBusy: false, busyChildIds: new Set() },
-      candidates: [
-        candidate({ source: 'civic_registry', eventDate: SATURDAY, title: 'EarlyON Saturday' }),
-      ],
+      candidates: [candidate({ source: 'web', eventDate: SATURDAY, title: 'EarlyON Saturday' })],
     });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     expect(result.sent).toBe(0);
     expect(result.held.not_enrolled).toBe(1);
     expect(h.transport.bodies()).toEqual([]);
+  });
+});
+
+describe('VIL-423 · the send-time date check on a registration nudge', () => {
+  const SOURCE = 'https://registration.example.org/fall';
+  const window = () => win({ sourceUrl: SOURCE });
+  /** The stored opening, 10:30 Toronto on 4 Aug, as a page would state it. */
+  const STORED = { date: '2026-08-04', time: '10:30' };
+
+  function reading(status: 'verified' | 'unverified', date = STORED): LiveRegistrationReading {
+    const source = { sourceUrl: SOURCE, checkedAt: FRIDAY_10AM, reader: 'ai' as const };
+    return status === 'verified'
+      ? {
+          ...source,
+          status,
+          timeZone: TZ,
+          dates: [{ kind: 'general_open', ...date, evidence: ['the page'] }],
+          partialDates: [],
+        }
+      : { ...source, status, reason: 'unknown_time_zone', partialDates: [] };
+  }
+  function pageSays(answer: LiveRegistrationReading) {
+    const asked: string[] = [];
+    const reader: RegistrationReader = async (target) => {
+      asked.push(target.sourceUrl);
+      return answer;
+    };
+    return { asked, createDateReader: () => reader };
+  }
+
+  it('shadow: reads the page and sends the nudge as before, counting the disagreement', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'shadow');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const page = pageSays(reading('verified', { date: '2026-08-06', time: '10:30' }));
+    const h = harness({ windows: [window()], createDateReader: page.createDateReader });
+
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(page.asked).toEqual([SOURCE]);
+    expect(result.sent).toBe(1);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:registration:w-1:user-1']);
+    expect(result.dateCheck).toEqual({ agree: 0, disagree: 1, unread: 0 });
+  });
+
+  it('enforce: a page that agrees keeps the registration nudge', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      windows: [window()],
+      createDateReader: pageSays(reading('verified')).createDateReader,
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result.sent).toBe(1);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:registration:w-1:user-1']);
+    expect(result.dateCheck.agree).toBe(1);
+  });
+
+  it('enforce: a page that does not confirm the date sets the window aside for the next nudge', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    for (const answer of [
+      reading('unverified'),
+      reading('verified', { date: '2026-08-06', time: '10:30' }),
+    ]) {
+      const h = harness({
+        windows: [window()],
+        candidates: [candidate()],
+        weather: WET,
+        createDateReader: pageSays(answer).createDateReader,
+      });
+      const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+      expect(result.sent).toBe(1);
+      expect([...h.dedupeKeys].some((key) => key.includes(':registration:'))).toBe(false);
+      expect(h.transport.bodies()[0]).toContain('Library story time');
+    }
+  });
+
+  it('enforce: with nothing else worth saying, the family hears nothing', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('REGISTRATION_DATE_CHECK', 'enforce');
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const h = harness({
+      windows: [window()],
+      createDateReader: pageSays(reading('unverified')).createDateReader,
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.sent).toEqual([]);
+    expect(result.dateCheck.unread).toBe(1);
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked to stop autonomous email, and turn_off_autonomy ran this turn for send_email and reply_to_email. The reply confirms the change accurately, in the parent's language, and uses the name Hale knows. It is one sentence, adds nothing invented, and asks no question. The opening \"Listo, Sam:\" is a light acknowledgement, not a greeting or sign-off.",
+    "score": 5
+  }
+}

@@ -43,7 +43,12 @@ function eqConstraints(sql: SQL, out: Record<string, unknown> = {}): Record<stri
   const chunks = (sql as unknown as { queryChunks?: unknown[] }).queryChunks ?? [];
   let lastCol: string | null = null;
   for (const chunk of chunks) {
-    const c = chunk as { constructor?: { name?: string }; name?: string; table?: unknown; value?: unknown };
+    const c = chunk as {
+      constructor?: { name?: string };
+      name?: string;
+      table?: unknown;
+      value?: unknown;
+    };
     if (c?.constructor?.name === 'SQL') {
       eqConstraints(chunk as SQL, out);
       lastCol = null;
@@ -128,7 +133,10 @@ describe('updateEpisode', () => {
 
     expect(ok).toBe(true);
     expect(capture.updateValues).toHaveLength(1);
-    expect(capture.updateValues[0]).toMatchObject({ summary: 'Fed 150 ml', payload: { amountMl: 150 } });
+    expect(capture.updateValues[0]).toMatchObject({
+      summary: 'Fed 150 ml',
+      payload: { amountMl: 150 },
+    });
 
     expect(capture.audit).toHaveLength(1);
     const audit = capture.audit[0] as Record<string, unknown>;
@@ -137,8 +145,16 @@ describe('updateEpisode', () => {
     expect(audit.actionTaken).toBe('quick_log_edited');
     expect(audit.targetTable).toBe('family_memory_episodes');
     expect(audit.targetId).toBe(EPISODE_ID);
-    expect(audit.before).toMatchObject({ summary: 'Fed 120 ml', payload: { amountMl: 120 } });
-    expect(audit.after).toMatchObject({ summary: 'Fed 150 ml', payload: { amountMl: 150 } });
+    // The audit row outlives the episode's text (the 30-day removed-episode window
+    // blanks the row, never the immutable audit), so it names WHAT changed, not the words.
+    expect(audit.before).toEqual({ occurredAt: BEFORE_ROW.occurredAt, episodeType: 'feed' });
+    expect(audit.after).toEqual({
+      occurredAt: BEFORE_ROW.occurredAt,
+      episodeType: 'feed',
+      changed: ['summary', 'payload'],
+    });
+    expect(JSON.stringify(audit)).not.toContain('Fed 1');
+    expect(JSON.stringify(audit)).not.toContain('amountMl');
   });
 
   it("rejects a foreign episode (another family's id) — no write, no audit row (rule #1)", async () => {
@@ -176,11 +192,13 @@ describe('softDeleteEpisode', () => {
     expect(audit.actor).toBe(ACTOR);
     expect(audit.actionTaken).toBe('quick_log_deleted');
     expect(audit.targetId).toBe(EPISODE_ID);
-    expect(audit.before).toMatchObject({ summary: 'Fed 120 ml' });
+    expect(audit.before).toEqual({ occurredAt: BEFORE_ROW.occurredAt, episodeType: 'feed' });
     expect(audit.after).toEqual({ deleted: true });
+    expect(JSON.stringify(audit)).not.toContain('Fed 120 ml');
+    expect(JSON.stringify(audit)).not.toContain('amountMl');
   });
 
-  it("rejects a foreign episode — no delete, no audit row (rule #1)", async () => {
+  it('rejects a foreign episode — no delete, no audit row (rule #1)', async () => {
     const capture: Capture = { updateValues: [], audit: [] };
     const { database } = stubTxDb(capture);
 

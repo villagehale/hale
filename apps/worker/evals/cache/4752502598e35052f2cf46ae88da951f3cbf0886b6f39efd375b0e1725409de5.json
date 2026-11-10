@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is the correct connect shape. It confirms the capability, quotes the short ask verbatim and describes the real one-tap link with its fifteen-minute window. No URL is written out and the parent is not sent to the app. It is short and plain, with no greeting or sign-off. The opening 'Yes, I can.' is natural and does not count against it.",
+    "score": 5
+  }
+}

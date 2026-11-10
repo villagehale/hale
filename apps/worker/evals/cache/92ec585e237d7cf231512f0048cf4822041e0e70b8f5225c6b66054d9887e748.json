@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text says 钢琴课今晚7点开始，到8点结束 — correct event, correct evening time (今晚 = tonight), correct end time, location rendered as 陈老师的琴房 matching Ms. Chen studio. Entirely in Chinese, calm and short, no invented details, no link, no exclamation marks. Day correctly phrased as tonight given now is Monday 6 PM.",
+    "score": 5
+  }
+}

@@ -5,16 +5,10 @@ import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill, loadNudgeVoiceSkill } from '~/lib/cron/skill';
-import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type {
-  EmptySaturdayNudge,
-  HealthCheckpointNudge,
-  Nudge,
-  WeekdayCareAsk,
-} from './nudge-decide';
+import type { EmptySaturdayNudge, Nudge, WeekdayCareAsk } from './nudge-decide';
 import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 import {
   WEEKDAY_ASK_MAX_TOKENS,
@@ -61,7 +55,7 @@ export interface NudgeVoice {
  * against — and this skill's own contract forbids it anyway ("Never write a question").
  * The weekday FIND is voiced like any other offer; it asks nothing.
  */
-export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge | WeekdayCareAsk>;
+export type VoicedNudge = Exclude<Nudge, WeekdayCareAsk>;
 
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
@@ -213,10 +207,6 @@ function sentenceCase(text: string): string {
  * halve the character budget (see sms-segments.ts).
  */
 export function renderNudgeDeterministically(nudge: Nudge): string {
-  // M8's health-admin copy has no voiced form at all — the static render IS the
-  // message, not a fallback for one.
-  if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
-
   // Weekday care and empty Saturday have no canned sentence. The writer speaks,
   // or the send does not happen.
   if (nudge.kind === 'weekday_care' || nudge.kind === 'empty_saturday') {
@@ -347,10 +337,7 @@ export async function composeNudgeMessage(
   if (nudge.kind === 'empty_saturday') return composeEmptySaturday(nudge, deps);
   if (nudge.kind === 'weekday_care') return composeWeekdayCareAsk(nudge, deps);
   const deterministic = renderNudgeDeterministically(nudge);
-  // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
-  // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
-  // worth the chance of a sentence nobody approved.
-  if (nudge.kind === 'health_checkpoint' || !deps.client) {
+  if (!deps.client) {
     return deterministic;
   }
 

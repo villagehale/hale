@@ -1,0 +1,7 @@
+{
+  "value": {
+    "reason": "The text names the event by its name Saturday Art Club, which is the summary, and says it is on Thu, Jul 23 at 10:30 AM. The start is Thursday July 23, 2026 at 10:30, minute 30, in America/Chicago. The day, weekday, hour and minute all match, and the name 'Saturday' is part of the event name, not a claim about the day.",
+    "match": true
+  },
+  "latencyMs": 1650
+}

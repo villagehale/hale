@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgPHQuDSrzf2n4AybRqbE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSzQYKEAgTGAI4AUIIdGhpbmtpbmcSDIm3FqyhYqA/1KbUWhoMZsr/fsCGQPipLmI2IjBtAPHZq0zxpDPDZwvdf9Cdkt5EzhH1IXII/wuiAhviOIHFvE+ZyGsYiugAuMfyCSwq6gVVfMkWw2sXy2/uWrqiQZJpwSqPEjQOZT/CsoR0uphUFdPa+MHtc+HMcUHizNI3KT+VBuVS1zAXHnZnfvxgvtIWuGjwGr2b2M3Vcyw6HFMXBcTLKxK0QNjzCN1rg++A/rMj6uRy/yfnU/5ys9G5DoAEy7ypLT1cUgPXjVLTBElUm1nS0XFr4ocMejSaP3Mdyfyfo0iqFapHDxsrujrlcwiUsEjroaoKh1Vp/kE6QsG6j52Lt7vZ/jTHIAJE7pGLz6Kr/bhFPwr0SOr3b2avX8nF/U4dhdCInOCB3ViJKdTosum3WQYMKdkxsNMwZgwPsmGcQy0ijps6QeGLXvVgEJgi/enrhRG6MvajqYZ4mvY3P1bG8pyH2giW1xfAcFVOAjfdLrfMZH8XWUMkBjWqrcZ7Gne1pNstl/tehs5XD0J+kx3O5WmhqLOZrJKXZHvFWY4/cFjB4CLoaE1LE5XMgYewwdCBFPPzg9haRNFRoQBFMlZLPPnqz5ubY6f+q/pgDlw5kMMoVQKrTLkvqOIYH7EMc5m94wT70iIlHV8JBxGzVcjW6y/kKT3Lg1T3+Lj/y6lXI+tF7HSkyZSkF58jIZ+KBQoqv5Rs0zT+O3zmFMhgKEiVoYYAlieLfcp8XcsBU6UOx/cQHKvq9uPI5HhUkhh0I0C7IFud7uRGIBETjBO9lJfJHUpbHY+nwSh/4JS+wL/bc7I1SYTlSMr/92kU/Xg+SsSjn5XoJAPjgVwezJXc7gMNIIVF5wuMzombkjJ/jpQ3tU7WXgH9gnDyiLRZowHKmWD8PfcXOFv1l05mMwhxnf8gGxelH17UfG4zehEohXwEfls7ltjvUgV00hIyZ08+xVk2E6VlwFQeiZXFRkXWlMOUnfk4nUuWbQTzGaeo+V19Sgg0YM+IAPM6rGW27+uLzE1F09D4QnOP18c8R+sGq2K9sEFu1NH543wwO8gwoWUd4kPEuH+DeIg25rwz9+YQ8tEjZot/JPOeqhgB"
+      },
+      {
+        "type": "text",
+        "text": "Tiny Gym. Remy's 19 months, and it's the one for under 3.5s with a parent along. Mini Gym is for kids 3.5 and up going solo, so that one's a ways off."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1342,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20981,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 175,
+      "output_tokens_details": {
+        "thinking_tokens": 108
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2477
+}

@@ -27,3 +27,8 @@ should. Do not number them.
 
 If the context carries a `note` that the parent asked to hear less, this text
 is shorter, not colder.
+
+If the context carries a `language`, write the whole text in that language.
+
+A `mid_activity_ask` item is a friend curious how the kid's new class is going:
+one easy question, no offer of help, nothing that feels like a survey.

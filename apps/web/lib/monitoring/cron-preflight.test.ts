@@ -105,8 +105,7 @@ function fakeDb(): { database: Database; capture: DbCapture } {
   const capture: DbCapture = { insertedTables: [] };
   const database = {
     select: () => ({
-      from: (table: unknown) =>
-        selectChain(table === schema.loopPrefs ? [] : [FAMILY_ROW]),
+      from: (table: unknown) => selectChain(table === schema.loopPrefs ? [] : [FAMILY_ROW]),
     }),
     delete: () => ({ where: async () => undefined }),
     insert: (table: unknown) => {
@@ -127,11 +126,10 @@ function fakeDb(): { database: Database; capture: DbCapture } {
 }
 
 beforeEach(() => {
-  // No founder address and no Resend key: the alert degrades to a clean no-op, so these
-  // assert the ABORT, never a real send.
+  // No #ops webhook: the alert degrades to a clean no-op, so these assert the ABORT,
+  // never a real send.
   vi.stubEnv('FOUNDER_ALERT_EMAIL', '');
   vi.stubEnv('WELCOME_BCC', '');
-  vi.stubEnv('RESEND_API_KEY', '');
   vi.stubEnv('F14_ENABLED', 'true');
 });
 afterEach(() => {
@@ -139,9 +137,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/** Only the incident claim may be written by an aborted window. */
+/** Only the incident claim and the sweep rotation mark may be written by an aborted
+ * window. The mark is scheduling metadata: it says the run took the family, not that
+ * any work was done for it. */
 function assertNoFamilyWork(capture: DbCapture): void {
-  expect(capture.insertedTables.filter((table) => table !== schema.rateLimits)).toEqual([]);
+  expect(
+    capture.insertedTables.filter(
+      (table) => table !== schema.rateLimits && table !== schema.familySweepMarks,
+    ),
+  ).toEqual([]);
 }
 
 describe('the memory-inference window (the 06:00Z cron that failed on 2026-08-01)', () => {

@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CgNMoufqEQYADUcZhaZKB",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSvAgKEAgTGAI4AUIIdGhpbmtpbmcSDNb16Fyrrqnzp8XKlRoMQkg0A/p5DDeXfcBYIjAYQkL9Z+QVVx/IhIkD0vZTAVyMmXcodLCfWEu9tN3TPfL9gY2eUlPEr5kJQt1pMSoq2QdBfaa15pHnoPySh/ScoBACKb7lsWz2L0SQ1asMVUryWZsvYP5Jx7PDIQoXVHefGxZedqadVuu0EvYbvsxmbIvDHPpMNrxTKjeWlaF6Kx9lYj7bS2yrSB9AA7tPYVEtq5+SriHilm562RS7MBBXg/qMOMEZb6chvtYrX9UzHb0/eYCGBewK638L+mFBPN4PcUoboLK2Vwen57IylzL8qL8ZBTH0Pl5qximj8MbD37VyK2W47U7QeI52hkRlN2ZXNunqDF98u8t8vYA5P/3HZ61Z5Pfs1i7XvHTVXbZSG3rQPkCxtZRHOfZZlR3eXqlJZKtInYc5GQaH/+6GYMj6I8Evr8MC9Bc445mZuATWRtRl1DvYjz1dzRxBpN5fmt5KytEykdAKFWILRMx7N1jajdiGrUAQ7Bcl6WUBFrQFJlbt4MZEpT9GZMriTfs3S9CRRpiyzUmnn1q/omGCiTnWcT+j1vXx2VntHI7UhqFMaILHSc8VzJWGDs5oqjHXjWFVnXtMT/lfkMwV9zM/3X911r+burO7pL0SCoXtRMCCri7/E+BUBv2i70Cls3Oc3/1ZM4OATrMTuIMzayPar6iLo7AfS7qTu7MWrBZ3nUz8z4GbJ/73yFs0drAgoKLItFO6T/qz0CSYO9RiSpyfobLTFJ7Bvss+BR5o57ugi2rUKQgJK8CIAoSSgMg2+bZlzSnxi57o8JYaPh1L2+wLUDWWZW5ldufw6RZgNe9Vke32gjcDe1+VgU0cvCLfMwSnSpdST5gV3vRGT7VnrMWmw9CN2KliN6Uc13FnhlvRp3kQvCCIvxrRNBeIWXcBsOvqeM23yezrPx1dWohSxwzulX3heSRMBwBg7KX9FqHkyegVXSle7UCmxiDdCaiYAWqPx5BjkM46Eo7VRQ6XjGMmJY76StTsFJrq4B6NDUGEWPD6pSngG9vkKXsSjL3DL+rPTFvY1iSguWtkNozJCaRrBgRUl3CH4xiXZ/xr7XhcAr602sH8GJlkafX02JSpqlo8SPcWrbqXi0bke3YzazRwMZEylzI+aHfAmMULMYVkkJ7s7AjqUX5fI6bsx7GqknD2xaAmHKUhu5AgwT6YcE7oWaIO4rRBojI49H1yrEGk3iUBnS+t4IoWaKLCB5wqHgql9SJMe7QRCnLA5r0B8HgjRhuFzFzM06qa7UjJJHkzMdFmFqvboUAZFoBkLxb1LQFIa/XWhnxmTZjaI4wnrMwixwW64bTiU/Mgzs+P0odPdWMEpyXb9+Tzov52VsgxcM8nSOaAqkHhdCHgIAFJIHRGvbc6HbmQs8xftahZq2G8GAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0133pfZdaq4RCvADGJhsUFWB",
+        "name": "propose_calendar_add",
+        "input": {
+          "title": "Tiny Gym at Cartwheels",
+          "date": "2026-09-13",
+          "weekday": "Sunday",
+          "time": "09:30"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1321,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20769,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 378,
+      "output_tokens_details": {
+        "thinking_tokens": 237
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3055
+}

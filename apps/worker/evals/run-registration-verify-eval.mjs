@@ -24,8 +24,14 @@
 // "different_cycle_only", never a rolled-forward date.
 //
 // Page texts are VERBATIM from the municipalities' own pages, fetched 2026-08-02
-// and tag-stripped the way the sweep strips them. Expected values are transcribed
+// and tag-stripped the way the sweep strips them, except the two VIL-423 fixtures
+// (an invented French town and an invented venue). Expected values are transcribed
 // by reading each text, never from what the model produced.
+//
+// VIL-423: each date must also verify from its own quote through production's gate
+// (corroborationFailure, normalizeExtractedRegistration): the date and time words the
+// model labels in its quote must parse whole to the values it extracted. The zone must
+// come from the page or be null — there is no fallback zone anywhere in this runner.
 //
 //   node --env-file=../../.env evals/run-registration-verify-eval.mjs           # live (populates cache)
 //   node --env-file=../../.env evals/run-registration-verify-eval.mjs --broken  # calibration: must FAIL
@@ -41,7 +47,9 @@ import { register } from 'tsx/esm/api';
 import {
   REPO_ROOT,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   totalUsd,
@@ -49,20 +57,26 @@ import {
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'verify-registration-window.md');
+const REGISTRATION = join(REPO_ROOT, 'apps', 'web', 'lib', 'registration');
+
+// The schema, the ceiling, the user message and the gates are production's own, imported
+// rather than copied, so the eval cannot drift from what the cron and the reader send.
 register({ tsconfig: join(REPO_ROOT, 'apps', 'web', 'tsconfig.json') });
 const importTs = (path) => import(pathToFileURL(path).href);
 const {
-  EXTRACTION_JSON_SCHEMA: TOOL_SCHEMA,
+  EXTRACTION_JSON_SCHEMA,
+  EXTRACTION_MAX_TOKENS,
+  MIN_VERIFY_CONFIDENCE,
+  corroborationFailure,
   extractionInput,
+  normalizeQuote,
   parseExtraction,
-} = await importTs(join(REPO_ROOT, 'apps', 'web', 'lib', 'registration', 'verify-window.ts'));
-const { normalizeExtractedRegistration } = await importTs(
-  join(REPO_ROOT, 'apps', 'web', 'lib', 'registration', 'live-reading.ts'),
+} = await importTs(join(REGISTRATION, 'verify-window.ts'));
+const { normalizeExtractedRegistration, registrationAnchor } = await importTs(
+  join(REGISTRATION, 'live-reading.ts'),
 );
 
-/** Production's floor (MIN_VERIFY_CONFIDENCE). A correct reading below it is
- * DISCARDED in production, so it is not a pass here either. */
-const MIN_CONFIDENCE = 0.7;
+const SLOTS = ['preview', 'resident_open', 'general_open', 'unclassified_open'];
 
 // ── the real pages ───────────────────────────────────────────────────────────
 
@@ -135,61 +149,36 @@ const BURLINGTON_STALE = [
 const NO_YEAR =
   'Fall Programs & Winter Camps Registration. View programs August 4 and register August 11.';
 
+/** An invented town's French page (VIL-423): the dates must verify from their own
+ * French quotes, with no English month table anywhere in the gate. */
+const FR_QUOTED_DATES = [
+  "Session d'hiver 2027 — Baie-des-Hérons (Nouveau-Brunswick).",
+  'Inscription des résidents : lundi 7 décembre 2026 à 18 h 30.',
+  'Inscription des non-résidents : vendredi 11 décembre 2026 à 9 h.',
+].join(' ');
+
+/** An invented venue whose page names no zone and no place: the honest zone is null. */
+const NO_ZONE =
+  'Riverbend Aquatics — Winter 2027 swim lessons. Registration opens Tuesday, November 17, 2026 at 7:00 p.m.';
+
 // ── fixtures ─────────────────────────────────────────────────────────────────
+//
+// Slots are `{ date, time }` for a complete date, `{ partial: '<printed text>' }` for a
+// yearless one, or null. `zone` is derived from the page, never written as a zone name:
+//   'none'       — the page names no zone and no place, so `time_zone` must be null;
+//   { instants } — the page names a zone or a place; a null zone is honest, and a quoted
+//                  zone is right when every dated slot lands on these hand-derived instants.
+// `reading` is the production gate's outcome when the model returns a quoted zone.
+//
+// The last two fixtures send invented, non-catalog municipality ids. Production's
+// CycleIdentity cannot send them yet (Municipality is the catalog's towns); the reader is
+// meant for pages beyond the catalog, and the skill must never treat `municipality` as
+// evidence, so the eval exercises that now.
 
 const FIXTURES = [
-  // Controlled page text for new source-zone contracts; the model calls are real.
-  {
-    id: 'us-course-source-zone',
-    municipality: 'course operator',
-    programDomain: 'course',
-    cycleLabel: 'the single course shown on this page',
-    pageText:
-      'Brooklyn Swim, New York City. Registration opens October 20, 2026 at 9 a.m. Class sessions start November 2, 2026 at 4 p.m.',
-    expect: {
-      found: true,
-      preview: null,
-      resident_open: null,
-      general_open: null,
-      unclassified_open: { date: '2026-10-20', time: '09:00' },
-      timeZone: 'America/New_York',
-    },
-  },
-  {
-    id: 'uk-course-date-only',
-    municipality: 'course operator',
-    programDomain: 'course',
-    cycleLabel: 'the single course shown on this page',
-    pageText:
-      'London Swim, London, England. Registration opens 20 October 2026. Opening time has not been announced. Class sessions begin 2 November 2026 at 16:00.',
-    expect: {
-      found: true,
-      preview: null,
-      resident_open: null,
-      general_open: null,
-      unclassified_open: { date: '2026-10-20', time: null },
-      timeZone: 'Europe/London',
-    },
-  },
-  {
-    id: 'weekday-unique-year',
-    municipality: 'course operator',
-    programDomain: 'course',
-    cycleLabel: 'the single course shown on this page',
-    referenceDate: '2026-10-10',
-    pageText: 'New York City swim registration opens Tuesday, October 20 at 9 a.m.',
-    expect: {
-      found: true,
-      preview: null,
-      resident_open: null,
-      general_open: null,
-      unclassified_open: { date: '2026-10-20', time: '09:00' },
-      timeZone: 'America/New_York',
-    },
-  },
   {
     id: 'markham-fall-2026',
-    why: 'The ordinary confirm, off a page listing four cycles at once.',
+    why: 'The ordinary read, off a page listing four cycles at once. The opening carries no eligibility label, and the page names no place.',
     municipality: 'markham',
     programDomain: 'rec_program',
     cycleLabel: '2026 Fall Programs, Swim Lessons and Winter Break Camps',
@@ -200,6 +189,7 @@ const FIXTURES = [
       resident_open: null,
       general_open: null,
       unclassified_open: { date: '2026-08-11', time: '06:30' },
+      zone: 'none',
     },
   },
   {
@@ -215,11 +205,12 @@ const FIXTURES = [
       resident_open: null,
       general_open: null,
       unclassified_open: { date: '2026-02-24', time: '06:30' },
+      zone: 'none',
     },
   },
   {
     id: 'toronto-arc-rule-is-not-a-date',
-    why: 'The printed opening has no resident label. Keep its applicability unstated; the non-resident delay is prose, not a printed date or evidence of a resident label.',
+    why: 'The printed opening has no eligibility label; the non-resident delay is prose, not a date and not a label. Doing that arithmetic invents a date the city never published.',
     municipality: 'toronto',
     programDomain: 'after_school_care',
     cycleLabel: 'After-School Recreation Care (ARC) 2026/2027 school year',
@@ -230,11 +221,13 @@ const FIXTURES = [
       resident_open: null,
       general_open: null,
       unclassified_open: { date: '2026-06-05', time: '07:00' },
+      zone: { instants: { unclassified_open: '2026-06-05T11:00:00.000Z' } },
+      reading: 'verified',
     },
   },
   {
     id: 'burlington-table-row',
-    why: 'A four-column table: the right row by name, resident and non-resident not swapped, and a viewable-online date with no time.',
+    why: 'A four-column table: the right row by name, resident and non-resident not swapped, each date quoted from its own cell, and a viewable-online date with no time.',
     municipality: 'burlington',
     programDomain: 'swim',
     cycleLabel: 'Fall swimming lessons',
@@ -244,22 +237,8 @@ const FIXTURES = [
       preview: { date: '2026-08-12', time: null },
       resident_open: { date: '2026-08-22', time: '09:00' },
       general_open: { date: '2026-08-28', time: '09:00' },
-    },
-  },
-  {
-    id: 'king-cross-year-registration',
-    why: 'Use the printed 2026 registration year. December 7 has no eligibility label; December 11 is explicitly non-resident aquatics, not evidence that December 7 is residents-only.',
-    municipality: 'king',
-    programDomain: 'swim',
-    cycleLabel: 'Winter 2027',
-    pageText:
-      'Winter 2027 Recreation & Aquatic Programs Winter session: January 11 – March 31, 2027 . Programs are viewable online as of November 23, 2026. Registration opens on December 7 at townshipofking.perfectmind.com Aquatics program registration for non-residents opens on December 11, 2026.',
-    expect: {
-      found: true,
-      preview: { date: '2026-11-23', time: null },
-      resident_open: null,
-      general_open: { date: '2026-12-11', time: null },
-      unclassified_open: { date: '2026-12-07', time: null },
+      unclassified_open: null,
+      zone: 'none',
     },
   },
   {
@@ -291,33 +270,86 @@ const FIXTURES = [
   },
   {
     id: 'no-year-stated',
-    why: 'Keep the printed dates with unresolved years and notes; never supply a calendar year.',
+    why: 'Dates with no year anywhere on the page. They are kept as quoted partial dates; supplying a year from the calendar is fabrication.',
     municipality: 'mississauga',
     programDomain: 'rec_program',
     cycleLabel: 'Fall 2026',
     pageText: NO_YEAR,
     expect: {
       found: true,
-      partial: true,
-      preview: { date_text: 'August 4', date: null, time: null },
+      preview: { partial: 'August 4' },
       resident_open: null,
       general_open: null,
-      unclassified_open: { date_text: 'August 11', date: null, time: null },
+      unclassified_open: { partial: 'August 11' },
+    },
+  },
+  {
+    id: 'fr-quoted-dates',
+    why: 'A French page: both openings are labelled, both dates verify from their own French quotes, and the province on the page is the zone evidence.',
+    municipality: 'baie-des-herons',
+    programDomain: 'swim',
+    cycleLabel: 'Winter 2027',
+    pageText: FR_QUOTED_DATES,
+    expect: {
+      found: true,
+      preview: null,
+      resident_open: { date: '2026-12-07', time: '18:30' },
+      general_open: { date: '2026-12-11', time: '09:00' },
+      unclassified_open: null,
+      zone: {
+        instants: {
+          resident_open: '2026-12-07T22:30:00.000Z',
+          general_open: '2026-12-11T13:00:00.000Z',
+        },
+      },
+      reading: 'verified',
+    },
+  },
+  {
+    id: 'no-zone-on-page',
+    why: 'A venue name is not a place. With no zone and no town on the page, the honest zone is null and the reading is unverified, never a guessed zone.',
+    municipality: 'riverbend',
+    programDomain: 'swim',
+    cycleLabel: 'Winter 2027',
+    pageText: NO_ZONE,
+    expect: {
+      found: true,
+      preview: null,
+      resident_open: null,
+      general_open: null,
+      unclassified_open: { date: '2026-11-17', time: '19:00' },
+      zone: 'none',
     },
   },
 ];
 
-/** `{date,time}` or null → a comparable string. */
+/** A slot as a comparable string: `date|time`, `partial`, or `null`. */
 function slot(value) {
   if (value === null || value === undefined) return 'null';
+  if (value.date === null || value.partial !== undefined) return 'partial';
   return `${value.date}|${value.time ?? 'no-time'}`;
 }
+
+const SOURCE = {
+  sourceUrl: 'https://example.org/eval',
+  checkedAt: new Date('2026-08-01T12:00:00Z'),
+};
 
 /** Failure strings; empty means the fixture passed. */
 function check(fixture, value) {
   const problems = [];
   const want = fixture.expect;
   const found = value?.found === true;
+  const page = normalizeQuote(fixture.pageText);
+  const onPage = (quote) => typeof quote === 'string' && page.includes(normalizeQuote(quote));
+
+  let extracted;
+  try {
+    extracted = parseExtraction(value);
+  } catch (err) {
+    return [`PARSE production's schema rejects the reply: ${err.message}`];
+  }
+  const reading = normalizeExtractedRegistration(extracted, fixture.pageText, SOURCE);
 
   if (found !== want.found) {
     problems.push(`FOUND expected ${want.found}, got ${found}`);
@@ -330,131 +362,173 @@ function check(fixture, value) {
     if (!want.reasons.includes(reason)) {
       problems.push(`REASON expected one of [${want.reasons.join(', ')}], got ${reason}`);
     }
-    for (const field of ['preview', 'resident_open', 'general_open', 'unclassified_open']) {
+    for (const field of SLOTS) {
       if (value?.[field]) problems.push(`NOT-FOUND but ${field} is ${slot(value[field])}`);
+    }
+    if (reading.status !== 'unverified' || reading.reason !== reason) {
+      problems.push(`PRODUCTION_GATE expected unverified/${reason}, got ${describe(reading)}`);
     }
     return problems;
   }
 
-  for (const field of ['preview', 'resident_open', 'general_open', 'unclassified_open']) {
+  for (const field of SLOTS) {
     const got = slot(value?.[field]);
     const expected = slot(want[field]);
     if (got !== expected) problems.push(`${field.toUpperCase()} expected ${expected}, got ${got}`);
-    if (want[field]?.date === null) {
-      if (value?.[field]?.date_text !== want[field].date_text)
-        problems.push(`${field.toUpperCase()} missing the printed partial date text`);
-      if (!(value?.[field]?.note ?? value?.note))
-        problems.push(`${field.toUpperCase()} missing an explanation of the unresolved date`);
+    const printed = want[field]?.partial;
+    if (printed && !normalizeQuote(value?.[field]?.quote ?? '').includes(normalizeQuote(printed))) {
+      problems.push(`${field.toUpperCase()} partial quote does not carry "${printed}"`);
     }
   }
 
   // A reading production would discard is not a pass here either.
   const confidence = typeof value?.confidence === 'number' ? value.confidence : 0;
-  if (confidence < MIN_CONFIDENCE) {
+  if (confidence < MIN_VERIFY_CONFIDENCE) {
     problems.push(
-      `CONFIDENCE ${confidence} is below the ${MIN_CONFIDENCE} floor — production discards this`,
+      `CONFIDENCE ${confidence} is below the ${MIN_VERIFY_CONFIDENCE} floor — production discards this`,
     );
   }
 
-  // The corroboration gate discards any reading whose quotes are not in the page,
-  // so a correct date with an invented quote still reaches nobody.
-  const normalize = (t) =>
-    String(t)
-      .toLowerCase()
-      .replace(/[‐-―−]/g, '-')
-      .replace(/\s+/g, ' ')
-      .trim();
-  const page = normalize(fixture.pageText);
-  for (const field of ['evidence', 'year_evidence']) {
-    const quote = value?.[field];
-    if (field === 'year_evidence' && want.partial && quote === null) continue;
-    if (!quote) {
-      problems.push(
-        `${field.toUpperCase()} missing — production discards an uncorroborated reading`,
-      );
-    } else if (!page.includes(normalize(quote))) {
+  // Every quote the gate relies on must be the page's own words.
+  const quotes = [
+    ['evidence', value?.evidence],
+    ['year_evidence', value?.year_evidence],
+    ['time_zone_evidence', value?.time_zone_evidence],
+    ...SLOTS.map((field) => [`${field}.quote`, value?.[field]?.quote]),
+  ];
+  for (const [field, quote] of quotes) {
+    if (quote !== null && quote !== undefined && !onPage(quote)) {
       problems.push(`${field.toUpperCase()} is not in the page text: "${quote}"`);
     }
   }
-  if (want.timeZone) {
-    if (value.time_zone !== want.timeZone)
-      problems.push(`TIME_ZONE expected ${want.timeZone}, got ${value.time_zone}`);
-    if (!value.time_zone_evidence || !page.includes(normalize(value.time_zone_evidence)))
-      problems.push('TIME_ZONE_EVIDENCE is not quoted from the page');
+  if (corroborationFailure(fixture.pageText, extracted) !== null) {
+    problems.push('CORROBORATION production gate refuses this reading as uncorroborated');
   }
-  try {
-    const reading = normalizeExtractedRegistration(
-      { ok: true, extracted: parseExtraction(value), pageText: fixture.pageText },
-      {
-        sourceUrl: 'https://example.org/eval',
-        checkedAt: new Date(`${fixture.referenceDate ?? '2026-08-01'}T12:00:00Z`),
-        timeZone: want.timeZone ?? 'America/Toronto',
-      },
-    );
-    if (want.partial) {
-      if (reading.status !== 'unverified' || reading.partialDates?.length !== 2)
-        problems.push(
-          'PRODUCTION_GATE did not retain both partial dates without a scheduling date',
-        );
-    } else if (reading.status !== 'verified')
-      problems.push(`PRODUCTION_GATE discarded reading: ${reading.reason ?? reading.status}`);
-  } catch (err) {
-    problems.push(`PRODUCTION_GATE: ${err.message}`);
+
+  if (!want.zone) {
+    if (reading.status !== 'unverified' || reading.reason !== 'incomplete_date') {
+      problems.push(
+        `PRODUCTION_GATE expected unverified/incomplete_date, got ${describe(reading)}`,
+      );
+    } else if (reading.partialDates.length !== 2) {
+      problems.push(`PRODUCTION_GATE kept ${reading.partialDates.length} partial dates, not 2`);
+    }
+    return problems;
+  }
+
+  const zone = value?.time_zone ?? null;
+  if (want.zone === 'none' && zone !== null) {
+    problems.push(`TIME_ZONE the page names no zone or place, got ${zone}`);
+  }
+  if (want.zone !== 'none' && zone !== null) {
+    if (!onPage(value?.time_zone_evidence)) problems.push('TIME_ZONE_EVIDENCE is not quoted');
+    for (const [field, instant] of Object.entries(want.zone.instants)) {
+      let at;
+      try {
+        at = registrationAnchor({ timeZone: zone }, value[field]).toISOString();
+      } catch (err) {
+        at = `error: ${err.message}`;
+      }
+      if (at !== instant) problems.push(`TIME_ZONE ${zone} puts ${field} at ${at}, not ${instant}`);
+    }
+  }
+  const outcome =
+    zone === null || want.zone === 'none' ? 'unverified/unknown_time_zone' : want.reading;
+  if (describe(reading) !== outcome) {
+    problems.push(`PRODUCTION_GATE expected ${outcome}, got ${describe(reading)}`);
   }
   return problems;
 }
 
+function describe(reading) {
+  return reading.status === 'verified' ? 'verified' : `${reading.status}/${reading.reason}`;
+}
+
 /**
- * The --broken stand-in: the three failure modes this skill is written to prevent.
- * It rolls a prior-year table forward onto the asked-for cycle, computes the
- * non-resident date from the prose rule, and invents 09:00 for date-only fields.
- * It must fail.
+ * The --broken stand-in: the failure modes this skill is written to prevent. It rolls a
+ * prior-year table forward onto the asked-for cycle, computes the non-resident date from
+ * the prose rule, invents 09:00 for date-only fields, fills a year the page never states,
+ * and guesses a zone. It must fail.
  */
 function brokenAnswer(fixture) {
   const want = fixture.expect;
-  const withTime = (value) => (value ? { date: value.date, time: value.time ?? '09:00' } : null);
+  const withTime = (value) =>
+    value
+      ? {
+          quote: 'Registration starts',
+          date_text: 'Registration starts',
+          time_text: '9 a.m.',
+          date: value.date ?? '2026-08-11',
+          time: value.time ?? '09:00',
+        }
+      : null;
+  const guessed = {
+    cycle_on_page: fixture.cycleLabel,
+    year_evidence: fixture.cycleLabel,
+    time_zone_evidence: fixture.municipality,
+    time_zone: 'America/Halifax',
+    eligibility_evidence: 'Everyone may register.',
+    note: null,
+    found: true,
+    reason: null,
+    confidence: 0.95,
+  };
 
   if (!want.found) {
     // Confidently answers anyway — the exact failure the "couldn't verify" fixtures exist to catch.
     return {
-      found: true,
-      reason: null,
-      cycle_on_page: fixture.cycleLabel,
-      year_evidence: fixture.cycleLabel,
-      preview: { date: '2026-08-13', time: null },
-      resident_open: { date: '2026-08-23', time: '09:00' },
-      general_open: { date: '2026-08-29', time: '09:00' },
+      ...guessed,
       evidence: 'Fall swimming lessons | Aug. 13 | Aug. 23 9 a.m. | Aug. 29 9 a.m.',
-      confidence: 0.95,
+      preview: {
+        quote: 'Aug. 13',
+        date_text: 'Aug. 13',
+        time_text: null,
+        date: '2026-08-13',
+        time: null,
+      },
+      resident_open: {
+        quote: 'Aug. 23 9 a.m.',
+        date_text: 'Aug. 23',
+        time_text: '9 a.m.',
+        date: '2026-08-23',
+        time: '09:00',
+      },
+      general_open: {
+        quote: 'Aug. 29 9 a.m.',
+        date_text: 'Aug. 29',
+        time_text: '9 a.m.',
+        date: '2026-08-29',
+        time: '09:00',
+      },
+      unclassified_open: null,
     };
   }
 
   const resident = withTime(want.resident_open);
+  const opening = want.general_open ?? want.unclassified_open;
   // Applies the prose rule instead of leaving the unprinted date null.
   const derived =
     want.general_open === null && resident
       ? {
+          ...resident,
           date: `${resident.date.slice(0, 8)}${String(Number(resident.date.slice(8)) + 10).padStart(2, '0')}`,
-          time: resident.time,
         }
-      : withTime(want.general_open);
+      : withTime(opening);
 
   return {
-    found: true,
-    reason: null,
-    cycle_on_page: fixture.cycleLabel,
-    year_evidence: fixture.cycleLabel,
+    ...guessed,
+    evidence: 'Registration starts',
     preview: withTime(want.preview),
     resident_open: resident,
     general_open: derived,
-    evidence: 'Registration starts',
-    confidence: 0.95,
+    unclassified_open: null,
   };
 }
 
 async function main() {
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
+  const dry = isDryRun();
 
   const agent = await importTs(AGENT_SRC);
   const skill = await agent.loadSkill(SKILL_PATH);
@@ -467,46 +541,52 @@ async function main() {
   const cost = makeCost();
 
   console.log(
-    `registration-verify-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | model=${model}`,
+    `registration-verify-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''}${dry ? ' (dry)' : ''} | model=${model}`,
   );
   console.log(`skill=${skill.meta.name} task=${skill.meta.task}\n`);
 
   let failed = 0;
   let live = 0;
 
+  const values = [];
   for (const fixture of FIXTURES) {
-    let value;
     if (broken) {
-      value = brokenAnswer(fixture);
-    } else {
-      const result = await cachedToolCall({
-        tag: `registration-verify:strict:${fixture.id}`,
-        model,
-        lane: subjectLane,
-        system: skill.instructions,
-        userMessage: extractionInput(
-          {
-            municipality: fixture.municipality,
-            programDomain: fixture.programDomain,
-            cycleLabel: fixture.cycleLabel,
-            referenceDate: fixture.referenceDate,
-          },
-          fixture.pageText,
-        ),
-        toolName: 'published_registration_window',
-        toolDescription: 'Return the registration dates this page publishes for the named cycle.',
-        toolSchema: TOOL_SCHEMA,
-        strictTool: true,
-        maxTokens: 2048,
-        cachedOnly,
-        getClient,
-        cost,
-      });
-      value = result.value;
-      if (!result.cached) live += 1;
+      values.push(brokenAnswer(fixture));
+      continue;
     }
+    const result = await cachedToolCall({
+      tag: `registration-verify:${fixture.id}`,
+      model,
+      lane: subjectLane,
+      system: skill.instructions,
+      userMessage: extractionInput(
+        {
+          municipality: fixture.municipality,
+          programDomain: fixture.programDomain,
+          cycleLabel: fixture.cycleLabel,
+        },
+        fixture.pageText,
+      ),
+      toolName: 'published_registration_window',
+      toolDescription: 'Return the registration dates this page publishes for the named cycle.',
+      toolSchema: EXTRACTION_JSON_SCHEMA,
+      maxTokens: EXTRACTION_MAX_TOKENS,
+      cachedOnly,
+      getClient,
+      cost,
+    });
+    values.push(result.value);
+    if (!result.cached && !result.dry) live += 1;
+  }
 
-    const problems = check(fixture, value);
+  if (dry) {
+    // Stand-in replies are priced, never scored.
+    console.log(dryReportLine('registration-verify'));
+    process.exit(0);
+  }
+
+  for (const [index, fixture] of FIXTURES.entries()) {
+    const problems = check(fixture, values[index]);
     if (problems.length === 0) {
       console.log(`PASS  ${fixture.id}`);
     } else {

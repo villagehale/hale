@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly says Hale can't text anyone first and that the person should text Hale directly, which matches the SMS channel. It doesn't invent a name or role, and it's plain and warm. Minor issue: 'please ask them' is slightly indirect since the parent is the one asking, but it's still clear and accurate. No group mention, no phone number, no exclamation marks.",
+    "score": 4
+  }
+}

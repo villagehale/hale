@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message ties the 36-hour clock to an offer arriving (\"Once an offer comes in, you'll have 36 hours\"). The rules forbid this. The clock is handed as starting from the parent's own message (Tuesday, September 15, 11:00 a.m.). Tying it to an offer also contradicts the fixed deadline the message itself states. Position 12, the 36 hours and the Wednesday 11:00 p.m. deadline are correct, and the reminder promise is handed.",
+    "score": 2
+  }
+}

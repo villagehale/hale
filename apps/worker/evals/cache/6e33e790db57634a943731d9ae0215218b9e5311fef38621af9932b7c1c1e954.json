@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (tomorrow, true from Sunday evening), the start 4:45 and end 5:45 with afternoon (PM) made clear, and keeps the event generic as 'an appointment' without guessing what it is. No location was given and none was invented; no link, no invented logistics, no inferences. Bold is none, which is fine. All given facts are present and correct.",
+    "score": 5
+  }
+}

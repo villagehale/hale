@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { buildChannelCoachTools } from '~/lib/channel/coach/tools';
 import { buildDistillTools, buildInferenceTools } from '~/lib/cron/inference-tools';
-import { buildRankTools } from '~/lib/village/rank/rank-tools';
 import { searchVillageTool } from './tools';
 
 /**
@@ -44,6 +43,7 @@ const MIN_REGISTERED_TOOLS = 15;
 function channelTools(): RegisteredTool[] {
   return buildChannelCoachTools({
     familyId: '11111111-1111-4111-8111-111111111111',
+    familyCountry: 'CA',
     reader: {
       timeZone: async () => 'America/Toronto',
       weekPlanSummary: async () => null,
@@ -65,7 +65,7 @@ function channelTools(): RegisteredTool[] {
     // — and a verb that is not registered is a declaration this test never sees.
     activity: {
       reader: {
-        municipality: async () => null,
+        place: async () => ({ status: 'unknown', reason: 'no_postal' }),
         stage: async () => null,
         householdNames: async () => [],
       },
@@ -75,6 +75,7 @@ function channelTools(): RegisteredTool[] {
       fetchBody: async () => ({ ok: false, reason: 'not_configured' }) as never,
       reader: { householdNames: async () => [] },
       watchConsentGranted: async () => false,
+      readClassAvailability: async () => ({ status: 'unknown', reason: 'extract_failed' }),
     },
     onDraft: () => {},
     onOffer: () => {},
@@ -91,7 +92,6 @@ function everyRegisteredTool(): Array<{ surface: string; tool: RegisteredTool }>
     ['buildChannelCoachTools', channelTools()],
     ['buildInferenceTools', buildInferenceTools(NO_DB, NOW)],
     ['buildDistillTools', buildDistillTools(NO_DB, NOW)],
-    ['buildRankTools', buildRankTools(NO_DB)],
   ];
   return surfaces.flatMap(([surface, tools]) => tools.map((tool) => ({ surface, tool })));
 }

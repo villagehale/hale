@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNMRxvSR55Mc6hdaGvzx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS6QYKEAgTGAI4AUIIdGhpbmtpbmcSDPJRYMtJCrLVT5PXgRoMx5O/1MEXnqpZ/GODIjDX8ImLgJ9YGuFBSBkzEtummyt7x6K90Xjk4mJduvxb8f+ya1P973A65Ir5L7YFGe4qhgbAo8FJFH+GeDZWd9sOxb+win/Dczed0Ecz/EPX3yZNbMSC3vZ4OjYZCVqvL/S5P4kcD9DdiCbVjLhy4l0tdSFls6hPGFEQLqCvh9SQ05YmHFOQfg8q29rjbf+tBSEdhjnVcHsSdQgjkX5MbCHFw47i4wHJSKS+h2zlSl+IM/kfgnYmwNUBGuUaCXsr3K6KYu8iKeWFWoSF9GSDpHxeIvbKnrpMP5rKzlnTXavgmiPXlHfMlF7JaljzoYXZen9ok6WYJ66xytToaOvKJU6h2J+Z+ra0/l14BS1dtSoM1qLBqwmauiQKgw6s33jRbMQXEkMpvQIms9QXf1wMTMQkFswD6RYK7CQi7Es0DxKEzdrguZp6W1VYPtYT1FmixElQAHe9rQAQvV8Kmo40vN5QJCKH5A3PRknrvMOLrfTacTKdW43f35pbI+onyBBXVU2/7lkg7Mr3oE+15PRw0xG3qvzq/nSx66BonnGEiIQlBEuPmV5s0SE6tKPuDH9OGcDLJ56FkCWMLVyb5yvD4JZ1VFu9Cs6x5HayeWZaSrjYA8DZC+SGlCdtE8kPglXB4vispgd5OVWDbSZrmDeC42VK7RcOmOitkzufvgLvdS6Xj+9dkcmAkeqbZy6V8mG37zgC8BXw3qwjzHn9nD2xy1tLjV5gHDFZHrq1wfe8QqhAjmsQe3Kom7X5MoLTjqWYblZ4f3mAMsAMpbU61EDlMQ5yqpCtjIojb3Ntb9Be1AVkMCgpwJS4lphPqy+zbVwg/IthEN0AebON3fQIVha54uRsX0rut5/IFGE/i3IFCeK2KWxc2HzEkKXyP8Kgj1e2PeUUa/gQih4CLqq8+fCn7ay5C8jzFCCg7OkbEZo++w0F+xdbWn2/RcCYmSHfHs5Af10EsBBFoVCoQOVd8EsVkqe132pSuVUnwPqPWFB2AKUNzP7blwit+qnHkniPZNDBfcHBQoSrVp1ZBQdn2lFqYm5wq3Bs9HOv9xcdSmYXQiZ7hka8gSZhoBuVuDf8EMX2QabC5XX1J58bV8gYAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Soccer practice is already on Saturday at 10:00am at Cedarvale Park. For after that, High Park on Bloor St W / Parkside Dr is free and has the Jamie Bell Adventure Playground, an animal display and trails, plus a wading pool and splash pads in season. It's open daily, but I can't confirm Saturday hours for the water play or the train."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1199,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20769,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 189,
+      "output_tokens_details": {
+        "thinking_tokens": 66
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2283
+}

@@ -12,7 +12,7 @@ import type { ReminderChild, ReminderEventView } from './payload';
 
 // A teen (or any flagged-sensitive) event is reduced to this — the calendar detail is
 // never surfaced, only that SOMETHING is on the parent's radar.
-const GENERIC_DESCRIPTOR = 'an appointment';
+export const GENERIC_DESCRIPTOR = 'an appointment';
 
 /**
  * The family-local calendar day of an instant — "Sat, Jul 25". The reminder's lead is this
@@ -103,20 +103,13 @@ export function eventDescriptor(
 ): string {
   const child = eventChild(event, children);
   if (isPrivateEvent(event, children, now)) return GENERIC_DESCRIPTOR;
-  if (child && level !== 'generic' && !event.title.toLowerCase().includes(child.name.toLowerCase())) {
+  if (
+    child &&
+    level !== 'generic' &&
+    !event.title.toLowerCase().includes(child.name.toLowerCase())
+  ) {
     const leveled = loopChildName({ ...child, gender: child.gender ?? '' }, level, now);
     return `${leveled} — ${event.title}`;
   }
   return event.title;
-}
-
-/** One event as a reminder line: "{descriptor} at {time}". */
-export function eventLine(
-  event: ReminderEventView,
-  children: readonly ReminderChild[],
-  level: ChildNameLevel,
-  now: Date,
-  timeZone: string,
-): string {
-  return `${eventDescriptor(event, children, level, now)} at ${localTimeLabel(event.startsAt, timeZone)}`;
 }

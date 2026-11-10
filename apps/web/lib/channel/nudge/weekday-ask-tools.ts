@@ -53,7 +53,7 @@ function subjectOf(ask: WeekdayFinderAsk): string | null {
  * The model sees the prompt, the family's language and the prompt's subject. The child
  * id never leaves the server.
  */
-export function weekdayAskContext(ask: WeekdayFinderAsk, language: string): string {
+export function weekdayAskContext(ask: WeekdayFinderAsk, language: string | null): string {
   if (ask.prompt === 'after_school_named') {
     return JSON.stringify({ prompt: ask.prompt, language, name: ask.name });
   }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts present: tomorrow, the all-day Jour de congé, Léa's natation 10 h to 11 h at Piscine Main. Correct AM morning time and French. Phrasing 'Demain c'est un jour de congé, et Léa a natation' is slightly calendar-like and the bare title 'natation' lacks an article a native would use ('la natation'), and the location is not stated as a named place. Reads more like a readout than a friendly text, so capped at 3.",
+    "score": 3
+  }
+}

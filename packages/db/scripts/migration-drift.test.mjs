@@ -1,33 +1,61 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { computeDrift, readJournalWithHashes, requiresCatalogCutover } from './migration-drift.mjs';
+import { computeDrift, readJournalWithHashes } from './migration-drift.mjs';
 
-it('keeps all VIL-423 migrations pending after the current main watermark', () => {
-  const journal = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
-  const base = journal.find((entry) => entry.tag === '0171_channel_pending_asks');
-  expect(base).toBeDefined();
-  expect(computeDrift(journal, base.when).pending.map((entry) => entry.tag)).toEqual([
-    '0172_registration_live_watch_storage',
-    '0173_drop_registration_catalog',
-  ]);
-});
-
-describe('catalog retirement cutover guard', () => {
-  it('routes the normal migration command through the same maintenance guard', () => {
-    const { scripts } = JSON.parse(
-      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-    );
-    expect(scripts.migrate).toBe('node scripts/apply-migrations.mjs');
-    expect(scripts.migrate).toBe(scripts['migrate:guard']);
+describe('catalog history cutover', () => {
+  it('routes the normal migration command through the same guarded entry point', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(pkg.scripts.migrate).toBe('node scripts/apply-migrations.mjs');
+    expect(pkg.scripts['migrate:guard']).toBe(pkg.scripts.migrate);
   });
-  const retirement = [{ tag: '0173_drop_registration_catalog', hash: 'registration' }];
-  it('blocks uncoordinated retirement while previous catalogs exist', () => {
-    expect(requiresCatalogCutover(retirement, [], true)).toBe(true);
-  });
-  it('allows a fresh database and normal later builds after retirement is recorded', () => {
-    expect(requiresCatalogCutover(retirement, [], false)).toBe(false);
-    expect(requiresCatalogCutover(retirement, ['registration'], true)).toBe(false);
+  it('keeps the retirement pending after the current main watermark', () => {
+    const entries = readJournalWithHashes(fileURLToPath(new URL('../drizzle/', import.meta.url)));
+    const base = entries.find((entry) => entry.tag === '0171_channel_pending_asks');
+    expect(computeDrift(entries, base.when).pending.map((entry) => entry.tag)).toEqual([
+      '0172_activity_history_only',
+      '0173_provider_signup_sessions',
+      '0174_family_link_wallets',
+      '0175_signup_browser_use_cost',
+      '0177_provider_watch',
+      '0178_user_timezone_from_postal',
+      '0179_channel_inbound_media',
+      '0184_preview_captured_sends',
+      '0192_preview_captured_linq_calls',
+      '0185_channel_inbound_in_group',
+      '0193_family_events_source_change',
+      '0194_preview_captured_sends_decorations',
+      '0180_linq_group_plans',
+      '0189_group_reminders',
+      '0188_family_events_group_plan_copy_key',
+      '0195_linq_shared_group_people',
+      '0190_linq_group_polls',
+      '0196_linq_group_carpools',
+      '0197_family_event_notes',
+      '0198_email_alert_occasions',
+      '0199_registration_live_watch_storage',
+      '0200_email_alert_occasion_anchors',
+      '0201_integrations_google_revoke_pending',
+      '0202_opt_out_held_messages',
+      '0203_integrations_google_account_key',
+      '0204_opt_out_held_crisis_read',
+      '0206_authorized_signup_plan',
+      '0207_family_sweep_marks',
+      '0209_agent_commitments_heard_facts',
+      '0210_watched_spots_any_page',
+      '0212_message_source',
+      '0213_parent_proactive_language',
+      '0214_activity_bookings_address',
+      '0216_group_lists',
+      '0217_capability_denials',
+      '0205_opt_out_held_crisis_read_sealed',
+      '0220_event_reminders_compose_backoff',
+      '0218_family_memory_facts_source_user',
+      '0221_family_events_calendar_standing',
+      '0222_parent_calendar_blocks_standing',
+      '0223_authorized_signup_plan_resume',
+      '0224_linq_shared_group_people_phone_nullable',
+    ]);
   });
 });
 

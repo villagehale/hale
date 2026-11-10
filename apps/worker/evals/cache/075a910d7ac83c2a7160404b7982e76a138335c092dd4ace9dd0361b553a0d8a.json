@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The swim school matches two swim events, so asking which one is legitimate, and both events are correctly recalled from the week. However, the reply packs two questions into one message: which swim, and what day the email should have said. 'That one's on me, I sent it' is also an unnecessary preamble. It does the job, but the shape is off.",
+    "score": 3
+  }
+}

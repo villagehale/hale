@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for send_email and reply_to_email, so \"Done\" is true. The reply confirms the change plainly in one short line. It is accurate, has no greeting and no machinery, and it stops. It could also have mentioned replies, but \"any emails on your behalf\" reasonably covers that.",
+    "score": 5
+  }
+}

@@ -326,7 +326,27 @@ export async function loadGmailReply(
   return message ? replyContextFromMessage(message) : null;
 }
 
-function productionDeps(database: Database): GmailDraftDeps {
+/** A usable access token for one connection, refreshed when it is about to expire. Null
+ * when the row holds no tokens or Google would not refresh them. */
+export async function integrationAccessToken(
+  database: Database,
+  integrationId: string,
+): Promise<string | null> {
+  const rows = await database
+    .select({ enc: schema.integrations.oauthTokensEncrypted })
+    .from(schema.integrations)
+    .where(eq(schema.integrations.id, integrationId))
+    .limit(1);
+  const enc = rows[0]?.enc;
+  if (!enc) return null;
+  try {
+    return await freshAccessToken(database, integrationId, decryptTokens(enc));
+  } catch {
+    return null;
+  }
+}
+
+export function productionGmailDraftDeps(database: Database): GmailDraftDeps {
   return {
     flagOn: (actorUserId) => googleWriteScopesEnabledFor(actorUserId),
     listGmail: async (familyId) => {
@@ -352,20 +372,7 @@ function productionDeps(database: Database): GmailDraftDeps {
         draftIds: draftIdsOf(row.providerMetadata),
       }));
     },
-    accessToken: async (integrationId) => {
-      const rows = await database
-        .select({ enc: schema.integrations.oauthTokensEncrypted })
-        .from(schema.integrations)
-        .where(eq(schema.integrations.id, integrationId))
-        .limit(1);
-      const enc = rows[0]?.enc;
-      if (!enc) return null;
-      try {
-        return await freshAccessToken(database, integrationId, decryptTokens(enc));
-      } catch {
-        return null;
-      }
-    },
+    accessToken: (integrationId) => integrationAccessToken(database, integrationId),
     loadReply: (accessToken, request) => loadGmailReply(database, accessToken, request),
     writeDraft: async ({ accessToken, operation, draftId, message }) => {
       if (operation === 'delete') {
@@ -413,12 +420,12 @@ export function gateProductionGmailDraft(
   database: Database,
   request: GmailDraftRequest,
 ): Promise<GmailDraftGate> {
-  return gateGmailDraft(request, productionDeps(database));
+  return gateGmailDraft(request, productionGmailDraftDeps(database));
 }
 
 export function commitProductionGmailDraft(
   database: Database,
   request: GmailDraftRequest,
 ): Promise<GmailDraftCommit> {
-  return commitGmailDraft(request, productionDeps(database));
+  return commitGmailDraft(request, productionGmailDraftDeps(database));
 }

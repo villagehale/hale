@@ -182,7 +182,7 @@ export async function runClassifier(
   const lane = pickLane('classify');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
-    client: deps.client ?? anthropicClient(),
+    client: deps.client ?? anthropicClient('classify_event'),
     lane,
     system: instructions,
     userMessage,

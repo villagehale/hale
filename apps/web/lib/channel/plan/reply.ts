@@ -1,9 +1,15 @@
 import { type Database, schema } from '@hale/db';
-import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, playbookFor } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { readAffirmative } from '~/lib/channel/affirmative';
-import type { ReplySent } from '~/lib/channel/router/reply-route';
+import {
+  type CoachingPlaybook,
+  type FamilyStage,
+  ageInMonths,
+  deriveStage,
+  playbookFor,
+} from '@hale/types';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
+import { and, eq } from 'drizzle-orm';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
+import type { ReplySent } from '~/lib/channel/router/reply-route';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
 import {
   cancelCommitment,
@@ -11,8 +17,8 @@ import {
   loadOpenCommitment,
   recordCommitment,
 } from '~/lib/commitments/ledger';
-import { pipelineClient } from '~/lib/pipeline/client';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { type PlanComposer, type PlanGrounding, createPlanComposer } from './compose';
 import { type NoteComposer, createNoteComposer } from './note';
 import {
@@ -79,7 +85,9 @@ export class PlanDeferred extends Error {
   readonly reason: string;
 
   constructor(reason: string, violations: readonly string[]) {
-    super(`coach plan deferred: ${reason}${violations.length > 0 ? ` (${violations.join(' ')})` : ''}`);
+    super(
+      `coach plan deferred: ${reason}${violations.length > 0 ? ` (${violations.join(' ')})` : ''}`,
+    );
     this.name = 'PlanDeferred';
     this.reason = reason;
   }
@@ -118,7 +126,8 @@ export interface PlanReplyDeps {
   /** The question the parent originally asked, read back off their own thread. */
   loadQuestion(database: Database, conversationId: string, current: string): Promise<string | null>;
   loadChild(database: Database, familyId: string, childId: string): Promise<PlanChild | null>;
-  loadFacts(database: Database, familyId: string): Promise<string[]>;
+  /** `reader`: the parent the plan is written for (VIL-599). */
+  loadFacts(database: Database, familyId: string, reader: FactReader): Promise<string[]>;
   /** The family's own clock, so the day Hale promises is the day they will live. */
   loadTimeZone(database: Database, familyId: string): Promise<string>;
   composer: PlanComposer;
@@ -146,16 +155,12 @@ export async function handlePlanYes(
     send: ReplySender;
     now: Date;
     /** The router's natural-reply stage already read this message as a yes to the open
-     * plan offer (lib/channel/router/resolve.ts). The shared vocabulary is tried first
-     * and still wins; this is what lets "go on then" accept a plan without Hale ever
-     * having told the parent to type a word. */
+     * plan offer (lib/channel/router/resolve.ts). A word is not a claim. */
     resolved?: 'yes' | null;
   },
   deps: PlanReplyDeps,
 ): Promise<PlanReplyOutcome> {
-  // Checked before any query: most inbound traffic is not a bare affirmative, and an
-  // ordinary message must not cost this handler a round trip.
-  if (readAffirmative(input.body) !== 'yes' && input.resolved !== 'yes') {
+  if (input.resolved !== 'yes') {
     return { status: 'declined_to_claim' };
   }
 
@@ -204,7 +209,7 @@ export async function handlePlanYes(
 
   const [question, facts, timeZone] = await Promise.all([
     deps.loadQuestion(database, input.conversationId, input.body),
-    deps.loadFacts(database, input.familyId),
+    deps.loadFacts(database, input.familyId, { adult: input.parentUserId }),
     deps.loadTimeZone(database, input.familyId),
   ]);
 
@@ -464,35 +469,27 @@ export async function loadPlanChild(
 /**
  * A few things Hale already knows about this household, as plain sentences.
  *
- * Child-scoped facts are excluded at the QUERY, not filtered after: this stage writes
- * for the house, and the cheapest way to keep a 13-year-old's detail out of a composed
- * plan is never to load it (rule #1). `child_id IS NULL` is strictly narrower than a
- * teen filter and needs no age read, so there is no third private copy of
- * `teenChildIdsForFamily` here.
+ * Family-wide facts only, excluded at the QUERY: this stage writes for the house, and
+ * the cheapest way to keep a 13-year-old's detail out of a composed plan is never to
+ * load it (rule #1).
  *
- * Only what is still true: without `valid_until IS NULL` a plan speaks from beliefs a
- * later write already contradicted, and retiring a fact would have no effect here.
- * The ORDER BY is the coach's (`lib/coach/context.ts`) so the handful that survives
- * `MAX_PLAN_FACTS` is the handful Hale is already reasoning from, not an arbitrary five.
+ * Only what is still true, through the shared prompt read every agent uses
+ * (`@hale/worker/memory-context`), so the handful that survives `MAX_PLAN_FACTS` is
+ * the handful Hale is already reasoning from, not an arbitrary five.
  */
-export async function loadPlanFacts(database: Database, familyId: string): Promise<string[]> {
-  const rows = await database
-    .select({ factValue: schema.familyMemoryFacts.factValue })
-    .from(schema.familyMemoryFacts)
-    .where(
-      and(
-        eq(schema.familyMemoryFacts.familyId, familyId),
-        eq(schema.familyMemoryFacts.factType, 'preference'),
-        isNull(schema.familyMemoryFacts.validUntil),
-        isNull(schema.familyMemoryFacts.childId),
-      ),
-    )
-    .orderBy(
-      desc(schema.familyMemoryFacts.confidence),
-      desc(schema.familyMemoryFacts.validFrom),
-      schema.familyMemoryFacts.id,
-    )
-    .limit(MAX_PLAN_FACTS);
+export async function loadPlanFacts(
+  database: Database,
+  familyId: string,
+  reader: FactReader,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const rows = await factsForContext(database, familyId, {
+    now,
+    reader,
+    limit: MAX_PLAN_FACTS,
+    scope: 'family',
+    factTypes: ['preference'],
+  });
   return rows
     .map((row) => {
       const value = row.factValue as { summary?: unknown } | null;
@@ -508,10 +505,7 @@ export async function loadPlanFacts(database: Database, familyId: string): Promi
  * gate's proactive budgets have nothing to say about it, and only the check-in three
  * days later is unprompted. The `dedupeKey` is what makes the send loop convergent.
  */
-export async function recordPlanSend(
-  database: Database,
-  write: PlanSendWrite,
-): Promise<string> {
+export async function recordPlanSend(database: Database, write: PlanSendWrite): Promise<string> {
   const [row] = await database
     .insert(schema.channelMessages)
     .values({

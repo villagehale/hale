@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, not the requested Chinese, and it is also a fact failure: it omits the Library story time at 11:00 AM and the Soccer 5:30-6:30 PM events, gives an invented 3:00 time, and claims the day is open with breathing room while timed events exist. Wrong language, missing events, wrong times, and invented detail.",
+    "score": 1
+  }
+}

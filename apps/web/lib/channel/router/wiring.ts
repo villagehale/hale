@@ -15,6 +15,7 @@ import {
 import { type DeepResearchQueue, dispatchDeepResearch } from '~/lib/channel/activity/deep-queue';
 import { createActivityFinder } from '~/lib/channel/activity/lane';
 import { inboundCanaryHandler } from '~/lib/channel/canary/handler';
+import { recordCapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import { INVITE_SILENCE_MS, loadPendingAssent } from '~/lib/channel/caregiver/invites';
 import { answeredOnTheSameChannel, eveningCheckInQuestion } from '~/lib/channel/checkin/reply';
 import { createEveningRequestReader } from '~/lib/channel/checkin/request';
@@ -24,31 +25,33 @@ import { createConsentAskWriter } from '~/lib/channel/consent-ask';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { createConsentReader } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
-import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
-import { forwardRevokeAsk } from '~/lib/channel/email/forward-request';
-import { productionEmailReply } from '~/lib/channel/email/reply-send';
-import { resolveSendableEmail } from '~/lib/channel/email/sendable';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { daycareFollowupQuestion } from '~/lib/channel/followup/question';
 import { defaultFounderReplyDeps } from '~/lib/channel/founder/reply';
+import { groupDraftedActionIds, groupPlanActionIds } from '~/lib/channel/group-plan/stamp';
 import {
   defaultCallNameComposer,
   parentCallNameVoice,
 } from '~/lib/channel/identity/call-name-voice';
 import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
+import { inboundMediaFromStored } from '~/lib/channel/inbound-media';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import { sharedOptOutReader } from '~/lib/channel/intake/opt-out-reader';
 import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { linqGroupOnboardingV2Enabled } from '~/lib/channel/linq/config';
+import { resolveGroupMention } from '~/lib/channel/linq/group-mention-reader';
 import { emptySaturdayQuestion } from '~/lib/channel/nudge/empty-saturday-question';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { createOutboundTransport, sendResolvingNewChat } from '~/lib/channel/outbound-transport';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
+import { defaultClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
+import { defaultClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
 import { loadReconcileView } from '~/lib/channel/reconcile/view';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { armWatchedSpot } from '~/lib/channel/spots/store';
 import { recordStatedState } from '~/lib/channel/stated-state';
-import { createSaidLineWriter } from '~/lib/channel/voice/said-line';
+import { type SaidLineWriter, createSaidLineWriter } from '~/lib/channel/voice/said-line';
 import { weekdayCareQuestion } from '~/lib/channel/weekday-care/question';
 import { createWeekdayCareReader } from '~/lib/channel/weekday-care/reply';
 import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
@@ -76,14 +79,15 @@ import {
 } from '~/lib/registration/sequence/prepare-reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { recordRegistrationWatch } from '~/lib/registration/watch';
+import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { authorizedSignupHandler } from '~/lib/signup/handler';
 import { discoverabilityAsked } from '~/lib/village/intros/consent';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { createTurnApology } from './apology';
-import { createHoldingLine } from './holding-line';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { createDisambiguationStore } from './disambiguation';
+import { createFloodLine } from './flood-line';
 import {
   approvalHandler,
   coParentAssentHandler,
@@ -92,19 +96,19 @@ import {
   connectorLinkHandler,
   daycareFollowupHandler,
   emailAlertAddHandler,
-  emailCaptureHandler,
   emptySaturdayHandler,
   eveningCheckInHandler,
-  forwardAddressHandler,
   founderWelcomeHandler,
   healthReplyHandler,
   nameCaptureHandler,
   parentCallNameHandler,
   planReplyHandler,
+  recMorningHandler,
   sequenceReplyHandler,
   villageIntroHandler,
   weekdayCareHandler,
 } from './handlers';
+import { createHoldingLine } from './holding-line';
 import {
   type OpenQuestionReader,
   type OpenQuestionReaderOptions,
@@ -154,6 +158,7 @@ export async function loadInboundContext(
       channel: schema.channelMessages.channel,
       providerMessageId: schema.channelMessages.providerMessageId,
       providerChatId: schema.channelMessages.providerChatId,
+      inboundMedia: schema.channelMessages.inboundMedia,
     })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, job.channel_message_id))
@@ -163,7 +168,11 @@ export async function loadInboundContext(
   // family re-check is the rule #1 backstop: the job is the only thing asserting whose
   // message this is, and a mismatch must fail closed rather than answer the wrong
   // household.
-  if (!message?.body || message.familyId !== job.family_id) return null;
+  const media = inboundMediaFromStored(message?.inboundMedia);
+  // A photo-only turn has an empty body and still routes. A row with neither
+  // words nor a part does not.
+  if (!message || message.familyId !== job.family_id) return null;
+  if (!message.body && media.length === 0) return null;
 
   const [role, primaryParentName, reply, inGroup] = await Promise.all([
     memberRole(database, job.family_id, job.parent_user_id),
@@ -178,7 +187,14 @@ export async function loadInboundContext(
     arrivedInFamilyGroup(database, job.family_id, message.channel, message.providerChatId),
   ]);
 
-  return { body: message.body, role, primaryParentName, reply, inGroup };
+  return {
+    body: withoutLiveViewLinks(message.body ?? ''),
+    role,
+    primaryParentName,
+    reply,
+    inGroup,
+    ...(media.length > 0 ? { media } : {}),
+  };
 }
 
 /**
@@ -244,10 +260,9 @@ async function resolveReplyRoute(
           }
         : null;
     }
-    case 'email': {
-      const address = await resolveSendableEmail(database, parentUserId);
-      return address ? { channel: 'email', to: address, inReplyTo: providerMessageId } : null;
-    }
+    // Retired pipe: Hale no longer sends email, so a leftover email row is unreachable.
+    case 'email':
+      return null;
     default:
       return null;
   }
@@ -287,6 +302,21 @@ async function primaryParentDisplayName(
   return row?.name ?? null;
 }
 
+/** Title and start off a calendar payload, or nothing. Used to see that a coach offer
+ * and a draft are one occasion (VIL-513). Not a sentence a parent reads. */
+function calendarOccasion(
+  actionType: string,
+  payload: unknown,
+): { title: string; startsAt: string } | undefined {
+  if (actionType !== 'calendar_add') return undefined;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const title = 'title' in payload && typeof payload.title === 'string' ? payload.title : '';
+  const startsAt =
+    'startsAt' in payload && typeof payload.startsAt === 'string' ? payload.startsAt : '';
+  if (title.trim() === '' || startsAt.trim() === '') return undefined;
+  return { title, startsAt };
+}
+
 /**
  * The approvals spine, bound to the SAME functions the app's buttons call.
  *
@@ -311,6 +341,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
           id: schema.actions.id,
           actionType: schema.actions.actionType,
           reviewerVerdict: schema.actions.reviewerVerdict,
+          payload: schema.actions.payload,
         })
         .from(schema.actions)
         .where(
@@ -326,11 +357,21 @@ export function defaultApprovalSpine(): ApprovalSpine {
       // decline, so removing it would take away an answer they have. What it cannot be is
       // approved — `approveDraftedAction` refuses it (rule #3) — so it is listed as
       // no-only, and the resolver stops binding a yes to a row it knows will refuse one.
-      return rows.map((row) => ({
-        actionId: row.id,
-        actionType: row.actionType,
-        reviewerApproved: row.reviewerVerdict === 'approved',
-      }));
+      const groupIds = await groupDraftedActionIds(
+        database,
+        familyId,
+        rows.map((row) => row.id),
+      );
+      return rows.map((row) => {
+        const occasion = calendarOccasion(row.actionType, row.payload);
+        return {
+          actionId: row.id,
+          actionType: row.actionType,
+          reviewerApproved: row.reviewerVerdict === 'approved',
+          ...(occasion ? { occasion } : {}),
+          ...(groupIds.has(row.id) ? { groupPlan: true as const } : {}),
+        };
+      });
     },
 
     /**
@@ -408,6 +449,8 @@ export interface DefaultHandlerPorts {
   consent?: ConsentReader;
   /** Writes a consent ask. Production uses the screen. Tests inject the text. */
   ask?: ConsentAskWriter;
+  /** Writes the model's lines (an intro yes acknowledgement). Tests inject one. */
+  saidLine?: SaidLineWriter;
 }
 
 export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicHandler[] {
@@ -415,9 +458,11 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
   const consent = ports.consent ?? createConsentReader(screenClient);
   const ask = ports.ask ?? createConsentAskWriter(screenClient);
   return [
-    villageIntroHandler(defaultVillageIntroReplyDeps(consent)),
+    villageIntroHandler({
+      ...defaultVillageIntroReplyDeps(consent),
+      saidLine: ports.saidLine ?? createSaidLineWriter(screenClient),
+    }),
     approvalHandler(defaultApprovalSpine()),
-    emailCaptureHandler(defaultEmailCaptureDeps()),
     connectorLinkHandler(),
     // Beside the connect half, and the position is free rather than load-bearing: the
     // two matchers are disjoint by construction (connect/detect.ts), so neither can
@@ -426,7 +471,6 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // Beside the connector pair, and free for their reason: all three matchers require a
     // noun no other handler's vocabulary contains, and detect.test.ts / the forwarding
     // matcher's own table assert the three are disjoint over the whole phrase list.
-    forwardAddressHandler(console, { consent, ask }),
     founderWelcomeHandler({ ...defaultFounderReplyDeps(), consent, ask }),
     // Owns the co-parent scope question and declines every reading of it — see the
     // handler's own note. Listed so the router never resolves a kind nobody owns.
@@ -454,7 +498,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
     emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
-    // Explicit "sign us up" only. A bare yes is not a signup. Placed before the
+    // A reply to a pending sign-up offer, read by the consent model (no word list). Placed before the
     // registration reader, which also claims messages it cannot read.
     authorizedSignupHandler(),
     // Exact "what do you know" / "forget …" / "correct …" only, and only when
@@ -462,6 +506,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     familyMemoryKindsHandler(),
     registrationLinkHandler(),
     sequenceReplyHandler(defaultSequenceReplyDeps(), defaultPrepareReplyDeps()),
+    recMorningHandler(),
     parentCallNameHandler(parentCallNameVoice(defaultCallNameComposer())),
     nameCaptureHandler(defaultNameCaptureDeps()),
     // BEHIND EVERY SHAPE MATCHER, because it is the only handler that claims a whole
@@ -486,7 +531,7 @@ let screenAnthropic: Anthropic | undefined;
  * honest `client_unavailable` reading instead of a thrown route.
  */
 function screenClient(): AgentClient {
-  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+  screenAnthropic ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'inbound_screen' });
   return screenAnthropic;
 }
 
@@ -695,10 +740,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createReplyTransport({
       // SMS-shaped answers leave through the shared phone door (Linq by default).
       phone: createOutboundTransport(),
-      // Null until the inbound-email leg is provisioned, which is the same condition
-      // that makes an email route impossible to reach — dark by construction, and named
-      // rather than silent if it is ever reached anyway (reply-transport.ts).
-      email: productionEmailReply(),
+      mentionFor: ({ chatId, body }) => resolveGroupMention({ database, chatId, text: body }),
     }),
     handlers: defaultHandlers(),
     // What Hale is still waiting to hear back about, and the stage that reads a parent's
@@ -716,11 +758,13 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
         });
       },
     }),
+    groupPlanActionIds,
     replyResolver: createReplyResolver(screenClient),
     calendarOffers: createCalendarOfferReader(screenClient),
     saidLine: createSaidLineWriter(screenClient),
     turnReader: sharedOptOutReader(),
     weekdayCareReader: createWeekdayCareReader(screenClient),
+    consent: createConsentReader(screenClient),
     consentAsk: createConsentAskWriter(screenClient),
     // VIL-304. The menu Hale last put in front of this parent — a row per asked question,
     // spent by the next inbound. No model and no client: picking one of a handful of
@@ -734,6 +778,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     apology: createTurnApology(screenClient),
     // The one line a slow answer gets first, on the same lazy client.
     holdingLine: createHoldingLine(screenClient),
+    floodLine: createFloodLine(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),
@@ -743,6 +788,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     recordActivityPromise: (db, input) =>
       recordActivityPromise(db, input, defaultActivityPromisePorts()),
+    recordCapabilityNotes,
     // The question-time deep pass. The producer only ENQUEUES — the drain's every-minute
     // tick is the consumer — so the reply is never waiting on research.
     dispatchDeepResearch: (payload) =>
@@ -785,6 +831,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // the same reason the two writers above it are: the row is minted against the SENT
     // message, and the router is the only thing that knows which row that was.
     reconcileView: loadReconcileView,
+    // VIL-581 · the claim reader in shadow; a no-op while CLAIM_READER_MODE is unset.
+    claimShadow: defaultClaimShadow(),
+    claimEnforcer: defaultClaimEnforcer(),
     recordRegistrationWatch,
     armWatchedSpot,
     limiter: new PostgresRateLimiter(database),
@@ -803,7 +852,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
 /** The drain's handler: route one inbound text. */
 export async function routeInboundChannelMessage(
   database: Database,
-  job: ChannelMessageReceivedPayload,
+  job: ChannelMessageReceivedJob,
 ): Promise<void> {
   await routeChannelMessage(channelRouterDeps(database), job);
 }
@@ -929,16 +978,13 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
           summary: emailAlertOfferSummary(offer),
           subject: emailAlertOfferSubject(offer),
           askedAt: offer.askedAt,
+          title: offer.title,
+          startsAt: offer.startsAt.toISOString(),
         }));
       },
-      // The forwarding-address revoke confirm (VIL-352 round 6), read through the lane's own
-      // ledger reader — the evening check-in's discipline for the same reason, with the
-      // fifteen-minute window applied inside it so a lapsed confirm is never listed. It
-      // stands until one of its own receipts answers it, NOT until Hale next speaks: the
-      // clarifying menu Hale sends about this very question is a thing Hale said, and it
-      // used to close the question it was asking about (round 7). The last-word rule lives
-      // on the bare-word door in handlers.ts, which is the only reader it protects.
-      forwardAddressRevoke: (database, input) => forwardRevokeAsk(database, input),
+      // The email forwarding door is retired with the email channel, so no revoke
+      // confirm can be standing any more.
+      forwardAddressRevoke: async () => null,
     },
     options,
   );

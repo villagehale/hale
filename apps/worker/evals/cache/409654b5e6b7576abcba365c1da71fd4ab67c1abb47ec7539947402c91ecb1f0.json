@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both fields are empty and the description states neither parking nor what to bring, so the reading correctly avoids inventing a towel or swimsuit. No invented, translated, or extra content is present.",
+    "score": 5
+  }
+}

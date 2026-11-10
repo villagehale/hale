@@ -14,7 +14,6 @@ import {
 import type { ReminderStatus, SuppressReason } from './schedule';
 
 /** The parents' reminder lead is the event's own family-local day (reminder/core.ts). */
-const DAY_LEAD = /^Sat, Jul 25: /;
 
 /**
  * VIL-241 · M6 — the event reminders a caregiver was promised, and the three events they
@@ -52,6 +51,7 @@ function event(over: Partial<LiveEvent> = {}): LiveEvent {
     location: 'Stouffville Public School',
     googleEventId: null,
     createdBy: null,
+    kidVerdict: null,
     ...over,
   };
 }
@@ -67,6 +67,7 @@ function dueRow(over: Partial<DueReminder> = {}): DueReminder {
     timezone: TZ,
     role: 'grandparent',
     smsChannelActive: true,
+    composeAttempts: 0,
     ...over,
   };
 }
@@ -91,6 +92,9 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     markStatus: async (_db, id, status, reason) => {
       marked.push({ id, status, reason });
     },
+    holdForCompose: async () => {
+      throw new Error('a caregiver reminder is never written by the model, so never held');
+    },
     auditSuppressed: async (_db, row) => {
       audited.push(row);
     },
@@ -103,8 +107,21 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
       captures.push({ event, distinctId, props });
       return 'sent';
     },
-    client: null,
+    // Parents' reminders are model-written; a fake writer stands in so the parent legs
+    // (the positive controls) still send. The caregiver leg never calls it.
+    client: {} as ReminderRunDeps['client'],
+    loadLanguage: async () => 'en',
+    composeText: async (_client, facts) => ({
+      status: 'written',
+      draft: {
+        texts: [facts.events.map((e) => (e.for ? `${e.for}: ${e.what}` : e.what)).join('; ')],
+        bold: null,
+      },
+    }),
+    recordAgentRun: async () => {},
     loadNameLevel: async () => 'first_name',
+    loadPrefs: async () => DEFAULT_LOOP_PREFS,
+    parentPhone: async () => null,
     ...over,
   };
   return { deps, enqueued, marked, upserts, captures, audited };
@@ -347,11 +364,9 @@ describe('fire — what actually reaches a caregiver', () => {
     await runReminderCron(db, deps, NOW);
     expect(enqueued[0]).toMatchObject({ templateKey: 'reminder', parentUserId: 'p1' });
     expect(enqueued[0]?.channel).toBeUndefined();
-    // The parents' own copy, and visibly not the caregiver's — theirs carries the address
-    // and joins with a dash where this one uses a colon.
-    const parentText = body(enqueued[0] as ChannelSendJob);
-    expect(parentText).toMatch(DAY_LEAD);
-    expect(parentText.replace(DAY_LEAD, '')).toBe('Swim class at 10:00');
+    // The parents' own text is the model's, written from the parents' redacted facts
+    // (the fake writer echoes them) — not the caregiver's template.
+    expect(body(enqueued[0] as ChannelSendJob)).toBe('Mia: Swim class');
   });
 });
 
@@ -479,8 +494,7 @@ describe('one recipient, two households', () => {
       const own = jobFor(enqueued, 'fam-1');
       expect(own.templateKey).toBe('reminder');
       expect(own.channel).toBeUndefined();
-      expect(body(own)).toMatch(DAY_LEAD);
-      expect(body(own).replace(DAY_LEAD, '')).toBe('an appointment at 10:00');
+      expect(body(own)).toBe('an appointment');
       expect(body(own)).not.toContain('Therapy intake');
 
       // The household she works for is a CAREGIVER's: their template, pinned to sms,
@@ -494,4 +508,45 @@ describe('one recipient, two households', () => {
       expect(JSON.stringify(work.payload)).not.toContain('Noor');
     },
   );
+});
+
+describe('preview family scope (cron family filter)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const TEST_FAM = '11111111-1111-4111-8111-111111111111';
+
+  it('regression: on preview a non-test family is skipped entirely', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
+    const loaded: string[] = [];
+    const { deps, upserts, enqueued } = makeDeps({
+      selectReminderParents: async () => [
+        { familyId: 'fam-1', userId: 'p1', timezone: TZ },
+        { familyId: TEST_FAM, userId: 'pt', timezone: TZ },
+      ],
+      loadHorizonEvents: async (_db, familyId) => {
+        loaded.push(familyId);
+        return [event()];
+      },
+      loadDueReminders: async () => [dueRow(), dueRow({ id: 'rt', familyId: TEST_FAM })],
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(loaded).toEqual([TEST_FAM]);
+    expect(upserts.every((u) => u.parentUserId === 'pt')).toBe(true);
+    expect(enqueued.every((job) => job.familyId === TEST_FAM)).toBe(true);
+  });
+
+  it('production behaviour is unchanged: every family is processed', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('PREVIEW_FAMILY_ALLOWLIST', TEST_FAM);
+    const loaded: string[] = [];
+    const { deps } = makeDeps({
+      selectReminderParents: async () => [{ familyId: 'fam-1', userId: 'p1', timezone: TZ }],
+      loadHorizonEvents: async (_db, familyId) => {
+        loaded.push(familyId);
+        return [];
+      },
+    });
+    await runReminderCron(db, deps, NOW);
+    expect(loaded).toEqual(['fam-1']);
+  });
 });

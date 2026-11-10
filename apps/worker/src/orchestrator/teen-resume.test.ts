@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion } from '@hale/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * FIX 1 (resume gap) — the teen-redaction cap (hard rule #1) must survive a

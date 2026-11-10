@@ -69,9 +69,25 @@ const SAMPLE: OpsDailyReport = {
   medical: { answered: 4, fallbacks: 1 },
   reverify: {
     ran: true,
-    outcomes: { checked: 20, verified: 18, changed: 1, unverified: 2 },
+    outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
+  },
+  week: {
+    plansComposed: 6,
+    providerIncidents: [{ reason: 'billing', count: 1 }],
+    unmetIntents: [
+      { reason: 'capability_booking', count: 3 },
+      { reason: 'domain_medical_records', count: 1 },
+    ],
+    papercuts: {
+      unmet_intent: 4,
+      medical_fallback: 1,
+      reply_fallback: 2,
+      voice_failure: 0,
+      turn_failure: 1,
+    },
   },
   linqChatIds: 47,
+  queue: { readable: true, expiredActive: 1, unfinished: 4, oldestSeconds: 2520 },
 };
 
 const ZERO: OpsDailyReport = {
@@ -111,7 +127,20 @@ const ZERO: OpsDailyReport = {
   promises: { open: 0, overdue: 0, overdueFamilies: 0 },
   medical: { answered: 0, fallbacks: 0 },
   reverify: { ran: false, outcomes: null },
+  week: {
+    plansComposed: 0,
+    providerIncidents: [],
+    unmetIntents: [],
+    papercuts: {
+      unmet_intent: 0,
+      medical_fallback: 0,
+      reply_fallback: 0,
+      voice_failure: 0,
+      turn_failure: 0,
+    },
+  },
   linqChatIds: 0,
+  queue: { readable: true, expiredActive: 0, unfinished: 0, oldestSeconds: null },
 };
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -119,7 +148,7 @@ const LONG_DIGITS = /\d{7,}/;
 const NON_ASCII = /[^ -~\n]/;
 
 describe('composeOpsDailyPost', () => {
-  it('renders a day of traffic as fourteen ASCII lines of counts', () => {
+  it('renders a day of traffic as eighteen ASCII lines of counts', () => {
     expect(composeOpsDailyPost(SAMPLE)).toBe(
       [
         'Hale daily | 24h to 2026-10-12 13:00 UTC | real families 7 | excluded 3',
@@ -134,8 +163,12 @@ describe('composeOpsDailyPost', () => {
         'Intake (7d): 5 started | 4 provisioned | median first answer 1m15s (4 families)',
         'Promises: 6 open | 2 overdue (1 family)',
         'Medical (7d): 1 of 4 answers used the fixed 811/911 line',
-        'Registration checks (7d): checked 20 | verified 18 | changed 1 | unverified 2',
+        'Re-verify (7d): ran | checked 20 | confirmed 17 | discrepancies 1 | unverified 2',
+        'Loop (7d): week plans composed 6 | provider incidents: billing 1',
+        'Unmet intents (7d): capability_booking 3, domain_medical_records 1',
+        'Papercuts (7d): unmet 4 | medical fallback 1 | reply fallback 2 | voice fallback 0 | turn failures 1',
         'Linq chat IDs (DB): 47 of 200',
+        'Inbound queue: stalled | expired-active 1 | unfinished 4 | oldest 42m00s',
       ].join('\n'),
     );
   });
@@ -155,8 +188,12 @@ describe('composeOpsDailyPost', () => {
         'Intake (7d): no sessions started',
         'Promises: ledger empty',
         'Medical (7d): no medical answers',
-        'Registration checks (7d): no watch observations',
+        'Re-verify (7d): did not run',
+        'Loop (7d): week plans composed 0 | provider incidents: none',
+        'Unmet intents (7d): none',
+        'Papercuts (7d): unmet 0 | medical fallback 0 | reply fallback 0 | voice fallback 0 | turn failures 0',
         'Linq chat IDs (DB): 0 of 200',
+        'Inbound queue: clear',
       ].join('\n'),
     );
   });
@@ -178,7 +215,7 @@ describe('composeOpsDailyPost', () => {
       'Intake (7d): 2 started | 2 provisioned | median first answer n/a (0 families) | 2 not derivable',
     );
     expect(text).toContain('Promises: 4 open | none overdue');
-    expect(text).toContain('Registration checks (7d): no watch observations');
+    expect(text).toContain('Re-verify (7d): ran | no tally');
     expect(text).not.toContain('ledger empty');
     expect(text).not.toContain('did not run');
   });
@@ -195,6 +232,36 @@ describe('composeOpsDailyPost', () => {
       expect(text).not.toMatch(LONG_DIGITS);
       expect(text).not.toMatch(NON_ASCII);
     }
+  });
+
+  it('names the top five unmet intents and counts the rest', () => {
+    const unmetIntents = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((reason) => ({
+      reason: `lane_${reason}`,
+      count: 1,
+    }));
+    const text = composeOpsDailyPost({ ...ZERO, week: { ...ZERO.week, unmetIntents } });
+    expect(text).toContain(
+      'Unmet intents (7d): lane_a 1, lane_b 1, lane_c 1, lane_d 1, lane_e 1 (+2 more)',
+    );
+  });
+
+  it('names a stalled inbound queue, a short backlog, and an unreadable one', () => {
+    const stalled = composeOpsDailyPost(SAMPLE);
+    expect(stalled).toContain(
+      'Inbound queue: stalled | expired-active 1 | unfinished 4 | oldest 42m00s',
+    );
+    const backlog = composeOpsDailyPost({
+      ...ZERO,
+      queue: { readable: true, expiredActive: 0, unfinished: 2, oldestSeconds: 30 },
+    });
+    expect(backlog).toContain('Inbound queue: expired-active 0 | unfinished 2 | oldest 30s');
+    expect(backlog).not.toContain('stalled');
+    const unread = composeOpsDailyPost({
+      ...ZERO,
+      queue: { readable: false, expiredActive: 0, unfinished: 0, oldestSeconds: null },
+    });
+    expect(unread).toContain('Inbound queue: unreadable');
+    expect(unread).not.toContain('Inbound queue: clear');
   });
 
   it('redacts a reason or a code that carries a phone-length digit run', () => {

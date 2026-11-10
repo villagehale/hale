@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack --port 3000",
-    "build": "next build",
+    "build": "next build && node ../../scripts/posthog-sourcemaps.mjs .next hale-web",
     "start": "next start --port 3000",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
@@ -14,8 +14,10 @@
     "test:smoke": "playwright test --config playwright.smoke.config.ts",
     "live:onboarding": "LIVE=1 HALE_LLM_NO_STREAM=1 vitest run lib/channel/intake/onboarding-live.test.ts",
     "booked-detection:dry-run": "tsx scripts/booked-detection-dry-run.ts",
+    "probe:drain-load": "tsx scripts/drain-load-probe.ts",
     "probe:ics-feed": "tsx scripts/probe-ics-feed.ts",
     "probe:linq-capacity": "tsx scripts/probe-linq-capacity.ts",
+    "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",
     "seed:e2e-smoke": "tsx scripts/seed-e2e-smoke.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
@@ -41,10 +43,11 @@
     "next-auth": "5.0.0-beta.25",
     "pg-boss": "^10.1.6",
     "postgres": "^3.4.5",
+    "playwright-core": "1.61.1",
     "posthog-js": "^1.393.4",
+    "posthog-node": "^5.57.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "resend": "^6.14.0",
     "unpdf": "1.8.1",
     "zod": "^3.24.1"
   },

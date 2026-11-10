@@ -57,7 +57,7 @@ Disaster recovery stays Supabase daily backups, 7-day retention, Toronto (`infra
 
 ## Privacy
 
-No web page lists fact values. On iMessage, `familyMemoryKindsHandler` (`apps/web/lib/memory/handler.ts`, wired in `apps/web/lib/channel/router/wiring.ts`) claims a turn only when the kinds flag is exactly `true`. The parent texts `what do you know`, `forget <key>`, or `correct <key>: <value>` (French shapes are in `parseMemoryParentIntent`). The reply is null unless `FAMILY_MEMORY_KINDS_COPY_LOCKED` is also exactly `true`. `recallFamilyMemory` returns lasting, unexpired temporary, and one-off beliefs, newest 40, dropping receipts and teen-attributed rows. `GET /api/rights/export` (`apps/web/lib/rights/export.ts`, button `apps/web/components/hale/export-data-button.tsx`) includes digest counts and not fact values.
+No web page lists fact values. On iMessage, `familyMemoryKindsHandler` (`apps/web/lib/memory/handler.ts`, wired in `apps/web/lib/channel/router/wiring.ts`) claims a turn only when the kinds flag is exactly `true`. The parent texts `what do you know`, `forget <key>`, or `correct <key>: <value>` (French shapes are in `parseMemoryParentIntent`). The reply is null unless the model writes it. `recallFamilyMemory` returns lasting, unexpired temporary, and one-off beliefs, newest 40, dropping receipts and teen-attributed rows. `GET /api/rights/export` (`apps/web/lib/rights/export.ts`, button `apps/web/components/hale/export-data-button.tsx`) includes digest counts and not fact values.
 
 Keep the file off the thread. A later phrase on that handler would point at the existing download. The reply is a placeholder and is never sent:
 

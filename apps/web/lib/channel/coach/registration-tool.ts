@@ -1,8 +1,17 @@
 import { defineTool } from '@hale/agent';
 import { z } from 'zod';
-import type { RegistrationWatchContext, RegistrationWindowContext } from './registration-context';
+import type { RegistrationWindowContext } from './registration-context';
 
 export const READ_REGISTRATION_PAGE = 'read_registration_page';
+
+export interface RegistrationWatchContext {
+  id: string;
+  town: string;
+  programs: string;
+  sourceUrl: string;
+  optIn: string;
+  outcome: string | null;
+}
 
 export function readRegistrationPageTool(args: {
   watches: readonly RegistrationWatchContext[];

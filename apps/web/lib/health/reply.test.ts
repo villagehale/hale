@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkpointById, checkpointRef, parseCheckpointRef } from './checkpoints';
 import type { OpenCheckupOffer } from './offer';
-import {
-  type HealthReplyDeps,
-  handleHealthCheckpointReply,
-  matchHealthReply,
-} from './reply';
+import { type HealthReplyDeps, handleHealthCheckpointReply, matchHealthReply } from './reply';
 
 /**
  * VIL-243 · M8 — the reply seam. Two deterministic outcomes and nothing else: a parent
@@ -77,15 +73,25 @@ function harness(
 
 describe('matchHealthReply', () => {
   it('reads the whole done family', () => {
-    for (const body of ['done', 'Done.', 'DONE!', 'did it', 'Did it.', 'finished', 'all done', '✓']) {
+    for (const body of [
+      'done',
+      'Done.',
+      'DONE!',
+      'did it',
+      'Did it.',
+      'finished',
+      'all done',
+      '✓',
+    ]) {
       expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'done' });
     }
   });
 
-  it('reads the booking-help family', () => {
-    for (const body of ['yes', 'Yes please', 'book it', 'draft it']) {
-      expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'booking' });
-    }
+  it('reads the booking verbs and leaves a yes to the model', () => {
+    expect(matchHealthReply('book it')).toBe('booking');
+    expect(matchHealthReply('draft it')).toBe('booking');
+    expect(matchHealthReply('yes')).toBeNull();
+    expect(matchHealthReply('Yes please')).toBeNull();
   });
 
   it('matches the whole message, never a substring', () => {
@@ -127,8 +133,8 @@ describe('matchHealthReply · the booking branch is the shared vocabulary', () =
     '👍',
   ];
 
-  it.each(AFFIRMATIVES)('%s asks for the booking', (body) => {
-    expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'booking' });
+  it.each(AFFIRMATIVES)('%s is not a keyword booking', (body) => {
+    expect(matchHealthReply(body)).toBeNull();
   });
 
   it('keeps its own two booking verbs, which are not affirmations anywhere else', () => {
@@ -209,7 +215,7 @@ describe('handleHealthCheckpointReply', () => {
     const h = harness({ ref: refFor('school_records_ispa', 'child-1', 2026) });
     const outcome = await handleHealthCheckpointReply(
       db(),
-      { familyId: 'fam-1', parentUserId: 'user-1', body: 'yes', now: NOW },
+      { familyId: 'fam-1', parentUserId: 'user-1', body: 'yes', now: NOW, resolved: 'booking' },
       h.deps,
     );
 
@@ -230,7 +236,7 @@ describe('handleHealthCheckpointReply', () => {
     const h = harness({ offer: null });
     const outcome = await handleHealthCheckpointReply(
       db(),
-      { familyId: 'fam-1', parentUserId: 'user-1', body: 'yes', now: NOW },
+      { familyId: 'fam-1', parentUserId: 'user-1', body: 'yes', now: NOW, resolved: 'booking' },
       h.deps,
     );
 

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The window is marked watching: true, so \"I'm on it\" and the promise to text before it opens are both true. The date, the time and residents-first come straight from the registration window, stated flat and correctly. It is short and plain, with no greeting and no question. Omitting general opens Sep 8 is fine.",
+    "score": 5
+  }
+}

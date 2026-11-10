@@ -12,7 +12,7 @@
  *
  * The route is resolved ONCE per turn, in the same read that resolves who is talking
  * (wiring.ts), and it is null for exactly one reason: there is no live address on that
- * channel — a revoked SMS channel, or a parent who has asked us to stop emailing. Null
+ * channel — a revoked SMS channel, or a retired pipe (email, WhatsApp). Null
  * is the router's `unreachable`, and it is why a stopped parent cannot be answered even
  * by a turn that is already in flight.
  */
@@ -34,14 +34,7 @@ export type ReplyRoute =
        * Null when the ledger row has no provider id — the send is still an
        * answer, it simply does not quote. */
       replyToMessageId: string | null;
-    }
-  /**
-   * `inReplyTo` is the inbound email's own Message-ID, carried so the answer lands
-   * INSIDE the parent's thread. Nullable because a ledger row is not required to hold a
-   * provider id — an answer with no reference is still an answer, it simply starts a new
-   * thread rather than continuing one.
-   */
-  | { channel: 'email'; to: string; inReplyTo: string | null };
+    };
 
 /**
  * What one delivered message leaves behind: the provider's id, and the channel it
@@ -49,8 +42,8 @@ export type ReplyRoute =
  *
  * The channel is reported by the SEND rather than assumed by the caller, and that is
  * what lets a self-sending handler write an honest ledger row without resolving a
- * destination of its own — the row says `email` because an email is what left, not
- * because someone remembered to branch.
+ * destination of its own — the row says `imessage` because a blue bubble is what left,
+ * not because someone remembered to branch.
  */
 export interface ReplySent {
   providerMessageId: string;

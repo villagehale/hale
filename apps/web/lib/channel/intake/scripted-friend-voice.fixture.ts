@@ -17,9 +17,6 @@ function offScriptAside(words: string): string | null {
     return 'I only keep what you send, and you can ask what I have.';
   if (/weather|recipe/i.test(words)) return "That's outside what I do.";
   if (/^(ok|lol|and|thanks)$/i.test(words) || /what's next/i.test(words)) return 'Got it.';
-  if (/\b10001\b/.test(words) || /\bchicago\b/i.test(words)) {
-    return 'I only cover the Toronto area right now.';
-  }
   return null;
 }
 
@@ -34,13 +31,19 @@ export function scriptedTurn(input: FriendVoiceInput): {
   reply: string;
   capture: OnboardingCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 } {
   const words = input.parentWords.trim();
   const capture: OnboardingCapture = {
     ...EMPTY_ONBOARDING_CAPTURE,
     children: [],
     scheduleAdds: [],
+    // The model reports the language it is answering in. A stored tag wins.
+    // A first "Bonjour" is French; everything else in this fixture is English.
+    language: input.language ?? (/^(bonjour|salut)\b/i.test(words) ? 'fr' : 'en'),
   };
+  const speakingFrench = capture.language === 'fr';
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
   );
@@ -111,6 +114,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
     if (input.step === 'schedule') capture.scheduleDone = true;
     if (input.step === 'coparent') capture.coparentGroup = false;
   }
+  // The coarse code turned down too: the place is settled without one.
+  if (/^not even that$/i.test(words) && input.step === 'place') capture.placeDeclined = true;
   if (/^later$/i.test(words)) {
     if (input.step === 'names') capture.nameDeclined = true;
     if (input.step === 'calendar') capture.calendarLater = true;
@@ -118,7 +123,8 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   const postalKnown =
-    (Boolean(capture.postalCode) && capture.postalCode !== '10001') ||
+    Boolean(capture.postalCode) ||
+    capture.placeDeclined ||
     Boolean(input.placeLabel) ||
     input.checklist?.postal === true;
   const kidsKnown =
@@ -146,7 +152,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   const name = capture.parentName ?? input.parentName;
 
   if (input.step === 'find_show') {
-    return { reply: 'Here is what is on near you for their ages.', capture, groupLeads: [] };
+    return {
+      reply: 'Here is what is on near you for their ages.',
+      capture,
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
+    };
   }
   // Reminders just recorded: confirm them, ask nothing.
   if (capture.scheduleAdds.length > 0) {
@@ -177,11 +187,11 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
 
   let ask: string;
-  if (input.language === 'fr' && !postalKnown) {
+  if (speakingFrench && !postalKnown) {
     ask = "Salut, c'est Hale. Quel est ton code postal?";
-  } else if (input.language === 'fr' && !kidsKnown) {
+  } else if (speakingFrench && !kidsKnown) {
     ask = "Comment s'appellent tes enfants?";
-  } else if (input.language === 'fr' && !agesKnown) {
+  } else if (speakingFrench && !agesKnown) {
     ask = 'Quel âge ont les enfants?';
   } else if (!postalKnown) {
     ask = input.introduce ? "Hey, it's Hale. What's your postal code?" : "What's your postal code?";
@@ -206,7 +216,7 @@ export function scriptedTurn(input: FriendVoiceInput): {
   }
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: true };
 }
 
 /** The scripted turn on the composer's wire shape (role as two flat strings). */

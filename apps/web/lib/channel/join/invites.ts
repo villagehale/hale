@@ -1,11 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { maskPhoneE164 } from '~/lib/channels/phone';
 import {
   familyHasCoParent,
   supersedeOpenInviteOnEnrollment,
 } from '~/lib/channel/caregiver/invites';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { CO_PARENT_GRANT_SCOPE } from '~/lib/channel/role-scope';
+import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -263,10 +264,14 @@ export async function revokeOpenJoinInvites(
 /** The users row for this number, created if absent. Keyed by the SAME blind index
  * intake and the caregiver flow use, so somebody who already knows Hale from another
  * household is one account rather than two. */
-async function ensureJoinUser(tx: Database, externalAuthId: string): Promise<string> {
+async function ensureJoinUser(
+  tx: Database,
+  externalAuthId: string,
+  timezone: string,
+): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null })
+    .values({ externalAuthId, email: null, name: null, timezone })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
 
   const rows = await tx
@@ -348,7 +353,11 @@ export async function redeemJoinInvite(
       .returning({ id: schema.joinInvites.id });
     if (burned.length === 0) return { outcome: 'spent' };
 
-    const coParentUserId = await ensureJoinUser(tx, `sms:${hash}`);
+    const coParentUserId = await ensureJoinUser(
+      tx,
+      `sms:${hash}`,
+      await householdTimezone(tx, invite.familyId),
+    );
 
     const [consent] = await tx
       .insert(schema.consentRecords)

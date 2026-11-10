@@ -31,6 +31,18 @@ export const FAQ: readonly FaqItem[] = [
       'A planner for your kids’ year that lives in your texts. It finds what’s on near you, watches for spots, reminds you before sign-ups and asks how it went. It answers any other question you send it, too.',
   },
   {
+    id: 'who-is-hale-for',
+    question: 'Who is Hale for?',
+    answer:
+      'Parents and caregivers with kids from newborn to 18, plus the co-parents and other parents they plan with.',
+  },
+  {
+    id: 'where-does-hale-work',
+    question: 'Where does Hale work?',
+    answer:
+      'In the US and Canada. Hale works by iMessage and regular text on a US or Canadian phone number.',
+  },
+  {
     id: 'how-do-i-start',
     question: 'How do I start?',
     answer:
@@ -69,7 +81,7 @@ export const FAQ: readonly FaqItem[] = [
     id: 'does-hale-book-or-register-for-me',
     question: 'Does Hale book or register for me?',
     answer:
-      'Not yet. Hale finds the class, watches for spots and texts you the link before sign-ups open. You register yourself. Signing up for you is coming later, and only when you say yes.',
+      'Yes, when you say yes. Hale finds the class, watches for spots and texts you before sign-ups open. Say yes and it signs your kid up, then hands you the payment step. You always pay yourself.',
   },
   {
     id: 'what-does-hale-find',
@@ -100,6 +112,12 @@ export const FAQ: readonly FaqItem[] = [
     question: 'Is it free?',
     answer:
       'Yes. Hale is free, with unlimited chat. Families who join now get every feature free until paid plans start.',
+  },
+  {
+    id: 'what-do-paid-plans-cost',
+    question: 'What do paid plans cost?',
+    answer:
+      'Free is $0 with unlimited chat. Plus is $19 CAD or $15 USD a month ($159 CAD or $129 USD a year). Max is $39 CAD or $29 USD a month ($329 CAD or $259 USD a year). Families who join now get every feature free until paid plans start.',
   },
   {
     id: 'what-happens-to-our-data',

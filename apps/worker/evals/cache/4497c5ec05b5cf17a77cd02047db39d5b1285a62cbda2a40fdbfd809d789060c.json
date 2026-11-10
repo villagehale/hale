@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Single event correctly given as tomorrow with the right times and PM, stays generic as 'an appointment' without guessing, no invented details, English, calm and short. 'Afternoon' is consistent with 4:45 PM.",
+    "score": 5
+  }
+}

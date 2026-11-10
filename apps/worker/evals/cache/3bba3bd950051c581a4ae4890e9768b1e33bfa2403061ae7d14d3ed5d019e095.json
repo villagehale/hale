@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so the reply's claim matches state. It confirms plainly that Hale will now ask before sending each email. It is short and has no machinery talk, no sign-off and no extra question.",
+    "score": 5
+  }
+}

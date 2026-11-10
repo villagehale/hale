@@ -22,6 +22,10 @@ describe('signup offer sentence', () => {
     expect(signupTryOffer({ language: 'en', price: '$40', priceApproved: true }).mayLeave).toBe(
       true,
     );
+    expect(signupTryOffer({ language: 'zh', price: '$40', priceApproved: true })).toEqual({
+      body: '',
+      mayLeave: false,
+    });
     expect(signupTryOffer({ language: 'fr', price: '40 $', priceApproved: true }).body).toBe(
       "C'est 40 $. Tu veux que j'essaie de t'inscrire? Je m'arrete et je te le remets si on demande un paiement ou une connexion.",
     );

@@ -1,20 +1,15 @@
 import { type Database, schema } from '@hale/db';
 import { eq, sql } from 'drizzle-orm';
 import { isCanaryInbound } from '~/lib/channel/canary/config';
-import { mediaUnsupportedReply } from '~/lib/channel/inbound-copy';
-import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
+import { persistableMedia } from '~/lib/channel/inbound-media';
 import { type IntakeDeps, type KeywordAck, handleInboundSms } from '~/lib/channel/intake/machine';
-import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
-import { acceptedStatus } from '~/lib/channel/ledger';
 import { liveMemberMayTalk } from '~/lib/channel/linq/group-members';
 import { armDelayedImessageTyping } from '~/lib/channel/linq/presence';
 import { isParentRole } from '~/lib/channel/role-scope';
 import type { MessageTransport } from '~/lib/channel/transport-address';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
-import { phoneBlindIndex } from '~/lib/crypto/blind-index';
-import { RATE_LIMITS } from '~/lib/rate-limit/config';
 
 /**
  * The shared inbound router: one authenticated text, the intake machine, then C1.
@@ -32,10 +27,10 @@ import { RATE_LIMITS } from '~/lib/rate-limit/config';
  *
  *   1. AUTHENTICATION. The machine trusts its `from`; the webhook must not. Signature
  *      first, before parsing intent or writing anything (see signature.ts).
- *   2. MEDIA. An MMS carries no text the machine can route, so it is answered here —
- *      but only AFTER the keyword check, because a STOP sent with a photo attached is
- *      still a STOP, and answering it with "I can't read attachments" instead of
- *      unsubscribing would be a CASL failure dressed up as a friendly reply.
+ *   2. MEDIA. A photo or a video is a turn, not a fixed sentence. STOP still runs
+ *      first, inside the machine, because a STOP sent with a photo attached is still
+ *      a STOP. The parts ride on the inbound row so the coach can read an image and
+ *      write the reply when a video arrives.
  *   3. THE HANDOFF. The machine returns `no_open_conversation` for a text from a family
  *      that finished intake — its own comment names this seam as A3's. That is the
  *      conversation C1 will answer, so it is recorded and queued here.
@@ -53,8 +48,14 @@ export interface ChannelMessageReceivedJob {
   channel_message_id: string;
   provider_message_id: string;
   received_at: string;
-  /** The door's own group bit. Absent only on a job it did not queue (see the contract). */
-  in_group?: boolean;
+  /**
+   * The door's own group bit. REQUIRED (VIL-463): every producer must say it, and
+   * `undefined` is written only where the producer genuinely cannot know (the
+   * reconciler re-drives from the row, which does not store it). The router treats
+   * `undefined` on an iMessage chat as possibly a group and refuses the turn, so an
+   * unknown can never be run on the sender's 1:1 thread.
+   */
+  in_group: boolean | undefined;
 }
 
 export interface InboundRouteDeps {
@@ -67,7 +68,7 @@ export interface InboundRouteDeps {
    */
   intake: (
     inboundTransport: MessageTransport,
-    linq?: { chatId: string; replyToMessageId?: string | null },
+    linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
   ) => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   /** Required, not optional: the one thing that must never happen quietly here is a
@@ -87,9 +88,6 @@ export type InboundRouteOutcome =
   /** Authentic, but carrying no sender or no message id — nothing to act on. */
   | 'malformed'
   | 'invalid_number'
-  | 'media_unsupported'
-  /** The number pressed STOP — nothing is sent to it and nothing is routed. */
-  | 'unsubscribed'
   | 'rate_limited'
   /** Recorded and handed to C1's queue. */
   | 'handed_off'
@@ -146,7 +144,11 @@ export type InboundRouteOutcome =
   /** The share started but Linq had no city locality yet. No nudge. */
   | 'location_unread'
   /** VIL-226 · Linq said a sending line is flagged or throttled, or that it recovered. */
-  | 'line_health';
+  | 'line_health'
+  /** VIL-448 · Linq group: a reminder ask whose confirmation could not be written, did
+   * not land, or was held because the group may no longer hear it. Nothing was set and
+   * nothing was sent. Never folded into `intake`, which says Hale replied. */
+  | 'group_reminder_unsent';
 
 /**
  * Route one authenticated inbound text. Exported so the routing decisions are testable
@@ -160,18 +162,17 @@ export type InboundRouteOutcome =
  */
 function linqTurnBind(
   inbound: InboundMessage,
-): { chatId: string; replyToMessageId?: string | null } | undefined {
+): { chatId: string; replyToMessageId?: string | null; isGroup: boolean } | undefined {
   if (!inbound.chatId) return undefined;
   if (inbound.isGroup === true) {
-    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId };
+    return { chatId: inbound.chatId, replyToMessageId: inbound.providerId, isGroup: true };
   }
-  return { chatId: inbound.chatId };
+  return { chatId: inbound.chatId, isGroup: false };
 }
 
 export async function routeInboundText(
   deps: InboundRouteDeps,
   inbound: InboundMessage,
-  media: number,
 ): Promise<InboundRouteOutcome> {
   const typing = armDelayedImessageTyping({
     channel: inbound.transport ?? 'sms',
@@ -186,12 +187,8 @@ export async function routeInboundText(
       keepTyping: typing.rearm,
     };
 
-    // Media is answered here, but never before the CASL keywords: see the module note.
-    if (media > 0 && (await optOutIntentOf(inbound.body)) === null) {
-      return replyMediaUnsupported(deps.database, inbound, intake);
-    }
-
     const outcome = await handleInboundSms(deps.database, inbound, intake);
+    if (outcome.status === 'rate_limited') return 'rate_limited';
     if (outcome.status === 'ignored' && outcome.reason === 'no_open_conversation') {
       await typing.stop();
       return handOffToConversation(deps, inbound);
@@ -200,7 +197,7 @@ export async function routeInboundText(
     if (outcome.status === 'first_touch_unsent') {
       deps.log.error(
         { providerMessageId: inbound.providerId, reason: outcome.reason },
-        'inbound: a first text got no reply; the first-reply sweep owes it one',
+        'inbound: an onboarding text got no reply',
       );
       return 'intake_unsent';
     }
@@ -239,10 +236,11 @@ function keywordOutcome(
   if (ack === 'provider_answered') return 'keyword_provider_answered';
   if (ack === 'sent') return 'intake';
   if (ack === 'voice_unsent') {
-    // The opt-out reader revoked the channel; its confirmation was empty, so nothing went out.
+    // The opt-out reader's stop or start ran; its confirmation was empty or withheld, so
+    // nothing went out.
     deps.log.error(
       { providerMessageId: inbound.providerId },
-      'inbound: opt-out revoked, model confirmation unsent',
+      'inbound: opt-out read handled, model confirmation unsent',
     );
     return 'intake_unsent';
   }
@@ -251,98 +249,6 @@ function keywordOutcome(
     'inbound: re-enrolled this number and the provider permanently refused the acknowledgment — its opt-out list still holds a number our ledger now says is reachable',
   );
   return 'keyword_ack_refused';
-}
-
-/**
- * The MMS answer. Two guards before it can text anyone:
- *
- * CONSENT. A number whose channel is revoked pressed STOP, and this is the one
- * outbound A3 owns outright — so it refuses rather than sending an app link to
- * someone who asked to be left alone (rule #1 / CASL). It would fail anyway once
- * the provider's opt-out list rejects the send (error 21610), and that failure would
- * throw out of the transport and turn the webhook into a 500 Linq then retries.
- *
- * RATE. It re-checks the SAME limiter, key, and route the machine uses, so the two
- * paths share one budget rather than each granting its own — otherwise an attacker
- * could double the outbound they can provoke just by attaching a picture.
- */
-async function replyMediaUnsupported(
-  database: Database,
-  inbound: InboundMessage,
-  intake: IntakeDeps,
-): Promise<InboundRouteOutcome> {
-  const phoneE164 = normalizePhoneE164(inbound.from);
-  if (!phoneE164) return 'invalid_number';
-
-  if (await findRevokedChannelOwner(database, phoneE164)) {
-    return 'unsubscribed';
-  }
-
-  // A family-group turn the Linq door already charged to the chat spends nothing here,
-  // exactly as in the machine.
-  if (inbound.budget !== 'chat') {
-    const decision = await intake.limiter.check(
-      phoneBlindIndex(phoneE164),
-      'sms-inbound',
-      RATE_LIMITS['sms-inbound'],
-    );
-    if (!decision.allowed) return 'rate_limited';
-  }
-
-  if (intake.stopTyping) {
-    try {
-      await intake.stopTyping();
-    } catch (err) {
-      console.warn(
-        { err: err instanceof Error ? err.name : 'unknown' },
-        'linq: typing indicator did not stop',
-      );
-    }
-  }
-  const { providerMessageId } = await intake.transport.send({
-    to: phoneE164,
-    body: mediaUnsupportedReply(),
-  });
-  // The line just sent is a real outbound: when the number belongs to an enrolled
-  // household member, their ledger must show it (rule #6). A stranger's MMS stays
-  // unrecorded by structural necessity, not omission — channel_messages.family_id is
-  // NOT NULL, so there is no row it could occupy before a family exists.
-  // iMessage records the pipe it actually used. An SMS media line stays 'sms'.
-  const ledgerChannel = inbound.transport === 'imessage' ? 'imessage' : 'sms';
-  const owner = await resolveVerifiedChannelByPhone(database, phoneE164);
-  if (owner) {
-    const now = intake.now ?? inbound.receivedAt;
-    const [row] = await database
-      .insert(schema.channelMessages)
-      .values({
-        familyId: owner.familyId,
-        parentUserId: owner.userId,
-        channel: ledgerChannel,
-        direction: 'out',
-        category: 'reply',
-        providerMessageId,
-        providerChatId: inbound.transport === 'imessage' ? (inbound.chatId ?? null) : null,
-        status: acceptedStatus(ledgerChannel),
-        body: null,
-        // A fixed line that answered instead of the coach — the same vocabulary the
-        // router's deflection replies persist (migration 0103).
-        replySource: 'fixed',
-        sentAt: now,
-      })
-      .returning({ id: schema.channelMessages.id });
-    const channelMessageId = row?.id;
-    if (!channelMessageId) {
-      throw new Error('inbound: channel_messages insert returned no row');
-    }
-    await database.insert(schema.auditLog).values({
-      familyId: owner.familyId,
-      actor: owner.userId,
-      actionTaken: 'sms_reply_sent',
-      targetTable: 'channel_messages',
-      targetId: channelMessageId,
-    });
-  }
-  return 'media_unsupported';
 }
 
 /**
@@ -422,6 +328,9 @@ async function handOffToConversation(
       // Inbound bodies ARE stored: this is the parent's own instruction, and C3 treats
       // it as the legal instrument of an approval (the locked A2 contract).
       body: inbound.body,
+      inboundMedia: persistableMedia(inbound.media),
+      // VIL-463: the door's group bit, so a reconciler re-drive can say it too.
+      inGroup: inbound.isGroup ?? null,
       sentAt: inbound.receivedAt,
     })
     .onConflictDoNothing({

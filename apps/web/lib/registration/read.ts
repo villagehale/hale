@@ -1,141 +1,202 @@
-import type { RegistrationSourceState } from '@hale/db';
-import { SPOT_PORTAL_HOSTS, portalForMunicipality, sanitizeSpotUrl } from '~/lib/channel/spots/url';
-import { pipelineClient } from '~/lib/pipeline/client';
-import { zonedLocalInstant } from '~/lib/plan/spine';
-import { dayKeyIn } from '~/lib/plan/spine';
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
+import type { RegistrationWindow } from '@hale/db';
+import { ZodError } from 'zod';
+import { SPOT_PORTAL_HOSTS, sanitizeSpotUrl } from '~/lib/channel/spots/url';
+import { StructuredOutputError } from '~/lib/pipeline/structured';
 import { MAX_PAGE_TEXT_CHARS, stripHtml } from './fetch';
 import {
+  type BusyReadingReason,
   type LiveRegistrationDate,
   type LiveRegistrationReading,
+  type RegistrationReadSource,
+  type UnreadableReadingReason,
+  type VerifiedRegistrationReading,
   normalizeExtractedRegistration,
   readCourseRegistration,
+  registrationAnchor,
 } from './live-reading';
-import { resolveMunicipalities } from './match-registration-windows';
-import { createRegistrationPageBytesFetch, registrationPageUrl } from './page';
-import { RegistrationPdfError, registrationPdfText } from './pdf';
+import { dayKeyIn } from '~/lib/plan/spine';
+import { resolveFamilyOpen } from './match-registration-windows';
+import {
+  type RegistrationPageFetch,
+  createRegistrationPageBytesFetch,
+  registrationPageUrl,
+} from './page';
+import { type RegistrationPdfRead, registrationPdfText } from './pdf';
 import { type CycleIdentity, type ExtractedWindow, extractPublishedWindow } from './verify-window';
 
-export interface RegistrationTarget extends CycleIdentity {
-  sourceUrl: string;
-  timeZone: string | null;
-  residentTiers?: boolean;
+/**
+ * VIL-423 — read a registration page live, when a date is needed, and return only what
+ * that read verified. No stored date is ever a fallback, and the caller cannot hand the
+ * reader a time zone: it comes from the page, or from the portal's own registry entry.
+ */
+
+export type RegistrationTarget = CycleIdentity & { sourceUrl: string };
+
+/** The seam tests drive. `fetchBody` is typed as the hardened fetcher's named outcomes,
+ * but a shape is not a guard: production builds its reader only through
+ * {@link createLiveRegistrationReader}, which constructs that fetcher itself. */
+export interface RegistrationReaderPorts {
+  fetchBody(url: string): Promise<RegistrationPageFetch>;
+  extract(cycle: CycleIdentity, pageText: string): Promise<ExtractedWindow>;
 }
+
 export type RegistrationReader = (
   target: RegistrationTarget,
   now: Date,
 ) => Promise<LiveRegistrationReading>;
 
-/** Cache only inside one operation. A send uses a new reader, never a stored result. */
-export function createRegistrationReader(
-  ports: {
-    fetchBody: (url: string) => Promise<string | Uint8Array>;
-    extract: (target: CycleIdentity, text: string) => Promise<ExtractedWindow>;
-  } = {
-    fetchBody: createRegistrationPageBytesFetch(),
-    extract: (target, text) => extractPublishedWindow(target, text, { client: pipelineClient() }),
-  },
-): RegistrationReader {
-  const pages = new Map<string, Promise<string | Uint8Array>>();
-  const pdfTexts = new Map<string, Promise<string>>();
+const PDF_MAGIC_SCAN_BYTES = 1024;
+
+function isPdf(body: Uint8Array): boolean {
+  return Buffer.from(body.subarray(0, PDF_MAGIC_SCAN_BYTES)).includes('%PDF-');
+}
+
+/** A model failure the reader names, as opposed to a deploy bug (a missing skill
+ * file, a programming error) that must surface rather than read as "no date". */
+function isModelFailure(error: unknown): boolean {
+  return (
+    error instanceof StructuredOutputError ||
+    error instanceof Anthropic.APIError ||
+    error instanceof ZodError
+  );
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/** One line per read: ids and outcome names only — no page text, quote, cycle label,
+ * path or query string. */
+function logReading(target: RegistrationTarget, reading: LiveRegistrationReading): void {
+  console.info(
+    {
+      outcome: reading.status,
+      reason: 'reason' in reading ? reading.reason : null,
+      reader: reading.reader,
+      municipality: target.municipality,
+      programDomain: target.programDomain,
+      host: hostOf(target.sourceUrl),
+    },
+    'registration read',
+  );
+}
+
+/** A reader whose cache (bytes and PDF text by URL, readings by target) lives only as
+ * long as this reader: one operation. A later send builds a new one. */
+export function createRegistrationReader(ports: RegistrationReaderPorts): RegistrationReader {
+  const bodies = new Map<string, Promise<RegistrationPageFetch>>();
+  const pdfTexts = new Map<string, Promise<RegistrationPdfRead>>();
   const readings = new Map<string, Promise<LiveRegistrationReading>>();
-  let started: number | null = null;
-  return (target, now) => {
-    const key = JSON.stringify(target);
-    const existing = readings.get(key);
-    if (existing) return existing;
-    const read = (async (): Promise<LiveRegistrationReading> => {
-      started ??= Date.now();
-      const source = { sourceUrl: target.sourceUrl, timeZone: target.timeZone, checkedAt: now };
-      if (readings.size >= 24 || Date.now() - started > 120_000) {
-        return { ...source, reader: 'ai', status: 'unreadable', reason: 'read_budget' };
-      }
-      let body: string | Uint8Array;
-      try {
-        registrationPageUrl(target.sourceUrl);
-        let pending = pages.get(target.sourceUrl);
-        if (!pending) {
-          pending = ports.fetchBody(target.sourceUrl);
-          pages.set(target.sourceUrl, pending);
-        }
-        body = await pending;
-      } catch {
-        return { ...source, reader: 'ai', status: 'unreadable', reason: 'fetch_failed' };
-      }
-      try {
-        let pageText: string;
-        if (typeof body !== 'string' && Buffer.from(body.subarray(0, 1024)).includes('%PDF-')) {
-          let text = pdfTexts.get(target.sourceUrl);
-          if (!text) {
-            text = registrationPdfText(body);
-            pdfTexts.set(target.sourceUrl, text);
-          }
-          pageText = await text;
-        } else {
-          const raw = typeof body === 'string' ? body : Buffer.from(body).toString('utf8');
-          if (raw.startsWith('%PDF-')) throw new RegistrationPdfError('pdf_unreadable');
-          const course = sanitizeSpotUrl(target.sourceUrl);
-          if (course.ok) {
-            return validateReadingClock(
-              readCourseRegistration(
-                { ok: true, raw },
-                {
-                  ...source,
-                  courseId: course.courseId,
-                  timeZone: SPOT_PORTAL_HOSTS[course.host]!.timeZone,
-                },
-              ),
-            );
-          }
-          pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
-        }
-        const extracted = await ports.extract(
-          { ...target, referenceDate: now.toISOString().slice(0, 10) },
-          pageText,
-        );
-        const quote = extracted.timeZoneEvidence;
-        const timeZone =
-          target.timeZone ??
-          (quote && pageText.includes(quote) ? (extracted.timeZone ?? null) : null);
-        return validateReadingClock(
-          normalizeExtractedRegistration(
-            { ok: true, extracted, pageText },
-            { ...source, timeZone },
-          ),
-        );
-      } catch (error) {
-        return {
+
+  const cached = <T>(cache: Map<string, Promise<T>>, key: string, load: () => Promise<T>) => {
+    let pending = cache.get(key);
+    if (!pending) {
+      pending = load();
+      cache.set(key, pending);
+    }
+    return pending;
+  };
+
+  async function read(target: RegistrationTarget, now: Date): Promise<LiveRegistrationReading> {
+    const source: RegistrationReadSource = { sourceUrl: target.sourceUrl, checkedAt: now };
+    const course = sanitizeSpotUrl(target.sourceUrl);
+    const portal = course.ok ? SPOT_PORTAL_HOSTS[course.host] : undefined;
+    const unreadable = (reason: UnreadableReadingReason): LiveRegistrationReading => ({
+      ...source,
+      reader: portal ? 'perfectmind' : 'ai',
+      status: 'unreadable',
+      reason,
+    });
+    const busy = (reason: BusyReadingReason): LiveRegistrationReading => ({
+      ...source,
+      reader: portal ? 'perfectmind' : 'ai',
+      status: 'busy',
+      reason,
+    });
+
+    const check = registrationPageUrl(target.sourceUrl);
+    if (check.outcome === 'refused') return unreadable(check.reason);
+    const url = check.url;
+
+    const fetched = await cached(bodies, url, () => ports.fetchBody(url));
+    if (fetched.outcome === 'busy') return busy(fetched.reason);
+    if (fetched.outcome === 'redirected') return unreadable('redirected');
+    if (fetched.outcome !== 'fetched') return unreadable(fetched.reason);
+    const body = fetched.body;
+
+    let pageText: string;
+    if (isPdf(body)) {
+      const pdf = await cached(pdfTexts, url, () => registrationPdfText(body));
+      if (pdf.outcome === 'busy') return busy(pdf.reason);
+      if (pdf.outcome === 'refused') return unreadable(pdf.reason);
+      if (pdf.outcome === 'reader_fault') return unreadable('pdf_reader_fault');
+      pageText = pdf.pageDerivedText;
+    } else {
+      const raw = Buffer.from(body).toString('utf8');
+      if (course.ok && portal) {
+        return readCourseRegistration(raw, {
           ...source,
-          reader: 'ai',
-          status: 'unreadable',
-          reason: error instanceof RegistrationPdfError ? error.reason : 'extract_failed',
-        };
+          courseId: course.courseId,
+          portalTimeZone: portal.timeZone,
+        });
       }
-    })();
-    readings.set(key, read);
-    return read;
+      pageText = stripHtml(raw).slice(0, MAX_PAGE_TEXT_CHARS);
+    }
+
+    let extracted: ExtractedWindow;
+    try {
+      // Built field by field: neither the URL nor anything about a family reaches the model.
+      extracted = await ports.extract(
+        {
+          municipality: target.municipality,
+          programDomain: target.programDomain,
+          cycleLabel: target.cycleLabel,
+        },
+        pageText,
+      );
+    } catch (error) {
+      if (isModelFailure(error)) return unreadable('extract_failed');
+      throw error;
+    }
+    return normalizeExtractedRegistration(extracted, pageText, source);
+  }
+
+  return (target, now) => {
+    const key = JSON.stringify([
+      target.municipality,
+      target.programDomain,
+      target.cycleLabel,
+      target.sourceUrl,
+    ]);
+    return cached(readings, key, async () => {
+      const reading = await read(target, now);
+      logReading(target, reading);
+      return reading;
+    });
   };
 }
 
-function validateReadingClock(reading: LiveRegistrationReading): LiveRegistrationReading {
-  if (reading.status !== 'verified') return reading;
-  try {
-    for (const date of reading.dates) registrationAnchor(reading, date);
-  } catch {
-    return {
-      sourceUrl: reading.sourceUrl,
-      checkedAt: reading.checkedAt,
-      timeZone: reading.timeZone,
-      reader: reading.reader,
-      status: 'unverified',
-      reason: 'invalid_date',
-    };
-  }
-  return reading;
+/** The one production reader. The fetch port is the DNS-pinned fetcher that never
+ * follows a redirect, built here so no caller can hand in another; the URL check inside
+ * the reader is then never the only SSRF guard. The model client is the caller's. */
+export function createLiveRegistrationReader(client: AgentClient): RegistrationReader {
+  return createRegistrationReader({
+    fetchBody: createRegistrationPageBytesFetch(),
+    extract: (cycle, pageText) => extractPublishedWindow(cycle, pageText, { client }),
+  });
 }
 
+/** What a catalog window asks the reader. A district row names its district in the
+ * cycle label, so the model reads that district's dates. */
 export function windowReadTarget(
   window: Pick<
-    RegistrationSourceState,
+    RegistrationWindow,
     'municipality' | 'programDomain' | 'cycleLabel' | 'sourceUrl' | 'district'
   >,
 ): RegistrationTarget {
@@ -146,24 +207,25 @@ export function windowReadTarget(
       ? `${window.cycleLabel} (${window.district.replaceAll('_', ' ')})`
       : window.cycleLabel,
     sourceUrl: window.sourceUrl,
-    timeZone: 'America/Toronto',
-    residentTiers: portalForMunicipality(window.municipality) !== null,
   };
 }
 
+/** The date a family can act on: the resident opening only for a resident family, else
+ * the general opening. Never an unclassified opening — an unlabelled date is not
+ * evidence that anyone in particular may register on it. */
 export function registrationDate(
   reading: LiveRegistrationReading,
   resident: boolean,
 ): LiveRegistrationDate | null {
   if (reading.status !== 'verified') return null;
   return (
-    (resident ? reading.dates.find((date) => date.kind === 'resident_open') : null) ??
+    (resident ? reading.dates.find((date) => date.kind === 'resident_open') : undefined) ??
     reading.dates.find((date) => date.kind === 'general_open') ??
     null
   );
 }
 
-/** A corroborated page fact, never an eligible date for scheduling a reminder. */
+/** An unlabelled opening the model left unclassified — not evidence a family may act. */
 export function unclassifiedRegistrationDate(
   reading: LiveRegistrationReading,
 ): LiveRegistrationDate | null {
@@ -172,37 +234,13 @@ export function unclassifiedRegistrationDate(
     : null;
 }
 
-/** Date-only anchors are scheduling markers, not a published midnight opening. */
-export function registrationAnchor(
-  reading: LiveRegistrationReading,
-  date: LiveRegistrationDate,
-): Date {
-  if (!reading.timeZone) throw new Error('registration: missing source zone');
-  const at = zonedLocalInstant(date.date, date.time ?? '12:00', reading.timeZone);
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: reading.timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(at);
-  const part = (name: string) => parts.find((p) => p.type === name)?.value;
-  if (
-    `${part('year')}-${part('month')}-${part('day')}` !== date.date ||
-    `${part('hour')}:${part('minute')}` !== (date.time ?? '12:00')
-  ) {
-    throw new Error('registration: nonexistent source wall clock');
-  }
-  return at;
-}
-
+/** Clock facts for a composer: calendar day, published time or none, source zone. */
 export function registrationWhen(
   reading: LiveRegistrationReading,
   date: LiveRegistrationDate,
-): string {
-  return `${date.date}${date.time === null ? ' (opening time not published)' : ` at ${date.time}`} ${reading.timeZone}`;
+): { date: string; time: string | null; timeZone: string } | null {
+  if (reading.status !== 'verified') return null;
+  return { date: date.date, time: date.time, timeZone: reading.timeZone };
 }
 
 export function registrationHasOpened(
@@ -210,37 +248,40 @@ export function registrationHasOpened(
   date: LiveRegistrationDate,
   now: Date,
 ): boolean {
+  if (reading.status !== 'verified') return false;
   return date.time === null
-    ? date.date < dayKeyIn(now, reading.timeZone!)
+    ? date.date < dayKeyIn(now, reading.timeZone)
     : registrationAnchor(reading, date) <= now;
 }
 
-export type LiveRegistrationWindow = RegistrationSourceState & { reading: LiveRegistrationReading };
+export type LiveRegistrationWindow = RegistrationWindow & {
+  reading: VerifiedRegistrationReading;
+};
 
-/** Only source metadata goes into the reader. No stored date is a fallback. */
+/**
+ * Catalog windows with every date replaced by a live reading, or dropped. Only the
+ * window's source metadata goes into the reader. A resident-only date applies only to a
+ * family `resolveFamilyOpen` places in that one town; the postal code stays in code.
+ */
 export async function readRegistrationWindows(
-  windows: readonly RegistrationSourceState[],
+  windows: readonly RegistrationWindow[],
   reader: RegistrationReader,
   now: Date,
-  postal: string | null = null,
+  postal: string | null,
 ): Promise<LiveRegistrationWindow[]> {
   const live: LiveRegistrationWindow[] = [];
-  const municipalities = postal ? resolveMunicipalities(postal) : [];
   for (const window of windows) {
     const reading = await reader(windowReadTarget(window), now);
     if (reading.status !== 'verified') continue;
-    const general = reading.dates.find((date) => date.kind === 'general_open');
+    const { isResidentWindow } = resolveFamilyOpen(window, postal);
     const resident = reading.dates.find((date) => date.kind === 'resident_open');
-    // A resident-only date is usable only for a positively identified resident family.
-    const applicable =
-      general ??
-      (municipalities.length === 1 && municipalities[0] === window.municipality ? resident : null);
-    if (!applicable) continue;
+    const open = registrationDate(reading, false) ?? (isResidentWindow ? resident : undefined);
+    if (!open) continue;
     const preview = reading.dates.find((date) => date.kind === 'preview');
     live.push({
       ...window,
       reading,
-      openAt: registrationAnchor(reading, applicable),
+      openAt: registrationAnchor(reading, open),
       residentOpenAt: resident ? registrationAnchor(reading, resident) : null,
       previewAt: preview ? registrationAnchor(reading, preview) : null,
       residentPriorityDays: null,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked, in Spanish, to stop sending email without asking first, and autonomy was turned off this turn for send_email and reply_to_email. The reply confirms that truthfully in one short Spanish sentence, in the parent's language. Opening with the parent's name is recall, not a greeting. No machinery, no app referral, no extra question.",
+    "score": 5
+  }
+}

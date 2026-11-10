@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, it wrongly describes the day as a day off with breathing room when a timed swim class is at 10:00 AM, the time given is 3:00 with no AM/PM and is wrong, and it calls the event today's date as tomorrow.",
+    "score": 1
+  }
+}

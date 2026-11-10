@@ -1,4 +1,4 @@
-import type { Municipality, RegistrationSourceState } from '@hale/db';
+import type { Municipality, RegistrationWindow } from '@hale/db';
 import {
   type TorontoDistrict,
   districtForFsa,
@@ -30,14 +30,14 @@ import {
 export const AGE_TOLERANCE_MONTHS = 6;
 
 export interface RegistrationMatch {
-  window: RegistrationSourceState;
+  window: RegistrationWindow;
   /**
    * Every cycle this municipality opens at this same instant, on the same page, under
    * the same published age band — one registration EVENT, however many table rows the
    * source prints it as. Always contains `window` (the representative the claim and
    * the audit row key on) and is length 1 for an ordinary window.
    */
-  cycleWindows: readonly RegistrationSourceState[];
+  cycleWindows: readonly RegistrationWindow[];
   /** The children (ages in months) this window's band admits, in input order. */
   matchedChildAgesMonths: number[];
   /** True when NO child is squarely in band and the match rests on the ±6-month
@@ -104,9 +104,9 @@ export function preferDistrictRows<
 
 /** District-scoped rows are not for a family whose FSA did not resolve to one. */
 function windowsForPostal(
-  windows: readonly RegistrationSourceState[],
+  windows: readonly RegistrationWindow[],
   postal: string,
-): RegistrationSourceState[] {
+): RegistrationWindow[] {
   const district = resolveDistrict(postal);
   if (district === null) return windows.filter((window) => window.district == null);
   return preferDistrictRows(windows, district);
@@ -122,7 +122,7 @@ function windowsForPostal(
  * would eventually disagree about which date a household is owed.
  */
 export function resolveFamilyOpen(
-  window: RegistrationSourceState,
+  window: RegistrationWindow,
   /** The family's postal code or FSA. Null (a family with no area on file) resolves to
    * nothing, which is the safe answer: they get the general date, never a head start
    * they cannot use. */
@@ -140,7 +140,7 @@ export function resolveFamilyOpen(
 /** A cycle this family's town has ALREADY opened — the evidence that the town is
  * between cycles rather than off the radar. */
 export interface PastRegistrationCycle {
-  window: RegistrationSourceState;
+  window: RegistrationWindow;
   /** The instant THIS family could first have registered, so a resident head start is
    * the date that already went. */
   openedForFamilyAt: Date;
@@ -164,7 +164,7 @@ export interface PastRegistrationCycle {
  * child, so narrowing it by band would silence a family whose town plainly did open.
  */
 export function latestPastCycle(input: {
-  windows: readonly RegistrationSourceState[];
+  windows: readonly RegistrationWindow[];
   postal: string;
   now: Date;
 }): PastRegistrationCycle | null {
@@ -206,8 +206,8 @@ export function latestPastCycle(input: {
  * come back as one the sweep is still waiting for.
  */
 function knownCycleLabelsFor(
-  windows: readonly RegistrationSourceState[],
-  of: RegistrationSourceState,
+  windows: readonly RegistrationWindow[],
+  of: RegistrationWindow,
 ): ReadonlySet<string> {
   return new Set(
     windows
@@ -222,7 +222,8 @@ function knownCycleLabelsFor(
 /**
  * How long after a municipal open the page is still where a parent should be sent.
  *
- * Three weeks: past this horizon the popular classes are gone
+ * Three weeks: the same horizon the civic projection already calls this week's news
+ * (FORWARD_WINDOW_DAYS, lib/civic/project.ts), and past it the popular classes are gone
  * and the between-cycles sentence is the honest one. The dataset has NO close date —
  * `open_at` is the only required instant (registration-windows.ts) — so this bound is
  * the whole of what stops "opened in March" from reading as news in September.
@@ -246,7 +247,7 @@ export const OPEN_NOW_MAX_AGE_DAYS = 21;
  * registration absence, so a town never gets two cycles in a stranger's first text.
  */
 export function stillOpenCycle(input: {
-  windows: readonly RegistrationSourceState[];
+  windows: readonly RegistrationWindow[];
   postal: string;
   childrenAgesMonths: readonly number[];
   now: Date;
@@ -289,7 +290,7 @@ export function inBand(
 }
 
 export function matchRegistrationWindows(input: {
-  windows: readonly RegistrationSourceState[];
+  windows: readonly RegistrationWindow[];
   postal: string;
   childrenAgesMonths: readonly number[];
   now: Date;
@@ -352,10 +353,7 @@ export function matchRegistrationWindows(input: {
  * fit notes, so merging them would attach one cycle's band to another's children.
  */
 function collapseCoOpeningCycles(sorted: readonly RegistrationMatch[]): RegistrationMatch[] {
-  const byEvent = new Map<
-    string,
-    { match: RegistrationMatch; windows: RegistrationSourceState[] }
-  >();
+  const byEvent = new Map<string, { match: RegistrationMatch; windows: RegistrationWindow[] }>();
   for (const match of sorted) {
     const { window } = match;
     const key = [

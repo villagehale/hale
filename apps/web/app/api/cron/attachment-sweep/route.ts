@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sweepExpiredForwards } from '~/lib/channel/email/forward-purge';
+import { sweepExpiredForwards } from '~/lib/retention/forward-purge';
 import { sweepUnlinkedAttachments } from '~/lib/coach/attachments';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';

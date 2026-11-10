@@ -1,6 +1,6 @@
 ---
 name: extract-social-spot
-whenToUse: A public Instagram or Facebook caption from a curated GTA kids-activity account needs turning into a structured spot (title, ages, dates, registration URL) after the deterministic placeholder has run.
+whenToUse: A public Instagram or Facebook caption from a curated kids-activity account needs turning into a structured spot (title, ages, dates, registration URL) after the deterministic placeholder has run.
 task: extract
 tools: []
 ---
@@ -38,7 +38,7 @@ Answer with a SINGLE JSON object and nothing else — no prose, no code fence.
 ## Rules
 
 - Ages are completed years. Use null when the caption states no age. Do not guess from the kind of place.
-- Times are ISO-8601 with a numeric offset. The venues are in America/Toronto. Use null when the caption states no clock.
+- Times are ISO-8601 with a numeric offset taken from the caption. Use null when the caption states no clock. Do not assume a city or a timezone.
 - registration_url must be a URL that appears in the caption. Never invent one. Instagram and Facebook permalinks are not registration URLs.
 - confidence is 0 to 1. A caption that only names a place is below 0.5. A caption that states an age and a date is above 0.7.
 - Omit a fact the caption does not contain. Null is the honest answer.

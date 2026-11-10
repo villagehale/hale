@@ -5,6 +5,7 @@ import { auth } from '~/auth';
 import { buildRootHeroes } from '~/components/hale/hero-map';
 import { PortalShell } from '~/components/portal/shell';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
+import { hashFamilyId } from '~/lib/analytics/server-capture';
 import { authConfigured } from '~/lib/auth-config';
 import { RETURN_PATH_HEADER, signInHref } from '~/lib/auth/redirect';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
@@ -55,11 +56,16 @@ export default async function AuthedLayout({ children }: { children: React.React
   // means the account is one no front door produces any more (an old test login, a
   // half-finished web signup). /sign-in is the phone door that can reach a real
   // family, and it renders rather than redirecting, so this cannot become a loop.
+  // The portal identifies as the HASHED family id — the same distinct id the SMS-side
+  // agent events use (hashFamilyId) — so a portal replay joins the family's SMS events
+  // without a user id, email, or phone ever reaching PostHog (rule #1).
+  let analyticsId: string | null = null;
   if (authEnabled && session?.user?.id) {
     const familyId = await resolveFamilyForUser(session.user.id, db());
     if (!familyId) {
       redirect('/sign-in');
     }
+    analyticsId = hashFamilyId(familyId);
     // Day-grain retention substrate; after() so the paint never waits on it.
     after(() => markFamilyActiveToday(db(), familyId));
   }
@@ -82,7 +88,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      {session?.user?.id ? <IdentifyUser userId={session.user.id} /> : null}
+      {analyticsId ? <IdentifyUser userId={analyticsId} /> : null}
       <PortalShell canSignOut={authEnabled} roots={roots}>
         {shellBanner}
         {children}

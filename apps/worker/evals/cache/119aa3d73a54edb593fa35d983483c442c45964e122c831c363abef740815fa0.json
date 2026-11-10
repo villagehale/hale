@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The event is an all-day PD Day tomorrow, which the text states correctly with no clock time. However, 'so there is no school' is an unstated inference drawn from the title, not a fact in the facts, which is a fact failure. The wish 'Hope you get a nice, easy start to the week' is unrequested filler, a wish with no basis in the facts. Both caps and the inference push the score low.",
+    "score": 2
+  }
+}

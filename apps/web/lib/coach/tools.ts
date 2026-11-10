@@ -1,12 +1,16 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
-import { deriveStage } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import type { Database } from '@hale/db';
 import { z } from 'zod';
-import { selectByActivityQuery } from '~/lib/coach/activity-query';
-import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { formatCalendarDayLabel } from '~/lib/format/datetime';
-import { safeHttpUrl } from '~/lib/format/http-url';
+import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
+import {
+  type ActivityFinder,
+  type ActivityPick,
+  createActivityFinder,
+} from '~/lib/channel/activity/lane';
+import { linkRef } from '~/lib/channel/coach/activity-links';
+import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
+import type { NamedAreaReader } from '~/lib/channel/named-area';
+import { activityClient } from '~/lib/pipeline/client';
 import {
   activityReviewsSurfaceEnabled,
   familyAreaKey,
@@ -15,9 +19,7 @@ import {
   subjectKey,
 } from '~/lib/reviews/aggregate';
 import { biasFindOrder, readHouseholdFindBias } from '~/lib/reviews/household-bias';
-import { toVillageCandidateView } from '~/lib/village/mappers';
-import { visibleCandidates } from '~/lib/village/visibility';
-import { spokenFind } from './spoken-find';
+import { findFamilyActivities, recordActivityOffers } from '~/lib/village/live';
 
 /**
  * The Village read shared by every surface that offers it (VIL-221 · C2).
@@ -31,8 +33,6 @@ import { spokenFind } from './spoken-find';
  * arg is rejected before the handler runs.
  */
 
-const MEMORY_RESULT_LIMIT = 15;
-
 /**
  * The childId stand-in used in every `inputExamples` entry.
  *
@@ -44,25 +44,6 @@ const MEMORY_RESULT_LIMIT = 15;
  * and this all-zero v4 uuid is unmistakably a placeholder rather than a row.
  */
 export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
-
-/**
- * The family's children currently in the teenager stage, derived LIVE from DOB
- * (never stored) — the source-side teen filter for `search_village`, which never
- * names a childId and so never trips the guard.
- */
-async function teenChildIdsForFamily(database: Database, familyId: string): Promise<Set<string>> {
-  const children = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-  return new Set(
-    children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
-  );
-}
-
-function isTeenAttributed(childId: string | null, teenChildIds: ReadonlySet<string>): boolean {
-  return childId !== null && teenChildIds.has(childId);
-}
 
 /** One activity Hale may actually put in front of a parent. An offer a parent cannot
  * turn up to is not an offer: the title and the day are always present.
@@ -80,8 +61,10 @@ interface OfferableActivity {
   summary: string;
   venue?: string;
   when: string;
-  /** The row's own page, only when it is an absolute http(s) URL. */
-  url?: string;
+  /** A ref for the row's own page, never the URL. The one id the model sees, and on
+   * purpose: the reply cites it and code attaches that exact page, so an invented ref
+   * attaches nothing and a typed URL is dropped (channel/coach/activity-links.ts). */
+  ref?: string;
 }
 
 /**
@@ -109,6 +92,7 @@ export interface OfferedCandidate {
  * about it. Paired rather than two arrays so a drop can never take one and leave the
  * other — that divergence is a count attached to the wrong activity. */
 interface OfferableEntry {
+  pick: ActivityPick;
   candidate: OfferableActivity;
   offer: OfferedCandidate | null;
 }
@@ -185,84 +169,84 @@ export function searchVillageTool(
    * path that collects a provenance nobody will use.
    */
   onOffered?: (offers: readonly OfferedCandidate[]) => void,
+  finder?: ActivityFinder,
+  areaReader?: NamedAreaReader,
 ): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. Quote `title` as given — do not paraphrase it — and use only that candidate's `when`. A date from a different candidate does not belong on this one. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
-    inputSchema: z.object({ query: z.string().optional() }),
+      'Find current local activities from live web sources for THIS family. Keep the public program/operator name in query and the requested month, year or date range in window, including on retries. When the parent names a different town, city, or area, pass that place alone as `area` (no street, no postal code) and the search uses it instead of the family home. Omit `area` to search around home. A place that cannot be searched comes back as `liveRead` `area_unusable`, `area_names_a_person` or `area_unread` with no candidates — home was not searched. Household names, addresses and postal codes must not be included. Unknown times remain unknown. Never answer from saved history.',
+    inputSchema: z.object({
+      query: z.string().optional(),
+      window: z.string().optional(),
+      area: z.string().min(1).optional(),
+    }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
-    inputExamples: [{ query: 'swim' }, {}],
+    inputExamples: [{ query: 'swim' }, {}, { query: 'trick or treat', area: 'Kingston' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      const timeZone = await readFamilyTimezone(database, ctx.familyId);
       const now = new Date();
-
-      const currentRunRows = await database
-        .select()
-        .from(schema.villageCandidates)
-        .where(
-          and(
-            eq(schema.villageCandidates.familyId, ctx.familyId),
-            isNull(schema.villageCandidates.supersededAt),
-          ),
-        )
-        .orderBy(
-          desc(schema.villageCandidates.confidence),
-          desc(schema.villageCandidates.discoveredAt),
-        )
-        .limit(MEMORY_RESULT_LIMIT);
-
-      const views = selectByActivityQuery(
-        visibleCandidates(currentRunRows, now, timeZone).map((row) =>
-          toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)),
-        ),
-        input.query,
+      // The finder `findFamilyActivities` calls is the radar read. The same finder
+      // is the one live search VIL-522 may spend afterwards, and only then — a
+      // short radar tops up once, a radar that already has two suitable finds
+      // does not search again. Intake and the nudge keep the single read.
+      const resolved = finder ?? createActivityFinder(activityClient);
+      let searched: ActivityQuery | null = null;
+      const radarRead: ActivityFinder = {
+        async find(query) {
+          searched = query;
+          return resolved.find(query);
+        },
+      };
+      const found = await findFamilyActivities(database, ctx.familyId, {
+        subject: input.query,
+        window: input.window,
+        area: input.area,
+        areaReader,
+        finder: radarRead,
         now,
-        timeZone,
-      );
-
-      const rowsById = new Map(currentRunRows.map((row) => [row.id, row]));
-      const offerable: OfferableEntry[] = [];
-      let inVerification = 0;
-      for (const view of views) {
-        if (view.teenAttributed) continue;
-        const venue = (view.venueName ?? '').trim();
-        if (venue === '' || view.eventDate === null) {
-          inVerification += 1;
-          continue;
-        }
-        const row = rowsById.get(view.id);
-        const spoken = spokenFind(view.title, venue);
-        const url = safeHttpUrl(view.sourceUrl);
-        const whenLabel = row?.whenLabel?.trim() ?? '';
-        const day = formatCalendarDayLabel(view.eventDate, now);
-        offerable.push({
-          candidate: {
-            title: spoken.title,
-            kind: view.kind,
-            summary: view.summary,
-            ...(spoken.venue === null ? {} : { venue: spoken.venue }),
-            when: whenLabel === '' ? day : `${day}, ${whenLabel}`,
-            ...(url === null ? {} : { url }),
-          },
-          offer: row
-            ? {
-                // The title the model was handed, so a later exact match is that
-                // string and not the stored column it was cleaned from.
-                title: spoken.title,
-                venue,
-                candidateId: row.id,
-                placeId: row.placeId,
-                civicVenueId: row.civicVenueId,
-                ...(url === null ? {} : { url }),
-              }
-            : null,
-        });
-      }
+      });
+      const query = searched;
+      const picks =
+        found.reason === null && query
+          ? (
+              await topUpShortRadar({
+                radar: found.picks,
+                liveSearch: async () => {
+                  const extra = await resolved.find(query);
+                  if (!extra.found) {
+                    console.info(
+                      { reason: extra.reason },
+                      'coach find: live top-up came back empty',
+                    );
+                    return [];
+                  }
+                  return extra.picks;
+                },
+              })
+            ).picks
+          : found.picks;
+      const offerable: OfferableEntry[] = picks.map((pick) => ({
+        pick,
+        candidate: {
+          title: pick.name,
+          kind: 'activity',
+          summary: [pick.ageFit, pick.when, pick.price].filter(Boolean).join(' — '),
+          venue: pick.sourceName,
+          when: pick.when ?? 'Current time could not be verified',
+          // A ref, not the page: the reply cites it and code attaches the URL.
+          ...(pick.sourceUrl ? { ref: linkRef(pick.sourceUrl) } : {}),
+        },
+        offer: {
+          title: pick.name,
+          venue: pick.sourceName,
+          candidateId: '',
+          placeId: pick.placeId ?? null,
+          civicVenueId: pick.civicVenueId ?? null,
+        },
+      }));
 
       const offerableNow = await withoutPooledNegatives(database, ctx.familyId, offerable);
       // VIL-366 · this household's own verdicts, after the pooled #677 drop. A
@@ -275,18 +259,31 @@ export function searchVillageTool(
         householdBias,
       );
       const candidates = ordered.map((entry) => entry.candidate);
-      const offered = ordered.flatMap((entry) => (entry.offer ? [entry.offer] : []));
+      const receipts = await recordActivityOffers(
+        database,
+        ctx.familyId,
+        ordered.map((entry) => entry.pick),
+        now,
+      );
+      const offered = receipts.map((row) => ({
+        title: row.title,
+        venue: row.venueName ?? '',
+        candidateId: row.id,
+        placeId: row.placeId,
+        civicVenueId: row.civicVenueId,
+        url: row.sourceUrl ?? undefined,
+      }));
       // EXACTLY the rows that went out as `candidates` — never the in-verification
       // count and never a teen-attributed row, which has no venue and no date and must
       // not be nameable at all (rule #1).
       onOffered?.(offered);
 
-      // No canned standing place. A fixed Baby/Toddler storytime was something the
-      // coach could "hand over", so the live web search never ran — and it was the
-      // wrong age. An empty candidate list is the signal the skill already treats as
-      // "call find_activities this turn". The field stays on the result so a turn that
-      // still receives one (an eval fixture) can name it; production does not fill it.
-      return { candidates, inVerification, standingOption: null };
+      return {
+        candidates,
+        inVerification: 0,
+        standingOption: null,
+        liveRead: found.reason ?? 'verified',
+      };
     },
   });
 }

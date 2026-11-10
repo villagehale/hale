@@ -7,6 +7,18 @@ import { playwrightSignupBrowser } from './browser';
 import { runAuthorizedSignup } from './run';
 import { recordSignupOffer } from './store';
 
+// The consent read and the reply are model calls. Tests stand in for both (no live calls).
+vi.mock('./consent-reader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./consent-reader')>();
+  const { stubConsentReader } = await import('./test-models');
+  return { ...actual, createSignupConsentReader: () => stubConsentReader() };
+});
+vi.mock('./outcome-reply', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./outcome-reply')>();
+  const { echoOutcomeWriter } = await import('./test-models');
+  return { ...actual, createSignupOutcomeWriter: () => echoOutcomeWriter() };
+});
+
 /**
  * Local mock booking forms only: a class, a ticket, and a restaurant
  * reservation. This file must not point the browser at a municipal or
@@ -398,9 +410,7 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('price_change');
     expect(posts).toHaveLength(0);
-    expect(result.reply).toBe(
-      `The price changed, so I stopped. Here's the page: ${base}/tickets-repriced`,
-    );
+    expect(result.reply).toContain('outcome=price_change');
   }, 60_000);
 
   it('reserves a restaurant table on the local mock without child details', async () => {
@@ -461,7 +471,7 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('session_full');
     expect(posts).toHaveLength(0);
-    expect(result.reply).toBe(`That session is full. Here's the page: ${base}/waitlist`);
+    expect(result.reply).toContain('outcome=session_full');
   }, 60_000);
 
   it('reserves a party table with the authorized size and seating note', async () => {
@@ -501,9 +511,7 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('unexpected_field');
     expect(posts).toHaveLength(0);
-    expect(result.reply).toBe(
-      `The form asks something I wasn't expecting, so I stopped. Here's the page: ${base}/unexpected`,
-    );
+    expect(result.reply).toContain('outcome=unexpected_field');
   }, 60_000);
 
   it('hands back a timed open without joining the rush', async () => {
@@ -518,7 +526,7 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('timed_open');
     expect(posts).toHaveLength(0);
-    expect(result.reply).toBe(`Registration isn't open yet. Here's the page: ${base}/timed-open`);
+    expect(result.reply).toContain('outcome=timed_open');
   }, 60_000);
 
   it('hands back when the page asks for a resident id', async () => {
@@ -533,9 +541,7 @@ describe('authorized signup sandbox', () => {
     const result = await book(seeded);
     expect(result.outcome).toBe('resident_verification');
     expect(posts).toHaveLength(0);
-    expect(result.reply).toBe(
-      `It needs to verify you live there, so that's yours. Here's the page: ${base}/resident`,
-    );
+    expect(result.reply).toContain('outcome=resident_verification');
   }, 60_000);
 
   it('does not submit a local form that asks for a card', async () => {
@@ -549,9 +555,7 @@ describe('authorized signup sandbox', () => {
     });
     const result = await book(seeded);
     expect(result.outcome).toBe('payment');
-    expect(result.reply).toBe(
-      `It's asking for payment, so that part is yours. Here's the page: ${base}/pay`,
-    );
+    expect(result.reply).toContain('outcome=payment');
     expect(posts).toHaveLength(0);
   }, 60_000);
 });

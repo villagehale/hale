@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Gets the reminder time, day, task and that it posts in the group chat rather than privately, all in English and kindly. Minor issue: 'tomorrow at 9:00 AM' is fine but the text omits the explicit 'Thursday' day name, and the 'instead of sending it privately' phrasing slightly mirrors the request rather than neutrally stating the group-chat delivery."
+  }
+}

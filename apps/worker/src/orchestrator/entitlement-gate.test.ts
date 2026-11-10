@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion } from '@hale/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * No plan gate (VIL-131). Invariant: a family's plan never decides whether an
@@ -250,6 +250,7 @@ describe('runOrchestrator — no plan gate; the execute lane is the only added b
       },
       {
         ...defaultExecuteApprovedDeps(),
+        checkWindow: async () => ({ withinWindow: true, detail: {} }),
         loadAction: async () => ({
           eventId: 'evt-1',
           actionType: 'calendar_add',

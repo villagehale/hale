@@ -160,6 +160,39 @@ describe('extractStateClaims — the false positives that would break production
     ).toEqual([]);
   });
 
+  it('keeps "St. Mary\'s" inside its sentence, so the claim is the whole sentence (VIL-575)', () => {
+    expect(
+      extractStateClaims("Swim runs Tuesdays at 4. Your visit at St. Mary's clinic is booked."),
+    ).toEqual([
+      expect.objectContaining({
+        sentence: "Your visit at St. Mary's clinic is booked.",
+        kind: 'scheduled_event',
+      }),
+    ]);
+  });
+
+  it.each([
+    ['Your visit is booked for Sat. Want me to add swim?', 'scheduled_event'],
+    ['Your well-baby visit is booked for Sat. Want me to add a reminder?', 'scheduled_event'],
+    ["I can't make it Mon. I'll send an invite.", 'co_parent_invite'],
+    ["I'll text you when registration opens on Sat. Does that work?", 'registration_watch'],
+    ["I'll text you before it opens on Sept. Sound good?", 'registration_watch'],
+  ])('a claim ending in an abbreviation is not hidden by the sentence it joins: %s', (body, kind) => {
+    // The joined sentence is the span, so a cut never ends at "Sat.", but the question
+    // and the negation that follow it belong to the next piece, not to the claim.
+    expect(extractStateClaims(body)).toEqual([expect.objectContaining({ sentence: body, kind })]);
+  });
+
+  it('reads a claim that spans the abbreviation it was joined on', () => {
+    expect(extractStateClaims("I'll text you when St. Mary's registration opens.")).toEqual([
+      expect.objectContaining({ kind: 'registration_watch' }),
+    ]);
+  });
+
+  it("is not a claim when the joined sentence is a question about St. Mary's", () => {
+    expect(extractStateClaims("Is swim at St. Mary's?")).toEqual([]);
+  });
+
   it('reads a one-sentence watch promise the ladder legs never make', () => {
     expect(kinds("I'll text you when Halton Hills registration opens.")).toEqual([
       'registration_watch',
@@ -178,7 +211,7 @@ describe('claimsNoLedgerCanBack', () => {
     expect(claimsNoLedgerCanBack('Swim runs Tuesdays at 4 at the Gellert.')).toEqual([]);
   });
 
-  it('treats a co-parent invite sentence as a promise no ledger can back', () => {
+  it('treats a co-parent invite sentence as a promise no ledger can back', async () => {
     const live = "Got it, I'll send an invite to that number so they can join this thread.";
     expect(kinds(live)).toEqual(['co_parent_invite']);
     expect(claimsNoLedgerCanBack(live).map((claim) => claim.kind)).toEqual(['co_parent_invite']);
@@ -186,6 +219,6 @@ describe('claimsNoLedgerCanBack', () => {
     expect(claimsNoLedgerCanBack("I'll send an invite").map((claim) => claim.kind)).toEqual([
       'co_parent_invite',
     ]);
-    expect(extractStateClaims(coParentInviteSentAck('them', 'en'))).toEqual([]);
+    expect(extractStateClaims((await coParentInviteSentAck('them', 'en')) ?? '')).toEqual([]);
   });
 });

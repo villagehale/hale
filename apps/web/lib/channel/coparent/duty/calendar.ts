@@ -1,14 +1,7 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { classifyKidCalendarItem, splitKidEvent } from '~/lib/channel/linq/kid-event';
-import {
-  type DutyCopyLanguage,
-  dutyClockLabel,
-  dutyOwnerEcho,
-  dutyTitleMayBeSpoken,
-  dutyWeekdayName,
-  spokenFirstName,
-} from './copy';
+import { type DutyCopyLanguage, dutyTitleMayBeSpoken, spokenFirstName } from './copy';
 import { coparentDutyMemoryEnabled } from './flag';
 import type { DutyState } from './model';
 
@@ -85,7 +78,8 @@ export async function projectDutyOnFamilyEvent(
   },
 ): Promise<DutyProjection> {
   if (!coparentDutyMemoryEnabled()) return { status: 'skipped', reason: 'flag_off' };
-  if (typeof database.select !== 'function') return { status: 'skipped', reason: 'no_family_event' };
+  if (typeof database.select !== 'function')
+    return { status: 'skipped', reason: 'no_family_event' };
 
   const children = await database
     .select({ name: schema.children.name, familyId: schema.children.familyId })
@@ -158,7 +152,9 @@ export async function projectDutyOnFamilyEvent(
   await database
     .update(schema.familyEvents)
     .set(next)
-    .where(and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)));
+    .where(
+      and(eq(schema.familyEvents.id, event.id), eq(schema.familyEvents.familyId, input.familyId)),
+    );
   const audit = {
     familyId: input.familyId,
     actor: input.actorUserId,
@@ -184,7 +180,9 @@ export async function projectDutyOnFamilyEvent(
       actionTaken: 'duty_calendar_cleared',
     });
   }
-  return owner ? { status: 'updated', eventId: event.id } : { status: 'cleared', eventId: event.id };
+  return owner
+    ? { status: 'updated', eventId: event.id }
+    : { status: 'cleared', eventId: event.id };
 }
 
 /** DESCRIPTION for one feed event. Null leaves the VEVENT without one. */
@@ -211,15 +209,34 @@ export function dutyFeedDescription(input: {
   if (!kid) return null;
   const spokenEvent = dutyTitleMayBeSpoken(event) ? event : input.title;
   if (!dutyTitleMayBeSpoken(spokenEvent)) return null;
-  try {
-    return dutyOwnerEcho(input.language, {
-      name,
-      kid,
-      event: spokenEvent,
-      day: dutyWeekdayName(input.startsAt, input.timeZone, input.language),
-      time: dutyClockLabel(input.startsAt, input.timeZone, input.language),
-    });
-  } catch {
-    return null;
+  // The fixed owner sentence does not ride on the feed. The thread is where
+  // the model writes who has the event.
+  return null;
+}
+
+/**
+ * VIL-484 · the calendar event id each household `family_events` row was placed as,
+ * so a booking can attach its venue to its OWN event. Ids only, never a title or a
+ * location, and only household rows: a teen's row lends no booking a venue.
+ */
+export async function householdEventCalendarIds(
+  database: Database,
+  familyId: string,
+): Promise<Map<string, string[]>> {
+  const rows = await database
+    .select({
+      id: schema.familyEvents.id,
+      familyId: schema.familyEvents.familyId,
+      placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+    })
+    .from(schema.familyEvents)
+    .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent()));
+  const ids = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.familyId !== familyId) continue;
+    // The household row's own copy on a parent's calendar. Mirrored rows (a
+    // `google_event_id`) are outside the household scope, so they never link.
+    if (row.placedGoogleEventId) ids.set(row.id, [row.placedGoogleEventId]);
   }
+  return ids;
 }

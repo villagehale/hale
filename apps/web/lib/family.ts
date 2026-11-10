@@ -5,6 +5,7 @@ import { cache } from 'react';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 
 /**
  * Resolves the current request's family from the Auth.js session.
@@ -293,6 +294,8 @@ export async function ensureUserRow(
         externalAuthId: identity.externalAuthId,
         email: identity.email,
         name: identity.name,
+        // The web path holds no postal code; users.timezone defaults to UTC (0178).
+        timezone: DEFAULT_TIMEZONE,
       })
       .onConflictDoNothing({ target: schema.users.externalAuthId });
   } catch (err) {

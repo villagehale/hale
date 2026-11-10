@@ -6,6 +6,7 @@ import {
   familyHasCoParent,
   supersedeOpenInviteOnEnrollment,
 } from '~/lib/channel/caregiver/invites';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -56,10 +57,14 @@ export type CoParentAcceptance =
 /** The users row for this number, created if absent. Keyed by the SAME blind index intake,
  * the caregiver flow and the join link use, so somebody Hale already knows from another
  * household is one account rather than two. */
-async function ensureCoParentUser(tx: Database, externalAuthId: string): Promise<string> {
+async function ensureCoParentUser(
+  tx: Database,
+  externalAuthId: string,
+  timezone: string,
+): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null })
+    .values({ externalAuthId, email: null, name: null, timezone })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
 
   const rows = await tx
@@ -107,7 +112,11 @@ export async function acceptCoParentInvite(
       return { outcome: 'seat_taken' };
     }
 
-    const coParentUserId = await ensureCoParentUser(tx, `sms:${hash}`);
+    const coParentUserId = await ensureCoParentUser(
+      tx,
+      `sms:${hash}`,
+      await householdTimezone(tx, invite.familyId),
+    );
 
     const [consent] = await tx
       .insert(schema.consentRecords)

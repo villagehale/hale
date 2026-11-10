@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct handling: with no course-page link in the message, asking for the class's own page link is exactly the right move, and the reply truthfully says Hale will watch it once sent. It is short, invents nothing, and does not send the parent to the app. One small blemish: an imperative sentence ending in a question mark reads awkwardly.",
+    "score": 4
+  }
+}

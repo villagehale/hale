@@ -3,6 +3,7 @@ import { deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { capturePortalEventAfter } from '~/lib/analytics/server-capture';
 import { consumeChannelSigninTokenById } from '~/lib/auth/channel-signin';
 import { type AhaSnapshot, failedAha, loadConnectedAha } from '~/lib/channel/connect/aha-read';
 import {
@@ -15,6 +16,7 @@ import {
   type TextConnectProvider,
   asTextConnectProvider,
 } from '~/lib/channel/connect/text-connect';
+import { householdTimezone } from '~/lib/channel/household-timezone';
 import { holdGoogleGivenName } from '~/lib/channel/identity/parent-call-name';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { googleAccountBlindIndex } from '~/lib/crypto/blind-index';
@@ -22,22 +24,26 @@ import { db } from '~/lib/db';
 import { resolveUserIdForUser } from '~/lib/family';
 import { kickGmailBookedBackfill } from '~/lib/integrations/booked-backfill-kick';
 import { type ConnectState, verifyConnectState } from '~/lib/integrations/connect-state';
+import { settleSupersededGoogleRevoke } from '~/lib/integrations/google-disconnect';
 import {
   CONNECTOR_SCOPES,
   GOOGLE_PROFILE_SCOPE,
   connectorRedirectUri,
   exchangeCodeForTokens,
+  requestedConnectorScopes,
 } from '~/lib/integrations/google-oauth';
 import { readGoogleAccountSub, readGoogleGivenName } from '~/lib/integrations/google-profile';
 import {
   ensurePushWatchAfterConnect,
   googleJsonClient,
 } from '~/lib/integrations/google-push-runtime';
-import { grantedWriteScopesAllowed } from '~/lib/integrations/google-write-flag';
 import { otherParentHoldsGoogleAccount, saveConnection } from '~/lib/integrations/store';
 
 // Node runtime: node:crypto (state verify), fetch (token exchange), Drizzle.
 export const runtime = 'nodejs';
+
+// The refused-grant scope lists come straight from Google's token response; bound them.
+const LOGGED_SCOPES_MAX = 10;
 
 /**
  * GET /api/integrations/callback — Google's redirect back after consent. The
@@ -150,6 +156,17 @@ export async function GET(req: NextRequest) {
   if (bound.surface === 'text' && !textProvider) return back('invalid');
   const surface = bound.surface;
 
+  // The Drive consent door is closed, but a Drive state signed before the deploy still
+  // verifies for its TTL: refuse it before the code is exchanged, so Google issues no
+  // token and nothing is stored.
+  if (bound.provider === 'gdrive') {
+    console.info(
+      { familyId: bound.familyId, provider: bound.provider, outcome: 'connector_not_offered' },
+      'connector consent: no consent door for this connector - nothing exchanged, nothing stored',
+    );
+    return back('denied', surface, bound.provider);
+  }
+
   if (declined) {
     if (surface === 'text' && textProvider) {
       return textFailure('denied', textProvider, {
@@ -186,20 +203,18 @@ export async function GET(req: NextRequest) {
     grantedAccessToken = tokens.accessToken;
     // Granular consent lets the user deselect the scope, and a provider bug could
     // broaden it: the grant must contain EXACTLY what this connector needs and
-    // nothing outside the readonly universe — otherwise store nothing (a stored
+    // nothing its consent did not ask for — otherwise store nothing (a stored
     // 'active' connection whose token 403s would error-flap forever; a broader
     // one would silently hold power we never asked the parent to consent to).
     const scopes = (tokens.scope ?? '').split(' ').filter(Boolean);
     const expected = CONNECTOR_SCOPES[bound.provider];
-    // Profile is optional. The two write scopes are optional too, and only when
-    // this user was armed (global flag, or their id on the allowlist): a parent
-    // who deselects calendar.events still connects, and a grant that carries
-    // them for anyone else is broader than what we asked and is stored nowhere.
-    // gmail.send is never in this set.
+    // Allowed is exactly what this connector's consent asked for, from the same
+    // function the consent URL is built with, plus the optional profile. Another
+    // connector's scope, or a write scope this user was not armed for on this
+    // connector, is broader than we asked and is stored nowhere.
     const allowed = new Set<string>([
-      ...Object.values(CONNECTOR_SCOPES).flat(),
+      ...requestedConnectorScopes(bound.provider, process.env, bound.userId),
       GOOGLE_PROFILE_SCOPE,
-      ...grantedWriteScopesAllowed(process.env, bound.userId),
     ]);
     const grantedOk =
       expected.every((sc) => scopes.includes(sc)) && scopes.every((sc) => allowed.has(sc));
@@ -207,9 +222,19 @@ export async function GET(req: NextRequest) {
       // A required box left unticked, with nothing broader than we asked, is
       // partial: nothing is stored, and a text connect still gets a fresh link.
       // A scope outside the allowed set stays denied.
-      const missingRequired = expected.some((sc) => !scopes.includes(sc));
-      const broader = scopes.some((sc) => !allowed.has(sc));
-      const grantStatus = missingRequired && !broader ? 'partial' : 'denied';
+      const missing = expected.filter((sc) => !scopes.includes(sc));
+      const unexpected = scopes.filter((sc) => !allowed.has(sc));
+      const grantStatus = missing.length > 0 && unexpected.length === 0 ? 'partial' : 'denied';
+      console.info(
+        {
+          familyId: bound.familyId,
+          provider: bound.provider,
+          grantStatus,
+          unexpected: unexpected.slice(0, LOGGED_SCOPES_MAX),
+          missing: missing.slice(0, LOGGED_SCOPES_MAX),
+        },
+        'connector grant: refused - nothing stored',
+      );
       if (surface === 'text' && textProvider) {
         return textFailure(grantStatus, textProvider, {
           familyId: bound.familyId,
@@ -218,7 +243,7 @@ export async function GET(req: NextRequest) {
       }
       return back(grantStatus, surface, bound.provider);
     }
-    let providerMetadata: Record<string, unknown> | undefined;
+    let googleAccountKey: string | undefined;
     if (scopes.includes(GOOGLE_PROFILE_SCOPE) && tokens.accessToken) {
       const sub = await readGoogleAccountSub(tokens.accessToken);
       if (!sub) {
@@ -259,17 +284,31 @@ export async function GET(req: NextRequest) {
           }
           return back('own_link', surface, bound.provider, who ? { who, lang } : undefined);
         }
-        providerMetadata = { googleAccountKey: accountKey };
+        googleAccountKey = accountKey;
       }
     }
-    ({ connectId } = await saveConnection(database, {
+    const saved = await saveConnection(database, {
       familyId: bound.familyId,
       userId: bound.userId,
       provider: bound.provider,
       scopes,
       tokens,
-      providerMetadata,
-    }));
+      googleAccountKey,
+    });
+    connectId = saved.connectId;
+    if (saved.superseded) await settleSupersededGoogleRevoke(database, saved.superseded);
+    {
+      const connected =
+        bound.provider === 'gmail'
+          ? 'portal_gmail_connected'
+          : bound.provider === 'gcal'
+            ? 'portal_calendar_connected'
+            : null;
+      const familyId = bound.familyId;
+      if (connected) {
+        capturePortalEventAfter(connected, familyId, surface === 'text' ? 'connected' : 'settings');
+      }
+    }
     await rememberGoogleGivenName(database, {
       familyId: bound.familyId,
       userId: bound.userId,
@@ -303,7 +342,7 @@ export async function GET(req: NextRequest) {
           familyId: bound.familyId,
           userId: bound.userId,
           accessToken: tokens.accessToken,
-          providerMetadata: providerMetadata ?? {},
+          providerMetadata: {},
         });
         console.info(
           { familyId: bound.familyId, kick: kick.outcome },
@@ -418,6 +457,7 @@ async function ahaForTextConnect(
       provider: input.provider,
       accessToken: input.accessToken,
       now: input.now,
+      timeZone: await householdTimezone(database, input.familyId),
       hasTeen,
       googleFetch: (url, accessToken) =>
         googleJsonClient.request({ method: 'GET', url, accessToken }),

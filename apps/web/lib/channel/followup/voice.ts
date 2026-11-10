@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -40,10 +41,6 @@ export const MAX_ASK_CHARS = 160;
 export const MAX_COMPOSE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 128;
-
-/** No links, held structurally: this stage has no tool that could have given it one, so
- * a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 export type FollowupVoiceRequest =
   | { kind: 'activity'; activity: string }
@@ -81,8 +78,7 @@ export function refusals(body: string, request: FollowupVoiceRequest): AskRefusa
   const found: AskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
   // The subject is stripped before the digit check rather than after: "Gym 2 Grow" is
@@ -195,8 +191,9 @@ function deferred(reason: ComposeDeferral, detail?: string): FollowupVoiceOutcom
  * same refusals, or that blows one GSM-7 segment with the full opt-out on it,
  * defers — the claim stays unspent. The model is not called either way.
  */
-export function lockedActivityFollowup(activity: string): FollowupVoiceOutcome {
-  const body = howItWentAsk(activity);
+export async function lockedActivityFollowup(activity: string): Promise<FollowupVoiceOutcome> {
+  const body = await howItWentAsk(activity);
+  if (!body) return deferred('gate_exhausted', 'language');
   const problems = refusals(body, { kind: 'activity', activity });
   if (problems.length > 0 || smsSegments(withOptOut(body, 'full')) !== 1) {
     return deferred('gate_exhausted', problems.join('+') || 'segment');

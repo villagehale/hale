@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events present with correct times and AM/PM (11点 morning, 下午5点半 afternoon), correct day tomorrow (周一), in Chinese, calm tone. Soccer end time 6:30 given as 6点半 with start 5点半 correct. Minor: 'Two things' framing fine. No invented details, no planLink included but not required to be absent. Score high.",
+    "score": 5
+  }
+}

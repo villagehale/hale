@@ -5,6 +5,7 @@ import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { SENT_STATUSES, isRealSendRow } from '~/lib/channel/ledger';
 import { loadSmsChannelState, resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { addDaysToKey, dayKeyIn, zonedLocalInstant } from '~/lib/plan/spine';
 import { type OptOutForm, optOutPeriodStart } from './opt-out';
 import { proactiveCadence } from './proactive/flag';
 import { quietStartForPhone } from './proactive/quiet';
@@ -102,6 +103,11 @@ export type ProactiveSendKind =
    * same-evening dedupe key. There is no count.
    */
   | 'evening_check_in'
+  /**
+   * VIL-393 · one mid-activity "how is it going" ask, written by the decider's writer
+   * (no locked line). Decider-only, like the evening check-in: no sweep sends it.
+   */
+  | 'mid_activity_ask'
   /**
    * The co-parent left, and the parent who STAYED is told once (VIL-355 follow-up).
    *
@@ -252,6 +258,8 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // worth waking a house for, and the 20:00 slot it is sent in sits an hour under the
   // floor anyway.
   evening_check_in: false,
+  // A question about how a class is going keeps until morning.
+  mid_activity_ask: false,
   // Nothing here is worth less at 08:00. The seat is already gone, the week is already
   // theirs, and waking somebody at 23:00 to tell them their co-parent left is the
   // cruellest hour this message could pick.
@@ -285,10 +293,37 @@ export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
  * their answer); what consults this is the extra beside it: the welcome contact card and
  * the co-parent join's inviter ack, both observed leaving at 22:36 local around the gate
  * in the 2026-08-28 ads-week audit. One window, one reader — a second literal would
- * drift.
+ * drift. This is the phone-less form of {@link proactiveQuietNow}, which delegates here.
  */
 export function inProactiveQuietHours(now: Date, timeZone: string): boolean {
   return isWithinQuietHours(now, timeZone, PROACTIVE_QUIET_HOURS.start, PROACTIVE_QUIET_HOURS.end);
+}
+
+/**
+ * VIL-562 · the floor exactly as {@link assertProactiveSendAllowed} applies it, for a
+ * lane that is not a gate kind (the reminder run). The phone is read only while cadence is
+ * armed, when a Florida or Oklahoma number starts the window at 20:00; otherwise it is
+ * the default window and the phone is never read.
+ */
+export async function proactiveQuietNow(args: {
+  now: Date;
+  timeZone: string;
+  phone?: () => Promise<string | null>;
+}): Promise<boolean> {
+  if (proactiveCadence() !== 'off' && args.phone) {
+    const start = quietStartForPhone(await args.phone());
+    return isWithinQuietHours(args.now, args.timeZone, start, PROACTIVE_QUIET_HOURS.end);
+  }
+  return inProactiveQuietHours(args.now, args.timeZone);
+}
+
+/** The next instant at or after `now` when the local clock reads the floor's end. */
+export function proactiveFloorOpensAt(now: Date, timeZone: string): Date {
+  const today = dayKeyIn(now, timeZone);
+  const opens = zonedLocalInstant(today, PROACTIVE_QUIET_HOURS.end, timeZone);
+  return opens.getTime() >= now.getTime()
+    ? opens
+    : zonedLocalInstant(addDaysToKey(today, 1), PROACTIVE_QUIET_HOURS.end, timeZone);
 }
 
 /**
@@ -331,6 +366,8 @@ export const PROACTIVE_CATEGORY: Record<
   email_alert: 'email_alert',
   calendar_alert: 'calendar_alert',
   evening_check_in: 'evening_check_in',
+  // The same "how did it go" consent family as the activity follow-up.
+  mid_activity_ask: 'activity_followup',
   co_parent_departed: 'co_parent_departed',
   travel_brief: 'travel_brief',
   duty_ask: 'duty_ask',
@@ -418,11 +455,13 @@ export async function assertProactiveSendAllowed(
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
-  const quietStart =
-    proactiveCadence() !== 'off' && ports.parentPhone
-      ? quietStartForPhone(await ports.parentPhone(request.parentUserId))
-      : PROACTIVE_QUIET_HOURS.start;
-  if (isWithinQuietHours(request.now, timeZone, quietStart, PROACTIVE_QUIET_HOURS.end)) {
+  const parentPhone = ports.parentPhone?.bind(ports);
+  const quiet = await proactiveQuietNow({
+    now: request.now,
+    timeZone,
+    phone: parentPhone && (() => parentPhone(request.parentUserId)),
+  });
+  if (quiet) {
     return { allowed: false, reason: 'quiet_hours' };
   }
 

@@ -207,7 +207,10 @@ describe('defaultGeocodeClient searchText request body', () => {
   }
 
   it('includes locationBias.circle with the given centre + 30km radius when a bias is provided', async () => {
-    await defaultGeocodeClient().searchText('Riverdale Library M4K', { lat: 43.6285, lng: -79.9618 });
+    await defaultGeocodeClient().searchText('Riverdale Library M4K', {
+      lat: 43.6285,
+      lng: -79.9618,
+    });
 
     expect(sentBody()).toEqual({
       textQuery: 'Riverdale Library M4K',
@@ -256,9 +259,7 @@ describe('defaultGeocodeClient searchText request body', () => {
   it('does NOT retry a deterministic 4xx (a bad key never heals) — one attempt, then throws', async () => {
     fetchSpy.mockResolvedValue({ ok: false, status: 400, json: async () => ({}) });
 
-    await expect(defaultGeocodeClient().searchText('Riverdale Library M4K')).rejects.toThrow(
-      '400',
-    );
+    await expect(defaultGeocodeClient().searchText('Riverdale Library M4K')).rejects.toThrow('400');
     // A 4xx is deterministic — fail fast, exactly one attempt (no wasted call/storm).
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });

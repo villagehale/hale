@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly names the all-day PD Day as tomorrow with no clock time, but 'so there is no school' is an unstated inference from the title, not a fact given. 'Hope you can plan around it' is unrequested filler wishing or advising the parent, which caps the score at 3 at most. Overall it fails the strict fact check and the no-inference rule, so it is scored low.",
+    "score": 2
+  }
+}

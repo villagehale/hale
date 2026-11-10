@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  AHA_TIME_ZONE,
   ahaWhenLabel,
   calendarFactsFromItems,
   calendarOverlaps,
@@ -42,6 +42,7 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+14165551234';
 const CHAT = '8f392755-6865-4b18-880a-227f9d8b458f';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
+const EASTERN = 'America/Toronto';
 const FROM = '+15555550100';
 const FIND_MESSAGE = '1. Swim at the rec centre - Saturday\n2. Story time - Tuesday';
 
@@ -68,6 +69,8 @@ interface ScriptedTurn {
   reply: string;
   capture: WireCapture;
   groupLeads?: string[];
+  asks?: boolean;
+  joinPointer?: 'below' | 'wrong_owner' | 'placeholder' | 'hale_starts' | 'missing' | null;
 }
 
 /**
@@ -84,6 +87,8 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     scheduleAdds: [],
     parentRole: null,
     parentRoleBasis: null,
+    // The model reports the language it is answering in. This conversation is English.
+    language: input.language ?? 'en',
   };
   const postal = words.match(
     /\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])(?:[ -]?(\d[ABCEGHJ-NPRSTV-Z]\d))?\b/i,
@@ -172,7 +177,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     return {
       reply: 'Here is what is on near you for their ages.',
       capture,
-      groupLeads: (input.findGroups ?? []).map(() => 'Worth a look.'),
+      groupLeads: (input.findGroups ?? []).map((group) => group.lines.join('\n')),
     };
   }
   // Reminders just recorded: confirm them, ask nothing.
@@ -184,16 +189,22 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
     return {
       reply: 'The number is below whenever you want.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'new' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && /\bour group\b/i.test(words)) {
     return {
       reply: 'The number is below whenever you want to add me.',
       capture: { ...capture, coparentGroup: true, coparentGroupMode: 'existing' },
+      joinPointer: 'below',
     };
   }
   if (input.step === 'coparent' && capture.coparentGroup === true) {
-    return { reply: 'Add the number below to your family group, whenever you like.', capture };
+    return {
+      reply: 'Add the number below to your family group, whenever you like.',
+      capture,
+      joinPointer: 'below',
+    };
   }
   // A yes to the connector just asked is answered as a yes. The next ask
   // waits for the connect receipt or the next text.
@@ -226,7 +237,7 @@ function scriptedTurn(input: FriendVoiceInput): ScriptedTurn {
 
   const aside = offScriptAside(words);
   const reply = aside ? `${aside} ${ask}` : ask;
-  return { reply, capture };
+  return { reply, capture, asks: ask !== "I'll take it from here." };
 }
 
 function findResult() {
@@ -331,9 +342,6 @@ function conversation(options?: {
     answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => NOW.getTime()),
-    seedCivic: async () => 0,
-    resolveCenter: async () => ({ lat: 43.6426, lng: -79.3871 }),
-    discoveryTrigger: () => {},
     friendVoice: {
       async compose(input: FriendVoiceInput) {
         return (options?.compose ?? scriptedTurn)(input);
@@ -369,7 +377,6 @@ function conversation(options?: {
           now: () => NOW,
         },
         inbound,
-        0,
       );
       return {
         bodies: transport.bodies().slice(sentFrom),
@@ -563,6 +570,37 @@ describe('golden onboarding conversation', () => {
     expect(lines.at(-1)).toBe('+1 555-555-0100');
     expect(existing.bodies.join('\n')).not.toContain(LINQ_GROUP_TRIGGER_PHRASE.en);
     expect(existing.bodies.join('\n')).not.toMatch(/add this number to your group/i);
+  });
+
+  it('reads the co-parent yes with the group unclaimed, and claimed once Hale is in one (VIL-566)', async () => {
+    const WALK = ['hi', 'M5V 2T6', 'Maya', "she's 4", 'Dana', 'yes', 'ok', 'yes', 'ok', 'yes'];
+    const seen: FriendVoiceInput[] = [];
+    const recording = (input: FriendVoiceInput) => {
+      seen.push(input);
+      return scriptedTurn(input);
+    };
+    const talk = conversation({ compose: recording });
+    for (const words of WALK) await talk.say(words);
+    // Before the co-parent ask is open, no turn carries the group.
+    expect(seen.some((input) => input.householdGroup != null)).toBe(false);
+    await talk.say('sounds good');
+    seen.length = 0;
+    await talk.say('yes');
+    expect(seen.map((input) => input.householdGroup)).toContain('unclaimed');
+    expect(seen.every((input) => input.householdGroup !== 'pending')).toBe(true);
+
+    const claimed: FriendVoiceInput[] = [];
+    const talk2 = conversation({
+      compose: (input) => {
+        claimed.push(input);
+        return scriptedTurn(input);
+      },
+    });
+    for (const words of [...WALK, 'sounds good']) await talk2.say(words);
+    for (const row of talk2.fake.rows(schema.families)) row.linqGroupChatId = 'chat-household';
+    claimed.length = 0;
+    await talk2.say('yes');
+    expect(claimed.map((input) => input.householdGroup)).toContain('claimed');
   });
 
   it('takes postal, kids, ages, a name, and both connections from the first message', async () => {
@@ -781,15 +819,16 @@ describe('golden onboarding conversation', () => {
         },
       ],
       new Date('2026-09-10T15:00:00.000Z'),
+      EASTERN,
     );
     const synced = {
       provider: 'gcal' as const,
       read: 'ok' as const,
       calendar,
       email: [],
-      overlaps: calendarOverlaps(calendar),
+      overlaps: calendarOverlaps(calendar, EASTERN),
     };
-    const when = ahaWhenLabel(swimStart, false, AHA_TIME_ZONE, 'en');
+    const when = ahaWhenLabel(swimStart, false, EASTERN, 'en');
     const useful = await connectedReceiptBody(
       'en',
       'gcal',
@@ -806,6 +845,7 @@ describe('golden onboarding conversation', () => {
         },
       },
       synced,
+      { timeZone: EASTERN },
     );
     expect(useful).toContain('Swim at the rec centre');
     expect(useful).toContain(when);
@@ -839,6 +879,7 @@ describe('golden onboarding conversation', () => {
         },
       },
       { provider: 'gmail', read: 'ok', calendar: [], email: mail, overlaps: [] },
+      { timeZone: EASTERN },
     );
     expect(emailAha).toContain('Camp registration closes Friday');
     expect(emailAha).not.toContain('office@camp.example');
@@ -855,6 +896,25 @@ describe('golden onboarding conversation', () => {
       emptyAha('gcal'),
     );
     expect(quiet).toBe('Your calendar is connected.');
+
+    // VIL-566: a yes to the group with none claimed yet reaches the receipt as pending.
+    const groups: unknown[] = [];
+    const receiptFor = (householdGroup: 'pending' | null) =>
+      connectedReceiptBody(
+        'en',
+        'gcal',
+        {
+          async compose(input) {
+            groups.push(input.householdGroup);
+            return { reply: 'Your calendar is connected.', ahaMention: null };
+          },
+        },
+        emptyAha('gcal'),
+        { householdGroup },
+      );
+    await receiptFor('pending');
+    await receiptFor(null);
+    expect(groups).toEqual(['pending', undefined]);
     expect(quiet).not.toContain('Swim at the rec centre');
     expect(quiet).not.toContain('Camp registration');
 
@@ -869,6 +929,7 @@ describe('golden onboarding conversation', () => {
       },
       synced,
       {
+        timeZone: EASTERN,
         page: async (text) => {
           pages.push(text);
         },

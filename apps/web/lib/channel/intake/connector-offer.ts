@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
-import { sendLinqLinkPreview } from '~/lib/channel/linq/link-preview';
+import { sendLinkOnce } from '~/lib/channel/linq/link-preview';
 import { inProactiveQuietHours } from '~/lib/channel/outbound-gate';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
@@ -107,15 +107,15 @@ export async function sendYearConnectorCards(
     familyId: string;
     parentUserId: string;
     phoneE164: string;
-    language: ReplyLanguage;
+    language: ReplyLanguage | null;
     now: Date;
     ridesReply?: boolean;
     /** One card. The other label is `already_sent` and nothing is minted for it,
      * so a calendar link already in the thread is not invalidated by the Gmail beat. */
     only?: 'gcal' | 'gmail';
     /**
-     * Friend-voice prose for a card. Code appends the minted URL. A URL inside
-     * the prose is stripped. Absent keeps the locked card sentence.
+     * Friend-voice prose for a card. The minted URL follows it as its own message.
+     * A URL inside the prose is stripped. Absent sends no card.
      */
     voice?: Partial<Record<'gcal' | 'gmail', string>>;
   },
@@ -160,13 +160,13 @@ export async function sendYearConnectorCards(
     provider: 'gcal',
     templateKey: INTAKE_CALENDAR_CARD_TEMPLATE_KEY,
     dedupeKey: calendarCardDedupeKey(args.familyId),
-    render: (url) => voiceCardBody(args.voice?.gcal, url),
+    prose: cardProse(args.voice?.gcal),
   };
   const gmailSpec: ConnectorCard = {
     provider: 'gmail',
     templateKey: INTAKE_GMAIL_CARD_TEMPLATE_KEY,
     dedupeKey: gmailCardDedupeKey(args.familyId),
-    render: (url) => voiceCardBody(args.voice?.gmail, url),
+    prose: cardProse(args.voice?.gmail),
   };
   const calendarClaim =
     args.only === 'gmail' ? null : await claimConnectorCard(database, args, calendarSpec);
@@ -228,21 +228,18 @@ export async function sendYearConnectorCards(
   return { calendar, gmail };
 }
 
-/** Prose plus the minted URL. A model-written URL is dropped before the real one is attached. */
-function voiceCardBody(prose: string | undefined, url: string): string | null {
+/** The model's prose with any URL it wrote dropped; the minted one is sent after it. */
+function cardProse(prose: string | undefined): string | null {
   const clean = prose?.replace(/https?:\/\/\S+/g, '').trim();
   // No model prose, no card: there is no fixed fallback line.
-  if (!clean) return null;
-  // The model writes the trust line and the unverified-app heads-up.
-  // Code appends only the minted URL.
-  return `${clean}\n${url}`;
+  return clean ? clean : null;
 }
 
 interface ConnectorCard {
   provider: 'gcal' | 'gmail';
   templateKey: string;
   dedupeKey: string;
-  render: (url: string) => string | null;
+  prose: string | null;
 }
 
 async function claimConnectorCard(
@@ -283,7 +280,7 @@ async function finishConnectorCard(
 
 async function deliverConnectorCard(
   database: Database,
-  args: { familyId: string; parentUserId: string; phoneE164: string; now?: Date },
+  args: { familyId: string; parentUserId: string; phoneE164: string; now: Date },
   ports: ConnectorOfferPorts,
   card: ConnectorCard,
   claimId: string,
@@ -294,7 +291,7 @@ async function deliverConnectorCard(
     await failClaim(database, claimId, 'mint_failed');
     return { status: 'not_sent', reason: 'mint_failed' };
   }
-  const body = card.render(url);
+  const body = card.prose;
   if (body == null) {
     await failClaim(database, claimId, 'voice_unsent');
     return { status: 'not_sent', reason: 'voice_unsent' };
@@ -327,17 +324,30 @@ async function deliverConnectorCard(
         status: acceptedStatus(carried),
       })
       .where(eq(schema.channelMessages.id, claimId));
-    await ports.threadMessage(database, { familyId, parentUserId, body });
-    if (carried === 'imessage' && sent.chatId) {
-      await sendLinqLinkPreview({
-        channel: 'imessage',
-        chatId: sent.chatId,
-        url,
-        database,
-        familyId,
-        parentUserId,
-        now: args.now,
-      });
+    // VIL-573 · the URL goes once: the preview bubble, or its own text where that is refused.
+    const link = await sendLinkOnce({
+      transport: ports.transport,
+      to: args.phoneE164,
+      channel: carried,
+      chatId: sent.chatId ?? null,
+      url,
+      database,
+      familyId,
+      parentUserId,
+      now: args.now,
+    });
+    const linked = link.status !== 'not_sent';
+    await ports.threadMessage(database, {
+      familyId,
+      parentUserId,
+      body: linked ? `${body}\n${url}` : body,
+    });
+    if (!linked) {
+      console.error(
+        { familyId, provider: card.provider, code: link.code },
+        'intake connector card: the prose went but the link did not',
+      );
+      return { status: 'not_sent', reason: 'send_failed', code: 'link_unsent' };
     }
     return { status: 'sent', channelMessageId: claimId };
   } catch (err) {

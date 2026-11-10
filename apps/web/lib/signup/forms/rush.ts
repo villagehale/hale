@@ -1,5 +1,6 @@
 /**
- * The only page-level exclusion besides the municipal denylist.
+ * The only page-level exclusion. Rush and queue sign-ups are the parent's:
+ * the runner hands over the open time, the link and the prefilled info.
  *
  * Any private or commercial booking is in scope until the page shows a
  * rush-registration signal: a waiting room or queue, resident or identity
@@ -20,4 +21,17 @@ export function rushSignal(text: string): RushSignal | null {
   if (RESIDENT.test(hay)) return 'resident_verification';
   if (TIMED.test(hay)) return 'timed_open';
   return null;
+}
+
+const OPENS_AT =
+  /(?:opens|will open|begins|starts)(?:\s+on)?\s+((?:[a-z]+day,?\s+)?(?:[a-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+(?:\d{4},?\s+)?)?(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i;
+
+/** The open time as the page states it, e.g. `Monday, Jan 5 at 7:00 AM`. */
+export function rushOpensAt(text: string): string | null {
+  const match = OPENS_AT.exec(text);
+  const stated = match?.[1]
+    ?.trim()
+    .replace(/^at\s+/i, '')
+    .replace(/\.$/, '');
+  return stated ? stated : null;
 }

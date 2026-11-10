@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Facts check out: intros already off, nothing changed, Hale won't raise it again (given as facts.next). Language is English, matching the parent. But \"So sorry about the mix-up\" is an apology no fact gives and implies something went wrong, which the rules flag as a fail. Tone is friendly and no other-family hints or invented names appear, so the score lands at 1 for the apology only if strictly applied; I'm scoring 1 under the apology rule."
+  }
+}

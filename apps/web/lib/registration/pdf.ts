@@ -1,65 +1,182 @@
+import { existsSync } from 'node:fs';
+import { dirname, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { MAX_PAGE_BYTES, MAX_PAGE_TEXT_CHARS, PAGE_FETCH_TIMEOUT_MS } from './fetch';
 
-export class RegistrationPdfError extends Error {
-  constructor(readonly reason: 'pdf_unreadable' | 'pdf_no_text' | 'pdf_read_budget') {
-    super(reason);
-  }
+export const MAX_PDF_PAGES = 100;
+export const MAX_PDF_READ_RSS_GROWTH_BYTES = 512 * 1024 * 1024;
+export const PDF_READ_MEMORY_POLL_MS = 50;
+/**
+ * Protects the instance's memory; not a parent send rule. Each read's RSS guard measures from
+ * its own baseline, so N reads can grow the process by about N × 512 MiB plus ~125 MB of
+ * overshoot per poll. Two (≈1.15–1.4 GB) fit in the ~1.65 GB a 2 GB function has left after
+ * Next's own ~400 MB.
+ */
+export const MAX_CONCURRENT_PDF_READS = 2;
+const PDF_WORKER_FILE = 'pdf-worker.mjs';
+
+/**
+ * Where the reader can be, the runtime location first: never the cwd, never above the app root
+ * (the dir holding `.next`). A Next chunk under `<app>/.next/` maps to where tracing ships the
+ * reader, `<app>/lib/registration/`; a source module (vitest, turbopack dev) to its sibling.
+ * Next bakes import.meta.url to the build-time path, which is gone once the build is moved;
+ * __dirname is the real chunk dir there (and absent under turbopack dev).
+ */
+export function pdfWorkerCandidates(runtimeDir: string | undefined, moduleUrl: string): string[] {
+  return [...(runtimeDir === undefined ? [] : [runtimeDir]), dirname(fileURLToPath(moduleUrl))].map(
+    (dir) => {
+      const parts = dir.split(sep);
+      const next = parts.lastIndexOf('.next');
+      if (next === -1) return join(dir, PDF_WORKER_FILE);
+      return join(parts.slice(0, next).join(sep) || sep, 'lib', 'registration', PDF_WORKER_FILE);
+    },
+  );
+}
+const PDF_WORKER_CANDIDATES = pdfWorkerCandidates(
+  typeof __dirname === 'string' ? __dirname : undefined,
+  import.meta.url,
+);
+
+/** About the city's PDF only. */
+export type RegistrationPdfRefusal = 'pdf_unreadable' | 'pdf_no_text' | 'pdf_read_budget';
+export type RegistrationPdfLimit = 'bytes' | 'pages' | 'text' | 'time' | 'memory';
+/** The reader itself failed (bundle, spawn or crash). Never about the city's PDF. */
+export type RegistrationPdfReaderFault =
+  | 'reader_missing'
+  | 'reader_crashed'
+  | 'reader_spawn_failed';
+export type RegistrationPdfRead =
+  /**
+   * `pageDerivedText` is untrusted content from the PDF, invisible text included. A prompt may
+   * carry it only as a field explicitly named as page content, never as instructions.
+   */
+  | { outcome: 'read'; pageDerivedText: string }
+  | { outcome: 'refused'; reason: RegistrationPdfRefusal; limit: RegistrationPdfLimit | null }
+  /** Transient and Hale-side: retry later; says nothing about the PDF. */
+  | { outcome: 'busy'; reason: 'pdf_readers_busy' }
+  | { outcome: 'reader_fault'; fault: RegistrationPdfReaderFault };
+
+let readsInFlight = 0;
+
+/** The class name only: an error's message can carry text from the city's PDF. */
+function errorClass(error: unknown): string {
+  return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-/** Text only: no OCR, external font fetches, embedded scripts or model calls. */
-export async function registrationPdfText(bytes: Uint8Array): Promise<string> {
-  if (bytes.byteLength > MAX_PAGE_BYTES) throw new RegistrationPdfError('pdf_read_budget');
-  const deadline = Date.now() + PAGE_FETCH_TIMEOUT_MS;
-  let expired = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const read = async () => {
-    const { getDocument } = await import('unpdf/pdfjs');
-    // Copy: PDF.js may transfer its input; the operation cache must retain the original bytes.
-    const loadingTask = getDocument({
-      data: new Uint8Array(bytes),
-      useSystemFonts: false,
-      disableFontFace: true,
-      maxImageSize: 16_777_216,
-      stopAtErrors: true,
-    });
-    try {
-      const pdf = await loadingTask.promise;
-      if (pdf.numPages > 100) throw new RegistrationPdfError('pdf_read_budget');
-      let text = '';
-      let hasText = false;
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-        if (expired || Date.now() > deadline) throw new RegistrationPdfError('pdf_read_budget');
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        const pageText = content.items
-          .flatMap((item) => ('str' in item ? [item.str + (item.hasEOL ? '\n' : '')] : []))
-          .join('');
-        hasText ||= pageText.trim().length > 0;
-        text += `[PDF page ${pageNumber}]\n${pageText}\n`;
-        page.cleanup();
-        if (text.length > MAX_PAGE_TEXT_CHARS) throw new RegistrationPdfError('pdf_read_budget');
-      }
-      if (!hasText) throw new RegistrationPdfError('pdf_no_text');
-      return text.replace(/\s+/g, ' ').trim();
-    } finally {
-      await loadingTask.destroy();
-    }
+/** `error` is null when the fault has no error object (a missing file, a worker's own report). */
+function readerFault(fault: RegistrationPdfReaderFault, error: unknown): RegistrationPdfRead {
+  console.error(
+    { fault, errorClass: error === null ? null : errorClass(error) },
+    'registration pdf: reader failed',
+  );
+  return { outcome: 'reader_fault', fault };
+}
+
+function refused(
+  reason: RegistrationPdfRefusal,
+  limit: RegistrationPdfLimit | null,
+): RegistrationPdfRead {
+  console.info({ reason, limit }, 'registration pdf: refused');
+  return { outcome: 'refused', reason, limit };
+}
+
+type WorkerMessage =
+  | { kind: 'reader_loaded' }
+  | { ok: true; text: string }
+  | { ok: false; reason: RegistrationPdfRefusal; limit: RegistrationPdfLimit | null }
+  | { ok: false; kind: 'reader_missing'; message: string };
+
+/**
+ * Text only, in a killable worker: no OCR, font fetches, scripts or model calls. The parse runs
+ * off this thread so the time and memory budgets can stop it outright; page and byte ceilings
+ * alone can't bound a flate-inflated content stream. Never rejects: every outcome is a named
+ * value.
+ *
+ * `env: {}` gives the worker its own empty `process.env`, so code there that reads the
+ * environment gets nothing. It is not process isolation: a worker thread shares this OS
+ * process, so code that escapes pdf.js could still read `/proc/self/environ` or this
+ * process's memory.
+ */
+export async function registrationPdfText(
+  bytes: Uint8Array,
+  budget: { timeoutMs: number; maxRssGrowthBytes: number; memoryPollMs: number } = {
+    timeoutMs: PAGE_FETCH_TIMEOUT_MS,
+    maxRssGrowthBytes: MAX_PDF_READ_RSS_GROWTH_BYTES,
+    memoryPollMs: PDF_READ_MEMORY_POLL_MS,
+  },
+): Promise<RegistrationPdfRead> {
+  if (bytes.byteLength > MAX_PAGE_BYTES) return refused('pdf_read_budget', 'bytes');
+  if (readsInFlight >= MAX_CONCURRENT_PDF_READS) {
+    console.info({ outcome: 'busy', reason: 'pdf_readers_busy' }, 'registration pdf: busy');
+    return { outcome: 'busy', reason: 'pdf_readers_busy' };
+  }
+  readsInFlight++;
+  // The slot is the worker's memory, not the read: it frees on 'exit', so a worker that was
+  // told to stop but is still alive (or never stops) keeps it.
+  let slotHeld = true;
+  const releaseSlot = () => {
+    if (!slotHeld) return;
+    slotHeld = false;
+    readsInFlight--;
   };
+  let worker: Worker | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let memoryPoll: ReturnType<typeof setInterval> | undefined;
   try {
-    // shortcut: a deadline cannot preempt synchronous PDF.js CPU; use a worker for a hard CPU limit.
-    return await Promise.race([
-      read(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          expired = true;
-          reject(new RegistrationPdfError('pdf_read_budget'));
-        }, PAGE_FETCH_TIMEOUT_MS);
-      }),
-    ]);
-  } catch (error) {
-    if (error instanceof RegistrationPdfError) throw error;
-    throw new RegistrationPdfError('pdf_unreadable');
+    const workerFile = PDF_WORKER_CANDIDATES.find((candidate) => existsSync(candidate));
+    if (!workerFile) return readerFault('reader_missing', null);
+    try {
+      worker = new Worker(workerFile, {
+        workerData: { bytes, maxPages: MAX_PDF_PAGES, maxTextChars: MAX_PAGE_TEXT_CHARS },
+        env: {},
+      });
+      worker.once('exit', releaseSlot);
+    } catch (error) {
+      return readerFault('reader_spawn_failed', error);
+    }
+    const reader = worker;
+    const baselineRss = process.memoryUsage.rss();
+    return await new Promise<RegistrationPdfRead>((resolve) => {
+      let settled = false;
+      let readerLoaded = false;
+      const settle = (result: () => RegistrationPdfRead) => {
+        if (settled) return;
+        settled = true;
+        resolve(result());
+      };
+      timer = setTimeout(() => settle(() => refused('pdf_read_budget', 'time')), budget.timeoutMs);
+      memoryPoll = setInterval(() => {
+        if (process.memoryUsage.rss() - baselineRss > budget.maxRssGrowthBytes) {
+          settle(() => refused('pdf_read_budget', 'memory'));
+        }
+      }, budget.memoryPollMs);
+      reader.on('message', (message: WorkerMessage) => {
+        if ('kind' in message && message.kind === 'reader_loaded') {
+          readerLoaded = true;
+        } else if (message.ok) {
+          settle(() => ({ outcome: 'read', pageDerivedText: message.text }));
+        } else if ('kind' in message) {
+          settle(() => readerFault('reader_missing', null));
+        } else {
+          settle(() => refused(message.reason, message.limit));
+        }
+      });
+      reader.on('error', (error) =>
+        settle(() => readerFault(readerLoaded ? 'reader_crashed' : 'reader_missing', error)),
+      );
+      reader.on('exit', () => settle(() => readerFault('reader_crashed', null)));
+    });
   } finally {
     clearTimeout(timer);
+    clearInterval(memoryPoll);
+    if (!worker) releaseSlot();
+    // Not awaited: the read has settled; only the slot waits for the worker to exit.
+    worker?.terminate().catch((error: unknown) => {
+      console.error(
+        { fault: 'reader_terminate_failed', errorClass: errorClass(error) },
+        'registration pdf: reader terminate failed',
+      );
+    });
   }
 }

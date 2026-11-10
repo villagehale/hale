@@ -1,7 +1,12 @@
 import { createHash, createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  emailAlertAnchorIndex,
+  emailBlindIndex,
+  kidRelevanceInputIndex,
+  phoneBlindIndex,
+} from './blind-index';
 import { encryptString } from './string-cipher';
-import { emailBlindIndex, kidRelevanceInputIndex, phoneBlindIndex } from './blind-index';
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
 const KEY_B = Buffer.alloc(32, 2).toString('base64');
@@ -119,5 +124,33 @@ describe('kidRelevanceInputIndex', () => {
     const withA = kidRelevanceInputIndex(INPUT);
     process.env.APP_ENCRYPTION_KEY = KEY_B;
     expect(kidRelevanceInputIndex(INPUT)).not.toBe(withA);
+  });
+});
+
+describe('emailAlertAnchorIndex', () => {
+  const prev = process.env.APP_ENCRYPTION_KEY;
+  const ANCHOR = '2026-11-14T16:00:00.000Z';
+  beforeEach(() => {
+    process.env.APP_ENCRYPTION_KEY = KEY_A;
+  });
+  afterEach(() => {
+    process.env.APP_ENCRYPTION_KEY = prev;
+  });
+
+  it('is deterministic under one key and not a plain sha256 of the anchor', () => {
+    expect(emailAlertAnchorIndex(ANCHOR)).toBe(emailAlertAnchorIndex(ANCHOR));
+    expect(emailAlertAnchorIndex(ANCHOR)).not.toBe(
+      createHash('sha256').update(ANCHOR).digest('hex'),
+    );
+    expect(emailAlertAnchorIndex(ANCHOR)).not.toBe(kidRelevanceInputIndex(ANCHOR));
+    expect(emailAlertAnchorIndex(ANCHOR)).not.toBe(
+      emailAlertAnchorIndex('2026-11-15T16:00:00.000Z'),
+    );
+  });
+
+  it('hashes the same anchor differently under another key', () => {
+    const withA = emailAlertAnchorIndex(ANCHOR);
+    process.env.APP_ENCRYPTION_KEY = KEY_B;
+    expect(emailAlertAnchorIndex(ANCHOR)).not.toBe(withA);
   });
 });

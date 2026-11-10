@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was actually turned off this turn for send_email and reply_to_email, so 'Done' is true and not an overclaim. The reply states plainly that Hale will now show each email and wait for approval, which is exactly what the parent asked for. It is short, has no greeting or sign-off, and adds no invented detail.",
+    "score": 5
+  }
+}

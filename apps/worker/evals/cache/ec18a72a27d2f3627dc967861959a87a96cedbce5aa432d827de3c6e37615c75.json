@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Text is in French, not the requested Chinese (zh), so it fails the language requirement outright. It also omits both timed events (story time at 11:00 AM and soccer 5:30-6:30 PM), invents a 3:00 time, and says the day has breathing room, which is false given the timed events. Plan link is absent but that does not rescue it.",
+    "score": 1
+  }
+}

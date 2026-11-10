@@ -24,7 +24,7 @@ import { isReferralCode } from '~/lib/channel/referral/code';
  * words; everything in this file was English, so a francophone parent got the composed
  * turns in their language and every promise — the introduction, the consent ask, the
  * acknowledgment, the region boundary — in someone else's. The French twin of each fixed
- * line sits beside it in a `Record<ReplyLanguage, string>` whose `en` half IS the
+ * line sits beside it in a `Record<CopyLanguage, string>` whose `en` half IS the
  * exported constant, so an English copy edit cannot be half-applied, and `replyLanguage`
  * (lib/channel/language.ts) picks between them from the message that just arrived.
  *

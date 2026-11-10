@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * Child attribution. The invariant the orchestrator enforces deterministically

@@ -15,11 +15,9 @@ import type { SaturdayPlans } from '~/lib/channel/nudge/saturday-plans';
 import { childCanAttend, parseClockLabel } from '~/lib/channel/nudge/saturday-window';
 import { type WeekdayFinderAsk, printableWeekdayName } from '~/lib/channel/nudge/weekday-care-ask';
 import { isPrintableGsm7Basic } from '~/lib/channel/sms-segments';
-import { CIVIC_SOURCE } from '~/lib/civic/project';
 import { dayKeyOf, formatWhenPhrase } from '~/lib/format/datetime';
 import { safeHttpUrl } from '~/lib/format/http-url';
 import { priceBandLabel } from '~/lib/format/labels';
-import type { HealthRegion } from '~/lib/health/checkpoints';
 import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import {
@@ -65,6 +63,8 @@ import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weat
  * weeks out texted today is just noise that will need repeating anyway. */
 export const REGISTRATION_HORIZON_DAYS = 7;
 
+/** Historical offered-source tag; retained after the civic ingestion path is retired. */
+
 /** How many facts ride with a pick. Billed per segment, read on a phone. */
 const MAX_WHY_FACTS = 2;
 
@@ -106,25 +106,6 @@ export interface WeatherSwapNudge {
   whyFacts: string[];
 }
 
-/**
- * VIL-243 · M8. Carries the checkpoint by REFERENCE, not by copy: the renderable
- * strings live in the reviewed content table (lib/health/checkpoints.ts) and are looked
- * up at render time, so a copy correction lands everywhere at once and no decision
- * object can ever hold a stale sentence.
- */
-export interface HealthCheckpointNudge {
-  kind: 'health_checkpoint';
-  checkpointRef: { id: string; region: HealthRegion };
-  /** This checkpoint's identity for this family: what the sweep dedupes on and what a
-   * "done" reply suppresses. Built by the matcher, never rebuilt. Never rendered. */
-  ref: string;
-  /** Under-13 children only. A 13+ child is NEVER named over this channel (rule #1). */
-  kidNames: string[];
-  /** True when every matched child is 13+, and the copy must go generic. */
-  teenOnly: boolean;
-  teenCount: number;
-}
-
 /** The five days the weekend rule throws away. A closed set, so a fact slot can be
  * checked exhaustively wherever it appears. */
 export type WeekdayName = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
@@ -142,7 +123,7 @@ const WEEKDAY_NAMES: Record<number, WeekdayName> = {
  *
  * These rows are already in this family's feed and the weekend rule discards them:
  * the civic sweep ingests EarlyON weekday mornings and library storytimes into
- * `village_candidates` under `run_type = 'civic'`, and both surfaces that send
+ * historical activity receipts with civic provenance, and both surfaces that send
  * unprompted finds - the intake radar's `placements` and the weather swap's
  * `fittedFor` - independently require a Saturday or a Sunday. This is a filter over
  * data already on the row, not a new source.
@@ -193,7 +174,6 @@ export interface EmptySaturdayNudge {
 
 export type Nudge =
   | RegistrationNudge
-  | HealthCheckpointNudge
   | WeatherSwapNudge
   | EmptySaturdayNudge
   | WeekdayDropInNudge
@@ -228,8 +208,6 @@ export interface DecideNudgeInput {
   healthChildren: readonly HealthChild[];
   /** The family's FSA. Health checkpoints are region-gated; null means none apply. */
   areaCoarse: string | null;
-  /** Checkpoints the family must not be raised about again (already told, or done). */
-  suppressedCheckpointRefs: ReadonlySet<string>;
   /**
    * Registration windows an M7 sequence (VIL-242) has claimed for this family. The
    * sequence sends its own heads-up leg for a window it is preparing, so announcing it
@@ -544,7 +522,9 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
   const teen = new Set(input.teenChildIds);
   const civic = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      candidate.source === 'web' &&
+      !!candidate.sourceUrl &&
+      !!candidate.eventDate &&
       (candidate.childId === null || !teen.has(candidate.childId)),
   );
   if (civic.length === 0) return { nudge: null, skips: ['no_civic_candidate'] };
@@ -598,10 +578,10 @@ function availableWeekdayDropIn(input: DecideNudgeInput): LegOutcome<WeekdayDrop
  *
  * TWO GATES MAKE THE CLAIM SAFE, and each is one comparison.
  *
- * `source === CIVIC_SOURCE`, because this message asserts a DAY. A civic row is dated
- * by the sweep from a feed it verified and its strings are built deterministically; an
- * LLM-discovered row's date and url are frequently model output (village/discover.ts),
- * and a wrong Tuesday is a family standing outside a library.
+ * `source === 'web'` with a page and a date, because this message asserts a DAY: a live
+ * find that names neither cannot be checked by the parent, and a wrong Tuesday is a
+ * family standing outside a library. (The stored civic catalog this used to read was
+ * retired in #876; every find is a live search now.)
  *
  * `eventDate >= today`, because `nextOccurrenceDay` dates a session to its next
  * occurrence AT THE MOMENT THE SWEEP RUNS, and that sweep runs weekly on Monday. A
@@ -787,7 +767,9 @@ function decideEmptySaturday(input: DecideNudgeInput): LegOutcome<EmptySaturdayN
   const teen = new Set(input.teenChildIds);
   const running = input.candidates.filter(
     (candidate) =>
-      candidate.source === CIVIC_SOURCE &&
+      candidate.source === 'web' &&
+      !!candidate.sourceUrl &&
+      !!candidate.eventDate &&
       candidate.eventDate === saturday.date &&
       (candidate.childId === null || !teen.has(candidate.childId)) &&
       inSeason(candidate, season),

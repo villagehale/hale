@@ -2,16 +2,13 @@ import { type AgentClient, pickLane } from '@hale/agent';
 import { type CoachingPlaybook, type FamilyStage, goDeeperNames } from '@hale/types';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsEncoding, smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
+import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
+import { smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import {
-  type PlanCheckInDays,
-  type PlanTopic,
-  isPlanCheckInDays,
-} from './topics';
+import { type PlanCheckInDays, type PlanTopic, isPlanCheckInDays } from './topics';
 
 /**
  * THE PLAN — the only place in this arc a model writes at length, and the only one that
@@ -69,15 +66,6 @@ const MAX_TOKENS = 2048;
  * cost is a parent measuring something out on Hale's word.
  */
 const DOSING_SHAPE = /\b\d+(?:\.\d+)?\s?(?:mg|ml|mcg|milligrams?|millilitres?|milliliters?)\b/i;
-
-/**
- * A link, including the BARE-DOMAIN form.
- *
- * `https?://` alone is not enough here, and the playbooks are why: a vetted creator's
- * credential legitimately contains "youtube.com/c/EmmaHubbard", so the one thing the
- * model is most likely to copy out of its grounding is a URL with no scheme on it.
- */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
 
 /** A person Hale names. Only the playbook's vetted creators may be cited, so anything
  * matching a title-cased "Dr X" or a "<Name> says" shape is checked against the list. */
@@ -259,12 +247,7 @@ export function planViolations(
         `Message ${stage} is ${units} characters, ${units - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
       );
     }
-    if (smsEncoding(body) !== 'gsm7') {
-      violations.push(
-        `Message ${stage} contains a character that doubles the cost to send (a curly quote, a dash, or an emoji). Use plain ASCII.`,
-      );
-    }
-    if (LINK_SHAPE.test(body)) {
+    if (hasLinkShape(body)) {
       violations.push(`Message ${stage} contains a link or a web address. Never send one.`);
     }
     if (DOSING_SHAPE.test(body)) {
@@ -304,7 +287,10 @@ export function planViolations(
   const allowed = goDeeperNames(grounding.topic).map((name) => name.toLowerCase());
   const cited = [...whole.matchAll(NAMED_PERSON)].map((match) => match[0]);
   const unvetted = cited.filter(
-    (name) => !allowed.some((ok) => ok.includes(name.replace(/^(Dr\.?|Doctor|Professor|Prof\.?)\s+/i, '').toLowerCase())),
+    (name) =>
+      !allowed.some((ok) =>
+        ok.includes(name.replace(/^(Dr\.?|Doctor|Professor|Prof\.?)\s+/i, '').toLowerCase()),
+      ),
   );
   if (unvetted.length > 0) {
     violations.push(
@@ -345,7 +331,10 @@ function playbookSanctionsTheHealthLine(playbook: CoachingPlaybook): boolean {
  * Hubbard", "doctors bjorkman" from the parenthesised full form. Matching on the whole
  * curated string would miss every natural way a sentence introduces someone. */
 function firstNameToken(name: string): string {
-  const bare = name.replace(/\s*\(.*\)\s*$/, '').trim().toLowerCase();
+  const bare = name
+    .replace(/\s*\(.*\)\s*$/, '')
+    .trim()
+    .toLowerCase();
   return bare.startsWith('the ') ? bare.slice(4) : bare;
 }
 

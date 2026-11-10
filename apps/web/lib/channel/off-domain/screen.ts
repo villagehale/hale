@@ -10,6 +10,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { type JevChoiceEvaluator, evaluateJevChoice, meetsJevConfidence } from '~/lib/pipeline/jev';
 import { recordModelFallback } from '~/lib/pipeline/model-fallback';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
+import { clearForNonAnthropic } from '~/lib/pipeline/provider-clearance';
 import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -44,7 +45,8 @@ import { StructuredOutputError, forceToolJson } from '~/lib/pipeline/structured'
  * to nowhere else. Nothing in this module logs it, and nothing in this module writes
  * it. The lane and the category stay a closed vocabulary — see {@link UnmetIntentCategory}.
  * `language` is the one open field: a BCP-47 tag the model judges, with no allowlist
- * here. The router stores that tag on `users.locale`. This module only returns it.
+ * here, and so is `language_request`. The router feeds both to the parent's one proactive
+ * language (parent-language.ts). This module only returns them.
  */
 
 const MAX_TOKENS = 128;
@@ -128,6 +130,12 @@ export interface LaneReading {
    * invent one (rule #11). Not an allowlist — whatever tag the model returned.
    */
   language: string | null;
+  /**
+   * VIL-572 · the tag of a language the parent explicitly asked Hale to write to them in
+   * from now on, trimmed. Present only when the model read such an ask; absent on every
+   * other reading, including every fail-open one.
+   */
+  languageRequest?: string;
 }
 
 export interface InboundLaneScreen {
@@ -163,6 +171,7 @@ const readingSchema = z.object({
   // Optional here on purpose. The tool schema asks for it, but a missing or null tag
   // must not throw away a lane we can act on. A blank tag becomes null in toReading.
   language: z.string().nullish(),
+  language_request: z.string().nullish(),
 });
 
 const readingJsonSchema = {
@@ -175,8 +184,9 @@ const readingJsonSchema = {
     category: { type: 'string', enum: [...CATEGORIES, 'none'] },
     reason: { type: 'string' },
     language: { type: 'string' },
+    language_request: { type: ['string', 'null'] },
   },
-  required: ['lane', 'category', 'reason', 'language'],
+  required: ['lane', 'category', 'reason', 'language', 'language_request'],
 } as const;
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
@@ -211,8 +221,12 @@ function openTheGate(fallback: LaneScreenFallback): LaneReading {
  * and an empty one is the absence the router must not write (rule #11).
  */
 function seenLanguage(raw: { language?: string | null }): string | null {
-  if (typeof raw.language !== 'string') return null;
-  const tag = raw.language.trim();
+  return trimmedTag(raw.language);
+}
+
+function trimmedTag(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const tag = value.trim();
   return tag === '' ? null : tag;
 }
 
@@ -229,15 +243,18 @@ export function toReading(raw: {
   lane: string;
   category: string;
   language?: string | null;
+  language_request?: string | null;
 }): LaneReading {
   // An unreadable lane fails open and keeps no tag. A language from a reading we
   // cannot act on is not evidence of what this parent writes.
   if (!LANES.has(raw.lane)) return openTheGate('unreadable');
   const language = seenLanguage(raw);
+  const requested = trimmedTag(raw.language_request);
+  const asked = requested === null ? {} : { languageRequest: requested };
   const lane = raw.lane as InboundLane;
-  if (lane === 'in_domain') return { lane, category: null, fallback: null, language };
+  if (lane === 'in_domain') return { lane, category: null, fallback: null, language, ...asked };
   const category = (CATEGORIES.has(raw.category) ? raw.category : 'other') as UnmetIntentCategory;
-  return { lane, category, fallback: null, language };
+  return { lane, category, fallback: null, language, ...asked };
 }
 
 /**
@@ -274,18 +291,26 @@ export function createInboundLaneScreen(
         return openTheGate('skill_unavailable');
       }
 
-      if (
+      // The text is the parent's own inbound words, not read from any Google API, so it
+      // is cleared for the candidate (VIL-556). A refusal would be logged by the
+      // clearance and fall through to Haiku below.
+      const decision =
         (deps.modelMode ??
           parseModelMode(process.env.HALE_INBOUND_SCREEN_MODEL_MODE, 'off-domain screen')) ===
         'candidate'
-      ) {
+          ? await clearForNonAnthropic({ kind: 'parent_text' }, 'off-domain screen')
+          : null;
+      if (decision && 'cleared' in decision) {
         try {
-          const result = await (deps.evaluateChoice ?? evaluateJevChoice)({
-            state: { text },
-            question: 'reading',
-            instructions: skill.instructions,
-            criteria: JEV_CRITERIA,
-          });
+          const result = await (deps.evaluateChoice ?? evaluateJevChoice)(
+            {
+              state: { text },
+              question: 'reading',
+              instructions: skill.instructions,
+              criteria: JEV_CRITERIA,
+            },
+            decision.cleared,
+          );
           if (meetsJevConfidence(result, 0.4, 0.1)) return toReading(JEV_CHOICES[result.choice]);
           recordModelFallback('off-domain screen candidate', 'low_confidence');
         } catch (error) {

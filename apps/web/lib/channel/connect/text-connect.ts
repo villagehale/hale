@@ -1,3 +1,4 @@
+import type { Route } from 'next';
 import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
 
 /**
@@ -19,7 +20,7 @@ import type { ConnectorProvider } from '~/lib/integrations/google-oauth';
  * The connectors a texted deep link may name — the two Hale has a text-back path for
  * (integrations/calendar-alert.ts, integrations/email-alert.ts). Drive syncs but nothing
  * texts about it, so the receipt below would be a promise it cannot keep; a `to=gdrive`
- * link falls back to the destination the flow has always had.
+ * link lands on the family page like any other target this module does not name.
  */
 export const TEXT_CONNECT_PROVIDERS = [
   'gcal',
@@ -37,19 +38,34 @@ export function asTextConnectProvider(
   return TEXT_CONNECT_PROVIDERS.find((provider) => provider === value) ?? null;
 }
 
+/**
+ * The app pages a texted sign-in link may name, beside the connectors. A link goes
+ * where it was minted to go; one that names nothing here lands on the family page.
+ * `to` is a closed, machine-minted value on Hale's own URL, never parent text.
+ */
+export const TEXT_LINK_PAGES = ['privacy'] as const;
+
+export type TextLinkPage = (typeof TEXT_LINK_PAGES)[number];
+
+export type TextLinkTarget = TextConnectProvider | TextLinkPage;
+
+export const TEXT_LINK_PAGE_PATH: Record<TextLinkPage, Route> = { privacy: '/privacy' };
+
+export const TEXT_LINK_DEFAULT_PATH: Route = '/family';
+
+/** The whole link allowlist, as an exact-match narrowing (same contract as
+ * asTextConnectProvider). */
+export function asTextLinkTarget(value: string | undefined | null): TextLinkTarget | null {
+  return asTextConnectProvider(value) ?? asTextLinkPage(value);
+}
+
+export function asTextLinkPage(value: string | undefined | null): TextLinkPage | null {
+  return TEXT_LINK_PAGES.find((page) => page === value) ?? null;
+}
+
 const PROVIDER_NOUN: Record<TextConnectProvider, string> = {
   gcal: 'Google Calendar',
   gmail: 'Gmail',
-};
-
-/**
- * The one trust line on a texted connect link. Same sentence for both connectors:
- * Hale never sees the password, and disconnecting is something the parent can
- * do. It is not a phrase to text back.
- */
-export const CONNECTOR_TRUST_LINE: Record<TextConnectProvider, string> = {
-  gcal: 'I never see your password. You can disconnect any time.',
-  gmail: 'I never see your password. You can disconnect any time.',
 };
 
 /**

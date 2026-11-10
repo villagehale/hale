@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct handling: no course-page link was pasted, so asking for the class's own page link is the right move rather than a stall. Watching for a spot is a real capability, so the conditional promise is backed. It is short and invents nothing. The one blemish is the awkward shape: an instruction punctuated as a question (\"...and I'll start watching it?\").",
+    "score": 4
+  }
+}

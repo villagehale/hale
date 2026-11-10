@@ -1,4 +1,4 @@
-import { index, pgTable, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -31,7 +31,19 @@ export const users = pgTable(
      */
     parentRoleBasis: text('parent_role_basis').$type<'stated' | 'guessed'>(),
     locale: text('locale').notNull().default('en-CA'),
-    timezone: text('timezone').notNull().default('America/Toronto'),
+    /**
+     * VIL-572. The language every unprompted message to this parent is written in: a
+     * BCP-47 tag, or null when the parent has set nothing and readers use the family's
+     * `primary_language`. One off-language text never changes it. Only an explicit ask,
+     * or a run of texts in another language (`language_streak_*`), does
+     * (apps/web/lib/channel/parent-language.ts).
+     */
+    proactiveLanguage: text('proactive_language'),
+    /** The other language the current run of texts is in, or null when there is no run. */
+    languageStreakTag: text('language_streak_tag'),
+    /** How many texts in a row were in {@link languageStreakTag}. */
+    languageStreakCount: integer('language_streak_count').notNull().default(0),
+    timezone: text('timezone').notNull().default('UTC'),
     units: text('units').notNull().default('metric'),
     /** 0=Sunday, 1=Monday — same as localParts / Date.getUTCDay(), never 7.
      * Product default Sunday (VIL-319 / F11). */

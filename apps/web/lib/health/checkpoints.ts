@@ -96,7 +96,8 @@ export interface HealthCheckpoint {
 }
 
 const ONTARIO_SCHOOL_VACCINES = 'https://www.ontario.ca/page/vaccines-children-school';
-const ONTARIO_ROUTINE_SCHEDULE = 'https://www.ontario.ca/page/ontarios-routine-immunization-schedule';
+const ONTARIO_ROUTINE_SCHEDULE =
+  'https://www.ontario.ca/page/ontarios-routine-immunization-schedule';
 const ONTARIO_18_MONTH_VISIT = 'https://www.ontario.ca/page/enhanced-18-month-well-baby-visit';
 const ONTARIO_DENTAL = 'https://www.ontario.ca/page/get-dental-care';
 const ICON_PORTAL = 'https://tph.icon.ehealthontario.ca/#!/welcome';

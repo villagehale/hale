@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what waitlist_halfway asks. It says half the 36-hour Springfield window has passed and that the clock started from the parent's own message. The arithmetic checks out: an 11:00 p.m. deadline minus 18 hours is 5:00 a.m., which matches now. 'Tonight at 11:00 p.m.' is correct because now and the deadline fall on the same day. Telling the parent to check email and the portal is a handed fact. It asks no question, invents nothing, names no child, and reads as a friendly text in English.",
+    "score": 5
+  }
+}

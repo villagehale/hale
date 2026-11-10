@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 
 export type DeclineResult =
   | { status: 200 }

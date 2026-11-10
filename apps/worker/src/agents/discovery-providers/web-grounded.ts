@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { cachedSystem, forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import type { DiscoveryQuery } from '@hale/types';
 import { z } from 'zod';
-import { forceToolJson, laneRequestFields, pickLane } from '@hale/agent';
 import { anthropicClient } from '../../anthropic/client.js';
 import { loadPrompt } from '../../prompts/loader.js';
 import type { DiscoveredCandidate, DiscoveryProvider } from './types.js';
@@ -68,7 +68,7 @@ interface WebGroundedDeps {
 }
 
 function defaultDeps(): WebGroundedDeps {
-  return { client: anthropicClient() };
+  return { client: anthropicClient('discovery') };
 }
 
 /** Public listing URLs returned by the server-side web_search tool. */
@@ -117,7 +117,7 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
     const research = await this.deps.client.messages.create({
       ...(laneRequestFields(pickLane('discover')) as Pick<Anthropic.MessageCreateParams, 'model'>),
       max_tokens: 4096,
-      system: instructions,
+      system: cachedSystem(instructions),
       tools: [{ name: 'web_search', type: 'web_search_20250305', max_uses: MAX_SEARCHES }],
       messages: [{ role: 'user', content: userMessage }],
     });

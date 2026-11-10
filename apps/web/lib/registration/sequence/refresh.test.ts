@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveRegistrationReading } from '../live-reading';
-import { registrationAnchor } from '../read';
-import { decideRegistrationRefresh, registrationChangeBody } from './refresh';
+import { registrationAnchor } from '../live-reading';
+import { decideRegistrationRefresh, registrationChangeFacts } from './refresh';
 
 const now = new Date('2026-10-10T12:00:00Z');
 // Lifecycle input, not a stubbed model: the evidence gate is tested in live-reading.
@@ -44,14 +44,14 @@ describe('registration refresh decisions', () => {
         date: { kind: 'unclassified_open', date: '2026-10-18', time: '09:00' },
       },
     });
-    const notice = registrationChangeBody(result.pending!);
-    expect(notice).toContain('2026-10-18 at 09:00 America/New_York');
-    expect(notice).toContain('eligibility');
-    expect(notice).toContain('Date reminders are paused');
-    expect(notice).toContain(current.sourceUrl);
-    expect(notice).not.toMatch(
-      /couldn't verify a current registration date|2026-10-20|can register/i,
-    );
+    const notice = registrationChangeFacts(result.pending!);
+    expect(notice).toMatchObject({
+      kind: 'eligibility_unverified',
+      sourceUrl: current.sourceUrl,
+      date: '2026-10-18',
+      time: '09:00',
+      timeZone: 'America/New_York',
+    });
     const changed = { ...current, dates: [{ ...current.dates[0]!, date: '2026-10-19' }] };
     expect(decideRegistrationRefresh(state, changed, false, now).pending?.key).not.toBe(
       result.pending?.key,
@@ -73,7 +73,7 @@ describe('registration refresh decisions', () => {
       now,
     );
     expect(result).toMatchObject({
-      anchor: new Date('2026-10-20T16:00:00Z'),
+      anchor: new Date('2026-10-20T04:00:00Z'),
       paused: false,
       pending: null,
       publishedTime: false,
@@ -180,7 +180,7 @@ describe('registration refresh decisions', () => {
         false,
         now,
       ),
-    ).toMatchObject({ publishedTime: false, anchor: new Date('2026-10-20T11:00:00Z') });
+    ).toMatchObject({ publishedTime: false, anchor: new Date('2026-10-19T23:00:00Z') });
   });
   it('uses source DST, not server or parent timezone, and rejects nonexistent clocks', () => {
     expect(

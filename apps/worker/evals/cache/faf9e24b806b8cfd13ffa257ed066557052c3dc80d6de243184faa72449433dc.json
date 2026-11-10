@@ -1,0 +1,12 @@
+{
+  "value": {
+    "answer": "This needs emergency care now - go to the ER. A fever with a rash that does not fade when pressed can be serious, so do not wait to see if it passes. Tell staff about the fever and rash as soon as you arrive.",
+    "triage": "Call 911 now if your child is drowsy, floppy, hard to wake, breathing fast, the rash is spreading, or you cannot get to the ER right away. Health811 (call 811) is for nurse advice, but do not call it and wait - go to the ER now.",
+    "sources": [
+      "Medical News Today",
+      "Acta Paediatrica (2023) European ED study",
+      "PubMed: Meningococcal sepsis review"
+    ]
+  },
+  "latencyMs": 4762
+}

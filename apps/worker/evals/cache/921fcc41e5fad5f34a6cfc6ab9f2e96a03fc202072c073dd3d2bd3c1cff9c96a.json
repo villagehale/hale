@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French while the requested language is English, it invents a 'Jour de congé' title and a 3:00 time that do not match the 4:45 PM appointment, and it implies the day is open with breathing room despite a timed event.",
+    "score": 1
+  }
+}

@@ -3,13 +3,13 @@ import { and, eq, isNull } from 'drizzle-orm';
 import {
   DIAPER_EPISODE,
   type DiaperKind,
-  type FeedAmount,
   FEED_EPISODE,
+  type FeedAmount,
   HEALTH_DONE_EPISODE,
-  type MarkDoneInput,
-  MEASURE_META,
   MEASUREMENT_EPISODE,
+  MEASURE_META,
   MILESTONE_EPISODE,
+  type MarkDoneInput,
   NAP_EPISODE,
   type QuickLogInput,
   resolveNapWindow,
@@ -284,11 +284,14 @@ export interface EpisodePatch {
   payload?: Record<string, unknown>;
 }
 
-/** The audit-relevant snapshot of an episode, used for the before/after rows. */
+/**
+ * What an episode's audit rows say about it: when it happened and what kind it was,
+ * never its words. The audit row is immutable and outlives the episode's text, which
+ * the removed-episode window blanks thirty days after a delete (rights/record-retention.ts).
+ */
 interface EpisodeSnapshot {
   occurredAt: Date;
-  summary: string;
-  payload: Record<string, unknown>;
+  episodeType: string;
 }
 
 const TARGET_TABLE = 'family_memory_episodes';
@@ -302,7 +305,8 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * and updated WHERE id = ? AND family_id = ? — a foreign episode matches nothing,
  * so the function returns false and writes nothing. On a match it snapshots the
  * before-state, applies the patch, and writes ONE immutable audit_log row carrying
- * before + after (rule #6) inside the same transaction as the update. The audit
+ * before + after (rule #6) inside the same transaction as the update: the time, the
+ * type and the names of the changed fields, not the text. The audit
  * actor is the editing parent's user id.
  */
 export async function updateEpisode(
@@ -328,10 +332,12 @@ export async function updateEpisode(
       .returning({ id: schema.familyMemoryEpisodes.id });
     if (updated.length === 0) return false;
 
-    const after: EpisodeSnapshot = {
+    const after = {
       occurredAt: patch.occurredAt ?? before.occurredAt,
-      summary: patch.summary ?? before.summary,
-      payload: patch.payload ?? before.payload,
+      episodeType: before.episodeType,
+      changed: (['occurredAt', 'summary', 'payload'] as const).filter(
+        (field) => patch[field] !== undefined,
+      ),
     };
 
     await tx.insert(schema.auditLog).values({
@@ -351,8 +357,8 @@ export async function updateEpisode(
  * Soft-deletes a parent's own logged episode: stamps deleted_at rather than
  * issuing a DELETE, so the row the audit trail references stays intact (rules #6,
  * #9). Family-scoped like updateEpisode — a foreign episode matches nothing and
- * returns false with no write. Writes ONE audit_log row (before = the removed row,
- * after = { deleted: true }) in the same transaction.
+ * returns false with no write. Writes ONE audit_log row (before = the removed row's
+ * time and type, after = { deleted: true }) in the same transaction.
  */
 export async function softDeleteEpisode(
   database: Database,
@@ -403,8 +409,7 @@ async function loadEpisodeSnapshot(
   const rows = await tx
     .select({
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
-      summary: schema.familyMemoryEpisodes.summary,
-      payload: schema.familyMemoryEpisodes.payload,
+      episodeType: schema.familyMemoryEpisodes.episodeType,
     })
     .from(schema.familyMemoryEpisodes)
     .where(
@@ -417,5 +422,5 @@ async function loadEpisodeSnapshot(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return { occurredAt: row.occurredAt, summary: row.summary, payload: row.payload };
+  return { occurredAt: row.occurredAt, episodeType: row.episodeType };
 }

@@ -1,8 +1,9 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { searchVillageTool } from './tools';
 
 /**
@@ -27,6 +28,7 @@ const POOR_PLACE = 'places/eastside-gym';
 const EVENT_DATE = '2030-07-13';
 
 let db: TestDb;
+const livePicks = new Map<string, ActivityPick[]>();
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -39,6 +41,7 @@ afterAll(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await db.exec('truncate table families, users cascade');
+  livePicks.clear();
 });
 
 async function seedFamily(name: string): Promise<{ familyId: string; parentUserId: string }> {
@@ -62,20 +65,20 @@ async function seedCandidate(
   familyId: string,
   title: string,
   placeId: string,
-  confidence: number,
+  _confidence: number,
 ): Promise<void> {
-  await db.database.insert(schema.villageCandidates).values({
-    familyId,
-    title,
-    kind: 'class',
-    summary: 'a warm local option',
-    source: 'web_grounded',
-    confidence,
-    venueName: `${title} venue`,
-    eventDate: EVENT_DATE,
-    cadence: 'one-time',
+  const picks = livePicks.get(familyId) ?? [];
+  picks.push({
+    name: title,
+    ageFit: 'ages 2-5',
+    when: EVENT_DATE,
+    price: null,
+    sourceName: `${title} venue`,
+    source: 'web',
+    sourceUrl: 'https://example.org/activity',
     placeId,
-  });
+  } as ActivityPick);
+  livePicks.set(familyId, picks);
 }
 
 /** One household's answer about one venue, written the way the capture pass writes it. */
@@ -116,7 +119,10 @@ interface VillageToolResult {
 }
 
 async function search(familyId: string): Promise<VillageToolResult> {
-  const tool = searchVillageTool(db.database);
+  const finder: ActivityFinder = {
+    find: async () => ({ found: true, picks: livePicks.get(familyId) ?? [] }),
+  };
+  const tool = searchVillageTool(db.database, undefined, finder);
   const guardDeps: GuardDeps = { writeAudit: async () => {} };
   return (await invokeTool(
     tool,
@@ -133,6 +139,9 @@ async function search(familyId: string): Promise<VillageToolResult> {
  */
 async function seedAsker(): Promise<string> {
   const { familyId } = await seedFamily('asker');
+  await db.database
+    .insert(schema.children)
+    .values({ familyId, name: 'Private child', dateOfBirth: '2023-01-01' });
   await seedCandidate(familyId, 'Eastside tumbling', POOR_PLACE, 0.95);
   await seedCandidate(familyId, 'Riverdale storytime', GOOD_PLACE, 0.8);
   return familyId;

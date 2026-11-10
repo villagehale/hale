@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgPH6KDZ4NXC7AtQjcBJk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrAYKEAgTGAI4AUIIdGhpbmtpbmcSDKTKxyAukrYhaPbK6BoMlm0Uf0bQdokObHVnIjC1qI0GQdl0/Wu5rI81jj1yFOtP8TlDfIrvrRSPiMJGZzFmpDCBfLb1d5dALOkL4AcqyQULRPl0Zs1jCTxoubMQ8588YclL/qSFF4G0Kxyq0RyaXDpbfg5bf6y+ZkaEqRSaDyeeH9V7QHphT3fBDn8xKlXwuHz5PmA7ghJtrFcKqp2sbCxjgIundMJUfSgL/zC0+s3TGz8uun3FezVHGwcTjJNeSkGpB4zkvDneuW41itgsxZFK2eGMgP77KK3unDdWC62MPyfPSMYSHARH8J4+/tefRC4i3NMkjGBezFbf8v8V5D+yCWERm4ds+rFO0/ioo+wUPz3iSJwKef/AzrcF+vPo35uQduikUeko6ujTWqcmiDJ2H0y6vNRsyDcHACX5WoJ2QaDk7V1PC4vK7jFETUUZ7JD7y6TD9PjQitKn81bG9zO+dSWWcnaggxLcZizfl+wIsuIPU0bL6kAWFWWwVE2aJrxIYHXlGv+AwZ+H/grCRJO665/GIbVeQY3Tws+8x8KgQ507UP9q5KUanom1HX/iHzQ9YJc1NdJBQht2kYagFoYcrMooZrqouvV2bXWcABlEwXVTvS8GUPG4JYuJegXXY9EX2C/aLkv4AcZiyzTYiR8X6Oshl+3nYJ56e2BQWO2LDGXRL2jvdt1m/xWJla8bQAWhArbiubTUcVpVm96vTg73LNj+Tow8I9TS5KR6U6sTLx7cRhjArmuvC7x1WeE7mH755z/7nZJTaiGBUaKrYoZTgaKdSQABxhGSyRL4Mn5cDO8Si8Lo6B81w63wu3JrB018hRebajFS2z/40c9l0ZaV6/YxGwZUhFM2ceEdANFxTB6LLWkfgaSg+pxHx10PGhNaJdZSH7kBOULVBGijll2vhp2gffMR67GeuNFYdJ6Pzt0e6aB4vl46KQyKcdldwjl60AUeIDbN7SsRfa5rs2JhtDXohg2wc5QX9NKp34WiEoCsnIyYahmbEoL1pAf6FSiXPh4tuwdRCiM/W2r1CSRVnqspmT5zVRgB"
+      },
+      {
+        "type": "text",
+        "text": "There's a private item Tue 3:45pm. What it is isn't mine to share."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 857,
+      "cache_read_input_tokens": 20981,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 857,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 107,
+      "output_tokens_details": {
+        "thinking_tokens": 79
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1746
+}

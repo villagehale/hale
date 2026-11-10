@@ -1,5 +1,18 @@
-import { type Database, schema } from '@hale/db';
-import { and, eq, gt, gte, inArray, isNull, like, lt, notInArray, or, sql } from 'drizzle-orm';
+import { type Database, type ReplySourceValue, schema } from '@hale/db';
+import {
+  and,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import {
   aggregateMedicalAnswers,
@@ -8,7 +21,7 @@ import {
 } from '~/lib/loop/founder-counts';
 import { aggregateFunnelScoreboard, percentileNearestRank } from '~/lib/loop/funnel-scoreboard';
 import { resolveMetricsExclusions, resolveOpsExclusions } from '~/lib/loop/metrics-scope';
-import { RETENTION_GRADED_WEEK, type VerifyRunOutcomes } from '~/lib/loop/scorecard-rubric';
+import { RETENTION_GRADED_WEEK } from '~/lib/loop/scorecard-rubric';
 import { alertCode } from '~/lib/monitoring/delivery-health';
 import {
   DEAD_LETTER_PAGE_ROUTE,
@@ -19,8 +32,14 @@ import {
   parseDeadLetterIdentifier,
   parseHelloIdentifier,
 } from '~/lib/monitoring/failure-page';
+import {
+  type InboundQueueSnapshot,
+  inboundQueueIsStalled,
+  loadInboundQueueStall,
+} from '~/lib/monitoring/inbound-queue-stall';
 import { LINQ_CHAT_ID_LIMIT, countDbChatIds } from '~/lib/monitoring/linq-capacity';
 import type { OpsPageOutcome } from '~/lib/monitoring/ops-slack';
+import { PROVIDER_INCIDENT_ROUTE, providerIncidentKind } from '~/lib/monitoring/provider-health';
 import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/reply-latency';
 
 /**
@@ -46,7 +65,16 @@ import { type ReplyLatencyStat, computeReplyLatency } from '~/lib/monitoring/rep
  * trailing 7 days ending there. All four family-scoped reads use the metrics exclusion
  * set. An empty METRICS_EXCLUDED_FAMILY_IDS counts the QA households.
  *
+ * The three loop lines (plans and provider incidents, unmet intents, papercuts) are the
+ * counts the retired weekly loop-health and papercut emails carried, trailing 7 days
+ * over the metrics set. Counts only: the papercut row ids those emails listed stay in
+ * the database, where `hale-prod-qa` resolves them.
+ *
  * The Linq line is the database's chat-id count (VIL-407), not a live list of Linq.
+ *
+ * The inbound-queue line is the pg-boss table at post time (VIL-535): jobs still
+ * active past their expiry, unfinished jobs, and the age of the oldest. Slack
+ * only. It does not email, and it does not text a parent.
  */
 
 export const OPS_DAILY_ROUTE = 'ops:daily';
@@ -70,6 +98,38 @@ const TEXT_CHANNELS = ['sms', 'imessage'] as const;
 
 /** Sends that reached the provider: the same denominator as loadDeliveryStats. */
 const ATTEMPTED_STATUSES = ['queued', 'sent', 'delivered', 'failed'] as const;
+
+/** The loop voices that record a 'failed' run when the deterministic copy went out
+ * instead of the composed voice. */
+const VOICE_FAILURE_AGENTS = [
+  'weekly-plan-voice',
+  'welcome-voice',
+  'reminder-voice',
+  'radar-voice',
+  'nudge-voice',
+  'reply-copy',
+] as const;
+
+/** The reply_source values where the composer could not run and the fixed unavailable
+ * line stood in. 'composed' / 'web_grounded' / 'fixed' are outcomes, not degradations. */
+const REPLY_FALLBACK_SOURCES = [
+  'client_unavailable',
+  'skill_unavailable',
+  'model_failed',
+  'unsendable',
+] as const satisfies readonly ReplySourceValue[];
+
+export const PAPERCUT_SOURCES = [
+  'unmet_intent',
+  'medical_fallback',
+  'reply_fallback',
+  'voice_failure',
+  'turn_failure',
+] as const;
+export type PapercutSource = (typeof PAPERCUT_SOURCES)[number];
+
+/** Unmet-intent buckets named in the post; the rest are a `+N more` count. */
+const UNMET_SHOWN = 5;
 
 /** Claim encoding: count 1 = posted, a unix-second stamp = a post in progress. */
 const CLAIM_EPOCH = new Date(0);
@@ -124,13 +184,32 @@ export interface OpsDailyReport {
   promises: { open: number; overdue: number; overdueFamilies: number };
   /** Medical answers in the trailing 7 days, and how many were the fixed 811/911 line. */
   medical: { answered: number; fallbacks: number };
-  /** Latest observations of watched registration sources in the trailing 7 days. */
+  /** Whether a re-verify sweep's week overlapped the trailing 7 days, and the tally
+   * that run recorded. A sweep that did not run has no outcomes; a sweep that died
+   * mid-run has `ran` and no outcomes. Neither is zero discrepancies. */
   reverify: {
     ran: boolean;
-    outcomes: VerifyRunOutcomes | null;
+    outcomes: {
+      checked: number;
+      confirmed: number;
+      discrepancies: number;
+      unverified: number;
+    } | null;
+  };
+  /** Trailing 7 days over the metrics set: what the retired weekly loop-health and
+   * papercut emails counted. */
+  week: {
+    plansComposed: number;
+    /** Provider incidents claimed (and paged) in the 7 days, by kind. */
+    providerIncidents: Array<{ reason: string; count: number }>;
+    /** Inbound texts Hale said no to, as `lane_category`, most frequent first. */
+    unmetIntents: Array<{ reason: string; count: number }>;
+    papercuts: Record<PapercutSource, number>;
   };
   /** Distinct chat ids the database has recorded, canary excluded. Not the live Linq total. */
   linqChatIds: number;
+  /** The inbound pg-boss queue at the moment of the post. Counts only. */
+  queue: InboundQueueSnapshot;
 }
 
 export type OpsDailyOutcome = 'posted' | 'already_posted' | 'failed' | 'skipped_not_configured';
@@ -423,6 +502,105 @@ function summarizeSpend(rows: RunRow[]): OpsDailyReport['spend'] {
   };
 }
 
+async function loadWeek(
+  database: Database,
+  window: { start: Date; end: Date },
+  excluded: readonly string[],
+): Promise<OpsDailyReport['week']> {
+  const m = schema.channelMessages;
+  const scoped = (column: typeof m.familyId | typeof schema.auditLog.familyId) =>
+    excluded.length > 0 ? or(isNull(column), notInArray(column, [...excluded])) : undefined;
+  const messageWindow = and(gte(m.createdAt, window.start), lt(m.createdAt, window.end));
+
+  const [plans] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.weekPlans)
+    .where(
+      and(
+        gte(schema.weekPlans.composedAt, window.start),
+        lt(schema.weekPlans.composedAt, window.end),
+        excluded.length > 0 ? notInArray(schema.weekPlans.familyId, [...excluded]) : undefined,
+      ),
+    );
+
+  const incidentRows = await database
+    .select({ identifier: schema.rateLimits.identifier })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, PROVIDER_INCIDENT_ROUTE),
+        gte(schema.rateLimits.windowStart, window.start),
+        lt(schema.rateLimits.windowStart, window.end),
+      ),
+    );
+  const incidents = new Map<string, number>();
+  for (const row of incidentRows) {
+    const kind = providerIncidentKind(row.identifier);
+    incidents.set(kind, (incidents.get(kind) ?? 0) + 1);
+  }
+
+  const unmetRows = await database
+    .select({ lane: m.unmetLane, category: m.unmetCategory, count: sql<number>`count(*)::int` })
+    .from(m)
+    .where(and(isNotNull(m.unmetLane), messageWindow, scoped(m.familyId)))
+    .groupBy(m.unmetLane, m.unmetCategory);
+
+  const [fallbacks] = await database
+    .select({
+      medical: sql<number>`count(*) filter (where ${m.medicalReplySource} = 'fixed')::int`,
+      reply: sql<number>`count(*) filter (where ${inArray(m.replySource, [...REPLY_FALLBACK_SOURCES])})::int`,
+    })
+    .from(m)
+    .where(and(eq(m.direction, 'out'), messageWindow, scoped(m.familyId)));
+
+  const [voice] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.agentRuns)
+    .where(
+      and(
+        eq(schema.agentRuns.status, 'failed'),
+        inArray(schema.agentRuns.agentName, [...VOICE_FAILURE_AGENTS]),
+        gte(schema.agentRuns.startedAt, window.start),
+        lt(schema.agentRuns.startedAt, window.end),
+        excluded.length > 0 ? notInArray(schema.agentRuns.familyId, [...excluded]) : undefined,
+      ),
+    );
+
+  const [turns] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, TURN_FAILED_AUDIT_ACTION),
+        gte(schema.auditLog.occurredAt, window.start),
+        lt(schema.auditLog.occurredAt, window.end),
+        scoped(schema.auditLog.familyId),
+      ),
+    );
+
+  const unmetIntents = unmetRows
+    .map((row) => ({
+      reason: `${row.lane ?? 'unknown'}_${row.category ?? 'unknown'}`,
+      count: row.count,
+    }))
+    .sort(byCountThenName((row) => row.reason));
+
+  return {
+    plansComposed: plans?.count ?? 0,
+    providerIncidents: [...incidents]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort(byCountThenName((row) => row.reason)),
+    unmetIntents,
+    papercuts: {
+      unmet_intent: unmetIntents.reduce((sum, row) => sum + row.count, 0),
+      medical_fallback: fallbacks?.medical ?? 0,
+      reply_fallback: fallbacks?.reply ?? 0,
+      voice_failure: voice?.count ?? 0,
+      turn_failure: turns?.count ?? 0,
+    },
+  };
+}
+
 export async function aggregateOpsDaily(database: Database, now: Date): Promise<OpsDailyReport> {
   const window = opsDailyWindow(now);
   const active = await activeFamilyIds(database, window);
@@ -438,13 +616,15 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
   // family in the trailing week. W4 resolves the same set itself.
   const metricsExcluded = [...(await resolveMetricsExclusions(database))];
   const weekStart = new Date(window.end.getTime() - TRAILING_WEEK_MS);
-  const [w4Cohorts, funnel, debt, medical, radar, linqChatIds] = await Promise.all([
+  const [w4Cohorts, funnel, debt, medical, radar, linqChatIds, week, queue] = await Promise.all([
     aggregateW4Retention(database, window.end),
     aggregateFunnelScoreboard(database, weekStart, window.end, metricsExcluded),
     aggregateCommitmentDebt(database, window.end, metricsExcluded),
     aggregateMedicalAnswers(database, weekStart, window.end, metricsExcluded),
     aggregateRadarVerification(database, weekStart, window.end),
     countDbChatIds(database),
+    loadWeek(database, { start: weekStart, end: window.end }, metricsExcluded),
+    loadInboundQueueStall(database),
   ]);
   const graded = w4Cohorts.filter((row) => row.weekN === RETENTION_GRADED_WEEK);
 
@@ -481,8 +661,10 @@ export async function aggregateOpsDaily(database: Database, now: Date): Promise<
       overdueFamilies: debt.overdueFamilies,
     },
     medical,
-    reverify: { ran: radar.checkedThisWeek, outcomes: radar.outcomes },
+    reverify: { ran: radar.sweptThisWeek, outcomes: radar.outcomes },
+    week,
     linqChatIds,
+    queue,
   };
 }
 
@@ -527,10 +709,35 @@ function medicalLine(medical: OpsDailyReport['medical']): string {
 }
 
 function reverifyLine(reverify: OpsDailyReport['reverify']): string {
-  if (!reverify.ran) return 'Registration checks (7d): no watch observations';
-  if (!reverify.outcomes) return 'Registration checks (7d): no watch observations';
+  if (!reverify.ran) return 'Re-verify (7d): did not run';
+  if (!reverify.outcomes) return 'Re-verify (7d): ran | no tally';
   const o = reverify.outcomes;
-  return `Registration checks (7d): checked ${o.checked} | verified ${o.verified} | changed ${o.changed} | unverified ${o.unverified}`;
+  return `Re-verify (7d): ran | checked ${o.checked} | confirmed ${o.confirmed} | discrepancies ${o.discrepancies} | unverified ${o.unverified}`;
+}
+
+function loopLine(week: OpsDailyReport['week']): string {
+  const incidents = week.providerIncidents.length > 0 ? tally(week.providerIncidents) : 'none';
+  return `Loop (7d): week plans composed ${week.plansComposed} | provider incidents: ${incidents}`;
+}
+
+function unmetLine(rows: OpsDailyReport['week']['unmetIntents']): string {
+  if (rows.length === 0) return 'Unmet intents (7d): none';
+  const shown = rows.slice(0, UNMET_SHOWN);
+  const more = rows.length - shown.length;
+  return `Unmet intents (7d): ${tally(shown)}${more > 0 ? ` (+${more} more)` : ''}`;
+}
+
+function queueLine(queue: InboundQueueSnapshot): string {
+  if (!queue.readable) return 'Inbound queue: unreadable';
+  if (queue.expiredActive === 0 && queue.unfinished === 0) return 'Inbound queue: clear';
+  const body = `expired-active ${queue.expiredActive} | unfinished ${queue.unfinished} | oldest ${seconds(queue.oldestSeconds)}`;
+  return inboundQueueIsStalled(queue)
+    ? `Inbound queue: stalled | ${body}`
+    : `Inbound queue: ${body}`;
+}
+
+function papercutLine(p: OpsDailyReport['week']['papercuts']): string {
+  return `Papercuts (7d): unmet ${p.unmet_intent} | medical fallback ${p.medical_fallback} | reply fallback ${p.reply_fallback} | voice fallback ${p.voice_failure} | turn failures ${p.turn_failure}`;
 }
 
 /** The #ops text. ASCII, counts and closed-vocabulary reasons only. */
@@ -562,7 +769,11 @@ export function composeOpsDailyPost(report: OpsDailyReport): string {
     promisesLine(report.promises),
     medicalLine(report.medical),
     reverifyLine(report.reverify),
+    loopLine(report.week),
+    unmetLine(report.week.unmetIntents),
+    papercutLine(report.week.papercuts),
     `Linq chat IDs (DB): ${report.linqChatIds} of ${LINQ_CHAT_ID_LIMIT}`,
+    queueLine(report.queue),
   ].join('\n');
 }
 

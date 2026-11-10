@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgPHegwesLg37Teat6iYn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSrQYKEAgTGAI4AUIIdGhpbmtpbmcSDLjCl/cfSlA4v8v2MRoMSqp/rNY7cr6YtHlbIjCT/NJxniUk8Vh9gsfRBIouH327WOLVsnOMHV2zsDjPVjZeF5PtfdtmBUBHwvIr9j4qygVpqsOBfgIJt7kz3ANlOQzWux3t5lljjkudk9IFudE3C/RH2NxDMF/t7QNCA2CYl83tBv9QfBdU0ak2eOqtTihM/MudfotrhPVbrN7+YqmaFLXXj6DHjiiip4UaMw0dNT+8WmKXDL2zc33GYSgZAHP/YCbwlu5kR8JsIJLNnvLYK20y5v2lkQBJKhlq7EKx3hezdHuvHDrU8j4eU8TCeuEhLzFuSUXdtAONtqk3OISMfM3aTRpbT0Kdj/Eh0y8ckMFctumoyDpqWap/srtiV5W3OsH4iOt84sfvxrKzx6Olp7FhAPiPhyfD/aR/pPi3HLDTCRlFGnMYLGdtmXawHh6RsJsT7KZ2FOqaxd4bqIQyX3LK1ljAXcqU1ciTR2bOL1CS3APpwBkDeifDeE83XVQDiqmNd1XGTzj2/AxgdBxoKxLpLV18dwagTPqFBSthAdQUDim3RuULeH+Z9wby3Izy064GhSISxeAbk5sg9j2YDsu0SMYrp+1z35U+SNy8QW/+BQErsmDjh4vIewQMVLOoxnqjEHmkyQOVdGjPE7svH+1f+z9rGfXRbDqvVv+B5BfewkEIbvIsIZpMNWJjQIcwXC5DNhiDCKY5Qk8bsRzae9pxS4v9PN1wmBQ2qfktN16zShlucR1e8mXWYfWiewgWlyoQRVzMV8JD+QOwlyHzpLuX+GCk34AbeWQ5VuGcRV9lNTda3YA2glytcxyLSA4Kec+b3cwd42pBixRO6tpJ++mbNK78Vt7YVG3Zx50WVhai4k4NGOV/Aod11RygFyh2zzOztgPhYYzSjC9A+DKvm12dMmWzDyfmlIr/8ckZ3PVixaigmq1/EoUZOciAY6NFJkU2MJF3Whotp8MFemOAp44PPNGtlioEA5/DpC7Rz6yaAPpA4sBO9uq9CqKDMePqQNXX49cwyO0788vr/Isb0Iqs+Stiz6mD7y8YAQ=="
+      },
+      {
+        "type": "text",
+        "text": "Saturday you've got soccer practice at 10:00am at Cedarvale Park. After that there's Fanous lantern craft, a free drop-in at North York Central Library on Sat, Aug 8, 2:00 p.m. [link-c9bfa2] It's for ages 6-12, so it suits Ada but not Milo."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1101,
+      "cache_read_input_tokens": 20981,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1101,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 183,
+      "output_tokens_details": {
+        "thinking_tokens": 73
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2176
+}

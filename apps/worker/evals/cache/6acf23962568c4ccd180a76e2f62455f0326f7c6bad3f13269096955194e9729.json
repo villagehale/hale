@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to watch a full class but pasted no course-page link. Asking for the link is exactly the right move under watch_for_opening, and the reply does it in one plain question. The line about starting to watch is a true conditional, backed by a real capability, and it stops there with nothing invented.",
+    "score": 5
+  }
+}

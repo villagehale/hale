@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -20,9 +20,11 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
+import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
+import { coParentDepartedNotice } from './copy';
 
 /**
  * VIL-355 follow-up · the parent who STAYED is told, once.
@@ -59,11 +61,16 @@ export function departureNoticeDedupeKey(familyId: string, departedUserId: strin
  */
 export type DepartureNoticeOutcome =
   | 'sent'
+  /** Live cadence: handed to the hourly decider, which sends it (VIL-612). */
+  | 'queued'
+  /** Live cadence: an earlier call handed it over; the decider owns it. */
+  | 'already_queued'
   | 'dark'
   | 'already_sent'
   | 'no_staying_parent'
   | 'no_send_target'
   | 'send_failed'
+  | 'model_unreachable'
   | `gate_refused:${ProactiveHoldReason}`;
 
 export interface DepartureNoticePorts {
@@ -114,18 +121,20 @@ export async function stayingParent(database: Database, familyId: string): Promi
 }
 
 /**
- * Which language the sentence goes out in, off the recipient's own `users.locale`.
+ * Which language the sentence goes out in: the recipient's one proactive language
+ * (VIL-572, `readParentLanguage`), as English or French.
  *
  * `replyLanguage` cannot serve here: it reads the message in front of it, and the parent
- * being told wrote nothing this turn. The stored locale is the only honest source, and
- * it fails toward English — the house default, and the cheaper error (language.ts).
+ * being told wrote nothing this turn. It fails toward English — the house default, and
+ * the cheaper error (language.ts).
  */
-async function parentLanguage(database: Database, userId: string): Promise<ReplyLanguage> {
-  const rows = await database
-    .select({ id: schema.users.id, locale: schema.users.locale })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId));
-  return rows.find((row) => row.id === userId)?.locale?.startsWith('fr') ? 'fr' : 'en';
+async function parentLanguage(
+  database: Database,
+  familyId: string,
+  userId: string,
+): Promise<ReplyLanguage> {
+  const language = await readParentLanguage(database, { familyId, parentUserId: userId });
+  return copyLanguage(language) === 'fr' ? 'fr' : 'en';
 }
 
 export async function tellStayingParent(
@@ -153,6 +162,7 @@ export async function tellStayingParent(
   // The cheap guard, before the gate reads four tables. The claim below is the correct
   // one — this only keeps a retry from costing anything.
   if (await dedupeActive(dedupeKey, database)) return 'already_sent';
+  if (await isQueuedForDecider(database, familyId, dedupeKey)) return 'already_queued';
 
   const verdict = await ports.gate({ familyId, parentUserId, kind: 'co_parent_departed', now });
   if (!verdict.allowed) {
@@ -177,15 +187,55 @@ export async function tellStayingParent(
   }
 
   const target = await familyOutboundTarget(database, familyId);
-  let message: string;
-  let language: ReplyLanguage;
+  let message: string | null;
+  let language: ReplyLanguage | null;
   if (target.channel === 'group') {
     const speech = await familySpeech(database, familyId, departedUserId);
     language = speech.language;
-    message = groupDepartureNotice(language, speech.name);
+    message = await groupDepartureNotice(language, speech.name);
   } else {
-    language = await parentLanguage(database, parentUserId);
-    message = CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE[language];
+    language = await parentLanguage(database, familyId, parentUserId);
+    message = await coParentDepartedNotice(language);
+  }
+  if (!message) {
+    console.info(
+      { familyId, reason: 'model_unreachable' },
+      'co-parent departure notice: spoken line unreachable',
+    );
+    return 'model_unreachable';
+  }
+
+  // VIL-612 · live cadence: the hourly decider decides when, re-gates, and sends. It
+  // writes the same ledger row under this key, so the re-drive finds the notice claimed.
+  const handedOff = await handOffProactive(
+    database,
+    [
+      {
+        familyId,
+        parentUserId,
+        kind: 'co_parent_departed',
+        category: 'co_parent_departed',
+        templateKey: DEPARTURE_NOTICE_TEMPLATE_KEY,
+        what: message,
+        why: 'co_parent_departed',
+        sourceUrl: null,
+        worthlessAfter: null,
+        parentRequested: false,
+        dedupeKey,
+      },
+    ],
+    'candidate',
+  );
+  if (handedOff === 'queued') {
+    await database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'proactive_cadence_queued',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { kind: 'co_parent_departed' },
+    });
+    return 'queued';
   }
 
   // CLAIM FIRST, by the insert rather than by the read above: two erasure requests

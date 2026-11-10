@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All facts are present and correct: the day (tomorrow, true from Sunday evening), the start 4:45 and end 5:45, and PM stated clearly. It keeps the event generic ('an appointment') with no guessing, no invented place, no travel or departure claims, and no filler such as a wish or advice. It reads like a quick friendly text from a friend, not a calendar readout; 'Heads up' is a natural opener and 'you've got an appointment' is idiomatic. No link, as planLink is null.",
+    "score": 5
+  }
+}

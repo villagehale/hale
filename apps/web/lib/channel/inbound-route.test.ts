@@ -47,7 +47,9 @@ interface Harness {
   /** The transport each intake build was told the message arrived on. */
   intakeTransports: string[];
   /** The Linq bind each intake build received. Undefined is SMS. */
-  linqBinds: Array<{ chatId: string; replyToMessageId?: string | null } | undefined>;
+  linqBinds: Array<
+    { chatId: string; replyToMessageId?: string | null; isGroup?: boolean } | undefined
+  >;
 }
 
 function harness(): Harness {
@@ -105,7 +107,7 @@ function harness(): Harness {
       },
       intake: (
         inboundTransport?: string,
-        linq?: { chatId: string; replyToMessageId?: string | null },
+        linq?: { chatId: string; replyToMessageId?: string | null; isGroup?: boolean },
       ) => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
@@ -152,8 +154,25 @@ function closeIntake(fake: FakeDb): void {
   } as never);
 }
 
+const PHOTO = {
+  kind: 'image' as const,
+  url: 'https://cdn.example/flyer.jpg',
+  mime: 'image/jpeg',
+};
+const VIDEO = { kind: 'video' as const, url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' };
+
 function inbound(
-  overrides: Partial<{ body: string; providerId: string; from: string; budget: 'chat' }> = {},
+  overrides: Partial<{
+    body: string;
+    providerId: string;
+    from: string;
+    budget: 'chat';
+    media: ReadonlyArray<{
+      kind: 'image' | 'video' | 'audio' | 'file';
+      url: string | null;
+      mime: string | null;
+    }>;
+  }> = {},
 ) {
   return {
     from: overrides.from ?? PHONE,
@@ -161,6 +180,7 @@ function inbound(
     providerId: overrides.providerId ?? 'SM11111111111111111111111111111111',
     receivedAt: NOW,
     ...(overrides.budget ? { budget: overrides.budget } : {}),
+    ...(overrides.media ? { media: overrides.media } : {}),
   };
 }
 
@@ -174,72 +194,91 @@ afterEach(() => {
 });
 
 describe('routing', () => {
-  it('hands STOP to the machine, which revokes and confirms — media does not divert it', async () => {
+  it('hands STOP to the machine, which revokes and confirms — a photo does not divert it', async () => {
     const h = harness();
     enrol(h.fake);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: 'STOP' }), 1);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'STOP', media: [PHOTO] }));
 
     expect(outcome).toBe('intake');
-    // The CASL path ran, not the attachment notice.
     expect(h.transport.bodies()).toEqual([SCRIPTED_STOP_CONFIRMATION]);
+    expect(h.transport.bodies().join('\n')).not.toContain("I can't read attachments");
     const revoked = h.fake.writes.filter(
       (w) => w.op === 'update' && w.table === schema.parentChannels,
     );
     expect(revoked.length).toBeGreaterThan(0);
   });
 
-  it('answers an MMS with the attachment line and never enqueues it', async () => {
-    const h = harness();
-
-    const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 2);
-
-    expect(outcome).toBe('media_unsupported');
-    expect(h.transport.bodies()[0]).toContain("I can't read attachments over text yet");
-    expect(h.jobs).toHaveLength(0);
-  });
-
-  it('ledgers the attachment line it texts an enrolled number (rule #6)', async () => {
+  it('hands an enrolled photo to the coach and stores the part, with no fixed line', async () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);
+    closeIntake(h.fake);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 1);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'the flyer', media: [PHOTO] }));
 
-    expect(outcome).toBe('media_unsupported');
-    const row = h.fake.rows(schema.channelMessages).find((r) => r.direction === 'out');
+    expect(outcome).toBe('handed_off');
+    expect(h.transport.sent).toHaveLength(0);
+    expect(h.jobs).toHaveLength(1);
+    const row = h.fake.rows(schema.channelMessages).find((r) => r.direction === 'in');
     expect(row).toMatchObject({
       familyId,
       parentUserId: userId,
-      channel: 'sms',
-      category: 'reply',
-      status: 'queued',
-      replySource: 'fixed',
-      body: null,
+      body: 'the flyer',
+      inboundMedia: [PHOTO],
     });
-    expect(row?.providerMessageId).toMatch(/^fake-out-/);
-    const audit = h.fake
-      .rows(schema.auditLog)
-      .find((a) => a.actionTaken === 'sms_reply_sent' && a.targetId === row?.id);
-    expect(audit).toBeDefined();
+    expect(row?.replySource).toBeUndefined();
   });
 
-  it("answers a stranger's MMS without a ledger row — no family exists to hold one", async () => {
+  it("stores the door's group bit on the inbound row and the job (VIL-463)", async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+      isGroup: false,
+    });
+    await routeInboundText(h.deps, inbound({ providerId: 'msg-unsaid' }));
+
+    const rows = h.fake.rows(schema.channelMessages).filter((r) => r.direction === 'in');
+    expect(rows.find((r) => r.providerMessageId === 'msg-1to1')?.inGroup).toBe(false);
+    // The door did not say: stored as unknown, never as a 1:1 text.
+    expect(rows.find((r) => r.providerMessageId === 'msg-unsaid')?.inGroup).toBeNull();
+    expect(h.jobs.map((j) => j.in_group)).toEqual([false, undefined]);
+  });
+
+  it('hands a video to the coach the same way, so the model can write the reply', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [VIDEO] }));
+
+    expect(outcome).toBe('handed_off');
+    expect(h.transport.sent).toHaveLength(0);
+    const row = h.fake.rows(schema.channelMessages).find((r) => r.direction === 'in');
+    expect(row?.inboundMedia).toEqual([VIDEO]);
+  });
+
+  it('greets a stranger who sent only a photo, and does not send a fixed attachment line', async () => {
     const h = harness();
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 1);
+    const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
-    // Positive control: the attachment line itself still goes out.
-    expect(outcome).toBe('media_unsupported');
-    expect(h.transport.sent).toHaveLength(1);
-    expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+    expect(outcome).toBe('intake');
+    expect(h.jobs).toHaveLength(0);
+    expect(h.transport.bodies().join('\n')).not.toContain("I can't read attachments");
+    expect(h.fake.rows(schema.channelMessages).some((r) => r.replySource === 'fixed')).toBe(false);
   });
 
-  it('shares ONE rate-limit budget between the media path and the machine', async () => {
+  it('spends the same inbound budget on a photo as on a text', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
     const spy = vi.spyOn(limiter, 'check');
 
-    await routeInboundText(h.deps, inbound({ body: '' }), 1);
+    await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
     expect(spy).toHaveBeenCalledWith(
       phoneBlindIndex(PHONE),
@@ -248,7 +287,7 @@ describe('routing', () => {
     );
   });
 
-  it('sends NOTHING to a number that unsubscribed, even a friendly attachment line', async () => {
+  it('sends nothing to a revoked number, photo or not', async () => {
     const h = harness();
     h.fake.db.insert(schema.parentChannels).values({
       userId: '00000000-0000-4000-8000-0000000000u1',
@@ -260,43 +299,53 @@ describe('routing', () => {
       revokedAt: NOW,
     } as never);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 1);
+    const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
-    // An app link to someone who pressed STOP is a CASL breach; it would also be
-    // rejected by the provider (21610) and throw the webhook into a retry loop.
-    expect(outcome).toBe('unsubscribed');
+    expect(outcome).toBe('ignored');
     expect(h.transport.sent).toHaveLength(0);
   });
 
-  it('stays silent when the media path is over the limit', async () => {
+  it('stays silent when a photo is over the inbound limit', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    vi.spyOn(limiter, 'check').mockResolvedValue({
+      allowed: false,
+      retryAfterSec: 60,
+      firstDenied: true,
+    });
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: '' }), 1);
+    const outcome = await routeInboundText(h.deps, inbound({ body: '', media: [PHOTO] }));
 
     expect(outcome).toBe('rate_limited');
     expect(h.transport.sent).toHaveLength(0);
   });
 
-  it('answers a group attachment the door already charged to the chat, without the sender budget', async () => {
+  it('does not spend the sender budget on a group photo the door already charged', async () => {
     const h = harness();
     const limiter = h.deps.intake('sms').limiter as FakeRateLimiter;
-    const spy = vi.spyOn(limiter, 'check').mockResolvedValue({ allowed: false, retryAfterSec: 60 });
+    const spy = vi
+      .spyOn(limiter, 'check')
+      .mockResolvedValue({ allowed: false, retryAfterSec: 60, firstDenied: true });
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: '', budget: 'chat' }), 1);
+    const outcome = await routeInboundText(
+      h.deps,
+      inbound({ body: '', budget: 'chat', media: [PHOTO] }),
+    );
 
-    expect(outcome).toBe('media_unsupported');
+    expect(outcome).toBe('intake');
     expect(spy).not.toHaveBeenCalled();
-    expect(h.transport.sent).toHaveLength(1);
+    expect(h.transport.bodies().join('\n')).not.toContain("I can't read attachments");
   });
 
-  it('drops a message from a number we cannot parse', async () => {
+  it('drops a photo from a number we cannot parse', async () => {
     const h = harness();
 
-    const outcome = await routeInboundText(h.deps, inbound({ from: 'not-a-number' }), 1);
+    const outcome = await routeInboundText(
+      h.deps,
+      inbound({ from: 'not-a-number', body: '', media: [PHOTO] }),
+    );
 
-    expect(outcome).toBe('invalid_number');
+    expect(outcome).toBe('ignored');
     expect(h.transport.sent).toHaveLength(0);
   });
 });
@@ -310,7 +359,6 @@ describe('handoff to C1', () => {
     const outcome = await routeInboundText(
       h.deps,
       inbound({ body: 'can you move swimming to Thursday?' }),
-      0,
     );
 
     expect(outcome).toBe('handed_off');
@@ -348,16 +396,12 @@ describe('handoff to C1', () => {
       const h = harness();
       enrol(h.fake);
       closeIntake(h.fake);
-      await routeInboundText(
-        h.deps,
-        {
-          ...inbound({ body: 'can you move swimming to Thursday?' }),
-          transport: 'imessage',
-          chatId: 'chat-1',
-          isGroup,
-        },
-        0,
-      );
+      await routeInboundText(h.deps, {
+        ...inbound({ body: 'can you move swimming to Thursday?' }),
+        transport: 'imessage',
+        chatId: 'chat-1',
+        isGroup,
+      });
       return h.jobs;
     };
 
@@ -375,15 +419,11 @@ describe('handoff to C1', () => {
     enrol(h.fake);
     closeIntake(h.fake);
 
-    await routeInboundText(
-      h.deps,
-      {
-        ...inbound({ body: 'can you move swimming to Thursday?' }),
-        transport: 'imessage',
-        chatId: 'chat-1',
-      },
-      0,
-    );
+    await routeInboundText(h.deps, {
+      ...inbound({ body: 'can you move swimming to Thursday?' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+    });
 
     expect(h.jobs).toHaveLength(1);
     expect(h.jobs[0]).not.toHaveProperty('in_group', false);
@@ -403,7 +443,7 @@ describe('handoff to C1', () => {
     } as never);
     closeIntake(h.fake);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: 'hello again' }), 0);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'hello again' }));
 
     // The handoff resolves through `resolveVerifiedChannelByPhone`, which never returns
     // a revoked row — so a number that pressed STOP is structurally unable to become a
@@ -421,7 +461,7 @@ describe('handoff to C1', () => {
       enrol(h.fake, role);
       closeIntake(h.fake);
 
-      const outcome = await routeInboundText(h.deps, inbound({ body: "what's on today?" }), 0);
+      const outcome = await routeInboundText(h.deps, inbound({ body: "what's on today?" }));
 
       // These two are the gap M6 does not close: `isCaregiverRole` is FALSE for them, so
       // they fall past the caregiver branch into the parent branch. role-scope.ts gives
@@ -440,7 +480,7 @@ describe('handoff to C1', () => {
       enrol(h.fake, role);
       closeIntake(h.fake);
 
-      const outcome = await routeInboundText(h.deps, inbound({ body: "what's on today?" }), 0);
+      const outcome = await routeInboundText(h.deps, inbound({ body: "what's on today?" }));
 
       // The named caregiver roles are caught UPSTREAM: the machine answers with M6's one
       // scoped line, so A3's handoff is never reached. Asserted so a change to either
@@ -449,6 +489,90 @@ describe('handoff to C1', () => {
       expect(h.jobs).toHaveLength(0);
     },
   );
+
+  // The sign-up runner (signup/run.ts `yesThread`) hands a child's details only to a yes
+  // whose stored row says 1:1, so it relies on this: a non-parent reaches C1 only from
+  // the group, with the group bit set on both the row and the job.
+  it('queues a seated non-parent only from the group, never from a 1:1 text', async () => {
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake, 'extended');
+    closeIntake(h.fake);
+    h.fake.db.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: 'chat-group',
+      userId,
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      role: 'caregiver',
+      removedAt: null,
+    } as never);
+
+    const direct = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1to1' }),
+      transport: 'imessage',
+      chatId: 'chat-1to1',
+      isGroup: false,
+    });
+    expect(direct).toBe('not_a_parent');
+    expect(h.jobs).toHaveLength(0);
+
+    // Positive control: the same seat does reach C1 from the group.
+    const group = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-group' }),
+      transport: 'imessage',
+      chatId: 'chat-group',
+      isGroup: true,
+    });
+    expect(group).toBe('handed_off');
+    expect(h.jobs.map((job) => job.in_group)).toEqual([true]);
+    const rows = h.fake.rows(schema.channelMessages).filter((row) => row.direction === 'in');
+    expect(rows.map((row) => row.inGroup)).toEqual([true]);
+  });
+
+  it('refuses a seated non-parent on the seated chat unless the group bit is exactly true', async () => {
+    vi.stubEnv('LINQ_GROUP_MEMBERS_ENABLED', 'true');
+    const h = harness();
+    const { familyId, userId } = enrol(h.fake, 'extended');
+    closeIntake(h.fake);
+    h.fake.db.insert(schema.linqGroupMembers).values({
+      familyId,
+      chatId: 'chat-group',
+      userId,
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      role: 'caregiver',
+      removedAt: null,
+    } as never);
+    const inboundRows = () =>
+      h.fake.rows(schema.channelMessages).filter((row) => row.direction === 'in');
+
+    for (const [providerId, isGroup] of [
+      ['msg-bit-missing', undefined],
+      ['msg-bit-false', false],
+    ] as const) {
+      const outcome = await routeInboundText(h.deps, {
+        ...inbound({ providerId }),
+        transport: 'imessage',
+        chatId: 'chat-group',
+        isGroup,
+      });
+      expect(outcome).toBe('not_a_parent');
+    }
+    expect(h.jobs).toHaveLength(0);
+    expect(inboundRows()).toHaveLength(0);
+
+    // Positive control: the same seat on the same chat with the bit set reaches C1.
+    const group = await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-bit-true' }),
+      transport: 'imessage',
+      chatId: 'chat-group',
+      isGroup: true,
+    });
+    expect(group).toBe('handed_off');
+    expect(h.jobs).toHaveLength(1);
+    expect(inboundRows()).toHaveLength(1);
+  });
 
   it('refuses a verified channel whose owner has no family_members row at all', async () => {
     const h = harness();
@@ -462,7 +586,7 @@ describe('handoff to C1', () => {
     } as never);
     closeIntake(h.fake);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: 'hello' }), 0);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'hello' }));
 
     expect(outcome).toBe('not_a_parent');
     expect(h.jobs).toHaveLength(0);
@@ -473,9 +597,7 @@ describe('handoff to C1', () => {
     enrol(h.fake, 'co_parent');
     closeIntake(h.fake);
 
-    expect(await routeInboundText(h.deps, inbound({ body: 'move swimming' }), 0)).toBe(
-      'handed_off',
-    );
+    expect(await routeInboundText(h.deps, inbound({ body: 'move swimming' }))).toBe('handed_off');
   });
 
   it('is idempotent on a webhook RETRY — one ledger row, one job', async () => {
@@ -483,8 +605,8 @@ describe('handoff to C1', () => {
     enrol(h.fake);
     closeIntake(h.fake);
 
-    const first = await routeInboundText(h.deps, inbound({ body: 'move swimming' }), 0);
-    const retry = await routeInboundText(h.deps, inbound({ body: 'move swimming' }), 0);
+    const first = await routeInboundText(h.deps, inbound({ body: 'move swimming' }));
+    const retry = await routeInboundText(h.deps, inbound({ body: 'move swimming' }));
 
     expect(first).toBe('handed_off');
     expect(retry).toBe('duplicate');
@@ -504,7 +626,7 @@ describe('handoff to C1', () => {
     enrol(h.fake);
     closeIntake(h.fake);
 
-    await routeInboundText(h.deps, inbound({ body: 'move swimming' }), 0);
+    await routeInboundText(h.deps, inbound({ body: 'move swimming' }));
 
     const [row] = h.fake.rows(schema.channelMessages);
     expect(row?.handedOffAt).toEqual(NOW);
@@ -524,7 +646,7 @@ describe('handoff to C1', () => {
       throw new Error('pool exhausted');
     };
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: 'yes, book it' }), 0);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'yes, book it' }));
 
     expect(outcome).toBe('enqueue_failed');
     const [row] = h.fake.rows(schema.channelMessages);
@@ -543,7 +665,7 @@ describe('handoff to C1', () => {
       throw new Error('pool exhausted');
     };
 
-    await routeInboundText(h.deps, inbound({ body: 'Maya has an appointment at 4' }), 0);
+    await routeInboundText(h.deps, inbound({ body: 'Maya has an appointment at 4' }));
 
     expect(h.errors).toHaveLength(1);
     const line = JSON.stringify(h.errors[0]);
@@ -567,8 +689,8 @@ describe('handoff to C1', () => {
     closeIntake(h.fake);
 
     const outcomes = await Promise.all([
-      routeInboundText(h.deps, inbound({ body: 'yes, book it' }), 0),
-      routeInboundText(h.deps, inbound({ body: 'yes, book it' }), 0),
+      routeInboundText(h.deps, inbound({ body: 'yes, book it' })),
+      routeInboundText(h.deps, inbound({ body: 'yes, book it' })),
     ]);
 
     expect(outcomes.filter((o) => o === 'handed_off')).toHaveLength(1);
@@ -588,7 +710,6 @@ describe('handoff to C1', () => {
     const outcome = await routeInboundText(
       h.deps,
       inbound({ body: 'CANARY PING', from: CANARY_PHONE_E164 }),
-      0,
     );
 
     expect(outcome).toBe('handed_off_canary');
@@ -600,7 +721,7 @@ describe('handoff to C1', () => {
     enrol(h.fake);
     closeIntake(h.fake);
 
-    const outcome = await routeInboundText(h.deps, inbound({ body: 'CANARY' }), 0);
+    const outcome = await routeInboundText(h.deps, inbound({ body: 'CANARY' }));
 
     expect(outcome).toBe('handed_off');
   });
@@ -613,7 +734,7 @@ describe('handoff to C1', () => {
       const { familyId, userId } = enrol(h.fake);
       closeIntake(h.fake);
 
-      const outcome = await routeInboundText(h.deps, inbound({ body }), 0);
+      const outcome = await routeInboundText(h.deps, inbound({ body }));
 
       expect(outcome).toBe('handed_off');
       const message = h.fake
@@ -641,33 +762,26 @@ describe('iMessage first-touch door', () => {
 
   it('does not thread a 1:1 reply, and does thread a group reply', async () => {
     const h = harness();
-    await routeInboundText(
-      h.deps,
-      {
-        ...inbound({ providerId: 'msg-1' }),
-        transport: 'imessage',
-        chatId: 'chat-1',
-        isGroup: false,
-      },
-      0,
-    );
-    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1' });
+    await routeInboundText(h.deps, {
+      ...inbound({ providerId: 'msg-1' }),
+      transport: 'imessage',
+      chatId: 'chat-1',
+      isGroup: false,
+    });
+    expect(h.linqBinds[0]).toEqual({ chatId: 'chat-1', isGroup: false });
     expect(h.linqBinds[0]).not.toHaveProperty('replyToMessageId');
 
     const group = harness();
-    await routeInboundText(
-      group.deps,
-      {
-        ...inbound({ providerId: 'msg-g' }),
-        transport: 'imessage',
-        chatId: 'chat-group',
-        isGroup: true,
-      },
-      0,
-    );
+    await routeInboundText(group.deps, {
+      ...inbound({ providerId: 'msg-g' }),
+      transport: 'imessage',
+      chatId: 'chat-group',
+      isGroup: true,
+    });
     expect(group.linqBinds[0]).toEqual({
       chatId: 'chat-group',
       replyToMessageId: 'msg-g',
+      isGroup: true,
     });
   });
 
@@ -678,7 +792,7 @@ describe('iMessage first-touch door', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     const h = harness();
-    await routeInboundText(h.deps, { ...inbound(), transport: 'imessage', chatId: 'chat-1' }, 0);
+    await routeInboundText(h.deps, { ...inbound(), transport: 'imessage', chatId: 'chat-1' });
     const typing = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/typing'));
     expect(typing.length).toBeGreaterThan(0);
     vi.unstubAllGlobals();
@@ -700,16 +814,16 @@ describe('iMessage first-touch door', () => {
         limiter: {
           check: async () => {
             await gate;
-            return { allowed: true, retryAfterSec: 0 };
+            return { allowed: true, retryAfterSec: 0, firstDenied: false };
           },
         },
       };
     };
-    const pending = routeInboundText(
-      h.deps,
-      { ...inbound(), transport: 'imessage', chatId: 'chat-1' },
-      0,
-    );
+    const pending = routeInboundText(h.deps, {
+      ...inbound(),
+      transport: 'imessage',
+      chatId: 'chat-1',
+    });
     await vi.advanceTimersByTimeAsync(LINQ_TYPING_SHOW_DELAY_MS);
     expect(h.warns.some((call) => String(call[1]).includes('did not start'))).toBe(true);
     release();
@@ -735,7 +849,7 @@ describe('a first text that got no reply', () => {
       throw new Error('model down');
     });
 
-    const outcome = await routeInboundText(h.deps, inbound(), 0);
+    const outcome = await routeInboundText(h.deps, inbound());
 
     expect(outcome).toBe('intake_unsent');
     expect(h.transport.bodies()).toEqual([]);
@@ -745,7 +859,7 @@ describe('a first text that got no reply', () => {
     const h = harness();
     withComposer(h, async () => ({ reply: "Hey, it's Hale. What's your postal code?" }));
 
-    const outcome = await routeInboundText(h.deps, inbound(), 0);
+    const outcome = await routeInboundText(h.deps, inbound());
 
     expect(outcome).toBe('intake');
     expect(h.transport.bodies()).toHaveLength(1);
@@ -762,7 +876,7 @@ describe('an opt-out stops all outbound texting immediately', () => {
     const h = harness();
     const { familyId, userId } = enrol(h.fake);
 
-    await routeInboundText(h.deps, inbound({ body: 'STOP', providerId: 'SMstop' }), 0);
+    await routeInboundText(h.deps, inbound({ body: 'STOP', providerId: 'SMstop' }));
 
     const revoked = h.fake.writes.filter(
       (w) => w.op === 'update' && w.table === schema.parentChannels,
@@ -776,14 +890,12 @@ describe('an opt-out stops all outbound texting immediately', () => {
     await routeInboundText(
       h.deps,
       inbound({ body: "what's on this weekend?", providerId: 'SMafter1' }),
-      0,
     );
     // Group turn from the same number: nothing goes out.
-    await routeInboundText(
-      h.deps,
-      { ...inbound({ body: 'hey all', providerId: 'SMafter2', budget: 'chat' }), isGroup: true },
-      0,
-    );
+    await routeInboundText(h.deps, {
+      ...inbound({ body: 'hey all', providerId: 'SMafter2', budget: 'chat' }),
+      isGroup: true,
+    });
     expect(h.transport.bodies().length).toBe(afterStop);
 
     // Proactive: a revoked channel is not enrolled, so every class is held.
@@ -817,7 +929,7 @@ describe('an opt-out stops all outbound texting immediately', () => {
       },
     };
 
-    await routeInboundText(h.deps, inbound({ body: 'pls leave me alone', providerId: 'SMx1' }), 0);
+    await routeInboundText(h.deps, inbound({ body: 'pls leave me alone', providerId: 'SMx1' }));
 
     expect(said).toEqual(['pls leave me alone']);
     const revoked = h.fake.writes.filter(
@@ -835,7 +947,7 @@ describe('an opt-out stops all outbound texting immediately', () => {
       read: async () => ({ intent: 'stop', confirmation: '' }),
     };
 
-    await routeInboundText(h.deps, inbound({ body: 'done with this', providerId: 'SMx2' }), 0);
+    await routeInboundText(h.deps, inbound({ body: 'done with this', providerId: 'SMx2' }));
 
     const revoked = h.fake.writes.filter(
       (w) => w.op === 'update' && w.table === schema.parentChannels,

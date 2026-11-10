@@ -1,11 +1,15 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { type FamilyBasicsView, toFamilyBasics } from '~/lib/dashboard/family-basics';
 import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/family-members';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
 import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
+import type { AuditVerb } from '~/lib/trail/verbs';
+import { type HouseholdExport, loadHouseholdExport } from './export-household';
+import { type FamilyMemoryExport, exportTeenGate, loadFamilyMemoryExport } from './export-memory';
+import { type RequesterOnlyExport, loadRequesterOnlyExport } from './export-requester';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -26,6 +30,18 @@ import { NO_TEEN_UNLOCKS } from '~/lib/teen-access';
  * The export does include internal audit verbs History hides. The 7-day unsent
  * mark is an audit row the parent is owed a copy of, and it is not a History line.
  */
+
+/** Rows about one adult that a family-wide copy, which every parent seat gets, never carries. */
+const NOT_IN_FAMILY_EXPORT = [
+  // A crisis flag can endanger the parent who texted if another adult in the home reads it.
+  'crisis_unanswered',
+  // That Hale re-read one parent's held text to see whether they asked it to stop.
+  'opt_out_hold_read',
+  // Which language one parent texts Hale in.
+  'parent_language_changed',
+  // That one adult connected their Google account again, possibly in another household.
+  'integration_google_revoke_cancelled',
+] as const satisfies readonly AuditVerb[];
 
 export interface FamilyExportDocument {
   /** ISO instant the export was assembled — the "copy taken at" stamp. */
@@ -70,7 +86,10 @@ export interface FamilyExportDocument {
    * for, so only the HOST leaves — the parent already has the link, because they sent
    * it. No price, no child, no message id. Present-and-empty for a family with none: a
    * copy that simply omits a section leaves a parent unable to tell "Hale holds none of
-   * this" from "Hale did not look".
+   * this" from "Hale did not look". A watch on a link the parent sent (VIL-423) has no
+   * catalog window behind it, so its municipality and cycleLabel are null. The page's
+   * last reading and any pending change are page-derived, not family facts: only
+   * whether a change is pending leaves.
    */
   registrationPreparation: {
     municipality: string | null;
@@ -105,28 +124,36 @@ export interface FamilyExportDocument {
    * The places this family holds, read out of a provider's own confirmation email. A
    * booking is a fact about the family that Hale HOLDS and acts on a week later - it is
    * what makes the "how did it go?" ask happen - so a right-to-access copy without it
-   * would omit something Hale does on their behalf. The host and not the address, on the
-   * same reasoning as the block above; no confirmation number, no amount, no child,
-   * because the table has no column for any of them.
+   * would omit something Hale does on their behalf. The place and the street address
+   * leave as the email wrote them (null when it gave none); no confirmation number, no
+   * amount, no child, because the table has no column for any of them.
    */
   activityBookings: {
     title: string;
     firstSessionAt: string;
     providerHost: string;
+    location: string | null;
+    address: string | null;
     addedToCalendar: boolean;
     /** Set when the provider called the class off, so the copy does not read as a place
      * the family still holds. */
     cancelledAt: string | null;
   }[];
   /**
-   * VIL-375 — a signup the parent authorized Hale to attempt. Host and status
-   * only. The registration path, the child, and anything typed into the form
-   * stay off this copy; the trail below has the step codes.
+   * VIL-375 — a signup the parent authorized Hale to attempt: host, status and the
+   * day-before plan the parent approved (VIL-558; null until there is one). The
+   * registration path, the child, and anything typed into the form stay off this copy;
+   * the trail below has the step codes.
    */
   authorizedSignups: {
     host: string | null;
     status: string;
     sessionId: string | null;
+    planChoiceIds: string[] | null;
+    planMaxPriceCents: number | null;
+    planOpensAt: string | null;
+    planWaiverAccepted: boolean | null;
+    planApprovedAt: string | null;
     updatedAt: string;
   }[];
   /**
@@ -242,6 +269,16 @@ export interface FamilyExportDocument {
     outbound: number;
     openWorkstreamCount: number;
   }[];
+  /** The household calendar Hale keeps; one parent's Google mirror is in their own section. */
+  calendarEvents: HouseholdExport['calendarEvents'];
+  /** The threads every parent can read; each parent's 1:1 is in their own section only. */
+  sharedThreads: HouseholdExport['sharedThreads'];
+  /** The group lists, with adders as you / your household / another household (export-household.ts). */
+  groupLists: HouseholdExport['groupLists'];
+  /** The requester's own records, which no other adult's copy carries (export-requester.ts). */
+  requesterOnly: RequesterOnlyExport;
+  /** What Hale remembers about the family: facts, episodes, jobs and promises. */
+  memory: FamilyMemoryExport;
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -280,7 +317,10 @@ export async function assembleFamilyExport(
   const loadTrail =
     deps.loadTrail ??
     ((trailDb: Database, trailFamilyId: string) =>
-      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, { includeInternal: true }));
+      loadTrailForFamily(trailDb, trailFamilyId, NO_TEEN_UNLOCKS, {
+        includeInternal: true,
+        exclude: NOT_IN_FAMILY_EXPORT,
+      }));
   const now = deps.now ?? new Date();
 
   const [familyRow] = await database
@@ -339,13 +379,13 @@ export async function assembleFamilyExport(
 
   const saveRows = await database
     .select({
-      title: schema.villageCandidates.title,
+      title: schema.familyActivityHistory.title,
       savedAt: schema.villageSaves.createdAt,
     })
     .from(schema.villageSaves)
     .innerJoin(
-      schema.villageCandidates,
-      eq(schema.villageSaves.candidateId, schema.villageCandidates.id),
+      schema.familyActivityHistory,
+      eq(schema.villageSaves.candidateId, schema.familyActivityHistory.id),
     )
     .where(eq(schema.villageSaves.familyId, familyId))
     .orderBy(schema.villageSaves.createdAt);
@@ -396,10 +436,8 @@ export async function assembleFamilyExport(
 
   const preparationRows = await database
     .select({
-      municipality: sql<
-        string | null
-      >`${schema.registrationSequences.sourceContext}->>'municipality'`,
-      cycleLabel: sql<string | null>`${schema.registrationSequences.sourceContext}->>'cycleLabel'`,
+      municipality: schema.registrationWindows.municipality,
+      cycleLabel: schema.registrationWindows.cycleLabel,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
@@ -410,6 +448,10 @@ export async function assembleFamilyExport(
       updatedAt: schema.registrationSequences.updatedAt,
     })
     .from(schema.registrationSequences)
+    .leftJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
     .where(eq(schema.registrationSequences.familyId, familyId))
     .orderBy(schema.registrationSequences.createdAt);
   // A claimed window nobody has pasted a link for or answered about holds nothing this
@@ -425,7 +467,7 @@ export async function assembleFamilyExport(
       lastReadAt: row.lastReadAt?.toISOString() ?? null,
       nextCheckAt: row.nextCheckAt?.toISOString() ?? null,
       pausedAt: row.pausedAt?.toISOString() ?? null,
-      hasPendingChange: row.pendingChange != null,
+      hasPendingChange: row.pendingChange !== null,
       updatedAt: row.updatedAt.toISOString(),
     }));
 
@@ -453,6 +495,8 @@ export async function assembleFamilyExport(
       title: schema.activityBookings.title,
       firstSessionAt: schema.activityBookings.firstSessionAt,
       providerHost: schema.activityBookings.providerHost,
+      location: schema.activityBookings.location,
+      address: schema.activityBookings.address,
       eventId: schema.activityBookings.eventId,
       cancelledAt: schema.activityBookings.cancelledAt,
     })
@@ -463,6 +507,8 @@ export async function assembleFamilyExport(
     title: row.title,
     firstSessionAt: row.firstSessionAt.toISOString(),
     providerHost: row.providerHost,
+    location: row.location,
+    address: row.address,
     addedToCalendar: row.eventId !== null,
     // The provider called it off. Without this a right-to-access copy reads as a place the
     // family still holds — a fact about them that stopped being true, and the one Hale
@@ -575,6 +621,11 @@ export async function assembleFamilyExport(
       registrationUrl: schema.authorizedSignupOffers.registrationUrl,
       status: schema.authorizedSignupOffers.status,
       authorizedSessionId: schema.authorizedSignupOffers.authorizedSessionId,
+      planChoiceIds: schema.authorizedSignupOffers.planChoiceIds,
+      planMaxPriceCents: schema.authorizedSignupOffers.planMaxPriceCents,
+      planOpensAt: schema.authorizedSignupOffers.planOpensAt,
+      planWaiverAccepted: schema.authorizedSignupOffers.planWaiverAccepted,
+      planApprovedAt: schema.authorizedSignupOffers.planApprovedAt,
       updatedAt: schema.authorizedSignupOffers.updatedAt,
     })
     .from(schema.authorizedSignupOffers)
@@ -584,6 +635,11 @@ export async function assembleFamilyExport(
     host: hostOf(row.registrationUrl),
     status: row.status,
     sessionId: row.authorizedSessionId,
+    planChoiceIds: row.planChoiceIds,
+    planMaxPriceCents: row.planMaxPriceCents,
+    planOpensAt: row.planOpensAt?.toISOString() ?? null,
+    planWaiverAccepted: row.planWaiverAccepted,
+    planApprovedAt: row.planApprovedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
   }));
 
@@ -645,6 +701,17 @@ export async function assembleFamilyExport(
     ];
   });
 
+  const memory = await loadFamilyMemoryExport(
+    database,
+    familyId,
+    childRows,
+    { userId: deps.actorUserId },
+    now,
+  );
+  const gate = exportTeenGate(childRows, now);
+  const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
+  const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -677,6 +744,11 @@ export async function assembleFamilyExport(
     activityReviews,
     trips,
     memoryDigests,
+    calendarEvents: household.calendarEvents,
+    sharedThreads: household.sharedThreads,
+    groupLists: household.groupLists,
+    requesterOnly,
+    memory,
     trail,
   };
 }

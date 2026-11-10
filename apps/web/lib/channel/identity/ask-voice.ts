@@ -2,8 +2,8 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
-import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
@@ -45,10 +45,6 @@ export const MAX_TAIL_ASK_CHARS = MAX_ASK_CHARS;
 export const MAX_COMPOSE_ATTEMPTS = 3;
 
 const MAX_TOKENS = 128;
-
-/** No links, held structurally: this stage has no tool that could have given it one, so
- * a URL here is a URL it invented. */
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /** The parent facts Hale will ask for rather than invent. A guessed name is the wrong
  * name in every message after it; a guessed address reaches a stranger. */
@@ -117,8 +113,7 @@ export function identityAskRefusals(
   const found: IdentityAskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > askCharCap(request)) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
 
   // A WHOLE SENTENCE, capitalised. Found live on the first recorded run: told that the

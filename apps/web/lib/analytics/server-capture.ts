@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
+import { after } from 'next/server';
 import { type AnalyticsEvent, buildEvent } from './events';
+import { captureSafeException } from './exceptions';
+import { productClient } from './posthog-node';
 
 /**
  * Server-side analytics capture for the paths a client hook can't reach.
  * Payloads go through buildEvent, so a cancelled attempt is not a conversion
  * just because a button was pressed.
  *
- * Dependency-free: a single POST to PostHog's public capture endpoint (no
- * posthog-node client, no flush lifecycle to leak in a short-lived server action).
+ * Sent through posthog-node (lib/analytics/posthog-node.ts: flushAt 1, flushInterval 0,
+ * and every send awaits its own flush, so a short-lived server action leaks no queue).
  * It reads the SAME key/host as the client provider and routes every payload through
  * the SAME buildEvent redaction chokepoint, so identifying or non-primitive
  * properties can never leave (rule #1).
@@ -46,23 +49,23 @@ export async function captureServerEvent(
   event: AnalyticsEvent,
   distinctId: string,
   properties: Record<string, unknown> = {},
+  options: { setOnce?: Record<string, unknown> } = {},
 ): Promise<CaptureOutcome> {
   const key = keyOrNull();
   if (!key) {
     return 'not_configured';
   }
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
+  const client = productClient();
+  if (!client) return 'not_configured';
   const { event: name, properties: safe } = buildEvent(event, properties);
-  await fetch(`${host}/i/v0/e/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      api_key: key,
-      event: name,
-      distinct_id: distinctId,
-      properties: safe,
-    }),
+  // `$set_once` goes through the SAME gate: a person property is still a property.
+  const setOnce = options.setOnce ? buildEvent(event, options.setOnce).properties : null;
+  client.capture({
+    distinctId,
+    event: name,
+    properties: setOnce && Object.keys(setOnce).length > 0 ? { ...safe, $set_once: setOnce } : safe,
   });
+  await client.flush();
   return 'sent';
 }
 
@@ -212,25 +215,28 @@ export async function captureInboundRouted(
   if (!key) {
     return 'not_configured';
   }
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
+  const client = productClient();
+  if (!client) return 'not_configured';
   const { event, properties } = buildEvent('inbound_routed', {
     door,
     outcome: ENUM_TOKEN.test(outcome) ? outcome : 'unclassified',
   });
   try {
-    await fetch(`${host}/i/v0/e/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: key,
-        event,
-        // The door itself, mirroring `lane:` — an inbound refusal often has no
-        // resolved person, and the ones that do must not be joined back to one.
-        distinct_id: `door:${door}`,
-        properties,
-      }),
-      signal: AbortSignal.timeout(INBOUND_CAPTURE_TIMEOUT_MS),
+    client.capture({
+      // The door itself, mirroring `lane:` — an inbound refusal often has no
+      // resolved person, and the ones that do must not be joined back to one.
+      distinctId: `door:${door}`,
+      event,
+      properties,
     });
+    // posthog-node's own requestTimeout (4s, posthog-node.ts) bounds this inside the
+    // webhook budget; the race is a second bound in case a flush never settles.
+    await Promise.race([
+      client.flush(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), INBOUND_CAPTURE_TIMEOUT_MS).unref?.(),
+      ),
+    ]);
     return 'sent';
   } catch (err) {
     console.warn('analytics: inbound routing count failed to send', {
@@ -249,6 +255,16 @@ export async function captureInboundRouted(
  */
 export async function captureAgentError(error: AgentError): Promise<CaptureOutcome> {
   const { event, distinctId, properties } = buildAgentErrorPayload(error);
+  // The same failure, also as an $exception in error tracking (dark until
+  // POSTHOG_PROJECT_API_KEY is set). Class + lane only — a synthetic error named for the
+  // failure class, so the stack is this reporter's, never the parent's message.
+  const synthetic = new Error('redacted');
+  synthetic.name = `AgentError_${error.lane}`;
+  void captureSafeException(synthetic, distinctId, {
+    hale_surface: 'agent',
+    stage: error.lane,
+    code: String(properties.error_class),
+  });
   try {
     return await captureServerEvent(event, distinctId, properties);
   } catch (err) {
@@ -260,5 +276,59 @@ export async function captureAgentError(error: AgentError): Promise<CaptureOutco
       err: err instanceof Error ? err.name : 'unknown',
     });
     return 'provider_error';
+  }
+}
+
+// ── Portal surface events ────────────────────────────────────────────────────
+
+export type PortalEvent = Extract<
+  AnalyticsEvent,
+  | 'portal_gmail_connected'
+  | 'portal_calendar_connected'
+  | 'portal_export_requested'
+  | 'portal_delete_requested'
+  | 'portal_family_edited'
+  | 'portal_passport_viewed'
+>;
+
+/** Where in the portal the action happened. A closed enum — the event's only property. */
+export type PortalSurface = 'settings' | 'connected' | 'family' | 'passport' | 'rights_api';
+
+/**
+ * One portal action, keyed on the HASHED family id (the same id the portal identifies
+ * as), carrying `surface` and nothing else. Never throws; a route calls it inside
+ * `after()` so the response never waits on PostHog.
+ */
+export async function capturePortalEvent(
+  event: PortalEvent,
+  familyId: string,
+  surface: PortalSurface,
+): Promise<CaptureOutcome> {
+  try {
+    return await captureServerEvent(event, hashFamilyId(familyId), { surface });
+  } catch (err) {
+    console.warn('analytics: portal event failed to send', {
+      event,
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return 'provider_error';
+  }
+}
+
+/**
+ * Schedule {@link capturePortalEvent} after the response. `after()` throws outside a
+ * request scope (a unit test calling the handler directly); there the capture simply runs
+ * detached. Either way the response never waits on PostHog, and nothing throws.
+ */
+export function capturePortalEventAfter(
+  event: PortalEvent,
+  familyId: string,
+  surface: PortalSurface,
+): void {
+  const run = () => capturePortalEvent(event, familyId, surface);
+  try {
+    after(run);
+  } catch {
+    void run();
   }
 }

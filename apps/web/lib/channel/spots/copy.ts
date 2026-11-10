@@ -1,101 +1,62 @@
-import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
-import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { hasLinkShape } from '../../format/link-shape';
 import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
+import { checkedSchedule } from './schedule';
 
 /**
- * VIL-337 · the two sentences a watched spot may send, rendered deterministically.
+ * VIL-337 · what a spot-opened text may rest on, and what it may not say.
  *
- * NO MODEL COMPOSES OR EDITS ONE OF THESE, on the registration-sequence discipline
- * (registration/sequence/copy.ts) and for a sharper reason than that file has: this
- * text arrives unprompted, carries a number, and asks a parent to stop what they are
- * doing and go and register. A generated sentence with that privilege is a sentence
- * nobody reviewed.
+ * THE MODEL WRITES EVERY WORD (compose.ts, skill `spot-open-voice`). Code owns the facts
+ * the writer is handed, each checked against THIS tick's bytes before the writer sees it,
+ * and the structural refusals its draft must clear. There is no template and no fallback
+ * sentence: a draft that cannot be written is nothing sent, and the next tick re-reads
+ * the page and asks again.
  *
- * FOUR BINDINGS, EACH STRUCTURAL:
+ * THE LINK IS DATA, NOT COPY. The sanitized course url is appended by code on its own
+ * line (`spotOpenBody`), never handed to the model to retype: one slipped character in a
+ * GUID sends a parent to PerfectMind's "not found" page at the one moment that matters.
+ * So the writer gets no url, and a draft carrying one is refused.
  *
- *   ATTRIBUTION LEADS. The subject is the SOURCE — `portalLabel` comes hand-written
- *     from the host registry (url.ts), never derived from the URL. A parent who cannot
- *     check the page in the next minute can still see who said it.
+ * EVERY DIGIT IS BACKED. The facts carry three sources of digits — the seat count
+ * (checked against its `"SpotsLeft":n` fragment), the schedule the page serialised, and
+ * the parent's own label ("Swimmer 3") — and a digit run outside those is refused. There
+ * is no waitlist headcount on this portal (a queue length would be arithmetic over two
+ * fields), so a waitlist fact carries no count at all.
  *
- *   EVERY CLAIM IS QUOTED, NOT COMPUTED. The body says three things a parent will act
- *     on — a count, a schedule, and (for a waitlist) that there is room — and each one
- *     is checked against the fragment the reader took from THIS tick's bytes before it
- *     can be printed. "3 spots left" against a page that says 1 costs somebody a
- *     morning, and an interpolation bug makes that error silently; "room on the
- *     waitlist" against a queue that is full carries no digits at all, which is why it
- *     needs a gate of its own rather than the digit rule. `renderSpotOpen` THROWS on an
- *     unbacked count or an unbacked waitlist, and DROPS an unbacked parenthetical — the
- *     schedule is decoration, the seat is the message.
- *
- *   THE GATE BINDS WHAT THE COMPOSER INVENTED, WHICH IS TWO THINGS. Only `count` and
- *     `when` come from the model, so only those are what the leftover-text scans exist
- *     to catch. `url` and `label` are DECLARED — the sanitizer wrote one, the parent
- *     wrote the other at arming — so both are subtracted before the scans run. Reading
- *     the label was not a stricter gate, it was a broken one: Markham publishes courses
- *     called "Swimmer 3" and "Ages 4 to 7", and a watch on one of them threw
- *     `unbacked_digit` on every tick, forever, while looking exactly like a watch that
- *     had nothing to report.
- *
- *   THERE IS NO WAITLIST HEADCOUNT. The model carries `WaitListCapacity` 99 and
- *     `WaitListSpotsLeft` 94, so "5 people ahead of you" is arithmetic over two fields
- *     — a derived number, which is the one thing the evidence rule forbids. The
- *     waitlist sentence therefore says "room", and the ticket's example clause is
- *     unattainable on this portal rather than approximated.
- *
- *   THE MESSAGE ASKS NOTHING. The ticket's draft ended "Want the link?"; a question
- *     with no row behind it is the 2026-08-22 defect, and the link is already in the
- *     text. No question mark, no first-person future verb — so `extractStateClaims`
- *     comes back empty and there is nothing here a ledger would have to back.
- *
- * Plain ASCII throughout: one typographic dash flips the whole SMS to UCS-2 and halves
- * the budget (sms-segments.ts).
+ * THE TEXT ASKS NOTHING. The link is already in it and no ledger row stands behind a
+ * question, so a draft with a question mark is refused (the 2026-08-22 defect).
  */
 
-/**
- * Three segments, measured against the FULL CASL form — the longest a real send can
- * be, since the opt-out form is chosen per recipient and this budget must hold for
- * whichever one it picks.
- */
-export const MAX_SPOT_OPEN_SEGMENTS = 3;
-
-export interface SpotOpenInput {
+/** The facts the writer is handed. Plain data: the eval replays exactly this object. */
+export interface SpotOpenFacts {
   kind: SpotTransitionKind;
-  /** The hand-written registry label for the host, e.g. "Markham's portal". */
-  portalLabel: string;
+  /** Who is saying it — the hand-written registry label ("Markham's portal"). */
+  source: string;
   /** What the parent called the class, in their own words. */
   label: string;
-  /** The sanitized source url, code-appended and never model-written. */
-  url: string;
+  /** The seat count on THIS tick's page, for `seat_opened` only. */
+  spotsLeft: number | null;
+  /** The day and time the page publishes for the class, verbatim, or null. */
+  schedule: string | null;
+  /** The parent's language tag. */
+  language: string;
+}
+
+export interface SpotOpenFactsInput {
+  kind: SpotTransitionKind;
+  portalLabel: string;
+  label: string;
   /** THIS tick's parsed model. A stored reading is never composed from. */
   model: BookMe4Model;
   /** THIS tick's evidence fragments, as taken from the fetched bytes. */
   evidence: readonly string[];
-}
-
-export interface SpotOpenContext {
-  url: string;
-  /** THIS tick's evidence fragments — the page's own serialisation of every field a
-   * body is allowed to rest on. */
-  evidence: readonly string[];
-  kind: SpotTransitionKind;
-  /** The number the body prints, or null when it prints none. */
-  count: number | null;
-  /** The schedule phrase the body prints verbatim from the model, or null. */
-  when: string | null;
-  /** What the parent called the class. Declared, not invented — subtracted with the
-   * url before the leftover-text scans, so its digits are its own. */
-  label: string;
-  /** THIS tick's parsed model. The claims above are the body's; this and `evidence`
-   * are what they are checked against. */
-  model: BookMe4Model;
+  language: string;
 }
 
 /**
- * The schedule the page publishes, or nothing. Two ways to get nothing, and both cost
- * the parenthetical rather than the send: bytes that do not carry the model's own
- * schedule fields, and a StartTime carrying a character that would break GSM-7 or close
- * the parenthetical early.
+ * The schedule the page publishes, or nothing. Two ways to get nothing, and both cost the
+ * schedule rather than the send: bytes that do not carry the model's own schedule fields,
+ * and a value that is not a day and a clock time (`checkedSchedule`, the check the other
+ * reader shares).
  */
 function schedulePhrase(model: BookMe4Model, evidence: readonly string[]): string | null {
   const day = model.StartDay;
@@ -103,90 +64,92 @@ function schedulePhrase(model: BookMe4Model, evidence: readonly string[]): strin
   if (!day || !time) return null;
   if (!evidence.includes(fragment('StartDay', day))) return null;
   if (!evidence.includes(fragment('StartTime', time))) return null;
-  const phrase = asciiSpaces(`${day.trim()} ${time.trim()}`);
-  return /^[A-Za-z0-9 :]+$/.test(phrase) ? phrase : null;
-}
-
-/** Removes one literal occurrence, so the checks below run on what is left over after
- * the pieces the body is allowed to carry are accounted for. */
-function without(text: string, literal: string | null): string {
-  if (literal === null || literal === '') return text;
-  const at = text.indexOf(literal);
-  return at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + literal.length)}`;
+  return checkedSchedule(`${day} ${time}`);
 }
 
 /**
- * Everything wrong with this body, named. Exported because the composer runs it on
- * itself and copy.test.ts runs it on the output: a gate only the composer can reach is
- * a gate nobody can test.
+ * The facts, or the named reasons this tick's bytes cannot back a text of this kind. A
+ * refusal here is the page contradicting the opening the sweep claimed, which no
+ * better-written sentence could fix.
  */
-export function spotOpenViolations(body: string, context: SpotOpenContext): string[] {
-  const violations: string[] = [];
-
-  if (!body.includes(context.url)) violations.push('url_missing');
-  if (context.count !== null && !context.evidence.includes(fragment('SpotsLeft', context.count))) {
-    violations.push('unbacked_count');
-  }
-  if (context.kind === 'seat_opened' && (context.count === null || context.count < 1)) {
-    violations.push('no_seat');
-  }
-  if (context.kind === 'waitlist_reopened') {
-    if (/spots?\s+left/i.test(body)) violations.push('counts_a_waitlist');
-    if (
-      !context.evidence.includes(fragment('IsWaitListAvailable', true)) ||
-      context.model.WaitListSpotsLeft < 1 ||
-      !context.evidence.includes(fragment('WaitListSpotsLeft', context.model.WaitListSpotsLeft))
-    ) {
-      violations.push('unbacked_waitlist');
+export function spotOpenFacts(
+  input: SpotOpenFactsInput,
+): { ok: true; facts: SpotOpenFacts } | { ok: false; reasons: string[] } {
+  const reasons: string[] = [];
+  let spotsLeft: number | null = null;
+  if (input.kind === 'seat_opened') {
+    spotsLeft = input.model.SpotsLeft;
+    if (spotsLeft < 1) reasons.push('no_seat');
+    else if (!input.evidence.includes(fragment('SpotsLeft', spotsLeft))) {
+      reasons.push('unbacked_count');
     }
+  } else if (
+    !input.evidence.includes(fragment('IsWaitListAvailable', true)) ||
+    input.model.WaitListSpotsLeft < 1 ||
+    !input.evidence.includes(fragment('WaitListSpotsLeft', input.model.WaitListSpotsLeft))
+  ) {
+    reasons.push('unbacked_waitlist');
   }
-  if (context.when !== null && context.when !== schedulePhrase(context.model, context.evidence)) {
-    violations.push('unbacked_when');
-  }
+  if (reasons.length > 0) return { ok: false, reasons };
+  return {
+    ok: true,
+    facts: {
+      kind: input.kind,
+      source: input.portalLabel,
+      label: input.label,
+      spotsLeft,
+      schedule: schedulePhrase(input.model, input.evidence),
+      language: input.language,
+    },
+  };
+}
 
-  // Template order — label, then when, then url — because each subtraction removes the
-  // FIRST occurrence: a label that repeats the schedule phrase sits earlier in the body
-  // than the parenthetical, and subtracting `when` first would eat the label's copy and
-  // leave the real one to read as an invented digit.
-  const rest = without(without(without(body, context.label), context.when), context.url);
-  if (rest.includes('?')) violations.push('asks_a_question');
-  const digits = rest.match(/\d+/g) ?? [];
-  if (digits.some((run) => context.count === null || run !== String(context.count))) {
-    violations.push('unbacked_digit');
-  }
-
-  if (!isGsm7(body)) violations.push('not_gsm7');
-  if (smsSegments(withOptOut(body, 'full')) > MAX_SPOT_OPEN_SEGMENTS) {
-    violations.push('too_many_segments');
-  }
-  return violations;
+/** Every number a draft may print, as numbers, so "05:00 PM" backs a written "5". The
+ * schedule is checked again here, so its digits back nothing unless it is a schedule,
+ * whichever reader built the facts. */
+function backedNumbers(facts: SpotOpenFacts): Set<number> {
+  const schedule = facts.schedule === null ? null : checkedSchedule(facts.schedule);
+  const sources = [facts.label, schedule ?? '', String(facts.spotsLeft ?? '')];
+  return new Set(sources.flatMap((text) => (text.match(/\d+/g) ?? []).map(Number)));
 }
 
 /**
- * The body, or nothing at all. A refusal here is not recoverable by trimming — a spot
- * text whose number cannot be traced to the page is not a text worth sending in a
- * shorter form.
+ * Structural refusals only, never wording or length. Exported because the composer runs
+ * it on every draft and the eval on every recording: a gate only the composer can reach
+ * is a gate nobody can test.
  */
-export function renderSpotOpen(input: SpotOpenInput): string {
-  const count = input.kind === 'seat_opened' ? input.model.SpotsLeft : null;
-  const when = schedulePhrase(input.model, input.evidence);
-  const what =
-    count === null
-      ? `room on the waitlist for ${input.label}`
-      : `${count} spot${count === 1 ? '' : 's'} left for ${input.label}`;
-  const body = `${input.portalLabel} now shows ${what}${when === null ? '' : ` (${when})`}. ${input.url}`;
-
-  const violations = spotOpenViolations(body, {
-    url: input.url,
-    evidence: input.evidence,
-    kind: input.kind,
-    count,
-    when,
-    label: input.label,
-    model: input.model,
-  });
-  if (violations.length > 0) {
-    throw new Error(`spot-open copy refused: ${violations.join(', ')}`);
+export function spotOpenRefusals(text: string, facts: SpotOpenFacts): string[] {
+  const body = text.trim();
+  if (body === '') return ['empty'];
+  const refusals: string[] = [];
+  if (hasLinkShape(body)) refusals.push('link');
+  if (body.includes('?')) refusals.push('asks_a_question');
+  const backed = backedNumbers(facts);
+  if ((body.match(/\d+/g) ?? []).some((run) => !backed.has(Number(run)))) {
+    refusals.push('unbacked_digit');
   }
-  return body;
+  return refusals;
+}
+
+/** What goes on the wire before the opt-out line: the writer's text, then the link. */
+export function spotOpenBody(text: string, url: string): string {
+  return `${text.trim()}\n${url}`;
+}
+
+/** The writer's request shape, shared with the eval so its recordings key on what
+ * production sends. */
+export const SPOT_OPEN_SKILL = 'spot-open-voice';
+export const SPOT_OPEN_TOOL = 'spot_open_text';
+export const SPOT_OPEN_TOOL_DESCRIPTION =
+  'The one text Hale sends a parent because a class they asked it to watch has room.';
+export const SPOT_OPEN_TOOL_SCHEMA = {
+  type: 'object',
+  properties: { text: { type: 'string' } },
+  required: ['text'],
+} as const;
+export const SPOT_OPEN_MAX_TOKENS = 400;
+export const SPOT_OPEN_MAX_ATTEMPTS = 2;
+
+export function spotOpenUserMessage(facts: SpotOpenFacts): string {
+  return JSON.stringify(facts);
 }

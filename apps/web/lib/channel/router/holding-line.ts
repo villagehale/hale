@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -42,7 +43,6 @@ export const MAX_COMPOSE_ATTEMPTS = 2;
 
 const MAX_TOKENS = 96;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
 /** A time nobody scheduled: nobody knows when the answer lands. */
 const PROMISED_TIME =
   /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|right back)\b/i;
@@ -63,7 +63,7 @@ export type HoldingLineRefusal =
 export function refusals(body: string): HoldingLineRefusal[] {
   if (body === '') return ['empty'];
   const found: HoldingLineRefusal[] = [];
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (/\d/.test(body)) found.push('carries_number');
   if (PROMISED_TIME.test(body)) found.push('promised_a_time');
   if (APP_POINTER.test(body)) found.push('points_at_the_app');
@@ -77,7 +77,7 @@ export interface RejectedHoldingLine {
 
 /** The user-turn payload. Shared with the eval, which replicates this request shape. */
 export function holdingLineUserMessage(
-  language: ReplyLanguage,
+  language: ReplyLanguage | null,
   rejected: readonly RejectedHoldingLine[] = [],
 ): string {
   const base = { situation: 'answer_still_coming', language };
@@ -95,7 +95,7 @@ export type HoldingLineCompose =
   | { status: 'unavailable'; reason: HoldingLineFallback };
 
 export interface HoldingLineComposer {
-  compose(language: ReplyLanguage): Promise<HoldingLineCompose>;
+  compose(language: ReplyLanguage | null): Promise<HoldingLineCompose>;
 }
 
 const lineSchema = z.object({ line: z.string() });
@@ -200,7 +200,7 @@ export function holdingLineNotArmed(
 /** Arm the one holding line for one turn. It fires at most once. */
 export function armHoldingLine(input: {
   afterMs: number;
-  language: ReplyLanguage;
+  language: ReplyLanguage | null;
   composer: HoldingLineComposer;
   send: (line: string) => Promise<void>;
   log: Pick<Console, 'info' | 'warn'>;

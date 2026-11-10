@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "unplaceable personal sender, generic title, no child named, no time or place, nothing specific to say",
+    "about_the_kids": "unsure",
+    "clear": false,
+    "text": "",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

@@ -207,39 +207,38 @@ describe('gradeRadarAccuracy — the weekly re-verify sweep', () => {
   /** A sweep that never ran cannot be scored 0 for accuracy: nothing was checked, so
    * nothing was got wrong. The row says the sweep is missing instead. */
   it('reports a sweep that did not run as missing data, not as a bad grade', () => {
-    const row = gradeRadarAccuracy({ checkedThisWeek: false, outcomes: null });
+    const row = gradeRadarAccuracy({ sweptThisWeek: false, outcomes: null });
 
     expect(row.score).toBeNull();
     expect(row.reason).toContain('not enough data (n=0)');
-    expect(row.reason).toContain('no watch source observations');
-    expect(row.reason).not.toContain('sweep');
+    expect(row.reason).toContain('did not run');
   });
 
   /** A week the sweep claimed and then left no tally for — it died mid-run, or it ran
    * before the outcome ledger existed. Distinct from "did not run", and neither one is
    * a grade: the row must not score a crash as a wrong dataset. */
   it('reports a swept week with no recorded outcomes as missing data, and says which', () => {
-    const row = gradeRadarAccuracy({ checkedThisWeek: true, outcomes: null });
+    const row = gradeRadarAccuracy({ sweptThisWeek: true, outcomes: null });
 
     expect(row.score).toBeNull();
-    expect(row.reason).toContain('no watch source observations');
+    expect(row.reason).toContain('recorded no outcomes');
     expect(row.reason).not.toContain('did not run');
   });
 
   it('has nothing to grade when the sweep checked nothing', () => {
     const row = gradeRadarAccuracy({
-      checkedThisWeek: true,
-      outcomes: { checked: 0, verified: 0, changed: 0, unverified: 0 },
+      sweptThisWeek: true,
+      outcomes: { checked: 0, confirmed: 0, discrepancies: 0, unverified: 0 },
     });
 
     expect(row.score).toBeNull();
-    expect(row.reason).toContain('not enough data (n=0)');
+    expect(row.reason).toBe('not enough data (n=0)');
   });
 
   it('scores 10 at exactly 95% re-confirmed', () => {
     const row = gradeRadarAccuracy({
-      checkedThisWeek: true,
-      outcomes: { checked: 20, verified: 19, changed: 1, unverified: 0 },
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 19, discrepancies: 1, unverified: 0 },
     });
 
     expect(row.score).toBe(10);
@@ -254,21 +253,21 @@ describe('gradeRadarAccuracy — the weekly re-verify sweep', () => {
    */
   it('scores 8 at 85% and separates a moved date from a page it could not read', () => {
     const row = gradeRadarAccuracy({
-      checkedThisWeek: true,
-      outcomes: { checked: 20, verified: 17, changed: 1, unverified: 2 },
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 17, discrepancies: 1, unverified: 2 },
     });
 
     expect(row.score).toBe(8);
     expect(row.reason).toContain('17 of 20');
-    expect(row.reason).toContain('1 changed');
-    expect(row.reason).toContain('2 unverified');
+    expect(row.reason).toContain('1 moved');
+    expect(row.reason).toContain('2 could not be read');
     expect(row.reason).not.toContain('not separable');
   });
 
   it('scores 0 when a sweep that ran confirmed nothing', () => {
     const row = gradeRadarAccuracy({
-      checkedThisWeek: true,
-      outcomes: { checked: 20, verified: 0, changed: 4, unverified: 16 },
+      sweptThisWeek: true,
+      outcomes: { checked: 20, confirmed: 0, discrepancies: 4, unverified: 16 },
     });
 
     expect(row.score).toBe(0);

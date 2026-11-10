@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly phrases Monday as tomorrow (now is Sunday Sept 27), gives Sam's swim handoff with the correct 3:00pm–4:30pm times, the correct venue and address, and writes in French. It names no child, since the kid field is null. It states the piano slot is unowned, which matches the facts, and asks for a taker rather than claiming it is booked. No claims exceed the facts.",
+    "score": 5
+  }
+}

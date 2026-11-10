@@ -3,11 +3,12 @@ import { eq } from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { HALE_CONTACT_FIRST_NAME, haleContactCardDay } from '~/lib/channel/linq/contact-card';
+import { linqChatAuditKey } from '~/lib/channel/linq/family-audit';
 import { resolveReferrerFamilyId } from '~/lib/channel/referral/attribution';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
+import { type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { AgePrecision } from './extract';
 import { LIFETIME_FAMILY_SOURCE_CODES } from './promo';
 import {
@@ -69,14 +70,19 @@ export interface ProvisionInput {
   phoneE164: string;
   phoneHash: string;
   children: readonly ProvisionChild[];
-  location: IntakeLocation;
+  /**
+   * Null when the parent declined to give a place. The family row then holds no
+   * country, code or area, and the user keeps the column's zone default: nothing is
+   * guessed from the phone number.
+   */
+  location: IntakeLocation | null;
   sourceCode: string | null;
   /** The parent's first message, stored as the consent's evidence. */
   firstMessage: string;
   transcript: readonly TranscriptEntry[];
   now: Date;
   /** The kids-and-postal text's language. Receipts later have no sentence to read. */
-  language?: ReplyLanguage;
+  language?: ReplyLanguage | null;
   /**
    * A Name and Photo share that already happened, before this channel existed.
    * A held claim is stamped onto the new parent_channels row so a later turn
@@ -98,11 +104,23 @@ export interface ProvisionResult {
  * `ensureUserRow` because that path requires an email address to mirror and maps a
  * duplicate address to EmailInUseError — neither of which exists here.
  */
-async function ensureIntakeUser(tx: Database, externalAuthId: string): Promise<string> {
+async function ensureIntakeUser(
+  tx: Database,
+  externalAuthId: string,
+  timezone: string | null,
+): Promise<string> {
   await tx
     .insert(schema.users)
-    .values({ externalAuthId, email: null, name: null })
+    .values({ externalAuthId, email: null, name: null, ...(timezone ? { timezone } : {}) })
     .onConflictDoNothing({ target: schema.users.externalAuthId });
+  // A row created before this place was known still has the column default.
+  // The postal code is the source of the zone, so the signup write wins.
+  if (timezone) {
+    await tx
+      .update(schema.users)
+      .set({ timezone, updatedAt: new Date() })
+      .where(eq(schema.users.externalAuthId, externalAuthId));
+  }
 
   const [row] = await tx
     .select({ id: schema.users.id })
@@ -138,7 +156,7 @@ export async function provisionFromIntake(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
-    const userId = await ensureIntakeUser(tx, externalAuthId);
+    const userId = await ensureIntakeUser(tx, externalAuthId, location?.timezone ?? null);
 
     const [family] = await tx
       .insert(schema.families)
@@ -148,10 +166,15 @@ export async function provisionFromIntake(
         // once the live find is out and the implied watch is recorded. The stage
         // is what the sweeps select on, and it must not flip before that row.
         onboardingStage: 'sms_intake',
-        primaryLanguage: input.language === 'fr' ? 'fr' : 'en',
-        country: INTAKE_COUNTRY,
-        postalCode: location.postalCode,
-        areaCoarse: location.areaCoarse,
+        primaryLanguage: input.language && input.language.length > 0 ? input.language : 'en',
+        ...(location
+          ? {
+              country: location.country,
+              countryCode: location.countryCode,
+              postalCode: location.postalCode,
+              areaCoarse: location.areaCoarse,
+            }
+          : {}),
         ...(lifetimeFamilyComp ? { planTier: 'family' as const } : {}),
       })
       .returning({ id: schema.families.id });
@@ -258,6 +281,7 @@ export async function provisionFromIntake(
         category: 'intake',
         providerMessageId: entry.providerId,
         providerChatId: entry.channel === 'imessage' ? (entry.chatId ?? null) : null,
+        inGroup: entry.direction === 'in' ? (entry.inGroup ?? null) : null,
         status:
           entry.direction === 'in' ? 'delivered' : entry.channel === 'imessage' ? 'sent' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:
@@ -288,7 +312,7 @@ export async function provisionFromIntake(
         targetId: familyId,
         after: {
           childCount: childRows.length,
-          areaCoarse: location.areaCoarse,
+          areaCoarse: location?.areaCoarse ?? null,
           sourceCode: input.sourceCode,
           referredByFamilyId,
           maskedPhone: maskPhoneE164(phoneE164),
@@ -333,7 +357,7 @@ export async function provisionFromIntake(
               occurredAt: new Date(input.linqContactCardClaim.at),
               after: {
                 ...(input.linqContactCardClaim.chatId
-                  ? { chatId: input.linqContactCardClaim.chatId }
+                  ? linqChatAuditKey(input.linqContactCardClaim.chatId)
                   : {}),
                 sharedOn: haleContactCardDay(new Date(input.linqContactCardClaim.at)),
                 ...(input.linqContactCardClaim.outcome === 'shared'

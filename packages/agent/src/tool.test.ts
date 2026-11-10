@@ -3,8 +3,8 @@ import { z } from 'zod';
 import {
   type AuditEntry,
   type GuardDeps,
-  type ToolHandlerContext,
   GuardrailError,
+  type ToolHandlerContext,
   defineTool,
   invokeTool,
 } from './tool.js';
@@ -101,9 +101,9 @@ describe('invokeTool — spending-cap rail (rule #7)', () => {
     const checkSpendingCap = vi.fn(async () => ({ ok: true, reason: 'within cap' }));
     const { deps, audits } = depsWith({ checkSpendingCap });
 
-    await expect(
-      invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps),
-    ).rejects.toThrow(/requires checkSpendingCap \+ monetaryCostOf/);
+    await expect(invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps)).rejects.toThrow(
+      /requires checkSpendingCap \+ monetaryCostOf/,
+    );
     // Half a cap check is no cap check: without a cost there is nothing to compare
     // against the cap, so the hook must not be consulted at all (rule #7).
     expect(checkSpendingCap).not.toHaveBeenCalled();
@@ -177,6 +177,92 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
     // The raw teen content was never read, and no audit row implies it was.
     expect(handler).not.toHaveBeenCalled();
     expect(audits).toHaveLength(0);
+  });
+});
+
+describe('invokeTool — untrusted-content rail (VIL-616)', () => {
+  function gatedTool(gate: () => { ok: boolean; reason: string }) {
+    const handler = vi.fn(async () => ({ drafted: true }));
+    const tool = defineTool({
+      name: 'propose_calendar_add',
+      description: 'Draft a calendar entry.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ title: z.string() }),
+      untrustedContentGate: gate,
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused call writes NO audit row: the input never reaches audit_log', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: false, reason: 'email_read_this_turn' }));
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { title: 'Pickup with a stranger' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'propose_calendar_add', rail: 'untrusted_content' });
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it('a call the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool(() => ({ ok: true, reason: 'untainted' }));
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { title: 'Swim' }, ctx, deps)).resolves.toEqual({
+      drafted: true,
+    });
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.actionTaken)).toEqual(['tool:propose_calendar_add']);
+  });
+});
+
+describe('invokeTool — input-aware child-content gate (VIL-618)', () => {
+  function gatedTool() {
+    const handler = vi.fn(async () => ({ saved: true }));
+    const tool = defineTool({
+      name: 'save_memory',
+      description: 'Save a fact.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ factValue: z.string() }),
+      childContentGate: async (input: { factValue: string }, gateCtx: ToolHandlerContext) =>
+        gateCtx.familyId === ctx.familyId && input.factValue.includes('Tamsin')
+          ? { ok: false, reason: 'names_teen' }
+          : { ok: true, reason: 'names_no_teen' },
+      handler,
+    });
+    return { tool, handler };
+  }
+
+  it('a refused input writes NO audit row and the handler never runs', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    const refusal = await invokeTool(tool, { factValue: 'Tamsin has a secret' }, ctx, deps).catch(
+      (err: unknown) => err,
+    );
+
+    expect(refusal).toBeInstanceOf(GuardrailError);
+    expect(refusal).toMatchObject({ toolName: 'save_memory', rail: 'child_content' });
+    expect((refusal as Error).message).toContain('names_teen');
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toEqual([]);
+  });
+
+  it('an input the gate lets through is audited and runs (positive control)', async () => {
+    const { tool, handler } = gatedTool();
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { factValue: 'library on Sundays' }, ctx, deps)).resolves.toEqual(
+      { saved: true },
+    );
+    expect(handler).toHaveBeenCalledOnce();
+    expect(audits.map((a) => a.after)).toEqual([{ factValue: 'library on Sundays' }]);
   });
 });
 

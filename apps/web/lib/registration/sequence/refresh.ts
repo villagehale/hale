@@ -1,14 +1,10 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
-import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
+import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { LiveRegistrationDate, LiveRegistrationReading } from '../live-reading';
-import {
-  registrationAnchor,
-  registrationDate,
-  registrationWhen,
-  unclassifiedRegistrationDate,
-} from '../read';
+import { registrationAnchor } from '../live-reading';
+import { registrationDate, unclassifiedRegistrationDate } from '../read';
 import { openLegWindows } from './schedule';
 
 export interface RegistrationChange {
@@ -50,7 +46,7 @@ export function decideRegistrationRefresh(
   const date = registrationDate(reading, resident);
   const unclassified = unclassifiedRegistrationDate(reading);
   let candidate: Date | null = null;
-  if (date) {
+  if (date && reading.status === 'verified') {
     try {
       candidate = registrationAnchor(reading, date);
     } catch {
@@ -339,17 +335,21 @@ export async function refreshRegistrationWatch(
   });
 }
 
-export function registrationChangeBody(change: RegistrationChange): string {
-  const when = change.date
-    ? registrationWhen({ timeZone: change.timeZone } as LiveRegistrationReading, change.date)
-    : null;
-  if (change.kind === 'eligibility_unverified')
-    return `The page lists ${when}; resident/non-resident eligibility is unconfirmed. I can't confirm this applies to you. Date reminders are paused. ${change.sourceUrl}`;
-  if (change.kind === 'unavailable')
-    return `I couldn't verify a current registration date. Date reminders are paused; I'll check again in an hour. ${change.sourceUrl}`;
-  if (change.kind === 'later')
-    return `The registration page now says ${when}, later than before. Old date reminders are paused. Confirm the new date in your approvals; I'll recheck the page before resuming. ${change.sourceUrl}`;
-  return `The registration page now says ${when}. ${change.kind === 'earlier' ? 'I moved your reminder schedule earlier.' : 'Date reminders can resume.'} ${change.sourceUrl}`;
+/** Facts for a composer. Never parent-visible copy — if the model cannot write, send nothing. */
+export function registrationChangeFacts(change: RegistrationChange): {
+  kind: RegistrationChange['kind'];
+  sourceUrl: string;
+  date: string | null;
+  time: string | null;
+  timeZone: string | null;
+} {
+  return {
+    kind: change.kind,
+    sourceUrl: change.sourceUrl,
+    date: change.date?.date ?? null,
+    time: change.date?.time ?? null,
+    timeZone: change.timeZone,
+  };
 }
 
 /** Expiring per-sequence lease; ledger dedupe still owns successfully sent stages. */

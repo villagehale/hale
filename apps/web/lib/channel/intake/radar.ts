@@ -1,13 +1,20 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { ageInMonths, deriveStage } from '@hale/types';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { type ActivityFinder, createActivityFinder } from '~/lib/channel/activity/lane';
+import type { ActivityPlace } from '~/lib/channel/activity/place';
 import type { ReplyLanguage } from '~/lib/channel/language';
-import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import { dayKeyOf } from '~/lib/format/datetime';
 import type { HealthChild } from '~/lib/health/match';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { activityClient } from '~/lib/pipeline/client';
+import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import {
+  activityRecommendationKey,
+  findFamilyActivities,
+  unofferedActivityPicks,
+} from '~/lib/village/live';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type ActivityMapGroup, collectActivityMap, renderActivityMapBody } from './activity-map';
 import type { ExtractedChild } from './extract';
@@ -124,8 +131,12 @@ export interface RadarInput {
   children: readonly ExtractedChild[];
   /** The coarse area (FSA), never the full postal code (rule #1). */
   areaCoarse: string | null;
+  /** Where the finds search (activity/place.ts). Unknown: nothing is searched. */
+  place: ActivityPlace;
+  /** The family's own zone, from the postal code they gave. Never a Toronto default. */
+  timeZone: string;
   /** The kids-and-postal text. The empty year-find has a French twin. */
-  language?: ReplyLanguage;
+  language?: ReplyLanguage | null;
   /**
    * Onboarding step 4: run one search per age-fit category and return the
    * grouped map instead of the single three-line year find. The message is
@@ -228,21 +239,22 @@ export interface RadarDeps {
    */
   yearFinder?: ActivityFinder | null;
   now?: () => Date;
-  timeZone?: string;
 }
 
 /**
  * The parent's own words about their kids, straight from the conversation that just
- * happened — not a read of the rows, which is why 'derived' is a FACT here rather than
- * an assumption: provisioning wrote these very children from a spoken age moments ago,
- * in this same request, and that is exactly what `dob_precision = 'derived'` records.
- * The sweeps that read STORED rows (lib/channel/nudge/run.ts) take the column instead.
+ * happened — not a read of the rows. Provisioning stores every one of these as
+ * `dob_precision = 'derived'`, but the age band only needs the ±6-month tolerance for
+ * an age said in years ("she's 1" is anywhere from 12 to 23 months). "18 months" is an
+ * age the parent already narrowed, so it is matched as said. This precision lives only
+ * on this in-memory child; the stored column is unchanged, and the sweeps that read
+ * STORED rows (lib/channel/nudge/run.ts) take the column.
  */
 function toRadarChildren(children: readonly ExtractedChild[]): RadarChild[] {
   return children.map((child) => ({
     name: child.name,
     ageMonths: child.ageMonths,
-    dobPrecision: 'derived',
+    dobPrecision: child.agePrecision === 'months' ? 'exact' : 'derived',
   }));
 }
 
@@ -295,93 +307,75 @@ async function readHealthRoster(
   return { teenChildIds, healthChildren };
 }
 
-/**
- * This family's ACTIVE standing candidates. Mirrors the village feed's own predicate
- * (villageActiveFilter in lib/village/queries.ts): family-scoped, not superseded, and
- * the standing run rather than a parent's one-off season search — inlined rather than
- * imported because that module pulls the authenticated session resolver in with it, and
- * the radar runs on an inbound SMS with no session at all.
- */
+/** Fresh findings for this operation. No reads of saved or imported activity history. */
 export async function readCandidates(
   database: Database,
   familyId: string,
-): Promise<RadarCandidate[]> {
-  const rows = await database
-    .select({
-      id: schema.villageCandidates.id,
-      title: schema.villageCandidates.title,
-      venueName: schema.villageCandidates.venueName,
-      ageRange: schema.villageCandidates.ageRange,
-      priceLevel: schema.villageCandidates.priceLevel,
-      indoorOutdoor: schema.villageCandidates.indoorOutdoor,
-      eventDate: schema.villageCandidates.eventDate,
-      seasons: schema.villageCandidates.seasons,
-      childId: schema.villageCandidates.childId,
-      confidence: schema.villageCandidates.confidence,
-      // WHICH DISCOVERY LAYER WROTE THE ROW. Selected because a claim about a
-      // WEEKDAY session's day rests on it and on nothing else: the civic sweep
-      // dates its rows from a feed it verified, while an LLM-discovered row's
-      // date and url are model output (village/discover.ts). `summary` is
-      // deliberately NOT selected alongside it - nothing renders one today, and
-      // an unread column on this hot path is a field the next reader assumes is
-      // checked.
-      source: schema.villageCandidates.source,
-      // WHERE THE ROW'S OWN PAGE IS, and what a parent does when they get there. Both
-      // are rendered only off a `civic_registry` row (radar-decide accessFor): that
-      // source's url is the venue's own and its access mode is what the feed published,
-      // while an LLM row's url "is often guessed" (village/discover.ts). Selected
-      // beside `source` because the decision cannot apply that rule without all three.
-      sourceUrl: schema.villageCandidates.sourceUrl,
-      access: schema.villageCandidates.access,
-      whenLabel: schema.villageCandidates.whenLabel,
-      // VIL-366 · the subject a household verdict is about. Title matching is
-      // forbidden; without these columns the next find cannot see a review.
-      placeId: schema.villageCandidates.placeId,
-      civicVenueId: schema.villageCandidates.civicVenueId,
-    })
-    .from(schema.villageCandidates)
-    .where(
-      and(
-        eq(schema.villageCandidates.familyId, familyId),
-        isNull(schema.villageCandidates.supersededAt),
-        or(
-          eq(schema.villageCandidates.runType, 'standing'),
-          // VIL-252 · M16 — free civic sessions (library storytimes, EarlyON
-          // drop-ins) are exactly what the free-first ordering below exists to
-          // float, and they are dated, so `placements` can only put them on their
-          // own day. Omitting them here would leave the radar claiming "still
-          // learning your area" for a family with a verified free session on
-          // Saturday morning.
-          eq(schema.villageCandidates.runType, 'civic'),
-          isNull(schema.villageCandidates.runType),
-        ),
-      ),
-    );
-  return rows;
+  options: { window?: string; subject?: string; now?: Date; finder?: ActivityFinder } = {},
+): Promise<LiveCandidates> {
+  const found = await findFamilyActivities(database, familyId, {
+    ...options,
+    excludePreviouslyOffered: true,
+  });
+  // A proactive find asserts a day and a page, so a pick without both is dropped, and
+  // WHY it was dropped is kept for the skip audit (no silent empties).
+  const dropped: Record<string, number> = {};
+  const kept = found.picks.filter((pick) => {
+    const reason = !pick.sourceUrl ? 'no_url' : !pick.eventDate ? 'no_date' : null;
+    if (reason) dropped[reason] = (dropped[reason] ?? 0) + 1;
+    return reason === null;
+  });
+  const rows: RadarCandidate[] = kept.map((pick) => ({
+    id: activityRecommendationKey(pick)!,
+    title: pick.name,
+    venueName: pick.sourceName,
+    ageRange: pick.ageFit,
+    priceLevel: pick.price && /^(free|\\$0\\b|no cost)/i.test(pick.price) ? 'free' : null,
+    indoorOutdoor: pick.indoorOutdoor ?? null,
+    eventDate: pick.eventDate!,
+    seasons: null,
+    childId: null,
+    confidence: 1,
+    source: 'web',
+    sourceUrl: pick.sourceUrl!,
+    access: pick.access ?? null,
+    whenLabel: pick.when,
+  }));
+  return Object.assign(rows, { searchReason: found.reason, dropped });
 }
 
-/** Registration reminders are owned by explicit watches, never a city-date catalog. */
-export async function readWindows(
-  _database: Database,
-  _areaCoarse: string,
-): Promise<import('@hale/db').RegistrationSourceState[]> {
-  return [];
+/** Live finds plus why the search came back short: the search's own failure reason
+ * (`no_area`, `no_picks`, ...) and per-reason counts of picks dropped at this boundary. */
+export type LiveCandidates = RadarCandidate[] & {
+  searchReason?: string | null;
+  dropped?: Record<string, number>;
+};
+
+export async function readWindows(database: Database, areaCoarse: string) {
+  const municipalities = resolveMunicipalities(areaCoarse);
+  if (municipalities.length === 0) return [];
+  return database
+    .select()
+    .from(schema.registrationWindows)
+    .where(inArray(schema.registrationWindows.municipality, municipalities));
 }
 
 export function createRadarComposer(deps: RadarDeps): RadarComposer {
-  const timeZone = deps.timeZone ?? DEFAULT_TIMEZONE;
   return {
     async compose(input) {
       const now = deps.now?.() ?? new Date();
-      const children = toRadarChildren(input.children);
+      const timeZone = input.timeZone;
+      const town = input.place.status === 'known' ? input.place.town : null;
+      const children = toRadarChildren(input.children).filter(
+        (child) => child.ageMonths === null || child.ageMonths < 156,
+      );
       const area = input.areaCoarse;
 
       // Registration windows stay readable (`readWindows`) for later nudges. They are
       // not loaded for this message: a district date is not a substitute for an age-fit
       // find, and a row that is in memory is a row that can leak into the text.
-      const [roster, candidates, weather] = await Promise.all([
+      const [roster, weather] = await Promise.all([
         readHealthRoster(deps.database, input.familyId, now),
-        readCandidates(deps.database, input.familyId),
         // Weather is an input, never a blocker: the port swallows its own failures, and
         // an area we cannot place has no forecast to ask for.
         area
@@ -393,7 +387,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       // not: nothing here is marked told, and the post-consent nudge raises it later.
       const civic = decideYearFinds({
         children,
-        candidates,
+        candidates: [],
         windows: [],
         pastCycle: null,
         stillOpenCycle: null,
@@ -407,11 +401,28 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       });
       if (input.activityMap) {
         const map = await collectActivityMap({
-          finder: deps.yearFinder ?? null,
+          finder: deps.yearFinder
+            ? {
+                async find(query) {
+                  const found = await deps.yearFinder!.find(query);
+                  return found.found
+                    ? {
+                        found: true,
+                        picks: await unofferedActivityPicks(
+                          deps.database,
+                          input.familyId,
+                          found.picks,
+                        ),
+                      }
+                    : found;
+                },
+              }
+            : null,
           children,
-          areaCoarse: area,
+          town,
           civic,
           familyId: input.familyId,
+          today: dayKeyOf(now, timeZone),
         });
         const won = map.lines.length > 0;
         return {
@@ -432,9 +443,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const opened = await collectYearOpenLines({
         civic,
         children,
-        areaCoarse: area,
+        town,
         finder: deps.yearFinder ?? null,
         familyId: input.familyId,
+        today: dayKeyOf(now, timeZone),
       });
       const message = renderYearOpen(opened.lines);
       const findWon = opened.lines.length > 0;

@@ -14,8 +14,8 @@ import {
 /**
  * One model call for a duty or family-memory reply, then the validator.
  * Any miss — a bad answer, a failed check, a missing skill, an outage, an
- * audit that did not land — returns the locked string. The send is never
- * blocked on the model.
+ * audit that did not land — holds the send. The locked sentence is not a
+ * fallback.
  *
  * Cost and the trace go through the same agent_runs + Langfuse seam as the
  * other voice composers. The client is injected. Tests never call a live model.
@@ -54,15 +54,17 @@ export interface ReplyCopyRequest {
   facts: readonly string[];
   sealedValues?: readonly string[];
   questionAllowed: boolean;
-  /** The locked sentence, or the locked header when `shape` is `frame`. */
-  fallback: string;
+  /** What the line is for (VIL-507). Read by the model; no sentence stands behind it. */
+  purpose?: string;
+  /** The locked header when `shape` is `frame`. Never sent. */
+  fallback?: string;
   /** Locked closing sentence. Required for `frame`. */
   fallbackClosing?: string;
   skill?: Skill;
 }
 
 export interface ReplyCopyResult {
-  source: 'model' | 'locked';
+  source: 'model' | 'held';
   /** Prose body, or the opening sentence when `shape` is `frame`. */
   text: string;
   /** Closing sentence when `shape` is `frame` and the model was kept. */
@@ -143,7 +145,7 @@ async function auditFallback(
       actionTaken: 'reply_copy_fallback',
       targetTable: 'channel_messages',
       targetId: familyId,
-      after: { surface, source: 'locked', reason },
+      after: { surface, source: 'held', reason },
     });
     return true;
   } catch (err) {
@@ -152,13 +154,8 @@ async function auditFallback(
   }
 }
 
-function locked(request: ReplyCopyRequest, reason: ReplyCopyResult['reason']): ReplyCopyResult {
-  return {
-    source: 'locked',
-    text: request.fallback,
-    closing: request.shape === 'frame' ? (request.fallbackClosing ?? null) : null,
-    reason,
-  };
+function held(reason: ReplyCopyResult['reason']): ReplyCopyResult {
+  return { source: 'held', text: '', closing: null, reason };
 }
 
 export async function composeReplyCopy(request: ReplyCopyRequest): Promise<ReplyCopyResult> {
@@ -173,7 +170,7 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
       request.surface,
       'skill_load',
     );
-    return locked(request, audited ? 'skill_load' : 'unaudited');
+    return held(audited ? 'skill_load' : 'unaudited');
   }
 
   const modelUsed = pickModel(skill.meta.task);
@@ -184,6 +181,7 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
     shape: request.shape,
     questionAllowed: request.questionAllowed,
     facts: request.facts,
+    ...(request.purpose ? { purpose: request.purpose } : {}),
   };
 
   try {
@@ -243,7 +241,7 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
               request.surface,
               reason ?? 'parse',
             );
-        if (!audited || !kept) return locked(request, audited ? reason : 'unaudited');
+        if (!audited || !kept) return held(audited ? reason : 'unaudited');
         return { source: 'model', text: kept.text, closing: kept.closing, reason: null };
       },
     );
@@ -255,6 +253,6 @@ export async function composeReplyCopy(request: ReplyCopyRequest): Promise<Reply
       request.surface,
       'unavailable',
     );
-    return locked(request, audited ? 'unavailable' : 'unaudited');
+    return held(audited ? 'unavailable' : 'unaudited');
   }
 }

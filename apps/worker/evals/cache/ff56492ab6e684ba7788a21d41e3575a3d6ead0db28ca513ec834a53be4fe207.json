@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French although the language is English, it invents a 3:00 time for an all-day event, and it adds 'a bit of breathing room', implying the day is open despite the reminder purpose.",
+    "score": 1
+  }
+}

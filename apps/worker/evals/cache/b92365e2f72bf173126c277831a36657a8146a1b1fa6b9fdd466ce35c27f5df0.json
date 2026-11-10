@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text includes the day (demain lundi, correct for Monday Oct 26 from Sunday), start 15 h and end 16 h (both correct, PM rendered as 24-hour), the venue name Georgetown library and the address 9 Church St. The title \"Jour de congé\" is quoted as the event's name, not recast as a claim about the day or a closure, and nothing is invented (no closure, no activity guess, no free/quiet claim). Language is French throughout, no link, and bold is none, which is fine.",
+    "score": 5
+  }
+}

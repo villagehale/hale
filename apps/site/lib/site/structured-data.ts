@@ -59,3 +59,38 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     '@graph': [organization, website, application],
   };
 }
+
+/**
+ * AboutPage JSON-LD for /about: the page, about the Organization, with its
+ * founders and the countries Hale serves. Pure, no user input.
+ */
+export function aboutJsonLd(locale: Locale = routing.defaultLocale): Record<string, unknown> {
+  const t = getTranslator(locale, 'Jsonld');
+  const prefix = locale === routing.defaultLocale ? '' : `/${locale}`;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'AboutPage',
+    url: `${SITE_URL}${prefix}/about`,
+    inLanguage: languageTag(locale),
+    about: {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'Hale',
+      legalName: 'Village Hale Technologies Inc.',
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
+      description: t('orgDescription'),
+      email: 'aloha@villagehale.com',
+      foundingDate: '2026-06-24',
+      address: { '@type': 'PostalAddress', addressLocality: 'Georgetown', addressRegion: 'ON', addressCountry: 'CA' },
+      areaServed: [
+        { '@type': 'Country', name: 'United States' },
+        { '@type': 'Country', name: 'Canada' },
+      ],
+      founder: [
+        { '@type': 'Person', name: 'Barton Dong', jobTitle: 'CEO' },
+        { '@type': 'Person', name: 'Eugene Song', jobTitle: 'CTO', sameAs: 'https://www.linkedin.com/in/yuhang-eugene-song-53b692172' },
+      ],
+    },
+  };
+}

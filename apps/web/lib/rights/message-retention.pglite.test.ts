@@ -981,6 +981,11 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
 
   beforeAll(async () => {
     before0167 = await createTestDb('0163_drop_retired_auth_tables.sql');
+    await before0167.exec(
+      'ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb',
+    );
+    // The group bit (0185, VIL-463) rides on every ledger row too.
+    await before0167.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
   });
 
   afterAll(async () => {
@@ -993,10 +998,14 @@ describe('sweepMessageRetention on a database without migration 0167', () => {
       .insert(schema.families)
       .values({ displayName: 'Household', provinceOrState: 'ON' })
       .returning({ id: schema.families.id });
-    const [parent] = await before0167.database
-      .insert(schema.users)
-      .values({ externalAuthId: 'google_retention_before_0167' })
-      .returning({ id: schema.users.id });
+    // Raw SQL: drizzle's insert names every column of today's schema, and this database
+    // stops before the columns later migrations added to users.
+    const {
+      rows: [parent],
+    } = await before0167.client.query<{ id: string }>(
+      'insert into users (external_auth_id) values ($1) returning id',
+      ['google_retention_before_0167'],
+    );
     await before0167.database.insert(schema.channelMessages).values({
       familyId: family?.id as string,
       parentUserId: parent?.id as string,

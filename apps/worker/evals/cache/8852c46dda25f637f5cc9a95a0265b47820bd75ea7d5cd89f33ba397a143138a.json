@@ -1,0 +1,13 @@
+{
+  "value": {
+    "reason": "The sentence says Hale will send an invitation to a number, which is a co-parent invite claim. Invite claims are never tied to a row, so the row is none.",
+    "claims": [
+      {
+        "sentence": 0,
+        "kind": "co_parent_invite",
+        "row": "none"
+      }
+    ]
+  },
+  "latencyMs": 1509
+}

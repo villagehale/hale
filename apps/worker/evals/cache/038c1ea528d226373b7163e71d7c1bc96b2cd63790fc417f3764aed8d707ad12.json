@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the move of the only soccer event and asks plainly whether to go ahead, with no YES keyword. Small blemish: \"Aug 8\" is not in the week row. It is inferred from a different item's Saturday, so it is plausible but an unneeded extra detail.",
+    "score": 4
+  }
+}

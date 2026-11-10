@@ -311,36 +311,68 @@ const RADAR_BANDS: readonly Band[] = [
   { bound: 0.5, score: 3 },
 ];
 
-/** Latest source observation for each owned watch checked in the reporting window. */
+/**
+ * The tally ONE re-verify run left behind — its own count of what it did, written by the
+ * sweep at the end of the run rather than inferred afterwards from the rows it touched.
+ *
+ * Inference was the previous reading and it could not tell the two failures apart: a
+ * confirmation bumps `verified_at` while BOTH a moved date and an unreadable page
+ * deliberately write nothing (the sweep's honesty design — a stale row is the signal).
+ * Every row is exactly one of the three, so `confirmed + discrepancies + unverified`
+ * is `checked`.
+ */
 export interface VerifyRunOutcomes {
+  /** Upcoming windows this run actually attempted — its own per-run ceiling, not the
+   * size of the dataset. */
   checked: number;
-  verified: number;
-  /** Observations that changed the schedule; this is not a failed verification. */
-  changed: number;
+  /** Re-read and still saying what we store. */
+  confirmed: number;
+  /** The page no longer says what we store. A seed to fix by hand. */
+  discrepancies: number;
+  /** Could not be verified at all — fetch failed, cycle gone, reading uncorroborated. */
   unverified: number;
 }
 
 export interface RadarVerification {
-  checkedThisWeek: boolean;
+  /** Whether a re-verify sweep week overlapped this digest window at all. */
+  sweptThisWeek: boolean;
+  /** What that sweep recorded, or null when a claimed week left no tally — it died
+   * mid-run, or it ran before the outcome ledger existed. Not the same news as a sweep
+   * that never started, and graded as neither. */
   outcomes: VerifyRunOutcomes | null;
 }
 
+/**
+ * Radar accuracy — how much of the dataset a family could still act on was re-read
+ * against the municipality's own page this week, graded on the SWEEP'S OWN TALLY.
+ *
+ * The two ways a row goes unconfirmed are separate numbers here because they are
+ * separate jobs: a moved date is a seed to correct today, an unreadable page is a
+ * scraper to fix, and the single "left stale" count this row used to print made the
+ * founder guess which week they were having.
+ */
 export function gradeRadarAccuracy(radar: RadarVerification): ScorecardRow {
+  const { sweptThisWeek, outcomes } = radar;
   const label = 'Radar accuracy';
-  const outcomes = radar.outcomes;
-  if (!radar.checkedThisWeek || !outcomes || outcomes.checked === 0) {
-    return {
-      label,
-      score: null,
-      reason: notEnoughData(0, 'no watch source observations in this window'),
-    };
+  // A sweep that never ran got nothing wrong. Scoring that 0 would report a missing
+  // cron as a wrong dataset — two problems that need two different Mondays.
+  if (!sweptThisWeek) {
+    return { label, score: null, reason: notEnoughData(0, 'the re-verify sweep did not run') };
   }
-  const { checked, verified, changed, unverified } = outcomes;
-  return {
-    label,
-    score: scoreAtLeast(verified / checked, RADAR_BANDS),
-    reason: `${verified} of ${checked} latest watch observations verified at source · ${changed} changed dates, ${unverified} unverified`,
-  };
+  if (!outcomes) {
+    return { label, score: null, reason: notEnoughData(0, 'the sweep recorded no outcomes') };
+  }
+  const { checked, confirmed, discrepancies, unverified } = outcomes;
+  if (checked === 0) {
+    return { label, score: null, reason: notEnoughData(0) };
+  }
+
+  const score = scoreAtLeast(confirmed / checked, RADAR_BANDS);
+  const reason =
+    confirmed === checked
+      ? `all ${checked} due windows re-confirmed at source`
+      : `${confirmed} of ${checked} due windows re-confirmed · ${discrepancies} moved dates, ${unverified} could not be read`;
+  return { label, score, reason };
 }
 
 // ── 6 · Deliverability ───────────────────────────────────────────────────────

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, but the requested language is English. It also gets the event wrong: the calendar has a 10:00 AM to 11:00 AM swim class today, not a day off at 3:00 tomorrow. It says the day is a day off and implies breathing room, when a timed event exists. The date is also wrong, and the swim class is not named at all.",
+    "score": 1
+  }
+}

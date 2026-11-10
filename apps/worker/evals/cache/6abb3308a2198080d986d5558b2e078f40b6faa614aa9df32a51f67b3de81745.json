@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts: event titled \"Jour de congé\" tomorrow (Monday Oct 26) 3:00-4:00 PM at Georgetown library. Text says \"demain à 15 h, il y a un jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h.\" Times, day, place are correct and 24h format is natural in French. However, the title is recast as a statement about the day (\"il y a un jour de congé\" implies a day off at the library, i.e. the library is closed/family has a day off), changing the event's name into a claim it does not make. Per the rules, that is a fact failure and a LOW score. The phrasing also reads unnaturally: a native speaker would name the event rather than say \"il y a un jour de congé à la bibliothèque\".",
+    "score": 2
+  }
+}

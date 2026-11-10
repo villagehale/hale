@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch was turned off this turn for send_email and reply_to_email, so saying 'Done' is true. The reply confirms plainly in one line that Hale will ask first, which is exactly what the parent asked for. It has no greeting, no machinery talk, and nothing invented. It doesn't mention replies separately, but 'any emails' covers them.",
+    "score": 5
+  }
+}

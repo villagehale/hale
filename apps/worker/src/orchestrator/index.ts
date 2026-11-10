@@ -22,6 +22,7 @@ import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { logger } from '../logger.js';
 import {
   type CalendarInviteSender,
+  type EmailSender,
   type ExecutorDeps,
   defaultExecutorDeps,
   runExecutor,
@@ -49,6 +50,7 @@ import {
   recordReviewerRejection,
   recordReviewerVerdict,
 } from '../services/memory-writer.js';
+import { invokeReviewerTool } from '../tools/registry.js';
 import {
   autonomyDeniedForKind,
   commitsParentToEnrollmentBookingOrPayment,
@@ -184,15 +186,17 @@ function classifyEndedCalendarItem(job: IngestedEventPayload): FreshClassificati
 }
 
 /**
- * The collaborators the pipeline cannot build for itself. Today that is one: the
- * calendar-invite sender, which lives in apps/web (the ICS composer + the A2
- * dispatch) and is therefore bound by the web drain rather than resolved here.
- * Unbound, the executor names its own absence in the execution detail.
+ * The collaborators the pipeline cannot build for itself: the calendar-invite sender,
+ * the Google Calendar writer and the Gmail email sender all live in apps/web (they
+ * need the A2 dispatch or the OAuth token vault) and are bound by the web drain.
+ * Unbound, the executor names its own absence.
  */
 export interface OrchestratorOptions {
   calendarInvites?: CalendarInviteSender;
   /** Google Calendar writes for a placement. Unbound, the executor names the skip. */
   googleCalendar?: GoogleCalendarPlacement;
+  /** Approved-email sends from the parent's own Gmail. Unbound, send_email fails loud. */
+  sendEmail?: EmailSender;
 }
 
 /**
@@ -203,12 +207,14 @@ export interface OrchestratorOptions {
 function executorDeps(
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
+  sendEmail?: EmailSender,
 ): ExecutorDeps | undefined {
-  if (!calendarInvites && !googleCalendar) return undefined;
+  if (!calendarInvites && !googleCalendar && !sendEmail) return undefined;
   return {
     ...defaultExecutorDeps(),
     ...(calendarInvites ? { sendCalendarInvites: calendarInvites } : {}),
     ...(googleCalendar ? { googleCalendar } : {}),
+    ...(sendEmail ? { sendEmail } : {}),
   };
 }
 
@@ -253,6 +259,7 @@ export async function runOrchestrator(
       resume.teenContent,
       opts.calendarInvites,
       opts.googleCalendar,
+      opts.sendEmail,
     );
     return;
   }
@@ -752,6 +759,7 @@ export async function runOrchestrator(
     opts.calendarInvites,
     opts.googleCalendar,
     null,
+    opts.sendEmail,
   );
 }
 
@@ -770,6 +778,7 @@ async function executeAndRecord(
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
   actorUserId?: string | null,
+  sendEmail?: EmailSender,
 ): Promise<void> {
   const decision = {
     source: actorUserId ? ('human' as const) : ('autonomous' as const),
@@ -778,7 +787,7 @@ async function executeAndRecord(
   try {
     const execution = await runExecutor(
       { familyId, approved, actorUserId: actorUserId ?? null },
-      executorDeps(calendarInvites, googleCalendar),
+      executorDeps(calendarInvites, googleCalendar, sendEmail),
     );
     await recordExecution({ actionId, result: execution.detail, ok: execution.ok, decision });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
@@ -809,6 +818,7 @@ async function resumeIntoExecutor(
   teenContent: boolean,
   calendarInvites?: CalendarInviteSender,
   googleCalendar?: GoogleCalendarPlacement,
+  sendEmail?: EmailSender,
 ): Promise<void> {
   const existing = await loadActionForEvent(eventId);
   if (!existing) {
@@ -901,6 +911,7 @@ async function resumeIntoExecutor(
     calendarInvites,
     googleCalendar,
     humanApprover,
+    sendEmail,
   );
 }
 
@@ -916,9 +927,13 @@ export interface ExecuteApprovedDeps {
   calendarInvites?: CalendarInviteSender;
   /** Google Calendar writes. Absent ⇒ the executor's unwired port (`not_configured`). */
   googleCalendar?: GoogleCalendarPlacement;
+  /** Gmail sends for approved email. Absent ⇒ the executor's unwired sender (fails loud). */
+  sendEmail?: EmailSender;
   loadConsent: typeof loadCrossParentConsent;
   recordApproval: typeof recordHumanApproval;
   recordGate: typeof recordActionGate;
+  /** VIL-357 · the reviewer's window check, re-run against the REAL execution instant. */
+  checkWindow: (familyId: string, at: Date) => Promise<{ withinWindow: boolean; detail: unknown }>;
   execute: typeof executeAndRecord;
   log: Pick<typeof logger, 'info' | 'warn'>;
 }
@@ -929,6 +944,14 @@ export function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
     loadConsent: loadCrossParentConsent,
     recordApproval: recordHumanApproval,
     recordGate: recordActionGate,
+    checkWindow: async (familyId, at) => {
+      const result = await invokeReviewerTool('check_action_time_window', {
+        familyId,
+        proposedExecutionAt: at.toISOString(),
+      });
+      const within = (result.result as { withinWindow?: unknown } | null)?.withinWindow === true;
+      return { withinWindow: result.ok && within, detail: result.result };
+    },
     execute: executeAndRecord,
     log: logger,
   };
@@ -1003,6 +1026,27 @@ export async function executeApprovedAction(
     }
   }
 
+  // VIL-357 · the reviewer judged the window at DRAFT time. The parent may approve hours
+  // later, so the window is re-judged against the instant this would actually run. The
+  // draft-time verdict stays as the receipt of what was proposed; outside the window
+  // nothing executes and the action stays drafted for a later approval.
+  const executeAt = new Date();
+  const window = await deps.checkWindow(familyId, executeAt);
+  if (!window.withinWindow) {
+    deps.log.warn(
+      { familyId, actionId, actionType: action.actionType },
+      'actions.approved: approval landed outside the action window — not executed',
+    );
+    await deps.recordGate({
+      familyId,
+      actionId,
+      actionType: action.actionType,
+      reason: 'outside_time_window',
+      detail: { approvedBy, executeAt: executeAt.toISOString(), window: window.detail },
+    });
+    return;
+  }
+
   const draft: DraftedAction = {
     id: actionId,
     eventId: action.eventId,
@@ -1068,5 +1112,6 @@ export async function executeApprovedAction(
     deps.calendarInvites,
     deps.googleCalendar,
     approvedBy,
+    deps.sendEmail,
   );
 }

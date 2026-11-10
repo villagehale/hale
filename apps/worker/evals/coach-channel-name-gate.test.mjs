@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inventedName } from './coach-channel-name-gate.mjs';
+import { inventedName, weekdayGrounded } from './coach-channel-name-gate.mjs';
 
 // The hay the coach-channel gate builds: this family's children, parent and town,
 // lowercased and flattened (groundedHay in run-coach-channel-eval.mjs).
@@ -26,10 +26,43 @@ describe('inventedName', () => {
     expect(inventedName('"Theo\'s"', HAY)).toBeNull();
   });
 
+  it('reads the first word of a quoted line as a sentence start, not a name', () => {
+    // coaching-night-wakeups: `the same one-line reassurance every time, like "You're safe,
+    // it's still night, back to sleep."` - the quote's grammar capitalises its first word.
+    expect(inventedName('"You\'re', HAY)).toBeNull();
+    expect(inventedName("\u201cYou're", HAY)).toBeNull();
+    // Positive controls: the same word outside a quote, and a one-word quoted name, which
+    // closes on itself and is a name claim whatever the quotes around it.
+    expect(inventedName("You're", HAY)).toBe("You're");
+    expect(inventedName('"Marcus"', HAY)).toBe('Marcus');
+    expect(inventedName('\u201cMarcus\u201d,', HAY)).toBe('Marcus');
+  });
+
   it('ignores words that make no claim about this family', () => {
     expect(inventedName('sitting', HAY)).toBeNull();
     expect(inventedName('Want', HAY)).toBeNull();
     expect(inventedName('Canada', HAY)).toBeNull();
     expect(inventedName('YES', HAY)).toBeNull();
+  });
+});
+
+describe('a weekday name', () => {
+  // capability-park-nearby-again: the farm's own when is "Sun, Aug 9", and Aug 9 2026 is a Sunday.
+  const FARM = 'riverdale farm visit sun, aug 9 cedarvale park';
+
+  it('is grounded when a date in the facts falls on that weekday', () => {
+    expect(weekdayGrounded('Sunday', FARM, 2026)).toBe(true);
+    expect(inventedName('Sunday,', FARM, 2026)).toBeNull();
+  });
+
+  it('is a wrong fact when no date in the facts falls on it', () => {
+    expect(weekdayGrounded('Saturday', FARM, 2026)).toBe(false);
+    expect(inventedName('Saturday', FARM, 2026)).toBe('Saturday');
+  });
+
+  it('is computed from the year, not aliased from an abbreviation', () => {
+    // Aug 9 2025 is a Saturday, so "Sunday" is not backed even though "sun" is in the hay.
+    expect(weekdayGrounded('Sunday', FARM, 2025)).toBe(false);
+    expect(weekdayGrounded('Saturday', FARM, 2025)).toBe(true);
   });
 });

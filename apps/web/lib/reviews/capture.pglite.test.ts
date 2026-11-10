@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { activityFollowupAskDedupeKey } from '~/lib/channel/followup/ask-open';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import {
   ACTIVITY_REVIEWS_ENABLED_ENV,
   type ReviewCaptureResult,
@@ -125,7 +125,7 @@ async function seed(options: SeedOptions = {}): Promise<Seeded> {
   const childId = child?.id as string;
 
   const [candidate] = await db.database
-    .insert(schema.villageCandidates)
+    .insert(schema.familyActivityHistory)
     .values({
       familyId,
       title: 'Saturday storytime',
@@ -136,7 +136,7 @@ async function seed(options: SeedOptions = {}): Promise<Seeded> {
       placeId: options.placeId === undefined ? PLACE_REF : options.placeId,
       civicVenueId: options.civicVenueId ?? null,
     })
-    .returning({ id: schema.villageCandidates.id });
+    .returning({ id: schema.familyActivityHistory.id });
 
   const [event] = await db.database
     .insert(schema.events)
@@ -159,7 +159,7 @@ async function seed(options: SeedOptions = {}): Promise<Seeded> {
         startsAt: '2026-09-12T14:00:00.000Z',
         ...(options.withProvenance === false
           ? {}
-          : { sourceRef: { table: 'village_candidates', id: candidate?.id as string } }),
+          : { sourceRef: { table: 'family_activity_history', id: candidate?.id as string } }),
       },
     })
     .returning({ id: schema.actions.id });
@@ -224,10 +224,7 @@ async function seedReply(
   return row?.id as string;
 }
 
-async function run(
-  reader: VerdictReader,
-  now: Date = NOW,
-): Promise<ReviewCaptureResult> {
+async function run(reader: VerdictReader, now: Date = NOW): Promise<ReviewCaptureResult> {
   const { activityFollowupAskOpen } = await import('~/lib/channel/followup/ask-open');
   return runReviewCapture(db.database, { askOpen: activityFollowupAskOpen, verdict: reader, now });
 }

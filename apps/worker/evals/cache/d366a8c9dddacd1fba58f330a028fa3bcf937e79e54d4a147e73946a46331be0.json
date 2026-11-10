@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text omits the time (5:30 PM today), the task (birthday cake), that it arrives in the group chat, and how to cancel or change it. Only confirms a reminder was set, so most mustSay items are missing."
+  }
+}

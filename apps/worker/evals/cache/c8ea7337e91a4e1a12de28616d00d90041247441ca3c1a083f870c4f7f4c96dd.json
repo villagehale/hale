@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named Oakville programs, and each is sourced to the venue's own site rather than an aggregator. The stage fit is right: preschool levels and ages 3-5. The message leads with the Town of Oakville by name, attributes it (\"site lists\"), and invents no times or prices. It is plain text with no link and no question. Under no_page_read it uses the earned form, \"I could not get into their pages today\". With watch true, the first-person \"I'll keep watching and text you\" is correct. The miss is that useful facts in the notes were left out: winter registration opens December 1 at 7 a.m. with browsing from November 24, and the YMCA runs 12-week sessions. watchFor specifically expects a session and a registration date, so the parent gets less to act on than Hale found.",
+    "score": 4
+  }
+}

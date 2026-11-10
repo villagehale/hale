@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE } from '~/lib/channel/coparent/copy';
+import { coParentSeatTakenLate } from '~/lib/channel/coparent/copy';
 import {
   type FakeDb,
   FakeExtractor,
@@ -479,7 +479,7 @@ describe('a link that is no longer good · never an error to the person holding 
 
     expect(late).toEqual({ status: 'join_seat_taken', familyId });
     expect(h.transport.sent.slice(before).map((s) => s.body)).toEqual([
-      CO_PARENT_SEAT_TAKEN_LATE_BY_LANGUAGE.en,
+      await coParentSeatTakenLate('en'),
     ]);
     expect(h.transport.sent.at(-1)?.to).toBe(PARTNER_PHONE);
     // Not greeted, and no intake session opened on their number: the greeting is what

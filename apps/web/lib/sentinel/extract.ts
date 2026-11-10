@@ -36,7 +36,9 @@ const extractOutputSchema = z.object({
     child_ref: z.string().nullable().optional().default(null),
     original_time: z.string().nullable().optional().default(null),
     new_time: z.string().nullable().optional().default(null),
+    end_time: z.string().nullable().optional().default(null),
     location: z.string().nullable().optional().default(null),
+    address: z.string().nullable().optional().default(null),
   }),
   source_confidence: z.number().min(0).max(1),
   quote_evidence: z.string(),
@@ -54,7 +56,9 @@ const extractOutputJsonSchema = {
         child_ref: { type: ['string', 'null'] },
         original_time: { type: ['string', 'null'] },
         new_time: { type: ['string', 'null'] },
+        end_time: { type: ['string', 'null'] },
         location: { type: ['string', 'null'] },
+        address: { type: ['string', 'null'] },
       },
       required: ['title'],
     },
@@ -114,7 +118,9 @@ export async function extractChildEvent(
       childRef: value.event.child_ref,
       originalTime: value.event.original_time,
       newTime: value.event.new_time,
+      endTime: statedEnd(value.event.new_time, value.event.end_time),
       location: value.event.location,
+      address: sourcedAddress(value.event.address, `${input.subject}\n${input.body}`),
     },
     sourceConfidence: value.source_confidence,
     quoteEvidence: value.quote_evidence,
@@ -124,4 +130,39 @@ export async function extractChildEvent(
       completionTokens: usage.output_tokens,
     },
   };
+}
+
+/**
+ * The address only when the email holds it word for word: its words, in order, as a run
+ * of the email's own words (case, spacing and punctuation aside). It must carry a number
+ * and a word, so a place name or a lone figure is not one. Anything else is null, so an
+ * address the model completed, corrected or recalled never reaches a parent.
+ */
+export function sourcedAddress(address: string | null, source: string): string | null {
+  const trimmed = address?.trim() ?? '';
+  const wanted = words(trimmed);
+  if (!wanted.some((w) => /\p{N}/u.test(w)) || !wanted.some((w) => /\p{L}/u.test(w))) {
+    return null;
+  }
+  const haystack = words(source);
+  for (let start = 0; start + wanted.length <= haystack.length; start += 1) {
+    if (wanted.every((w, i) => haystack[start + i] === w)) return trimmed;
+  }
+  return null;
+}
+
+function words(text: string): string[] {
+  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/**
+ * The end the email stated, kept only when it is a real instant after `new_time`. A
+ * missing, unparseable or backwards end is null: nothing downstream guesses one.
+ */
+export function statedEnd(start: string | null, end: string | null): string | null {
+  if (start === null || end === null) return null;
+  const from = Date.parse(start);
+  const to = Date.parse(end);
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return null;
+  return end;
 }

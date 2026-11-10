@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CgNP7RgxdzEryVQwoHRDW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSxwUKEAgTGAI4AUIIdGhpbmtpbmcSDBHv3NkX40xPM1sqIBoMs8h7ahw0I5g/lAVlIjBEkVC7xZZn8vyByEJzWgUdlJoMh+adpgOwKCDTs138zfhU58UO45ThYNmag6wiDnUq5ATCg28+Xp11LlZunBHI1vDvqZD2EgXqWzMVyJbqUiuj/KkNZspCYwWs/4HElmRLMhl61YdYuWVsAUG8Y3c2/bkOvgPzUn7HSjxuqd36g0Xsiv3g6QY5XLb11duaZJrCylUDKEHxOrhMutid1xP3MH5plZgszsRn66mHttoUDAwMfm20aEYer9xk1f3T6dZr38tJKHfXDmQ4hPhE9QBxtKFAKnTWyenScUevLMWmkFHzPcy348UiDGNvr20KjN/3dIeXIIpNIEm8LwSwAzvdgyrQD47fahzzUlcOZU8vGvKTGaLDaOH5wXv5f9/9Ltpa0h8h2qZ1HU2LJvGP8sbgNcQyik3EXny3gh0CA8CHSrd/m1T3BWRlMB99cXgajY1e1/zWPf4ZSi93p01IfRhmQkKGpKcIik+45cZEHwt9JfHy0h/UyDIG3C5dP0slsRFqt2IZxDS28fw5nExMULYZeqOJlZpcInVTl/Cp3tnt5t36qqryKeI0Hu2VdbMpCQYbwZzmCUAyWNksBvpEr7HoycMIazkvVgofAePYVcvtB0X0TiAS9UB5i+Xz1nnLIiJYuZlY1AmQAlJu+gNLb/14qLZIAeNYImqs1gYyymQY4lzA9xU1AsNahNMRyFOivqJ+u5njQMqUo+5c/sV2rj8t4e84nnHJlVl3vQ+Cd5ZFJeFamG5QUdhvqYdgJbJU0gmDjAAFsV7k4Ns13fLY5Mmu+hd+GpKeS9uSCzhl7oB/LuQl4N0H3yBC1qOAq/dl+Js4bcuGkDg3eCimiH3ca4npOB/tcEbGLy+08UjW2fOgqxUpAWGpz+sYAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0134GDPivmUdisY2Mgutz1gV",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "newborn",
+          "ageMonths": 5
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 424,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 134,
+      "output_tokens_details": {
+        "thinking_tokens": 53
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 1928
+}

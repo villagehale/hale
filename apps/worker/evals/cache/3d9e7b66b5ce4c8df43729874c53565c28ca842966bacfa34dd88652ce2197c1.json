@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: piano lesson today 7:00-8:00 PM at Ms. Chen studio, about an hour away, evening marked, in Chinese. But the text is unnatural Chinese: \"它是在Ms. Chen studio\" is a clumsy construction (the 它 is redundant and 在 misplaced; a native would say \"在Ms. Chen studio\"), and \"有钢琴课它是在\" is a calque-like tangle. The text also mixes in an unstated consistency issue with \"今天\" absent, which is fine. Per the native speaker check this caps at 3.",
+    "score": 3
+  }
+}

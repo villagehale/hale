@@ -1,10 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { SMS_CONSENT_SCOPE } from './sms-consent-copy';
-import type { OtpSender } from './otp-sender';
 import {
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
@@ -16,7 +15,9 @@ import {
   isResendInCooldown,
   verifyOtpCode,
 } from './otp';
+import type { OtpSender } from './otp-sender';
 import { isSyntheticProbeNumber, maskPhoneE164, normalizePhoneE164 } from './phone';
+import { SMS_CONSENT_SCOPE } from './sms-consent-copy';
 
 /**
  * The SMS channel enrolment engine (VIL-212). Pure of auth/request concerns — every
@@ -293,6 +294,14 @@ async function enrolVerifiedChannel(
     if (!channelId) {
       throw new Error('enrolVerifiedChannel: channel insert returned no row');
     }
+
+    // See supersedeOpenInviteOnEnrollment: an invite left open on this number would
+    // outrank the channel just written.
+    await supersedeOpenInviteOnEnrollment(tx as unknown as Database, {
+      phoneE164,
+      via: 'web_otp',
+      now,
+    });
 
     await tx.insert(schema.auditLog).values({
       familyId,

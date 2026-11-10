@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { placeOf } from './place';
+import { placeOf, provinceOfPostal } from './place';
 
 /**
  * The two postal tables are files of their own, opened when a turn first needs one. A
@@ -29,6 +29,9 @@ describe('when a postal table is opened', () => {
     await placeOf({ ...ROW, country: 'Canada' });
     await placeOf({ ...ROW, country: 'Canada', areaCoarse: 'North York' });
     await placeOf({ ...ROW, country: 'United States', areaCoarse: '802' });
+    // A US ZIP or a UK postcode has no province to look up, so neither table opens.
+    expect(await provinceOfPostal('98101')).toBeNull();
+    expect(await provinceOfPostal('SW1A 1AA')).toBeNull();
 
     expect(loaded).toEqual({ ca: 0, us: 0 });
   });

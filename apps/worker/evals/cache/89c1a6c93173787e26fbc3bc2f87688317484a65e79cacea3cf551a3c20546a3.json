@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text gives the day (demain), the start time 15 h and the location, but omits the end time of 16 h, which is in the facts; a fact failure that drops the end time. It also does not mention the 4 PM end at all, so the event's duration is missing. Title and place are kept correctly and the tone is friendly, but the missing end time is a LOW-score fact failure.",
+    "score": 2
+  }
+}

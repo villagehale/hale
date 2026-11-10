@@ -212,17 +212,14 @@ describe('booking connector registry', () => {
     expect(live.map((connector) => connector.id)).toEqual([REFERENCE_CONNECTOR_ID]);
   });
 
-  it('runs the reference connector before the browser and cannot override the denylist', () => {
+  it('runs the reference connector before the browser on any host it matches', () => {
     const connectors = bookingConnectors({ BOOKING_REFERENCE_CONNECTOR_ENABLED: 'on' });
     expect(bookingRoute(`https://${REFERENCE_CONNECTOR_HOST}/lessons`, connectors).kind).toBe(
       'connector',
     );
     expect(bookingRoute('https://tickets.example-zoo.test/book', connectors).kind).toBe('browser');
-    expect(bookingRoute('https://www.toronto.ca/recreation', connectors).kind).toBe('handoff');
-    expect(bookingRoute('https://app.amilia.com/register', connectors).kind).toBe('handoff');
-    expect(bookingRoute('https://recreation.brampton.ca/programs', connectors).kind).toBe(
-      'handoff',
-    );
+    expect(bookingRoute('https://www.toronto.ca/recreation', connectors).kind).toBe('browser');
+    expect(bookingRoute('https://app.amilia.com/register', connectors).kind).toBe('browser');
     expect(bookingRoute(`https://${REFERENCE_CONNECTOR_HOST}/lessons`, []).kind).toBe('browser');
   });
 });

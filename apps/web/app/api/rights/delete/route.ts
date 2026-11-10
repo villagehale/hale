@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
+import { capturePortalEventAfter } from '~/lib/analytics/server-capture';
 import { authConfigured } from '~/lib/auth-config';
-import { db } from '~/lib/db';
-import { listSeatsForUser, resolveUserIdForUser } from '~/lib/family';
 import { tellStayingParent } from '~/lib/channel/coparent/departure-notice';
 import { departureNoticePorts } from '~/lib/channel/inbound-deps';
+import { db } from '~/lib/db';
+import { listSeatsForUser, resolveUserIdForUser } from '~/lib/family';
 import { requestErasure } from '~/lib/rights/delete';
 
 // Node runtime: the scheduler uses the Drizzle client and writes the audit row.
@@ -67,6 +68,7 @@ export async function POST(req: Request): Promise<Response> {
   const familyId = seats[0]?.familyId as string;
 
   const result = await requestErasure(database, { familyId, actorUserId });
+  capturePortalEventAfter('portal_delete_requested', familyId, 'rights_api');
 
   if (result.outcome === 'not_permitted') {
     return NextResponse.json({ error: 'not_permitted' }, { status: 403 });

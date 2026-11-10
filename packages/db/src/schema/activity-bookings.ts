@@ -26,8 +26,8 @@ import { users } from './users.js';
  * `watched_spots` and `email_alert_offers` both hit. And nothing here was promised out
  * loud, which is what that ledger records.
  *
- * WHAT IT MAY HOLD (rule #1). The extraction's own title, its own instant, its own place,
- * and the sender's bare domain. Never the subject line, never the snippet, never the quote
+ * WHAT IT MAY HOLD (rule #1). The extraction's own title, its own instant, its own place
+ * and the street address the email gave for it, and the sender's bare domain. Never the subject line, never the snippet, never the quote
  * evidence. Confirmation numbers, order ids, amounts and child names have NO COLUMN and
  * are therefore unwritable. A 13+ child's confirmation writes NO ROW AT ALL: the pipeline
  * has genericised the title by the time the alert path sees it, so recording it would let
@@ -82,6 +82,13 @@ export const activityBookings = pgTable(
     firstSessionAt: timestamp('first_session_at', { withTimezone: true }).notNull(),
     location: text('location'),
     /**
+     * The place's street address, only as the confirmation email wrote it word for word
+     * (`sourcedAddress` in the sentinel's extraction) and only beside a `location` it does
+     * not repeat (migration 0214). NULL when the email gave none: nothing completes or
+     * looks one up. It travels with `location`: a receipt naming a new place replaces both.
+     */
+    address: text('address'),
+    /**
      * THE SESSION, as one string — `provider_host`, the folded title and the first
      * instant, computed ONCE at write time by `lib/integrations/going.ts`'s `sessionKey`
      * and compared by plain equality. Stored rather than folded in the read, because a
@@ -119,6 +126,13 @@ export const activityBookings = pgTable(
      * because when a booking stopped being real is what a support agent is asked.
      */
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+    /**
+     * The received time of the newest email that recorded or refreshed this booking
+     * (migration 0200). A cancellation older than it does not close the row: a cancellation
+     * read late must not undo a booking the provider confirmed after it. NULL on rows
+     * written before 0200, which any cancellation may close, as before.
+     */
+    sourceReceivedAt: timestamp('source_received_at', { withTimezone: true }),
     /**
      * The `family_events` row this booking is ON. ONE meaning, two writers: the
      * correlation stamps it at detection when the class is already on the calendar, and

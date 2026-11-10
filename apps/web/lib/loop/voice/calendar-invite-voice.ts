@@ -1,332 +1,381 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { smsEncoding } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { CRON_SWEEP_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { findInventedFacts } from './facts-lint';
+import { asciiDigits, textDestination, titleDestination } from './calendar-destination';
 
 /**
- * VIL-249 — the two composed surfaces of the calendar invite: the ONE text that asks a
- * texting family for an email address, and the subject + note that carry the invite
- * itself.
+ * The tap-to-add text a parent gets after a placement — written by a model (skill
+ * `calendar-invite-voice`). VIL-515.
  *
- * NO PRESET BODIES (founder, 2026-08-12, absolute). Hale does not keep a canned
- * sentence for either of these, so there is deliberately no deterministic fallback
- * copy here — which is a departure from the VIL-229 voice contract in
- * lib/channel/types.ts, where every voiced slot keeps one and a send is never blocked
- * on the model. The trade that replaces it: gates the model must clear, up to three
- * attempts with the violation NAMED back to it, and then a DEFER — no send at all,
- * named to the caller, with the ask's once-ever claim left unconsumed so the next
- * placement tries again. Nothing ever goes out unreviewed, and nothing goes out
- * pretending a preset was a composed line.
+ * The model never sees the URL. It writes the placeholder `[[link]]` once, and code
+ * puts the exact link there. A rejected write is retried here (MAX_ATTEMPTS). A
+ * deferral after that is NAMED and the caller sends nothing (`compose_deferred`):
+ * there is no fixed fallback line.
  *
- * PRIVACY (rule #1). The ask is composed BLIND — the model is handed nothing, because
- * a standing offer needs nothing. The note is handed ONLY the already-redacted
- * descriptor the recipient's own dial produced, plus the formatted time, and both must
- * come back VERBATIM (the containment gate). A composer given only the redacted string
- * cannot leak a fuller title than the dial allows, and the gate proves it did not
- * paraphrase its way around one either.
+ * Code checks the link slot, that no other destination is written, the length, and
+ * digits that were not handed. Whether the text names the event and states its start
+ * is a small judge call (`calendar-invite-time`), in any language and any way of
+ * saying the hour. The model's words are not folded.
  */
 
-/** One SMS segment. The ask is a standing offer, never worth two. */
-export const MAX_ASK_CHARS = 160;
-/** Room for two warm sentences carrying the summary and the time. */
-export const MAX_NOTE_BODY_CHARS = 320;
-export const MAX_NOTE_SUBJECT_CHARS = 120;
+/** The placeholder the model writes. Code replaces it with the exact ICS url. */
+export const INVITE_LINK_SLOT = '[[link]]';
 
-const ASK_MAX_TOKENS = 200;
-const NOTE_MAX_TOKENS = 400;
+/** Longer than any event name: an input past it is not a name, and is not sent. */
+export const MAX_INVITE_SUMMARY_CHARS = 200;
 
-/**
- * How many times the model may be told what it got wrong before Hale gives up on this
- * message. Three is the whole budget: one blind attempt, two with the violation named.
- * A fourth would be paying for the same failure again — the shapes these gates catch
- * (a link, a second question, an invented time) are not the kind a model fixes on the
- * fourth read when it ignored the third.
- */
-export const MAX_COMPOSE_ATTEMPTS = 3;
+/** The filled text, link included, as the carrier bills it. */
+export const MAX_INVITE_SEGMENTS = 5;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
+const MAX_ATTEMPTS = 3;
+const MAX_TOKENS = 500;
+const TIME_JUDGE_MAX_TOKENS = 300;
 
-export type ComposedAsk =
-  | { status: 'composed'; text: string; attempts: number }
-  | { status: 'deferred'; reason: string; attempts: number };
-
-export type ComposedNote =
-  | { status: 'composed'; subject: string; body: string; attempts: number }
-  | { status: 'deferred'; reason: string; attempts: number };
-
-/** What the note is written about: the event as THIS recipient may see it. */
-export interface InviteNoteContext {
-  /** The already-redacted descriptor — teen/sensitive events arrive generic. */
+export interface CalendarInviteVoiceRequest {
+  /** The event, already rendered at this parent's own privacy level. */
   summary: string;
-  /** The start, formatted in the family's own timezone. */
+  /** When it starts, English fact label (inviteWhenLabel). The model restates it. */
   when: string;
-  method: 'added' | 'cancelled';
+  /** The absolute per-event ICS link. The model never sees this. */
+  url: string;
+  /** The event start. The time judge compares the text to this instant. */
+  startsAt: Date;
+  /** The parent's zone, so the clock is the one they were told. */
+  timeZone: string;
+  /** The family's language tag. Null: the skill writes English. */
+  language: string | null;
 }
 
-export interface CalendarVoice {
-  /** The standing ask for an address. Blind — no family, no event. */
-  composeAsk(): Promise<ComposedAsk>;
-  composeNote(context: InviteNoteContext): Promise<ComposedNote>;
+export type CalendarInviteRefusal =
+  | 'empty'
+  | 'carries_destination'
+  | 'link_missing'
+  | 'link_repeated'
+  | 'link_damaged'
+  | 'stray_slot'
+  | 'when_missing'
+  | 'invented_number'
+  | 'too_long';
+
+export interface ZonedStart {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: string;
 }
 
-const askSchema = z.object({ text: z.string() });
-const noteSchema = z.object({ subject: z.string(), body: z.string() });
+/** Local start, as facts for the digit check and the time judge. English weekday is a fact, not a phrase the parent must read. */
+export function zonedStart(startsAt: Date, timeZone: string): ZonedStart {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+    weekday: 'long',
+  }).formatToParts(startsAt);
+  const num = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
+  return {
+    year: num('year'),
+    month: num('month'),
+    day: num('day'),
+    hour: num('hour'),
+    minute: num('minute'),
+    weekday,
+  };
+}
 
-const askJsonSchema = {
+/** The numbers code hands about the start, as a writer may print them. */
+export function startNumbers(event: ZonedStart): Set<string> {
+  const numbers = new Set<string>();
+  const hour12 = event.hour % 12 || 12;
+  for (const n of [event.year, event.month, event.day, event.hour, hour12, event.minute]) {
+    numbers.add(String(n));
+    numbers.add(String(n).padStart(2, '0'));
+  }
+  return numbers;
+}
+
+function allowedDigits(summary: string, event: ZonedStart): Set<string> {
+  const allowed = startNumbers(event);
+  for (const n of asciiDigits(summary).match(/\d+/g) ?? []) allowed.add(n);
+  return allowed;
+}
+
+/** The slot is read as a gap, so its neighbours never join into a domain. */
+function carriesDestination(text: string, starts: ZonedStart): boolean {
+  return textDestination(text.split(INVITE_LINK_SLOT).join(' '), starts) !== null;
+}
+
+/**
+ * Code facts only: link slot, no other destination, length, digits that were not in
+ * the summary or the start. A time said as "10am", "à 10 h", or "上午10点" is not
+ * refused here, and neither is the event named in translation: the time judge reads both.
+ */
+export function calendarInviteRefusals(
+  body: string,
+  request: CalendarInviteVoiceRequest,
+): CalendarInviteRefusal[] {
+  if (body === '') return ['empty'];
+  const found: CalendarInviteRefusal[] = [];
+  const slotCount = body.split(INVITE_LINK_SLOT).length - 1;
+  if (!request.url || slotCount === 0) found.push('link_missing');
+  if (slotCount > 1) found.push('link_repeated');
+  const starts = zonedStart(request.startsAt, request.timeZone);
+  const carriesLink = carriesDestination(body, starts);
+  if (carriesLink) found.push('carries_destination');
+  const rest = body.split(request.summary).join(' ').split(INVITE_LINK_SLOT).join(' ');
+  const allowed = allowedDigits(request.summary, starts);
+  if ((asciiDigits(rest).match(/\d+/g) ?? []).some((n) => !allowed.has(n))) {
+    found.push('invented_number');
+  }
+  if (slotCount === 1 && request.url && !carriesLink) {
+    const withoutSlot = body.replace(INVITE_LINK_SLOT, '');
+    if (/\[\[[^\]]*\]\]/.test(withoutSlot)) found.push('stray_slot');
+    const filled = fillCalendarInvite(body, request.url);
+    if (!filled.includes(request.url)) found.push('link_damaged');
+  }
+  if (smsSegments(fillCalendarInvite(body, request.url)) > MAX_INVITE_SEGMENTS) {
+    found.push('too_long');
+  }
+  return found;
+}
+
+/** The wire body: the placeholder replaced by the exact url. The model's words stay. */
+export function fillCalendarInvite(body: string, url: string): string {
+  return body.replace(INVITE_LINK_SLOT, url);
+}
+
+export interface RejectedCalendarInvite {
+  text: string;
+  problems: CalendarInviteRefusal[];
+}
+
+/** The user-turn payload. The url stays out of it: the model writes the slot. */
+export function calendarInviteUserMessage(
+  request: CalendarInviteVoiceRequest,
+  rejected: readonly RejectedCalendarInvite[] = [],
+): string {
+  const base = {
+    summary: request.summary,
+    when: request.when,
+    language: request.language,
+    linkSlot: INVITE_LINK_SLOT,
+  };
+  return JSON.stringify(rejected.length === 0 ? base : { ...base, rejected });
+}
+
+export interface CalendarInviteTimeInput {
+  text: string;
+  summary: string;
+  when: string;
+  timeZone: string;
+  language: string | null;
+  starts: ZonedStart;
+}
+
+/** What the time judge is shown. The url is not in it. */
+export function calendarInviteTimeUserMessage(input: CalendarInviteTimeInput): string {
+  return JSON.stringify({
+    text: input.text,
+    summary: input.summary,
+    when: input.when,
+    timeZone: input.timeZone,
+    language: input.language,
+    starts: input.starts,
+  });
+}
+
+export function calendarInviteTimeInput(
+  text: string,
+  request: CalendarInviteVoiceRequest,
+): CalendarInviteTimeInput {
+  return {
+    text,
+    summary: request.summary,
+    when: request.when,
+    timeZone: request.timeZone,
+    language: request.language,
+    starts: zonedStart(request.startsAt, request.timeZone),
+  };
+}
+
+/** True when the text names the event and states its start. Null: the judge could not say, so nothing is sent. */
+export interface CalendarInviteTimeJudge {
+  matches(input: CalendarInviteTimeInput): Promise<boolean | null>;
+}
+
+const timeSchema = z.object({ reason: z.string(), match: z.boolean() });
+export const timeJsonSchema = {
+  type: 'object',
+  properties: { reason: { type: 'string' }, match: { type: 'boolean' } },
+  required: ['reason', 'match'],
+} as const;
+
+export function createCalendarInviteTimeJudge(client: () => AgentClient): CalendarInviteTimeJudge {
+  return {
+    async matches(input) {
+      try {
+        const skill = await loadCronSkill('calendar-invite-time');
+        const { value } = await forceToolJson({
+          client: client(),
+          lane: pickLane(skill.meta.task),
+          system: skill.instructions,
+          userMessage: calendarInviteTimeUserMessage(input),
+          toolName: 'time_match',
+          toolDescription:
+            'Whether the text names this event and states the same start as the facts.',
+          inputJsonSchema: timeJsonSchema,
+          schema: timeSchema,
+          maxTokens: TIME_JUDGE_MAX_TOKENS,
+        });
+        return value.match;
+      } catch (err) {
+        console.error(
+          { err: err instanceof Error ? err.name : 'unknown' },
+          'calendar invite time: judge failed, nothing sent',
+        );
+        return null;
+      }
+    },
+  };
+}
+
+export type CalendarInviteDeferral =
+  | 'summary_too_long'
+  | 'summary_carries_destination'
+  | 'client_unavailable'
+  | 'skill_unavailable'
+  | 'model_failed'
+  | 'time_unjudged'
+  | 'gate_exhausted';
+
+export type CalendarInviteVoiceOutcome =
+  | { status: 'composed'; body: string }
+  | { status: 'deferred'; reason: CalendarInviteDeferral };
+
+export interface CalendarInviteVoice {
+  compose(request: CalendarInviteVoiceRequest): Promise<CalendarInviteVoiceOutcome>;
+}
+
+const textSchema = z.object({ text: z.string() });
+const textJsonSchema = {
   type: 'object',
   properties: { text: { type: 'string' } },
   required: ['text'],
 } as const;
 
-const noteJsonSchema = {
-  type: 'object',
-  properties: { subject: { type: 'string' }, body: { type: 'string' } },
-  required: ['subject', 'body'],
-} as const;
-
-/** The user turn for the note. Shared with the eval, which REPLICATES this shape. */
-export function inviteNoteUserMessage(context: InviteNoteContext): string {
-  return JSON.stringify(context);
+function errorClass(err: unknown): string {
+  return err instanceof Error ? err.constructor.name : 'unknown';
 }
 
-/** The ask is blind; the turn exists only because a request needs one. */
-export const ASK_USER_MESSAGE = JSON.stringify({});
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : 'unknown';
-}
-
-/** Collapse the shapes a phone or a mail client would render badly, before gating. */
-function tidy(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
-}
-
-// ── the gates ────────────────────────────────────────────────────────────────
-
-/**
- * Every rule the ask must clear, as a list of named violations (empty = sendable).
- *
- * The names are handed BACK to the model on the retry, so each one has to read as an
- * instruction rather than an error code.
- */
-export function askViolations(text: string): string[] {
-  const out: string[] = [];
-  if (text === '') out.push('the message was empty');
-  if (text.length > MAX_ASK_CHARS) {
-    out.push(`the message was ${text.length} characters; the limit is ${MAX_ASK_CHARS}`);
-  }
-  if (smsEncoding(text) !== 'gsm7') {
-    out.push('the message used a character outside plain ASCII (a curly quote, a long dash or an emoji)');
-  }
-  // AT MOST one question mark. The first live run wrote the ask as an offer with an
-  // instruction — "I can send real calendar invites by email - text me your address"
-  // — three times out of three, and it is better copy than the interrogative it was
-  // being forced into. What actually had to be stopped was the INTERROGATION ("Want
-  // invites? What's your address?"), which is the second question mark, so that is
-  // what the gate holds. "Does it actually ask" is the `email` check and the judge.
-  const questionMarks = (text.match(/\?/g) ?? []).length;
-  if (questionMarks > 1) {
-    out.push(`the message asked ${questionMarks} questions; ask at most one thing`);
-  }
-  if (!/email/i.test(text)) out.push('the message never used the word "email", so it does not ask for one');
-  if (LINK_SHAPE.test(text)) out.push('the message carried a link; there is nothing to link to');
-  if (text.includes('@')) out.push('the message contained an @ address; an example address is invented');
-  if (/\d/.test(text)) out.push('the message contained a digit; there is no number you could know here');
-  return out;
+function deferred(reason: CalendarInviteDeferral, detail?: string): CalendarInviteVoiceOutcome {
+  console.error({ reason, detail }, 'calendar invite: no text composed, nothing sent');
+  return { status: 'deferred', reason };
 }
 
 /**
- * Every rule the note must clear. The first two are the CONTAINMENT gate: the redacted
- * summary and the formatted time must survive into the message unchanged, so the
- * composer can neither expand a genericized title nor quietly restate a time.
+ * Code gate over one model write. `accepted` means the link, the length, and the
+ * digits are fine. The time judge still has to agree before it is sent.
  */
-export function noteViolations(note: { subject: string; body: string }, context: InviteNoteContext): string[] {
-  const out: string[] = [];
-  const { subject, body } = note;
-
-  if (!subject.includes(context.summary)) {
-    out.push(`the subject must contain "${context.summary}" exactly as given`);
-  }
-  if (!body.includes(context.summary)) {
-    out.push(`the body must contain "${context.summary}" exactly as given`);
-  }
-  if (!body.includes(context.when)) {
-    out.push(`the body must contain "${context.when}" exactly as given`);
-  }
-  if (subject === '') out.push('the subject was empty');
-  if (body === '') out.push('the body was empty');
-  if (subject.length > MAX_NOTE_SUBJECT_CHARS) {
-    out.push(`the subject was ${subject.length} characters; the limit is ${MAX_NOTE_SUBJECT_CHARS}`);
-  }
-  if (body.length > MAX_NOTE_BODY_CHARS) {
-    out.push(`the body was ${body.length} characters; the limit is ${MAX_NOTE_BODY_CHARS}`);
-  }
-  if (LINK_SHAPE.test(subject) || LINK_SHAPE.test(body)) {
-    out.push('the message carried a link; the attachment is the whole action');
-  }
-
-  // The invented-fact lint, over the only two facts that exist for this message. A
-  // clock time or URL absent from both is a specific the model made up.
-  const slots = [context.summary, context.when];
-  const invented = [...findInventedFacts(subject, slots), ...findInventedFacts(body, slots)];
-  if (invented.length > 0) {
-    out.push(`these were not in the event you were given: ${[...new Set(invented)].join(', ')}`);
-  }
-  return out;
+export function prepareCalendarInvite(
+  raw: string,
+  request: CalendarInviteVoiceRequest,
+):
+  | { status: 'accepted'; body: string }
+  | { status: 'refused'; text: string; problems: CalendarInviteRefusal[] } {
+  const text = raw.trim();
+  const problems = calendarInviteRefusals(text, request);
+  if (problems.length > 0) return { status: 'refused', text, problems };
+  return { status: 'accepted', body: fillCalendarInvite(text, request.url) };
 }
 
-/** The retry turn: the model's own attempt, and what was wrong with it. */
-export function retryUserMessage(original: string, attempt: string, violations: string[]): string {
-  return JSON.stringify({
-    original: JSON.parse(original),
-    yourLastAttempt: attempt,
-    problems: violations,
-    instruction: 'Write it again, fixing every problem listed. Same JSON shape.',
-  });
-}
-
-// ── the production composer ──────────────────────────────────────────────────
-
-/**
- * Both composers, over one lazily-resolved client — the resolver shape the general
- * answer uses, and for the same reason: these deps are built on paths that may never
- * reach a model, so a missing key must be a named outcome rather than a throw at
- * construction.
- */
-export function createCalendarVoice(client: () => AgentClient): CalendarVoice {
-  async function run<TValue>(args: {
-    skillName: string;
-    toolName: string;
-    toolDescription: string;
-    inputJsonSchema: Parameters<typeof forceToolJson>[0]['inputJsonSchema'];
-    schema: z.ZodType<TValue>;
-    userMessage: string;
-    maxTokens: number;
-    /** The named problems with an attempt, empty when it may be sent. */
-    violations: (value: TValue) => string[];
-    /** The attempt as the model would read it back, for the retry turn. */
-    render: (value: TValue) => string;
-    /** Whitespace-tidy the raw fields before gating. */
-    tidyValue: (value: TValue) => TValue;
-  }): Promise<{ status: 'composed'; value: TValue; attempts: number } | { status: 'deferred'; reason: string; attempts: number }> {
-    let resolved: AgentClient;
-    try {
-      resolved = client();
-    } catch (err) {
-      return { status: 'deferred', reason: `client_unavailable: ${message(err)}`, attempts: 0 };
-    }
-
-    let skill: Awaited<ReturnType<typeof loadCronSkill>>;
-    try {
-      skill = await loadCronSkill(args.skillName);
-    } catch (err) {
-      return { status: 'deferred', reason: `skill_unavailable: ${message(err)}`, attempts: 0 };
-    }
-
-    let turn = args.userMessage;
-    let lastProblem = 'no attempt was made';
-    for (let attempt = 1; attempt <= MAX_COMPOSE_ATTEMPTS; attempt += 1) {
-      let value: TValue;
-      try {
-        const result = await forceToolJson({
-          client: resolved,
-          lane: pickLane(skill.meta.task),
-          system: skill.instructions,
-          userMessage: turn,
-          toolName: args.toolName,
-          toolDescription: args.toolDescription,
-          inputJsonSchema: args.inputJsonSchema,
-          schema: args.schema,
-          maxTokens: args.maxTokens,
-        });
-        value = args.tidyValue(result.value as TValue);
-      } catch (err) {
-        // An outage or an unparseable answer is worth one more try inside the budget,
-        // and is the named reason if it is the last one.
-        lastProblem = `model_failed: ${message(err)}`;
-        turn = args.userMessage;
-        continue;
-      }
-
-      const violations = args.violations(value);
-      if (violations.length === 0) return { status: 'composed', value, attempts: attempt };
-
-      lastProblem = violations.join('; ');
-      turn = retryUserMessage(args.userMessage, args.render(value), violations);
-    }
-
-    console.error(
-      { skill: args.skillName, attempts: MAX_COMPOSE_ATTEMPTS, problem: lastProblem },
-      'calendar voice: no sendable draft after the retry budget — deferring',
-    );
-    return { status: 'deferred', reason: lastProblem, attempts: MAX_COMPOSE_ATTEMPTS };
-  }
-
+export function createCalendarInviteVoice(
+  client: () => AgentClient,
+  judge: CalendarInviteTimeJudge = createCalendarInviteTimeJudge(client),
+): CalendarInviteVoice {
   return {
-    async composeAsk() {
-      const result = await run<{ text: string }>({
-        skillName: 'calendar-email-ask',
-        toolName: 'ask',
-        toolDescription: 'Return the one text asking this family for an email address.',
-        inputJsonSchema: askJsonSchema,
-        schema: askSchema,
-        userMessage: ASK_USER_MESSAGE,
-        maxTokens: ASK_MAX_TOKENS,
-        tidyValue: (value) => ({ text: tidy(value.text) }),
-        violations: (value) => askViolations(value.text),
-        render: (value) => value.text,
-      });
-      return result.status === 'composed'
-        ? { status: 'composed', text: result.value.text, attempts: result.attempts }
-        : result;
-    },
-
-    async composeNote(context) {
-      const result = await run<{ subject: string; body: string }>({
-        skillName: 'calendar-invite-note',
-        toolName: 'note',
-        toolDescription: 'Return the subject line and the short note above the invite.',
-        inputJsonSchema: noteJsonSchema,
-        schema: noteSchema,
-        userMessage: inviteNoteUserMessage(context),
-        maxTokens: NOTE_MAX_TOKENS,
-        tidyValue: (value) => ({ subject: tidy(value.subject), body: tidy(value.body) }),
-        violations: (value) => noteViolations(value, context),
-        render: (value) => `subject: ${value.subject}\nbody: ${value.body}`,
-      });
-      return result.status === 'composed'
-        ? {
-            status: 'composed',
-            subject: result.value.subject,
-            body: result.value.body,
-            attempts: result.attempts,
-          }
-        : result;
+    async compose(request) {
+      if (request.summary.length > MAX_INVITE_SUMMARY_CHARS) {
+        return deferred('summary_too_long', String(request.summary.length));
+      }
+      let starts: ZonedStart;
+      try {
+        starts = zonedStart(request.startsAt, request.timeZone);
+      } catch (err) {
+        return deferred('time_unjudged', err instanceof Error ? err.name : 'unknown');
+      }
+      const held = titleDestination(request.summary, starts);
+      if (held) return deferred('summary_carries_destination', held);
+      let resolved: AgentClient;
+      try {
+        resolved = client();
+      } catch (err) {
+        return deferred('client_unavailable', errorClass(err));
+      }
+      let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      try {
+        skill = await loadCronSkill('calendar-invite-voice');
+      } catch (err) {
+        return deferred('skill_unavailable', errorClass(err));
+      }
+      const rejected: RejectedCalendarInvite[] = [];
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+        let raw: string;
+        try {
+          const { value } = await forceToolJson({
+            client: resolved,
+            lane: pickLane(skill.meta.task),
+            system: skill.instructions,
+            userMessage: calendarInviteUserMessage(request, rejected),
+            toolName: 'calendar_invite',
+            toolDescription:
+              'Return the text Hale sends, with the link placeholder where the tap-to-add link goes.',
+            inputJsonSchema: textJsonSchema,
+            schema: textSchema,
+            maxTokens: MAX_TOKENS,
+          });
+          raw = value.text;
+        } catch (err) {
+          return deferred('model_failed', errorClass(err));
+        }
+        const text = raw.trim();
+        const prepared = prepareCalendarInvite(text, request);
+        if (prepared.status === 'refused') {
+          rejected.push({ text: prepared.text, problems: prepared.problems });
+          continue;
+        }
+        // Judge the pre-fill text so the url never enters the time check.
+        const match = await judge.matches(calendarInviteTimeInput(text, request));
+        if (match === null) return deferred('time_unjudged');
+        if (!match) {
+          rejected.push({ text, problems: ['when_missing'] });
+          continue;
+        }
+        return { status: 'composed', body: prepared.body };
+      }
+      return deferred('gate_exhausted', rejected.map((r) => r.problems.join('+')).join(' | '));
     },
   };
 }
 
-/** The composer every production caller uses: the shared lazy client, one skill load
- * per name, the gates and the retry budget. */
-export function productionCalendarVoice(): CalendarVoice {
-  return createCalendarVoice(calendarVoiceClient);
-}
-
 let cached: Anthropic | undefined;
 
-/**
- * The shared client, resolved LAZILY — the router and the drain build these deps for
- * every text and every placement, including the ones that never reach a model, so a
- * missing key must not break construction. Throwing here (rather than returning null)
- * is what buys the composer's single named `client_unavailable` defer.
- */
-export function calendarVoiceClient(): AgentClient {
-  // Built by the router and the drain per text/placement — some of those turns
-  // have a parent waiting, so the SMS-lane budget governs (audit P1-7).
-  cached ??= budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS);
+export function calendarInviteVoiceClient(): AgentClient {
+  cached ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return cached;
+}
+
+export function productionCalendarInviteVoice(): CalendarInviteVoice {
+  return createCalendarInviteVoice(calendarInviteVoiceClient);
 }

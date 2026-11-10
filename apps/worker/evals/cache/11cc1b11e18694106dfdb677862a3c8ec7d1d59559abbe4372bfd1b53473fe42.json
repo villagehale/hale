@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. The autonomy switch was turned off this turn for send_email and reply_to_email, so the reply confirms a true change, in the parent's language, in one short line with no greeting and no question. 'I'll ask first, and only send once you say so' is accurate to what the switch now does. It does the job and stops.",
+    "score": 5
+  }
+}

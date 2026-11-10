@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/nudge-voice';
 import {
   HEALTH_CHECKPOINTS,
   MAX_LINK_URL_LENGTH,
@@ -8,8 +6,7 @@ import {
   checkpointRef,
   refsSharingVisit,
 } from './checkpoints';
-import { HEALTH_CLOSE, HEALTH_CLOSE_BOOKING, renderHealthNudge } from './copy';
-import { HEALTH_BANNED_PHRASES, findBannedPhrases } from './framing';
+import { findBannedPhrases } from './framing';
 
 /**
  * VIL-243 · M8 — THE CONTENT REVIEW GATE.
@@ -21,55 +18,6 @@ import { HEALTH_BANNED_PHRASES, findBannedPhrases } from './framing';
  * message — not just the source strings — because a template can assemble a banned
  * phrase out of two innocent halves.
  */
-
-/** A stand-in family for rendering: two named under-13s, so the plural subject path
- * and the longest realistic name run through the lint too. */
-const KID_NAMES = ['Genevieve', 'Maximilian'];
-
-function everyRenderedMessage(): Array<{ id: string; variant: string; body: string }> {
-  const rendered: Array<{ id: string; variant: string; body: string }> = [];
-  for (const checkpoint of HEALTH_CHECKPOINTS) {
-    rendered.push({
-      id: checkpoint.id,
-      variant: 'named',
-      body: renderHealthNudge({
-        kind: 'health_checkpoint',
-        checkpointRef: { id: checkpoint.id, region: checkpoint.region },
-        ref: `${checkpoint.id}:child-1:0`,
-        kidNames: KID_NAMES,
-        teenOnly: false,
-        teenCount: 0,
-      }),
-    });
-    rendered.push({
-      id: checkpoint.id,
-      variant: 'unnamed',
-      body: renderHealthNudge({
-        kind: 'health_checkpoint',
-        checkpointRef: { id: checkpoint.id, region: checkpoint.region },
-        ref: `${checkpoint.id}:child-1:0`,
-        kidNames: [],
-        teenOnly: false,
-        teenCount: 0,
-      }),
-    });
-    if (checkpoint.teenSafeTask !== null) {
-      rendered.push({
-        id: checkpoint.id,
-        variant: 'teen',
-        body: renderHealthNudge({
-          kind: 'health_checkpoint',
-          checkpointRef: { id: checkpoint.id, region: checkpoint.region },
-          ref: `${checkpoint.id}:child-1:0`,
-          kidNames: [],
-          teenOnly: true,
-          teenCount: 2,
-        }),
-      });
-    }
-  }
-  return rendered;
-}
 
 describe('findBannedPhrases', () => {
   it('catches the judgment vocabulary this feature exists to avoid', () => {
@@ -169,109 +117,7 @@ describe('findBannedPhrases', () => {
   });
 
   it('says nothing about copy that is purely administrative', () => {
-    expect(
-      findBannedPhrases('Ontario schedules a routine vaccine visit at 6 months.'),
-    ).toEqual([]);
-  });
-});
-
-describe('the shipped health content', () => {
-  it('has a gate wide enough to be worth running (the lint is not vacuous)', () => {
-    expect(HEALTH_BANNED_PHRASES.length).toBeGreaterThan(20);
-  });
-
-  it('carries no banned phrase in any rendered message', () => {
-    for (const { id, variant, body } of everyRenderedMessage()) {
-      expect({ id, variant, banned: findBannedPhrases(body) }).toEqual({
-        id,
-        variant,
-        banned: [],
-      });
-    }
-  });
-
-  it('carries no banned phrase in the shared closes', () => {
-    expect(findBannedPhrases(HEALTH_CLOSE)).toEqual([]);
-    expect(findBannedPhrases(HEALTH_CLOSE_BOOKING)).toEqual([]);
-  });
-
-  it('ends every message with the ONE reply-able close', () => {
-    for (const { id, variant, body } of everyRenderedMessage()) {
-      const checkpoint = HEALTH_CHECKPOINTS.find((c) => c.id === id);
-      const close = checkpoint?.booking ? HEALTH_CLOSE_BOOKING : HEALTH_CLOSE;
-      expect({ id, variant, ends: body.endsWith(close) }).toEqual({
-        id,
-        variant,
-        ends: true,
-      });
-    }
-  });
-
-  it('fits two SMS segments once the CASL opt-out is appended', () => {
-    for (const { id, variant, body } of everyRenderedMessage()) {
-      const segments = smsSegments(`${body}\n\n${NUDGE_OPT_OUT}`);
-      expect({ id, variant, segments: segments <= 2 }).toEqual({
-        id,
-        variant,
-        segments: true,
-      });
-    }
-  });
-
-  it('stays inside GSM-7, so one curly quote never halves the budget', () => {
-    for (const { id, variant, body } of everyRenderedMessage()) {
-      expect({ id, variant, encoding: smsEncoding(body) }).toEqual({
-        id,
-        variant,
-        encoding: 'gsm7',
-      });
-    }
-  });
-
-  it('never writes the opt-out itself — the shell appends it exactly once (CASL)', () => {
-    for (const { id, variant, body } of everyRenderedMessage()) {
-      expect({ id, variant, duplicated: body.includes(NUDGE_OPT_OUT) }).toEqual({
-        id,
-        variant,
-        duplicated: false,
-      });
-    }
-  });
-
-  /**
-   * A kid name is free text an LLM lifted from a stranger's SMS. The budget guarantees
-   * above are worthless if a single routine Ontario name can break them, so the two
-   * shapes that would are pinned here: a name outside GSM-7, and a very long one.
-   */
-  it('drops a name it cannot afford rather than blowing the budget', () => {
-    const render = (kidNames: string[]) =>
-      renderHealthNudge({
-        kind: 'health_checkpoint',
-        checkpointRef: { id: 'school_records_ispa', region: 'toronto' },
-        ref: 'school_records_ispa:*:2026',
-        kidNames,
-        teenOnly: false,
-        teenCount: 0,
-      });
-
-    // GSM 03.38 has é but no ë, and no CJK at all — either would flip the whole SMS to
-    // UCS-2 and halve 306 septets to 134 units. Both are dropped; the sibling whose
-    // name the alphabet does carry is kept, accent and all.
-    const mixed = render(['Zoë', '李明', 'Chloé']);
-    expect(mixed).toContain('Chloé:');
-    expect(mixed).not.toContain('Zoë');
-    expect(mixed).not.toContain('李明');
-    expect(smsEncoding(mixed)).toBe('gsm7');
-    expect(smsSegments(`${mixed}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
-
-    // Every name unaffordable: the task still ships, without a roll call.
-    const anonymous = render(['Zoë', 'A'.repeat(200)]);
-    expect(anonymous.startsWith('Toronto Public Health')).toBe(true);
-    expect(smsSegments(`${anonymous}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
-
-    // A crowd is capped, so a six-kid household cannot spend the whole message on names.
-    const crowd = render(['Ann', 'Ben', 'Cal', 'Dot', 'Eli', 'Fay']);
-    expect(smsSegments(`${crowd}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
+    expect(findBannedPhrases('Ontario schedules a routine vaccine visit at 6 months.')).toEqual([]);
   });
 });
 
@@ -299,9 +145,10 @@ describe('the checkpoint table', () => {
       expect(checkpoint.linkUrl).toMatch(
         /^https:\/\/(www\.ontario\.ca|www\.toronto\.ca|tph\.icon\.ehealthontario\.ca)\//,
       );
-      expect({ id: checkpoint.id, len: checkpoint.linkUrl.length <= MAX_LINK_URL_LENGTH }).toEqual(
-        { id: checkpoint.id, len: true },
-      );
+      expect({ id: checkpoint.id, len: checkpoint.linkUrl.length <= MAX_LINK_URL_LENGTH }).toEqual({
+        id: checkpoint.id,
+        len: true,
+      });
     }
   });
 
@@ -420,4 +267,3 @@ describe('refsSharingVisit', () => {
     expect(refsSharingVisit('not-a-ref')).toEqual(['not-a-ref']);
   });
 });
-

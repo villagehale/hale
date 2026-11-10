@@ -11,11 +11,11 @@ import { Phrase, tx } from './tx';
 
 
 const GROUPS = [
-  { id: 'start', label: 'Getting started', from: 0, to: 3 },
-  { id: 'groups', label: 'Group chats', from: 3, to: 7 },
-  { id: 'does', label: 'What Hale does', from: 7, to: 12 },
-  { id: 'cost', label: 'Cost', from: 12, to: 13 },
-  { id: 'privacy', label: 'Privacy and safety', from: 13, to: 16 },
+  { id: 'start', label: 'Getting started', from: 0, to: 5 },
+  { id: 'groups', label: 'Group chats', from: 5, to: 9 },
+  { id: 'does', label: 'What Hale does', from: 9, to: 14 },
+  { id: 'cost', label: 'Cost', from: 14, to: 16 },
+  { id: 'privacy', label: 'Privacy and safety', from: 16, to: 19 },
 ] as const;
 
 export function RedesignFaq({

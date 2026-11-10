@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text mentions neither of the two given events (Montessori tour for Theo, 10-11 AM at Little Oaks Montessori, 41 Mill St; Storytime for Léa, 1:30-2:15 PM at Georgetown Branch, 9 Church St). It invents an event, \"Jour de congé at 3:00\" (with no AM/PM), and claims tomorrow is a day off with \"breathing room\", which implies a free day when timed events exist. Starts, ends, venues and addresses are all missing.",
+    "score": 1
+  }
+}

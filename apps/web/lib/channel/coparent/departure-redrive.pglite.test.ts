@@ -7,9 +7,8 @@ import { REDRIVE_HOUR_LOCAL } from '~/lib/channel/redrive-slot';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
-import { CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE } from './copy';
+import { coParentDepartedNotice } from './copy';
 import { departCoParent } from './depart';
-import { runDepartureNoticeRedrive } from './departure-redrive';
 import {
   DEPARTURE_NOTICE_TEMPLATE_KEY,
   type DepartureNoticePorts,
@@ -17,6 +16,7 @@ import {
   departureNoticeReaders,
   tellStayingParent,
 } from './departure-notice';
+import { runDepartureNoticeRedrive } from './departure-redrive';
 
 /**
  * B1 · the 23:00 departure that quiet hours held, and the morning that finishes it.
@@ -191,7 +191,7 @@ describe('the morning re-drive of a departure notice quiet hours held', () => {
     expect(morning).toMatchObject({ open: 1, due: 1, sent: 1 });
     expect(transport.sent).toHaveLength(1);
     expect(transport.sent[0]?.to).toBe(household.stayingPhone);
-    expect(transport.sent[0]?.body).toContain(CO_PARENT_DEPARTED_NOTICE_BY_LANGUAGE.en);
+    expect(transport.sent[0]?.body).toContain(await coParentDepartedNotice('en'));
     // The key the night's receipt deliberately did not spend is spent now, once.
     expect(await noticeRows(household.familyId)).toEqual([
       { status: 'suppressed_quiet_hours', dedupeKey: null },

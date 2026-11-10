@@ -1,5 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, DEEPSEEK_MODEL, agentRunCostUsd, pickLane, runAgent } from '@hale/agent';
+import {
+  type AgentClient,
+  DEEPSEEK_MODEL,
+  type LaneConfig,
+  agentRunCostUsd,
+  pickLane,
+  runAgent,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun } from '~/lib/agent-run';
 import { type SynthesisCronResult, runMemorySynthesis } from '~/lib/memory/synthesis';
@@ -10,6 +17,11 @@ import {
   budgetedAnthropic,
 } from '~/lib/pipeline/client';
 import { parseModelMode } from '~/lib/pipeline/model-mode';
+import {
+  type ClearanceRefusal,
+  type NonGoogleClearance,
+  clearForNonAnthropic,
+} from '~/lib/pipeline/provider-clearance';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
@@ -28,16 +40,31 @@ import { loadInferMemorySkill } from './skill';
  * Audit actor is 'system' (rule #6). The Anthropic client is injected so tests
  * drive the loop mechanics with a fake; inference QUALITY is an eval against real
  * cached Claude (rule #8), not asserted here.
+ *
+ * RESIDUAL (VIL-556, check-then-use): in candidate mode the Google witness is read ONCE,
+ * before the agent loop. If a parent connects Gmail or Calendar and a sync lands while a
+ * cleared family's run is in progress, the read tools can hand that new content to the
+ * gateway model for the rest of the run. The window is one run (at most MAX_STEPS steps);
+ * the next run reads the witness again and refuses. Closing it means re-checking inside
+ * the read tools (inference-tools.ts), which this guard does not do.
  */
 
 const MAX_STEPS = 8;
 const MAX_TOKENS = 1024;
 
-/** What ONE family's agent leg needs. */
-export interface InferenceDeps {
-  client: AgentClient;
-  modelMode?: 'current' | 'candidate';
-}
+/**
+ * What ONE family's agent leg needs. `client` is always Anthropic. The candidate adds a
+ * gateway factory that takes a clearance, because the inferencer reads family-wide state
+ * that carries Gmail- and Calendar-derived content for any family that connected Google
+ * (VIL-556): the candidate runs only for a family the clearance witness clears.
+ */
+export type InferenceDeps =
+  | { client: AgentClient; modelMode?: 'current' }
+  | {
+      client: AgentClient;
+      modelMode: 'candidate';
+      candidateClient: (clearance: NonGoogleClearance) => AgentClient;
+    };
 
 /**
  * What the whole window needs: the agent leg's client, plus the deterministic
@@ -46,27 +73,34 @@ export interface InferenceDeps {
  * outcome this cron is allowed to have silently. Observing without closing is the
  * pass's own `applied: false`, never a withheld dependency (rule #11).
  */
-export interface InferenceCronDeps extends InferenceDeps {
+export type InferenceCronDeps = InferenceDeps & {
   synthesize: typeof runMemorySynthesis;
-}
+};
 
 export interface InferenceResult {
   steps: number;
   hitMaxSteps: boolean;
+  /** Why a requested candidate did not run for this family; null when none was requested
+   * or it ran. */
+  candidateRefusal: ClearanceRefusal | null;
 }
 
 let anthropicClient: Anthropic | undefined;
-let gatewayClient: Anthropic | undefined;
 
 export function defaultInferenceDeps(): InferenceDeps {
   // Daily inference cron, maxDuration 300, multi-step loop per family: the sweep
   // budget bounds each request so one stall cannot eat the window (audit P1-7).
   const modelMode = parseModelMode(process.env.HALE_MEMORY_INFER_MODEL_MODE, 'memory inference');
+  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS, { stage: 'memory_infer' });
   if (modelMode === 'candidate') {
-    gatewayClient ??= budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS);
-    return { client: gatewayClient, modelMode };
+    return {
+      client: anthropicClient,
+      modelMode,
+      // Built per cleared family, so each gateway client is tied to its own clearance.
+      candidateClient: (clearance) =>
+        budgetedAiGateway(CRON_SWEEP_CLIENT_OPTIONS, clearance, { stage: 'memory_infer' }),
+    };
   }
-  anthropicClient ??= budgetedAnthropic(CRON_SWEEP_CLIENT_OPTIONS);
   return { client: anthropicClient, modelMode };
 }
 
@@ -86,10 +120,21 @@ export async function runInferenceForFamily(
   // in read_recent_conversations (rule #1).
   const tools = [...buildInferenceTools(database, now), ...buildDistillTools(database, now)];
   const guardDeps = buildCronGuardDeps(database);
-  const lane =
-    deps.modelMode === 'candidate'
-      ? ({ model: DEEPSEEK_MODEL, thinking: 'disabled' } as const)
-      : pickLane(skill.meta.task);
+  let client = deps.client;
+  let lane: LaneConfig = pickLane(skill.meta.task);
+  let candidateRefusal: ClearanceRefusal | null = null;
+  if (deps.modelMode === 'candidate') {
+    const decision = await clearForNonAnthropic(
+      { kind: 'family_state', database, familyId },
+      'memory inference',
+    );
+    if ('cleared' in decision) {
+      client = deps.candidateClient(decision.cleared);
+      lane = { model: DEEPSEEK_MODEL, thinking: 'disabled' };
+    } else {
+      candidateRefusal = decision.refused;
+    }
+  }
   const modelUsed = lane.model;
 
   // Trace the inference run: a scheduled run (userId 'system'), familyId is
@@ -109,7 +154,7 @@ export async function runInferenceForFamily(
           skill,
           context: { familyId },
           tools,
-          client: deps.client,
+          client,
           lane,
           maxSteps: MAX_STEPS,
           maxTokens: MAX_TOKENS,
@@ -148,7 +193,7 @@ export async function runInferenceForFamily(
         langfuseTraceId: trace.traceId,
       });
 
-      return { steps: result.steps, hitMaxSteps: result.hitMaxSteps };
+      return { steps: result.steps, hitMaxSteps: result.hitMaxSteps, candidateRefusal };
     },
   );
 }
@@ -179,7 +224,12 @@ export async function runInferenceCron(
   deps: InferenceCronDeps = defaultInferenceCronDeps(),
   now: Date = new Date(),
 ): Promise<InferenceCronResult> {
-  const familyIds = await selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.inference);
+  const familyIds = await selectFamiliesForRun(
+    database,
+    'inference',
+    MAX_FAMILIES_PER_RUN.inference,
+    now,
+  );
 
   // BEFORE the agent leg, so the inferencer's memory snapshot reads a tidied family
   // rather than the duplicates it is about to reason over — and OUTSIDE the provider

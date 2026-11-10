@@ -52,8 +52,7 @@ export type AnalyticsEvent =
   | 'loop_message_failed'
   // The UNDO primitive (reverse-calendar.ts) reversing an executed placement.
   | 'loop_undo'
-  // A loop-category CASL email unsubscribe landing — the beta guardrail pages the
-  // founder at ANY occurrence (stop-alert.ts).
+  // A loop-category CASL email unsubscribe landing (app/unsubscribe/page.tsx).
   | 'loop_stop'
   // F14 · M10 the viral loop (VIL-245). Two coarse steps: a guest answers a host's
   // invite without an account, and a guest follows the one soft line to Hale. Keyed on
@@ -86,6 +85,10 @@ export type AnalyticsEvent =
   // exist and could not be made to (lib/channel/reconcile). The class is the refusal
   // reason, so the rate says WHICH claim the model keeps inventing.
   | 'agent_claim_refused'
+  // VIL-581 · the claim reader in shadow: one per read, comparing it with the regex
+  // gate's decision on the same body. Lane, outcome and verdict enums, counts and the
+  // hashed family only (lib/channel/reconcile/claim-shadow.ts).
+  | 'agent_claim_shadow'
   // An inbound webhook that threw before it could answer — a parent experiences that
   // as silence (VIL-331). Carries the route and the error class only, and is fired
   // from a leg that never touches the database, because the failure it exists to
@@ -97,7 +100,26 @@ export type AnalyticsEvent =
   // refuse everyone" (2026-09-03 audit; rule #11). Carries the door and the outcome
   // enum only, assembled by `captureInboundRouted` — never a sender, an id, or a word
   // of the message.
-  | 'inbound_routed';
+  | 'inbound_routed'
+  // PostHog SMS funnel (2026-10 ticket). All keyed on the intake session id before a
+  // family exists, or the hashed family id after — never a phone number.
+  // The first inbound a number ever sends Hale, with the acquisition code it carried.
+  | 'first_text_received'
+  // The first plan/loop message delivered after intake completed.
+  | 'family_activated'
+  // An inbound that answers a Hale message within 48h.
+  | 'parent_replied'
+  // One Sunday digest delivered.
+  | 'weekly_digest_sent'
+  // A message the model could not write, so nothing was sent (no fixed fallback copy).
+  | 'compose_deferred'
+  // Portal (apps/web) surface events. Property: `surface` only.
+  | 'portal_gmail_connected'
+  | 'portal_calendar_connected'
+  | 'portal_export_requested'
+  | 'portal_delete_requested'
+  | 'portal_family_edited'
+  | 'portal_passport_viewed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

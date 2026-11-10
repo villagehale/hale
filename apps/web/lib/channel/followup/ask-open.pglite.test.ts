@@ -1,10 +1,11 @@
 import { schema } from '@hale/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import type { HandlerContext } from '~/lib/channel/router/route';
 import { defaultOpenQuestionReader } from '~/lib/channel/router/wiring';
-import { createTestDb, type TestDb } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { activityFollowupAskOpen } from './ask-open';
 
 /**
@@ -150,9 +151,7 @@ describe('a bare "yes" while Hale is waiting to hear how an activity went', () =
     const actionId = await seedDraftedApproval(seeded);
     await seedAsk(seeded);
 
-    const spine = fakeSpine([
-      { actionId, actionType: 'calendar_add', reviewerApproved: true },
-    ]);
+    const spine = fakeSpine([{ actionId, actionType: 'calendar_add', reviewerApproved: true }]);
     const verdict = await approvalHandler(spine).handle(db.database, turn(seeded, 'yes'));
 
     expect(verdict.claimed).toBe(false);
@@ -164,10 +163,16 @@ describe('a bare "yes" while Hale is waiting to hear how an activity went', () =
     const seeded = await seedFamily();
     const actionId = await seedDraftedApproval(seeded);
 
-    const spine = fakeSpine([
-      { actionId, actionType: 'calendar_add', reviewerApproved: true },
-    ]);
-    const verdict = await approvalHandler(spine).handle(db.database, turn(seeded, 'yes'));
+    const spine = fakeSpine([{ actionId, actionType: 'calendar_add', reviewerApproved: true }]);
+    const verdict = await approvalHandler(spine).handle(db.database, {
+      ...turn(seeded, 'yes'),
+      resolved: {
+        kind: 'approval',
+        questionId: actionId,
+        polarity: 'yes',
+        confidence: 'high',
+      },
+    });
 
     expect(verdict.claimed).toBe(true);
     expect(spine.approved).toEqual([actionId]);
@@ -293,6 +298,10 @@ describe('the ask as a listed open question, through the production reader', () 
 
   it('lapses at 08:00 local the next morning', async () => {
     const seeded = await seedFamily();
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, seeded.parentUserId));
     await seedAsk(seeded);
     const input = {
       familyId: seeded.familyId,

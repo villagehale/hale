@@ -30,11 +30,11 @@ export async function endorseVillageCandidate(
 ): Promise<EndorseResult> {
   const rows = await database
     .select({
-      id: schema.villageCandidates.id,
-      familyId: schema.villageCandidates.familyId,
+      id: schema.familyActivityHistory.id,
+      familyId: schema.familyActivityHistory.familyId,
     })
-    .from(schema.villageCandidates)
-    .where(eq(schema.villageCandidates.id, args.candidateId))
+    .from(schema.familyActivityHistory)
+    .where(eq(schema.familyActivityHistory.id, args.candidateId))
     .limit(1);
 
   const candidate = rows[0];
@@ -64,7 +64,7 @@ export async function endorseVillageCandidate(
       familyId: args.familyId,
       actor: args.userId,
       actionTaken: 'village_candidate_endorsed',
-      targetTable: 'village_candidates',
+      targetTable: 'family_activity_history',
       targetId: args.candidateId,
     });
   }

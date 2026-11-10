@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The one pick is a real, specific venue: the Canadian Children's Museum inside the Canadian Museum of History, sourced from that museum's own page. A family can turn up to it on the Labour Day weekend. It is not a term, a session or a registration date, which is the failure watchFor warns about. The null `when` and `price` are correct and invent no figures. Gatineau sits across the river from Ottawa and is effectively the same visit, which the notes handle honestly. Hale rightly dropped the Science and Technology Museum and the Museum of Nature because they were sourced only from aggregators. The cost is coverage: one pick where up to three were possible, with well-known, findable venues left out. Every find is sound but the set is thin, so it falls short of a 5.",
+    "score": 4
+  }
+}

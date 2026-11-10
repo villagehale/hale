@@ -15,16 +15,18 @@ import { actions } from './actions.js';
 import { children } from './children.js';
 import { registrationOutcomeEnum } from './enums.js';
 import { families } from './families.js';
-import type { RegistrationSourceState } from './registration-state.js';
+import { registrationWindows } from './registration-windows.js';
 import { users } from './users.js';
 
-/** Public course URLs need not fit the PerfectMind-only SMS link bound. */
+/** The DB check counts this in bytes (octet_length), because the live-watch unique index
+ * is a btree on the raw link; a serialized URL is ASCII, so for one bytes = characters. */
 export const REGISTRATION_COURSE_URL_MAX_CHARS = 2048;
 
 /**
- * VIL-242 · M7 — one row per (family, registration window) that Hale has taken the
- * morning over for. The row IS the claim: while it exists, M4's proactive nudge defers
- * this window to the sequence rather than announcing it a second time.
+ * VIL-242 · M7 — one row per registration window that Hale has taken the morning over
+ * for, or (VIL-423) one ACTIVE row per (family, course_url) for a link the parent sent.
+ * The row IS the claim: while it exists, M4's proactive nudge defers this window to the
+ * sequence rather than announcing it a second time.
  *
  * WHAT IS DELIBERATELY NOT HERE:
  *
@@ -56,11 +58,12 @@ export const registrationSequences = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
-    /** Legacy window association; a URL-owned watch does not require one. */
-    /** Imported identity retained only for delivered-message dedupe, not a catalog FK. */
-    windowId: uuid('window_id'),
-    sourceContext: jsonb('source_context').$type<RegistrationSourceState>(),
-    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
+    /** The M1 window this ladder serves. Cascades: a retired window has no sequence.
+     * NULL for a link-owned watch (VIL-423): the parent sent a URL before any catalog
+     * row, or any date, existed. */
+    windowId: uuid('window_id').references(() => registrationWindows.id, {
+      onDelete: 'cascade',
+    }),
     /** The parent the legs are addressed to — one household, one thread (rule: ONE
      * message per family, never one per kid or per parent). */
     parentUserId: uuid('parent_user_id')
@@ -86,41 +89,63 @@ export const registrationSequences = pgTable(
     /** The one gentle re-ask has been spent; after this an unreadable reply is met
      * with silence rather than a third question. */
     reaskedAt: timestamp('reasked_at', { withTimezone: true }),
-    /** A validated public registration URL. Legacy PerfectMind links keep their
-     * existing sanitizer; storing a generic URL does not authorize a network fetch. */
+    /** VIL-338 — the course page the parent pasted, exactly as sanitizeSpotUrl rebuilt
+     * it: https, a registry host, the one CoursesLandingPage path, widgetId + courseId
+     * and nothing else. The paste is the only input rung 1 takes, so this column is its
+     * whole trust boundary. Credential-free by construction: there is no column here for
+     * a password, a cookie, a token, a cart or a portal account, and nothing in this
+     * feature could fill one (rule #1). */
     courseUrl: text('course_url'),
-    /** Scheduling cache, not parent-facing truth. Null while the page's date is unknown. */
+    /** THE ANCHOR, and the one page-derived value this row stores. The clock that applies
+     * to THIS family (the resident instant where the family is resident and the page
+     * publishes one, else the public instant), read off the course page — which is the
+     * municipality's own system of record for that course, where the M1 window row is a
+     * hand-read of a season info page and carries only one of the two. A bound ladder's
+     * legs are a pure function of it, the way an unbound ladder's are of the window row,
+     * because the sweep runs 288 times a day and cannot re-read the page each time.
+     * Refreshed by every later read; the copy prints it only once the read of the same
+     * tick agrees with it. Nothing else the page says is stored — every other fact is
+     * re-read at send time. */
     courseOpensAt: timestamp('course_opens_at', { withTimezone: true }),
-    /** The unified reading, with checkedAt serialized as ISO. Never a page body. */
-    lastReading: jsonb('last_reading').$type<Record<string, unknown>>(),
-    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
-    /** Null on legacy rows until the refresh path takes ownership. */
-    nextCheckAt: timestamp('next_check_at', { withTimezone: true }),
-    /** A change awaiting notification keeps its own evidence until delivery succeeds. */
-    pendingChange: jsonb('pending_change').$type<Record<string, unknown>>(),
-    pausedAt: timestamp('paused_at', { withTimezone: true }),
-    /** Approval for a later date is separate from the original watch opt-in. */
-    dateReviewActionId: uuid('date_review_action_id').references(() => actions.id, {
-      onDelete: 'set null',
-    }),
     /** The parent's own answer about their portal setup — never inferred, never verified.
      * NULL is unasked-or-unanswered and false is "they said no": the copy renders both as
      * "you have not told me the setup is done", which is true of each, and only true as
      * "you told me the setup is done". Collapsing NULL into false would make silence read
      * as a refusal the parent never gave. */
     readinessReady: boolean('readiness_ready'),
+    /** VIL-423 · the child this watch is for, where the parent said. Optional. Cascades:
+     * the link names the class that child is being registered for, so it goes with them. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'cascade' }),
+    /** VIL-423 · what the last read of the page said, and when. */
+    lastReading: jsonb('last_reading').$type<Record<string, unknown>>(),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true }),
+    /** VIL-423 · when the watch is next due a read. */
+    nextCheckAt: timestamp('next_check_at', { withTimezone: true }),
+    /** VIL-423 · a change the page showed that the parent has not yet confirmed. */
+    pendingChange: jsonb('pending_change').$type<Record<string, unknown>>(),
+    pausedAt: timestamp('paused_at', { withTimezone: true }),
+    /** VIL-423 · the card asking the parent about `pending_change`. */
+    dateReviewActionId: uuid('date_review_action_id').references(() => actions.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    // A bound course has the clock it opens on for this family, or it is not bound.
+    // Either half alone is a lie the scheduler would act on: a link with no anchor is a
+    // ladder with nothing to hang its legs from, and an anchor with no link is an instant
+    // no send-time read can re-verify.
+    // That pairing binds window-bound rows only: a link-owned watch holds its URL before
+    // the page shows a date. The migration adds these CHECKs NOT VALID, which Drizzle's
+    // check() cannot express.
     courseUrlLengthCheck: check(
       'registration_sequences_course_url_length_check',
-      sql`${table.courseUrl} IS NULL OR length(${table.courseUrl}) BETWEEN 1 AND ${REGISTRATION_COURSE_URL_MAX_CHARS}`,
+      sql`${table.courseUrl} IS NULL OR octet_length(${table.courseUrl}) BETWEEN 1 AND ${sql.raw(String(REGISTRATION_COURSE_URL_MAX_CHARS))}`,
     ),
-    // A URL may precede its date; a cached course date still needs a source.
     courseCheck: check(
       'registration_sequences_course_check',
-      sql`${table.courseOpensAt} IS NULL OR ${table.courseUrl} IS NOT NULL`,
+      sql`${table.windowId} IS NULL OR (${table.courseUrl} IS NULL) = (${table.courseOpensAt} IS NULL)`,
     ),
     targetCheck: check(
       'registration_sequences_target_check',
@@ -130,7 +155,16 @@ export const registrationSequences = pgTable(
       'registration_sequences_date_review_check',
       sql`${table.dateReviewActionId} IS NULL OR ${table.pendingChange} IS NOT NULL`,
     ),
-    // New URL-owned watches dedupe without repairing or deleting legacy window rows.
+    // The claim's natural key: one ladder per family per window, and the anchor the
+    // sweep's insert conflicts on so a double cron tick cannot mint two.
+    familyWindowUniq: uniqueIndex('registration_sequences_family_window_uniq').on(
+      table.familyId,
+      table.windowId,
+    ),
+    // The sweep's scan: every live sequence for a family, and the reply router's
+    // lookup of the one window a family is currently being asked about.
+    familyIdx: index('registration_sequences_family_idx').on(table.familyId, table.createdAt),
+    // VIL-423 · a link-owned watch's identity: one ACTIVE watch per family and link.
     liveUrlUniq: uniqueIndex('registration_sequences_live_url_uniq')
       .on(table.familyId, table.courseUrl)
       .where(
@@ -141,15 +175,6 @@ export const registrationSequences = pgTable(
       .where(
         sql`${table.nextCheckAt} IS NOT NULL AND (${table.outcome} IS NULL OR ${table.outcome} = 'waitlisted')`,
       ),
-    // The claim's natural key: one ladder per family per window, and the anchor the
-    // sweep's insert conflicts on so a double cron tick cannot mint two.
-    familyWindowUniq: uniqueIndex('registration_sequences_family_window_uniq').on(
-      table.familyId,
-      table.windowId,
-    ),
-    // The sweep's scan: every live sequence for a family, and the reply router's
-    // lookup of the one window a family is currently being asked about.
-    familyIdx: index('registration_sequences_family_idx').on(table.familyId, table.createdAt),
   }),
 );
 

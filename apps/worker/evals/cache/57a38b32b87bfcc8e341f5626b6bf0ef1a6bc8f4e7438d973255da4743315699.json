@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending email on its own, and turn_off_autonomy shows send_email and reply_to_email were switched off this turn. The reply confirms that plainly and in the parent's own language, with no machinery, greeting or sign-off. Every detail is backed by state.",
+    "score": 5
+  }
+}

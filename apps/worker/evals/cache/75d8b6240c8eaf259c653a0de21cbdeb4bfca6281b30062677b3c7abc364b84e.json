@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, correctly says tomorrow (Monday Oct 26), gives the correct 15 h to 16 h time and the Georgetown library location, and lists the single event with its title. It does not call the day free or quiet and invents no travel or departure details. Time format is 24-hour style, which is natural in French, and there is no link, emoji, or filler sentence.",
+    "score": 5
+  }
+}

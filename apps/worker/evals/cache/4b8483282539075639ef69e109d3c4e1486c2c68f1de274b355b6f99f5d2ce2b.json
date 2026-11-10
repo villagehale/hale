@@ -1,0 +1,10 @@
+{
+  "value": {
+    "reason": "private 13+ child's own correspondence, generic title is enough, no offer so no question",
+    "about_the_kids": "yes",
+    "clear": true,
+    "text": "Heads up, one of your kids got a message about school that looks like a schedule change. It's their own email, so I kept the details out of this text.",
+    "asks_to_add": false
+  },
+  "stopReason": "tool_use"
+}

@@ -1,9 +1,11 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES, acceptedStatus } from '~/lib/channel/ledger';
 import { deliverFamilyOutbound } from '~/lib/channel/linq/family-outbound';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY } from './asked';
 import { type ParentRoleGuess, storeParentRole } from './parent-role';
 
@@ -21,7 +23,6 @@ const ASK_KEYS = [PARENT_NAME_ASK_TEMPLATE_KEY, PARENT_NAME_CONFIRM_TEMPLATE_KEY
 
 /** Letters, an apostrophe, or a hyphen. No digits, so a phone can never pass. */
 const NAME_TOKEN = /^[\p{L}\p{M}][\p{L}\p{M}'’-]*$/u;
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /**
  * A given name Hale may put in the confirm line, or null.
@@ -34,7 +35,7 @@ export function safeGivenName(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const trimmed = raw.trim();
   if (trimmed.length === 0 || trimmed.length > 40) return null;
-  if (LINK_SHAPE.test(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
+  if (hasLinkShape(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length === 0) return null;
   const kept = words.length <= 2 ? words : words.slice(0, 1);
@@ -390,7 +391,7 @@ export async function maybeSendParentCallName(
     familyId: string;
     parentUserId: string;
     isWin: boolean;
-    language: 'en' | 'fr';
+    language: ReplyLanguage | null;
   },
   send: (ask: ParentCallNameAsk) => Promise<boolean>,
 ): Promise<boolean> {

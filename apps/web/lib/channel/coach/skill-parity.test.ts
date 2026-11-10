@@ -3,6 +3,7 @@ import { findActivitiesTool } from '~/lib/channel/activity/tools';
 import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { searchVillageTool } from '~/lib/coach/tools';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { plainText, toSmsReply } from './reply';
 import { buildChannelCoachTools } from './tools';
 
 /**
@@ -19,6 +20,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
   const registered = () =>
     buildChannelCoachTools({
       familyId: 'f',
+      familyCountry: 'CA',
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
@@ -31,7 +33,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       // Production wires the watch verb's three ports too (see productionChannelCoach),
       // and the frontmatter names it — a parity set built without them would report a
       // skill listing a tool nobody registers, which is a mid-turn throw in prod.
-      spots: { fetchBody: {} as never, reader: {} as never, watchConsentGranted: {} as never },
+      spots: {
+        fetchBody: {} as never,
+        reader: {} as never,
+        watchConsentGranted: {} as never,
+        readClassAvailability: {} as never,
+      },
       onOffer: () => {},
       onShare: () => {},
       onPromise: () => {},
@@ -59,16 +66,28 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.meta.task).toBe('converse');
   });
 
-  it('prioritizes complete facts rather than a fixed reply-length ceiling', async () => {
+  /**
+   * VIL-434. The skill asks for a brief reply in tone, never a sentence or
+   * character count, and `toSmsReply` enforces no length: a long body goes out
+   * whole, including through "St.".
+   */
+  it('does not cut a long reply, and the skill sets tone rather than a count', async () => {
     const skill = await loadCronSkill('coach-channel-sms');
-    expect(skill.instructions).toContain('No fixed character, segment or sentence limit');
-    expect(skill.instructions).not.toContain('306 characters');
-  });
+    const long = plainText(
+      "Nothing's on the calendar today. The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon and the rest of this note is here so two segments cannot hold it. ".repeat(
+        4,
+      ),
+    );
 
-  it('uses explicit page applicability rather than a date-order inference', async () => {
-    const policy = await loadCronSkill('registration-live-truth');
-    expect(policy.instructions).toContain("Repeat only the page's explicit applicability");
-    expect(policy.instructions).not.toContain('Infer priority from the published date order');
+    expect(skill.instructions).toContain('Text like a friend: chill, casual, and brief.');
+    expect(skill.instructions).not.toMatch(
+      /\b(one|two|three) (short )?sentences?\b(?! (in this file|is true))/i,
+    );
+    expect(skill.instructions).not.toContain('gets cut off');
+    expect(toSmsReply(long, { children: [], now: new Date('2026-10-12T14:07:00.000Z') })).toBe(
+      long,
+    );
+    expect(long.length).toBeGreaterThan(306);
   });
 
   /**
@@ -107,6 +126,7 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     const watch = watchForOpeningTool({
       fetchBody: {} as never,
       reader: {} as never,
+      readClassAvailability: {} as never,
       watchConsentGranted: {} as never,
       onWatch: () => {},
     });
@@ -120,8 +140,6 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(skill.instructions).not.toContain('YES to confirm');
     expect(skill.instructions).not.toContain('Reply YES');
     expect(skill.instructions).not.toContain('Under 200 characters');
-    expect(skill.instructions).not.toContain('under 120 characters');
-    expect(skill.instructions).toContain('There is no character or segment cap.');
     expect(skill.instructions).not.toContain("what I've got verified");
     expect(skill.instructions).toContain('not them asking that nearby question again');
     expect(skill.instructions).toContain('Do not search instead of asking');
@@ -130,6 +148,27 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
     expect(find.description).toContain('do not call this beside a checked find');
     expect(find.description).toContain('their own week comes first');
     expect(find.description).not.toContain('even when the radar already has a find');
+  });
+
+  it('tells the coach the reply is the class plus the marker, without a phrase ban list (VIL-501)', async () => {
+    const skill = await loadCronSkill('coach-channel-sms');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('The parent never hears how the page is attached');
+    expect(prose).toContain('write the class');
+    expect(prose).toContain('[link-1a2b3c]');
+    expect(prose).toContain('do not invent an address');
+    expect(prose).not.toContain('Never say a ref came back');
+    expect(prose).not.toContain('No ref, no page');
+  });
+
+  it('tells a nearby find to search again when the parent names another town (VIL-523)', async () => {
+    const skill = await loadCronSkill('coach-nearby-find');
+    const prose = skill.instructions.replace(/\s+/g, ' ');
+    expect(prose).toContain('changes the area');
+    expect(prose).toContain('searches again');
+    expect(prose).toContain('`area`');
+    expect(prose).not.toContain("don't promise a fresh search");
+    expect(prose).not.toContain('finding still looks');
   });
 
   it('loads the shorten skill as a tool-less rewrite, not a canned reply', async () => {

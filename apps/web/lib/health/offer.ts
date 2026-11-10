@@ -73,7 +73,10 @@ export function checkupOfferSummary(checkpoint: HealthCheckpoint): string {
 export type CheckupOfferRecordOutcome =
   | { status: 'recorded'; commitmentId: string }
   | { status: 'not_an_offer' }
-  | { status: 'not_recorded'; reason: 'no_ledger_row' | 'unknown_checkpoint' | 'write_failed' | 'already_open' };
+  | {
+      status: 'not_recorded';
+      reason: 'no_ledger_row' | 'unknown_checkpoint' | 'write_failed' | 'already_open';
+    };
 
 export interface CheckupOfferPorts {
   cancelCommitment: typeof cancelCommitment;

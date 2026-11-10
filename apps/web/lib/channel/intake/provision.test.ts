@@ -1,5 +1,6 @@
 import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { linqChatBlindIndex } from '~/lib/crypto/blind-index';
 import { provisionFromIntake } from './provision';
 
 /**
@@ -51,8 +52,23 @@ function fakeDatabase() {
     return builder;
   }
 
+  function update(_table: unknown) {
+    const builder = {
+      set(_values: unknown) {
+        return builder;
+      },
+      where(_clause: unknown) {
+        return builder;
+      },
+      // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+      then: (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve),
+    };
+    return builder;
+  }
+
   const handle = {
     insert,
+    update,
     select: () => ({
       from: (table: unknown) => ({
         where: () => {
@@ -87,11 +103,22 @@ function input(sourceCode: string | null = null) {
     phoneE164: '+14165551234',
     phoneHash: 'blind-index-hash',
     children: [{ name: 'Maya', ageMonths: 30, agePrecision: 'years' as const }],
-    location: { postalCode: 'M4C 1B5', areaCoarse: 'M4C' },
+    location: {
+      postalCode: 'M4C 1B5',
+      areaCoarse: 'M4C',
+      country: 'Canada' as const,
+      countryCode: 'CA' as const,
+      timezone: 'America/Toronto',
+    },
     sourceCode,
     firstMessage: 'Maya is 2, we are at M4C 1B5',
     transcript: [
-      { direction: 'out' as const, body: 'greeting', providerId: 'SM_out_1', at: NOW.toISOString() },
+      {
+        direction: 'out' as const,
+        body: 'greeting',
+        providerId: 'SM_out_1',
+        at: NOW.toISOString(),
+      },
       { direction: 'in' as const, body: 'Maya is 2', providerId: 'SM_in_1', at: NOW.toISOString() },
     ],
     now: NOW,
@@ -191,5 +218,50 @@ describe('provisionFromIntake — lifetime Family comp (EarlyON Georgetown poste
 
     expect(familyValues(inserts)?.planTier).not.toBe('family');
     expect(compAuditRows(inserts)).toHaveLength(0);
+  });
+});
+
+describe('provisionFromIntake — the contact card share written once the family exists', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  function shareRows(inserts: Array<{ table: string; values: unknown }>) {
+    return inserts
+      .filter((row) => row.table === 'audit_log')
+      .flatMap((row) => row.values as Array<Record<string, unknown>>)
+      .filter((row) => row.actionTaken === 'linq_contact_card_shared');
+  }
+
+  it('names the chat by its key on the immutable row, never the raw chat id', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, {
+      ...input(),
+      linqContactCardClaim: { at: NOW.toISOString(), outcome: 'shared', chatId: 'chat-first' },
+    });
+
+    const rows = shareRows(inserts);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.after).toMatchObject({
+      outcome: 'shared',
+      chatKey: linqChatBlindIndex('chat-first'),
+    });
+    expect(rows[0]?.after).not.toHaveProperty('chatId');
+  });
+
+  it('writes no chat at all for a claim that never named one', async () => {
+    const { database, inserts } = fakeDatabase();
+
+    await provisionFromIntake(database, {
+      ...input(),
+      linqContactCardClaim: { at: NOW.toISOString(), outcome: 'shared' },
+    });
+
+    const after = shareRows(inserts)[0]?.after;
+    expect(after).toMatchObject({ outcome: 'shared' });
+    expect(after).not.toHaveProperty('chatKey');
+    expect(after).not.toHaveProperty('chatId');
   });
 });

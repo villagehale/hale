@@ -22,9 +22,9 @@
  */
 
 /**
- * Web-render fallback zone when a family has no resolvable timezone. Mirrors the
- * `users.timezone` column default (packages/db schema) — the app never renders a
- * timestamp against the server's ambient zone.
+ * Web-render fallback when a caller has no family zone in hand. Signup does not
+ * use this: a new parent's zone comes from their postal code. The column default
+ * is UTC until that write. This constant is only the render fallback.
  */
 export const DEFAULT_TIMEZONE = 'America/Toronto';
 

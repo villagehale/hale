@@ -17,6 +17,7 @@ const runSittingReminderCronMock = vi.fn();
 const runWelcomeCardRedriveMock = vi.fn();
 const runDepartureNoticeRedriveMock = vi.fn();
 const runAutonomyNoticeRedriveMock = vi.fn();
+const runGroupPlanReportRedriveMock = vi.fn();
 const sweepDutyAsksMock = vi.fn();
 const runProactiveReviewMock = vi.fn();
 const dbMock = vi.fn();
@@ -40,7 +41,7 @@ vi.mock('~/lib/cron/inference', () => ({
 vi.mock('~/lib/coach/attachments', () => ({
   sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
 }));
-vi.mock('~/lib/channel/email/forward-purge', () => ({
+vi.mock('~/lib/retention/forward-purge', () => ({
   sweepExpiredForwards: (...a: unknown[]) => sweepForwardsMock(...a),
 }));
 vi.mock('~/lib/channel/nudge/run', () => ({
@@ -60,7 +61,7 @@ vi.mock('~/lib/pipeline/client', async (importOriginal) => ({
   budgetedAnthropic: () => ({}),
 }));
 // The nudge route's other riders each read a dark-launch flag and return before they
-// touch a handle; the two 08:00 re-drives deliberately have none (each finishes a send
+// touch a handle; the 08:00 re-drives deliberately have none (each finishes a send
 // another module already owed), so they are the ones that would reach the stub db here.
 vi.mock('~/lib/channel/intake/welcome-card-redrive', () => ({
   runWelcomeCardRedrive: (...a: unknown[]) => runWelcomeCardRedriveMock(...a),
@@ -70,6 +71,10 @@ vi.mock('~/lib/channel/coparent/departure-redrive', () => ({
 }));
 vi.mock('~/lib/channel/autonomy/dispatch', () => ({
   runAutonomyNoticeRedrive: (...a: unknown[]) => runAutonomyNoticeRedriveMock(...a),
+}));
+vi.mock('~/lib/channel/group-plan/redrive', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/channel/group-plan/redrive')>()),
+  runGroupPlanReportRedrive: (...a: unknown[]) => runGroupPlanReportRedriveMock(...a),
 }));
 // Duty asks have their own flag and return before a read when it is off. Mock
 // the module anyway: the real graph is heavy enough to blow the gate test's
@@ -81,6 +86,14 @@ vi.mock('~/lib/channel/coparent/duty/asks', () => ({
 vi.mock('~/lib/channel/proactive/review', () => ({
   runProactiveReview: (...a: unknown[]) => runProactiveReviewMock(...a),
   defaultProactiveReviewDeps: () => ({}),
+}));
+
+// VIL-449 · the deferred-cancel retry reads the DB every tick; the gate test pins only
+// that the cron runs, so the rider is a no-op here.
+vi.mock('~/lib/loop/calendar-invite', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/lib/loop/calendar-invite')>()),
+  createCalendarInviteSender: () => ({}),
+  retryDeferredCalendarCancels: async () => ({ events: 0, sent: 0, deferred: 0, failed: 0 }),
 }));
 
 const SECRET = 'cron-secret-xyz';
@@ -122,6 +135,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runWelcomeCardRedriveMock.mockReset().mockResolvedValue({ held: 0, due: 0, sent: 0 });
     runDepartureNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runAutonomyNoticeRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
+    runGroupPlanReportRedriveMock.mockReset().mockResolvedValue({ open: 0, due: 0, sent: 0 });
     runProactiveReviewMock.mockReset().mockResolvedValue({
       mode: 'off',
       families: 0,
@@ -213,12 +227,18 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
         {},
         expect.objectContaining({ ports: expect.anything() }),
       );
+      expect(runGroupPlanReportRedriveMock).toHaveBeenCalledTimes(1);
+      expect(runGroupPlanReportRedriveMock).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ sender: expect.anything() }),
+      );
       expect(sweepDutyAsksMock).toHaveBeenCalledTimes(1);
       expect(sweepDutyAsksMock).toHaveBeenCalledWith({});
     } else {
       expect(runWelcomeCardRedriveMock).not.toHaveBeenCalled();
       expect(runDepartureNoticeRedriveMock).not.toHaveBeenCalled();
       expect(runAutonomyNoticeRedriveMock).not.toHaveBeenCalled();
+      expect(runGroupPlanReportRedriveMock).not.toHaveBeenCalled();
       expect(sweepDutyAsksMock).not.toHaveBeenCalled();
     }
   });

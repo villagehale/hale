@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { renderMemoryGroupSync } from './group-sync';
 import {
   MEMORY_KIND_COPY,
   MEMORY_KIND_LINES,
   applyPromotionSignal,
   classifyMemoryWrite,
   deliverMemoryKindCopy,
-  familyMemoryKindsCopyLocked,
   familyMemoryKindsEnabled,
   includeInRecommendations,
   isExpiredTemporary,
@@ -13,7 +13,6 @@ import {
   parseMemoryParentIntent,
   renderMemoryCorrected,
   renderMemoryForgotten,
-  renderMemoryGroupSync,
   renderMemoryRecall,
   sendMemoryKindReply,
   temporaryExpiry,
@@ -25,16 +24,13 @@ const NOW = new Date('2026-09-30T15:00:00.000Z');
 describe('family memory kind flag', () => {
   it('is on only for the exact string true', () => {
     expect(familyMemoryKindsEnabled({ FAMILY_MEMORY_KINDS_ENABLED: 'true' })).toBe(true);
-    expect(familyMemoryKindsCopyLocked({ FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true' })).toBe(true);
   });
 
   it('stays off for TRUE, a trailing newline, and unset', () => {
     for (const value of ['TRUE', 'true\n', 'True', '1', 'on', 'yes', '']) {
       expect(familyMemoryKindsEnabled({ FAMILY_MEMORY_KINDS_ENABLED: value })).toBe(false);
-      expect(familyMemoryKindsCopyLocked({ FAMILY_MEMORY_KINDS_COPY_LOCKED: value })).toBe(false);
     }
     expect(familyMemoryKindsEnabled({})).toBe(false);
-    expect(familyMemoryKindsCopyLocked({})).toBe(false);
   });
 });
 
@@ -177,7 +173,7 @@ describe('parent intent', () => {
 describe('copy gate', () => {
   it('keeps every locked sentence ASCII and free of opt-out or booking claims', () => {
     const bodies = memoryKindBodies();
-    expect(bodies.length).toBe(28);
+    expect(bodies.length).toBe(30);
     for (const body of bodies) {
       expect(body.includes('TODO-Design')).toBe(false);
       expect([...body].every((char) => char.charCodeAt(0) <= 0x7f)).toBe(true);
@@ -208,10 +204,6 @@ describe('copy gate', () => {
     expect(MEMORY_KIND_COPY.fr.refused).toBe(
       'Celle-la reste, c\'est un dossier. "que sais-tu" montre ce qui peut changer.',
     );
-    expect(MEMORY_KIND_COPY.en.groupSync).toBe('{who} asked me to forget something.');
-    expect(MEMORY_KIND_COPY.fr.groupSync).toBe("{who} m'a demande d'oublier quelque chose.");
-    expect(MEMORY_KIND_LINES.en.groupSyncCorrect).toBe('{who} corrected something.');
-    expect(MEMORY_KIND_LINES.fr.groupSyncCorrect).toBe('{who} a corrige quelque chose.');
     expect(MEMORY_KIND_LINES.en.recallEmpty).toBe(
       "I don't have anything saved about your family yet.",
     );
@@ -224,29 +216,21 @@ describe('copy gate', () => {
     expect(MEMORY_KIND_LINES.fr.inferred).toBe("- {key} : je crois que {value} (pour l'instant)");
   });
 
-  it('does not hand copy to the transport unless both gates are exactly true', async () => {
+  it('does not hand an unrendered template to the transport, and stays quiet while the kinds flag is off', async () => {
     const send = vi.fn(async () => undefined);
     for (const body of memoryKindBodies()) {
+      if (!body.includes('{')) continue;
       await sendMemoryKindReply(send, body, { FAMILY_MEMORY_KINDS_ENABLED: 'true' });
-      await sendMemoryKindReply(send, body, {
-        FAMILY_MEMORY_KINDS_ENABLED: 'true',
-        FAMILY_MEMORY_KINDS_COPY_LOCKED: 'TRUE',
-      });
-      await sendMemoryKindReply(send, body, {
-        FAMILY_MEMORY_KINDS_ENABLED: 'true',
-        FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true\n',
-      });
-      await sendMemoryKindReply(send, body, { FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true' });
     }
+    await sendMemoryKindReply(send, 'Done, I forgot pickup.', {});
     expect(send).not.toHaveBeenCalled();
     expect(deliverMemoryKindCopy(MEMORY_KIND_COPY.en.nothing, {}).deliver).toBe(false);
   });
 
-  it('refuses a leftover token even when both gates are exactly true', async () => {
+  it('refuses a leftover token even when the kinds flag is on', async () => {
     const send = vi.fn(async () => undefined);
     const env = {
       FAMILY_MEMORY_KINDS_ENABLED: 'true',
-      FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
     };
     for (const body of memoryKindBodies()) {
       if (!body.includes('{')) continue;
@@ -259,13 +243,13 @@ describe('copy gate', () => {
     });
   });
 
-  it('delivers a finished sentence only when both gates are exactly true', async () => {
+  it('delivers a finished sentence when the kinds flag is exactly true', async () => {
     const send = vi.fn(async () => undefined);
     const env = {
       FAMILY_MEMORY_KINDS_ENABLED: 'true',
-      FAMILY_MEMORY_KINDS_COPY_LOCKED: 'true',
     };
-    const body = renderMemoryGroupSync('fr', 'forget', 'Sam');
+    const body = await renderMemoryGroupSync('fr', 'forget', 'Sam');
+    if (!body) throw new Error('spoken line missing');
     const result = await sendMemoryKindReply(send, body, env);
     expect(result).toEqual({ sent: true, skipped: null });
     expect(send).toHaveBeenCalledTimes(1);
@@ -275,16 +259,22 @@ describe('copy gate', () => {
 });
 
 describe('recall bubbles', () => {
-  it('pages ten lines, labels inferred facts, and keeps the header and footer at the ends', () => {
+  it('pages ten lines, labels inferred facts, and keeps the header and footer at the ends', async () => {
     expect(renderMemoryRecall('en', [])).toEqual([
       "I don't have anything saved about your family yet.",
     ]);
     expect(renderMemoryRecall('fr', [])).toEqual(["Je n'ai encore rien note sur la famille."]);
     const one = renderMemoryRecall('en', [
-      { key: 'district', value: 'midtown', source: 'parent_message', kind: 'lasting' },
-      { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary' },
-      { key: 'swimming', value: 'saturday', source: 'inferred', kind: 'lasting' },
-      { key: 'receipt', value: 'paid', source: 'receipt', kind: 'lasting' },
+      {
+        key: 'district',
+        value: 'midtown',
+        source: 'parent_message',
+        kind: 'lasting',
+        seenIn: null,
+      },
+      { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary', seenIn: null },
+      { key: 'swimming', value: 'saturday', source: 'inferred', kind: 'lasting', seenIn: null },
+      { key: 'receipt', value: 'paid', source: 'receipt', kind: 'lasting', seenIn: null },
     ]);
     expect(one).toEqual([
       [
@@ -301,6 +291,7 @@ describe('recall bubbles', () => {
       value: `v${index}`,
       source: 'legacy' as const,
       kind: 'lasting' as const,
+      seenIn: null,
     }));
     const bubbles = renderMemoryRecall('en', many);
     expect(bubbles).toHaveLength(2);
@@ -315,8 +306,8 @@ describe('recall bubbles', () => {
     expect(renderMemoryCorrected('en', 'district', 'midtown')).toBe(
       'Got it. district is now midtown.',
     );
-    expect(renderMemoryGroupSync('en', 'correct', 'Sam')).toBe('Sam corrected something.');
-    expect(renderMemoryGroupSync('en', 'correct', 'Sam')).not.toContain('midtown');
+    expect(await renderMemoryGroupSync('en', 'correct', 'Sam')).toBe('Sam corrected something.');
+    expect(await renderMemoryGroupSync('en', 'correct', 'Sam')).not.toContain('midtown');
   });
 });
 
@@ -343,5 +334,42 @@ describe('VIL-388 export hook', () => {
       expiresAt: null,
       invalidatedAt: null,
     });
+  });
+});
+
+describe('VIL-429 recall lines say where a connector fact was seen', () => {
+  it('names the sender and day of an email, and the title and day of an event', () => {
+    const email = { kind: 'email', from: 'Northside Rec', on: 'Oct 3' } as const;
+    const event = { kind: 'calendar', title: 'Soccer practice', on: 'Oct 2' } as const;
+    expect(
+      renderMemoryRecall('en', [
+        {
+          key: 'soccer_day',
+          value: 'Thursdays',
+          source: 'inferred',
+          kind: 'lasting',
+          seenIn: email,
+        },
+        { key: 'pool_day', value: 'Mondays', source: 'inferred', kind: 'one_off', seenIn: event },
+        { key: 'pickup', value: '3pm', source: 'calendar', kind: 'temporary', seenIn: event },
+      ])[0]
+        ?.split('\n')
+        .slice(1, -1),
+    ).toEqual([
+      '- soccer_day: I think Thursdays (from the Northside Rec email on Oct 3)',
+      '- pool_day: I think Mondays (from Soccer practice on your calendar, Oct 2)',
+      '- pickup: 3pm (for now, from Soccer practice on your calendar, Oct 2)',
+    ]);
+    expect(
+      renderMemoryRecall('fr', [
+        {
+          key: 'soccer_day',
+          value: 'jeudi',
+          source: 'inferred',
+          kind: 'lasting',
+          seenIn: { ...email, on: '3 oct.' },
+        },
+      ])[0]?.split('\n')[1],
+    ).toBe('- soccer_day : je crois que jeudi (vu dans le courriel de Northside Rec, le 3 oct.)');
   });
 });

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgPHAZPh7XgBjZLUmo6Up",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/AUKEAgTGAI4AUIIdGhpbmtpbmcSDIck7ev0B3Gx03ewUxoMIiCXwRzO1+d8ohB7IjC8xAHXOMsGeHCbO52WuUwt6whr+nGdGYodV3Tj/GbvbncUyCWc/GYZ6nvuGyCm0v4qmQWcD2q8hougCLhNJ0KYXpnyEcFKAaUZk1KKCYQIXhi//AEdzjdOrv802WYngXxJWICFrFFMJlS2He4O5/zRzgg026It+PNJOSzBgEW60t8u+81TPDaiCPnmoWQcLscX4ABhu0tBOv9LTgdasjjHcorDQqGhvanvdzj1GR7pw14ElGMsX2cKwWez8lFxQz5P5g1nQBNZZvtMZZqso5XkiWgMGEn2ENW2nV5tGgJ1xjgnEQv9Sp73DxS+48s2FIA5kvcdFY3wdYLR8/3Wb9SGkReoupYDqfkIPZcFdKuIuXl9TkiR+KiRoNNQ/9t2RvIo5YEB+3M8vZa7/rvNr+b9VuLSiYgc3pPM3dhdkfOlynYGhTBSlUBy8M3RkTyied4zQBeBNgzIw3OUSV75QLS8ySZKqQAxixfnGOCocL8sHUiwlrJ9tXJ3JYiclfIw4M3kfYGrSxf1KbiScyTpT9YAcggFYYejikVVoCxe0rsruk+g3dbEHZy+0VR7+rTMFFD6fPQywA/IW68WHOCc/f/vTwFY+LnHZ5aKk7TlzmX/wh2cOMyLUHY8boUOg7K+Ceor7gj+RAbRVerzCCk+dzeh1FgReyP+ANjESVAbPTgtXUvwkTtHX/px6a9XxxAkukB1xE6Jx4kAIulDDZVh2Ld88P+Kwuq/01gszbj4aknUp2QD8F0YWBISgPBic80sv2JK+HZXzcOutavs4AT9eJ5F6obsHBeBR3YSFB1Br5EsDmFJCazVIj+Mxn5bO6nryhQsQJK6LRnkAFX1HWxT1zeTDXLTvgCvBVhb3pERqlMFNxyT5y5KXVXRKuLZAwmZeA0ttJCSGzaUCgD9UTyjJwyysgxmlXkbypqWgQlVmwVOB8Q5YL538/SfLQzuZhgB"
+      },
+      {
+        "type": "text",
+        "text": "Central Library story time is a free indoor drop-in at the Bloor/Gladstone branch on Sat, Aug 8, and all ages are welcome, so Milo and Ada can both go. [link-c9bfa2]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 583,
+      "cache_read_input_tokens": 20981,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 583,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 146,
+      "output_tokens_details": {
+        "thinking_tokens": 72
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2146
+}

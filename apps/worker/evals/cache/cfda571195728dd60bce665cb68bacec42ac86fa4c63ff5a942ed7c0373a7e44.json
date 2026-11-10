@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text does not match the facts. It mentions \"Jour de congé at 3:00\", an event that is not in the facts, and says tomorrow is a day off with breathing room, an invented claim. Both real events are missing entirely: Library story time (11:00-11:45 AM, Georgetown library, 9 Church St) and Soccer (5:30-6:30 PM, Riverside Field, 22 Park Rd). Their starts, ends, venues and addresses are all dropped. The text is also not in Chinese as requested.",
+    "score": 1
+  }
+}

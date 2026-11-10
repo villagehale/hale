@@ -408,7 +408,11 @@ describe('a swim search carried across turns', () => {
   });
 
   it('reads a bare clock time in the family timezone and drops one already past', async () => {
-    const { familyId } = await seedFamily(db.database, 'Dates');
+    const { familyId, parentUserId } = await seedFamily(db.database, 'Dates');
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, parentUserId));
     const seen: { user?: string } = {};
     const future = await rememberWorkstreamTurn({
       database: db.database,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events are present with correct facts: the all-day Jour de congé is mentioned, Léa's swimming 10-11 at Piscine Main is given with the correct morning time as 10 h (10 AM), and 'Demain' is correctly relative to Sunday. The text is entirely in French and short and warm, with no invented details, no hype, and no planLink issues. Minor nit: it does not explicitly say the morning or AM, but '10 h' is the standard unambiguous French 24-hour form for 10 AM, so it is acceptable.",
+    "score": 5
+  }
+}

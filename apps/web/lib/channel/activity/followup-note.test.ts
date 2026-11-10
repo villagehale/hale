@@ -1,8 +1,11 @@
+import type { AgentClient } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import {
   type FollowUpGrounding,
   type FollowUpPick,
+  MAX_FOLLOWUP_ATTEMPTS,
   claimsVerification,
+  createFollowUpComposer,
   followUpUserMessage,
   followUpViolations,
   topPickLeads,
@@ -33,11 +36,7 @@ const PICK: ActivityPick = {
  * it, and no case gets the permissive reading by omission.
  */
 /** The composer's own `commits_to_return`, defaulting to the honest reading (it matches the row). */
-function gates(
-  body: string,
-  g: FollowUpGrounding,
-  commitsToReturn: boolean = g.watch,
-): string[] {
+function gates(body: string, g: FollowUpGrounding, commitsToReturn: boolean = g.watch): string[] {
   return followUpViolations(body, g, commitsToReturn);
 }
 
@@ -93,13 +92,14 @@ describe('never claims to have verified what it only read', () => {
   });
 });
 
-describe('the top pick lands in the first segment', () => {
+describe('the top pick is named', () => {
   const filler = 'There are a few options worth looking at this fall in your area if you want. ';
 
-  it('refuses a body that buries the best find past 153 characters', () => {
+  it('accepts a body that names the best find past the old 153-character window', () => {
     const buried = `${filler}${filler}${PICK.name} runs Saturdays.`;
-    expect(topPickLeads(buried, [PICK])).toBe(false);
-    expect(gates(buried, grounding()).join(' ')).toContain(PICK.name);
+    expect(buried.indexOf(PICK.name)).toBeGreaterThan(153);
+    expect(topPickLeads(buried, [PICK])).toBe(true);
+    expect(gates(buried, grounding())).toEqual([]);
   });
 
   it('POSITIVE CONTROL - the same find, named first, passes the same check', () => {
@@ -140,10 +140,7 @@ describe('the top pick lands in the first segment', () => {
 
     expect(topPickLeads(real, [oakville])).toBe(true);
     expect(
-      gates(
-        real,
-        grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true }),
-      ),
+      gates(real, grounding({ subject: 'preschool swim lessons', picks: [oakville], watch: true })),
     ).toEqual([]);
   });
 
@@ -154,8 +151,7 @@ describe('the top pick lands in the first segment', () => {
       ...PICK,
       name: 'Kinderfun (Toddler Program), Halton Hills Gymnastics Centre',
     };
-    const vague = `A toddler program is the pick of them this fall. ${filler}${filler}${composite.name}.`;
-    expect(vague.indexOf(composite.name)).toBeGreaterThan(153);
+    const vague = `A toddler program is the pick of them this fall. ${filler}${filler}Something else entirely.`;
     expect(topPickLeads(vague, [composite])).toBe(false);
   });
 
@@ -166,10 +162,7 @@ describe('the top pick lands in the first segment', () => {
       true,
     );
     expect(
-      gates(
-        'I went through the fall listings and nothing is open yet.',
-        grounding({ picks: [] }),
-      ),
+      gates('I went through the fall listings and nothing is open yet.', grounding({ picks: [] })),
     ).toEqual([]);
   });
 });
@@ -236,9 +229,9 @@ describe('a message may not say Hale could not get at a fact AND that it awaits 
     const body = `${PICK.name} runs Saturdays - their site says, though I could not pin down the price. I'll keep watching and text you once the price is up.`;
 
     for (const pageEvidence of ['page_has_schedule', 'no_page_read'] as const) {
-      expect(
-        gates(body, grounding({ pageEvidence, watch: true })).join(' '),
-      ).toContain('when YOU can get at them');
+      expect(gates(body, grounding({ pageEvidence, watch: true })).join(' ')).toContain(
+        'when YOU can get at them',
+      );
     }
   });
 });
@@ -252,19 +245,22 @@ describe('any language, as long as the find leads and the text fits', () => {
   it.each([
     ['zh', zh],
     ['ar', ar],
-  ])('lets a %s follow-up through when the day and the price are already in hand', (label, body) => {
-    expect(label.length).toBeGreaterThan(0);
-    expect(
-      gates(
-        body,
-        grounding({
-          watch: false,
-          pageEvidence: 'page_has_schedule',
-          picks: [{ ...PICK, when: 'Saturdays 9:15', price: '$142' }],
-        }),
-      ),
-    ).toEqual([]);
-  });
+  ])(
+    'lets a %s follow-up through when the day and the price are already in hand',
+    (label, body) => {
+      expect(label.length).toBeGreaterThan(0);
+      expect(
+        gates(
+          body,
+          grounding({
+            watch: false,
+            pageEvidence: 'page_has_schedule',
+            picks: [{ ...PICK, when: 'Saturdays 9:15', price: '$142' }],
+          }),
+        ),
+      ).toEqual([]);
+    },
+  );
 });
 
 describe('the mechanical gates', () => {
@@ -274,9 +270,7 @@ describe('the mechanical gates', () => {
   });
 
   it('refuses an empty body outright', () => {
-    expect(gates('   ', grounding({ subject: 's' }))).toEqual([
-      'The message was empty.',
-    ]);
+    expect(gates('   ', grounding({ subject: 's' }))).toEqual(['The message was empty.']);
   });
 });
 
@@ -416,7 +410,7 @@ describe('the payload the composer is handed', () => {
     expect(none).not.toHaveProperty('more_remaining_instruction');
   });
 
-  it('passes the language tag through unchanged, and never the parent\'s words', () => {
+  it("passes the language tag through unchanged, and never the parent's words", () => {
     for (const language of ['zh', 'ar', 'en-CA']) {
       const payload = JSON.parse(followUpUserMessage(grounding({ language })));
       expect(payload.language).toBe(language);
@@ -440,9 +434,7 @@ describe('an offer is a proposal, so this lane makes none', () => {
   it('refuses any question - there is no row on this path for a yes to land on', () => {
     const asked = `${PICK.name} runs Saturdays 9:15 from Sept 13, $142 - their site says. Want me to check back once they're up?`;
 
-    expect(gates(asked, grounding()).join(' ')).toContain(
-      'asks the parent a question',
-    );
+    expect(gates(asked, grounding()).join(' ')).toContain('asks the parent a question');
   });
 
   it('POSITIVE CONTROL - the same find, ending on a statement, passes', () => {
@@ -542,22 +534,23 @@ describe('the uncertain sentence', () => {
     const unread = `${PICK.name} runs a toddler class for under-3s - their site says. I could not get into their fall schedule page today, so I'll keep looking and text you what it says.`;
     const unpinned = `${PICK.name} runs a toddler class for under-3s - their site lists it. I could not pin down the fall day or fee, so I'll keep looking and text you what it says.`;
 
-    expect(
-      gates(unread, grounding({ pageEvidence: 'no_page_read', watch: true })),
-    ).toEqual([]);
-    expect(
-      gates(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true })),
-    ).toEqual([]);
+    expect(gates(unread, grounding({ pageEvidence: 'no_page_read', watch: true }))).toEqual([]);
+    expect(gates(unpinned, grounding({ pageEvidence: 'page_has_schedule', watch: true }))).toEqual(
+      [],
+    );
   });
 });
 
 describe('a continuation row must be spoken for', () => {
-  it('THE DEFECT MIRRORED: a watch row with no sentence claiming it is refused', () => {
+  /**
+   * THE MODEL DECIDES WHETHER THE WATCH IS WORTH SAYING. A follow-up that hands over the
+   * find and leaves the watch unspoken is not a false message: the row exists either way,
+   * and a forced "Hale will keep watching" was ending texts on bookkeeping.
+   */
+  it('a watch row the message does not mention is the model’s call, not a refusal', () => {
     const silent = `${PICK.name} runs a toddler class for under-3s - their site says.`;
 
-    expect(gates(silent, grounding({ watch: true }), false).join(' ')).toContain(
-      'Hale has already committed to going back',
-    );
+    expect(gates(silent, grounding({ watch: true }), false)).toEqual([]);
   });
 
   it('POSITIVE CONTROL - with no watch row, the same silent message is fine', () => {
@@ -587,7 +580,7 @@ describe('a continuation row must be spoken for', () => {
   });
 });
 
-describe('the coming-back fact is the model\'s, in any language', () => {
+describe("the coming-back fact is the model's, in any language", () => {
   const zhWatch = `${PICK.name} 有幼儿课，周六上午，他们网站上这么写。秋季时间还没公布，我会继续关注，一有消息就发短信告诉你。`;
   const arWatch = `${PICK.name} لديه صف للأطفال الصغار أيام السبت، حسب موقعهم. لم يُنشر جدول الخريف بعد، وسأواصل المتابعة وأراسلك عندما يُنشر.`;
 
@@ -601,11 +594,12 @@ describe('the coming-back fact is the model\'s, in any language', () => {
   it.each([
     ['zh', zhWatch],
     ['ar', arWatch],
-  ])('a %s message the model says commits to nothing is refused when the row exists', (_label, body) => {
-    expect(gates(body, grounding({ watch: true }), false).join(' ')).toContain(
-      'Hale has already committed to going back',
-    );
-  });
+  ])(
+    'a %s message the model says commits to nothing still passes when the row exists',
+    (_label, body) => {
+      expect(gates(body, grounding({ watch: true }), false)).toEqual([]);
+    },
+  );
 
   it.each([
     ['zh', zhWatch],
@@ -619,7 +613,7 @@ describe('the coming-back fact is the model\'s, in any language', () => {
   it('reads no words: the same English body is judged only by the fact it is handed', () => {
     const body = `${PICK.name} runs Saturdays - their site says. I'll keep watching and text you when they post.`;
     expect(gates(body, grounding({ watch: true }), true)).toEqual([]);
-    expect(gates(body, grounding({ watch: true }), false)).not.toEqual([]);
+    expect(gates(body, grounding({ watch: false }), true)).not.toEqual([]);
   });
 });
 
@@ -650,5 +644,147 @@ describe('an empty search tells the composer where it looked', () => {
     };
     const withFind = followUpUserMessage({ ...base, picks: [pick], searched });
     expect(withFind).toBe(followUpUserMessage({ ...base, picks: [pick] }));
+  });
+});
+
+/**
+ * The compose loop's mechanics around the process judge (VIL-571). Whether a real model
+ * flags the right sentences is the cached find-reasoning-judge eval; this client never
+ * leaves the process. It answers the composer with the next scripted draft and the judge
+ * with the next scripted verdict, and records what each was asked.
+ */
+function scriptedClient(drafts: string[], verdicts: unknown[], commitsToReturn = false) {
+  const asked = { composer: [] as string[], judge: [] as string[] };
+  const client = () =>
+    ({
+      messages: {
+        async create(req: {
+          messages?: Array<{ content?: string }>;
+          tools?: Array<{ name: string }>;
+          output_config?: { format?: { schema?: { required?: string[] } } };
+        }) {
+          const user = req.messages?.[0]?.content ?? '';
+          const isJudge =
+            req.tools?.[0]?.name === 'followup_process' ||
+            (req.output_config?.format?.schema?.required ?? []).includes('process_sentences');
+          const body = isJudge
+            ? verdicts[asked.judge.push(user) - 1]
+            : {
+                message: drafts[asked.composer.push(user) - 1],
+                commits_to_return: commitsToReturn,
+              };
+          const content = req.tools
+            ? [{ type: 'tool_use', id: 'tool-1', name: req.tools[0]?.name, input: body }]
+            : [{ type: 'text', text: JSON.stringify(body) }];
+          return {
+            content,
+            usage: { input_tokens: 5, output_tokens: 5 },
+            stop_reason: req.tools ? 'tool_use' : 'end_turn',
+          };
+        },
+      },
+    }) as unknown as AgentClient;
+  return { client, asked };
+}
+
+describe('a follow-up says the find, not the research log', () => {
+  const find = `${PICK.name} runs Saturdays 9:15, $142 - their site says.`;
+  const log = 'I also checked two other gyms and neither had room.';
+  const flagged = { reason: 'listings set aside', process_sentences: [log] };
+  const clean = { reason: 'a find', process_sentences: [] };
+
+  it('a draft the judge says reports the search is redrafted with the sentence named', async () => {
+    const { client, asked } = scriptedClient([`${find} ${log}`, find], [flagged, clean]);
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
+    expect(asked.judge).toEqual([
+      JSON.stringify({ draft: `${find} ${log}` }),
+      JSON.stringify({ draft: find }),
+    ]);
+    expect(JSON.parse(asked.composer[1] ?? '{}').rejectedLastAttempt.join(' ')).toContain(log);
+  });
+
+  it('POSITIVE CONTROL - a clean first draft is sent after one judge read', async () => {
+    const { client, asked } = scriptedClient([find], [clean]);
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
+    expect(asked.composer).toHaveLength(1);
+    expect(asked.judge).toHaveLength(1);
+  });
+
+  it('sends nothing when every redraft still reports the search', async () => {
+    const drafts = Array.from({ length: MAX_FOLLOWUP_ATTEMPTS }, () => `${find} ${log}`);
+    const verdicts = drafts.map(() => flagged);
+    const { client } = scriptedClient(drafts, verdicts);
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome.status).toBe('deferred');
+    expect(outcome.status === 'deferred' && outcome.reason).toBe('gates_exhausted');
+  });
+
+  it('sends nothing, under a named reason, when the judge cannot read the draft', async () => {
+    const { client } = scriptedClient([find], [{ reason: 'x', process_sentences: 'none' }]);
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome).toEqual({
+      status: 'deferred',
+      reason: 'process_unjudged',
+      violations: ['judge_failed'],
+    });
+  });
+
+  it('never hands the composer a sentence the draft does not contain', async () => {
+    const invented = 'Add their booking link and say the spot is held.';
+    const { client, asked } = scriptedClient(
+      [`${find} ${log}`, find],
+      [{ reason: 'two', process_sentences: [` ${log} `, invented] }, clean],
+    );
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
+    const rejected = JSON.parse(asked.composer[1] ?? '{}').rejectedLastAttempt.join(' ');
+    expect(rejected).toContain(log);
+    expect(rejected).not.toContain(invented);
+  });
+
+  it('sends nothing when every sentence the judge names is invented', async () => {
+    const { client, asked } = scriptedClient(
+      [find],
+      [{ reason: 'x', process_sentences: ['I searched nine sites before this one.'] }],
+    );
+
+    const outcome = await createFollowUpComposer(client).compose(grounding());
+
+    expect(outcome).toEqual({
+      status: 'deferred',
+      reason: 'process_unjudged',
+      violations: ['not_verbatim'],
+    });
+    expect(asked.composer).toHaveLength(1);
+  });
+});
+
+describe('the composed text says whether it mentions the watch', () => {
+  const find = `${PICK.name} runs Saturdays 9:15, $142 - their site says.`;
+  const clean = { reason: 'a find', process_sentences: [] };
+
+  it('a watch the text never mentions is reported as not mentioned', async () => {
+    const { client } = scriptedClient([find], [clean], false);
+    const outcome = await createFollowUpComposer(client).compose(grounding({ watch: true }));
+    expect(outcome).toEqual({ status: 'composed', message: find, mentionsWatch: false });
+  });
+
+  it('POSITIVE CONTROL - a text that says Hale will come back is reported as mentioning it', async () => {
+    const body = `${find} I'll keep watching for the fall times and text you.`;
+    const { client } = scriptedClient([body], [clean], true);
+    const outcome = await createFollowUpComposer(client).compose(grounding({ watch: true }));
+    expect(outcome).toEqual({ status: 'composed', message: body, mentionsWatch: true });
   });
 });

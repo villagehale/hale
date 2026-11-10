@@ -9,7 +9,7 @@ import { and, desc, eq, isNotNull } from 'drizzle-orm';
  * NULL, family-scoped, writing one immutable audit row (rule #6).
  *
  * One token-bearing table still carries a share token:
- *   - village_candidates.share_token → one activity candidate.
+ *   - family_activity_history.share_token → one historical activity receipt.
  * (The week-plan/picks token died with routine_proposals — F13's leg.)
  */
 
@@ -17,7 +17,7 @@ export type ShareLinkKind = 'activity';
 
 export interface SharedLink {
   kind: ShareLinkKind;
-  /** The owning row's id (village_candidates.id). */
+  /** The owning row's id (family_activity_history.id). */
   id: string;
   token: string;
   /** A human label for the list — the activity's title. */
@@ -29,25 +29,28 @@ export interface SharedLink {
  * Family-scoped (rule #1): only the requesting family's own rows are ever returned.
  * A revoked link (token nulled) drops out of this list by the same predicate.
  */
-export async function listSharedLinks(
-  database: Database,
-  familyId: string,
-): Promise<SharedLink[]> {
+export async function listSharedLinks(database: Database, familyId: string): Promise<SharedLink[]> {
   const activities = await database
-    .select({ id: schema.villageCandidates.id, token: schema.villageCandidates.shareToken, title: schema.villageCandidates.title })
-    .from(schema.villageCandidates)
+    .select({
+      id: schema.familyActivityHistory.id,
+      token: schema.familyActivityHistory.shareToken,
+      title: schema.familyActivityHistory.title,
+    })
+    .from(schema.familyActivityHistory)
     .where(
       and(
-        eq(schema.villageCandidates.familyId, familyId),
-        isNotNull(schema.villageCandidates.shareToken),
+        eq(schema.familyActivityHistory.familyId, familyId),
+        isNotNull(schema.familyActivityHistory.shareToken),
       ),
     )
-    .orderBy(desc(schema.villageCandidates.discoveredAt));
+    .orderBy(desc(schema.familyActivityHistory.discoveredAt));
 
-  return activities
-    // token is guaranteed non-null by the query predicate; narrow for the type.
-    .filter((r): r is typeof r & { token: string } => r.token !== null)
-    .map((r) => ({ kind: 'activity', id: r.id, token: r.token, title: r.title }));
+  return (
+    activities
+      // token is guaranteed non-null by the query predicate; narrow for the type.
+      .filter((r): r is typeof r & { token: string } => r.token !== null)
+      .map((r) => ({ kind: 'activity', id: r.id, token: r.token, title: r.title }))
+  );
 }
 
 /**
@@ -64,20 +67,20 @@ export async function revokeShareLink(
   const { id, familyId, actorUserId } = args;
 
   const revoked = await database
-    .update(schema.villageCandidates)
+    .update(schema.familyActivityHistory)
     .set({ shareToken: null })
     .where(
       and(
-        eq(schema.villageCandidates.id, id),
-        eq(schema.villageCandidates.familyId, familyId),
-        isNotNull(schema.villageCandidates.shareToken),
+        eq(schema.familyActivityHistory.id, id),
+        eq(schema.familyActivityHistory.familyId, familyId),
+        isNotNull(schema.familyActivityHistory.shareToken),
       ),
     )
-    .returning({ token: schema.villageCandidates.shareToken });
+    .returning({ token: schema.familyActivityHistory.shareToken });
   return recordRevoke(database, revoked, {
     familyId,
     actorUserId,
-    targetTable: 'village_candidates',
+    targetTable: 'family_activity_history',
     targetId: id,
   });
 }

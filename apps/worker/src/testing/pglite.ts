@@ -75,7 +75,11 @@ export async function seedFamily(database: Database, displayName = 'Test Family'
 
   const [user] = await database
     .insert(schema.users)
-    .values({ email: `${family.id}@example.test`, name: 'Test Parent' })
+    .values({
+      email: `${family.id}@example.test`,
+      name: 'Test Parent',
+      timezone: 'America/Toronto',
+    })
     .returning({ id: schema.users.id });
   if (!user) throw new Error('seedFamily: users insert returned no row');
 

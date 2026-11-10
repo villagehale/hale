@@ -1,0 +1,37 @@
+{
+  "response": {
+    "id": "msg_011CgYwrSS5Mfs6D3CNvaTRH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSpgkKEAgTGAI4AUIIdGhpbmtpbmcSDAWB085IgZqcdREUZBoMhmJ5LRXQRzmOezD/IjDZ4V7WS/Qt4klOQc5MpGxPBNP7uVNNfojKF4K6PHBG3Pp3pxJZgU46lV7jjTktJ3oqwwjBbD6cV0tBKJ2DwCYKcGNKe1n0U/D9PvyQLEzAR0sOpvfes6Tc9iEyRYk1W56ABCEzJllgeddiGbX6wtEzu+SUZSbDwGWQy6KVrv0OBVwciExdURyhWY8iaBT3Zc+YRweTT9b9hLQMDuRCh+F/C9zs9O4XBZa4X2QmBTUKdNZIPdz0ovuufUjjQC+ai7HCwgykTisxFD8KX6lJJQTop4DEQxpuL2qzvv09Z/tGUceIpPRgJOU+/ZtSB1Oym7fgnfdF+0JGCiXnyTYjhbf31MnNgLIVupwq2q+3+QQNiWatEpqFGxWivNnThm3199iqzBf3P4MaaYHV739Or0QTrK2qIIcgtSbFDfoo4Tz8wSghvdLu1f+pI2bIksz6rEKIgyb4R2xuD3MnjfjCSt7t+lPipQewOpQ6GzSK1wumCE+0nYNwAdBysnWRX4JNGdksYomqSzosH7a6lTu9xWdQ7Q+DOZCOAHk3TaODDBRe+LT71jV0sCfV0FTYwRKwYg1lV3M/YKfXK3hdHPTZUwcXU6K1ScwiH7zPC+sPPX2TjuhlkIbfDJgnCGnC+o8iUC201rBj7JyuENC2puPX37e3F1M7zNNjPwQ2kdW5UrNX4VLDf4Kh03lehosnMbFKAe3zchv2EVj1PdBG68da7UdEQC3vP32ir3qgrHVppFHScOhiv0OFwd6jpEVPzii9oJeT8Oh7pODzwEVgH5FhPT57uMYz+P2dh/VJGSSH3NMrSSSQ4kMRtJpIkx03sFJH4lFkVLe8jpK+QhOp68dGpyDUjxx9ntQf/CB+7WLlrHMmfbne02uybMmSGdmoplRnygZ56zKP8DfFg47coBroYLkwpGJjE+aB4fll/4DFHzRfjai300Db6SiJ1hqVLh3TtTUO02GRRDzUvwHmrHhA9QXkLQ6wdaSNdaoJcfkASc2w2uwUmIn1ScYjsvfudKUf9MtTf7DKVqEkXNW9hTXXzpojl7VpzycOfJVdWRepuCh2ULWSJQFPdPu8mefBDm0cO1TC7Q9Rbk7Ba3B81NIBQ/rLmpNhGzLNj73456eTwgMs5weqMEEuR7itIGTXBjPBZMagWi1WdHSsNXdT+DUqM60GVVoWQSqQ5LIDtYPgA/9yQ5KTAXtwZOdCyvOfY56F+eRrPsNC+oYIIE4voGvhTZY5WA43xENuippPJeSthaOPJkv1CupeliOdOqHhwilzJlJFYJLHbUBNQIG6wmQE0aldls+HJ5Lbnqj/dyidNqPZXoU0cEawxofiFeV/TRJgi7JHHS7A9ig2jL1EGJpjFEOPxoq8FQfyyUC8VWtQOO8Nt+xf3dM9/ceNtEVjgwS6tr1mvElhkdBFjf0bQ0Gz7Bu45fP2GMabqOubIZ9S4X+ZD6e+aUBoad/87p5q9T6LnuRUzV9NwaGqr5NW9ZghaEw1bKXAT+yg/UTlY6xhyuiDnkiFmkfHBxgB"
+      },
+      {
+        "type": "text",
+        "text": "Jordan's free time isn't something I can share in the group. Text me directly and I'll look at Thursday with you."
+      }
+    ],
+    "usage": {
+      "input_tokens": 399,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 18186,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 239,
+      "output_tokens_details": {
+        "thinking_tokens": 201
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

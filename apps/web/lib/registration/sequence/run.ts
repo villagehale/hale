@@ -1,15 +1,14 @@
-import {
-  type Database,
-  type RegistrationSourceState,
-  registrationSourceState,
-  schema,
-} from '@hale/db';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { AgentClient } from '@hale/agent';
+import { type Database, type RegistrationWindow, schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
+import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import {
   type FamilyTextRecipient,
   loadFamilyTextRecipients,
 } from '~/lib/channel/family-recipients';
+import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { ReplyLanguage } from '~/lib/channel/language';
 import { type AcceptedStatus, acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -17,6 +16,7 @@ import {
   householdCopies,
   notePermanentSkip,
 } from '~/lib/channel/linq/family-outbound';
+import { familyLanguage } from '~/lib/channel/linq/roster-ask';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { type OptOutForm, withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -27,28 +27,55 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { refuseUnbackedSend } from '~/lib/channel/reconcile/gate';
-import { type SpotPortal, portalForMunicipality, sanitizeSpotUrl } from '~/lib/channel/spots/url';
+import { type SpotPortal, portalForMunicipality } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
+import { localParts } from '~/lib/loop/prefs';
+import { voiceClient } from '~/lib/loop/voice/compose';
 import { pipelineClient } from '~/lib/pipeline/client';
-import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/fetch';
+import { familyInPreviewScope } from '~/lib/preview/family-scope';
+import {
+  DATE_CHECK_OUTCOMES,
+  type DateCheckMode,
+  type DateCheckOutcome,
+  type DateChecker,
+  type DateUnreadReason,
+  createDateChecker,
+  liveDateReader,
+} from '~/lib/registration/date-check';
 import {
   type RegistrationMatch,
+  matchRegistrationWindows,
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
-import type { LiveRegistrationReading } from '../live-reading';
+import type { RegistrationReader } from '~/lib/registration/read';
+import { type FetchPage, createFetchBody, pageCache } from '~/lib/registration/verify-sweep';
+import { loadClaimedWindowIds } from './claims.js';
 import {
-  type RegistrationReader,
-  type RegistrationTarget,
-  createRegistrationReader,
-  registrationDate,
-  registrationHasOpened,
-  windowReadTarget,
-} from '../read';
-import { composeRegistrationReminder } from './compose';
-import { headsUpPromisesPlan, windowPhrase } from './copy.js';
+  type EveningFacts,
+  type MorningFacts,
+  approvalCardFacts,
+  battlePlanDecision,
+  dateMovedFacts,
+  dateUnconfirmedFacts,
+  headsUpFacts,
+  headsUpPromisesPlan,
+  legNoteFacts,
+  morningFacts,
+  windowPhrase,
+} from './copy.js';
+import { composeDateMoved, dateMovedBody } from './date-moved-compose.js';
+import {
+  type DateUnconfirmedFacts,
+  composeDateUnconfirmed,
+  dateUnconfirmedBody,
+} from './date-unconfirmed-compose.js';
+import { composeRegistrationEvening } from './evening-compose.js';
+import { composeRegistrationHeadsUp } from './heads-up-compose.js';
+import { composeRegistrationMorning } from './morning-compose.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   GO_FETCH_TIMEOUT_MS,
   type PrepInput,
@@ -57,28 +84,28 @@ import {
   readCoursePrep,
 } from './prepare.js';
 import {
-  type RegistrationChange,
-  claimDueRegistrationChecks,
-  claimRegistrationSend,
-  refreshRegistrationWatch,
-  registrationChange,
-  registrationChangeBody,
-  releaseRegistrationSend,
-} from './refresh';
+  type DateWatchPatch,
+  RECHECK_OUTCOMES,
+  type RecheckOutcome,
+  type RecheckSubject,
+  lastSeenOpenAt,
+  parsePendingChange,
+  recheckWatchedDates,
+} from './recheck.js';
 import {
+  HEADS_UP_MINUTE_LOCAL,
   type RegistrationOutcome,
   type SequenceLeg,
   type SequenceOptIn,
   dueLeg,
   legIsUrgent,
   openLegWindows,
-  waitlistDeadline,
+  openTimeIsPublished,
 } from './schedule.js';
 import {
   type SequenceChild,
   type Shortlist,
   buildShortlist,
-  courseShortlist,
   windowShortlist,
 } from './shortlist.js';
 
@@ -93,9 +120,16 @@ import {
  * anywhere in this module, and the shortlist's action type has no executor that could
  * grow one.
  *
- * Only existing family-owned watches are refreshed and delivered. The source page is
- * re-read on scheduled checks and again before an unsent, consent-gated reminder.
- * No global seasonal catalog is scanned to create new watches.
+ * TWO PHASES, and they are separate because they have different costs and cadences:
+ *
+ *   A. PROPOSE — once a day, in the family's own mid-morning slot, look for a matched
+ *      window inside the lead horizon and, if there is one, CLAIM it and draft the
+ *      shortlist for approval. The claim is minted FIRST, on a unique index, so two
+ *      overlapping ticks cannot produce two approval cards for one window.
+ *   B. RUN THE LEGS — every tick, for every live sequence. Which leg is due is a pure
+ *      function of the LIVE window row (see schedule.ts), so a municipality that moves
+ *      its date re-anchors the entire ladder with no reconciliation: there is nothing
+ *      materialized to be stale.
  *
  * FIVE MINUTES, not an hour. The go leg exists in a fifteen-minute window that must
  * never be crossed — an hourly cron would hit it one time in four, and the one message
@@ -110,8 +144,28 @@ import {
  * arms it, exactly as M4's is.
  */
 
-/** Bound the watch work performed in a single cron tick. */
-const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
+/**
+ * How far ahead of a window the shortlist is drafted. Three days of slack before the
+ * heads-up leg at T-7d: long enough that a parent who checks Hale twice a week still
+ * approves in time to get the full ladder, short enough that the approvals queue is not
+ * full of dates nobody can act on yet.
+ */
+export const SHORTLIST_LEAD_DAYS = 10;
+
+/** Filter first, then cap — a cap-then-filter would starve every family past the
+ * oldest N of their slot forever. */
+export const MAX_SEQUENCE_FAMILIES_PER_RUN = 100;
+
+/**
+ * Whether `now` sits in this family's daily shortlist slot. The same mid-morning hour
+ * the heads-up leg lands in, matched as a whole HOUR: an exact-minute match would drop
+ * every family whose cron tick ran a minute late.
+ */
+export function isShortlistSlot(now: Date, timeZone: string): boolean {
+  return (
+    Math.floor(localParts(now, timeZone).minutes / 60) === Math.floor(HEADS_UP_MINUTE_LOCAL / 60)
+  );
+}
 
 export interface SequenceFamily {
   familyId: string;
@@ -131,15 +185,17 @@ export interface LiveSequence {
    * on the resident date or the general one — and therefore what the whole ladder is
    * anchored on, so it is resolved at send time rather than frozen at proposal. */
   areaCoarse: string | null;
-  /** Imported watch-owned metadata; a fresh read owns every parent-facing date. */
-  window: RegistrationSourceState | null;
+  /** The LIVE M1 row. Every leg time is derived from it at send time, so a corrected
+   * date moves the whole ladder. Null for a watch a parent's link created (VIL-423). */
+  window: RegistrationWindow | null;
   /** Read live off the approval spine — see registration-sequences.ts. */
   optIn: SequenceOptIn;
   outcome: RegistrationOutcome | null;
   waitlistPosition: number | null;
   waitlistStartedAt: Date | null;
   /** VIL-338 · the course page the parent pasted, exactly as `sanitizeSpotUrl` rebuilt
-   * it, or null while nothing is bound. All opening reminders re-read their source, including unbound imported watches. */
+   * it, or null while nothing is bound. Non-null is what turns the two send-time reads
+   * on — it is the whole switch between the ladder that shipped and the prepared one. */
   courseUrl: string | null;
   /** THE ANCHOR when a course is bound: the instant that page says it opens for THIS
    * family. Every interval and every sentence is derived from it, so a bind that moves
@@ -149,11 +205,17 @@ export interface LiveSequence {
   /** What the parent TOLD Hale about their portal setup. Never inferred, never
    * verified; null is "unasked or unanswered", which the copy says in those words. */
   readinessReady: boolean | null;
-  lastReading?: Record<string, unknown> | null;
-  pendingChange?: RegistrationChange | null;
-  pausedAt?: Date | null;
-  dateReviewActionId?: string | null;
+  /** VIL-423 · the opening the page last showed, with its URL (recheck.ts). Scheduling
+   * and change detection only; a dated text still reads the page at send time. */
+  lastReading: Record<string, unknown> | null;
+  /** VIL-423 · when the page is next due a scheduled read. Null is due now. */
+  nextCheckAt: Date | null;
+  /** VIL-423 · a moved opening the household is owed a note about. */
+  pendingChange: Record<string, unknown> | null;
 }
+
+/** A ladder with a catalog row: the only kind a leg is composed and sent for. */
+type CatalogSequence = LiveSequence & { window: RegistrationWindow };
 
 export interface SequenceLedgerWrite {
   familyId: string;
@@ -178,20 +240,34 @@ export interface SequenceAuditRow {
 }
 
 export interface SequenceRunDeps {
-  compose: typeof composeRegistrationReminder;
-  /** Required even in fixtures: a cached scheduling anchor can never authorize a send. */
-  live: {
-    read: RegistrationReader;
-    readForSend: RegistrationReader;
-    claimDue: typeof claimDueRegistrationChecks;
-    refresh: typeof refreshRegistrationWatch;
-    reload(database: Database, sequenceId: string): Promise<LiveSequence | null>;
-    claimSend: typeof claimRegistrationSend;
-    releaseSend: typeof releaseRegistrationSend;
-    draftReview(database: Database, sequence: LiveSequence): Promise<void>;
-    acknowledgeChange(database: Database, sequence: LiveSequence): Promise<void>;
-  };
+  selectFamilies(database: Database, now: Date): Promise<SequenceFamily[]>;
   loadChildren(database: Database, familyId: string): Promise<SequenceChild[]>;
+  loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
+  loadClaimedWindowIds(database: Database, familyId: string): Promise<Set<string>>;
+  /** Insert the claim, or return null when this family already has one for the window
+   * (the unique index rejected it). The atomic step a double tick races on. */
+  claimWindow(
+    database: Database,
+    input: { familyId: string; windowId: string; parentUserId: string },
+  ): Promise<string | null>;
+  /** Draft the shortlist through the approval spine. Returns the action id. */
+  draftShortlist(
+    database: Database,
+    input: {
+      familyId: string;
+      actorUserId: string;
+      childId: null;
+      intentKind: string;
+      rationale: string;
+      /** The card's heading — what opens, where. */
+      title: string;
+      /** The municipal page. The one link the whole sequence points at. */
+      sourceUrl: string;
+    },
+  ): Promise<string>;
+  attachAction(database: Database, sequenceId: string, actionId: string): Promise<void>;
+  /** Undo a claim whose shortlist could not be drafted. */
+  releaseClaim(database: Database, sequenceId: string): Promise<void>;
   loadLiveSequences(database: Database, now: Date): Promise<LiveSequence[]>;
   /**
    * WHO THIS LADDER IS FOR — every parent seat in the family with a live number, not
@@ -255,7 +331,65 @@ export interface SequenceRunDeps {
    * a different thing from having no way to read at all.
    */
   fetchBody: FetchPage;
+  /**
+   * The one write a send-time read may cause, and only at the battle plan: the page has
+   * moved its own clock, so the anchor the rest of the ladder hangs from moves with it.
+   * Guarded (`WHERE course_url = $url AND course_opens_at IS DISTINCT FROM $new`) so a
+   * double tick is a no-op, and it returns whether a row actually moved — the number the
+   * leg's audit row carries is about a change that happened, never one that was merely
+   * attempted. REQUIRED for the reason above: an anchor that silently failed to move
+   * fires the flagship text on the wrong morning, which is the one failure this ticket
+   * exists to prevent.
+   *
+   * The URL is half the guard because the read takes seconds and a parent may paste a
+   * second link inside them: a clock read off the OLD page is not a fact about the
+   * course the row holds now, and the bind wrote that course's own clock already.
+   */
+  refreshCourseAnchor(
+    database: Database,
+    input: { sequenceId: string; courseUrl: string; courseOpensAt: Date; now: Date },
+  ): Promise<boolean>;
+  /**
+   * The speak-lane client. Null when no key is configured. An evening text with
+   * no client is unwritten: nothing is sent, and the miss is named (rule #11).
+   */
+  client: AgentClient | null;
+  /** The parent's language. The model writes the evening text in it. */
+  loadLanguage(database: Database, familyId: string): Promise<ReplyLanguage>;
+  /** Facts in, one text out. Null means nothing is sent. */
+  composeEvening: typeof composeRegistrationEvening;
+  /** VIL-484 · the morning-of text when the page moved. Null means nothing is sent. */
+  composeMorning: typeof composeRegistrationMorning;
+  /** VIL-488 · the heads-up text, written from facts. Null means nothing is sent. */
+  composeHeadsUp: typeof composeRegistrationHeadsUp;
+  /** VIL-543 · the approval card and every other leg, written from facts. Null means
+   * nothing is sent (and no card is drafted). */
+  writeNote: RegistrationNoteWriter;
+  /**
+   * VIL-423 · the page reader the send-time date check uses, built once per run. Null
+   * when no model key is configured: every check is then `unread` / `no_reader`, by name.
+   */
+  createDateReader(): RegistrationReader | null;
+  /** VIL-423 · a dated leg the page did not corroborate, written without a date. Null
+   * means nothing is sent. */
+  composeDateUnconfirmed: typeof composeDateUnconfirmed;
+  /**
+   * VIL-423 · store what a scheduled page read found (recheck.ts). REQUIRED (rule #11):
+   * a sweep that could not store it would re-read every page on every tick, and a moved
+   * opening would never move the ladder.
+   */
+  saveDateWatch(database: Database, sequenceId: string, patch: DateWatchPatch): Promise<void>;
+  /** VIL-423 · the note a household gets when the page moved an opening they were told.
+   * Null means nothing is sent, and the change stays owed. */
+  composeDateMoved: typeof composeDateMoved;
+  /** The wall clock the already-open retry reads its deadline against. Defaults to
+   * real time; tests pin it. */
+  clock?: () => Date;
 }
+
+/** How many times an already-open evening draft is written before the miss is
+ * logged for #ops. Each try is a full compose; only one text can leave. */
+export const ALREADY_OPEN_DRAFT_TRIES = 3;
 
 /**
  * What a send-time read produced, by name — the verdict kinds, the one thing a read can
@@ -288,10 +422,31 @@ const PREP_FATES: readonly PrepFate[] = [
  * `open_time_unpublished`: the go leg is a claim about a minute, and this window's
  * source published only a date, so there is no minute to claim. See
  * `openTimeIsPublished`.
+ *
+ * `date_unconfirmed` (VIL-423, `enforce`): the go leg's whole content is the stored
+ * minute, and the page did not corroborate it. The battle plan the evening before
+ * already carried what the page said, or the page to check.
  */
-export type SequenceSkipReason = 'open_time_unpublished';
+export type SequenceSkipReason = 'open_time_unpublished' | 'date_unconfirmed';
 
-const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished'];
+const SKIP_REASONS: readonly SequenceSkipReason[] = ['open_time_unpublished', 'date_unconfirmed'];
+
+/** The legs that state the opening date or time, and so the only ones checked. */
+const DATED_LEGS: ReadonlySet<SequenceLeg> = new Set([
+  'heads_up',
+  'readiness',
+  'battle_plan',
+  'go',
+]);
+
+/** Check outcomes where Hale never got the page's words at all, as opposed to a page it
+ * read that did not confirm the date. */
+const PAGE_UNREADABLE: ReadonlySet<DateUnreadReason> = new Set([
+  'unreadable',
+  'busy',
+  'gone',
+  'no_reader',
+]);
 
 export interface SequenceRunResult {
   /** False when neither the flag nor the allowlist armed the sweep (D21). */
@@ -339,6 +494,29 @@ export interface SequenceRunResult {
    * reference data about a season; the bound course is the parent's own choice, and
    * this is the count of the times the two disagreed. */
   noFit: number;
+  /**
+   * Evening texts that were due and not sent because the model did not write
+   * one. Nothing is held for later under another name: the dedupe key is
+   * unspent, so the next tick tries again. Its own count (rule #11).
+   */
+  unwritten: number;
+  /** Link watches with no open date yet: no dated leg exists and none is guessed. */
+  undated: number;
+  /** Link-watch legs that were due and held because no send-time read of the parent's
+   * page exists yet. Nothing was sent and the dedupe key is unspent (slice 7b). */
+  linkUnread: number;
+  /** VIL-423 · send-time date checks of a catalog window's page, by outcome. Zero
+   * everywhere while REGISTRATION_DATE_CHECK is off. */
+  dateCheck: Record<DateCheckOutcome, number>;
+  /** VIL-423 · what each ladder's scheduled page read found, by outcome. */
+  dateRecheck: Record<RecheckOutcome, number>;
+  /** Distinct pages the scheduled re-read asked for this tick. */
+  recheckReads: number;
+  /** Change notes sent: one per parent per moved opening. */
+  dateMovedSent: number;
+  /** Change notes cleared unsent because the household stopped the ladder or reported
+   * how registration went before the note could go. */
+  dateMovedDropped: number;
 }
 
 function emptyResult(enabled: boolean): SequenceRunResult {
@@ -360,6 +538,20 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     read: 0,
     readSkipped: 0,
     noFit: 0,
+    unwritten: 0,
+    undated: 0,
+    linkUnread: 0,
+    dateCheck: Object.fromEntries(DATE_CHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+      DateCheckOutcome,
+      number
+    >,
+    dateRecheck: Object.fromEntries(RECHECK_OUTCOMES.map((outcome) => [outcome, 0])) as Record<
+      RecheckOutcome,
+      number
+    >,
+    recheckReads: 0,
+    dateMovedSent: 0,
+    dateMovedDropped: 0,
   };
 }
 
@@ -383,7 +575,129 @@ export function legDedupeKey(
   return `registration_sequence:${familyId}:${windowId}:${leg}:${parentUserId}`;
 }
 
-// ── run the legs ────────────────────────────────────────────────────
+// ── phase A: propose a shortlist ─────────────────────────────────────────────
+
+async function proposeForFamily(
+  database: Database,
+  family: SequenceFamily,
+  deps: SequenceRunDeps,
+  now: Date,
+): Promise<boolean> {
+  if (!family.areaCoarse) return false;
+  const [children, windowRows, claimed] = await Promise.all([
+    deps.loadChildren(database, family.familyId),
+    deps.loadWindows(database, family.areaCoarse),
+    deps.loadClaimedWindowIds(database, family.familyId),
+  ]);
+  if (children.length === 0) return false;
+
+  // Every child's age, 13+ included. M4 drops teens before matching; a teen's
+  // registration deadline is real, and the shortlist keeps their name out of it
+  // instead of keeping them out of the shortlist (see shortlist.ts).
+  const matches = matchRegistrationWindows({
+    windows: windowRows,
+    postal: family.areaCoarse,
+    childrenAgesMonths: children.map((child) => ageInMonths(child.dateOfBirth, now)),
+    now,
+  });
+
+  const horizon = now.getTime() + SHORTLIST_LEAD_DAYS * 86_400_000;
+  for (const match of matches) {
+    if (match.opensForFamilyAt.getTime() > horizon) break; // sorted soonest-first
+    // ONE window at a time. The slot is a whole HOUR and the cron ticks every five
+    // minutes, so `continue` here would claim the next window on the next tick and a
+    // family with three matched dates would collect three approval cards a quarter of
+    // an hour apart. A household preparing for a registration morning is preparing for
+    // ONE; the next is proposed once this window has passed. (A declined shortlist also
+    // holds the slot until its date passes — conservative, and it self-clears.)
+    // Any cycle in this collapsed event counts as claimed: the group is one
+    // registration morning, and a claim on any of its rows already produced the card.
+    if (match.cycleWindows.some((cycle) => claimed.has(cycle.id))) return false;
+    const shortlist = buildShortlist(match, children, now);
+    if (!shortlist) continue;
+
+    // CLAIM FIRST. The unique (family_id, window_id) index is what makes two
+    // overlapping ticks produce one approval card; drafting first and claiming after
+    // would mint the duplicate before the index could refuse it.
+    const sequenceId = await deps.claimWindow(database, {
+      familyId: family.familyId,
+      windowId: match.window.id,
+      parentUserId: family.parentUserId,
+    });
+    if (sequenceId === null) return false;
+
+    // VIL-543 · the card is written from facts. THE SAME REGISTRY LOOKUP THE LEGS RUN
+    // ON (`dueLeg`), so the card enumerates exactly the texts this household will
+    // receive: four where Hale has learned to read the town's portal and the readiness
+    // leg therefore fires, three everywhere else. A card that cannot be written is no
+    // card: the claim is released and the next tick tries again.
+    const rationale = await deps.writeNote(
+      database,
+      family.familyId,
+      approvalCardFacts(
+        shortlist,
+        family.timeZone,
+        now,
+        portalForMunicipality(match.window.municipality),
+      ),
+    );
+    if (rationale === null) {
+      // Nothing was drafted and nothing reaches the family, so this is a named log line
+      // rather than a trail row a retrying tick would repeat.
+      await deps.releaseClaim(database, sequenceId);
+      console.error(
+        { familyId: family.familyId, outcome: 'registration_shortlist_unwritten' },
+        'registration sequence: the approval card could not be written, no card drafted',
+      );
+      return false;
+    }
+
+    try {
+      const actionId = await deps.draftShortlist(database, {
+        familyId: family.familyId,
+        actorUserId: family.parentUserId,
+        // Family-scoped: one municipal window is registered for as a household, and a
+        // shortlist may cover two siblings at once.
+        childId: null,
+        intentKind: 'registration_shortlist',
+        rationale,
+        // The card's own copy. Without these the approvals surface showed the generic
+        // "Note in your daily digest" over the raw payload keys, so the municipality,
+        // the date, the link and the "I never register for you" line — the things the
+        // quiet-hours exemption is granted on the strength of — were invisible.
+        title: windowPhrase(shortlist),
+        sourceUrl: shortlist.sourceUrl,
+      });
+      await deps.attachAction(database, sequenceId, actionId);
+      await deps.audit(database, {
+        familyId: family.familyId,
+        actor: 'system',
+        actionTaken: 'registration_shortlist_drafted',
+        targetTable: 'registration_sequences',
+        targetId: sequenceId,
+        after: {
+          windowId: match.window.id,
+          municipality: match.window.municipality,
+          cycleLabel: match.window.cycleLabel,
+          actionId,
+          children: shortlist.fitNotes.length,
+        },
+      });
+    } catch (err) {
+      // A claim with no shortlist behind it is the worst of both worlds: it blocks M4's
+      // nudge for this window AND never runs a leg, so the family goes silent about a
+      // date they were owed. Release it and let the next tick try again.
+      await deps.releaseClaim(database, sequenceId);
+      throw err;
+    }
+    // ONE shortlist per family per run. A household with three matched windows gets
+    // them one at a time, not an approvals queue nobody reads.
+    return true;
+  }
+  return false;
+}
+
+// ── phase B: run the legs ────────────────────────────────────────────────────
 
 /** What a read caused, carried out of the leg alongside its outcome so the summary can
  * count the reading and the send separately — a refused leg still read a page. */
@@ -418,6 +732,10 @@ type LegTally = LegReadEffects & {
    * is, so the answer is the same for one parent and for two.
    */
   skipped?: SequenceSkipReason;
+  /** The evening text was due and the model did not write it. Nothing was sent. */
+  unwritten?: number;
+  /** A change note that is no longer owed: the ladder was stopped or finished. */
+  dropped?: number;
 };
 
 function emptyTally(overrides: Partial<LegTally> = {}): LegTally {
@@ -506,51 +824,32 @@ function courseIdOf(url: string): string | null {
 
 async function runLegForSequence(
   database: Database,
-  initialSequence: LiveSequence,
+  sequence: CatalogSequence,
   deps: SequenceRunDeps,
   reader: CourseReader,
+  checker: DateChecker,
   now: Date,
 ): Promise<LegTally> {
-  let sequence = initialSequence;
-  const sendStartedAt = Date.now();
-  // THIS family's open instant, not the general one. A resident household in a town
-  // that publishes a head start registers a week early, and a ladder anchored on the
-  // general date would tap them on the shoulder days after their doors had opened.
-  const { isResidentWindow, opensForFamilyAt } = sequence.window
-    ? resolveFamilyOpen(sequence.window, sequence.areaCoarse)
-    : { isResidentWindow: false, opensForFamilyAt: sequence.courseOpensAt ?? now };
-  // THE ANCHOR. The course page's own clock where the parent has bound one, and the M1
-  // row's family-open instant otherwise. Fed to `dueLeg`, to every interval and to the
-  // copy from this ONE place, so the morning the ladder is scheduled on and the morning
-  // its sentences name can never be two different instants.
-  let anchor = sequence.courseOpensAt ?? opensForFamilyAt;
+  // THE ANCHOR, from ladderAnchor. Fed to `dueLeg`, to every interval and to the copy
+  // from this ONE place, so the morning the ladder is scheduled on and the morning its
+  // sentences name can never be two different instants.
+  const { isResidentWindow, anchor } = ladderAnchor(sequence, checker.mode);
   // From the registry, never from the row: a municipality Hale has learned to read is a
   // code fact, and it is what lights the readiness leg and the two send-time reads.
-  const portal = sequence.window ? portalForMunicipality(sequence.window.municipality) : null;
-  const notice =
-    sequence.pendingChange && !sequence.pendingChange.notified ? sequence.pendingChange : null;
-  if (notice && (sequence.optIn === 'missing' || sequence.optIn === 'declined'))
-    return emptyTally({ quiet: true });
-  const leg = notice
-    ? ('heads_up' as const)
-    : dueLeg(
-        {
-          openAt: anchor,
-          timeZone: sequence.timeZone,
-          optIn: sequence.optIn,
-          outcome: sequence.outcome,
-          waitlistStartedAt: sequence.waitlistStartedAt,
-          waitlistResponseHours: sequence.window?.waitlistResponseHours ?? null,
-          portal,
-        },
-        now,
-      );
+  const portal = portalForMunicipality(sequence.window.municipality);
+  const leg = dueLeg(
+    {
+      openAt: anchor,
+      timeZone: sequence.timeZone,
+      optIn: sequence.optIn,
+      outcome: sequence.outcome,
+      waitlistStartedAt: sequence.waitlistStartedAt,
+      waitlistResponseHours: sequence.window.waitlistResponseHours,
+      portal,
+    },
+    now,
+  );
   if (leg === null) return emptyTally({ quiet: true });
-  // A reported waitlist offer has its own clock, independent of registration opening.
-  const waitlistLeg = leg === 'waitlist_half' || leg === 'waitlist_final';
-  if (!notice && !waitlistLeg && (sequence.pausedAt || !sequence.courseOpensAt))
-    return emptyTally({ quiet: true });
-  let reading: LiveRegistrationReading;
   // VIL-347 · THE 23:45 TEXT. The go leg is the one rung that names a MINUTE, and it
   // spends the quiet-hours exemption to do it. Where the town published a date and no
   // hour the row holds the start of that local day, and fifteen minutes before it is
@@ -561,6 +860,9 @@ async function runLegForSequence(
   // DECIDED BEFORE THE HOUSEHOLD IS READ, above the recipient fan-out: there is no
   // honest version of this leg for anybody, so it is composed for nobody and sent to
   // nobody rather than held for each parent in turn.
+  if (leg === 'go' && !openTimeIsPublished(anchor, sequence.timeZone)) {
+    return emptyTally({ skipped: 'open_time_unpublished' });
+  }
 
   // BOTH NUMBERS. The sequence row carries one parent id — the seat that was claimed —
   // and it is the ladder's owner, never its audience: one household, one registration
@@ -580,19 +882,14 @@ async function runLegForSequence(
   for (const recipient of recipients) {
     const dedupeKey = legDedupeKey(
       sequence.familyId,
-      notice
-        ? `${sequence.sequenceId}:change:${notice.key}`
-        : (sequence.window?.id ?? sequence.sequenceId),
+      sequence.window.id,
       leg,
       recipient.parentUserId,
     );
     if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
     else pending.push({ recipient, dedupeKey });
   }
-  if (pending.length === 0) {
-    if (notice && deps.live) await deps.live.acknowledgeChange(database, sequence);
-    return emptyTally({ deduped });
-  }
+  if (pending.length === 0) return emptyTally({ deduped });
 
   // EVERY RECIPIENT IS GATED BEFORE ANYBODY IS SENT TO, and the ordering is the design
   // rather than tidiness. The frequency cap is counted per FAMILY (outbound-gate.ts),
@@ -613,7 +910,7 @@ async function runLegForSequence(
         parentUserId: recipient.parentUserId,
         kind: 'registration_sequence',
         now,
-        urgent: !notice && legIsUrgent(leg),
+        urgent: legIsUrgent(leg),
       },
       deps.buildGate(database),
     );
@@ -622,73 +919,47 @@ async function runLegForSequence(
   }
   if (allowed.length === 0) return emptyTally({ deduped, held });
 
-  {
-    // Only an unsent, gated message reads again; ordinary five-minute scans do not.
-    reading = await deps.live.readForSend(registrationTargetFor(sequence), now);
-    const recorded = await deps.live.refresh(database, {
-      sequenceId: sequence.sequenceId,
-      reading,
-      resident: isResidentWindow,
+  const children = await deps.loadChildren(database, sequence.familyId);
+
+  // VIL-423 · THE SEND-TIME DATE CHECK, for a dated leg whose opening comes from the
+  // catalog row (a bound course is read off its own page at the battle plan and the go
+  // leg). Shadow logs and changes nothing. Enforce states the stored opening only when
+  // the page agrees: a page that disagrees lends the text its own date, and a page that
+  // cannot confirm one gets the text with no date and the page to check. `stated` moves
+  // only the sentence; the schedule stays on `anchor`, so the leg already due is the one
+  // that goes and no interval is re-entered.
+  let stated = anchor;
+  let unconfirmed: DateUnconfirmedFacts['why'] | null = null;
+  let dateCheck: DateCheckOutcome | undefined;
+  if (checker.mode !== 'off' && sequence.courseOpensAt === null && DATED_LEGS.has(leg)) {
+    const check = await checker.check(
+      { window: sequence.window, resident: isResidentWindow, stated: anchor, sender: leg },
       now,
-      cachedAnchor: sequence.courseOpensAt ?? (sequence.window ? opensForFamilyAt : null),
-      parentTimeZone: sequence.timeZone,
-    });
-    if (!recorded) return emptyTally({ quiet: true });
-    const fresh = await deps.live.reload(database, sequence.sequenceId);
-    if (!fresh) return emptyTally({ quiet: true });
-    if (fresh.optIn === 'declined' || fresh.optIn === 'missing') return emptyTally({ quiet: true });
-    if (notice) {
-      if (fresh.pendingChange?.key !== notice.key) return emptyTally({ quiet: true });
-    } else {
-      if (
-        !waitlistLeg &&
-        (fresh.pausedAt ||
-          !fresh.courseOpensAt ||
-          (fresh.pendingChange && !fresh.pendingChange.notified))
-      )
-        return emptyTally({ quiet: true });
-      anchor = fresh.courseOpensAt ?? anchor;
-      const currentLeg = dueLeg(
-        {
-          openAt: anchor,
-          timeZone: fresh.timeZone,
-          optIn: fresh.optIn,
-          outcome: fresh.outcome,
-          waitlistStartedAt: fresh.waitlistStartedAt,
-          waitlistResponseHours: fresh.window?.waitlistResponseHours ?? null,
-          portal,
-        },
-        now,
-      );
-      // A changed phase needs a new dedupe key and gate on the next tick.
-      if (currentLeg !== leg) return emptyTally({ quiet: true });
-      const publishedDate = registrationDate(reading, isResidentWindow);
-      if (
-        publishedDate?.time == null &&
-        (leg === 'go' ||
-          (leg === 'check_in' &&
-            (!publishedDate || !registrationHasOpened(reading, publishedDate, now))))
-      )
-        return emptyTally({ skipped: 'open_time_unpublished' });
+    );
+    dateCheck = check.outcome;
+    if (checker.mode === 'enforce' && check.outcome !== 'agree') {
+      if (leg === 'go') return emptyTally({ skipped: 'date_unconfirmed', deduped, held });
+      if (check.outcome === 'disagree' && check.liveAt.getTime() > now.getTime()) {
+        stated = check.liveAt;
+      } else {
+        unconfirmed =
+          check.outcome === 'unread' && PAGE_UNREADABLE.has(check.reason)
+            ? 'page_unreadable'
+            : 'page_unconfirmed';
+      }
     }
-    sequence = fresh;
   }
 
-  const children = await deps.loadChildren(database, sequence.familyId);
-  const match = sequence.window
-    ? matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: anchor })
-    : null;
+  const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: stated });
   // A course this family picked, on a portal Hale can read. Kept as ONE narrowed value
   // rather than a boolean, so nothing below can reach for a URL or a portal the
   // condition has not proved is there.
   const bound =
-    sequence.courseUrl !== null && portal !== null && sanitizeSpotUrl(sequence.courseUrl).ok
-      ? { url: sequence.courseUrl, portal }
-      : null;
+    sequence.courseUrl !== null && portal !== null ? { url: sequence.courseUrl, portal } : null;
   // The two legs that SPEAK about the bound course, and therefore the only two that read
   // its page. Every other leg is about the municipal window and needs no network.
   const boundCourse = leg === 'battle_plan' || leg === 'go' ? bound : null;
-  const fitted = match ? buildShortlist(match, children, now) : null;
+  const fitted = buildShortlist(match, children, now);
   // A family whose children no longer fit the band (a birthday crossed the ceiling
   // between the proposal and the leg) has nothing honest left to be told ABOUT THE
   // WINDOW — the heads-up and the readiness checklist both name who it fits, and a
@@ -700,16 +971,13 @@ async function runLegForSequence(
   // message started) never named who fits at all. Silence there would end the ladder
   // mid-sentence for the household this feature is for. Nothing changes for an unbound
   // ladder, which is every one of the thirteen municipalities Hale cannot read.
-  const boundSpeaks =
-    sequence.window === null ||
-    notice !== null ||
-    (bound !== null && leg !== 'heads_up' && leg !== 'readiness');
+  const boundSpeaks = bound !== null && leg !== 'heads_up' && leg !== 'readiness';
   if (fitted === null && !boundSpeaks) return emptyTally({ quiet: true, deduped, held });
-  const shortlist = fitted ?? (match ? windowShortlist(match) : urlShortlist(sequence, anchor));
+  const shortlist = fitted ?? windowShortlist(match);
   const effects: LegReadEffects = fitted === null ? { noFit: true } : {};
 
   let prep: { verdict: PrepVerdict; courseUrl: string } | null = null;
-  if (boundCourse !== null && !notice) {
+  if (boundCourse !== null) {
     prep = {
       verdict: await readCourse(reader, boundCourse.url, boundCourse.portal, {
         anchor,
@@ -724,106 +992,282 @@ async function runLegForSequence(
     // The anchor moves at the battle plan and NEVER at the go leg, whose key is already
     // spent: moving an interval a leg has fired in is a change no later tick can undo.
     const moved = movedClockOf(prep.verdict);
-    if (moved !== null && moved.getTime() !== anchor.getTime()) return emptyTally({ quiet: true });
+    if (leg === 'battle_plan' && moved !== null) {
+      effects.anchorMoved = await deps.refreshCourseAnchor(database, {
+        sequenceId: sequence.sequenceId,
+        // The page this clock was read off, so a link pasted while the read was in
+        // flight keeps its own morning.
+        courseUrl: boundCourse.url,
+        courseOpensAt: moved,
+        now,
+      });
+    }
   } else if (portal !== null && (leg === 'battle_plan' || leg === 'go')) {
     // A morning leg for a household whose town Hale can read, with nothing pasted: the
     // trail should say so in a word, or this row and a no-portal town's are the same row.
     effects.prep = 'unbound';
   }
 
-  const copyInput = {
+  const legInput = {
     shortlist,
     timeZone: sequence.timeZone,
     now,
     optIn: sequence.optIn,
-    anchor,
+    anchor: stated,
     portal,
     readinessReady: sequence.readinessReady,
     prep,
-    waitlist: {
-      position: sequence.waitlistPosition,
-      deadlineAt:
-        sequence.waitlistStartedAt === null
-          ? null
-          : waitlistDeadline(
-              sequence.waitlistStartedAt,
-              sequence.window?.waitlistResponseHours ?? null,
-            ),
-    },
+    waitlist: { position: sequence.waitlistPosition, startedAt: sequence.waitlistStartedAt },
   };
-  const body = await deps.compose({
-    leg,
-    language:
-      recipients.find((recipient) => recipient.parentUserId === sequence.parentUserId)?.language ??
-      recipients[0]?.language ??
-      'en',
-    reading,
-    resident: isResidentWindow,
-    copy: copyInput,
-    change: notice,
-  });
-  if (!body) throw new Error('registration reminder: writer unavailable or ungrounded');
+  let body: string;
+  if (unconfirmed !== null) {
+    const facts = dateUnconfirmedFacts(leg, legInput, unconfirmed);
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeDateUnconfirmed(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_leg_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_leg_unwritten',
+          version: 'date_unconfirmed',
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = dateUnconfirmedBody(written, sequence.window.sourceUrl);
+  } else if (leg === 'battle_plan') {
+    const decision = battlePlanDecision(legInput);
+    // VIL-484 · THE ALREADY-OPEN RETRY. The anchor has just moved to the page's past
+    // clock, so no later tick reaches this leg again: a miss here is a parent who is
+    // never told. It is written again while the text can still arrive before the
+    // morning the ladder named, and never after.
+    const retryable = decision.facts.situation === 'already_open';
+    const tries = retryable ? ALREADY_OPEN_DRAFT_TRIES : 1;
+    const clock = deps.clock ?? (() => new Date());
+    let written: string | null = null;
+    let attempts = 0;
+    while (attempts < tries) {
+      if (attempts > 0 && clock().getTime() >= anchor.getTime()) break;
+      attempts += 1;
+      written = await writeEvening(database, deps, sequence.familyId, decision.facts);
+      if (written) break;
+    }
+    // IDEMPOTENT: a slow retry may overlap another tick. A key spent meanwhile means
+    // that tick sent it, so this one sends nothing.
+    if (written && attempts > 1) {
+      for (let index = allowed.length - 1; index >= 0; index -= 1) {
+        const entry = allowed[index];
+        if (entry && (await deps.dedupeActive(database, entry.dedupeKey))) {
+          allowed.splice(index, 1);
+          deduped += 1;
+        }
+      }
+      if (allowed.length === 0) return emptyTally({ deduped, held, ...effects });
+    }
+    if (!written) {
+      if (retryable) {
+        console.error(
+          {
+            sequenceId: sequence.sequenceId,
+            outcome: 'registration_evening_unwritten',
+            situation: 'already_open',
+            attempts,
+          },
+          'registration sequence: already-open evening text unwritten after retries, nothing sent - for the #ops post',
+        );
+      }
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_evening_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_evening_unwritten',
+          ...(retryable ? { situation: 'already_open', attempts, ops: true } : {}),
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  } else if (leg === 'go') {
+    // VIL-484 · EVERY morning-of case is composed from facts; nothing is rendered.
+    const facts: MorningFacts = morningFacts(legInput);
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeMorning(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_morning_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_morning_unwritten',
+          situation: facts.situation,
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  } else if (leg === 'heads_up' || (leg === 'readiness' && portal == null)) {
+    // VIL-488 · the heads-up is composed from facts; there is no code sentence.
+    const facts = headsUpFacts(legInput);
+    const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+    const written =
+      deps.client && language
+        ? await deps.composeHeadsUp(deps.client, { ...facts, language }, sequence.familyId)
+        : null;
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_heads_up_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: {
+          leg,
+          windowId: sequence.window.id,
+          outcome: 'registration_heads_up_unwritten',
+        },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  } else {
+    // VIL-543 · the readiness checklist, the check-in and the waitlist guards are
+    // written from facts too; there is no code sentence.
+    const written = await deps.writeNote(database, sequence.familyId, legNoteFacts(leg, legInput));
+    if (!written) {
+      await deps.audit(database, {
+        familyId: sequence.familyId,
+        actor: 'system',
+        actionTaken: 'registration_leg_unwritten',
+        targetTable: 'registration_sequences',
+        targetId: sequence.sequenceId,
+        after: { leg, windowId: sequence.window.id, outcome: 'registration_leg_unwritten' },
+      });
+      return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1, ...effects };
+    }
+    body = written;
+  }
 
   // ONE COMPOSED LEG, TWO ENVELOPES. The sentence is about the household's morning and
   // is rendered once, on the LADDER's clock (the sequence row's), so both parents read
-  // the same time for the same registration. Each recipient still has their own
-  // consent and dedupe gates; no opt-out footer is appended.
+  // the same time for the same registration. Only the CASL line differs per recipient:
+  // whether this parent has been texted first before is a fact about them, and the gate
+  // answered it for each of them above.
+  const { sent, refused, promiseMessageId } = await deliverHouseholdText(database, deps, {
+    familyId: sequence.familyId,
+    sequenceId: sequence.sequenceId,
+    templateKey: `registration_sequence:${leg}`,
+    body,
+    allowed,
+    now,
+    auditVerb: 'registration_sequence_leg_sent',
+    // Enum-shaped provenance only, never the rendered body (rule #1). The three
+    // VIL-338 fields are the whole receipt for a send-time read: WHICH sentence the
+    // page earned, how far the page's clock sat from the anchor, and whether the
+    // anchor was moved. The M1 row's own disagreement rides here rather than in an
+    // audit verb of its own — a fact about public reference data is not an event in a
+    // family's history.
+    auditAfter: (recipient) => ({
+      leg,
+      windowId: sequence.window.id,
+      municipality: sequence.window.municipality,
+      cycleLabel: sequence.window.cycleLabel,
+      urgent: legIsUrgent(leg),
+      // Which SEAT this copy went to. The row already names the parent; this names
+      // the relationship, which is what a founder reading the trail is asking.
+      role: recipient.role,
+      // `prep` alone on the leg that had a portal and nothing bound: there was no
+      // read, so there is no drift to report and no anchor that could have moved.
+      ...(effects.prep === undefined ? {} : { prep: effects.prep }),
+      // VIL-423 · what the send-time date check said, and which text that earned.
+      ...(dateCheck === undefined ? {} : { dateCheck }),
+      ...(unconfirmed === null ? {} : { version: 'date_unconfirmed' }),
+      ...(prep === null
+        ? {}
+        : {
+            driftMinutes: driftOf(prep.verdict),
+            anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
+          }),
+    }),
+  });
+
+  // MEM-10 · ONCE PER LEG, not once per number. The promise is the HOUSEHOLD's — "I'll
+  // send your plan the evening before" is one plan — so a second recordCommitment would
+  // report a debt Hale does not owe, and a second fulfillCommitment would close a
+  // promise that was never opened twice.
+  if (promiseMessageId !== null) {
+    await recordLegPromise(
+      database,
+      {
+        sequence,
+        shortlist,
+        leg,
+        messageId: promiseMessageId,
+        anchor,
+        prep: prep?.verdict ?? null,
+        promisedPlan: unconfirmed === null,
+      },
+      deps,
+      now,
+    );
+  }
+  return { sent, deduped, refused, held, quiet: false, ...effects };
+}
+
+/**
+ * One composed text to every gated seat of a household: the reconcile gate on the string
+ * that leaves, the delivery, the ledger row, the audit row and the thread, per copy. A
+ * group household gets one bubble, and the other seat's dedupe key is spent beside it.
+ */
+async function deliverHouseholdText(
+  database: Database,
+  deps: SequenceRunDeps,
+  input: {
+    familyId: string;
+    sequenceId: string;
+    templateKey: string;
+    body: string;
+    allowed: ReadonlyArray<{
+      recipient: FamilyTextRecipient;
+      dedupeKey: string;
+      optOut: OptOutForm;
+    }>;
+    now: Date;
+    auditVerb: string;
+    auditAfter(recipient: FamilyTextRecipient): Record<string, unknown>;
+  },
+): Promise<{ sent: number; refused: number; promiseMessageId: string | null }> {
   let sent = 0;
   let refused = 0;
   let wireProvider: { id: string; chatId: string | null } | null = null;
-  const target = await familyOutboundTarget(database, sequence.familyId);
-  const wireCopies = householdCopies(target, allowed);
-  const shadowed = target.channel === 'group' ? allowed.slice(wireCopies.length) : [];
+  const target = await familyOutboundTarget(database, input.familyId);
+  const wireCopies = householdCopies(target, input.allowed);
+  const shadowed = target.channel === 'group' ? input.allowed.slice(wireCopies.length) : [];
   /** The row a family-scoped promise is opened and discharged against — the first leg
    * that actually left, in the reader's stable primary-parent-first order. */
   let promiseMessageId: string | null = null;
 
   for (const { recipient, dedupeKey, optOut } of wireCopies) {
-    {
-      const latest = await deps.live.reload(database, sequence.sequenceId);
-      const sendNow = new Date(now.getTime() + Date.now() - sendStartedAt);
-      if (
-        !latest ||
-        latest.optIn === 'declined' ||
-        latest.optIn === 'missing' ||
-        latest.courseUrl !== sequence.courseUrl ||
-        (notice
-          ? latest.pendingChange?.key !== notice.key
-          : !waitlistLeg &&
-            (latest.pausedAt || latest.courseOpensAt?.getTime() !== anchor.getTime()))
-      )
-        return emptyTally({ quiet: true });
-      if (
-        !notice &&
-        dueLeg(
-          {
-            openAt: anchor,
-            timeZone: latest.timeZone,
-            optIn: latest.optIn,
-            outcome: latest.outcome,
-            waitlistStartedAt: latest.waitlistStartedAt,
-            waitlistResponseHours: latest.window?.waitlistResponseHours ?? null,
-            portal,
-          },
-          sendNow,
-        ) !== leg
-      )
-        return emptyTally({ quiet: true });
-      const gate = await assertProactiveSendAllowed(
-        {
-          familyId: sequence.familyId,
-          parentUserId: recipient.parentUserId,
-          kind: 'registration_sequence',
-          urgent: !notice && legIsUrgent(leg),
-          now: sendNow,
-        },
-        deps.buildGate(database),
-      );
-      if (!gate.allowed) {
-        held.push(gate.reason);
-        continue;
-      }
-    }
     const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
     if (!to) {
       // The gate just said this parent has a live channel, so there IS one — a missing
@@ -839,23 +1283,23 @@ async function runLegForSequence(
     // than on the sentence. What it stops is a leg rendered for a household whose
     // sequence has gone (a claim nothing backs) and any future copy change that asserts
     // a booking or a promise about Hale itself.
-    const wireBody = withOptOut(body, optOut);
+    const wireBody = withOptOut(input.body, optOut);
     const unbacked = await deps.refuseUnbackedSend(database, {
-      familyId: sequence.familyId,
+      familyId: input.familyId,
       body: wireBody,
-      now,
+      now: input.now,
     });
     if (unbacked.length > 0) {
       console.error(
-        { sequenceId: sequence.sequenceId, leg, reasons: unbacked },
-        'registration sequence: the wire body claims a row that does not exist - leg refused',
+        { sequenceId: input.sequenceId, templateKey: input.templateKey, reasons: unbacked },
+        'registration sequence: the wire body claims a row that does not exist - text refused',
       );
       refused += 1;
       continue;
     }
 
     const delivered = await deliverFamilyOutbound(database, {
-      familyId: sequence.familyId,
+      familyId: input.familyId,
       body: wireBody,
       to,
       legacy: deps.transport,
@@ -869,65 +1313,41 @@ async function runLegForSequence(
     if (delivered.status === 'skipped') {
       refused += 1;
       console.warn(
-        { sequenceId: sequence.sequenceId, code: delivered.reason },
+        { sequenceId: input.sequenceId, code: delivered.reason },
         'registration sequence: outbound skipped',
       );
       if (delivered.reason !== 'not_configured') {
         await notePermanentSkip(database, {
-          familyId: sequence.familyId,
+          familyId: input.familyId,
           parentUserId: recipient.parentUserId,
           category: 'registration_sequence',
-          templateKey: `registration_sequence:${leg}`,
+          templateKey: input.templateKey,
           dedupeKey,
           reason: delivered.reason,
-          now,
+          now: input.now,
         });
       }
       continue;
     }
     const messageId = await deps.recordSend(database, {
-      familyId: sequence.familyId,
+      familyId: input.familyId,
       parentUserId: recipient.parentUserId,
       channel: delivered.channel === 'imessage' ? 'imessage' : 'sms',
       category: 'registration_sequence',
-      templateKey: `registration_sequence:${leg}`,
+      templateKey: input.templateKey,
       dedupeKey,
       status: acceptedStatus(delivered.channel === 'imessage' ? 'imessage' : 'sms'),
       providerMessageId: delivered.providerMessageId,
       providerChatId: delivered.chatId,
-      sentAt: now,
+      sentAt: input.now,
     });
     await deps.audit(database, {
-      familyId: sequence.familyId,
+      familyId: input.familyId,
       actor: 'system',
-      actionTaken: 'registration_sequence_leg_sent',
+      actionTaken: input.auditVerb,
       targetTable: 'channel_messages',
       targetId: messageId,
-      // Enum-shaped provenance only, never the rendered body (rule #1). The three
-      // VIL-338 fields are the whole receipt for a send-time read: WHICH sentence the
-      // page earned, how far the page's clock sat from the anchor, and whether the
-      // anchor was moved. The M1 row's own disagreement rides here rather than in an
-      // audit verb of its own — a fact about public reference data is not an event in a
-      // family's history.
-      after: {
-        leg,
-        windowId: sequence.window?.id ?? null,
-        municipality: sequence.window?.municipality ?? null,
-        cycleLabel: sequence.window?.cycleLabel ?? null,
-        urgent: legIsUrgent(leg),
-        // Which SEAT this copy went to. The row already names the parent; this names
-        // the relationship, which is what a founder reading the trail is asking.
-        role: recipient.role,
-        // `prep` alone on the leg that had a portal and nothing bound: there was no
-        // read, so there is no drift to report and no anchor that could have moved.
-        ...(effects.prep === undefined ? {} : { prep: effects.prep }),
-        ...(prep === null
-          ? {}
-          : {
-              driftMinutes: driftOf(prep.verdict),
-              anchorMovedMinutes: effects.anchorMoved === true ? driftOf(prep.verdict) : null,
-            }),
-      },
+      after: input.auditAfter(recipient),
     });
 
     // THE THREAD, which is where THIS parent's answer will be read — their own, one per
@@ -935,9 +1355,9 @@ async function runLegForSequence(
     // is not something Hale said. The COMPOSED leg, never the wire body — the CASL line
     // belongs on the wire and nowhere else.
     await deps.threadMessage(database, {
-      familyId: sequence.familyId,
+      familyId: input.familyId,
       parentUserId: recipient.parentUserId,
-      body,
+      body: input.body,
     });
     if (promiseMessageId === null) promiseMessageId = messageId;
     wireProvider = { id: delivered.providerMessageId, chatId: delivered.chatId };
@@ -949,43 +1369,254 @@ async function runLegForSequence(
   if (wireProvider && target.channel === 'group') {
     for (const shadow of shadowed) {
       await deps.recordSend(database, {
-        familyId: sequence.familyId,
+        familyId: input.familyId,
         parentUserId: shadow.recipient.parentUserId,
         channel: 'imessage',
         category: 'registration_sequence',
-        templateKey: `registration_sequence:${leg}`,
+        templateKey: input.templateKey,
         dedupeKey: shadow.dedupeKey,
         status: acceptedStatus('imessage'),
         providerMessageId: wireProvider.id,
         providerChatId: wireProvider.chatId,
-        sentAt: now,
+        sentAt: input.now,
       });
     }
   }
 
-  // MEM-10 · ONCE PER LEG, not once per number. The promise is the HOUSEHOLD's — "I'll
-  // send your plan the evening before" is one plan — so a second recordCommitment would
-  // report a debt Hale does not owe, and a second fulfillCommitment would close a
-  // promise that was never opened twice.
-  if (notice && (sent > 0 || deduped > 0) && held.length === 0 && refused === 0) {
-    await deps.live.acknowledgeChange(database, sequence);
-  }
-  if (!notice && promiseMessageId !== null) {
-    await recordLegPromise(
-      database,
-      {
-        sequence,
-        shortlist,
-        leg,
-        messageId: promiseMessageId,
-        anchor,
-        prep: prep?.verdict ?? null,
+  return { sent, refused, promiseMessageId };
+}
+
+/** A change note's identity: one per parent per moved opening, ever. A page that moves
+ * again owes a new note; one that flaps back to a date already noted owes none. */
+export function dateMovedDedupeKey(
+  familyId: string,
+  windowId: string,
+  opensAt: string,
+  parentUserId: string,
+): string {
+  return `registration_date_moved:${familyId}:${windowId}:${opensAt}:${parentUserId}`;
+}
+
+/**
+ * VIL-423 · tell a household, once, that the page moved an opening they were told.
+ *
+ * Only a seat that already received a dated leg for this window is owed one: everyone
+ * else hears the new date from their next leg, which the moved anchor now schedules. The
+ * change stays owed while a seat is held (quiet hours) or the text is unwritten, and is
+ * cleared once every owed seat has it, or the new opening has passed.
+ */
+async function sendDateMovedNote(
+  database: Database,
+  sequence: CatalogSequence,
+  deps: SequenceRunDeps,
+  now: Date,
+): Promise<LegTally> {
+  const change = parsePendingChange(sequence.pendingChange);
+  const settle = async () => {
+    await deps.saveDateWatch(database, sequence.sequenceId, { pendingChange: null });
+    sequence.pendingChange = null;
+  };
+  // The same condition `recheckDates` recorded the change under, re-read here because a
+  // household can opt out or report an outcome between that tick and this one (CASL).
+  const stopped =
+    sequence.outcome !== null
+      ? 'outcome_reported'
+      : sequence.optIn !== 'opted_in' && sequence.optIn !== 'pending'
+        ? 'not_opted_in'
+        : null;
+  if (stopped !== null) {
+    await settle();
+    await deps.audit(database, {
+      familyId: sequence.familyId,
+      actor: 'system',
+      actionTaken: 'registration_date_moved_dropped',
+      targetTable: 'registration_sequences',
+      targetId: sequence.sequenceId,
+      after: {
+        windowId: sequence.window.id,
+        outcome: 'registration_date_moved_dropped',
+        reason: stopped,
       },
-      deps,
-      now,
-    );
+    });
+    return emptyTally({ dropped: 1 });
   }
-  return { sent, deduped, refused, held, quiet: false, ...effects };
+  if (change === null || Date.parse(change.to) <= now.getTime()) {
+    await settle();
+    return emptyTally();
+  }
+
+  const recipients = await deps.loadRecipients(database, sequence.familyId);
+  const owed: Array<{ recipient: FamilyTextRecipient; dedupeKey: string }> = [];
+  let deduped = 0;
+  for (const recipient of recipients) {
+    let told = false;
+    for (const leg of DATED_LEGS) {
+      const key = legDedupeKey(sequence.familyId, sequence.window.id, leg, recipient.parentUserId);
+      if (await deps.dedupeActive(database, key)) {
+        told = true;
+        break;
+      }
+    }
+    if (!told) continue;
+    const dedupeKey = dateMovedDedupeKey(
+      sequence.familyId,
+      sequence.window.id,
+      change.to,
+      recipient.parentUserId,
+    );
+    if (await deps.dedupeActive(database, dedupeKey)) deduped += 1;
+    else owed.push({ recipient, dedupeKey });
+  }
+  if (owed.length === 0) {
+    await settle();
+    return emptyTally({ deduped });
+  }
+
+  const allowed: Array<{ recipient: FamilyTextRecipient; dedupeKey: string; optOut: OptOutForm }> =
+    [];
+  const held: ProactiveHoldReason[] = [];
+  for (const { recipient, dedupeKey } of owed) {
+    const verdict = await assertProactiveSendAllowed(
+      {
+        familyId: sequence.familyId,
+        parentUserId: recipient.parentUserId,
+        kind: 'registration_sequence',
+        now,
+        urgent: false,
+      },
+      deps.buildGate(database),
+    );
+    if (verdict.allowed) allowed.push({ recipient, dedupeKey, optOut: verdict.optOut });
+    else held.push(verdict.reason);
+  }
+  if (allowed.length === 0) return emptyTally({ deduped, held });
+
+  const { isResidentWindow } = ladderAnchor(sequence, 'enforce');
+  const opens = new Date(change.to);
+  const match = matchForSequence(sequence, { isResidentWindow, opensForFamilyAt: opens });
+  const children = await deps.loadChildren(database, sequence.familyId);
+  const facts = dateMovedFacts({
+    shortlist: buildShortlist(match, children, now) ?? windowShortlist(match),
+    timeZone: sequence.timeZone,
+    now,
+    was: new Date(change.from),
+    opens,
+    opensTimePrinted: change.toTimePrinted,
+  });
+  const language = deps.client ? await deps.loadLanguage(database, sequence.familyId) : null;
+  const written =
+    deps.client && language
+      ? await deps.composeDateMoved(deps.client, { ...facts, language }, sequence.familyId)
+      : null;
+  if (!written) {
+    await deps.audit(database, {
+      familyId: sequence.familyId,
+      actor: 'system',
+      actionTaken: 'registration_date_moved_unwritten',
+      targetTable: 'registration_sequences',
+      targetId: sequence.sequenceId,
+      after: { windowId: sequence.window.id, outcome: 'registration_date_moved_unwritten' },
+    });
+    return { sent: 0, deduped, refused: 0, held, quiet: false, unwritten: 1 };
+  }
+
+  const { sent, refused } = await deliverHouseholdText(database, deps, {
+    familyId: sequence.familyId,
+    sequenceId: sequence.sequenceId,
+    templateKey: 'registration_sequence:date_moved',
+    body: dateMovedBody(written, sequence.window.sourceUrl),
+    allowed,
+    now,
+    auditVerb: 'registration_date_moved_sent',
+    auditAfter: (recipient) => ({
+      windowId: sequence.window.id,
+      municipality: sequence.window.municipality,
+      cycleLabel: sequence.window.cycleLabel,
+      role: recipient.role,
+    }),
+  });
+  if (held.length === 0 && sent === allowed.length) await settle();
+  return { sent, deduped, refused, held, quiet: false };
+}
+
+/**
+ * VIL-423 · slice 4b — the scheduled re-read of each watched page (recheck.ts), before
+ * any leg is decided, so a moved opening moves this tick's legs too. Only a ladder whose
+ * opening comes from the catalog row: a bound course is read off its own page at the
+ * evening and go legs. Shadow logs what it found and stores only when to read next.
+ */
+async function recheckDates(
+  database: Database,
+  sequences: readonly CatalogSequence[],
+  deps: SequenceRunDeps,
+  mode: Exclude<DateCheckMode, 'off'>,
+  createReader: () => RegistrationReader | null,
+  result: SequenceRunResult,
+  now: Date,
+): Promise<void> {
+  const subjects: RecheckSubject[] = [];
+  for (const sequence of sequences) {
+    if (sequence.courseOpensAt !== null || sequence.outcome !== null) continue;
+    if (sequence.optIn !== 'opted_in' && sequence.optIn !== 'pending') continue;
+    const { isResidentWindow, anchor } = ladderAnchor(sequence, mode);
+    if (anchor.getTime() <= now.getTime()) continue;
+    subjects.push({
+      sequenceId: sequence.sequenceId,
+      window: sequence.window,
+      resident: isResidentWindow,
+      anchor,
+      nextCheckAt: sequence.nextCheckAt,
+      pendingChange: parsePendingChange(sequence.pendingChange),
+    });
+  }
+  const { results, reads } = await recheckWatchedDates(subjects, createReader, mode, now);
+  result.recheckReads = reads;
+  const byId = new Map(sequences.map((sequence) => [sequence.sequenceId, sequence]));
+  for (const { subject, outcome, reason, detail, patch } of results) {
+    result.dateRecheck[outcome] += 1;
+    console.info(
+      {
+        outcome: 'registration_date_recheck',
+        mode,
+        sequenceId: subject.sequenceId,
+        windowId: subject.window.id,
+        check: outcome,
+        reason,
+        detail,
+      },
+      'registration date recheck',
+    );
+    const sequence = byId.get(subject.sequenceId);
+    if (!sequence || Object.keys(patch).length === 0) continue;
+    try {
+      await deps.saveDateWatch(database, subject.sequenceId, patch);
+      if (patch.lastReading) sequence.lastReading = { ...patch.lastReading };
+      if (patch.nextCheckAt) sequence.nextCheckAt = patch.nextCheckAt;
+      if (patch.pendingChange !== undefined) {
+        sequence.pendingChange = patch.pendingChange === null ? null : { ...patch.pendingChange };
+      }
+      if (outcome === 'moved' && patch.lastReading) {
+        await deps.audit(database, {
+          familyId: sequence.familyId,
+          actor: 'system',
+          actionTaken: 'registration_date_moved',
+          targetTable: 'registration_sequences',
+          targetId: sequence.sequenceId,
+          after: {
+            windowId: sequence.window.id,
+            from: subject.anchor.toISOString(),
+            to: patch.lastReading.openAt,
+          },
+        });
+      }
+    } catch (err) {
+      result.failed += 1;
+      console.error(
+        { err, sequenceId: subject.sequenceId },
+        'registration sequence: date recheck save failed',
+      );
+    }
+  }
 }
 
 /** THIS tick's reading of the bound course. Pure once the bytes are in hand: the verdict
@@ -1023,6 +1654,27 @@ async function readCourse(
   });
 }
 
+/**
+ * The evening text, or null. Null is nothing sent. A missing client is named
+ * here; a model miss is named inside the composer.
+ */
+async function writeEvening(
+  database: Database,
+  deps: SequenceRunDeps,
+  familyId: string,
+  facts: EveningFacts,
+): Promise<string | null> {
+  if (!deps.client) {
+    console.error(
+      { familyId, outcome: 'registration_evening_unwritten', reason: 'client_unavailable' },
+      'registration sequence: evening text unwritten, nothing sent',
+    );
+    return null;
+  }
+  const language = await deps.loadLanguage(database, familyId);
+  return deps.composeEvening(deps.client, { ...facts, language }, familyId);
+}
+
 /** The page's own clock where this reading says the anchor is WRONG, or null. Both drift
  * verdicts carry one and nothing else may move the anchor: a `prepared` page agrees with
  * it within the tolerance, and a page nobody could read has no clock to move it to. */
@@ -1057,7 +1709,7 @@ function driftOf(verdict: PrepVerdict): number | null {
 async function recordLegPromise(
   database: Database,
   args: {
-    sequence: LiveSequence;
+    sequence: CatalogSequence;
     shortlist: Shortlist;
     leg: SequenceLeg;
     messageId: string;
@@ -1066,12 +1718,15 @@ async function recordLegPromise(
     anchor: Date;
     /** THIS tick's reading of the bound course, where one happened. */
     prep: PrepVerdict | null;
+    /** False when the leg went out as the date-unconfirmed text, which promises no plan. */
+    promisedPlan: boolean;
   },
   deps: SequenceRunDeps,
   now: Date,
 ): Promise<void> {
   const { sequence, leg, messageId } = args;
   if (leg === 'heads_up' && headsUpPromisesPlan(sequence.optIn)) {
+    if (!args.promisedPlan) return;
     await deps.recordCommitment(database, {
       familyId: sequence.familyId,
       kind: 'registration_plan',
@@ -1116,10 +1771,9 @@ async function recordLegPromise(
  * ages rather than stored: a child ages, a municipality corrects a band or a date, and
  * a leg must say what is true this morning. */
 function matchForSequence(
-  sequence: LiveSequence,
+  sequence: CatalogSequence,
   open: { isResidentWindow: boolean; opensForFamilyAt: Date },
 ): RegistrationMatch {
-  if (!sequence.window) throw new Error('registration: URL watch has no window match');
   return {
     window: sequence.window,
     // The sequence stores ONE window id, so a leg re-renders that cycle alone. The
@@ -1136,26 +1790,55 @@ function matchForSequence(
   };
 }
 
-export function registrationTargetFor(sequence: LiveSequence): RegistrationTarget {
-  if (
-    sequence.window &&
-    (sequence.courseUrl === null || sequence.courseUrl === sequence.window.sourceUrl)
-  )
-    return windowReadTarget(sequence.window);
-  if (!sequence.courseUrl) throw new Error('registration: missing watch target');
-  return {
-    municipality: new URL(sequence.courseUrl).hostname,
-    programDomain: 'course',
-    cycleLabel: 'the single course shown on this page',
-    sourceUrl: sequence.courseUrl,
-    timeZone:
-      typeof sequence.lastReading?.timeZone === 'string' ? sequence.lastReading.timeZone : null,
-  };
+/**
+ * The instant a catalog ladder runs on. THIS family's open, not the general one: a
+ * resident household in a town that publishes a head start registers a week early. The
+ * course page's own clock where the parent has bound one; else, under `enforce`, the
+ * opening the scheduled re-read last saw on the window's page (recheck.ts), so a page
+ * that moved its date moves every unsent leg; else the M1 row's family-open instant.
+ */
+function ladderAnchor(
+  sequence: CatalogSequence,
+  mode: DateCheckMode,
+): { isResidentWindow: boolean; anchor: Date } {
+  const { isResidentWindow, opensForFamilyAt } = resolveFamilyOpen(
+    sequence.window,
+    sequence.areaCoarse,
+  );
+  const seen =
+    mode === 'enforce'
+      ? lastSeenOpenAt(sequence.lastReading, sequence.window, isResidentWindow)
+      : null;
+  return { isResidentWindow, anchor: sequence.courseOpensAt ?? seen ?? opensForFamilyAt };
 }
 
-function urlShortlist(sequence: LiveSequence, anchor: Date): Shortlist {
-  if (!sequence.courseUrl) throw new Error('registration: missing URL');
-  return courseShortlist(sequence.sequenceId, sequence.courseUrl, anchor);
+type LinkWatchFate = { kind: 'undated' } | { kind: 'quiet' } | { kind: 'unread'; leg: SequenceLeg };
+
+/**
+ * A watch a parent's link created (VIL-423), evaluated without any I/O. No leg is sent
+ * for one yet: the only send-time reads are a catalog portal's, so its stored
+ * `course_opens_at` cannot be re-read before a text would speak it, and Hale holds no
+ * name for it that the heads-up composer would accept. Slice 7b lifts this.
+ *
+ * A paste is not consent, so only an approved watch can have a leg due at all. No
+ * waitlist clock and no portal are invented for it.
+ */
+function linkWatchFate(sequence: LiveSequence, now: Date): LinkWatchFate {
+  if (sequence.courseOpensAt === null) return { kind: 'undated' };
+  if (sequence.optIn !== 'opted_in') return { kind: 'quiet' };
+  const leg = dueLeg(
+    {
+      openAt: sequence.courseOpensAt,
+      timeZone: sequence.timeZone,
+      optIn: sequence.optIn,
+      outcome: sequence.outcome,
+      waitlistStartedAt: sequence.waitlistStartedAt,
+      waitlistResponseHours: null,
+      portal: null,
+    },
+    now,
+  );
+  return leg === null ? { kind: 'quiet' } : { kind: 'unread', leg };
 }
 
 export async function runRegistrationSequenceCron(
@@ -1168,61 +1851,98 @@ export async function runRegistrationSequenceCron(
   if (!allFamilies && allowlist.size === 0) return emptyResult(false);
 
   const result = emptyResult(true);
-  const armed = (family: { familyId: string }) => allFamilies || allowlist.has(family.familyId);
+  // On Preview, only allowlisted test families (no-op elsewhere).
+  const armed = (family: { familyId: string }) =>
+    familyInPreviewScope(family.familyId) && (allFamilies || allowlist.has(family.familyId));
 
-  const startedAt = Date.now();
-  {
-    const due = new Set(await deps.live.claimDue(database, now));
-    for (const sequenceId of due) {
-      if (Date.now() - startedAt > 120_000) break;
-      try {
-        const watch = await deps.live.reload(database, sequenceId);
-        if (!watch) continue;
-        const reading = await deps.live.read(registrationTargetFor(watch), now);
-        const open = watch.window ? resolveFamilyOpen(watch.window, watch.areaCoarse) : null;
-        await deps.live.refresh(database, {
-          sequenceId: watch.sequenceId,
-          reading,
-          resident: open?.isResidentWindow ?? false,
-          cachedAnchor: watch.courseOpensAt ?? open?.opensForFamilyAt ?? null,
-          parentTimeZone: watch.timeZone,
-          now,
-        });
-      } catch {
-        result.failed += 1;
-        console.error({ sequenceId }, 'registration refresh failed');
-      }
+  // ── Phase A: propose ────────────────────────────────────────────────────────
+  const families = (await deps.selectFamilies(database, now))
+    .filter(armed)
+    .filter((family) => isShortlistSlot(now, family.timeZone))
+    .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
+
+  for (const family of families) {
+    try {
+      if (await proposeForFamily(database, family, deps, now)) result.proposed += 1;
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, familyId: family.familyId }, 'registration sequence: propose failed');
     }
   }
 
-  // ── Run existing, parent-owned watches ───────────────────────────────────────────────────
-  const sequences = (await deps.loadLiveSequences(database, now))
-    .filter(armed)
-    .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN);
+  // ── Phase B: run the legs ───────────────────────────────────────────────────
+  const live = (await deps.loadLiveSequences(database, now)).filter(armed);
+  // Split BEFORE the cap: a link watch costs no I/O, so it must not take a slot a dated
+  // catalog ladder needs.
+  // Copies: the date re-read below updates this tick's view of a ladder it rescheduled.
+  const sequences = live
+    .filter((sequence): sequence is CatalogSequence => sequence.window !== null)
+    .slice(0, MAX_SEQUENCE_FAMILIES_PER_RUN)
+    .map((sequence) => ({ ...sequence }));
+  const linkWatches = live.filter((sequence) => sequence.window === null);
+
+  const undatedIds: string[] = [];
+  const unread: Array<{ sequenceId: string; leg: SequenceLeg }> = [];
+  for (const sequence of linkWatches) {
+    result.evaluated += 1;
+    try {
+      const fate = linkWatchFate(sequence, now);
+      if (fate.kind === 'undated') undatedIds.push(sequence.sequenceId);
+      else if (fate.kind === 'quiet') result.quiet += 1;
+      else unread.push({ sequenceId: sequence.sequenceId, leg: fate.leg });
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
+    }
+  }
+  result.undated = undatedIds.length;
+  result.linkUnread = unread.length;
+  if (undatedIds.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_undated', sequenceIds: undatedIds },
+      'registration sequence: link watches with no open date, no leg',
+    );
+  }
+  if (unread.length > 0) {
+    console.info(
+      { outcome: 'registration_link_watch_unread', watches: unread },
+      'registration sequence: link-watch legs due and held, nothing sent',
+    );
+  }
 
   // ONE reader for the whole phase, because the budget and the page cache are both
   // properties of the RUN: two households on one course cost one GET, and the wall clock
   // starts when the leg phase does rather than when the process did.
   const reader = courseReader(deps.fetchBody, Date.now());
-  for (const sequence of sequences) {
-    if (Date.now() - startedAt > 240_000) break;
-    result.evaluated += 1;
-    let lease: number | null = null;
+  // ONE page reader for the re-read and the send-time check, so a page the re-read just
+  // read costs nothing more when a leg states its date on the same tick.
+  let dateReader: RegistrationReader | null | undefined;
+  const sharedDateReader = () => {
+    if (dateReader === undefined) dateReader = deps.createDateReader();
+    return dateReader;
+  };
+  const checker = createDateChecker(sharedDateReader);
+  if (checker.mode !== 'off') {
     try {
-      lease = await deps.live.claimSend(
-        database,
-        sequence.sequenceId,
-        new Date(now.getTime() + Date.now() - startedAt),
-      );
-      if (lease === null) {
-        result.quiet += 1;
-        continue;
+      await recheckDates(database, sequences, deps, checker.mode, sharedDateReader, result, now);
+    } catch (err) {
+      result.failed += 1;
+      console.error({ err }, 'registration sequence: date recheck failed');
+    }
+  }
+  for (const sequence of sequences) {
+    result.evaluated += 1;
+    try {
+      if (checker.mode === 'enforce' && sequence.pendingChange !== null) {
+        const note = await sendDateMovedNote(database, sequence, deps, now);
+        result.dateMovedSent += note.sent;
+        result.dateMovedDropped += note.dropped ?? 0;
+        result.deduped += note.deduped;
+        result.refused += note.refused;
+        result.unwritten += note.unwritten ?? 0;
+        for (const reason of note.held) result.held[reason] += 1;
       }
-      await deps.live.draftReview(database, sequence);
-      if (Date.now() - startedAt > 210_000) continue;
-      const current = await deps.live.reload(database, sequence.sequenceId);
-      if (!current) continue;
-      const outcome = await runLegForSequence(database, current, deps, reader, now);
+      const outcome = await runLegForSequence(database, sequence, deps, reader, checker, now);
       if (outcome.prep) result.prep[outcome.prep] += 1;
       if (outcome.anchorMoved) result.prep.anchor_moved += 1;
       if (outcome.noFit) result.noFit += 1;
@@ -1230,6 +1950,7 @@ export async function runRegistrationSequenceCron(
       // RECIPIENT, so the two are added differently and deliberately.
       if (outcome.skipped) result.skipped[outcome.skipped] += 1;
       if (outcome.quiet) result.quiet += 1;
+      result.unwritten += outcome.unwritten ?? 0;
       result.sent += outcome.sent;
       result.deduped += outcome.deduped;
       result.refused += outcome.refused;
@@ -1238,10 +1959,9 @@ export async function runRegistrationSequenceCron(
       // One family's bad data must not silence every family after it.
       result.failed += 1;
       console.error({ err, sequenceId: sequence.sequenceId }, 'registration sequence: leg failed');
-    } finally {
-      if (lease !== null) await deps.live.releaseSend(database, sequence.sequenceId, lease);
     }
   }
+  result.dateCheck = { ...checker.tally };
   result.read = reader.tally.read;
   result.readSkipped = reader.tally.skipped;
   return result;
@@ -1250,20 +1970,39 @@ export async function runRegistrationSequenceCron(
 // ── prod wiring ──────────────────────────────────────────────────────────────
 
 /**
+ * The families a shortlist could be proposed to: settled SMS families with a primary
+ * parent. Consent, enrolment and the clock are the GATE's business — selecting on them
+ * here would put the same policy in two places and let them disagree.
+ */
+async function selectSequenceFamilies(database: Database): Promise<SequenceFamily[]> {
+  return database
+    .select({
+      familyId: schema.families.id,
+      areaCoarse: schema.families.areaCoarse,
+      parentUserId: schema.users.id,
+      timeZone: schema.users.timezone,
+    })
+    .from(schema.families)
+    .innerJoin(
+      schema.familyMembers,
+      and(
+        eq(schema.familyMembers.familyId, schema.families.id),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+    .where(eq(schema.families.onboardingStage, 'sms_active'));
+}
+
+/**
  * Every sequence that could still have a leg due: no outcome yet, or waitlisted (whose
  * guards are still ahead of it). A registered or missed window is finished.
  *
  * The opt-in is derived in the SAME query, from the approval spine's own columns, so
  * the leg phase costs one read for every sequence rather than one per sequence.
  */
-export async function loadLiveSequences(
-  database: Database,
-  sequenceId?: string,
-  familyId?: string,
-  now?: Date,
-): Promise<LiveSequence[]> {
-  const enabledFamilies = [...f14Allowlist()];
-  let query = database
+async function loadLiveSequences(database: Database): Promise<LiveSequence[]> {
+  const rows = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       familyId: schema.registrationSequences.familyId,
@@ -1275,45 +2014,31 @@ export async function loadLiveSequences(
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
       lastReading: schema.registrationSequences.lastReading,
+      nextCheckAt: schema.registrationSequences.nextCheckAt,
       pendingChange: schema.registrationSequences.pendingChange,
-      pausedAt: schema.registrationSequences.pausedAt,
-      dateReviewActionId: schema.registrationSequences.dateReviewActionId,
       actionId: schema.registrationSequences.actionId,
       executedAt: schema.actions.executedAt,
       revertedAt: schema.actions.revertedAt,
-      window: schema.registrationSequences.sourceContext,
+      window: schema.registrationWindows,
       timeZone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // LEFT: a watch a parent's link created has no catalog row (VIL-423). The FK
+    // cascades, so a null window here means exactly `window_id IS NULL`.
+    .leftJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .leftJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(
-      and(
-        sequenceId ? eq(schema.registrationSequences.id, sequenceId) : undefined,
-        familyId ? eq(schema.registrationSequences.familyId, familyId) : undefined,
-        now && !f14Enabled()
-          ? enabledFamilies.length
-            ? inArray(schema.registrationSequences.familyId, enabledFamilies)
-            : sql`false`
-          : undefined,
-        now
-          ? sql`(${schema.registrationSequences.pendingChange}->>'notified' = 'false'
-        or (${schema.registrationSequences.pendingChange}->>'kind' = 'later' and ${schema.registrationSequences.dateReviewActionId} is null)
-        or ${schema.registrationSequences.outcome} = 'waitlisted'
-        or coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz) between ${new Date(now.getTime() - 76 * 3_600_000)} and ${new Date(now.getTime() + 7 * 86_400_000)})`
-          : undefined,
-        or(
-          isNull(schema.registrationSequences.outcome),
-          eq(schema.registrationSequences.outcome, 'waitlisted'),
-        ),
+      or(
+        isNull(schema.registrationSequences.outcome),
+        eq(schema.registrationSequences.outcome, 'waitlisted'),
       ),
-    )
-    .orderBy(schema.registrationSequences.updatedAt, schema.registrationSequences.id)
-    .$dynamic();
-  if (now) query = query.limit(MAX_SEQUENCE_FAMILIES_PER_RUN);
-  const rows = await query;
+    );
 
   return rows.map((row) => ({
     sequenceId: row.sequenceId,
@@ -1321,7 +2046,7 @@ export async function loadLiveSequences(
     parentUserId: row.parentUserId,
     timeZone: row.timeZone,
     areaCoarse: row.areaCoarse,
-    window: registrationSourceState(row.window),
+    window: row.window,
     optIn: optInOf(row),
     outcome: row.outcome,
     waitlistPosition: row.waitlistPosition,
@@ -1330,9 +2055,8 @@ export async function loadLiveSequences(
     courseOpensAt: row.courseOpensAt,
     readinessReady: row.readinessReady,
     lastReading: row.lastReading,
-    pendingChange: registrationChange(row.pendingChange),
-    pausedAt: row.pausedAt,
-    dateReviewActionId: row.dateReviewActionId,
+    nextCheckAt: row.nextCheckAt,
+    pendingChange: row.pendingChange,
   }));
 }
 
@@ -1349,100 +2073,8 @@ function optInOf(row: {
 }
 
 export function defaultSequenceRunDeps(): SequenceRunDeps {
-  const read = createRegistrationReader();
   return {
-    compose: composeRegistrationReminder,
-    live: {
-      read,
-      readForSend: createRegistrationReader(),
-      claimDue: claimDueRegistrationChecks,
-      refresh: refreshRegistrationWatch,
-      claimSend: claimRegistrationSend,
-      releaseSend: releaseRegistrationSend,
-      reload: async (database, sequenceId) =>
-        (await loadLiveSequences(database, sequenceId))[0] ?? null,
-      draftReview: async (database, sequence) => {
-        const change = sequence.pendingChange;
-        if (
-          change?.kind !== 'later' ||
-          sequence.dateReviewActionId ||
-          sequence.optIn !== 'opted_in'
-        )
-          return;
-        const { actionId } = await draftInlineAction(
-          {
-            familyId: sequence.familyId,
-            actor: sequence.parentUserId,
-            intentKind: 'registration_date_review',
-            childId: null,
-            sourceAnswer: registrationChangeBody(change),
-            title: 'Confirm changed registration date',
-            sourceUrl: change.sourceUrl,
-            origin: 'registration_sweep',
-            contentProvenance: 'hale_authored',
-          },
-          database,
-          pipelineClient(),
-        );
-        await database.transaction(async (tx) => {
-          const [attached] = await tx
-            .update(schema.registrationSequences)
-            .set({ dateReviewActionId: actionId })
-            .where(
-              and(
-                eq(schema.registrationSequences.id, sequence.sequenceId),
-                isNull(schema.registrationSequences.dateReviewActionId),
-                sql`${schema.registrationSequences.pendingChange}->>'key' = ${change.key}`,
-              ),
-            )
-            .returning({ id: schema.registrationSequences.id });
-          if (!attached)
-            await tx
-              .update(schema.actions)
-              .set({
-                revertedAt: new Date(),
-                revertedReason: 'registration_date_changed',
-                userVisibleState: 'reverted',
-              })
-              .where(eq(schema.actions.id, actionId));
-          await tx.insert(schema.auditLog).values({
-            familyId: sequence.familyId,
-            actor: 'system',
-            actionTaken: attached
-              ? 'registration_date_review_proposed'
-              : 'registration_date_review_obsolete',
-            targetTable: 'actions',
-            targetId: actionId,
-            after: { sequenceId: sequence.sequenceId, changeKey: change.key },
-          });
-        });
-      },
-      acknowledgeChange: async (database, sequence) => {
-        const change = sequence.pendingChange;
-        if (!change) return;
-        await database.transaction(async (tx) => {
-          const [updated] = await tx
-            .update(schema.registrationSequences)
-            .set({ pendingChange: { ...change, notified: true } })
-            .where(
-              and(
-                eq(schema.registrationSequences.id, sequence.sequenceId),
-                sql`${schema.registrationSequences.pendingChange}->>'key' = ${change.key}`,
-              ),
-            )
-            .returning({ id: schema.registrationSequences.id });
-          if (!updated) return;
-          await tx.insert(schema.auditLog).values({
-            familyId: sequence.familyId,
-            actor: 'system',
-            actionTaken: 'registration_change_notified',
-            targetTable: 'registration_sequences',
-            targetId: sequence.sequenceId,
-            after: { changeKey: change.key },
-          });
-        });
-      },
-    },
+    selectFamilies: (database) => selectSequenceFamilies(database),
     loadChildren: async (database, familyId) =>
       database
         .select({
@@ -1455,7 +2087,58 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
         })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
-    loadLiveSequences: (database, now) => loadLiveSequences(database, undefined, undefined, now),
+    loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
+    loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
+    claimWindow: async (database, input) => {
+      const [row] = await database
+        .insert(schema.registrationSequences)
+        .values(input)
+        .onConflictDoNothing({
+          target: [schema.registrationSequences.familyId, schema.registrationSequences.windowId],
+        })
+        .returning({ id: schema.registrationSequences.id });
+      return row?.id ?? null;
+    },
+    draftShortlist: async (database, input) => {
+      // The SAME approval spine an Ask Hale chip uses: drafted, reviewed (rule #3), and
+      // held at drafted_for_approval. Nothing here executes (rule #4), and the action
+      // type it maps to has no executor that could register for anyone (D8).
+      const { actionId } = await draftInlineAction(
+        {
+          familyId: input.familyId,
+          actor: input.actorUserId,
+          intentKind: input.intentKind,
+          childId: input.childId,
+          sourceAnswer: input.rationale,
+          title: input.title,
+          sourceUrl: input.sourceUrl,
+          // Minted by this cron, not asked for by anyone. Without it the draft's event
+          // and audit row would read `ask_hale` — the trail claiming a parent asked for
+          // a shortlist Hale composed on its own (VIL-264).
+          origin: 'registration_sweep',
+          // Composed entirely from municipal registration rows — no child's words are
+          // in it, and it is about the household rather than any one child. Declaring
+          // that is what keeps the rule-#1 family fallback from redacting a card no
+          // grant could ever unlock (VIL-260).
+          contentProvenance: 'hale_authored',
+        },
+        database,
+        pipelineClient(),
+      );
+      return actionId;
+    },
+    attachAction: async (database, sequenceId, actionId) => {
+      await database
+        .update(schema.registrationSequences)
+        .set({ actionId, updatedAt: new Date() })
+        .where(eq(schema.registrationSequences.id, sequenceId));
+    },
+    releaseClaim: async (database, sequenceId) => {
+      await database
+        .delete(schema.registrationSequences)
+        .where(eq(schema.registrationSequences.id, sequenceId));
+    },
+    loadLiveSequences: (database) => loadLiveSequences(database),
     loadRecipients: (database, familyId) => loadFamilyTextRecipients(database, familyId),
     buildGate: buildOutboundGatePorts,
     refuseUnbackedSend,
@@ -1482,5 +2165,43 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     // throw and a 4 MB ceiling. Six seconds, because this read happens inside a leg
     // whose interval is fifteen minutes wide.
     fetchBody: createFetchBody(GO_FETCH_TIMEOUT_MS),
+    client: voiceClient(),
+    loadLanguage: familyLanguage,
+    composeEvening: composeRegistrationEvening,
+    composeMorning: composeRegistrationMorning,
+    composeHeadsUp: composeRegistrationHeadsUp,
+    writeNote: registrationNoteWriter(),
+    createDateReader: liveDateReader,
+    composeDateUnconfirmed,
+    saveDateWatch: async (database, sequenceId, patch) => {
+      await database
+        .update(schema.registrationSequences)
+        .set({
+          ...(patch.lastReading === undefined ? {} : { lastReading: { ...patch.lastReading } }),
+          ...(patch.lastReadAt === undefined ? {} : { lastReadAt: patch.lastReadAt }),
+          ...(patch.nextCheckAt === undefined ? {} : { nextCheckAt: patch.nextCheckAt }),
+          ...(patch.pendingChange === undefined
+            ? {}
+            : { pendingChange: patch.pendingChange === null ? null : { ...patch.pendingChange } }),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.registrationSequences.id, sequenceId));
+    },
+    composeDateMoved,
+    refreshCourseAnchor: async (database, input) => {
+      const [row] = await database
+        .update(schema.registrationSequences)
+        .set({ courseOpensAt: input.courseOpensAt, updatedAt: input.now })
+        .where(
+          and(
+            eq(schema.registrationSequences.id, input.sequenceId),
+            // The page the clock came from, still the page the row holds.
+            eq(schema.registrationSequences.courseUrl, input.courseUrl),
+            sql`${schema.registrationSequences.courseOpensAt} is distinct from ${input.courseOpensAt}`,
+          ),
+        )
+        .returning({ id: schema.registrationSequences.id });
+      return row !== undefined;
+    },
   };
 }

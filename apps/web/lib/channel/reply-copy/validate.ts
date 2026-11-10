@@ -2,12 +2,13 @@
  * The gate in front of a model-written duty or family-memory reply.
  *
  * The model may use only the facts it was given. A failure here is not edited:
- * the caller sends the locked sentence already on main (the #738 strings).
- * Compliance replies, refused, group sync, and the recall list lines never
- * come through here. Those stay fixed.
+ * the caller holds the send. Compliance replies, group sync, and the recall
+ * list lines never come through here. Group sync and the list lines stay fixed.
  */
 
-export type ReplyCopyLanguage = 'en' | 'fr';
+import { placeTokensIn } from '~/lib/channel/place-token';
+
+export type ReplyCopyLanguage = string;
 export type ReplyCopyRole = 'prose' | 'opening' | 'closing';
 
 export type ReplyCopyFailure =
@@ -33,58 +34,6 @@ export interface ReplyCopyCheck {
   questionAllowed: boolean;
   role: ReplyCopyRole;
 }
-
-export const REPLY_COPY_MAX_CHARS = 320;
-
-const EN_CUES = new Set([
-  'the',
-  'and',
-  'have',
-  'has',
-  'here',
-  'nobody',
-  'tomorrow',
-  'forgot',
-  'say',
-  'who',
-  'done',
-  'nothing',
-  'yet',
-  'what',
-  'your',
-  'changes',
-  'taking',
-  'old',
-  'thing',
-  'near',
-  'think',
-  'so',
-  'if',
-  'that',
-]);
-
-const FR_CUES = new Set([
-  'voici',
-  'pour',
-  'qui',
-  'demain',
-  'rien',
-  'personne',
-  'occupe',
-  'encore',
-  'famille',
-  'dites',
-  'ici',
-  'oublie',
-  'est',
-  'les',
-  'des',
-  'vous',
-  'sont',
-  'ca',
-  'faire',
-  'cest',
-]);
 
 /** Date and place words. They count even at the start of a sentence. */
 const PLACE_WORDS = new Set([
@@ -169,61 +118,7 @@ const BANNED: RegExp[] = [
   /[{}]/,
 ];
 
-const POSTAL = /\b[A-Z]\d[A-Z](?:\s?\d[A-Z]\d)?\b/g;
 const WORD = /[A-Za-z][A-Za-z'.-]*/g;
-
-function words(text: string): string[] {
-  return (
-    text
-      .toLowerCase()
-      .replace(/['’]/g, '')
-      .match(/[a-z]+/g) ?? []
-  );
-}
-
-function cueCount(tokens: readonly string[], cues: ReadonlySet<string>): number {
-  let count = 0;
-  for (const token of tokens) if (cues.has(token)) count += 1;
-  return count;
-}
-
-function languageMatches(text: string, language: ReplyCopyLanguage): boolean {
-  if (language === 'fr' && [...text].some((char) => char.charCodeAt(0) > 0x7f)) return false;
-  const tokens = words(text);
-  const en = cueCount(tokens, EN_CUES);
-  const fr = cueCount(tokens, FR_CUES);
-  if (language === 'fr') return fr > en && fr > 0;
-  return en > fr && en > 0;
-}
-
-function sentences(text: string): string[] {
-  const parts = text
-    .split(/(?<=[.!])\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-  return parts.length > 0 ? parts : [text.trim()];
-}
-
-function isNextStep(sentence: string): boolean {
-  const trimmed = sentence.trim();
-  if (/^nothing to do\.$/i.test(trimmed)) return true;
-  if (/^rien a faire\.$/i.test(trimmed)) return true;
-  if (trimmed.endsWith('?')) return true;
-  if (/^(say|text|dites|dis)\b/i.test(trimmed)) return true;
-  const questions = trimmed.match(/\?/g)?.length ?? 0;
-  return questions === 1 && /\b(say|text|dites|dis)\b/i.test(trimmed);
-}
-
-function endsInOneNextStep(text: string, role: ReplyCopyRole): boolean {
-  if (/[\r\n]/.test(text)) return false;
-  const parts = sentences(text);
-  const cap = role === 'prose' ? 2 : 1;
-  if (parts.length < 1 || parts.length > cap) return false;
-  if (role === 'opening') return true;
-  const nexts = parts.filter(isNextStep);
-  if (nexts.length !== 1) return false;
-  return isNextStep(parts[parts.length - 1] ?? '');
-}
 
 function stem(raw: string): string {
   return raw.replace(/'(s)?$/i, '');
@@ -249,9 +144,8 @@ function sentenceStart(text: string, index: number): boolean {
 }
 
 function inventedPlace(text: string, facts: readonly string[]): boolean {
-  for (const match of text.matchAll(POSTAL)) {
-    const code = match[0] ?? '';
-    if (code && !grounded(code, facts)) return true;
+  for (const code of placeTokensIn(text)) {
+    if (!grounded(code, facts)) return true;
   }
   for (const match of text.matchAll(WORD)) {
     const raw = match[0] ?? '';
@@ -284,14 +178,12 @@ function inventedName(text: string, facts: readonly string[]): boolean {
 export function validateReplyCopy(text: string, check: ReplyCopyCheck): ReplyCopyFailure | null {
   const trimmed = text.trim();
   if (!trimmed) return 'empty';
-  if (trimmed.length > REPLY_COPY_MAX_CHARS) return 'length';
-  if (!languageMatches(trimmed, check.language)) return 'language';
   if (BANNED.some((pattern) => pattern.test(trimmed))) return 'banned';
   const questions = trimmed.match(/\?/g)?.length ?? 0;
   if (questions > 1) return 'question';
   if (!check.questionAllowed && questions > 0) return 'question';
   if (check.role === 'opening' && questions > 0) return 'question';
-  if (!endsInOneNextStep(trimmed, check.role)) return 'next_step';
+  // Design (#973): no sentence cap and no required closing phrase. Tone is the skill's.
   const allowedDigits = new Set(check.facts.flatMap((fact) => digitRuns(fact)));
   if (digitRuns(trimmed).some((run) => !allowedDigits.has(run))) return 'digit';
   if (inventedPlace(trimmed, check.facts)) return 'place';

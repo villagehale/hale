@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text correctly names the all-day PD Day as tomorrow with no clock time, but it adds two unstated inferences: that there is no school, which is a consequence of the title not given in the facts, and the filler sentence 'Hope you can plan around it', which is a wish and a suggestion nobody asked for. Both are fact or filler failures, so the score is low.",
+    "score": 2
+  }
+}

@@ -66,6 +66,7 @@ describe('group onboarding line facts', () => {
       'en',
     );
     expect(confirmed.questions).toBe(0);
-    expect(confirmed.mustMention).toEqual(['Sam', 'aunt']);
+    expect(confirmed.facts).toMatchObject({ name: 'Sam', role: 'aunt' });
+    expect(confirmed.mustMention).toEqual(['Sam']);
   });
 });

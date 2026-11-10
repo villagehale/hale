@@ -26,6 +26,9 @@
 //     did not list the field, so the deep pass learned it and the parent never heard it.
 //   · the follow-up gates, mirrored from followup-note.ts - links, claiming
 //     verification, and burying the top pick past the first segment.
+//   · research log - the follow-up judge (followup-note.ts, run through
+//     lib/followup-process.mjs) still names a search sentence after every redraft.
+//   · silent watch - a watch row the sent text never mentions.
 //   · a date credited to a page that does not carry it is the judge's call (JUDGE_SYSTEM),
 //     with every fetched page in its notes (notesForTheJudge). No check reads the wording.
 //
@@ -55,6 +58,7 @@ import { textOfFetchSource } from '../../web/lib/channel/activity/pdf-text.mjs';
 import { capSdkClient, installSpendCap, readLedger } from '../../web/lib/testing/spend-cap.mjs';
 import { DEEP_FIXTURES } from './activity-deep-fixtures.mjs';
 import { notesForTheJudge } from './lib/activity-deep-facts.mjs';
+import { loadFollowUpProcessJudge } from './lib/followup-process.mjs';
 import {
   JUDGE_MIN,
   JUDGE_SAMPLES_MEDIAN,
@@ -77,6 +81,7 @@ import {
   statesAFigure,
   statesNoCost,
 } from './lib/quote-match.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -96,8 +101,6 @@ export const RESEARCH_MAX_TOKENS = 8192;
 export const EXTRACT_MAX_TOKENS = 16384;
 const SLOTS_IN_TEXT = 2;
 const MAX_FOLLOWUP_ATTEMPTS = 3;
-const FIRST_SEGMENT_CHARS = 153;
-
 // ── the runtime's request shapes, replicated ─────────────────────────────────
 
 export const DEEP_TOOL_SCHEMA = {
@@ -470,7 +473,7 @@ function identifyingWords(name) {
 function topPickLeads(body, slots) {
   const top = slots[0];
   if (!top) return true;
-  const head = body.slice(0, FIRST_SEGMENT_CHARS).toLowerCase();
+  const head = body.toLowerCase();
   // A find is identified by its programme OR by its place: a composite `name` that reduces
   // to a programme stream ("...Preschool and Kinderfun") is not what a parent reads.
   const venue = identifyingWords(top.sourceName ?? top.source_name ?? '');
@@ -513,6 +516,16 @@ function carriesFact(field, kind) {
   return statesAFigure(String(field));
 }
 
+/** Mirrors `textSlots` (deliver.ts): the best SLOTS_IN_TEXT, plus the first held slot
+ * stating a registration date when none of them does. */
+function textSlots(slots) {
+  const picks = slots.slice(0, SLOTS_IN_TEXT);
+  const dated = (slot) => carriesFact(slot.registration, 'registration');
+  if (picks.some(dated)) return picks;
+  const extra = slots.slice(SLOTS_IN_TEXT).find(dated);
+  return extra ? [...picks, extra] : picks;
+}
+
 /** Mirrors `awaitsAPostedPage` (followup-note.ts). A continuation is a claim about WHY
  * Hale is coming back; in the future tense the absence-claim gate cannot see it. The
  * trigger clause may not open on Hale - "when I can get to them" is the true sentence
@@ -528,7 +541,7 @@ function waitsOnAPageItCouldNotRead(body) {
   return SELF_LIMITED.test(body) && AWAITS_PUBLICATION.test(body);
 }
 
-function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
+function followUpViolations(body, slots, watch, commitsToReturn) {
   if (body === '') return [{ tag: 'empty', reason: 'The message was empty.' }];
   const violations = [];
   if (LINK_SHAPE.test(body)) {
@@ -547,7 +560,7 @@ function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
   if (!topPickLeads(body, slots)) {
     violations.push({
       tag: 'buried_top_pick',
-      reason: `The best find (${slots[0]?.name}) is not named in the first ${FIRST_SEGMENT_CHARS} characters, so it is the first thing a trim would cut. Lead with it.`,
+      reason: `The best find (${slots[0]?.name}) is not named. Lead with it.`,
     });
   }
   if (body.includes('?')) {
@@ -564,17 +577,13 @@ function followUpViolations(body, slots, pageEvidence, watch, commitsToReturn) {
         'The message says Hale could not get at these details AND that it will come back when the venue posts them. Both cannot be true - what Hale is waiting on is its own access, not their next update. Keep the first sentence and say you will come back when YOU can get at them, and change nothing else.',
     });
   }
-  if (watch !== commitsToReturn) {
+  // Mirrors the runtime (VIL-571): only a promise with no row behind it is refused. With
+  // a row, whether the watch is worth a sentence is the model's call.
+  if (commitsToReturn && !watch) {
     violations.push({
-      tag: watch ? 'silent_watch' : 'unbacked_promise',
-      // The EXAMPLE is page-state-aware or the two corrections fight: under
-      // `page_has_schedule` the gate above refuses the very sentence this one used to
-      // hand the model as the fix.
-      reason: watch
-        ? `This follow-up leaves something open and Hale has already committed to going back. Say so in the first person, as a statement, in the language of the message: that Hale will keep watching and text them when ${
-            pageEvidence === 'page_has_schedule' ? 'it can get to the details' : 'the details post'
-          }.`
-        : 'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
+      tag: 'unbacked_promise',
+      reason:
+        'The message says Hale will come back or keep looking. Nothing is outstanding on this one and no such promise has been written down, so that sentence would be false. Hand the find over and stop.',
     });
   }
   return violations;
@@ -623,66 +632,7 @@ function factChecks(fixture) {
   return Object.keys(checks).length > 0 ? { factChecks: checks } : {};
 }
 
-export const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE deep research pass Hale ran to keep a promise it',
-  'made a parent about what their young child could do locally. Hale searched, opened the',
-  "operator's own pages, extracted structured slots, and wrote one SMS from them. It never",
-  'saw the child - only a de-identified subject, the town and a coarse stage. You are given',
-  'the subject, the town, the stage, what the pages said (notes), the slots it extracted,',
-  'the message it wrote, and watchFor (fixture-specific notes). Score 1-5.',
-  'A 5: every slot is a real thing on the page, with the day, the session dates and the fee',
-  'exactly as printed, each cited to the page it was read off, and where the page gave a',
-  'REGISTRATION date the slot carries it and so does the message. The message leads with the',
-  'best slot by name, attributes the facts ("their site says"), carries the registration',
-  'window, attributes rather than claiming to have confirmed, and is plain ASCII with no',
-  'link and NO QUESTION AT ALL. Do not score the message down for length.',
-  'THIS MESSAGE MAKES NO OFFER, and a missing closing question is CORRECT rather than a',
-  'gap. Every question Hale asks is a proposal and every proposal is a row somebody wrote',
-  'down; nothing on this path can write one, so a "want me to..." here is a yes with',
-  'nowhere to land (2026-08-22: it landed on an unrelated approvals queue). Do not mark a',
-  'message down for ending on a statement.',
-  'You are given `watch`. When it is TRUE, Hale has ALREADY written a continuation promise',
-  'to go back and look again, and the message must say so in the first person ("I\'ll keep',
-  'watching and text you when they post"): that is a commitment that exists, not an',
-  'unverified claim, and scoring it as one is wrong. When it is FALSE no such row exists',
-  'and any coming-back sentence is a promise nothing is behind - THAT is the low score.',
-  'You are given `pageEvidence`. It bears on ONE thing: whether a NEGATIVE claim about what',
-  'a page carries is earned. A message that makes no such claim is correct under every',
-  'state and is never marked down for the field, and attribution is not such a claim - a',
-  'snippet off the venue\'s own site IS "their site says" in all three states.',
-  '`page_has_no_schedule` - a page was opened today and carries no time and no price, so',
-  '"no fall days, times or prices are up yet" is TRUE here and is not a fault.',
-  '`no_page_read` - nobody opened a page today, so "not posted yet" would be a report on a',
-  'page nobody read; where that sentence is wanted it is "I could not get into their page',
-  'today".',
-  '`page_has_schedule` - a page was opened and DOES publish times and prices, and Hale could',
-  "not tie these facts to it; the gap is HALE'S, so where that sentence is wanted it is",
-  'first person - "I could not pin down the day or the price" - never "not posted yet".',
-  'Score an UNEARNED negative claim low. Score nothing else off this field.',
-  'Length is not a fault. Dropping a find so the text is shorter is withholding; withholding',
-  'is going quiet about a find, or hedging instead of naming anything at all.',
-  'A LOW score is any of: a price or a date that is not on the page it is attributed to;',
-  'a figure borrowed from a different program or a room rental on the same site; a slot for',
-  'an age band the page does not serve; reporting a schedule as "not posted" when',
-  '`pageEvidence` does not say `page_has_no_schedule`; an empty result when the page plainly lists something',
-  'fitting; a message that drops the registration date the slots carried; a message that',
-  'presents page-read facts as verified.',
-  'You may be given `factChecks`. `registrationFact` is the registration date the page',
-  'prints, in the spellings a reader might see: when the slots carry it and the message',
-  'does not, or when no slot carries it although the notes print it, score low.',
-  '`figuresFromElsewhere` are figures that are on the site but belong to something else',
-  '(another program, a membership, a room rental): a slot that states one as its own',
-  'price, time or date scores low. Judge these by meaning, not by exact wording.',
-  'When `pageEvidence` is `page_has_schedule` and a page that was read links a schedule',
-  'document (a PDF) that was not itself opened, the slots or the notes must say that',
-  'document could not be read; going quiet about it scores low.',
-  'An EMPTY slot list is CORRECT when the page was read and genuinely has nothing for this',
-  'age. Score that a 5 when the message says so plainly and specifically.',
-  'When `message` is NULL no text was composed for this pass - production discards a',
-  'research turn that opened no page before it reaches the composer - so score the slots',
-  'alone and ignore everything above about the message.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+export const JUDGE_SYSTEM = judgePrompt('activity-deep');
 
 /**
  * The deterministic broken stand-in — one failure per gate, so `--broken` proves each one
@@ -863,6 +813,7 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const deepSkill = await agent.loadSkill(DEEP_SKILL);
   const finderSkill = await agent.loadSkill(FINDER_SKILL);
+  const judgeProcess = await loadFollowUpProcessJudge(agent);
   const model = candidateModel ?? agent.pickModel(deepSkill.meta.task);
   const composerModel = agent.pickModel(finderSkill.meta.task);
   const subjectLane = candidateModel ? null : agent.pickLane(deepSkill.meta.task);
@@ -1007,13 +958,14 @@ async function main() {
     // (sweep.ts) - so those slots never reach the composer, and composing from them here
     // would be scoring a message the product does not send.
     const composesText = fixture.composesText !== false;
-    const inText = composesText ? kept.slice(0, SLOTS_IN_TEXT) : [];
+    const inText = composesText ? textSlots(kept) : [];
     // The two sweep facts the composer is told (deliver.ts). A page read out of the
     // provider's cache is not a page read today, and a page that was read and DOES publish
     // a schedule buys no licence to report an absence either.
     const pageEvidence = readPageVerdict(evidence);
     const watch = watchWarranted(inText);
     let body = '';
+    let mentionsWatch = false;
     let violations = [];
     let firstDraftViolations = [];
     for (let attempt = 1; composesText && attempt <= MAX_FOLLOWUP_ATTEMPTS; attempt += 1) {
@@ -1045,11 +997,29 @@ async function main() {
             })
           ).value;
       body = flatten(composed.message);
-      violations = followUpViolations(body, inText, pageEvidence, watch, composed.commits_to_return === true);
+      mentionsWatch = composed.commits_to_return === true;
+      violations = followUpViolations(body, inText, watch, mentionsWatch);
+      // The process judge reads only a draft the mechanical gates passed, as in
+      // followup-note.ts. Skipped in broken mode with the quality judge below.
+      if (violations.length === 0 && !broken) {
+        const searchLog = await judgeProcess(body, {
+          tag: evalRunTag(`activity-deep-followup-process:${fixture.id}:${attempt}`),
+          cachedOnly,
+          getClient,
+          cost,
+        });
+        if (searchLog) violations = [searchLog];
+      }
       if (attempt === 1) firstDraftViolations = violations;
-      if (violations.length === 0 || broken) break;
+      // An unjudged draft is not redrafted: production sends nothing.
+      if (violations.length === 0 || broken || violations[0]?.tag === 'process_unjudged') break;
     }
     failures.push(...violations.map((v) => v.tag));
+    // A watch row the sent text never tells the parent about. Not a runtime gate (whether
+    // to mention it is the model's call), so it is scored here and logged in production.
+    if (composesText && watch && violations.length === 0 && !mentionsWatch) {
+      failures.push('silent_watch');
+    }
 
     // The last hop, the registration fact reaching the text, is the judge's (`factChecks`).
 
@@ -1126,6 +1096,9 @@ async function main() {
     `unbacked promise:          ${count('unbacked_promise')}  (a coming-back sentence with no continuation row)`,
   );
   console.log(`silent watch:              ${count('silent_watch')}`);
+  console.log(
+    `research log:              ${count('reports_process') + count('process_unjudged')}`,
+  );
   console.log(`buried top pick:           ${count('buried_top_pick')}`);
   console.log(`links a URL:               ${count('links_a_url')}`);
   console.log(

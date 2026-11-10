@@ -146,38 +146,13 @@ async function seatCoParent(seeded: {
 }
 
 describe('who the family-scoped sweeps text', () => {
-  it('retains the stored language tag without an English/French allowlist', async () => {
-    const seeded = await seedFamily();
-    await db.database
-      .update(schema.users)
-      .set({ locale: 'ar' })
-      .where(eq(schema.users.id, seeded.parentUserId));
-    expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      {
-        parentUserId: seeded.parentUserId,
-        timeZone: 'America/Toronto',
-        role: 'primary_parent',
-        language: 'ar',
-      },
-    ]);
-  });
   it('returns both parent seats, the primary first', async () => {
     const seeded = await seedFamily();
     const coParentUserId = await seatCoParent(seeded);
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      {
-        parentUserId: seeded.parentUserId,
-        timeZone: 'America/Toronto',
-        role: 'primary_parent',
-        language: 'en-CA',
-      },
-      {
-        parentUserId: coParentUserId,
-        timeZone: 'America/Toronto',
-        role: 'co_parent',
-        language: 'en-CA',
-      },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
+      { parentUserId: coParentUserId, timeZone: 'UTC', role: 'co_parent' },
     ]);
   });
 
@@ -192,12 +167,7 @@ describe('who the family-scoped sweeps text', () => {
     expect(departure.outcome).toBe('departed');
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      {
-        parentUserId: seeded.parentUserId,
-        timeZone: 'America/Toronto',
-        role: 'primary_parent',
-        language: 'en-CA',
-      },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
     ]);
   });
 
@@ -229,12 +199,7 @@ describe('who the family-scoped sweeps text', () => {
     expect(seats).toEqual([{ role: 'co_parent' }]);
 
     expect(await loadFamilyTextRecipients(db.database, seeded.familyId)).toEqual([
-      {
-        parentUserId: seeded.parentUserId,
-        timeZone: 'America/Toronto',
-        role: 'primary_parent',
-        language: 'en-CA',
-      },
+      { parentUserId: seeded.parentUserId, timeZone: 'UTC', role: 'primary_parent' },
     ]);
   });
 

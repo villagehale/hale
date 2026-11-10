@@ -72,15 +72,19 @@ export function normalizeLocation(input: LocationInput): NormalizedLocation {
 }
 
 /**
- * The only region Hale is compliance-cleared to onboard today (hard rule #1):
- * Canada. Broadening is a DELIBERATE per-market program (GDPR/COPPA + regional
- * data residency), not an assumption — so onboarding rejects an explicit
- * non-Canadian country until that market is cleared. A null country (the
- * Canada-first baseline / unspecified) passes; the country NAME is matched
- * case-insensitively (Google Places and the free-text field both return the
- * display name, e.g. "Canada").
+ * Regions Hale onboards today: Canada and the United States. Anywhere else is a
+ * model-written reply, not a fixed refusal. A null country (unspecified) passes;
+ * the country NAME is matched case-insensitively.
  */
-const SUPPORTED_COUNTRY_ALIASES = new Set(['canada', 'ca', 'can']);
+const SUPPORTED_COUNTRY_ALIASES = new Set([
+  'canada',
+  'ca',
+  'can',
+  'united states',
+  'united states of america',
+  'usa',
+  'us',
+]);
 
 export function isOnboardingRegionSupported(country: string | null): boolean {
   if (country === null) return true;

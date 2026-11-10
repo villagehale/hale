@@ -79,23 +79,13 @@ describe('reply copy validator rules', () => {
     expect(validateReplyCopy('   ', check())).toBe('empty');
   });
 
-  it('rejects more than 320 characters', () => {
-    expect(validateReplyCopy(`${'a'.repeat(321)}`, check())).toBe('length');
-  });
-
-  it('rejects a reply in the other language, and a French reply that is not ASCII', () => {
+  it('sends a long reply and an accented French reply', () => {
     expect(
-      validateReplyCopy('Voici la famille. Dites-le ici si ca change.', check({ language: 'en' })),
-    ).toBe('language');
-    expect(
-      validateReplyCopy(ASK, check({ facts: ['Theo', 'swim', 'Saturday', '9'], language: 'fr' })),
-    ).toBe('language');
-    expect(
-      validateReplyCopy("C'est déjà fait. Dites-le ici si ca change.", check({ language: 'fr' })),
-    ).toBe('language');
+      validateReplyCopy(`${'a'.repeat(321)}. Say done.`, check({ questionAllowed: false })),
+    ).not.toBe('length');
     expect(
       validateReplyCopy(
-        "Demain Sam s'occupe de la natation. Dites-le ici si ca change.",
+        "Demain Sam s'occupe de la natation. Dites-le ici si ça change.",
         check({
           language: 'fr',
           facts: ['Demain', 'Sam', 'natation'],
@@ -131,19 +121,19 @@ describe('reply copy validator rules', () => {
     ).toBe('question');
   });
 
-  it('rejects a reply that does not end in one next step', () => {
+  it('Design #973: needs no fixed closing phrase and has no sentence cap', () => {
     expect(
       validateReplyCopy(
-        'Theo has swim at 9 on Saturday.',
-        check({ facts: ['Theo', 'swim', '9', 'Saturday'], questionAllowed: false }),
+        'Got it, swim is covered.',
+        check({ facts: ['swim'], questionAllowed: false }),
       ),
-    ).toBe('next_step');
+    ).toBeNull();
     expect(
       validateReplyCopy(
-        'Theo has swim. Sam has it too. Say so here if that changes.',
+        'Theo has swim. Sam has it too. All set.',
         check({ facts: ['Theo', 'Sam', 'swim'], questionAllowed: false }),
       ),
-    ).toBe('next_step');
+    ).toBeNull();
   });
 
   it('rejects a place that was not in the facts', () => {

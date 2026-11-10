@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts: all three events are present with correct day (tomorrow), start, end, venue name, address, and who it's for (Theo for the tour, Léa for storytime and swim). AM/PM is correct: tour 10 to 11 a.m., storytime 1:30 to 2 p.m., swim 5 to 5:45 p.m. (swim says 'at 5, done by 5:45 p.m.', which reads as 5 p.m. via the p.m. at the end). Nothing invented, no travel or departure claims, no link, correct language. Titles keep their meaning ('Storytime' for 'Toddler Storytime' and 'Swim' are the event names; 'Montessori tour' kept). Bold is none, which is fine. Voice check: the three texts vary in shape ('Tomorrow starts with...', 'Then Storytime for Léa... It runs...', 'Swim for Léa is at 5, done by...'), separate texts rather than one block, and read like a person texting rather than the same frame filled in three times.",
+    "score": 5
+  }
+}

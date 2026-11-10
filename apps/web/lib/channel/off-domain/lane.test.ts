@@ -1,6 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HealthPlace } from '~/lib/channel/health-line';
 import {
   GENERAL_ANSWER_SEARCH_ENABLED_ENV,
   type GeneralAnswerFallback,
@@ -9,14 +10,7 @@ import {
   type PendingAsk,
   createGeneralAnswer,
 } from './answer';
-import {
-  DIRECT_ACCESS_EYE_REPLY,
-  PROVIDER_ACCESS_REPLY,
-  PROVIDER_ACCESS_REPLY_BY_LANGUAGE,
-  UNPLACEABLE_PROVIDER_REPLY,
-  namesAMentalCrisis,
-  namesAnEmergency,
-} from './copy';
+import { referralReply } from './copy';
 import {
   type InboundThread,
   type OffDomainPorts,
@@ -29,6 +23,9 @@ import {
 } from './lane';
 import type { MedicalReply } from './medical';
 import { type LaneReading, type LaneScreenFallback, createInboundLaneScreen } from './screen';
+
+/** The province whose verified provider paths these lines are (VIL-589). */
+const ONTARIO: HealthPlace = { country: 'CA', provinceOrState: 'Ontario' };
 
 // The live search is on by default in production. These tests describe the kill switch
 // (dark) unless a test lights it, so each starts dark.
@@ -90,6 +87,8 @@ interface Harness extends OffDomainPorts {
   continueSeen: Array<{ text: string; pending: PendingAsk }>;
   medicalCalls: number;
   medicalSeen: string[];
+  medicalPlaces: Array<HealthPlace | null>;
+  healthPlaceAskedFor: string[];
   momentCalls: number;
   momentSeen: Array<{ text: string; moment: string }>;
   recorded: Recorded[];
@@ -107,6 +106,10 @@ function ports(
     pendingRead?: PendingAskRead;
     /** What the composer makes of the next text read beside it. */
     continued?: GeneralAnswerOutcome | NotAReply;
+    /** Stored household language. Templates follow this, not a word list on the text. */
+    language?: () => Promise<string | null>;
+    /** Where the health line places the family. Ontario unless a case says otherwise. */
+    healthPlace?: HealthPlace | null;
   } = {},
 ): Harness {
   const read = overrides.read ?? reading();
@@ -124,6 +127,8 @@ function ports(
     continueSeen: [],
     medicalCalls: 0,
     medicalSeen: [],
+    medicalPlaces: [],
+    healthPlaceAskedFor: [],
     momentCalls: 0,
     momentSeen: [],
     recorded: [],
@@ -158,10 +163,15 @@ function ports(
       harness.placeAskedFor.push(familyId);
       return { status: 'known', city: 'Toronto', country: 'Canada' };
     },
+    healthPlace: async (familyId) => {
+      harness.healthPlaceAskedFor.push(familyId);
+      return overrides.healthPlace === undefined ? ONTARIO : overrides.healthPlace;
+    },
     medical: {
-      answer: async (text) => {
+      answer: async (text, place) => {
         harness.medicalCalls += 1;
         harness.medicalSeen.push(text);
+        harness.medicalPlaces.push(place);
         return medical;
       },
     },
@@ -172,6 +182,7 @@ function ports(
         return { status: 'written', reply: `written:${moment}` };
       },
     },
+    language: overrides.language ?? (async () => 'en'),
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
         lane: input.lane,
@@ -275,13 +286,20 @@ describe('what each lane says', () => {
     // The TEXT now decides which of the table's rows answers, so this fixture has to say
     // what it is asking for. It used to read 'anything' and still get the registry —
     // which is the defect the table replaced, sitting inside the test that guarded it.
-    const verdict = await consider(p, 'we just moved and need a family doctor');
+    const text = 'we just moved and need a family doctor';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
-    expect(PROVIDER_ACCESS_REPLY).toContain('Health Care Connect');
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: await referralReply(text, null, ONTARIO),
+    });
+    expect(verdict).toMatchObject({ status: 'deflected' });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
     // No clinic names and no links: a wrong one sends a family across the city, and a
     // mistyped URL in a text cannot be corrected.
-    expect(PROVIDER_ACCESS_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
+    expect(reply).not.toMatch(/https?:|\.ca\b|\.com\b/);
   });
 
   /**
@@ -297,19 +315,32 @@ describe('what each lane says', () => {
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
-    const verdict = await consider(p, 'find me an optometrist');
+    const text = 'find me an optometrist';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: DIRECT_ACCESS_EYE_REPLY });
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('Health Care Connect');
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('811');
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: await referralReply(text, null, ONTARIO),
+    });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('FindAnEyeDoctor.ca');
+    expect(reply).not.toContain('Health Care Connect');
+    expect(reply).not.toContain('811');
   });
 
   it('leaves the family-doctor ask on the registry line it was always right for', async () => {
     const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
 
-    const verdict = await consider(p, 'we just moved and need a pediatrician');
+    const text = 'we just moved and need a pediatrician';
+    const verdict = await consider(p, text);
 
-    expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: await referralReply(text, null, ONTARIO),
+    });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
   });
 
   /**
@@ -327,11 +358,15 @@ describe('what each lane says', () => {
       read: reading({ lane: 'provider_access', category: 'specialist-access' }),
     });
 
-    const verdict = await consider(p, 'we need an ophthalmologist for her');
+    const text = 'we need an ophthalmologist for her';
+    const verdict = await consider(p, text);
+    const eye = await referralReply('find me an optometrist', null, ONTARIO);
 
-    expect(verdict).toMatchObject({ reply: UNPLACEABLE_PROVIDER_REPLY });
-    expect(verdict).not.toMatchObject({ reply: DIRECT_ACCESS_EYE_REPLY });
-    expect(UNPLACEABLE_PROVIDER_REPLY).not.toContain('Health Care Connect');
+    expect(verdict).toMatchObject({ reply: await referralReply(text, null, ONTARIO) });
+    expect(verdict).not.toMatchObject({ reply: eye });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).not.toContain('Health Care Connect');
+    expect(reply).not.toContain('811');
   });
 
   /**
@@ -339,17 +374,17 @@ describe('what each lane says', () => {
    * docblock, plus the one link it is allowed. "Per calendar year" is a different and
    * wrong promise from "every 12 months", so the wording is pinned.
    */
-  it('carries the verified eye-care facts and exactly one address', () => {
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('no referral needed');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('every 12 months');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('19 and under');
-    expect(DIRECT_ACCESS_EYE_REPLY).toContain('FindAnEyeDoctor.ca');
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('calendar year');
+  it('carries the verified eye-care facts and exactly one address', async () => {
+    const reply = (await referralReply('find me an optometrist', 'en', ONTARIO)) ?? '';
+    expect(reply).toContain('no referral needed');
+    expect(reply).toContain('every 12 months');
+    expect(reply).toContain('19 and under');
+    expect(reply).toContain('FindAnEyeDoctor.ca');
+    expect(reply).not.toContain('calendar year');
+    expect(reply).not.toContain('811');
     // One address, and no scheme — a bare domain is shorter and every phone links it.
-    expect(DIRECT_ACCESS_EYE_REPLY.match(/[\w-]+\.(?:ca|com|org)\b/g)).toEqual([
-      'FindAnEyeDoctor.ca',
-    ]);
-    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/https?:/);
+    expect(reply.match(/[\w-]+\.(?:ca|com|org)\b/g)).toEqual(['FindAnEyeDoctor.ca']);
+    expect(reply).not.toMatch(/https?:/);
   });
 
   /**
@@ -610,7 +645,9 @@ describe('the medical stamp is set on the medical branch and nowhere else', () =
 
 describe('in-domain is the fall-through', () => {
   it('hands the turn on without composing, recording, or querying anything', async () => {
-    const p = ports({ read: { lane: 'in_domain', category: null, fallback: null, language: null } });
+    const p = ports({
+      read: { lane: 'in_domain', category: null, fallback: null, language: null },
+    });
 
     const verdict = await consider(p);
 
@@ -646,6 +683,24 @@ describe('in-domain is the fall-through', () => {
 
     const deflected = await consider(ports({ read: reading({ language: 'ar' }) }));
     expect(deflected).toMatchObject({ status: 'deflected', language: 'ar' });
+  });
+
+  it('carries an explicit language ask onto the verdict, on both doors', async () => {
+    const asked = await consider(
+      ports({
+        read: reading({ lane: 'in_domain', category: null, language: 'en', languageRequest: 'fr' }),
+      }),
+    );
+    expect(asked).toEqual({
+      status: 'in_domain',
+      fallback: null,
+      language: 'en',
+      languageRequest: 'fr',
+    });
+    const deflected = await consider(
+      ports({ read: reading({ language: 'zh', languageRequest: 'zh' }) }),
+    );
+    expect(deflected).toMatchObject({ status: 'deflected', languageRequest: 'zh' });
   });
 });
 
@@ -856,6 +911,7 @@ describe("today's date", () => {
           innerJoin: () => ({
             where: () => ({ limit: async () => [{ timezone: 'Asia/Tokyo' }] }),
           }),
+          where: () => ({ limit: async () => [{ primaryLanguage: 'en' }] }),
         }),
       }),
       update: () => ({
@@ -1249,7 +1305,6 @@ describe('the screen reads a reply to an open question first', () => {
     lit();
     const text = 'Toronto. also he has had a fever since lunch and keeps pulling at his ear';
     // The premise: neither keyword check in front of the composer knows these words.
-    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
     const turn = scripted({
       screen: { lane: 'safety_critical', category: 'medical-symptom', reason: 'x' },
     });
@@ -1276,7 +1331,6 @@ describe('the screen reads a reply to an open question first', () => {
   it('sends a reply that is a mental-health crisis through the crisis door', async () => {
     lit();
     const text = 'Toronto. honestly I do not see the point of any of it anymore';
-    expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
     const turn = scripted({
       screen: { lane: 'safety_critical', category: 'mental-health', reason: 'x' },
     });
@@ -1308,7 +1362,6 @@ describe('the screen reads a reply to an open question first', () => {
     'sends a reply the screen reads as %s through the safety door, and never continues the question',
     async (category, text) => {
       lit();
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: { lane: 'safety_critical', category, reason: 'x' } });
       const { p, run } = laneWith(turn);
 
@@ -1333,14 +1386,18 @@ describe('the screen reads a reply to an open question first', () => {
     });
     const { p, run } = laneWith(turn);
 
-    const verdict = await run('Toronto. can you find us a family doctor there');
+    const text = 'Toronto. can you find us a family doctor there';
+    const verdict = await run(text);
 
     expect(verdict).toMatchObject({
       status: 'deflected',
       lane: 'provider_access',
-      reply: PROVIDER_ACCESS_REPLY,
+      reply: await referralReply(text, null, ONTARIO),
       replySource: 'fixed',
     });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).toContain('Health Care Connect');
+    expect(reply).toContain('811');
     expect(turn.calls).toEqual(['screen']);
     expect(p.pendingAskedFor).toEqual([]);
   });
@@ -1422,7 +1479,6 @@ describe('the screen reads a reply to an open question first', () => {
 
     it('sends a parent in crisis, in words no keyword has, through the mental-health door and not the child-health one', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(namesAnEmergency(OWN_CRISIS) || namesAMentalCrisis(OWN_CRISIS)).toBe(false);
       // Positive control: the two doors are not the same door.
       const mentalHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'mental-health');
       const childHealthDoor = await screenedSafetyDoor(OWN_CRISIS, 'child-safety');
@@ -1454,7 +1510,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = 'Toronto. honestly I want to die';
-      expect(namesAMentalCrisis(text)).toBe(true);
       const childHealthDoor = await screenedSafetyDoor(text, 'child-safety');
       const mentalHealthDoor = await screenedSafetyDoor(text, 'mental-health');
       expect(childHealthDoor).not.toBe(mentalHealthDoor);
@@ -1471,7 +1526,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = `Toronto. ${OWN_CRISIS}`;
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: GENERAL, composed: read('mental-health') });
       const { run } = laneWith(turn);
 
@@ -1494,7 +1548,6 @@ describe('the screen reads a reply to an open question first', () => {
           logged.push(args);
         });
       }
-      expect(namesAnEmergency(TEXT) || namesAMentalCrisis(TEXT)).toBe(false);
       const turn = scripted({ screen: GENERAL, answersPending: 'nothing_pending', composed: HURT });
       const { p, run } = laneWith(turn, null);
 
@@ -1523,7 +1576,6 @@ describe('the screen reads a reply to an open question first', () => {
       lit();
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const text = 'Toronto. he fell off the top bunk and has thrown up twice';
-      expect(namesAnEmergency(text) || namesAMentalCrisis(text)).toBe(false);
       const turn = scripted({ screen: GENERAL, composed: HURT });
       const { run } = laneWith(turn);
 
@@ -1653,14 +1705,28 @@ describe('the lane answers in the language the question was asked in', () => {
     expect(p.momentSeen[1]).toEqual({ text: english, moment: 'child_health' });
   });
 
-  it('sends the registry line in French to a French provider ask', async () => {
-    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+  it('sends the registry line in French when the household language is French', async () => {
+    const p = ports({
+      read: reading({ lane: 'provider_access', category: 'doctor-access' }),
+      language: async () => 'fr',
+    });
 
-    const fr = await consider(p, 'Je cherche un medecin de famille pour mes enfants');
-    expect(fr).toMatchObject({ reply: PROVIDER_ACCESS_REPLY_BY_LANGUAGE.fr });
+    const frenchText = 'Je cherche un medecin de famille pour mes enfants';
+    const fr = await consider(p, frenchText);
+    expect(fr).toMatchObject({ reply: await referralReply(frenchText, 'fr', ONTARIO) });
+    const frenchReply = 'reply' in fr ? fr.reply : '';
+    expect(frenchReply).toContain('811');
 
-    const en = await consider(p, 'we just moved and need a family doctor');
-    expect(en).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+    const english = ports({
+      read: reading({ lane: 'provider_access', category: 'doctor-access' }),
+    });
+    const englishText = 'we just moved and need a family doctor';
+    const en = await consider(english, englishText);
+    expect(en).toMatchObject({ reply: await referralReply(englishText, null, ONTARIO) });
+    const englishReply = 'reply' in en ? en.reply : '';
+    expect(englishReply).toContain('Health Care Connect');
+    expect(englishReply).toContain('811');
+    expect(frenchReply).not.toBe(englishReply);
   });
 
   it('hands a French could-not-answer to the moment writer', async () => {
@@ -1688,5 +1754,58 @@ describe('the lane answers in the language the question was asked in', () => {
     const fr = await consider(p, french);
     expect(fr).toMatchObject({ reply: 'written:child_health', replySource: 'composed' });
     expect(p.momentSeen).toEqual([{ text: french, moment: 'child_health' }]);
+  });
+});
+
+/**
+ * VIL-589: the medical answer and the provider door are told where the family is, read
+ * only in the parent's own thread, so the help they name is the help where they live.
+ */
+describe('the health line follows the family', () => {
+  const TEXAS: HealthPlace = { country: 'US', provinceOrState: null };
+
+  it("hands the medical answer the family's place in their own thread", async () => {
+    const p = ports({
+      read: reading({ lane: 'safety_critical', category: 'medical-symptom' }),
+      healthPlace: TEXAS,
+    });
+    await consider(p, 'she has had a cough for two days');
+    expect(p.healthPlaceAskedFor).toEqual([FAMILY]);
+    expect(p.medicalPlaces).toEqual([TEXAS]);
+  });
+
+  it('reads no place in a group thread: the answer is the unplaced one', async () => {
+    const p = ports({ read: reading({ lane: 'safety_critical', category: 'medical-symptom' }) });
+    await consider(p, 'she has had a cough for two days', GROUP);
+    expect(p.healthPlaceAskedFor).toEqual([]);
+    expect(p.medicalPlaces).toEqual([null]);
+  });
+
+  it('answers a Texas pediatrician ask with the miss, not OHIP or Health Care Connect', async () => {
+    const p = ports({
+      read: reading({ lane: 'provider_access', category: 'doctor-access' }),
+      healthPlace: TEXAS,
+    });
+    const text = 'we just moved and need a pediatrician';
+    const verdict = await consider(p, text);
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: await referralReply(text, null, TEXAS),
+    });
+    const reply = 'reply' in verdict ? verdict.reply : '';
+    expect(reply).not.toMatch(/OHIP|Health Care Connect|811/);
+    // Positive control: the same ask from an Ontario family gets the registry.
+    const ontario = await consider(
+      ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) }),
+      text,
+    );
+    expect('reply' in ontario ? ontario.reply : '').toContain('Health Care Connect');
+  });
+
+  it('gives no Ontario path in a group thread, where the place is not read', async () => {
+    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+    const verdict = await consider(p, 'we just moved and need a pediatrician', GROUP);
+    expect(p.healthPlaceAskedFor).toEqual([]);
+    expect('reply' in verdict ? verdict.reply : '').not.toContain('Health Care Connect');
   });
 });

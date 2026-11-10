@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { type HaleStage, traceAnthropic } from '../analytics/llm-trace.js';
 import { config } from '../config.js';
 
 /**
@@ -21,7 +22,12 @@ export const ANTHROPIC_MAX_RETRIES = 1;
 
 let client: Anthropic | undefined;
 
-export function anthropicClient(): Anthropic {
+/**
+ * The ONE worker Anthropic client, handed through `traceAnthropic`: privacy-mode
+ * `$ai_generation` events once POSTHOG_PROJECT_API_KEY is set, the bare client until then.
+ * `stage` labels a call site for the LLM dashboard; the raw client stays cached once.
+ */
+export function anthropicClient(stage?: HaleStage): Anthropic {
   if (!config.ANTHROPIC_API_KEY) {
     throw new Error(
       'ANTHROPIC_API_KEY is not set. Configure it in your environment to enable agent calls.',
@@ -32,5 +38,5 @@ export function anthropicClient(): Anthropic {
     timeout: ANTHROPIC_TIMEOUT_MS,
     maxRetries: ANTHROPIC_MAX_RETRIES,
   });
-  return client;
+  return traceAnthropic(client, stage ? { stage } : {});
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states the day (tomorrow, Monday), the start (4:45 PM) and the end (5:45 PM), matching the facts exactly with correct PM. It keeps the generic 'an appointment' without guessing what it is. No location was given, so none is missing or invented. No link, no invented logistics, and it is in English as requested.",
+    "score": 5
+  }
+}

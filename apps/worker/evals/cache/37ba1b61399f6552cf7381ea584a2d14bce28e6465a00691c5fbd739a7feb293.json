@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correctly takes the pasted course link and says Hale is watching it, texting within about ten minutes of a spot opening, which matches the capability. But it adds unbacked details: the 'next morning if it opens overnight' behaviour and the waitlist caveat appear nowhere in what Hale knows. That makes three sentences where one would do.",
+    "score": 3
+  }
+}

@@ -42,10 +42,12 @@ export function registrationAcceptanceInput(
     ),
     'utf8',
   );
-  const reading = readCourseRegistration(
-    { ok: true, raw },
-    { sourceUrl, checkedAt: now, timeZone, courseId },
-  );
+  const reading = readCourseRegistration(raw, {
+    sourceUrl,
+    checkedAt: now,
+    courseId,
+    portalTimeZone: timeZone,
+  });
   if (reading.status !== 'verified') throw new Error('Expected saved official registration facts');
   const verdict = readCoursePrep(
     { ok: true, raw },

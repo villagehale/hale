@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgZP2h1bgsLdmypM8KyND",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+AgKEAgTGAI4AUIIdGhpbmtpbmcSDOaJFiN/X3FOhtkSTRoM8N50Hl+2+YChXaaIIjBSvtzdZwQxypI1anV4gkEdQYFBnenp8pjHyb6zqSV8Mh8UUCPsA/rFqPGchfVek44qlQjzsQe8OvKfaIfgazwZgxwyByyhjPwHxdEaBK9WitiwvMvxGamijfskYNP0FknwtYnoQefiW8ocH6y2S+lMW8hASwxbnVi38ZhCASSkQWiPCbqcORo1Nd2mq3rla5dwGuTtjAtum+/Z4rm7BODsHIy+2YlSlzBoSjtYCXbMLMVrS14D2d5q0ZEY6D5k6Ux++pVu5rA3S0UBfTErqWc/Fg2O8VUY566ka1xKz2LFSasX4X59vaP4H46TVyzTL1q7/xnqAcrc2TSD8hov1Psa7qAdXPciNFqYt0EXIxhMxgnvnKXTCgV436U/5j/bzU+33XtAq9XglllUFQb7XhI9/Etk+pOtJqAToRHw7gidPBvgilBYeHqRBOObtLwSM7VADJWThyXfUKMeUk3LsKBrKKBAl+R+YEOHJ1fz5ItiqPm4a0+PpwQ2KwfFGyCMRlKnYuMlHkNQ7VkfnTdd7EHffJuzzezt+iMzgqFpipmNWwphHDlVRfV7/P5pcuRxL7nG9rAYH4Ldt2t3qEH39SiXwLn2XFEuegAePUBx3OhK3qg3mMnxmLt67nfTh6Sfxzw2HXKPgQJJrVnxKrMZI6o/Hbl9EMm4z13bZ9gRgiCdgm4ePRTxM8b6cDyRsI7D7R2XGTqbvA+t1bf/ubXg0KbHEhjNdKaE4C+lTsFNo3vXLYYh/3L4P5mxPPIE/5RfOTgSIk8LzOQ1UIkTH+po84/ekzLBYZEu69Y6/ovrnXmvPC5w4AMosVr32xs9C17DeZiqRe0S40eigTp5Dd+SoW+M03LMHCK5CGGtqDuyKI29379hc0nEFyFA1tUmxoGSVuuYEASaWS9IZIL2iMBkKMb06kKKABJZLM3d5uvnjFuI6sxEcJ+BSfKLDzRNFe9Tv73FxUXQh92XaoruaO7DpMU/PAoMHPmviL8pZAiOdaPBxiXc1BX5pzjyuW4rsu5m5nJVAhiL3NUDhxe1kk2T2eyg1lZ1E6IrheyWGt140jngwc4WgVp0wNhaS+rLtQdcWA5pYtyhplRwguGV2TLYcB3weaeSk1QEzMyHn1dNgpfFly/luPiThXEZ02hbnLRsj8SlmJaNGcpgCaUBOO2iZVpnyuG4kFzbs5oHtxaDwquzLoDiOVaiqMXEUKgX/xIhHVqKzd/8hwaC7R+uedb9+s9r5nKP3vNYAXPJssS/52eNBbXoOM6MKD5g8HdeJc3EZWy+RlZdTcsjwBv4gJi7IgaY7K+pu7JD0ka2yIjuV9Ou1XqLfotBPXiafAqO30ljIJ6cgmN0+DZJWxmB0agN/QxuNKJSBqQRVhPcNfRNmtbFcN0x5ScjTX9tyHWKFGTtEo7yE4H04NlDSC/iiyEVtkQjfW69Afs3t9cv+1CHgB7AX4xDUJzsq5CVGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01NpJYR6x79wz1fgHLjjKxX4",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for Ada's night waking?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 855,
+      "cache_read_input_tokens": 21795,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 855,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 329,
+      "output_tokens_details": {
+        "thinking_tokens": 209
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3469
+}

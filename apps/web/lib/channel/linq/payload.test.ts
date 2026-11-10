@@ -42,9 +42,11 @@ describe('parseLinqWebhook', () => {
         senderHandle: '+12025559876',
         text: 'Hello!',
         mediaCount: 0,
+        media: [],
         receivedAt: new Date('2026-02-05T19:31:13.074Z'),
         otherHandles: [],
         isGroup: false,
+        mentions: [],
       },
     });
   });
@@ -74,6 +76,40 @@ describe('parseLinqWebhook', () => {
     expect(parsedGroup.kind === 'group' && parsedGroup.message.isGroup).toBe(true);
   });
 
+  it('reads iMessage mentions on a text part, including is_me', () => {
+    const body = received();
+    (body.data as { chat: { is_group: boolean } }).chat.is_group = true;
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      {
+        type: 'text',
+        value: 'Kevin Dana one of you confirm the address?',
+        mentions: [
+          { handle: '+14155551234', is_me: false, range: [0, 5] },
+          { handle: '+14155559876', is_me: true, range: [6, 10] },
+        ],
+      },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('group');
+    if (parsed.kind !== 'group') return;
+    expect(parsed.message.mentions).toEqual([
+      { handle: '+14155551234', isMe: false },
+      { handle: '+14155559876', isMe: true },
+    ]);
+    expect(parsed.message.text).toBe('Kevin Dana one of you confirm the address?');
+  });
+
+  it('treats a null mentions field as nobody named', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [{ type: 'text', value: 'plain', mentions: null }];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.mentions).toEqual([]);
+  });
+
   it('counts a media part and keeps the text beside it', () => {
     const body = received();
     const data = body.data as { parts: unknown[] };
@@ -86,6 +122,25 @@ describe('parseLinqWebhook', () => {
     if (parsed.kind !== 'message') return;
     expect(parsed.message.text).toBe('see this');
     expect(parsed.message.mediaCount).toBe(1);
+    expect(parsed.message.media).toEqual([{ kind: 'file', url: null, mime: null }]);
+  });
+
+  it('classifies an image url and a video, and drops a non-https url', () => {
+    const body = received();
+    const data = body.data as { parts: unknown[] };
+    data.parts = [
+      { type: 'media', url: 'https://cdn.example/flyer.jpg', mime_type: 'image/jpeg' },
+      { type: 'media', url: 'https://cdn.example/clip.mp4', mime_type: 'video/mp4' },
+      { type: 'media', url: 'http://cdn.example/plain.png', mime_type: 'image/png' },
+    ];
+    const parsed = parseLinqWebhook(body, FALLBACK);
+    expect(parsed.kind).toBe('message');
+    if (parsed.kind !== 'message') return;
+    expect(parsed.message.media).toEqual([
+      { kind: 'image', url: 'https://cdn.example/flyer.jpg', mime: 'image/jpeg' },
+      { kind: 'video', url: 'https://cdn.example/clip.mp4', mime: 'video/mp4' },
+      { kind: 'image', url: null, mime: 'image/png' },
+    ]);
   });
 
   it('names a group, an outbound echo, another event, and the old payload version', () => {
@@ -177,6 +232,7 @@ describe('parseLinqWebhook', () => {
         participantHandle: null,
         actorHandle: null,
         isFromMe: false,
+        participantIsMe: false,
         handles: [],
         isGroup: null,
       },
@@ -272,6 +328,7 @@ describe('parseLinqWebhook', () => {
         participantHandle: '+14165550100',
         actorHandle: null,
         isFromMe: true,
+        participantIsMe: true,
         handles: [],
         isGroup: null,
       },
@@ -312,6 +369,7 @@ describe('parseLinqWebhook', () => {
         participantHandle: null,
         actorHandle: null,
         isFromMe: false,
+        participantIsMe: false,
         handles: ['+14165550101', '+14165550102'],
         isGroup: true,
       },

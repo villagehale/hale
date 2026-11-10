@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All event facts are present and correct: Léa's swim lesson 9:30 to 10:30 at Cedar Park Pool, 40 Lake Rd, and Theo's music class 10 to 10:45 at Brightside Music, 7 Oak Ave, tomorrow (Thursday), with times and addresses right. But the facts mark the two events as overlapping (swim lesson 9:30-10:30 runs into music class 10:00-10:45), and the text only says both are on Thursday morning and to 'plan around them.' That is the hinting the CLASH CHECK names: it never says plainly that the times overlap, and it gives no concrete next step (such as who takes which child). That drops a required fact.",
+    "score": 1
+  }
+}

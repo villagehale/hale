@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text covers the one event with correct date-relative timing (starts in an hour from 6:00 PM), correct evening times, and the given location, all in Chinese. However, it writes times as \"7:00 PM\" and \"8:00 PM\" inside a Chinese sentence rather than the natural Chinese form, and it has no explicit morning/afternoon marker in Chinese (though PM is clear). The phrasing is calm and friendly, with no invented details or extra links.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text states tomorrow, the correct date, the 15 h to 16 h times, and the location, and does not invent details. However, it names the event as 'Jour de congé' and places it 'à la bibliothèque', which reads as a statement that the day off is at the library; the facts say only an event titled 'Jour de congé' at Georgetown library from 3:00 to 4:00 PM, so this is an unstated inference about what the event is. The phrasing 'il y a X à Y' is also a calendar-readout construction rather than how a friend would text, and 'Demain, lundi 26 octobre, à 15 h jusqu'à 16 h' is padded, formal date-and-clock style, not natural French texting. The fact failure caps this at the low range.",
+    "score": 2
+  }
+}

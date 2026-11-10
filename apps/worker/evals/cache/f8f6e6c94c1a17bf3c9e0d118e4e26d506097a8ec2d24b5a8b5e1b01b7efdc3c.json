@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgPHEkcW3X78PUDWRupMs",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Health Canada's guidance is to start around 6 months, so Theo's window is about a month away. Look for signs he's ready: sitting with support, steady head, reaching for your food, and the tongue-thrust reflex fading. Until then, breastmilk or formula is still all he needs. When you start, make iron-rich foods the first thing you offer, like meat, lentils, or iron-fortified cereal. Confirm the timing with your provider."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 139,
+      "cache_read_input_tokens": 22259,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 139,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 144,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2028
+}

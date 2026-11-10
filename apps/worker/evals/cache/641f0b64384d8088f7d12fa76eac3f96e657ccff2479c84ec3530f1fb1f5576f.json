@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails without asking. autonomySwitchOff shows send_email and reply_to_email were turned off this turn, so \"C'est fait\" is a true claim and not an overclaim. The reply is one short sentence in the parent's language, confirms the change, and stops.",
+    "score": 5
+  }
+}

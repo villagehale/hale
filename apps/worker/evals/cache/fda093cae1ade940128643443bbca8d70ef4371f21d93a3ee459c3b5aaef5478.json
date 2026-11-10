@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Message correctly states Hale won't text first and the person should text Hale directly, with no invented name or role and no group mention on SMS. Plain and short, but 'I can't add someone myself' is slightly awkward and 'to join' implies a group join that doesn't exist on SMS, so it is not perfect.",
+    "score": 4
+  }
+}

@@ -57,12 +57,12 @@ import {
   variationLines,
 } from './lib/variation.mjs';
 import { APOLOGY_FIXTURES, MIN_DISTINCT } from './turn-apology-fixtures.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'turn-apology.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
 
 // ── the composer's request shape, replicated from apology.ts ────────────────
 
@@ -119,11 +119,10 @@ const MAX_APOLOGY_CHARS = 160;
 const LINK_SHAPE = /https?:\/\/|www\./i;
 const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 
-function refusals(body, smsEncoding) {
+function refusals(body) {
   if (body === '') return ['empty'];
   const found = [];
   if (body.length > MAX_APOLOGY_CHARS) found.push('over_char_cap');
-  if (smsEncoding(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
@@ -154,31 +153,7 @@ const PROMISED_RETRY =
 // already failed the run. Asking the judge to re-check them made it WORSE, not safer: on
 // live draws it called a single clause "two sentences" and read the required "on my end"
 // as naming a cause. So it is told not to.
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring the MEANING of ONE text message Hale sends a parent',
-  "whose request just broke on Hale's own side. Hale composed it BLIND: it was shown",
-  'nothing about the parent, the family, or what they asked - only that a turn failed and',
-  'nothing was changed.',
-  'IMPORTANT: sentence count, character length, punctuation, links, digits, app pointers',
-  'and retry promises are ALREADY verified mechanically before you see this. Do not score',
-  'them and do not comment on them. Judge only whether the message MEANS the right thing',
-  'and sounds like Hale.',
-  'You are given the message and watchFor - fixture-specific notes. Score 1-5.',
-  "A 5 does BOTH of two things: it owns the failure as Hale's own, and it tells the",
-  'parent nothing was changed. It reads like a competent friend who dropped something -',
-  'first person, short words, no fuss. NOTE: "on my end", "I couldn\'t get that done" and',
-  '"that one broke" are the INTENDED way to own it, not vague and not a cause; score them',
-  'well.',
-  'A LOW score is any of: missing either half of that meaning; naming an actual technical',
-  'cause it cannot know ("the server", "a timeout", "our database", "the API"); incident',
-  'or support-desk language ("error", "issue on our end", "technical difficulties", "we',
-  'apologise for the inconvenience"); grovelling or more than one apology word; saying or',
-  'implying the request is queued, still running, or will be retried; handing the parent',
-  'an errand ("please resend", "you\'ll need to"); claiming part of it went through;',
-  'blaming or involving the parent; a greeting, hype or an emoji; a sentence so garbled',
-  'or self-contradictory that a parent would have to read it twice.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('turn-apology');
 
 // Deterministic broken stand-in: two sentences, a question, a digit, an emoji, a link,
 // an app pointer and a promised time — trips not_one_sentence + carries_question +
@@ -195,7 +170,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
@@ -230,7 +204,7 @@ async function main() {
         ).value.apology;
 
     const body = flatten(raw);
-    const failures = refusals(body, smsEncoding);
+    const failures = refusals(body);
     if (PROMISED_TIME.test(body)) failures.push('promised_a_time');
     if (PROMISED_RETRY.test(body)) failures.push('promised_a_retry');
     if (APP_POINTER.test(body)) failures.push('points_at_the_app');

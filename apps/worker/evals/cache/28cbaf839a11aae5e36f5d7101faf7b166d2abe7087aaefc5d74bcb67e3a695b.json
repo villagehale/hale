@@ -1,0 +1,15 @@
+{
+  "value": {
+    "reply": "Oui, Google partage toute la boîte avec Hale, donc c'est vrai, Hale voit tout. Hale ne garde et n'utilise que ce qui concerne les enfants, et jamais il n'envoie de courriel. Tu peux déconnecter quand tu veux. Veux-tu connecter ta boîte Gmail ?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [
+      "gmail"
+    ],
+    "joinPointer": null,
+    "claimsSaved": false,
+    "language": "fr",
+    "address": "tu"
+  },
+  "latencyMs": 1879
+}

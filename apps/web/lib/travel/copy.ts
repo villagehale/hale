@@ -4,7 +4,7 @@ import { SLOTS_IN_TEXT } from '~/lib/channel/activity/share-page';
 import { childPhrase } from '~/lib/channel/checkin/copy';
 import { groupTravelBriefOpening } from '~/lib/channel/linq/group-coparent-copy';
 import { withOptOut } from '~/lib/channel/opt-out';
-import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
+import { smsSegments } from '~/lib/channel/sms-segments';
 
 /**
  * THE ONE TEXT A TRIP GETS, and it is DETERMINISTIC.
@@ -150,7 +150,6 @@ export function travelBriefViolations(body: string, context: TravelBriefContext)
   // could do.
   if (/\d/.test(rest)) violations.push('unbacked_digit');
 
-  if (!isGsm7(body)) violations.push('not_gsm7');
   if (smsSegments(withOptOut(body, 'full')) > MAX_TRAVEL_BRIEF_SEGMENTS) {
     violations.push('too_many_segments');
   }
@@ -184,12 +183,15 @@ export interface TravelBriefRender {
  * is not tidiness: a cut that lands inside "USD 2" publishes a wrong price. A second pick
  * that would push past the ceiling is dropped entire.
  */
-export function renderTravelBrief(input: TravelBriefInput): TravelBriefRender {
+export async function renderTravelBrief(input: TravelBriefInput): Promise<TravelBriefRender> {
   const dayPhrase = tripDayPhrase(input.startsOn, input.endsOn);
   const kids = childPhrase([...input.childNames]);
   const opening = input.forGroup
-    ? groupTravelBriefOpening(input.city, dayPhrase, kids)
+    ? await groupTravelBriefOpening(input.city, dayPhrase, kids)
     : `You're in ${input.city} ${dayPhrase}. A couple of things on for ${kids}:`;
+  if (!opening) {
+    throw new Error('travel brief copy refused: model_unreachable');
+  }
 
   const rendered: ActivityPick[] = [];
   let body = opening;

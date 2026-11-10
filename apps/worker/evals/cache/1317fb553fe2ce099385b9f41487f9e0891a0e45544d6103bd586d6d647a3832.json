@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked Hale to stop sending emails on its own and to ask first. The autonomy switch was turned off this turn for send_email and reply_to_email, so Hale's reply that it will ask before every email and send only once they agree is true. It is one plain sentence in the parent's language, with no greeting, no machinery and nothing left dangling. It does the job completely.",
+    "score": 5
+  }
+}

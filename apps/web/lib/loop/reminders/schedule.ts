@@ -32,7 +32,7 @@ export function offsetUrgency(offset: ReminderOffset): 'normal' | 'time_sensitiv
 
 // The family-local evening slot the "evening before" (T-24h) reminder fires at. A
 // fixed slot (not starts_at − 24h) is what lets every one of tomorrow's events share
-// one fire_at and batch into a single message (rule #4). Product-tunable; a pref can
+// one fire_at and reach the model as one batch (it still splits the texts). Product-tunable; a pref can
 // override later.
 export const REMINDER_EVENING_MINUTE = 18 * 60; // 18:00 local
 const HOUR_MS = 60 * 60 * 1000;
@@ -112,13 +112,58 @@ export type SuppressReason =
   /** VIL-226. The parent said "that's mine" (untrack.ts). */
   | 'parent_untracked'
   /** VIL-226. Cancelled by the one-off backfill after an adult verdict. */
-  | 'kid_relevance_backfill';
+  | 'kid_relevance_backfill'
+  /** The calendar mirror dropped this row's copy (not the kids', covered by a Hale row, or
+   * gone from the calendar). Restoring that copy schedules these rows again. */
+  | 'calendar_mirror_dropped'
+  /** The parent's reminder text could not be written by the model (or no model client
+   * is configured). Nothing is sent: there is no fallback copy. */
+  | 'unwritten'
+  /** VIL-586. The provider refused Hale's own request, or our code threw, while writing
+   * it. The same request fails the same way every slot, so it is asked once. */
+  | 'compose_rejected'
+  /** VIL-562. Due inside the proactive quiet floor, which opens only after the event
+   * starts, so it can never be sent in time. */
+  | 'quiet_hours'
+  /** VIL-625. Held for the writer COMPOSE_HOLD_MAX_ATTEMPTS times and it never answered. */
+  | 'compose_retries_exhausted'
+  /** VIL-586 · NOT a drop: the mark on a row left 'scheduled' because the writer could
+   * not be reached. The drain asks again for a T-1h held this way, which the next hourly
+   * slot would only find started. Sending or dropping the row overwrites it. */
+  | typeof COMPOSE_HELD;
+
+export const COMPOSE_HELD = 'compose_unavailable';
+
+/** A reason a row stops: every SuppressReason but the hold mark, which only
+ * `holdForCompose` writes (run.ts). */
+export type DropReason = Exclude<SuppressReason, typeof COMPOSE_HELD>;
+
+/**
+ * VIL-625 · how often a held row is put back to the writer. This bounds an internal
+ * retry, not a send: whether and what a parent is told stays the model's call once it
+ * answers. Four tries spaced 5, 10 then 20 minutes apart all land inside the hour a
+ * T-1h has before its event, and stop the drain asking every minute.
+ */
+export const COMPOSE_HOLD_MAX_ATTEMPTS = 4;
+export const COMPOSE_HOLD_FIRST_GAP_MS = 5 * 60_000;
+
+export type ComposeHoldStep =
+  | { action: 'hold'; attempts: number; nextTryAt: Date }
+  | { action: 'exhausted' };
+
+/** What a writer failure does to a row that had already been tried `attemptsSoFar` times. */
+export function nextComposeHold(attemptsSoFar: number, now: Date): ComposeHoldStep {
+  const attempts = attemptsSoFar + 1;
+  if (attempts >= COMPOSE_HOLD_MAX_ATTEMPTS) return { action: 'exhausted' };
+  const gapMs = COMPOSE_HOLD_FIRST_GAP_MS * 2 ** (attempts - 1);
+  return { action: 'hold', attempts, nextTryAt: new Date(now.getTime() + gapMs) };
+}
 
 export type ReminderDecision =
   | { action: 'fire' }
   | { action: 'cancel' } // event erased or soft-deleted — the trust test
   | { action: 'stale' } // event moved — this row is for the old fire time
-  | { action: 'suppress'; reason: SuppressReason }
+  | { action: 'suppress'; reason: DropReason }
   | { action: 'wait' }; // fire_at still in the future
 
 export interface ClassifyOptions {
@@ -137,7 +182,7 @@ export interface ClassifyOptions {
  * HOW LATE a due reminder is decides nothing. One held while its lane was off, or caught
  * up after a cron gap, is still useful while its event has not started, so it fires —
  * an evening-before one on the event's own day too: its lead is the event's date and its
- * voice phrases the day from the event's local start and `now` (reminder-voice.ts).
+ * model phrases the day from the event's local start and `now` (reminders/compose.ts).
  * Once the per-family send decider lands (#824) it owns that "still useful?" call, and
  * this rule becomes its input.
  */
@@ -189,8 +234,10 @@ export interface ReminderBatch {
 }
 
 /**
- * Merge same-evening T-24h reminders for one parent into ONE message (rule #4:
- * "Tomorrow: checkup 10:00 + swim 4:30"). T-1h reminders are glanceable and never
+ * Group same-evening T-24h reminders for one parent into one batch, so the model sees
+ * the whole of tomorrow at once. The batch is one compose, not one text: the model
+ * splits it into as many short texts as it judges right (reminder.md), and the
+ * dispatch sends them in order. T-1h reminders are glanceable and never
  * batched — each fires on its own. Grouping key is (parent, offset, family-local
  * evening of fire_at); event order within a batch is the input order.
  */

@@ -1,10 +1,5 @@
 import { isShareableSignupField } from '../consent';
-import {
-  type BookingConnector,
-  type ConnectorBookingInput,
-  type ConnectorBookingResult,
-  municipalBookingHost,
-} from '../providers';
+import type { BookingConnector, ConnectorBookingInput, ConnectorBookingResult } from '../providers';
 
 /**
  * Sandbox partnership booking (VIL-397).
@@ -92,7 +87,7 @@ export function referenceBookingConnector(client: SandboxPartnershipClient): Boo
       } catch {
         return { ok: false, reason: 'connector_failed' };
       }
-      if (municipalBookingHost(host) || bareHost(host) !== REFERENCE_CONNECTOR_HOST) {
+      if (bareHost(host) !== REFERENCE_CONNECTOR_HOST) {
         return { ok: false, reason: 'connector_failed' };
       }
       try {
@@ -117,7 +112,7 @@ function sandboxEndpoint(base: string | undefined): URL | null {
   }
   if (root.username || root.password) return null;
   const host = bareHost(root.hostname);
-  if (!sandboxApiHost(host) || municipalBookingHost(host)) return null;
+  if (!sandboxApiHost(host)) return null;
   const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
   if (root.protocol === 'http:' && !loopback) return null;
   if (root.protocol !== 'https:' && root.protocol !== 'http:') return null;

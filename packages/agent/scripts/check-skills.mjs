@@ -6,16 +6,16 @@
 // to Anthropic as `system=`. Callers include /api/events/ingest and the SMS
 // coach (apps/web/lib/channel/coach/runtime.ts). The worker's Langfuse drift-check only guards
 // apps/worker/prompts/* — it never sees these files. Without this gate a silent
-// on-disk edit to any skill (classify-event, draft-action, reminder-voice, …)
+// on-disk edit to any skill (classify-event, draft-action, reminder, …)
 // would ship to prod with no CI failure.
 //
 // `seed` records {file, sha256} for every skill into .skills-lock.json.
 // `check` recomputes and exits non-zero on any mismatch/missing/extra file.
 
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, readdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const LOCKFILE = join(SKILLS_DIR, '.skills-lock.json');
@@ -25,9 +25,7 @@ function sha256(bytes) {
 }
 
 async function listSkillFiles() {
-  return (await readdir(SKILLS_DIR))
-    .filter((f) => f.endsWith('.md') && f !== 'README.md')
-    .sort();
+  return (await readdir(SKILLS_DIR)).filter((f) => f.endsWith('.md') && f !== 'README.md').sort();
 }
 
 function readSkillBytes(file) {
@@ -77,14 +75,18 @@ async function check() {
     }
     const actual = sha256(await readSkillBytes(file));
     if (actual !== entry.sha256) {
-      offenders.push(`${file}: sha256 ${actual.slice(0, 12)}… != lockfile ${entry.sha256.slice(0, 12)}…`);
+      offenders.push(
+        `${file}: sha256 ${actual.slice(0, 12)}… != lockfile ${entry.sha256.slice(0, 12)}…`,
+      );
     }
   }
   for (const file of Object.keys(lock)) {
     if (!files.includes(file)) offenders.push(`${file}: in lockfile but missing on disk`);
   }
   if (offenders.length > 0) {
-    console.error('Skill prompt drift detected (edit deliberately, then `pnpm --filter @hale/agent skills:seed` and commit the lockfile):');
+    console.error(
+      'Skill prompt drift detected (edit deliberately, then `pnpm --filter @hale/agent skills:seed` and commit the lockfile):',
+    );
     for (const o of offenders) console.error(`  - ${o}`);
     process.exit(1);
   }

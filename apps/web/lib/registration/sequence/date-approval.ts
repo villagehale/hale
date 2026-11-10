@@ -1,14 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, sql } from 'drizzle-orm';
-import {
-  createRegistrationReader,
-  registrationAnchor,
-  registrationDate,
-  type RegistrationReader,
-} from '../read';
+import { pipelineClient } from '~/lib/pipeline/client';
+import { registrationAnchor } from '../live-reading';
 import { resolveFamilyOpen } from '../match-registration-windows';
-import { refreshRegistrationWatch } from './refresh';
-import { loadLiveSequences, registrationTargetFor } from './run';
+import {
+  type RegistrationReader,
+  createLiveRegistrationReader,
+  registrationDate,
+} from '../read';
+import { refreshRegistrationWatch, registrationChange } from './refresh';
 
 /** Shared by web taps and SMS approvals. Re-read BEFORE accepting the new date. */
 export async function verifyRegistrationDateApproval(
@@ -18,31 +18,49 @@ export async function verifyRegistrationDateApproval(
     actionId: string;
     now: Date;
   },
-  reader: RegistrationReader = createRegistrationReader(),
+  reader: RegistrationReader = createLiveRegistrationReader(pipelineClient()),
 ): Promise<'verified' | 'changed' | 'unverified'> {
-  const [link] = await database
-    .select({ id: schema.registrationSequences.id })
+  const [watch] = await database
+    .select({
+      id: schema.registrationSequences.id,
+      courseUrl: schema.registrationSequences.courseUrl,
+      pendingChange: schema.registrationSequences.pendingChange,
+      window: schema.registrationWindows,
+      areaCoarse: schema.families.areaCoarse,
+      timeZone: schema.users.timezone,
+    })
     .from(schema.registrationSequences)
+    .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
+    .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
+    .leftJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
     .where(
       and(
         eq(schema.registrationSequences.familyId, input.familyId),
         eq(schema.registrationSequences.dateReviewActionId, input.actionId),
       ),
     );
-  if (!link) return 'changed';
-  const watch = (await loadLiveSequences(database, link.id, input.familyId))[0];
-  const candidate =
-    watch?.pendingChange?.kind === 'later'
-      ? watch.pendingChange
-      : watch?.pendingChange?.reviewCandidate;
-  if (!watch || !candidate) return 'changed';
+  if (!watch?.courseUrl) return 'changed';
+  const pending = registrationChange(watch.pendingChange);
+  const candidate = pending?.kind === 'later' ? pending : pending?.reviewCandidate;
+  if (!candidate) return 'changed';
   const resident = watch.window
     ? resolveFamilyOpen(watch.window, watch.areaCoarse).isResidentWindow
     : false;
-  const reading = await reader(registrationTargetFor(watch), input.now);
+  const reading = await reader(
+    {
+      sourceUrl: watch.courseUrl,
+      municipality: watch.window?.municipality ?? 'toronto',
+      programDomain: watch.window?.programDomain ?? 'rec_program',
+      cycleLabel: watch.window?.cycleLabel ?? 'the single course shown on this page',
+    },
+    input.now,
+  );
   const date = registrationDate(reading, resident);
   let at: string | null = null;
-  if (date) {
+  if (date && reading.status === 'verified') {
     try {
       at = registrationAnchor(reading, date).toISOString();
     } catch {
@@ -50,7 +68,7 @@ export async function verifyRegistrationDateApproval(
     }
   }
   await refreshRegistrationWatch(database, {
-    sequenceId: watch.sequenceId,
+    sequenceId: watch.id,
     reading,
     resident,
     now: input.now,
@@ -60,7 +78,7 @@ export async function verifyRegistrationDateApproval(
   if (
     at !== candidate.candidateAt ||
     date?.time !== candidate.date?.time ||
-    reading.timeZone !== candidate.timeZone
+    (reading.status === 'verified' ? reading.timeZone : null) !== candidate.timeZone
   )
     return 'changed';
   const [updated] = await database
@@ -68,7 +86,7 @@ export async function verifyRegistrationDateApproval(
     .set({ nextCheckAt: input.now })
     .where(
       and(
-        eq(schema.registrationSequences.id, watch.sequenceId),
+        eq(schema.registrationSequences.id, watch.id),
         eq(schema.registrationSequences.dateReviewActionId, input.actionId),
         sql`${schema.registrationSequences.pendingChange}->>'key' = ${candidate.key}`,
       ),

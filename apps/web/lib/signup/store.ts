@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { normalizeSession } from './forms/details';
 import type { BusyInterval, SignupIdentity, SignupOffer, SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
@@ -19,6 +19,8 @@ export async function recordSignupOffer(
     registrationUrl: string;
     sessions: SignupSession[];
     approvedPriceCents: number | null;
+    /** VIL-558 · when registration opens, for an offer Hale can carry out as a plan. */
+    planOpensAt?: Date | null;
     now: Date;
   },
 ): Promise<RecordOfferResult> {
@@ -54,6 +56,7 @@ export async function recordSignupOffer(
       registrationUrl: input.registrationUrl,
       sessions: sessions.filter((session): session is SignupSession => session !== null),
       approvedPriceCents: input.approvedPriceCents,
+      planOpensAt: input.planOpensAt ?? null,
       status: 'pending',
       createdAt: input.now,
       updatedAt: input.now,
@@ -72,6 +75,7 @@ export async function loadPendingOffer(
       id: schema.authorizedSignupOffers.id,
       familyId: schema.authorizedSignupOffers.familyId,
       childId: schema.authorizedSignupOffers.childId,
+      parentUserId: schema.authorizedSignupOffers.parentUserId,
       activityKey: schema.authorizedSignupOffers.activityKey,
       registrationUrl: schema.authorizedSignupOffers.registrationUrl,
       sessions: schema.authorizedSignupOffers.sessions,
@@ -91,6 +95,7 @@ export async function loadPendingOffer(
     id: row.id,
     familyId: row.familyId,
     childId: row.childId,
+    parentUserId: row.parentUserId,
     activityKey: row.activityKey,
     registrationUrl: row.registrationUrl,
     sessions: row.sessions,
@@ -118,18 +123,46 @@ export async function markOffer(
   } = { status: input.status, updatedAt: input.now };
   if (input.sessionId !== undefined) patch.authorizedSessionId = input.sessionId;
   if (input.messageId !== undefined) patch.authorizingMessageId = input.messageId;
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set(patch)
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, input.offerId),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, input.from),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  return rows.length > 0;
+  try {
+    const rows = await database
+      .update(schema.authorizedSignupOffers)
+      .set(patch)
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, input.offerId),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, input.from),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+    return rows.length > 0;
+  } catch (err) {
+    // Another registration of this family is already running: not moved.
+    if (isOneSubmittingViolation(err)) return false;
+    throw err;
+  }
+}
+
+const ONE_SUBMITTING_INDEX = 'authorized_signup_offers_one_submitting';
+
+/** The database refused a second running registration for one family (0206's index). */
+export function isOneSubmittingViolation(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    const pg = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown };
+    if (
+      pg.code === '23505' &&
+      (pg.constraint === ONE_SUBMITTING_INDEX ||
+        pg.constraint_name === ONE_SUBMITTING_INDEX ||
+        current.message.includes(ONE_SUBMITTING_INDEX))
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 export async function loadSignupIdentity(
@@ -183,5 +216,78 @@ export async function loadBusy(database: Database, familyId: string): Promise<Bu
   return rows.flatMap((row) => {
     if (row.familyId !== familyId || !row.startAt || !row.endAt) return [];
     return [{ startsAt: row.startAt.toISOString(), endsAt: row.endAt.toISOString() }];
+  });
+}
+
+/**
+ * The Browser Use session's full cost (model, search, browser time, proxy),
+ * read from GET /sessions/{id}/cost after its browser stopped. A run's own
+ * totalCostUsd covers the model only.
+ */
+export async function recordBrowserUseCost(
+  database: Database,
+  input: { offerId: string; familyId: string; sessionCostUsd: string; now: Date },
+): Promise<void> {
+  if (!/^\d+(\.\d+)?$/.test(input.sessionCostUsd)) return;
+  await database
+    .update(schema.authorizedSignupOffers)
+    .set({ browserUseCostUsd: input.sessionCostUsd, updatedAt: input.now })
+    .where(
+      and(
+        eq(schema.authorizedSignupOffers.id, input.offerId),
+        eq(schema.authorizedSignupOffers.familyId, input.familyId),
+      ),
+    );
+}
+
+/**
+ * Everything Browser Use registrations have cost or hold reserved, across every
+ * family: the sum of `browser_use_cost_usd` (migration 0175). A run in flight
+ * or handed to a parent with a live browser counts at its reserved allowance
+ * until its real session cost replaces it.
+ */
+export async function browserUseRegistrationSpendUsd(database: Database): Promise<number> {
+  const [row] = await database
+    .select({
+      total: sql<
+        string | null
+      >`coalesce(sum(${schema.authorizedSignupOffers.browserUseCostUsd}), 0)`,
+    })
+    .from(schema.authorizedSignupOffers);
+  // Fail closed: a total that cannot be read counts as unlimited spend, so no
+  // Browser Use run starts on an unknown balance.
+  if (!row || row.total === null || row.total === undefined) return Number.POSITIVE_INFINITY;
+  const total = Number(row.total);
+  return Number.isFinite(total) && total >= 0 ? total : Number.POSITIVE_INFINITY;
+}
+
+/** Serializes reservations across every instance (any fixed 64-bit key). */
+const REGISTRATION_RESERVE_LOCK = 7_340_025;
+
+/**
+ * Atomically holds `allowanceUsd` against the global registration reserve on
+ * this offer before a Browser Use run starts. Concurrent signups serialize on a
+ * transaction-scoped advisory lock, so two runs cannot both claim the last
+ * allowance. Returns false, writing nothing, when the allowance does not fit.
+ */
+export async function reserveBrowserUseAllowance(
+  database: Database,
+  input: { offerId: string; familyId: string; allowanceUsd: number; reserveUsd: number; now: Date },
+): Promise<{ ok: boolean; spentUsd: number }> {
+  return database.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as Database;
+    await tx.execute(sql`select pg_advisory_xact_lock(${REGISTRATION_RESERVE_LOCK})`);
+    const spentUsd = await browserUseRegistrationSpendUsd(tx);
+    if (spentUsd + input.allowanceUsd > input.reserveUsd) return { ok: false, spentUsd };
+    await tx
+      .update(schema.authorizedSignupOffers)
+      .set({ browserUseCostUsd: input.allowanceUsd.toFixed(6), updatedAt: input.now })
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, input.offerId),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+        ),
+      );
+    return { ok: true, spentUsd };
   });
 }

@@ -1,13 +1,14 @@
-import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { emailTypeEnum } from './enums.js';
 import { families } from './families.js';
 import { users } from './users.js';
-import { emailTypeEnum } from './enums.js';
 
 /**
  * Ledger of non-transactional emails actually sent (the daily brief today). CASL
  * requires we can show, per message, who it went to and when. One row is written
  * only when the provider accepts a send, so a row here means a real email left
- * Hale. recipient is the address used; provider_message_id is the Resend id.
+ * Hale. recipient is the address used; provider_message_id is the
+ * sending provider's message id (historical rows only — Hale no longer sends email).
  */
 export const emailSends = pgTable(
   'email_sends',

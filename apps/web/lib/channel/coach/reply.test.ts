@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { linkRef } from './activity-links';
 import { plainText, redactTeenNames, toSmsReply } from './reply';
 
 /**
@@ -9,6 +10,7 @@ import { plainText, redactTeenNames, toSmsReply } from './reply';
  * model is the one part of this path that cannot be made to behave by construction.
  */
 
+const TPL_PAGE = 'https://www.torontopubliclibrary.ca/programs-and-classes/';
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 const LINK = 'https://app.villagehale.com';
 
@@ -66,117 +68,6 @@ describe('redactTeenNames', () => {
 });
 
 describe('toSmsReply', () => {
-  it('restores the exact sourced London URL when the model drops its query and fragment', () => {
-    const source =
-      'https://www.lpl.ca/whats-on?field_event_audience_target_id=42&date=2026-10#events';
-    const reply = toSmsReply('London Public Library lists storytimes: lpl.ca/whats-on.', {
-      children: [],
-      now: NOW,
-      activityLinks: [{ title: 'STEAM Storytime', venue: 'London Public Library', url: source }],
-    });
-    expect(reply).toBe(`London Public Library lists storytimes: ${source}.`);
-  });
-
-  it('keeps an official URL once when it already appears before other facts', () => {
-    const sourceUrl = 'https://www.king.ca/recreation';
-    const raw = `Source: ${sourceUrl}. Opening time is not published.`;
-    const reply = toSmsReply(raw, { children: [], now: NOW, sourceUrl });
-    expect(reply.split(sourceUrl)).toHaveLength(2);
-    expect(reply).toContain('Opening time is not published.');
-  });
-
-  it('deduplicates each complete source URL without dropping other watches', () => {
-    const urls = ['https://www.king.ca/recreation', 'https://www.richmondhill.ca/recreation'];
-    const reply = toSmsReply(`Sources: ${urls[0]} ${urls[1]} ${urls[0]}`, {
-      children: [],
-      now: NOW,
-      sourceUrl: `${urls.join(' ')} ${urls[1]}`,
-    });
-    for (const url of urls) expect(reply.split(url)).toHaveLength(2);
-  });
-
-  it.each(['?cycle=2027', '#aquatics', '/schedule', '.pdf'])(
-    'keeps a different complete URL sharing the source prefix: %s',
-    (tail) => {
-      const sourceUrl = 'https://www.king.ca/recreation';
-      const different = `${sourceUrl}${tail}`;
-      expect(toSmsReply(`See ${different}.`, { children: [], now: NOW, sourceUrl })).toBe(
-        `See ${different}. ${sourceUrl}`,
-      );
-    },
-  );
-
-  it('keeps a completely identical standalone eligibility statement once', () => {
-    const registrationCaveat = 'King: 2026-12-07; resident/non-resident eligibility unconfirmed.';
-    const raw = `${registrationCaveat} ${registrationCaveat} Non-residents open December 11.`;
-    const reply = toSmsReply(raw, { children: [], now: NOW, registrationCaveat });
-    expect(reply).toBe(`Non-residents open December 11. ${registrationCaveat}`);
-  });
-
-  it('does not merge differently worded eligibility warnings', () => {
-    const raw = 'The page does not specify who can register on December 7.';
-    const registrationCaveat = 'King: 2026-12-07; resident/non-resident eligibility unconfirmed.';
-    expect(toSmsReply(raw, { children: [], now: NOW, registrationCaveat })).toBe(
-      `${raw} ${registrationCaveat}`,
-    );
-  });
-
-  it('does not treat an exact warning embedded in another statement as a standalone caveat', () => {
-    const registrationCaveat = 'Resident/non-resident eligibility unconfirmed.';
-    const raw = `Do not assume the opposite of: ${registrationCaveat} Check the official page.`;
-    expect(toSmsReply(raw, { children: [], now: NOW, registrationCaveat })).toBe(
-      `${raw} ${registrationCaveat}`,
-    );
-  });
-  it.each(['A complete registration fact. ', 'A Łucas session is available. '])(
-    'preserves a long answer and its protected facts without a segment cap: %s',
-    (sentence) => {
-      const raw = sentence.repeat(80).trim();
-      const sourceUrl = 'https://www.king.ca/recreation';
-      const registrationCaveat = 'Resident/non-resident eligibility unconfirmed.';
-      const reply = toSmsReply(raw, { children: [], now: NOW, sourceUrl, registrationCaveat });
-
-      expect(reply).toBe(`${raw} ${registrationCaveat} ${sourceUrl}`);
-      expect(smsSegments(reply)).toBeGreaterThan(2);
-    },
-  );
-  it('keeps uncertainty and a long held-source URL whole even when extra segments are needed', () => {
-    const sourceUrl = `https://king.ca/registration/${'a'.repeat(280)}`;
-    const reply = toSmsReply("I couldn't verify the current date. Please check the source.", {
-      children: [],
-      now: NOW,
-      sourceUrl,
-    });
-    expect(reply).toBe(`I couldn't verify the current date. Please check the source. ${sourceUrl}`);
-  });
-  it('preserves an unverified answer and its source link in full', () => {
-    const sourceUrl = 'https://www.king.ca/recreation';
-    const raw =
-      `I couldn't verify the current date. ${'Please check the official page for the latest information. '.repeat(8)}`.trim();
-    const reply = toSmsReply(raw, { children: [], now: NOW, sourceUrl });
-    expect(reply).toBe(`${raw} ${sourceUrl}`);
-  });
-
-  it.each(['omitted', 'included', 'long'])(
-    'protects a verified registration source when the model link is %s',
-    (kind) => {
-      const sourceUrl =
-        'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx';
-      const answer = 'Resident registration opens Nov 24, 2026 (America/Toronto).';
-      const raw =
-        kind === 'included'
-          ? `${answer} ${sourceUrl}`
-          : kind === 'long'
-            ? `${answer} ${'Please check the official page for the latest information. '.repeat(8)}`
-            : answer;
-      const reply = toSmsReply(raw, { children: [], now: NOW, sourceUrl });
-      expect(reply).toContain('Nov 24, 2026');
-      expect(reply.endsWith(sourceUrl)).toBe(true);
-      expect(reply.split(sourceUrl)).toHaveLength(2);
-      expect(reply).toBe(`${kind === 'included' ? answer : raw.trim()} ${sourceUrl}`);
-    },
-  );
-
   it('strips markdown the phone would render literally', () => {
     const raw = '**Two swims** this week:\n\n- Mon 4:30\n- Thu 5:15\n\nWhich one?';
 
@@ -203,13 +94,18 @@ describe('toSmsReply', () => {
     expect(out).toBe('your kid has practice Thursday.');
   });
 
-  it('leaves a short reply untouched', () => {
+  it('leaves a reply already inside the budget untouched', () => {
     const raw = 'Move swim to Tue 4:30? YES to confirm.';
 
     expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
   });
 
-  it('keeps every sentence in a long reply, and points nowhere', () => {
+  /**
+   * VIL-434. A reply longer than two segments goes out whole. Code used to drop
+   * sentences from the end until two segments remained, and it used to append an app
+   * link when it did. Neither happens now.
+   */
+  it('sends an over-budget reply whole, and points nowhere', () => {
     const raw = [
       'Swim is on Tuesday at four thirty and Thursday at five fifteen this week.',
       'The Thursday one is at the east pool rather than the usual west pool.',
@@ -226,31 +122,62 @@ describe('toSmsReply', () => {
     expect(out).not.toMatch(/\bthe app\b/i);
   });
 
-  it('keeps the schedule and the complete find with its time, venue and attribution', () => {
-    const schedule =
-      'Swim is on Tuesday at four thirty and Thursday at five fifteen this week, and the ' +
-      'Thursday one is at the east pool rather than the usual west pool, so give yourself ' +
-      'a few extra minutes to get across town before the lesson starts.';
-    const find =
-      'Kids and Me drop-in runs free Thursdays 1-2:30 p.m. at Acton Library - their site ' +
-      'says so.';
-
-    const out = toSmsReply(`${schedule} ${find}`, { children: [], now: NOW });
-
-    expect(smsSegments(out)).toBeGreaterThan(2);
-    expect(out).toBe(`${schedule} ${find}`);
-  });
-
-  it('keeps a single long sentence without adding an ellipsis', () => {
-    const raw = `${'swim '.repeat(80)}now`;
+  /**
+   * VIL-434 live bug. "St." is not the end of a sentence. The coach sent
+   * "Nothing's on Sebby's calendar today, Mon Oct 12. The Kids & Me drop-in at St."
+   * because a period before a capital letter was treated as a sentence end and the
+   * rest was dropped to fit two segments.
+   */
+  it('sends a long reply that names St. Lawrence whole, past two segments', () => {
+    const raw = [
+      "Nothing's on Sebby's calendar today, Mon Oct 12.",
+      'The Kids & Me drop-in at St. Lawrence Community Centre runs this afternoon from 1-2:30 p.m. and their own page says it is free for under-sixes.',
+      'Dr. Chen is the host this week, and the entrance is on Ave. Road beside the library.',
+      'I can add it once you say you want it on the week.',
+    ].join(' ');
 
     const out = toSmsReply(raw, { children: [], now: NOW });
 
+    expect(smsSegments(raw)).toBeGreaterThan(2);
     expect(out).toBe(raw);
+    expect(out).toContain('St. Lawrence Community Centre');
+    expect(out).toContain('1-2:30 p.m. and their own page');
+    expect(out).toContain('Dr. Chen');
+    expect(out).toContain('Ave. Road');
+    expect(out.endsWith('at St.')).toBe(false);
   });
 
-  it('does not reject an unbroken token solely because of its length', () => {
-    expect(toSmsReply('x'.repeat(400), { children: [], now: NOW })).toBe('x'.repeat(400));
+  /**
+   * VIL-434, any language. A Chinese reply and a Korean reply are UCS-2, so two segments
+   * is about 140 characters. Both go out whole, past that, with every sentence ending.
+   */
+  it.each([
+    [
+      'zh',
+      '今天Sebby的日历上没有安排。圣劳伦斯社区中心今天下午一点到两点半有亲子自由活动，官网说六岁以下免费。陈医生这周主持，入口在图书馆旁边的大道上。你想去的话告诉我，我帮你加到这周的日程里。另外，周六上午还有一节补课，如果周四不方便可以改到那天，秋季班的报名下个月十五号开始。',
+    ],
+    [
+      'ko',
+      '오늘 Sebby의 일정은 비어 있어요. 세인트 로렌스 커뮤니티 센터에서 오후 1시부터 2시 30분까지 부모와 아이 자유 놀이가 있고, 6세 미만은 무료라고 공식 페이지에 나와 있어요. 이번 주 진행자는 첸 선생님이고 입구는 도서관 옆이에요. 원하시면 이번 주 일정에 넣어 드릴게요.',
+    ],
+  ])('sends a long %s reply whole, past two segments', (_language, raw) => {
+    const out = toSmsReply(raw, { children: [], now: NOW });
+
+    expect(smsSegments(raw)).toBeGreaterThan(2);
+    expect(out).toBe(raw);
+    expect(out).toMatch(/[。.]$/);
+  });
+
+  it('sends a single long sentence whole', () => {
+    const raw = `${'swim '.repeat(80)}now`;
+
+    expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
+    expect(smsSegments(raw)).toBeGreaterThan(2);
+  });
+
+  it('sends a long unbroken token whole', () => {
+    const raw = 'x'.repeat(400);
+    expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
   });
 
   it('refuses to emit an empty body', () => {
@@ -258,8 +185,11 @@ describe('toSmsReply', () => {
   });
 });
 
-/** Historical regression: the segment cap used to remove both paid-for web finds. */
-describe('a long composition', () => {
+/**
+ * VIL-434. The 2026-08-21 bench composed 548 units and the send path dropped the second
+ * paragraph. Both facts now leave whole. Length stays the model's judgment in the skill.
+ */
+describe('an over-budget composition', () => {
   /** Verbatim from bench-calls-adv-verify.json seq 5. Do not reflow: its length IS the
    * fixture. */
   const BENCH_SEQ5 =
@@ -271,37 +201,33 @@ describe('a long composition', () => {
     'Wallace St is free for under-sixes with drop-in play most weekday mornings - their ' +
     'site says to check the Links2Care seasonal schedule for current times.';
 
-  /** The same turn's facts, written concisely. */
+  /** The same turn's facts, composed to the ceiling the skill now states: the verified
+   * date as ONE CLAUSE, then the find. Nothing is dropped because nothing has to be. */
   const COMPOSED_TO_BUDGET =
     "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents and I'm on it - " +
     'meanwhile the Acton EarlyON on Wallace St is free drop-in for under-sixes, their ' +
     'site says to check the seasonal schedule.';
 
-  it('preserves both web finds and the registration date without a trim warning', () => {
+  it('sends the long bench reply whole, including both finds', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const out = toSmsReply(BENCH_SEQ5, { children: [], now: NOW });
 
-    expect(warn).not.toHaveBeenCalled();
-    expect(out).toBe(BENCH_SEQ5.replace(/\s+/g, ' '));
+    expect(smsSegments(plainText(BENCH_SEQ5))).toBeGreaterThan(2);
     expect(out).toContain('Sep 1');
     expect(out).toContain('EarlyON');
     expect(out).toContain('Toddler Dance');
+    expect(warn).not.toHaveBeenCalled();
 
     warn.mockRestore();
   });
 
-  it('carries the same two facts whole when they were written to fit', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('carries a short composition whole as well', () => {
     const out = toSmsReply(COMPOSED_TO_BUDGET, { children: [], now: NOW });
 
     expect(out).toBe(COMPOSED_TO_BUDGET);
     expect(out).toContain('Sep 1');
     expect(out).toContain('Acton EarlyON');
-    expect(warn).not.toHaveBeenCalled();
-
-    warn.mockRestore();
   });
 });
 
@@ -353,10 +279,10 @@ describe('a model-written health-line number goes out as the model wrote it', ()
 describe('the plan offer line', () => {
   const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
   // Composed by the model and already gated by offer_full_plan — the runtime only
-  // appends it; it does not author it.
+  // protects it from the trim; it does not author it.
   const OFFER_LINE = 'Want me to send the full plan?';
 
-  it('is appended by code', () => {
+  it('is appended by code, so the model never has to spend budget on it', () => {
     const reply = toSmsReply('Try a gradual fade over two weeks.', {
       children: [child],
       now: new Date('2026-08-12T12:00:00.000Z'),
@@ -366,7 +292,7 @@ describe('the plan offer line', () => {
     expect(reply).toBe('Try a gradual fade over two weeks. Want me to send the full plan?');
   });
 
-  it('keeps the full answer and the offer', () => {
+  it('keeps a long answer and the offer, and never cuts either', () => {
     const long = `${'A gradual fade works well here. '.repeat(9)}One last background clause.`;
 
     const reply = toSmsReply(long, {
@@ -375,7 +301,9 @@ describe('the plan offer line', () => {
       planOffer: OFFER_LINE,
     });
 
-    expect(reply).toBe(`${long} ${OFFER_LINE}`);
+    expect(reply.startsWith(long)).toBe(true);
+    expect(reply.endsWith(OFFER_LINE)).toBe(true);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
   });
 
   it('does not append when the turn offered nothing', () => {
@@ -427,12 +355,14 @@ describe('the referral block', () => {
     expect(reply).toBe(`Forward this to them - when they text me, that is their yes. ${BLOCK}`);
   });
 
-  it('keeps the full answer and the referral link', () => {
+  it('keeps a long answer and the link, and never cuts the URL', () => {
     const long = `${'Happy to pass this along whenever you like. '.repeat(8)}One trailing clause.`;
 
     const reply = toSmsReply(long, { children: [child], now, referral: BLOCK });
 
-    expect(reply).toBe(`${long} ${BLOCK}`);
+    expect(reply.startsWith(long)).toBe(true);
+    expect(reply.endsWith('https://www.villagehale.com/text?s=friend-0123456789ab')).toBe(true);
+    expect(smsSegments(reply)).toBeGreaterThan(2);
   });
 
   it('redacts a teen name inside the forwarded line (rule #1 — a parent sends this OUT)', () => {
@@ -524,27 +454,19 @@ describe('the nearby count', () => {
     expect(reply).toBe('I will look into it.');
   });
 
-  it('keeps the full answer when appending the count exceeds two segments', () => {
+  it('sends a long answer and the count, both whole', () => {
     const body =
       `Riverdale storytime runs Saturdays at 10. ${'They have a craft table and a singalong too. '.repeat(5)}`.trim();
-    expect(smsSegments(body)).toBeLessThanOrEqual(2);
 
     const reply = toSmsReply(body, { children: [], now, nearby: NEARBY });
 
+    expect(reply.startsWith(body)).toBe(true);
+    expect(reply.endsWith(NEARBY.clause)).toBe(true);
     expect(smsSegments(reply)).toBeGreaterThan(2);
-    expect(reply).toBe(`${body} ${NEARBY.clause}`);
-  });
-
-  it('appends the count without shortening a long answer', () => {
-    const long =
-      `Riverdale storytime runs Saturdays at 10. ${'They also have a craft table and a singalong. '.repeat(6)}`.trim();
-    const reply = toSmsReply(long, { children: [], now, nearby: NEARBY });
-
-    expect(reply).toBe(`${long} ${NEARBY.clause}`);
   });
 
   it('keeps the count when the only suffix is the find URL', () => {
-    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+    const reply = toSmsReply(`Riverdale story time is Saturday at 10. [${linkRef(TPL_PAGE)}]`, {
       children: [],
       now,
       nearby: {
@@ -552,13 +474,7 @@ describe('the nearby count', () => {
         title: 'Riverdale story time',
         otherTitles: [],
       },
-      activityLinks: [
-        {
-          title: 'Riverdale story time',
-          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-          venue: 'Riverdale Library',
-        },
-      ],
+      activityLinks: [{ ref: linkRef(TPL_PAGE), url: TPL_PAGE }],
     });
 
     expect(reply).toContain('3 families near you say Riverdale Library is worth it.');
@@ -566,17 +482,12 @@ describe('the nearby count', () => {
   });
 
   it('still drops the count when a plan offer is the suffix', () => {
-    const reply = toSmsReply('Riverdale story time is Saturday at 10.', {
+    const reply = toSmsReply(`Riverdale story time is Saturday at 10. [${linkRef(TPL_PAGE)}]`, {
       children: [],
       now,
       nearby: NEARBY,
       planOffer: 'Want me to send the full plan?',
-      activityLinks: [
-        {
-          title: 'Riverdale story time',
-          url: 'https://www.torontopubliclibrary.ca/programs-and-classes/',
-        },
-      ],
+      activityLinks: [{ ref: linkRef(TPL_PAGE), url: TPL_PAGE }],
     });
 
     expect(reply).not.toContain('families near you');
@@ -590,22 +501,90 @@ describe('plain ASCII folding', () => {
     const body = `${'Up at 2 is common at eight. '.repeat(4)}One quiet check, then back to bed\u2011same as last week.\u200b`;
     const folded = plainText(body);
     expect(folded).not.toMatch(/[\u2011\u200b]/);
-    expect(smsSegments(folded)).toBeLessThanOrEqual(2);
-    expect(smsSegments(body)).toBeGreaterThan(2);
+    expect(smsSegments(body)).toBeGreaterThan(smsSegments(folded));
   });
 });
 
+/**
+ * Pages are attached by REF, never by matching words (activity-links.ts). The model
+ * cites the ref a tool returned; a URL it typed never reaches the parent.
+ */
 describe('activity links', () => {
-  it('appends the page for the activity the reply named, and not one it did not', () => {
-    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon at North York.', {
+  const LANTERN = {
+    ref: linkRef('https://tpl.example/lantern'),
+    url: 'https://tpl.example/lantern',
+  };
+  const ROBOTICS = {
+    ref: linkRef('https://tpl.example/robotics'),
+    url: 'https://tpl.example/robotics',
+  };
+  const TUMBLERS_URL = 'https://www.haltonhills.ca/en/recreation/tiny-tumblers.aspx';
+  const TUMBLERS = { ref: linkRef(TUMBLERS_URL), url: TUMBLERS_URL };
+  const ANSWER =
+    "Remy would be in Tiny Gym. He's 19 months, so a parent stays with him, and Mini Gym is for kids who are 3.5 and going solo.";
+
+  it('appends the page for the ref the reply cited, and not one it did not', () => {
+    const reply = toSmsReply(
+      `Fanous lantern craft is on Saturday afternoon at North York. [${LANTERN.ref}]`,
+      {
+        children: [],
+        now: NOW,
+        activityLinks: [LANTERN, ROBOTICS],
+      },
+    );
+    expect(reply).toBe(
+      'Fanous lantern craft is on Saturday afternoon at North York. https://tpl.example/lantern',
+    );
+  });
+
+  it('attaches nothing when the reply names a find but cites no ref', () => {
+    const reply = toSmsReply('Fanous lantern craft is on Saturday afternoon.', {
       children: [],
       now: NOW,
-      activityLinks: [
-        { title: 'Fanous lantern craft', url: 'https://tpl.example/lantern' },
-        { title: 'Robotics workshops', url: 'https://tpl.example/robotics' },
-      ],
+      activityLinks: [LANTERN],
     });
-    expect(reply).toContain('https://tpl.example/lantern');
-    expect(reply).not.toContain('https://tpl.example/robotics');
+    expect(reply).toBe('Fanous lantern craft is on Saturday afternoon.');
+  });
+
+  it('drops a URL the model typed, even one a tool returned (continuity-bare-noun)', () => {
+    const out = toSmsReply(`${ANSWER} ${TUMBLERS_URL}`, {
+      children: [],
+      now: NOW,
+      activityLinks: [TUMBLERS],
+    });
+    expect(out).toBe(ANSWER);
+  });
+
+  it('drops a URL no tool returned and a ref no tool returned', () => {
+    const out = toSmsReply('Swim is Tuesday, see https://example.com/swim. [link-abcdef]', {
+      children: [],
+      now: NOW,
+      activityLinks: [LANTERN],
+    });
+    expect(out).toBe('Swim is Tuesday, see.');
+  });
+
+  it('does not delete a sentence that says ref (VIL-501)', () => {
+    const soccer = 'The ref is at the field at 4.';
+    expect(toSmsReply(soccer, { children: [], now: NOW })).toBe(soccer);
+    const narration = 'A ref came back this time, so I can attach the page.';
+    expect(toSmsReply(narration, { children: [], now: NOW, activityLinks: [TUMBLERS] })).toBe(
+      narration,
+    );
+  });
+
+  it('does not treat refer as the marker', () => {
+    const reply = toSmsReply('Text this if you want to refer a friend.', {
+      children: [],
+      now: NOW,
+    });
+    expect(reply).toBe('Text this if you want to refer a friend.');
+  });
+
+  it('cites a page from a reply in any script', () => {
+    const zh = `周六下午北约克中央图书馆有灯笼手工活动。[${LANTERN.ref}]`;
+    expect(toSmsReply(zh, { children: [], now: NOW, activityLinks: [LANTERN] })).toBe(
+      '周六下午北约克中央图书馆有灯笼手工活动。 https://tpl.example/lantern',
+    );
   });
 });

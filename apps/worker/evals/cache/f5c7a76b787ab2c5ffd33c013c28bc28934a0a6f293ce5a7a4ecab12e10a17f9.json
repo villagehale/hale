@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Facts are correct: tomorrow (lundi 26 octobre), 15 h to 16 h, Georgetown library, and the title is kept as 'un jour de congé'. However, the text turns the title into a claim, presenting it as a closure-type event rather than naming it as the event's name. Also 'il y a un jour de congé à la bibliothèque' reads as a stiff, calendar-readout construction rather than how a friend would text it; a native speaker would say something like 'Demain, à 15 h, il y a Jour de congé à la bibliothèque de Georgetown, jusqu'à 16 h' with the title quoted or introduced naturally. The phrasing is unidiomatic and the title is folded into a generic noun phrase, so it caps at 3.",
+    "score": 3
+  }
+}

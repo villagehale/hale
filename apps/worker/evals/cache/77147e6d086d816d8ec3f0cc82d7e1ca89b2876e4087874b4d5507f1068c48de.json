@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The composer's message only reports a finding (a vaccine record check due between ages 14 and 16) and contains no question, request to reply, or offer awaiting a yes. The only ask in the full text is the appended shell question, which is the single allowed ask.",
+    "score": 5
+  }
+}

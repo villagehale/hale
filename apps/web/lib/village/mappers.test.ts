@@ -44,6 +44,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     searchSeason: null,
     supersededAt: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
+    offeredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };
 }
@@ -56,6 +57,26 @@ const NO_ENGAGEMENT = {
 };
 
 describe('toVillageCandidateView', () => {
+  it('keeps imported receipt identity and source without presenting old schedule or price chips', () => {
+    const view = toVillageCandidateView(
+      candidate({
+        offeredAt: null,
+        eventDate: '2026-10-20',
+        summary: 'Opens October 20 at 9 AM',
+        priceLevel: 'free',
+        seasons: ['fall'],
+      }),
+      false,
+    );
+    expect(view.id).toBe('cand-1');
+    expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
+    expect(view.summary).toContain('earlier find');
+    expect(view.summary).not.toContain('October 20');
+    expect(view.eventDate).toBeNull();
+    expect(view.cadence).toBeNull();
+    expect(view.seasons).toBeNull();
+    expect(view.priceLevel).toBeNull();
+  });
   it('marks teen-attributed, surfaces only the category, and never duplicates the redaction line', () => {
     const view = toVillageCandidateView(candidate(), true, NO_ENGAGEMENT);
 
@@ -174,7 +195,11 @@ describe('toVillageCandidateView', () => {
     );
     expect(open.eventDate).toBe('2026-09-12');
 
-    const teen = toVillageCandidateView(candidate({ eventDate: '2026-09-12' }), true, NO_ENGAGEMENT);
+    const teen = toVillageCandidateView(
+      candidate({ eventDate: '2026-09-12' }),
+      true,
+      NO_ENGAGEMENT,
+    );
     expect(teen.eventDate).toBeNull();
   });
 

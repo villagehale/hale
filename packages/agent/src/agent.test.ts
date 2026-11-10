@@ -369,7 +369,7 @@ interface WireShape {
   output_config?: { effort: string };
 }
 
-describe('runAgent when a step is truncated', () => {
+describe('runAgent when a step is truncated before it says anything', () => {
   function capturing(script: Anthropic.Message[]) {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
     /** The messages AS SENT. `runAgent` mutates one array across the loop and the
@@ -508,6 +508,55 @@ describe('runAgent when a step is truncated', () => {
     expect(result.truncated).toBe(false);
   });
 
+  /**
+   * VIL-434. The ceiling landed inside the ANSWER. Nothing downstream trims a reply any
+   * more, so that text would go to the parent ending mid-word ("The Kids & Me drop-in at
+   * St."). It is re-asked like a silent completion, never sent as it stands.
+   */
+  function cutAnswerMessage(text: string, u: Anthropic.Usage): Anthropic.Message {
+    return {
+      ...textMessage(text, u),
+      id: 'msg-cut-answer',
+      stop_reason: 'max_tokens',
+    };
+  }
+
+  it('re-asks an answer the ceiling cut mid-sentence, and sends the whole one', async () => {
+    const { client, requests } = capturing([
+      cutAnswerMessage(
+        "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St.",
+        usage(1_000, 400),
+      ),
+      textMessage(
+        "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St. Lawrence runs 1-2:30 p.m.",
+        usage(1_000, 60),
+      ),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    expect(requests).toHaveLength(2);
+    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
+    expect(result.answer).toBe(
+      "Nothing's on Sebby's calendar today. The Kids & Me drop-in at St. Lawrence runs 1-2:30 p.m.",
+    );
+    expect(result.truncatedRetries).toBe(1);
+    expect(result.truncated).toBe(false);
+  });
+
+  it('never returns a cut answer when the re-ask is cut too', async () => {
+    const { client } = capturing([
+      cutAnswerMessage('今天Sebby的日历上没有安排。圣劳伦斯社区中心今天下午', usage(1_000, 400)),
+      cutAnswerMessage('今天Sebby的日历上没有安排。圣劳伦斯社区中心', usage(1_000, 400)),
+    ]);
+
+    const result = await runAgent(args(client));
+
+    expect(result.answer).toBeNull();
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedRetries).toBe(1);
+  });
+
   it('does not re-ask a lane that was not thinking', async () => {
     // `draft` is `thinking: 'between_tools'` already, so there is no second shape to buy:
     // no text and a clipped call there means the REPLY did not fit the budget, which is
@@ -526,72 +575,6 @@ describe('runAgent when a step is truncated', () => {
     expect(result.answer).toBeNull();
     expect(result.truncated).toBe(true);
     expect(result.truncatedRetries).toBe(0);
-  });
-
-  it('re-asks partial text instead of returning a clipped answer', async () => {
-    const clipped: Anthropic.Message = {
-      id: 'msg-clipped',
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-sonnet-4-6',
-      stop_reason: 'max_tokens',
-      stop_sequence: null,
-      content: [
-        { type: 'text', text: 'Around 18 months, once he', citations: null } as Anthropic.TextBlock,
-      ],
-      usage: usage(1_000, 400),
-    };
-    const { client, requests, sent } = capturing([
-      clipped,
-      textMessage('Around 18 months, once he is walking outside.', usage(1_000, 40)),
-    ]);
-
-    const result = await runAgent(args(client));
-
-    expect(requests).toHaveLength(2);
-    expect((requests[1] as unknown as WireShape).thinking).toEqual({ type: 'between_tools' });
-    expect(sent[1]).toEqual(sent[0]);
-    expect(result.answer).toBe('Around 18 months, once he is walking outside.');
-    expect(result.truncatedRetries).toBe(1);
-    expect(result.truncated).toBe(false);
-    expect(result.usage.completionTokens).toBe(440);
-  });
-
-  it.each(['converse', 'draft'] as const)(
-    'never returns partial text when the %s lane cannot recover',
-    async (task) => {
-      const clipped = {
-        ...textMessage('Registration opens Dec 1, exact time', usage(1_000, 400)),
-        stop_reason: 'max_tokens' as const,
-      };
-      const { client, requests } = capturing([clipped, clipped]);
-      const result = await runAgent({
-        ...args(client),
-        skill: { ...skill, meta: { ...skill.meta, task } },
-      });
-      expect(requests).toHaveLength(task === 'converse' ? 2 : 1);
-      expect(result.answer).toBeNull();
-      expect(result.truncated).toBe(true);
-      expect(result.truncatedRetries).toBe(task === 'converse' ? 1 : 0);
-    },
-  );
-
-  it('re-asks an invalid tool call even when it has partial text beside it', async () => {
-    const read: string[] = [];
-    const clipped = clippedToolUseMessage(usage(1_000, 400));
-    clipped.content.unshift({
-      type: 'text',
-      text: 'Let me check',
-      citations: null,
-    } as Anthropic.TextBlock);
-    const { client } = capturing([
-      clipped,
-      textMessage('Please provide the child profile.', usage(1_000, 40)),
-    ]);
-    const result = await runAgent(args(client, [recordingProfileTool(read)]));
-    expect(read).toEqual([]);
-    expect(result.truncatedRetries).toBe(1);
-    expect(result.answer).toBe('Please provide the child profile.');
   });
 
   it('gives up after one re-ask rather than escalating forever', async () => {
@@ -675,37 +658,6 @@ describe('runAgent keeps the answer written beside a registering tool call', () 
     expect(result.steps).toBe(1);
     expect(client.messages.create).toHaveBeenCalledTimes(1);
     expect(result.truncated).toBe(false);
-  });
-
-  it('finishes clipped text without dispatching the completed registering tool twice', async () => {
-    const clipped = {
-      ...textAndToolUseMessage(
-        'I will remind you when',
-        'tu-1',
-        'promise_followup',
-        { subject: 'registration' },
-        usage(100, 400),
-      ),
-      stop_reason: 'max_tokens' as const,
-    };
-    const client = fakeClient([clipped, textMessage('Your reminder is saved.', usage(120, 20))]);
-    const promised: string[] = [];
-    const result = await runAgent({
-      skill: promiseSkill,
-      context: {},
-      tools: [profileTool, promiseTool(promised)],
-      client,
-      maxSteps: 5,
-      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
-      guardDeps: guardDeps().deps,
-    });
-    expect(promised).toEqual(['registration']);
-    expect(result.answer).toBe('Your reminder is saved.');
-    expect(result.steps).toBe(2);
-    expect(result.truncatedRetries).toBe(0);
-    const nextMessages = (client.messages.create as unknown as Mock).mock.calls[1]?.[0].messages;
-    expect(JSON.stringify(nextMessages)).not.toContain('I will remind you when');
-    expect(JSON.stringify(nextMessages)).toContain('tool_result');
   });
 
   it('takes another turn when the registering tool REFUSED, so the fix reaches the parent', async () => {

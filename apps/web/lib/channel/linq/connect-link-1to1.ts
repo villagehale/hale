@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { offerConnectorLinks } from '~/lib/channel/connect/offer';
 import { acceptedStatus } from '~/lib/channel/ledger';
+import { createOutboundTransport, sendLinqParts } from '~/lib/channel/outbound-transport';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -16,9 +17,10 @@ import {
   composeOnboardingLine,
   sendGroupOnboardingLine,
 } from './group-onboarding-voice';
+import { PRIVATE_ASIDE_TEMPLATE } from './private-aside-ledger';
 import { isUndefinedTable } from './roster';
 import { familyLanguage, firstName, primaryParentId } from './roster-ask';
-import { LinqSendError, createLinqPhoneTransport, sendLinqParts } from './transport';
+import { LinqSendError } from './transport';
 
 /**
  * Group onboarding v2 — the flow's 1:1 lines.
@@ -47,7 +49,7 @@ export interface OneToOneSend {
 }
 
 export function defaultOneToOneSend(): OneToOneSend {
-  const transport = createLinqPhoneTransport();
+  const transport = createOutboundTransport();
   return {
     text: async (input) => {
       const sent = await transport.send({ to: input.to, body: input.body });
@@ -74,6 +76,8 @@ async function sendOneToOne(
     ledgerUserId: string;
     to: string;
     body: string;
+    /** Keep the sent text on the row: only for a model-written line nothing else holds. */
+    recordBody: boolean;
     templateKey: string;
     dedupeKey: string;
     now: Date;
@@ -92,6 +96,7 @@ async function sendOneToOne(
       dedupeKey: input.dedupeKey,
       status: acceptedStatus('imessage'),
       sentAt: input.now,
+      body: input.recordBody ? input.body : null,
     })
     .onConflictDoNothing()
     .returning({ id: schema.channelMessages.id });
@@ -115,7 +120,7 @@ async function sendOneToOne(
     if (!(err instanceof LinqSendError)) throw err;
     await database
       .update(schema.channelMessages)
-      .set({ status: 'failed', errorCode: err.code, dedupeKey: null })
+      .set({ status: 'failed', errorCode: err.code, dedupeKey: null, body: null })
       .where(eq(schema.channelMessages.id, claimed.id));
     console.warn(
       { familyId: input.familyId, templateKey: input.templateKey, code: err.code },
@@ -123,6 +128,41 @@ async function sendOneToOne(
     );
     return { outcome: 'not_sent', code: err.code, permanent: err.permanent };
   }
+}
+
+/**
+ * VIL-457 — the 1:1 door for a shared group's private aside. Sends the model-written text
+ * to that family's primary parent only (never the group), with the same claim-first ledger
+ * as every other 1:1 line. No sendable parent means nothing is sent.
+ */
+export function privateAsideOneToOne(
+  database: Database,
+  input: { now: Date; send?: OneToOneSend },
+): (aside: {
+  familyId: string;
+  text: string;
+  dedupeKey: string;
+}) => Promise<'sent' | 'suppressed' | 'failed'> {
+  return async (aside) => {
+    const parent = await primaryParentId(database, aside.familyId);
+    if (!parent) return 'failed';
+    const to = await resolveSendablePhone(database, parent);
+    if (!to) return 'failed';
+    const out = await sendOneToOne(database, {
+      familyId: aside.familyId,
+      ledgerUserId: parent,
+      to,
+      body: aside.text,
+      recordBody: true,
+      templateKey: PRIVATE_ASIDE_TEMPLATE,
+      dedupeKey: aside.dedupeKey,
+      now: input.now,
+      send: input.send ?? defaultOneToOneSend(),
+    });
+    if (out.outcome === 'sent') return 'sent';
+    if (out.outcome === 'already_sent') return 'suppressed';
+    return 'failed';
+  };
 }
 
 async function sendLinkPart(
@@ -273,6 +313,7 @@ export async function deliverConnectLinkOneToOne(
     ledgerUserId: input.userId,
     to: phone,
     body: composed.body,
+    recordBody: false,
     templateKey: LINK_TEMPLATE,
     dedupeKey,
     now: input.now,
@@ -491,6 +532,7 @@ export async function noticeIfGroupQuiet(
     ledgerUserId: primary,
     to: phone,
     body: composed.body,
+    recordBody: false,
     templateKey: QUIET_TEMPLATE,
     dedupeKey,
     now: input.now,

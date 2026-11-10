@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent retracted the cancel, so nothing should be drafted. The reply correctly drafts nothing and confirms in one short, plain line that Thursday swim stays as it is. Thursday swim is a real event in the week. There is no greeting, no extra question and no machinery talk.",
+    "score": 5
+  }
+}

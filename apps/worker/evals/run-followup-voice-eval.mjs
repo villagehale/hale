@@ -50,21 +50,23 @@ import { tsImport } from 'tsx/esm/api';
 import { FOLLOWUP_VOICE_FIXTURES } from './followup-voice-fixtures.mjs';
 import {
   JUDGE_MIN,
+  assertRunFlags,
   cachedToolCall,
+  dryReportLine,
   installEvalSpendCap,
+  isDryRun,
   lazyAnthropic,
   makeCost,
   makeJudge,
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import { judgePrompt } from './lib/judge-prompt.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'followup-voice.md');
-const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
-
 /** How many distinct openings the activity asks must show between them. Two is a low bar
  * on purpose — it catches a corpus that has collapsed onto one template without pretending
  * to measure style. */
@@ -133,7 +135,6 @@ function refusals(body, request) {
   const found = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_ASK_CHARS) found.push('over_char_cap');
-  if (smsEncodingRef(body) !== 'gsm7') found.push('not_gsm7');
   if (LINK_SHAPE.test(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length !== 1) found.push('not_one_question');
 
@@ -151,10 +152,6 @@ function refusals(body, request) {
   if (/\d/.test(withoutSubject)) found.push('invented_number');
   return found;
 }
-
-/** Bound in main() once the real module is loaded — refusals() has to reach the same
- * GSM-7 table the segment counter bills on, not a copy of it. */
-let smsEncodingRef = () => 'gsm7';
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts (behind `~/`, so replicated). */
 const GSM7_SUBSTITUTIONS = [
@@ -185,27 +182,7 @@ function flatten(text) {
 
 // ── the judge ────────────────────────────────────────────────────────────────
 
-const JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE text message Hale sends a parent to check back on',
-  'something it set up or was told days ago - an introduction to another family, an activity',
-  'it put on their calendar, or a daycare the parent said their child had started. Hale',
-  'composed this BLIND: for an activity it was shown the title and nothing else, for a',
-  'daycare the provider name the parent typed (or nothing at all), and for an introduction',
-  'nothing at all. No family, no children, no dates, no tools.',
-  'You are given the request it was answering, the message, and watchFor - fixture-specific',
-  'notes on what right and wrong look like here. Score 1-5.',
-  'A 5 is a friend who happened to remember, texting: ONE warm question about how the named',
-  'thing went, the pressure explicitly taken off ("no pressure", "no need to reply", "even a',
-  'word is fine"), and nothing else at all. Short. Plain. First person.',
-  'A LOW score is any of: assuming it happened or that it went well ("hope swim was fun!");',
-  'a second question, or a question plus a request; offering to do anything next (find',
-  'another one, book the next session, look something up); any invented specific - a time,',
-  'a date, a place, a price, or ANYTHING about a child including age, pronoun or',
-  'relationship; naming or describing the other household in the introduction case;',
-  'greeting, hype, exclamation marks, emoji, "just checking in!"; pointing at an app or a',
-  'link; padding after the question; more than about two short sentences.',
-  'Reply with ONLY the score tool.',
-].join(' ');
+const JUDGE_SYSTEM = judgePrompt('followup-voice');
 
 // Deterministic broken stand-in: hype, a second question, an invented time, an emoji, a
 // link, an offer to do something next, and no mention of the activity by name — trips
@@ -216,6 +193,7 @@ const BROKEN_ASK =
   'See www.example.com for options.';
 
 async function main() {
+  assertRunFlags(['--broken', '--env-file', '--max-usd']);
   const broken = process.argv.includes('--broken');
   const cachedOnly = process.argv.includes('--cached-only');
   installEvalSpendCap();
@@ -223,8 +201,6 @@ async function main() {
   const cost = makeCost();
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
-  const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
-  smsEncodingRef = smsEncoding;
   const skill = await agent.loadSkill(SKILL_PATH);
   const samples = await skillSampleLines();
   const model = agent.pickModel(skill.meta.task);
@@ -323,6 +299,10 @@ async function main() {
     results.every((r) => r.failures.length === 0) && activityOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
+  if (isDryRun()) {
+    console.log(dryReportLine('followup-voice', [judge.plan]));
+    process.exit(0);
+  }
   if (!broken) {
     console.log(`overall (real): ${allPass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
     process.exit(allPass ? 0 : 1);

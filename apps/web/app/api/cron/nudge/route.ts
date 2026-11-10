@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runActivityFollowUpSweep } from '~/lib/channel/activity/sweep';
+import { productionChannels } from '~/lib/channel/adapters/production';
 import { runAutonomyNoticeRedrive } from '~/lib/channel/autonomy/dispatch';
 import { autonomyNoticePorts } from '~/lib/channel/autonomy/ports';
 import { runEveningCheckInSweep } from '~/lib/channel/checkin/sweep';
@@ -7,6 +8,8 @@ import { runDepartureNoticeRedrive } from '~/lib/channel/coparent/departure-redr
 import { sweepDutyAsks } from '~/lib/channel/coparent/duty/asks';
 import { activityFollowupAskOpen } from '~/lib/channel/followup/ask-open';
 import { runFollowupSweep } from '~/lib/channel/followup/run';
+import { runGroupPlanReportRedrive } from '~/lib/channel/group-plan/redrive';
+import { productionGroupPlanReportPorts, withGroupPlanReport } from '~/lib/channel/group-plan/send';
 import { departureNoticePorts, welcomeCardRedrivePorts } from '~/lib/channel/inbound-deps';
 import { runWelcomeCardRedrive } from '~/lib/channel/intake/welcome-card-redrive';
 import { runMidActivityAnswerPass } from '~/lib/channel/mid-activity/answer';
@@ -15,6 +18,13 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { cronRoute } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
+import {
+  createCalendarInviteSender,
+  retryDeferredCalendarCancels,
+} from '~/lib/loop/calendar-invite';
+import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
+import { productionCalendarCancelVoice } from '~/lib/loop/voice/calendar-cancel-voice';
+import { productionCalendarInviteVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { runWorkstreamFollowupSweep } from '~/lib/memory/workstream-followup';
 import { reviewVerdictClient, runReviewCapture } from '~/lib/reviews/capture';
 import { createVerdictReader } from '~/lib/reviews/verdict';
@@ -72,12 +82,14 @@ export const maxDuration = 300;
  * must not silently start reading that household's booking emails.
  *
  * THE 08:00 RE-DRIVES ride here last of all — the contact card a family's intake owed
- * them, and the departure notice a co-parent's erasure owed the parent who stayed. They
- * are one leg in two halves and not two mechanisms: the same local hour, the same
- * staleness bound and the same per-run cap, all read from lib/channel/redrive-slot.ts.
- * Neither carries a dark-launch flag of its own, because neither is a class of message —
- * each is a send another module already owed and quiet hours deferred, reaching the same
- * function, spending the same key and writing the same audit verb.
+ * them, the departure notice a co-parent's erasure owed the parent who stayed, and the
+ * plan text a family group's approval owed that group (VIL-443). They are one leg and not
+ * several mechanisms: the same local hour, the same staleness bound and the same per-run
+ * cap, all read from lib/channel/redrive-slot.ts. None carries a dark-launch flag of its
+ * own, because none is a class of message — each is a send another module already owed
+ * and quiet hours deferred, reaching the same function, spending the same key and writing
+ * the same audit verb. The group plan's re-drive shares its sender with the cancel retry
+ * below and runs first, so a cancel quiet hours held goes to the group once, at 08:00.
  *
  * THE REVIEW CAPTURE runs after every one of them, and it is the only stage that neither
  * interrupts a parent nor discharges a debt: it sends nothing at all, it only reads what
@@ -126,6 +138,16 @@ export const GET = cronRoute('nudge', async () => {
     const autonomyNotices = await runAutonomyNoticeRedrive(db(), {
       ports: autonomyNoticePorts(db()),
     });
+    const calendarInvites = withGroupPlanReport(
+      createCalendarInviteSender(db(), {
+        channels: productionChannels(db()),
+        renderer: loopTemplateRenderer,
+        inviteVoice: productionCalendarInviteVoice(),
+        cancelVoice: productionCalendarCancelVoice(),
+      }),
+      productionGroupPlanReportPorts(db()),
+    );
+    const groupPlanReports = await runGroupPlanReportRedrive(db(), { sender: calendarInvites });
     const reviewCapture = await runReviewCapture(db(), {
       askOpen: activityFollowupAskOpen,
       verdict: createVerdictReader(reviewVerdictClient),
@@ -141,6 +163,10 @@ export const GET = cronRoute('nudge', async () => {
       now: answeredAt,
     });
     const workstreamFollowups = await runWorkstreamFollowupSweep(db());
+    // VIL-449 · cancellation texts that were deferred (or held) get another try, hourly,
+    // through the same sender: dedupe, consent and quiet hours apply in the dispatch. A
+    // plan the family group made is called off in that group (VIL-443), as it was added.
+    const calendarCancelRetries = await retryDeferredCalendarCancels(db(), calendarInvites);
     return NextResponse.json(
       {
         ok: true,
@@ -155,10 +181,12 @@ export const GET = cronRoute('nudge', async () => {
         welcomeCards,
         departureNotices,
         autonomyNotices,
+        groupPlanReports,
         reviewCapture,
         midActivityAsks,
         midActivityAnswers,
         workstreamFollowups,
+        calendarCancelRetries,
       },
       { status: 200 },
     );

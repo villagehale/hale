@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import type { ClassifierSuggestion } from '@hale/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 
 /**
  * B10 — crash-resume re-entrancy. The invariant: a job killed after the

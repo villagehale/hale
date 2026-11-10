@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { schema } from '@hale/db';
 import type { DraftedAction } from '@hale/types';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runReviewer } from '../agents/reviewer.js';
 import { type TestDb, createTestDb, seedFamily } from '../testing/pglite.js';
@@ -31,7 +33,14 @@ describe('check_action_time_window — the acting instant clears the family cloc
   // timeout, and hooks carry their own budget.
   beforeEach(async () => {
     db = await createTestDb();
-    ({ familyId } = await seedFamily(db.database));
+    const seeded = await seedFamily(db.database);
+    familyId = seeded.familyId;
+    // The column default is UTC until intake writes a zone. This family is the
+    // Toronto clock the cases below name.
+    await db.database
+      .update(schema.users)
+      .set({ timezone: 'America/Toronto' })
+      .where(eq(schema.users.id, seeded.parentUserId));
   }, 120_000);
 
   afterEach(async () => {

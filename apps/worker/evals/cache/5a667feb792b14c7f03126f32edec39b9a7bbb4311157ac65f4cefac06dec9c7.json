@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Since the text matches two swim lessons, asking which one is right, and both are named accurately from the week. But the reply asks two questions in one message. The second, what day it should have said, is likely answerable from the calendar once the lesson is known, so it hands work back to the parent. The opening admission is also padding.",
+    "score": 3
+  }
+}

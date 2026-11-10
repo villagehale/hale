@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OBSERVATION_WINDOW_DAYS,
   AUTONOMY_STREAK_REQUIRED,
-  withinObservationWindow,
+  type ActionApprovalRecord,
+  OBSERVATION_WINDOW_DAYS,
   streakSatisfiesAutonomy,
   teenRedactionCapApplies,
-  type ActionApprovalRecord,
+  withinObservationWindow,
 } from './autonomy-gate.js';
 
 /**

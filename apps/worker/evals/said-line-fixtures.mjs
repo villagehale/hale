@@ -2,8 +2,8 @@
 // code only checks the facts (mustInclude verbatim, no other link). Wording is graded
 // by a judge model: nothing here is a required or banned phrase.
 //
-// `language` is what production passes (replyLanguage(): 'en' unless the text proves
-// French), so the ZH and AR rows send 'en' and the parent's own script must win.
+// `language` is the tag production stored for the family. The parent's own
+// words still win when they are writing in another language.
 
 export const IDENTITY_FACTS = {
   assistant: 'Hale',
@@ -13,13 +13,22 @@ export const IDENTITY_FACTS = {
   contactEmail: 'aloha@villagehale.com',
 };
 
-const identity = (id, script, language, parentWords) => ({
+// numberOriginFact in apps/web/lib/channel/intake/number-origin.ts, for the record shapes
+// readNumberOrigin returns (#919). Absent: the record does not say, and the writer must not guess.
+const TEXTED_FIRST_QR = { how: 'they texted Hale first', from: 'a Hale QR code they scanned' };
+const TEXTED_FIRST = { how: 'they texted Hale first' };
+const ADDED_BY = {
+  how: "a member of their family added their number to their family's account on Hale",
+  who: 'Wei',
+};
+
+const identity = (id, script, language, parentWords, howWeGotYourNumber = null) => ({
   id,
   purpose: 'identity',
   script,
   language,
   parentWords,
-  facts: { ...IDENTITY_FACTS },
+  facts: { ...IDENTITY_FACTS, ...(howWeGotYourNumber ? { howWeGotYourNumber } : {}) },
   mustInclude: [IDENTITY_FACTS.website, IDENTITY_FACTS.contactEmail],
 });
 
@@ -65,11 +74,189 @@ const plain = (id, purpose, language, parentWords) => ({
 
 const ONE = 'https://app.villagehale.com/connect?t=U0FGRUJBQkVDQUZFQkFCRw&to=gcal';
 
+/**
+ * INTRO_REPLY_FACTS in apps/web/lib/village/intros/reply.ts, replicated (the eval cannot
+ * reach the web app's `~/` alias). reply.test.ts pins this copy to the original, so a
+ * drift fails a free unit test before it can mis-key the cache.
+ */
+export const INTRO_REPLY_FACTS = {
+  discoverability_on: {
+    situation: 'they just agreed to be introduced to other Hale families nearby',
+    shared:
+      'nothing about them is shared with anyone until both families say yes to the same introduction',
+    offRamp: 'they can switch introductions off any time by just saying so',
+    standing: 'the parent wants introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  discoverability_off: {
+    situation: 'they just switched introductions off for themselves',
+    pendingClosed: 'any introductions that were waiting for them are closed',
+    standing: 'the parent has introductions switched off',
+    backOn:
+      'if they text that they want introductions again, introductions are back on for them; the closed ones stay closed',
+  },
+  discoverability_already_on: {
+    situation: 'they had already said yes to introductions; nothing changed',
+    standing: 'the parent still wants introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  discoverability_already_off: {
+    situation: 'introductions were already off for them; nothing changed',
+    standing: 'the parent has introductions switched off',
+  },
+  intro_no: {
+    situation: 'they said no to this one introduction; it is recorded',
+    standing: 'the parent still wants other introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  intro_already_yes: {
+    situation: 'they had already said yes to this introduction; nothing changed',
+    next: 'Hale tells them if it goes ahead',
+  },
+  intro_already_no: {
+    situation: 'they had already passed on this introduction; nothing changed',
+    standing: 'the parent still wants other introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  intro_closed: {
+    situation: 'they said no to this introduction earlier, so it is closed and cannot be reopened',
+    theirAsk: 'saying yes now does not reopen it; it stays closed',
+    standing: 'the parent still wants other introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  no_open_intro: {
+    situation: 'there is no introduction waiting for them right now',
+    standing: 'the parent wants introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+  soft_close: {
+    situation: 'the introduction Hale asked them about is not happening',
+    standing: 'the parent still wants other introductions',
+    matchText: 'when Hale finds a good match for them, it texts them about it',
+  },
+};
+
+/** INTRO_MUST_CONVEY in reply.ts, replicated and pinned the same way. */
+export const INTRO_MUST_CONVEY = {
+  discoverability_off: ['pendingClosed'],
+};
+
+const intro = (id, script, situation, parentWords) => ({
+  id,
+  purpose: 'intro_reply',
+  script,
+  language: null,
+  parentWords,
+  facts: { ...INTRO_REPLY_FACTS[situation] },
+  mustInclude: [],
+  ...(INTRO_MUST_CONVEY[situation] ? { mustConvey: INTRO_MUST_CONVEY[situation] } : {}),
+});
+
+/**
+ * VIL-156: the reply to a texted Google disconnect. Each fixture carries the outcome it
+ * replays; copy.test.ts rebuilds its request with connectorRevokeLineInput in copy.ts and
+ * pins it to this one, so the facts here are the production facts, not a second copy.
+ */
+const revoke = (id, script, parentWords, outcome, facts, mustConvey) => ({
+  id,
+  purpose: 'connector_revoke',
+  script,
+  language: script,
+  languageHint: script,
+  parentWords,
+  revokeOutcome: outcome,
+  facts,
+  mustInclude: [],
+  ...(mustConvey ? { mustConvey } : {}),
+});
+
+const BOTH_OFF = "Hale can no longer read this parent's Gmail or Google Calendar";
+const RECONNECT = 'they can ask Hale here to connect either service again';
+export const REVOKE_GOOGLE_ACCESS = {
+  revoked: "Google has removed Hale's access to their Google account",
+  pending_retry:
+    'Hale asked Google to remove its access; Google has not confirmed yet, and Hale keeps asking',
+  not_confirmed:
+    "Hale deleted its keys, but Google did not confirm that it removed Hale's access, and Hale cannot ask again; their Google account settings show whether Hale is still listed",
+};
+export const REVOKE_BOTH_OFF = BOTH_OFF;
+
+function revokedFacts(turnedOff, google) {
+  return {
+    turnedOff,
+    bothOff: BOTH_OFF,
+    googleAccess: REVOKE_GOOGLE_ACCESS[google],
+    reconnect: RECONNECT,
+  };
+}
+
+function REVOKE_FIXTURES() {
+  return [
+    revoke(
+      'revoke-en-confirmed',
+      'en',
+      'disconnect my calendar',
+      { status: 'revoked', providers: ['gcal', 'gmail'], google: 'revoked' },
+      revokedFacts(['Google Calendar', 'Gmail'], 'revoked'),
+      ['bothOff', 'googleAccess'],
+    ),
+    revoke(
+      'revoke-fr-pending',
+      'fr',
+      'déconnecte mon agenda',
+      { status: 'revoked', providers: ['gcal'], google: 'pending_retry' },
+      revokedFacts(['Google Calendar'], 'pending_retry'),
+      ['bothOff', 'googleAccess'],
+    ),
+    revoke(
+      'revoke-en-not-confirmed',
+      'en',
+      'unlink my gmail',
+      { status: 'revoked', providers: ['gcal', 'gmail'], google: 'not_confirmed' },
+      revokedFacts(['Google Calendar', 'Gmail'], 'not_confirmed'),
+      ['bothOff', 'googleAccess'],
+    ),
+    revoke(
+      'revoke-en-not-connected',
+      'en',
+      'disconnect gmail',
+      { status: 'not_connected' },
+      { outcome: 'nothing of theirs was connected to that service, so nothing changed' },
+    ),
+  ];
+}
+
+function INTRO_REPLY_FIXTURES() {
+  return [
+    intro('intro-optin-zh', 'zh', 'discoverability_on', '好的，可以帮我介绍附近的家庭'),
+    intro('intro-optout-ja', 'ja', 'discoverability_off', '紹介はもういらないです、やめてください'),
+    intro('intro-no-es', 'es', 'intro_no', 'No, gracias, esta vez no'),
+    intro('intro-closed-ar', 'ar', 'intro_closed', 'في الحقيقة نعم، أريد هذا التعارف'),
+    intro('intro-no-open-fr', 'fr', 'no_open_intro', "Oui, je veux bien qu'on me présente"),
+    intro('intro-already-yes-en', 'en', 'intro_already_yes', 'yes intro!! did you get that'),
+    intro('intro-already-off-en', 'en', 'discoverability_already_off', 'no intros, I said'),
+    // The sweep's soft close: no parent words, and the reason is never a fact.
+    intro('intro-soft-close-en', 'en', 'soft_close', null),
+    // VIL-450: the soft close answers no text, so the family's OWN language comes from
+    // its stored tag and its latest texts. Never an English default.
+    {
+      ...intro('intro-soft-close-zh', 'zh', 'soft_close', null),
+      languageHint: 'zh',
+      recentParentWords: ['周六上午的游泳课还有位置吗？', '好的，谢谢'],
+    },
+    {
+      ...intro('intro-soft-close-es-no-tag', 'es', 'soft_close', null),
+      languageHint: null,
+      recentParentWords: ['¿Hay clases de natación para niños de 6 años el sábado?'],
+    },
+  ];
+}
+
 export const SAID_LINE_FIXTURES = [
-  identity('identity-en', 'en', 'en', 'who is this? how did you get my number'),
+  identity('identity-en', 'en', 'en', 'who is this? how did you get my number', TEXTED_FIRST_QR),
   identity('identity-fr', 'fr', 'fr', "c'est qui? vous êtes une arnaque?"),
-  identity('identity-zh', 'zh', 'en', '你是谁？你怎么有我的电话号码？'),
-  identity('identity-ar', 'ar', 'en', 'من أنت؟ كيف حصلت على رقمي؟'),
+  identity('identity-zh', 'zh', 'en', '你是谁？你怎么有我的电话号码？', ADDED_BY),
+  identity('identity-ar', 'ar', 'en', 'من أنت؟ كيف حصلت على رقمي؟', TEXTED_FIRST),
   links('links-en', 'en', 'send me the links to connect my calendar and gmail'),
   links('links-fr', 'fr', 'envoie-moi les liens pour connecter mon agenda et gmail'),
   plain(
@@ -90,14 +277,40 @@ export const SAID_LINE_FIXTURES = [
     'en',
     "i'm so tired, both kids sick all week and i haven't slept",
   ),
+  // Health rows carry a place, not facts: the runner expands each one through
+  // healthLineFacts (apps/web/lib/channel/health-line.ts), so the line and the numbers it
+  // requires are production's own for that place (VIL-589).
   {
     id: 'health-en',
     purpose: 'health',
     script: 'en',
     language: 'en',
     parentWords: 'my son fell off the couch and his wrist is swollen, should I ice it?',
-    facts: { healthLine: 'Health811 (Ontario), call 811, any time', emergency: '911' },
-    mustInclude: ['811', '911'],
+    healthPlace: { country: 'CA', provinceOrState: 'Ontario' },
+  },
+  {
+    id: 'health-us-en',
+    purpose: 'health',
+    script: 'en',
+    language: 'en',
+    parentWords: 'my daughter bumped her head on the table and there is a big lump, is she ok?',
+    healthPlace: { country: 'US', provinceOrState: 'Texas' },
+  },
+  {
+    id: 'health-unknown-en',
+    purpose: 'health',
+    script: 'en',
+    language: 'en',
+    parentWords: 'my son has had a rash all over his tummy since this morning, what is it?',
+    healthPlace: null,
+  },
+  {
+    id: 'health-qc-fr',
+    purpose: 'health',
+    script: 'fr',
+    language: 'fr',
+    parentWords: "ma fille a vomi trois fois ce soir, est-ce que je dois m'inquiéter?",
+    healthPlace: { country: 'CA', provinceOrState: 'Quebec' },
   },
   {
     id: 'connector-link-en',
@@ -110,6 +323,9 @@ export const SAID_LINE_FIXTURES = [
       link: '[[link]]',
       minutesValid: 15,
       googleCaution: GOOGLE_CAUTION,
+      connectingIsOptional: 'connecting Google Calendar is optional for the parent',
+      withoutCalendar:
+        'parents without a connected calendar get their reminders by iMessage instead',
     },
     mustInclude: [],
     links: { link: ONE },
@@ -153,4 +369,8 @@ export const SAID_LINE_FIXTURES = [
     mustInclude: [],
     links: { link: GMAIL },
   },
+  // VIL-450: the intro lane's replies, which were fixed English lines in intros/copy.ts.
+  ...INTRO_REPLY_FIXTURES(),
+  // VIL-156: the texted Google disconnect's reply.
+  ...REVOKE_FIXTURES(),
 ];

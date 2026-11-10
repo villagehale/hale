@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French, not the requested Chinese, so it fails the language requirement. It also omits both events: library story time at 11:00 AM and soccer 5:30-6:30 PM are missing, and it adds a wrong time (3:00), a wrong event label, and says tomorrow is a day with breathing room, which implies the family has nothing to attend despite two timed events. The plan link is not included.",
+    "score": 1
+  }
+}

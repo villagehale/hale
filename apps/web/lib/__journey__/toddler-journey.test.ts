@@ -1,12 +1,13 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import type { Municipality, ProgramDomain, RegistrationSourceState } from '@hale/db';
+import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { type ActionType, ageInMonths, mintApprovedAction } from '@hale/types';
 import { type ExecutorDeps, runExecutor } from '@hale/worker/executor';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { isUndoable } from '~/lib/actions/undo-window';
+import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import { deriveDateOfBirth } from '~/lib/channel/intake/derive';
 import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
@@ -34,28 +35,21 @@ import {
 import { type OutboundGatePorts, buildOutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { roleAllows } from '~/lib/channel/role-scope';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
-import { approvedReceipt } from '~/lib/channel/router/copy';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
-import { portalForMunicipality } from '~/lib/channel/spots/url';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import {
-  CIVIC_RUN_TYPE,
-  CIVIC_SOURCE,
-  type CivicSessionForFamily,
-  selectCivicSessions,
-} from '~/lib/civic/project';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { matchHealthCheckpoints } from '~/lib/health/match';
-import { defaultCheckupOfferPorts, recordCheckupOffer } from '~/lib/health/offer';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
-import { renderShortlistRationale, windowPhrase } from '~/lib/registration/sequence/copy';
+import { windowPhrase } from '~/lib/registration/sequence/copy';
+import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import {
   type LiveSequence,
+  type SequenceFamily,
   type SequenceRunDeps,
   type SequenceRunResult,
   legDedupeKey,
@@ -63,7 +57,7 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
-import { registrationReminderFixture } from '~/lib/testing/registration-reminder';
+import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
 /**
@@ -84,8 +78,8 @@ import { fakeWeather } from '~/lib/weather/open-meteo';
  * `handleInboundSms`, `deriveDateOfBirth`, `createRadarComposer`, `selectCivicSessions`,
  * `assertProactiveSendAllowed` (via `buildOutboundGatePorts`), `decideNudge` (via
  * `runNudgeCron`), `matchHealthCheckpoints`, `matchRegistrationWindows`,
- * `buildShortlist`, `draftInlineAction`, `runExecutor`, `matchFastPath` +
- * `resolveApproval` (via `approvalHandler`), `approveDraftedAction`, `isUndoable`,
+ * `buildShortlist`, `draftInlineAction`, `runExecutor`, `approvalHandler`
+ * (a placed reading), `approveDraftedAction`, `isUndoable`,
  * `roleAllows`.
  *
  * What is SUPPLIED is the row SCOPING. The repo's fake database
@@ -124,20 +118,17 @@ const BATTLE_PLAN_AT = new Date('2026-08-24T23:00:00.000Z');
 /** Tuesday 06:30 Toronto — when Markham's doors open. */
 const WINDOW_OPEN = new Date('2026-08-25T10:30:00.000Z');
 
-/** L3R's coarse centroid. Rule #1: an FSA's middle, never a home. */
-const L3R_CENTRE = { lat: 43.8828, lng: -79.2663 };
-
 const MARKHAM_SOURCE = 'https://www.markham.ca/en/recreation/registration.aspx';
 
 const TODDLER_WINDOW_ID = '55555555-5555-4555-8555-555555555551';
 const TEEN_WINDOW_ID = '55555555-5555-4555-8555-555555555552';
 
 /**
- * Synthetic live source facts used to build one family-owned watch.
+ * A prod-shaped `registration_windows` row. All sixteen columns, including the ones a
+ * seeded fixture is tempted to drop — `verifiedAt` and `sourceUrl` are NOT NULL in the
+ * real table and the shortlist renders both.
  */
-function registrationWindowRow(
-  overrides: Partial<RegistrationSourceState>,
-): RegistrationSourceState {
+function registrationWindowRow(overrides: Partial<RegistrationWindow>): RegistrationWindow {
   return {
     id: TODDLER_WINDOW_ID,
     municipality: 'markham' as Municipality,
@@ -156,7 +147,7 @@ function registrationWindowRow(
     createdAt: new Date('2026-07-30T00:00:00.000Z'),
     updatedAt: new Date('2026-07-30T00:00:00.000Z'),
     ...overrides,
-  } as RegistrationSourceState;
+  } as RegistrationWindow;
 }
 
 /**
@@ -174,63 +165,26 @@ const TEEN_WINDOW = registrationWindowRow({
   ageMaxMonths: 215,
 });
 
-/**
- * A prod-shaped civic session: a weekly library drop-in with a real BiblioCommons-ish
- * audience band ("1 to 5 years" → 12–60 months) and venue coordinates. Weekly, so the
- * projection dates it to its next occurrence rather than leaving it evergreen.
- */
-const CIVIC_SESSIONS: CivicSessionForFamily[] = [
-  {
-    id: 'civic-1',
-    venueId: 'civic-venue-markham-village',
-    title: 'Family Storytime',
-    summary: null,
-    recurrence: 'weekly',
-    startsAt: null,
-    dayOfWeek: 6, // Saturday
-    startMinute: 10 * 60 + 30,
-    endMinute: 11 * 60,
-    ageMinMonths: 12,
-    ageMaxMonths: 60,
-    registrationRequired: false,
-    isCancelled: false,
-    confidence: 0.9,
-    sourceUrl: 'https://markham.bibliocommons.com/events/storytime',
-    venueName: 'Markham Village Library',
-    venueAddress: '6031 Highway 7',
-    venueCity: 'Markham',
-    venueUrl: 'https://www.markhampubliclibrary.ca/branches/mv',
-    venueKind: 'library_branch',
-    lat: 43.8845,
-    lng: -79.2601,
-  },
-  {
-    // A teen coding club at the same branch. It must never reach this household —
-    // the band excludes both children, and that is the projection's own filter.
-    id: 'civic-2',
-    venueId: 'civic-venue-markham-village',
-    title: 'Teen Coding Club',
-    summary: null,
-    recurrence: 'weekly',
-    startsAt: null,
-    dayOfWeek: 6,
-    startMinute: 14 * 60,
-    endMinute: 15 * 60,
-    ageMinMonths: 156,
-    ageMaxMonths: 215,
-    registrationRequired: false,
-    isCancelled: false,
-    confidence: 0.9,
-    sourceUrl: 'https://markham.bibliocommons.com/events/teen-code',
-    venueName: 'Markham Village Library',
-    venueAddress: '6031 Highway 7',
-    venueCity: 'Markham',
-    venueUrl: 'https://www.markhampubliclibrary.ca/branches/mv',
-    venueKind: 'library_branch',
-    lat: 43.8845,
-    lng: -79.2601,
-  },
-];
+// A fresh finder response, never a persisted activity catalog fixture.
+const JOURNEY_FINDER: ActivityFinder = {
+  find: async () => ({
+    found: true,
+    picks: [
+      {
+        name: 'Family Storytime',
+        ageFit: '1 to 5 years',
+        when: 'Saturday 10:30 a.m.',
+        price: 'free',
+        sourceName: 'Markham Village Library',
+        source: 'web',
+        sourceUrl: 'https://markham.bibliocommons.com/events/storytime',
+        eventDate: '2026-08-01',
+        indoorOutdoor: 'indoor',
+        access: 'drop_in',
+      },
+    ],
+  }),
+};
 
 // ── the fakes this journey reuses, unchanged from their own suites ────────────
 
@@ -365,6 +319,8 @@ interface Journey {
   /** The four gate ports consulted for the nudge, in call order. */
   gateCalls: string[];
   propose: SequenceRunResult;
+  /** VIL-543 · the facts every registration note was written from, in order. */
+  notes: RegistrationNoteFacts[];
   readiness: SequenceRunResult;
   battlePlan: SequenceRunResult;
   /** The action row the shortlist minted, as persisted. */
@@ -400,6 +356,10 @@ function storedChildren(fake: FakeDb, now: Date) {
 async function runToddlerJourney(): Promise<Journey> {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
+
+  // The municipal dataset this family's FSA resolves to, as the M1 sweep left it.
+  await fake.db.insert(schema.registrationWindows).values(TODDLER_WINDOW as never);
+  await fake.db.insert(schema.registrationWindows).values(TEEN_WINDOW as never);
 
   // ── STAGE 1-3 · intake, radar, consent ────────────────────────────────────
   const extractions: IntakeCollected[] = [
@@ -438,37 +398,8 @@ async function runToddlerJourney(): Promise<Journey> {
       weather: fakeWeather([]),
       client: null,
       now: () => INTAKE_AT,
-      timeZone: TZ,
+      yearFinder: JOURNEY_FINDER,
     }),
-    // SEAM: `projectCivicCandidates` is the production default here, and its read is a
-    // civic_sessions INNER JOIN civic_venues the fake db cannot express. So the join is
-    // supplied (the fixtures above ARE the joined rows) and the REAL selection —
-    // age-band fit, proximity, next-occurrence dating — runs over them.
-    seedCivic: async (_db, familyId, _areaCoarse, center, now) => {
-      const ages = storedChildren(fake, now).map((child) => child.ageMonths);
-      const picked = selectCivicSessions(CIVIC_SESSIONS, ages, center, now, TZ);
-      for (const candidate of picked) {
-        await fake.db.insert(schema.villageCandidates).values({
-          familyId,
-          title: candidate.title,
-          kind: candidate.kind,
-          summary: candidate.summary,
-          source: CIVIC_SOURCE,
-          runType: CIVIC_RUN_TYPE,
-          confidence: candidate.confidence,
-          priceLevel: 'free',
-          indoorOutdoor: 'indoor',
-          ageRange: candidate.ageRange,
-          childId: null,
-          eventDate: candidate.eventDate,
-          seasons: null,
-          venueName: candidate.venueName,
-        } as never);
-      }
-      return picked.length;
-    },
-    resolveCenter: async () => L3R_CENTRE,
-    discoveryTrigger: () => {},
     // Same discipline as the radar above: the REAL composer on the REAL production
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
@@ -602,6 +533,7 @@ async function runToddlerJourney(): Promise<Journey> {
       );
 
   const nudgeDeps: NudgeRunDeps = {
+    recordActivityOffers,
     selectFamilies: async () => nudgeFamilies(),
     /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
      * (channel/family-recipients.ts). This household has one parent. */
@@ -616,22 +548,20 @@ async function runToddlerJourney(): Promise<Journey> {
         dateOfBirth: child.dateOfBirth,
         dobPrecision: child.dobPrecision,
       })),
-    loadCandidates: (database, id) => readCandidates(database, id),
-    loadWindows: (database, area) => readWindows(database, area),
+    loadCandidates: (database, id, now) =>
+      readCandidates(
+        scopedSelect(database, [
+          { table: schema.familyMembers, rows: () => fake.rows(schema.users) },
+        ]),
+        id,
+        { now, finder: JOURNEY_FINDER },
+      ),
+    loadWindows: async () => [],
     // SEAM: the real reader unions "already told" (a LIKE over the ledger's
     // told-markers, whatever surface wrote them — health/told.ts) with "said done"
     // (health/reply.ts). The LIKE is what is restated.
-    loadSuppressedCheckpoints: async () => {
-      const prefix = checkpointToldKeyPrefix(familyId);
-      return new Set(
-        fake
-          .rows(schema.channelMessages)
-          .map((row) => String(row.dedupeKey ?? ''))
-          .filter((key) => key.startsWith(prefix))
-          .map((key) => key.slice(prefix.length)),
-      );
-    },
-    loadClaimedWindowIds: async () => new Set(),
+    loadClaimedWindowIds: async () =>
+      new Set(fake.rows(schema.registrationSequences).map((row) => row.windowId as string)),
     loadWeekdayCareContext: async () => ({
       stated: [],
       askedBefore: false,
@@ -662,8 +592,6 @@ async function runToddlerJourney(): Promise<Journey> {
     fulfillCommitment,
     // The REAL offer writer over the same store: a health nudge whose task is booking
     // registers the standing question its own close makes (lib/health/offer.ts).
-    recordCheckupOffer: (database, input) =>
-      recordCheckupOffer(database, input, defaultCheckupOfferPorts()),
     // The REAL threader over the same store: a nudge the parent can answer has to be a
     // row in `messages`, because that is the only place their reply's antecedent lives.
     threadMessage: threadProactiveMessage,
@@ -674,6 +602,10 @@ async function runToddlerJourney(): Promise<Journey> {
       googleGivenName: null,
     }),
     composeNameAsk: async () => null,
+    // REGISTRATION_DATE_CHECK is unset here, so no registration page is read.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -681,101 +613,29 @@ async function runToddlerJourney(): Promise<Journey> {
   const nudge = await runNudgeCron(fake.db, nudgeDeps, NUDGE_AT);
   const nudgeSends = transport.sent.slice(beforeNudge).map((sent) => ({ ...sent }));
 
-  // ── STAGE 6 · a parent-requested watch from synthetic live source facts ────
-  const match = matchRegistrationWindows({
-    windows: [TODDLER_WINDOW],
-    postal: AREA,
-    childrenAgesMonths: storedChildren(fake, SEQUENCE_AT).map((child) => child.ageMonths),
-    now: SEQUENCE_AT,
-  })[0];
-  if (!match) throw new Error('journey: source has no age-fit registration');
-  const shortlist = buildShortlist(match, storedChildren(fake, SEQUENCE_AT), SEQUENCE_AT);
-  if (!shortlist) throw new Error('journey: source has no shortlist');
-  const { actionId } = await draftInlineAction(
-    {
-      familyId,
-      actor: parentUser.id,
-      intentKind: 'registration_shortlist',
-      childId: null,
-      sourceAnswer: renderShortlistRationale(
-        shortlist,
-        TZ,
-        SEQUENCE_AT,
-        portalForMunicipality('markham'),
-      ),
-      title: 'Markham Fall 2026 registration',
-      sourceUrl: MARKHAM_SOURCE,
-      origin: 'ask_hale',
-      contentProvenance: 'hale_authored',
-    },
-    scopedSelect(fake.db, [{ table: schema.actions, rows: () => [] }]),
-    approvingReviewer(),
-    SEQUENCE_AT,
-  );
-  await fake.db.insert(schema.registrationSequences).values({
-    familyId,
-    parentUserId: parentUser.id,
-    actionId,
-    sourceIdentity: {
-      municipality: TODDLER_WINDOW.municipality,
-      programDomain: TODDLER_WINDOW.programDomain,
-      cycleLabel: TODDLER_WINDOW.cycleLabel,
-      sourceUrl: MARKHAM_SOURCE,
-      timeZone: TZ,
-    },
-    courseUrl: MARKHAM_SOURCE,
-    courseOpensAt: WINDOW_OPEN,
-    cachedAnchorAt: WINDOW_OPEN,
-    publishedTime: true,
-  } as never);
+  // ── STAGE 6 · the registration sequence ───────────────────────────────────
+  const claimed = new Set<string>();
+  const notes: RegistrationNoteFacts[] = [];
   const sequenceDeps: SequenceRunDeps = {
-    compose: registrationReminderFixture,
-    live: {
-      read: async (target, now) => ({
-        sourceUrl: target.sourceUrl,
-        timeZone: TZ,
-        checkedAt: now,
-        reader: 'ai',
-        status: 'verified',
-        dates: [
-          {
-            kind: 'general_open',
-            date: '2026-08-25',
-            time: '06:30',
-            evidence: ['synthetic published source'],
-          },
-        ],
-      }),
-      readForSend: async (target, now) => ({
-        sourceUrl: target.sourceUrl,
-        timeZone: TZ,
-        checkedAt: now,
-        reader: 'ai',
-        status: 'verified',
-        dates: [
-          {
-            kind: 'general_open',
-            date: '2026-08-25',
-            time: '06:30',
-            evidence: ['synthetic published source'],
-          },
-        ],
-      }),
-      claimDue: async () => [],
-      refresh: async () => true,
-      reload: async (_database, id) =>
-        (await sequenceDeps.loadLiveSequences(fake.db, SEQUENCE_AT)).find(
-          (sequence) => sequence.sequenceId === id,
-        ) ?? null,
-      claimSend: async () => 1,
-      releaseSend: async () => {},
-      draftReview: async () => {},
-      acknowledgeChange: async () => {},
-    },
     refuseUnbackedSend: async () => [],
+    /** SEAM: prod reads family_members ⋈ users ⋈ parent_channels
+     * (channel/family-recipients.ts). This household has one parent. */
     loadRecipients: async () => [
       { parentUserId: parentUser.id, timeZone: TZ, role: 'primary_parent' as const },
     ],
+    /** SEAM: prod's selector is the same two INNER JOINs as the nudge's. */
+    selectFamilies: async (): Promise<SequenceFamily[]> => {
+      const family = fake.rows(schema.families)[0] as Record<string, unknown>;
+      if (family?.onboardingStage !== 'sms_active') return [];
+      return [
+        {
+          familyId,
+          parentUserId: parentUser.id,
+          areaCoarse: family.areaCoarse as string,
+          timeZone: TZ,
+        },
+      ];
+    },
     loadChildren: async () =>
       storedChildren(fake, SEQUENCE_AT).map((child) => ({
         id: child.id,
@@ -783,7 +643,52 @@ async function runToddlerJourney(): Promise<Journey> {
         dateOfBirth: child.dateOfBirth,
         dobPrecision: child.dobPrecision,
       })),
-    // The fixture scopes the family-owned watch and action, never a catalog join.
+    loadWindows: (database, area) => readWindows(database, area),
+    loadClaimedWindowIds: async () => new Set(claimed),
+    // SEAM: prod's claim is an INSERT ... ON CONFLICT on the unique
+    // (family_id, window_id) index — the atomic step two overlapping ticks race on.
+    claimWindow: async (database, input) => {
+      if (claimed.has(input.windowId)) return null;
+      claimed.add(input.windowId);
+      const [row] = (await database
+        .insert(schema.registrationSequences)
+        .values(input as never)
+        .returning({ id: schema.registrationSequences.id })) as Array<{ id: string }>;
+      return row?.id ?? null;
+    },
+    // The REAL approval spine the production sweep uses.
+    draftShortlist: async (database, input) => {
+      const { actionId } = await draftInlineAction(
+        {
+          familyId: input.familyId,
+          actor: input.actorUserId,
+          intentKind: input.intentKind,
+          childId: input.childId,
+          sourceAnswer: input.rationale,
+          title: input.title,
+          sourceUrl: input.sourceUrl,
+          origin: 'registration_sweep',
+          contentProvenance: 'hale_authored',
+        },
+        // SEAM: the reviewer's check_action_idempotency asks "has this family done
+        // this before?". The fake answers with the whole actions table INCLUDING the
+        // row under review — the self-match trap. Empty is what the real query
+        // returns: no PRIOR action carries this draft's freshly minted hash.
+        scopedSelect(database, [{ table: schema.actions, rows: () => [] }]),
+        approvingReviewer(),
+        SEQUENCE_AT,
+      );
+      return actionId;
+    },
+    attachAction: async (database, sequenceId, actionId) => {
+      await database
+        .update(schema.registrationSequences)
+        .set({ actionId, updatedAt: SEQUENCE_AT })
+        .where(eq(schema.registrationSequences.id, sequenceId));
+    },
+    releaseClaim: async () => {},
+    /** SEAM: prod joins registration_sequences ⋈ windows ⋈ users ⋈ families and
+     * LEFT JOINs actions to derive the opt-in from the approval spine's own columns. */
     loadLiveSequences: async (): Promise<LiveSequence[]> => {
       const rows = fake.rows(schema.registrationSequences);
       return rows.map((row) => {
@@ -802,7 +707,7 @@ async function runToddlerJourney(): Promise<Journey> {
           parentUserId: parentUser.id,
           timeZone: TZ,
           areaCoarse: AREA,
-          window: { ...TODDLER_WINDOW, id: row.id as string },
+          window: TODDLER_WINDOW,
           optIn,
           outcome: null,
           waitlistPosition: null,
@@ -810,6 +715,9 @@ async function runToddlerJourney(): Promise<Journey> {
           courseUrl: (row.courseUrl as string | null) ?? null,
           courseOpensAt: (row.courseOpensAt as Date | null) ?? null,
           readinessReady: (row.readinessReady as boolean | null) ?? null,
+          lastReading: null,
+          nextCheckAt: null,
+          pendingChange: null,
         };
       });
     },
@@ -842,6 +750,33 @@ async function runToddlerJourney(): Promise<Journey> {
     fetchBody: async (url) => {
       throw new Error(`journey: unexpected course read ${url}`);
     },
+    refreshCourseAnchor: async () => false,
+    client: {
+      messages: {
+        create: async () => {
+          throw new Error('journey: compose is injected');
+        },
+      },
+    } as never,
+    loadLanguage: async () => 'en',
+    composeMorning: async () => null,
+    composeHeadsUp: async (_client, facts) =>
+      `${facts.window} opens ${facts.opensOn} for ${facts.who}.`,
+    composeEvening: async () => 'Richmond Hill opens in the morning. Have the page open.',
+    // The composer seam: what the model writes is the eval's (vil543-note-eval.mjs).
+    writeNote: async (_db, _familyId, facts) => {
+      notes.push(facts);
+      return `Hale note: ${facts.kind}`;
+    },
+    // REGISTRATION_DATE_CHECK is unset here, so no page is read and no dateless text is written.
+    createDateReader: () => {
+      throw new Error('the date check is off: no reader');
+    },
+    composeDateUnconfirmed: async () => null,
+    saveDateWatch: async () => {
+      throw new Error('the date check is off: nothing is re-read');
+    },
+    composeDateMoved: async () => null,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);
@@ -880,7 +815,12 @@ async function runToddlerJourney(): Promise<Journey> {
     primaryParentName: null,
     conversationId: null,
     now: SEQUENCE_AT,
-    resolved: null,
+    resolved: {
+      kind: 'approval',
+      questionId: draftedAction.id,
+      polarity: 'yes',
+      confidence: 'high',
+    },
     openQuestions: async () => [],
   } as never);
   const approvedPayload =
@@ -957,6 +897,7 @@ async function runToddlerJourney(): Promise<Journey> {
     nudgeSends,
     gateCalls,
     propose,
+    notes,
     readiness,
     battlePlan,
     draftedAction,
@@ -1019,9 +960,7 @@ describe('2 · the first reply names something real', () => {
       expect(body).not.toMatch(/registration opens|registration opened/i);
       expect(body).not.toContain('Aug 25');
     }
-    const candidates = journey.fake.rows(schema.villageCandidates);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.title).toBe('Family Storytime');
+    expect(journey.fake.rows(schema.familyActivityHistory)).toEqual([]);
   });
 
   it('fits the segment budget the whole payload is measured against', () => {
@@ -1039,12 +978,7 @@ describe('2 · the first reply names something real', () => {
       expect(body).not.toContain('Teen Coding Club');
       expect(body).not.toContain('Aquatic Leadership');
     }
-    // The projection dated the drop-in to its next occurrence, so a Saturday-only
-    // session can never be offered as a Sunday plan.
-    const candidates = journey.fake.rows(schema.villageCandidates);
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.title).toBe('Family Storytime');
-    expect(candidates[0]?.eventDate).toBe('2026-08-01');
+    expect(journey.fake.rows(schema.familyActivityHistory)).toEqual([]);
   });
 });
 
@@ -1185,12 +1119,12 @@ describe('5 · the 18-month checkpoints fit Mia, and no text carries them', () =
 
 // ── stage 6 · the registration sequence ──────────────────────────────────────
 
-describe('6 · the parent-owned registration watch prepares the morning', () => {
-  it('retains one requested watch and draft without minting catalog proposals', () => {
-    expect(journey.propose).toMatchObject({ enabled: true, proposed: 0 });
+describe('6 · the registration sequence claims the window and prepares the morning', () => {
+  it('claims exactly one window and drafts one shortlist for approval', () => {
+    expect(journey.propose).toMatchObject({ enabled: true, proposed: 1 });
     const sequences = journey.fake.rows(schema.registrationSequences);
     expect(sequences).toHaveLength(1);
-    expect(sequences[0]?.courseUrl).toBe(MARKHAM_SOURCE);
+    expect(sequences[0]?.windowId).toBe(TODDLER_WINDOW_ID);
     // Rule #4: drafted, never executed.
     expect(journey.draftedAction.userVisibleState).toBe('drafted_for_approval');
   });
@@ -1213,31 +1147,21 @@ describe('6 · the parent-owned registration watch prepares the morning', () => 
       .filter((row) => row.category === 'registration_sequence')
       .map((row) => row.dedupeKey);
     expect(keys).toEqual([
-      ...['heads_up', 'readiness', 'battle_plan'].map((leg) =>
-        legDedupeKey(
-          journey.familyId,
-          journey.fake.rows(schema.registrationSequences)[0]?.id as string,
-          leg as 'heads_up' | 'readiness' | 'battle_plan',
-          journey.parentUserId,
-        ),
-      ),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'heads_up', journey.parentUserId),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'readiness', journey.parentUserId),
+      legDedupeKey(journey.familyId, TODDLER_WINDOW_ID, 'battle_plan', journey.parentUserId),
     ]);
   });
 
-  it('asks the four-item checklist without ever claiming Hale did any of it', () => {
-    // VIL-338's rung, and the one sentence in this ladder whose whole content is a
-    // question. Every item is Markham's own published prerequisite restated, the ask is
-    // ONE (D14), and nothing here says Hale opened the portal, checked the account or
-    // filled anything in — the class of lie a parent would discover at 6:31 with the
-    // seat gone. No course is bound in this journey, so no leg reached the network at
-    // all (the deps' fetcher throws).
-    const checklist = journey.transport
-      .bodies()
-      .find((body) => body.includes('a Markham portal account')) as string;
-    expect(checklist).toContain('added with their birthday(s)');
-    expect(checklist).toContain('a card saved');
-    expect(checklist).toContain('Want me to know when that is done?');
-    expect(checklist).not.toMatch(/filled in|staged|held for you|all set/i);
+  it('sends the checklist the model wrote from Markham facts, and reads no page', () => {
+    // VIL-338's rung. VIL-543 · the text is the model's (the skill holds the four items
+    // and the one ask); what the journey pins is that the checklist leg went out, on
+    // Markham's own portal facts, and that no leg reached the network (the deps'
+    // fetcher throws).
+    expect(journey.notes.find((note) => note.kind === 'readiness_checklist')).toMatchObject({
+      account: 'a Markham portal account',
+    });
+    expect(journey.transport.bodies()).toContain('Hale note: readiness_checklist');
     expect(journey.readiness.read).toBe(0);
   });
 
@@ -1288,13 +1212,21 @@ describe('6 · the parent-owned registration watch prepares the morning', () => 
     // this ladder fires FOUR legs (['heads_up','readiness','battle_plan'] above, plus
     // the go leg), and a card that enumerated three would have the household consent to
     // one thing and receive another.
+    // VIL-543 · the model writes the card from facts, so what is pinned is that the
+    // card's text is the written note and the facts enumerate the four legs.
     const summary = String((journey.draftedAction.payload as Record<string, unknown>).summary);
-    expect(summary).toContain('I never register for you');
-    expect(summary).toContain(
-      'a week ahead, a checklist a few days out, the evening before, and 15 minutes before it opens',
-    );
-    // The one place a parent learns how to bind a course, and it is read on a screen.
-    expect(summary).toContain('the morning text will carry it');
+    expect(summary).toBe('Hale note: approval_card');
+    const card = journey.notes.find((note) => note.kind === 'approval_card');
+    expect(card).toMatchObject({
+      texts: [
+        { text: 'week_ahead' },
+        { text: 'checklist' },
+        { text: 'evening_before' },
+        { text: 'just_before_open' },
+      ],
+      // The one place a parent learns how to bind a course, and it is read on a screen.
+      courseLinkTip: true,
+    });
   });
 });
 
@@ -1303,7 +1235,8 @@ describe('6 · the parent-owned registration watch prepares the morning', () => 
 describe('7 · the parent approves in their own words and the receipt is theirs', () => {
   it('reads "sounds good" as consent and approves the one drafted action', () => {
     expect(journey.approval).toMatchObject({ claimed: true, outcome: 'approved' });
-    expect(journey.approval.reply).toBe(approvedReceipt('add_to_digest_only'));
+    // VIL-504 · no fixed receipt: the approval is the answer.
+    expect(journey.approval.reply).toBeNull();
   });
 
   it('stamps the INTERNAL users.id as the approver, which is the id the family owns (WS3 P0)', () => {
@@ -1323,7 +1256,7 @@ describe('7 · the parent approves in their own words and the receipt is theirs'
     const actions = trail.map((row) => row.actionTaken);
     expect(actions).toContain('proactive_watch_granted');
     expect(actions).toContain('proactive_nudge_skipped');
-    expect(actions).toContain('ask_hale.action_drafted');
+    expect(actions).toContain('registration_shortlist_drafted');
     expect(actions).toContain('registration_sequence_leg_sent');
     expect(trail.every((row) => row.familyId === journey.familyId)).toBe(true);
   });

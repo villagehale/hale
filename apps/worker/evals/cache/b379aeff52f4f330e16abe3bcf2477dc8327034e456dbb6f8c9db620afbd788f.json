@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The text is in French ('Jour de congé') despite the English request, mixes languages, gives the wrong time (3:00 instead of 9:30 AM to 12:00 PM), omits the start and end times and the location, and falsely says the day is free with breathing room, which is the exact failure to avoid.",
+    "score": 1
+  }
+}

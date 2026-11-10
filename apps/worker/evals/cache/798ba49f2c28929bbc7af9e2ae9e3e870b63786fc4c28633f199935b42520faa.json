@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgNP3D1rCRjPnMYXeHang",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS/QcKEAgTGAI4AUIIdGhpbmtpbmcSDD9jt+gG4jcbKU2VRxoMleKFqi+QrdRH7oMbIjBH7gdf4aUyX29TidA6tCkWOOtou0563icR+kzUHjPLfNmvpvtd5bXXL4LWFjx0+Ygqmgf6eKttp6+vRQXParDPcPUi/5bWjAkAmu+kWcIyS+4Oyit7XZHyH8al2f81dpXfuCs29j7ndTfoWR0XgMpjhFYNYV1yXy+/9fMI7sLn6W9l8EAsFu2m6vLbzziEOgrB4ETdCQSs2dE8+d3iYhTNSf3ecE6FI2mrGqD4VqkLJCsOkOq6YdD0v5dxmNzn9T2tonVk0ZRyXASFpU/rXDI00eOPcLlH0cBFLQmI5Ncols5qzarluIrUWvZw5GMDil061JfwUM98DGk1jupMjzP8GUeKA2BO2LwFz/1KbIoJw2yQ870l0k38McSTF9UMFti8BvKQOcvAgQOII9AMJoFdS0jWJjTNVhOorZhCMDO5iqRC4RwVC9KpS5qwZePrEcY1a9wKWbRj2s+EAwwhluACh6EQtDhYHX/O6bUDNBXEOthkJomFY58oh9P+4hujzO8Bx3+NgzJF2nn0/k9RjY7RjVEyj29FLaIq4JQmIh0nUgBg88zKBOgrvWApsFTzYyg2u6nWfuwxVA7Y0ebybcZLnFDJa+htphctX0f4soXHAhUlE1gcwG1h4gXgFCbxFmNo6kjjOKWYEfOjEmOQkinIToRWHXOp5fm8RAjEr9YqdR2WqVA4hLqat+d0Z0NhWKNsfeuIWDRqeMkFk12j+g/HdSBgiXsM3fVCz97GmXxVHclUYbOzp5/gppnisFGXAIKme9I5SCj+7H49CfbKmPx/4Cpwa0AYhIqsgDPYCGHXKHZ5tOY26zC0Mves3dwQE+cKtzgjFYMhz78S/IEGRCDF2UmYug7+pHQMy55tyqeQOb3/R+JNwoizJqcCWFhIbUFDf61exEfQxhnBiDwT4eXCHbY5kUFI7n8PhPWlneL+kxwlhZz31KqQy4sdX2HGdTfoBJY6QhpwnEAq1ZaaW4CzbvI/XW4gom/grmj6KkcbBFph8IQzcqjyhR2uVYAc+3xSLQB6d16MezWHKG1emWLgdHMM9PqnTPBdBsz8Xlwzqriu7pARM4rmjfMeTJlBiCZ/eunqSW/K24Gi9GyDoFYwzNQb9hj8hzYxul1x+PS1Os867PZu28O0A6y6Q21PRsEY0P50wPQeSaG3Ph3c2/Id8BuFOt8jn2q1/yHxxbEVe1TOn0b/o7VHlunt6z/JO/ErrmzVIt3ElLTS60ZZTIRoz5N0RytmYxw2ZghiKbQ1Cxp8unmZfE5+tMl+eAwtNHz+ES8rGYQ/mK4+m/pqGAE="
+      },
+      {
+        "type": "text",
+        "text": "You've got soccer practice Sat 10:00am at Cedarvale Park. For after that, High Park (Bloor St W / Parkside Dr) has the Jamie Bell Adventure Playground, a free animal display and splash pads. It's open daily, and the water play is seasonal."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1175,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20889,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 222,
+      "output_tokens_details": {
+        "thinking_tokens": 127
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2425
+}

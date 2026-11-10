@@ -87,7 +87,7 @@ describe('runOrchestrator — redaction at the ingest boundary (rule #1)', () =>
     runClassifier.mockClear();
   });
 
-  it('hands the classify stage the original payload and the family\'s child names', async () => {
+  it("hands the classify stage the original payload and the family's child names", async () => {
     await runOrchestrator(job);
     // Both halves matter: the stage cannot redact a payload it was not given,
     // and it cannot match a name it was not told. An empty childNames here would

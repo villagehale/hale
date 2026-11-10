@@ -39,7 +39,7 @@ describe('referralCode', () => {
       expect(code).not.toContain(segment);
     }
     // Positive control: the assertions above can only fail open if the code is empty.
-    expect(code.length).toBeGreaterThan(('friend-').length);
+    expect(code.length).toBeGreaterThan('friend-'.length);
   });
 
   it('is keyed — the same family under a different APP_ENCRYPTION_KEY is a different code', () => {
@@ -98,14 +98,11 @@ describe('referralLink', () => {
   });
 
   it('points a stranger at /text on the marketing site, never at the app sign-in', () => {
-    expect(referralLink(FAMILY)).toBe(
-      `https://www.villagehale.com/text?s=${referralCode(FAMILY)}`,
-    );
+    expect(referralLink(FAMILY)).toBe(`https://www.villagehale.com/text?s=${referralCode(FAMILY)}`);
   });
 
   it('is short enough that the whole forwardable message fits two SMS segments', () => {
-    // 306 GSM-7 characters is the ceiling (MAX_REPLY_SEGMENTS); the link plus the 120
-    // the forward line may use has to leave a parent's own sentence room.
+    // The link stays short so a parent can add their own sentence.
     expect(referralLink(FAMILY).length).toBeLessThan(60);
   });
 });

@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { linqGroupMembersEnabled } from './config';
 import { holdUnknownGroupSender } from './group';
-import {
-  GROUP_MEMBER_WELCOME_NO_ADDER,
-  GROUP_MEMBER_WELCOME_WITH_ADDER,
-  GROUP_STRANGER_HOLD,
-  classifyParticipantAdd,
-  groupMemberWelcome,
-  groupStrangerHold,
-} from './group-members';
+import { classifyParticipantAdd, groupStrangerHold } from './group-members';
 
 describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
   afterEach(() => {
@@ -30,7 +23,7 @@ describe('LINQ_GROUP_MEMBERS_ENABLED', () => {
 describe('classifyParticipantAdd', () => {
   const participant = '+14165550199';
 
-  it('welcomes a parent add and an unnamed actor, and seats Hale without that welcome', () => {
+  it('seats and welcomes only a named household parent add', () => {
     expect(
       classifyParticipantAdd({
         participantPhone: participant,
@@ -40,7 +33,9 @@ describe('classifyParticipantAdd', () => {
         actorIsHale: false,
       }),
     ).toEqual({ kind: 'parent', seat: true, welcome: true });
+  });
 
+  it('seats nobody when Linq names no actor or Hale is the actor', () => {
     expect(
       classifyParticipantAdd({
         participantPhone: participant,
@@ -49,7 +44,7 @@ describe('classifyParticipantAdd', () => {
         actorIsHouseholdParent: false,
         actorIsHale: false,
       }),
-    ).toEqual({ kind: 'unnamed', seat: true, welcome: true });
+    ).toEqual({ kind: 'unnamed', seat: false, welcome: false });
 
     expect(
       classifyParticipantAdd({
@@ -59,7 +54,7 @@ describe('classifyParticipantAdd', () => {
         actorIsHouseholdParent: false,
         actorIsHale: true,
       }),
-    ).toEqual({ kind: 'hale', seat: true, welcome: false });
+    ).toEqual({ kind: 'hale', seat: false, welcome: false });
   });
 
   it('does not seat a named stranger', () => {
@@ -76,49 +71,21 @@ describe('classifyParticipantAdd', () => {
 });
 
 describe('group member copy', () => {
-  it('keeps each welcome and hold byte for byte, with no family detail and no opt-out', () => {
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.en).toBe(
-      "Hi, I'm Hale. {adder} added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_WITH_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. {adder} vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.en).toBe(
-      "Hi, I'm Hale. I help the family sort the week in one place. What should I call you?",
-    );
-    expect(GROUP_MEMBER_WELCOME_NO_ADDER.fr).toBe(
-      "Bonjour, c'est Hale. J'aide la famille a organiser la semaine au meme endroit. Comment je vous appelle?",
-    );
-    expect(GROUP_STRANGER_HOLD.en).toBe(
-      'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. {parentA}, say "add them" if they share the load.',
-    );
-    expect(GROUP_STRANGER_HOLD.fr).toBe(
-      'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. {parentA}, dis "ajoute cette personne" si elle partage la charge.',
-    );
-    expect(groupMemberWelcome('en', 'Sam')).toBe(
-      "Hi, I'm Hale. Sam added you so the family can sort the week in one place. What should I call you?",
-    );
-    expect(groupMemberWelcome('fr', 'Sam')).toBe(
-      "Bonjour, c'est Hale. Sam vous a ajoute pour qu'on s'organise ensemble. Comment je vous appelle?",
-    );
-    expect(groupMemberWelcome('en', null)).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.en);
-    expect(groupMemberWelcome('fr', '  ')).toBe(GROUP_MEMBER_WELCOME_NO_ADDER.fr);
-    expect(groupStrangerHold('en', 'Sam')).toBe(
+  it('keeps each hold byte for byte, with no family detail and no opt-out', async () => {
+    const holdEn = await groupStrangerHold('en', 'Sam');
+    const holdFr = await groupStrangerHold('fr', 'Sam');
+    expect(holdEn).toBe(
       'Someone new joined this chat and I don\'t know them yet, so I\'m pausing here. Sam, say "add them" if they share the load.',
     );
-    expect(groupStrangerHold('fr', 'Sam')).toBe(
+    expect(holdFr).toBe(
       'Une nouvelle personne s\'est jointe a la conversation et je ne la connais pas encore, alors je fais une pause. Sam, dis "ajoute cette personne" si elle partage la charge.',
     );
-    for (const line of [
-      ...Object.values(GROUP_MEMBER_WELCOME_WITH_ADDER),
-      ...Object.values(GROUP_MEMBER_WELCOME_NO_ADDER),
-      ...Object.values(GROUP_STRANGER_HOLD),
-      groupMemberWelcome('en', 'Sam'),
-      groupStrangerHold('fr', 'Sam'),
-    ]) {
-      expect(line).toMatch(/^[\x20-\x7E]+$/);
-      expect(line.toLowerCase()).not.toContain('stop');
-      expect(line).not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);
+    expect(holdEn).toContain('Sam');
+    expect(holdFr).toContain('Sam');
+    for (const line of [holdEn, holdFr]) {
+      expect(line ?? '').toMatch(/^[\x20-\x7E]+$/);
+      expect((line ?? '').toLowerCase()).not.toContain('stop');
+      expect(line ?? '').not.toMatch(/\b(swim|postal|birthday|calendar)\b/i);
     }
   });
 

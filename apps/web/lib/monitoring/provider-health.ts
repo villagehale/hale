@@ -1,61 +1,125 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, HAIKU_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, lt } from 'drizzle-orm';
-import { postOpsSlack } from '~/lib/monitoring/ops-slack';
+import { type OpsPageOutcome, postOpsSlack } from '~/lib/monitoring/ops-slack';
 
 /**
  * VIL-255 · the LLM-provider health pre-flight, after the 2026-08-01 incident: the
  * Anthropic credit balance ran out silently, all eight families' daily briefs failed
  * at the 12:00Z window and eight infer-memory runs failed at 06:00Z, and it was found
- * by hand hours later. The founder-alert machinery already existed (X1's stop-alert /
- * loop-health-digest); nothing watched the provider.
+ * by hand hours later. Nothing watched the provider.
  *
  * One cheap call BEFORE each LLM cron's per-family fan-out answers "can we reach the
- * model at all?". A billing/auth answer aborts the window with a distinct outcome
+ * model at all?". An INCIDENT_FAILURES answer aborts the window with a distinct outcome
  * instead of producing N identical per-family failures, and pages the founder once.
  *
- * FAIL-OPEN BY CONSTRUCTION, not by a kill switch. Only `billing` and `auth` abort;
+ * FAIL-OPEN BY CONSTRUCTION, not by a kill switch. Only the INCIDENT_FAILURES classes abort;
  * every other failure — including anything unexpected thrown inside the probe itself —
  * classifies as `transient` and the window runs as before. So the worst a bug in this
- * file can do is send a useless email; it can never be the reason a family's brief
+ * file can do is post a useless #ops alert; it can never be the reason a family's brief
  * didn't arrive. That property is why there is no feature flag here to forget to turn
  * on.
  *
  * Privacy (rule #1): an ops alert carries the send WINDOW (an enum), run COUNTS, and
- * the provider's own error text. Never a family, parent, child, or message body.
+ * the provider's HTTP status and error type. Never the provider's message (a 4xx can
+ * quote the request), a family, parent, child, or message body.
  */
 
 // ── classification ───────────────────────────────────────────────────────────
 
 /**
- * What the provider said, in the only four shapes that change what we do:
- *  - `billing`   the account cannot pay (credit balance exhausted / payment required)
- *  - `auth`      the key is wrong, revoked, or lacks permission
- *  - `quota`     rate limited (429) — real, but usually a burst
- *  - `transient` everything else: 5xx, overload, network, and anything unrecognised
+ * What the provider said, in the only shapes that change what we do:
+ *  - `billing`     the account cannot pay (credit balance exhausted / payment required)
+ *  - `auth`        the key is wrong, revoked, or lacks permission
+ *  - `usage_limit` the account hit an Anthropic spend limit (org, workspace or monthly tier cap) (VIL-552)
+ *  - `quota`       rate limited (429) — real, but usually a burst
+ *  - `transient`   everything else: 5xx, overload, network, and anything unrecognised
+ *
+ * {@link INCIDENT_FAILURES} is the one list of classes that are certain to fail for
+ * EVERY family. The abort guard, the chained classifier and the turn-path page loop
+ * are all derived from it, so a new incident class is one edit here.
  */
-export type ProviderFailureClass = 'billing' | 'auth' | 'quota' | 'transient';
+export const INCIDENT_FAILURES = ['billing', 'auth', 'usage_limit'] as const;
+export type IncidentFailure = (typeof INCIDENT_FAILURES)[number];
+export type ProviderFailureClass = IncidentFailure | 'quota' | 'transient';
+
+/** What the provider said went wrong, without what it quoted: its HTTP status and its
+ * error type (`invalid_request_error`, `overloaded_error`). Never its message, which on
+ * a 4xx can quote the request. Null when the provider never answered (a connection
+ * error, a bug). */
+export interface ProviderErrorShape {
+  httpStatus: number | null;
+  errorType: string | null;
+}
+
+export function providerErrorShape(err: unknown): ProviderErrorShape {
+  if (!(err instanceof Anthropic.APIError)) return { httpStatus: null, errorType: null };
+  const type = (err.error as { error?: { type?: unknown } } | undefined)?.error?.type;
+  return { httpStatus: err.status ?? null, errorType: typeof type === 'string' ? type : null };
+}
 
 export type ProviderHealth =
   | { ok: true }
-  | { ok: false; failure: ProviderFailureClass; detail: string };
+  | ({ ok: false; failure: ProviderFailureClass } & ProviderErrorShape);
 
 /** The LLM cron windows this pre-flight guards. */
 export type SendWindow =
   | 'nudge_sweep'
   | 'memory_inference'
   | 'registration_verify'
-  | 'first_reply_recovery';
+  | 'first_reply_recovery'
+  | 'opt_out_recovery';
 
 /** Substrings that make a 4xx a BILLING problem rather than a bad request. Matched
  * against the provider's own message — Anthropic reports an exhausted balance as a
  * plain 400 whose only distinguishing mark is this text. */
 const BILLING_MARKERS = ['credit balance', 'billing', 'purchase credits', 'payment'];
 
+/** Anthropic's three spend-limit refusals (platform.claude.com/docs/en/api/rate-limits,
+ * read 2026-11-03): the org limit, the workspace limit, and the monthly tier cap. Provider
+ * text and codes, never parent text. The tier cap is told apart from an ordinary 429 by
+ * its error_code only. */
+const SPEND_LIMIT_REFUSALS = [
+  {
+    status: 400,
+    type: 'invalid_request_error',
+    messagePrefix: 'You have reached your specified API usage limits',
+  },
+  {
+    status: 400,
+    type: 'invalid_request_error',
+    messagePrefix: 'You have reached your specified workspace API usage limits',
+  },
+  { status: 429, type: 'rate_limit_error', errorCode: 'enforced_spend_limit_reached' },
+] as const;
+
+/** A spend-limit refusal only when one frame matches one whole row exactly: numeric
+ * status, `error.error.type`, and the exact-case message prefix or `details.error_code`.
+ * Read from the structured response body only — never the composed `err.message`, so a
+ * wrapper that quotes something cannot classify. Anything looser fails open. */
+function isUsageLimitError(err: unknown): boolean {
+  const frame = err as {
+    status?: unknown;
+    error?: {
+      error?: { type?: unknown; message?: unknown; details?: { error_code?: unknown } | null };
+    };
+  } | null;
+  const body = frame?.error?.error;
+  return SPEND_LIMIT_REFUSALS.some(
+    (shape) =>
+      frame?.status === shape.status &&
+      body?.type === shape.type &&
+      ('messagePrefix' in shape
+        ? typeof body.message === 'string' && body.message.startsWith(shape.messagePrefix)
+        : body.details?.error_code === shape.errorCode),
+  );
+}
+
 /** The provider's own explanation: the structured `error.message` from the response
  * body when present (the SDK buries it two levels deep), else the SDK's composed
- * message, else whatever was thrown. Used both to classify and to quote in the alert. */
-export function providerFailureDetail(err: unknown): string {
+ * message, else whatever was thrown. Read to classify only, never carried out of here. */
+function providerFailureDetail(err: unknown): string {
   const body = (err as { error?: { error?: { message?: unknown } } } | null)?.error?.error?.message;
   if (typeof body === 'string' && body.length > 0) {
     return body;
@@ -84,6 +148,12 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
   if (status === 401 || status === 403) {
     return 'auth';
   }
+  // Before quota: the tier spend cap is a 429 that never clears on its own. Before
+  // billing: a usage-limit message that also points at "Plans & Billing" still needs the
+  // usage-limit remedy, not a top-up.
+  if (isUsageLimitError(err)) {
+    return 'usage_limit';
+  }
   if (status === 429) {
     return 'quota';
   }
@@ -95,14 +165,14 @@ export function classifyProviderFailure(err: unknown): ProviderFailureClass {
 }
 
 /**
- * Whether a failure class is worth cancelling a send window over. Only the two that
- * are certain to fail for EVERY family and cannot fix themselves: an empty balance and
- * a bad key. A 429 is usually a burst and a 5xx is usually seconds long — cancelling a
+ * Whether a failure class is worth cancelling a send window over. Only the
+ * {@link INCIDENT_FAILURES}, which are certain to fail for EVERY family and cannot fix
+ * themselves: an empty balance, a bad key, a reached usage limit. A 429 is usually a burst and a 5xx is usually seconds long — cancelling a
  * once-a-week plan over either would cost more than the retries do. A sustained one of
  * those is caught within the hour by the failed-run backstop instead.
  */
-export function abortsSendWindow(failure: ProviderFailureClass): failure is 'billing' | 'auth' {
-  return failure === 'billing' || failure === 'auth';
+export function abortsSendWindow(failure: ProviderFailureClass): failure is IncidentFailure {
+  return (INCIDENT_FAILURES as readonly string[]).includes(failure);
 }
 
 /** How far down a `cause` chain to look. The coach wraps the SDK error once
@@ -110,7 +180,7 @@ export function abortsSendWindow(failure: ProviderFailureClass): failure is 'bil
 const PROVIDER_CAUSE_DEPTH = 5;
 
 /**
- * The billing or auth class of a provider failure, looking through wrappers.
+ * The incident class of a provider failure, looking through wrappers.
  *
  * {@link classifyProviderFailure} reads the error it is handed. A coach turn
  * wraps that error, and the wrapper has no HTTP status, so the outer frame is
@@ -118,7 +188,7 @@ const PROVIDER_CAUSE_DEPTH = 5;
  * frame that would abort a send window wins. Quota, a 5xx, and a bug return
  * null: those are not an incident to page.
  */
-export function classifyChainedProviderFailure(err: unknown): 'billing' | 'auth' | null {
+export function classifyChainedProviderFailure(err: unknown): IncidentFailure | null {
   let current: unknown = err;
   for (
     let depth = 0;
@@ -144,35 +214,33 @@ const PROBE_INPUT = '.';
 
 export async function probeProviderHealth(client: AgentClient): Promise<ProviderHealth> {
   try {
-    await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: PROBE_INPUT }],
-    });
+    // No SDK retry: it retries every 429, and the tier spend cap is a 429 that keeps
+    // refusing until the 1st — one refused call is the whole answer.
+    await client.messages.create(
+      {
+        model: HAIKU_MODEL,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: PROBE_INPUT }],
+      },
+      { maxRetries: 0 },
+    );
     return { ok: true };
   } catch (err) {
-    return { ok: false, failure: classifyProviderFailure(err), detail: providerFailureDetail(err) };
+    return { ok: false, failure: classifyProviderFailure(err), ...providerErrorShape(err) };
   }
 }
 
 // ── incidents ────────────────────────────────────────────────────────────────
 
-/** The founder digests whose SEND can fail — each one a surface whose silence would
- * otherwise read as a clean week ("a refusal is not evidence", in ledger form). */
-export type FounderDigest = 'papercut' | 'loop_health';
-
 export type ProviderIncident =
-  | { kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass; detail: string }
+  | ({ kind: 'preflight'; window: SendWindow; failure: ProviderFailureClass } & ProviderErrorShape)
   | { kind: 'run_spike'; failed: number; total: number; windowStart: Date; windowEnd: Date }
-  /** A founder digest composed but its send failed (2026-09-03 audit): the named
-   * outcome its cron already returns, escalated through this seam instead of dying
-   * as a console line in a JSON response nobody reads. */
-  | { kind: 'digest_send_failed'; digest: FounderDigest; reason: string };
+  | { kind: 'spend_threshold'; totalUsd: number; thresholdUsd: number };
 
 /**
  * An incident's identity. Keyed on the CAUSE, not the window — one empty balance is one
- * incident whether the digest, the weekly compose, or the nudge sweep noticed it first,
- * so the founder gets one email rather than one per cron.
+ * incident whether the weekly compose or the nudge sweep noticed it first, so #ops
+ * gets one post rather than one per cron.
  */
 export function providerIncidentKey(incident: ProviderIncident): string {
   switch (incident.kind) {
@@ -180,8 +248,8 @@ export function providerIncidentKey(incident: ProviderIncident): string {
       return `provider_health:${incident.failure}`;
     case 'run_spike':
       return 'provider_health:run_spike';
-    case 'digest_send_failed':
-      return `provider_health:digest_send_failed:${incident.digest}`;
+    case 'spend_threshold':
+      return 'provider_health:spend_threshold';
   }
 }
 
@@ -189,7 +257,7 @@ export function providerIncidentKey(incident: ProviderIncident): string {
  * How long one incident stays deduped. A day: an outage that is still an outage
  * tomorrow morning deserves to be said again, and a fixed window keeps the claim a
  * single atomic INSERT. The honest cost of a fixed window is the boundary — an outage
- * that starts just before it rolls produces two emails. Two emails for a real outage is
+ * that starts just before it rolls produces two posts. Two posts for a real outage is
  * the right side of that trade.
  */
 export const PROVIDER_INCIDENT_WINDOW_HOURS = 24;
@@ -262,6 +330,7 @@ const WINDOW_HEADLINE: Record<SendWindow, string> = {
   memory_inference: "last night's memory inference did not run.",
   registration_verify: "this week's registration re-verify sweep did not run.",
   first_reply_recovery: 'new parents whose first text got no reply are still waiting for one.',
+  opt_out_recovery: 'held opt-out reads are waiting to be read again.',
 };
 
 const WINDOW_LABEL: Record<SendWindow, string> = {
@@ -269,11 +338,14 @@ const WINDOW_LABEL: Record<SendWindow, string> = {
   memory_inference: 'memory inference',
   registration_verify: 'registration re-verify',
   first_reply_recovery: 'first-reply recovery',
+  opt_out_recovery: 'opt-out recovery',
 };
 
 const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
   billing: 'the account cannot pay — an exhausted credit balance or a declined payment.',
   auth: 'the API key is rejected — wrong, revoked, or missing a permission.',
+  usage_limit:
+    'the account hit an Anthropic spend limit (org, workspace or monthly tier cap); every call is refused until it is raised or resets.',
   quota: 'rate limited.',
   transient: 'a temporary provider fault.',
 };
@@ -281,13 +353,10 @@ const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
 const FAILURE_REMEDY: Record<ProviderFailureClass, string> = {
   billing: 'top up at console.anthropic.com → Plans & Billing, then re-run the window.',
   auth: 'check ANTHROPIC_API_KEY in the Vercel production environment, then re-run the window.',
+  usage_limit:
+    'raise the org or workspace spend limit in the Anthropic console (Limits) — for the monthly tier cap, move up a tier — or wait for the reset time the provider names above; then re-run the window.',
   quota: 'no action if it clears on its own; raise the rate limit if it does not.',
   transient: 'no action — the next window retries.',
-};
-
-const DIGEST_LABEL: Record<FounderDigest, string> = {
-  papercut: 'weekly papercut',
-  loop_health: 'weekly loop-health',
 };
 
 /** The alert body. Pure, so the wording is tested directly. Quiet-operator order: what
@@ -296,25 +365,6 @@ export function formatProviderAlert(
   incident: ProviderIncident,
   at: Date,
 ): { subject: string; text: string } {
-  if (incident.kind === 'digest_send_failed') {
-    const remedy = 'the digest send failed. Re-run the digest cron and read the worker log.';
-    return {
-      subject: `Hale ops: the ${DIGEST_LABEL[incident.digest]} digest failed to send`,
-      text: [
-        `the ${DIGEST_LABEL[incident.digest]} digest composed, but its send failed (${incident.reason}).`,
-        '',
-        'what this means',
-        '  that founder surface is dark — treat its silence as unknown, never as a',
-        '  clean week. the numbers it would have carried are still in the database.',
-        '',
-        'what to do',
-        `  ${remedy}`,
-        '',
-        `raised ${at.toISOString()}. one #ops post per digest per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
-      ].join('\n'),
-    };
-  }
-
   if (incident.kind === 'run_spike') {
     return {
       subject: `Hale ops: ${incident.failed} of ${incident.total} agent runs failed in the last hour`,
@@ -338,6 +388,28 @@ export function formatProviderAlert(
     };
   }
 
+  if (incident.kind === 'spend_threshold') {
+    const total = `$${incident.totalUsd.toFixed(2)}`;
+    const threshold = `$${incident.thresholdUsd.toFixed(2)}`;
+    const month = at.toISOString().slice(0, 7);
+    return {
+      subject: `Hale ops: Anthropic spend ${total} this month reached the ${threshold} alert`,
+      text: [
+        `agent_runs recorded ${total} of Anthropic spend in ${month} (UTC), at or above the ${threshold} alert.`,
+        '',
+        'what this is',
+        '  the sum of agent_runs.cost_usd only. Lanes that write no cost row, the',
+        '  pre-flight probes and eval/dev spend are not in it, so the console total is higher.',
+        '',
+        'what to do',
+        "  check the console usage page and this month's agent_runs by agent; raise",
+        '  ANTHROPIC_SPEND_ALERT_USD if this spend is expected.',
+        '',
+        `raised ${at.toISOString()}. one #ops post per incident per ${PROVIDER_INCIDENT_WINDOW_HOURS}h.`,
+      ].join('\n'),
+    };
+  }
+
   return {
     subject: `Hale ops: ${WINDOW_LABEL[incident.window]} did not send — Anthropic ${incident.failure}`,
     text: [
@@ -346,7 +418,7 @@ export function formatProviderAlert(
       'why',
       `  the pre-flight check against Anthropic failed at ${at.toISOString()}.`,
       `  classification: ${incident.failure} — ${FAILURE_EXPLANATION[incident.failure]}`,
-      `  the provider said: ${incident.detail}`,
+      `  the provider answered: ${incident.httpStatus === null ? 'no HTTP status' : `HTTP ${incident.httpStatus}`} ${incident.errorType ?? 'no error type'}`,
       '',
       'what Hale did',
       '  aborted the window before composing anything, so no family got a half-brief and',
@@ -362,17 +434,14 @@ export function formatProviderAlert(
 }
 
 export interface ProviderAlertSender {
-  /** True when Slack #ops accepted the page. */
-  send(subject: string, text: string): Promise<boolean>;
+  /** What Slack #ops did with the page; an unset webhook is its own outcome (rule #11). */
+  send(subject: string, text: string): Promise<OpsPageOutcome>;
 }
 
 /** The provider incident goes to Slack #ops. No founder email. */
 export function createProviderAlertSender(): ProviderAlertSender {
   return {
-    async send(subject, text) {
-      const outcome = await postOpsSlack(`${subject}\n${text}`);
-      return outcome === 'sent';
-    },
+    send: (subject, text) => postOpsSlack(`${subject}\n${text}`),
   };
 }
 
@@ -383,6 +452,9 @@ export interface ProviderHealthDeps {
   claim(database: Database, key: string, now: Date): Promise<boolean>;
   sender: ProviderAlertSender;
 }
+
+/** The two ports raising an incident uses. A full {@link ProviderHealthDeps} satisfies it. */
+export type ProviderIncidentDeps = Pick<ProviderHealthDeps, 'claim' | 'sender'>;
 
 export function defaultProviderHealthDeps(): ProviderHealthDeps {
   return {
@@ -396,6 +468,8 @@ export interface ProviderAlertOutcome {
   alerted: boolean;
   /** True when another cron already alerted about this incident in the window. */
   deduped: boolean;
+  /** True when the page was due but #ops has no webhook configured. */
+  notConfigured: boolean;
 }
 
 /**
@@ -406,7 +480,7 @@ export interface ProviderAlertOutcome {
 export async function raiseProviderIncident(
   database: Database,
   incident: ProviderIncident,
-  deps: ProviderHealthDeps,
+  deps: ProviderIncidentDeps,
   now: Date,
 ): Promise<ProviderAlertOutcome> {
   const key = providerIncidentKey(incident);
@@ -415,21 +489,26 @@ export async function raiseProviderIncident(
     won = await deps.claim(database, key, now);
   } catch (err) {
     logAlertFailure('provider incident claim failed', err);
-    return { alerted: false, deduped: false };
+    return { alerted: false, deduped: false, notConfigured: false };
   }
   if (!won) {
-    return { alerted: false, deduped: true };
+    return { alerted: false, deduped: true, notConfigured: false };
   }
 
   const { subject, text } = formatProviderAlert(incident, now);
-  // Always logged, whether or not the email lands — the platform log is the trail an
+  // Always logged, whether or not the post lands — the platform log is the trail an
   // ops event gets (audit_log is family-scoped by schema and this event has no family).
   console.error({ incident: { ...incident, key } }, subject);
   try {
-    return { alerted: await deps.sender.send(subject, text), deduped: false };
+    const page = await deps.sender.send(subject, text);
+    return {
+      alerted: page === 'sent',
+      deduped: false,
+      notConfigured: page === 'skipped_not_configured',
+    };
   } catch (err) {
     logAlertFailure('provider incident alert failed', err);
-    return { alerted: false, deduped: false };
+    return { alerted: false, deduped: false, notConfigured: false };
   }
 }
 
@@ -437,33 +516,10 @@ function logAlertFailure(what: string, err: unknown): void {
   console.error(what, { message: err instanceof Error ? err.message : 'unknown error' });
 }
 
-/**
- * The one call a digest cron makes when its send failed — a thin name over
- * {@link raiseProviderIncident} so all three digests escalate identically and none
- * grows a private alert path. Best-effort like everything on this seam: the incident
- * is always console-logged in full by raiseProviderIncident, the claim dedupes to one
- * email per digest per window, and nothing here can throw into the failing cron.
- *
- * Honest limit: for the two email digests the escalation email rides the same Resend
- * the digest just failed on, so when Resend itself is down this leg degrades to the
- * logged incident + the claim row; the cross-transport backstop for that case is the
- * dead-man switch (audit P1-8), not a fourth alert pathway here.
- */
-export async function escalateDigestSendFailure(
-  database: Database,
-  digest: FounderDigest,
-  reason: string,
-  deps: ProviderHealthDeps = defaultProviderHealthDeps(),
-  now: Date = new Date(),
-): Promise<ProviderAlertOutcome> {
-  return raiseProviderIncident(database, { kind: 'digest_send_failed', digest, reason }, deps, now);
-}
-
 /** Why a window was cancelled — the shape each cron reports back in its own result, so
  * the run's JSON says what did not happen and why instead of an empty success. */
-export interface ProviderAbort {
+export interface ProviderAbort extends ProviderErrorShape {
   failure: ProviderFailureClass;
-  detail: string;
   alerted: boolean;
 }
 
@@ -501,11 +557,12 @@ export async function providerPreflight(
     return { proceed: true, health };
   }
 
+  const shape: ProviderErrorShape = { httpStatus: health.httpStatus, errorType: health.errorType };
   const { alerted } = await raiseProviderIncident(
     database,
-    { kind: 'preflight', window, failure: health.failure, detail: health.detail },
+    { kind: 'preflight', window, failure: health.failure, ...shape },
     deps,
     now,
   );
-  return { proceed: false, abort: { failure: health.failure, detail: health.detail, alerted } };
+  return { proceed: false, abort: { failure: health.failure, ...shape, alerted } };
 }

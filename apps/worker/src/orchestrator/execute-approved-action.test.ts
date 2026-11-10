@@ -81,14 +81,41 @@ function makeDeps(
     loadConsent: vi.fn(
       async () => overrides.consent ?? { hasCoParent: false, coParentConsentGranted: false },
     ),
-    recordApproval: vi.fn(async () => ({ claimed: true as const, autonomy: { outcome: 'not_reached' as const } })),
+    recordApproval: vi.fn(async () => ({
+      claimed: true as const,
+      autonomy: { outcome: 'not_reached' as const },
+    })),
     recordGate: vi.fn(async () => {}),
+    checkWindow: vi.fn(async () => ({ withinWindow: true, detail: {} })),
     execute: vi.fn(async () => {}),
     log: { info: vi.fn(), warn: vi.fn() },
   } as never;
 }
 
 describe('executeApprovedAction', () => {
+  it('VIL-357 · an approval after the window closed does not execute and names the gate', async () => {
+    const deps = makeDeps();
+    (deps.checkWindow as ReturnType<typeof vi.fn>).mockResolvedValue({
+      withinWindow: false,
+      detail: { withinWindow: false, windowDescription: '06:00-22:00 America/Toronto' },
+    });
+    await executeApprovedAction(INPUT, deps);
+    expect(deps.execute).not.toHaveBeenCalled();
+    expect(deps.recordApproval).not.toHaveBeenCalled();
+    expect(deps.recordGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId: ACTION, reason: 'outside_time_window' }),
+    );
+  });
+
+  it('VIL-357 · re-judges the window at the execution instant, not the draft time', async () => {
+    const deps = makeDeps();
+    const before = Date.now();
+    await executeApprovedAction(INPUT, deps);
+    const at = (deps.checkWindow as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as Date;
+    expect(at.getTime()).toBeGreaterThanOrEqual(before);
+    expect(deps.execute).toHaveBeenCalledTimes(1);
+  });
+
   it('drives a valid human-approved action into execution and records who approved', async () => {
     const deps = makeDeps();
     await executeApprovedAction(INPUT, deps);

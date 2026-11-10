@@ -24,7 +24,11 @@ describe('connector connect-state (signed OAuth state)', () => {
     const token = signConnectState(STATE);
     const [body, mac] = token.split('.');
     const forged = Buffer.from(
-      JSON.stringify({ ...STATE, familyId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', exp: Date.now() + 60000 }),
+      JSON.stringify({
+        ...STATE,
+        familyId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        exp: Date.now() + 60000,
+      }),
     ).toString('base64url');
     expect(() => verifyConnectState(`${forged}.${mac}`)).toThrow(/signature/);
     expect(body).toBeTruthy();

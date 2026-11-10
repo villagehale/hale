@@ -1,21 +1,17 @@
-import {
-  type Database,
-  type Municipality,
-  type RegistrationSourceState,
-  registrationSourceState,
-  schema,
-} from '@hale/db';
+import { type Database, type Municipality, schema } from '@hale/db';
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import { asciiSpaces } from '~/lib/channel/intake/radar-decide';
-import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
 import { SPOT_PORTAL_HOSTS, type SpotPortal, sanitizeSpotUrl } from '~/lib/channel/spots/url';
-import { formatWhenPhrase } from '~/lib/format/datetime';
-import { type FetchPage, createFetchBody } from '~/lib/registration/fetch';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
-import { type LiveRegistrationReading, readCourseRegistration } from '../live-reading';
-import { renderCourseBindAck, renderReadinessAck } from './copy.js';
-import { printsReadinessAsk } from './copy.js';
+import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
+import {
+  courseBoundFacts,
+  courseRefusedFacts,
+  courseThrottledFacts,
+  printsReadinessAsk,
+  readinessAnswerFacts,
+} from './copy.js';
+import { type RegistrationNoteWriter, registrationNoteWriter } from './note-compose.js';
 import {
   type AgeVerdict,
   BIND_FETCH_TIMEOUT_MS,
@@ -24,7 +20,6 @@ import {
   type PrepChild,
   readCoursePrep,
 } from './prepare.js';
-import { refreshRegistrationWatch } from './refresh';
 import { legDedupeKey } from './run.js';
 import { SEQUENCE_LEGS } from './schedule.js';
 import { type FitNote, buildShortlist } from './shortlist.js';
@@ -109,7 +104,7 @@ export interface PreparingSequence {
  * own instant. The exact anchor is resolved in code by {@link familyAnchor}, because
  * the resident head start comes off the family's FSA.
  *
- * Callers must join `actions` and read the watch's imported `source_context`; there is no shape in Drizzle
+ * Callers must join `actions` and `registration_windows`; there is no shape in Drizzle
  * that can make them, and every caller of this predicate is in this file.
  */
 function liveOptedInSequence(familyId: string, now: Date) {
@@ -120,7 +115,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
     isNull(schema.actions.revertedAt),
     or(
       gt(schema.registrationSequences.courseOpensAt, now),
-      sql`(${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz > ${now}`,
+      gt(schema.registrationWindows.openAt, now),
     ),
   );
 }
@@ -129,7 +124,7 @@ function liveOptedInSequence(familyId: string, now: Date) {
  * and otherwise the M1 row resolved against their postal area (a resident household
  * registers days before the general date). */
 function familyAnchor(
-  window: RegistrationSourceState,
+  window: typeof schema.registrationWindows.$inferSelect,
   areaCoarse: string | null,
   courseOpensAt: Date | null,
 ): Date {
@@ -149,38 +144,37 @@ export async function loadPreparingSequence(
   familyId: string,
   now: Date,
 ): Promise<PreparingSequence | null> {
-  const [stored] = await database
+  const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
       courseUrl: schema.registrationSequences.courseUrl,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
       readinessReady: schema.registrationSequences.readinessReady,
-      window: schema.registrationSequences.sourceContext,
+      window: schema.registrationWindows,
       timeZone: schema.users.timezone,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: this binds a pasted link to a catalog window and rewrites
+    // `course_url`, which on a link-owned watch (VIL-423) is the watch's own identity.
+    .innerJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
     .innerJoin(schema.users, eq(schema.users.id, schema.registrationSequences.parentUserId))
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(
       and(
         liveOptedInSequence(familyId, now),
-        isNull(schema.registrationSequences.pausedAt),
-        inArray(
-          sql`${schema.registrationSequences.sourceContext}->>'municipality'`,
-          PORTAL_MUNICIPALITIES,
-        ),
+        inArray(schema.registrationWindows.municipality, PORTAL_MUNICIPALITIES),
       ),
     )
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
     )
     .limit(1);
-  if (!stored?.window) return null;
-  const window = registrationSourceState(stored.window);
-  if (!window) return null;
-  const row = { ...stored, window };
+  if (!row) return null;
 
   const portal = portalOf(row.window.municipality);
   if (portal === null) return null;
@@ -349,15 +343,17 @@ export const COURSE_BIND_REFUSALS = [
 export type CourseBindRefusal = (typeof COURSE_BIND_REFUSALS)[number];
 
 export type CourseBindOutcome =
-  | { status: 'bound'; reply: string }
-  | { status: 'already_bound'; reply: string }
-  | { status: 'refused'; reason: CourseBindRefusal; reply: string }
+  /** `reply` is null when the ack could not be written: the bind still landed, and
+   * nothing is sent. */
+  | { status: 'bound'; reply: string | null }
+  | { status: 'already_bound'; reply: string | null }
+  | { status: 'refused'; reason: CourseBindRefusal; reply: string | null }
   /**
    * The one outcome that is about HALE rather than about the link, which is why it is
    * not a member of {@link COURSE_BIND_REFUSALS}: every reason in that list is a fact
    * about the paste and writes nothing, and this one must write (rule #6).
    */
-  | { status: 'read_throttled'; reply: string }
+  | { status: 'read_throttled'; reply: string | null }
   /**
    * NOT this module's message. A course whose registration is already open is what
    * VIL-337's watch verb and the coach are for, and a refusal here would be Hale
@@ -383,11 +379,28 @@ export async function handleCourseBind(
 ): Promise<CourseBindOutcome> {
   const { sequence, now } = input;
   const sanitized = sanitizeSpotUrl(input.rawUrl);
-  if (!sanitized.ok) return refuse(sequence, sanitized.reason, now);
+  const refuse = async (reason: CourseBindRefusal, pageOpensAt: Date | null = null) => ({
+    status: 'refused' as const,
+    reason,
+    reply: await deps.writeNote(
+      database,
+      sequence.familyId,
+      courseRefusedFacts({
+        portal: sequence.portal,
+        municipality: sequence.municipality,
+        reason,
+        pageOpensAt,
+        opensForFamilyAt: sequence.opensForFamilyAt,
+        timeZone: sequence.timeZone,
+        now,
+      }),
+    ),
+  });
+  if (!sanitized.ok) return refuse(sanitized.reason);
 
   const pasted = SPOT_PORTAL_HOSTS[sanitized.host];
   if (pasted === undefined || pasted.municipality !== sequence.municipality) {
-    return refuse(sequence, 'wrong_municipality', now);
+    return refuse('wrong_municipality');
   }
 
   // BELOW the sanitizer and the municipality check, deliberately: a paste Hale refuses
@@ -402,7 +415,16 @@ export async function handleCourseBind(
   if (claim.status === 'throttled') {
     return {
       status: 'read_throttled',
-      reply: throttledSentence(claim.retryMinutes, sequence.courseUrl === sanitized.url),
+      reply: await deps.writeNote(
+        database,
+        sequence.familyId,
+        courseThrottledFacts({
+          alreadyBound: sequence.courseUrl === sanitized.url,
+          retryMinutes: claim.retryMinutes,
+          timeZone: sequence.timeZone,
+          now,
+        }),
+      ),
     };
   }
 
@@ -410,7 +432,7 @@ export async function handleCourseBind(
   try {
     raw = await deps.fetchBody(sanitized.url);
   } catch {
-    return refuse(sequence, 'page_unreadable', now);
+    return refuse('page_unreadable');
   }
 
   const verdict = readCoursePrep(
@@ -427,16 +449,16 @@ export async function handleCourseBind(
       readinessReady: sequence.readinessReady,
     },
   );
-  if (verdict.kind === 'course_gone') return refuse(sequence, 'course_gone', now);
-  if (verdict.kind === 'page_unreadable') return refuse(sequence, 'page_unreadable', now);
+  if (verdict.kind === 'course_gone') return refuse('course_gone');
+  if (verdict.kind === 'page_unreadable') return refuse('page_unreadable');
 
   const clock = verdict.clock;
-  if (clock === null) return refuse(sequence, 'no_published_clock', now);
+  if (clock === null) return refuse('no_published_clock');
   if (clock.at.getTime() <= now.getTime()) return { status: 'declined', reason: 'already_open' };
 
   const driftMs = clock.at.getTime() - sequence.opensForFamilyAt.getTime();
   if (Math.abs(driftMs) > MAX_BIND_DRIFT_DAYS * 86_400_000) {
-    return refuse(sequence, 'different_season', now, clock.at);
+    return refuse('different_season', clock.at);
   }
 
   const replaced = sequence.courseUrl !== null && sequence.courseUrl !== sanitized.url;
@@ -453,116 +475,25 @@ export async function handleCourseBind(
     prerequisite: verdict.facts.PrerequisiteEvents === true,
     ageFit: verdict.age.fit,
     driftMinutes: Math.round(driftMs / 60_000),
-    reading: readCourseRegistration(
-      { ok: true, raw },
-      {
-        sourceUrl: sanitized.url,
-        checkedAt: now,
-        timeZone: sequence.portal.timeZone,
-        courseId: sanitized.courseId,
-      },
-    ),
-    cachedAnchor: sequence.courseOpensAt ?? sequence.opensForFamilyAt,
-    resident: sequence.isResidentWindow,
-    parentTimeZone: sequence.timeZone,
     now,
   });
 
-  const reply = renderCourseBindAck({
-    portal: sequence.portal,
-    page: verdict,
-    clock,
-    replaced,
-    municipality: sequence.municipality,
-    opensForFamilyAt: sequence.opensForFamilyAt,
-    fitNotes: sequence.fitNotes,
-    timeZone: sequence.timeZone,
-    now,
-  });
-  const confirmation =
-    clock.at > (sequence.courseOpensAt ?? sequence.opensForFamilyAt)
-      ? ' Old date reminders are paused until you confirm this later date in approvals.'
-      : '';
-  return written === 'bound'
-    ? { status: 'bound', reply: reply + confirmation }
-    : { status: 'already_bound', reply: reply + confirmation };
-}
-
-function refuse(
-  sequence: PreparingSequence,
-  reason: CourseBindRefusal,
-  now: Date,
-  pageClock?: Date,
-): CourseBindOutcome {
-  return { status: 'refused', reason, reply: refusalSentence(sequence, reason, now, pageClock) };
-}
-
-/**
- * ONE SENTENCE PER REFUSAL, and none of them is an apology with no next step.
- *
- * No link is printed: the parent has one, and a link Hale sends back is a link nobody
- * asked for (the same rule the bind ack keeps). No question mark either — every ask in
- * this ladder is an imperative, which is what lets the composer's gate be absolute.
- */
-function refusalSentence(
-  sequence: PreparingSequence,
-  reason: CourseBindRefusal,
-  now: Date,
-  pageClock?: Date,
-): string {
-  const town = townLabel(sequence.municipality);
-  const portal = sequence.portal.portalLabel;
-  switch (reason) {
-    case 'not_https':
-      return `That link is not a secure one, so I did not open it. Send me the course page from ${portal} as it appears in your address bar.`;
-    case 'has_credentials':
-      return `That link carries a sign-in inside it, so I did not open it. Send me the plain course page from ${portal}.`;
-    case 'host_not_allowed':
-      return `That is not ${portal}, and ${town} is the morning I am holding. Send me the course page from there.`;
-    case 'not_a_course_page':
-      return `That is not a course page I can read. Open the class on ${portal} and send me the link from the address bar.`;
-    case 'too_long':
-      return `That link is longer than I can read. Send the course page link from ${portal} on its own line.`;
-    case 'wrong_municipality':
-      return `That is another town's portal, and the morning I am holding is ${town}. Send me the ${town} course page.`;
-    case 'page_unreadable':
-      return 'I could not read that page just now. Nothing has changed on my side - send it again and I will try once more.';
-    case 'course_gone':
-      return `${portal} is not showing the course at that link any more. Open the class again and send me the new link.`;
-    case 'no_published_clock':
-      return `That page does not publish a registration date I can read, so I am staying on the ${town} dates I already have.`;
-    case 'different_season':
-      return `That course opens ${when(pageClock as Date, sequence.timeZone, now)} and the ${town} morning I am holding is ${when(sequence.opensForFamilyAt, sequence.timeZone, now)}. That looks like a different season, so I have left it as it was.`;
-  }
-}
-
-/**
- * The throttle's one sentence, and it makes no promise it does not keep.
- *
- * Hale does NOT come back to the link later — there is no re-read job and no new kind
- * of commitment — so the sentence says exactly that, and hands the parent the only
- * thing that is true: the minute the next read is theirs. The number is the slot's own
- * remainder rather than the window's length, because a fixed slot pasted into late
- * would otherwise be told to wait longer than it must.
- *
- * TRIED, not read: the claim is spent by the request, so the window can have gone on a
- * six-second timeout, and this sentence then follows the one that told the same parent
- * the page could not be read. One verb is true of both.
- *
- * THE LINK ALREADY BOUND GETS ITS OWN SENTENCE, because the first one's "I have not
- * opened that link" is false of it — Hale opened that exact link, bound it and acked
- * it, and a resend is the commonest second paste there is. The window is still spent,
- * so this is not the ack again; it is the one thing that is true without a fresh read.
- */
-function throttledSentence(minutes: number, alreadyBound: boolean): string {
-  if (alreadyBound) {
-    return 'I already have that class from you, and I read one page at a time, so I have not opened it again. There is nothing to resend.';
-  }
-  return `I just tried a course page for you, and I read one at a time. I have not opened that link and I will not come back to it - send it again in ${minutes} minute${minutes === 1 ? '' : 's'} and I will read it then.`;
-}
-
-function when(instant: Date, timeZone: string, now: Date): string {
-  return asciiSpaces(formatWhenPhrase(instant, timeZone, now));
+  const reply = await deps.writeNote(
+    database,
+    sequence.familyId,
+    courseBoundFacts({
+      portal: sequence.portal,
+      page: verdict,
+      clock,
+      replaced,
+      municipality: sequence.municipality,
+      opensForFamilyAt: sequence.opensForFamilyAt,
+      fitNotes: sequence.fitNotes,
+      timeZone: sequence.timeZone,
+      now,
+    }),
+  );
+  return written === 'bound' ? { status: 'bound', reply } : { status: 'already_bound', reply };
 }
 
 // ── the readiness answer ─────────────────────────────────────────────────────
@@ -583,7 +514,8 @@ export interface ReadinessAnswerInput {
 
 export type ReadinessOutcome = {
   status: 'readiness_recorded' | 'already_answered';
-  reply: string;
+  /** Null when the ack could not be written: the answer is still recorded. */
+  reply: string | null;
 };
 
 export async function handleReadinessAnswer(
@@ -601,11 +533,17 @@ export async function handleReadinessAnswer(
     confidence: input.confidence,
     now: input.now,
   });
-  const reply = renderReadinessAck({
-    portal: input.sequence.portal,
-    ready: input.ready,
-    fitNotes: input.sequence.fitNotes,
-  });
+  const reply = await deps.writeNote(
+    database,
+    input.sequence.familyId,
+    readinessAnswerFacts({
+      portal: input.sequence.portal,
+      ready: input.ready,
+      fitNotes: input.sequence.fitNotes,
+      timeZone: input.sequence.timeZone,
+      now: input.now,
+    }),
+  );
   return {
     status: written === 'recorded' ? 'readiness_recorded' : 'already_answered',
     reply,
@@ -752,26 +690,28 @@ export async function approvedShortlistAskedOf(
   parentUserId: string,
   now: Date,
 ): Promise<{ sequenceId: string } | null> {
-  const [stored] = await database
+  const [row] = await database
     .select({
       sequenceId: schema.registrationSequences.id,
-      windowId: schema.registrationSequences.windowId,
       courseOpensAt: schema.registrationSequences.courseOpensAt,
-      window: schema.registrationSequences.sourceContext,
+      window: schema.registrationWindows,
       areaCoarse: schema.families.areaCoarse,
     })
     .from(schema.registrationSequences)
+    // INNER, deliberately: a watch a parent's link created is never sent a heads-up yet
+    // (VIL-423, run.ts `linkWatchFate`), so no YES can be answering one.
+    .innerJoin(
+      schema.registrationWindows,
+      eq(schema.registrationWindows.id, schema.registrationSequences.windowId),
+    )
     .innerJoin(schema.families, eq(schema.families.id, schema.registrationSequences.familyId))
     .innerJoin(schema.actions, eq(schema.actions.id, schema.registrationSequences.actionId))
     .where(liveOptedInSequence(familyId, now))
     .orderBy(
-      sql`coalesce(${schema.registrationSequences.courseOpensAt}, (${schema.registrationSequences.sourceContext}->>'openAt')::timestamptz)`,
+      sql`coalesce(${schema.registrationSequences.courseOpensAt}, ${schema.registrationWindows.openAt})`,
     )
     .limit(1);
-  if (!stored?.window) return null;
-  const window = registrationSourceState(stored.window);
-  if (!window) return null;
-  const row = { ...stored, window };
+  if (!row) return null;
   // The morning itself, resolved for THIS family: past it the ladder is asking how it
   // went, and "I'll run the morning with you" is no longer a true sentence.
   if (familyAnchor(row.window, row.areaCoarse, row.courseOpensAt).getTime() <= now.getTime()) {
@@ -779,7 +719,7 @@ export async function approvedShortlistAskedOf(
   }
 
   const asked = await lastWordAt(database, parentUserId, [
-    legDedupeKey(familyId, row.windowId ?? row.sequenceId, 'heads_up', parentUserId),
+    legDedupeKey(familyId, row.window.id, 'heads_up', parentUserId),
   ]);
   return asked === null ? null : { sequenceId: row.sequenceId };
 }
@@ -799,10 +739,6 @@ export interface CourseBindingWrite {
   prerequisite: boolean;
   ageFit: AgeVerdict['fit'];
   driftMinutes: number;
-  reading?: LiveRegistrationReading;
-  cachedAnchor?: Date;
-  resident?: boolean;
-  parentTimeZone?: string;
   now: Date;
 }
 
@@ -836,11 +772,7 @@ export async function recordCourseBinding(
   return database.transaction(async (tx) => {
     const [row] = await tx
       .update(schema.registrationSequences)
-      .set({
-        courseUrl: input.url,
-        ...(input.reading ? {} : { courseOpensAt: input.courseOpensAt }),
-        updatedAt: input.now,
-      })
+      .set({ courseUrl: input.url, courseOpensAt: input.courseOpensAt, updatedAt: input.now })
       .where(
         and(
           eq(schema.registrationSequences.id, input.sequenceId),
@@ -850,15 +782,6 @@ export async function recordCourseBinding(
       )
       .returning({ id: schema.registrationSequences.id });
     if (!row) return 'already_bound';
-    if (input.reading)
-      await refreshRegistrationWatch(tx as unknown as Database, {
-        sequenceId: input.sequenceId,
-        reading: input.reading,
-        resident: input.resident ?? false,
-        cachedAnchor: input.cachedAnchor,
-        parentTimeZone: input.parentTimeZone,
-        now: input.now,
-      });
 
     await tx.insert(schema.auditLog).values({
       familyId: input.familyId,
@@ -959,6 +882,8 @@ export interface PrepareReplyDeps {
     database: Database,
     input: ReadinessWrite,
   ): Promise<'recorded' | 'already_answered'>;
+  /** VIL-543 · every ack is written by the model from facts. Null sends nothing. */
+  writeNote: RegistrationNoteWriter;
 }
 
 export function defaultPrepareReplyDeps(): PrepareReplyDeps {
@@ -970,5 +895,6 @@ export function defaultPrepareReplyDeps(): PrepareReplyDeps {
     fetchBody: createFetchBody(BIND_FETCH_TIMEOUT_MS),
     recordCourseBinding,
     recordReadinessState,
+    writeNote: registrationNoteWriter(),
   };
 }

@@ -186,7 +186,15 @@ export async function addArea(
       targetId: row.id,
       after: { city, province, postalCode, note },
     });
-    return toSavedArea({ id: row.id, city, province, note, postalCode, isActive: false, createdAt: row.createdAt });
+    return toSavedArea({
+      id: row.id,
+      city,
+      province,
+      note,
+      postalCode,
+      isActive: false,
+      createdAt: row.createdAt,
+    });
   });
 
   return { status: 'added', area };
@@ -208,10 +216,7 @@ export async function setActiveArea(
       .select({ id: schema.familyAreas.id })
       .from(schema.familyAreas)
       .where(
-        and(
-          eq(schema.familyAreas.id, args.areaId),
-          eq(schema.familyAreas.familyId, args.familyId),
-        ),
+        and(eq(schema.familyAreas.id, args.areaId), eq(schema.familyAreas.familyId, args.familyId)),
       )
       .limit(1);
     if (!rows[0]) {
@@ -222,10 +227,7 @@ export async function setActiveArea(
       .update(schema.familyAreas)
       .set({ isActive: false })
       .where(
-        and(
-          eq(schema.familyAreas.familyId, args.familyId),
-          eq(schema.familyAreas.isActive, true),
-        ),
+        and(eq(schema.familyAreas.familyId, args.familyId), eq(schema.familyAreas.isActive, true)),
       );
     await tx
       .update(schema.familyAreas)
@@ -264,10 +266,7 @@ export async function removeArea(
       .select({ id: schema.familyAreas.id, isActive: schema.familyAreas.isActive })
       .from(schema.familyAreas)
       .where(
-        and(
-          eq(schema.familyAreas.id, args.areaId),
-          eq(schema.familyAreas.familyId, args.familyId),
-        ),
+        and(eq(schema.familyAreas.id, args.areaId), eq(schema.familyAreas.familyId, args.familyId)),
       )
       .limit(1);
     const row = rows[0];

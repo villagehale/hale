@@ -2,10 +2,8 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveApproval } from '~/lib/channel/router/approval';
-import { matchFastPath } from '~/lib/channel/router/fast-path';
-import { approvalHandler } from '~/lib/channel/router/handlers';
+import type { FastPathCommand } from '~/lib/channel/router/fast-path';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
-import { registrationSourceFixture } from '~/lib/testing/registration-source';
 import { approvedShortlistAskedOf } from './prepare-reply';
 import { defaultSequenceReplyDeps, handleSequenceReply } from './reply';
 import { legDedupeKey } from './run';
@@ -49,7 +47,6 @@ let familyId: string;
 let primaryUserId: string;
 let coParentUserId: string;
 let windowId: string;
-let sourceContext: ReturnType<typeof registrationSourceFixture>;
 let sequenceId: string;
 let actionId: string;
 /** The window registry is unique on (municipality, domain, cycle), so each case gets
@@ -93,19 +90,21 @@ beforeEach(async () => {
     .values({ familyId, name: 'Mia', dateOfBirth: '2021-09-01', dobPrecision: 'exact' });
 
   cycles += 1;
-  const window = registrationSourceFixture({
-    municipality: 'markham',
-    programDomain: 'rec_program',
-    cycleLabel: `Fall 2026 #${cycles}`,
-    openAt: OPEN_AT,
-    ageMinMonths: 36,
-    ageMaxMonths: 84,
-    waitlistResponseHours: 36,
-    sourceUrl: 'https://www.markham.ca/register',
-    verifiedAt: new Date('2026-08-01T00:00:00.000Z'),
-  });
-  windowId = window.id;
-  sourceContext = window;
+  const [window] = await db.database
+    .insert(schema.registrationWindows)
+    .values({
+      municipality: 'markham',
+      programDomain: 'rec_program',
+      cycleLabel: `Fall 2026 #${cycles}`,
+      openAt: OPEN_AT,
+      ageMinMonths: 36,
+      ageMaxMonths: 84,
+      waitlistResponseHours: 36,
+      sourceUrl: 'https://www.markham.ca/register',
+      verifiedAt: new Date('2026-08-01T00:00:00.000Z'),
+    })
+    .returning({ id: schema.registrationWindows.id });
+  windowId = window?.id as string;
 
   const [event] = await db.database
     .insert(schema.events)
@@ -136,17 +135,15 @@ beforeEach(async () => {
     .insert(schema.registrationSequences)
     // The PRIMARY parent's seat claimed the window, which is what every sequence row
     // looks like: the claim is minted by a cron, not by whoever answers.
-    .values({ familyId, windowId, sourceContext, parentUserId: primaryUserId, actionId })
+    .values({ familyId, windowId, parentUserId: primaryUserId, actionId })
     .returning({ id: schema.registrationSequences.id });
   sequenceId = sequence?.id as string;
 });
 
 /** The production spine, whole — including the refusal mapping a hand-built one in a
  * test would have to restate. */
-async function say(body: string, parentUserId: string) {
+async function say(command: FastPathCommand, parentUserId: string) {
   const { defaultApprovalSpine } = await import('~/lib/channel/router/wiring');
-  const command = matchFastPath(body);
-  if (!command) throw new Error(`test bug: ${JSON.stringify(body)} is not a command`);
   return resolveApproval(
     db.database,
     { familyId, parentUserId, command, now: NOW },
@@ -163,6 +160,46 @@ async function executeTheDraft(): Promise<void> {
     .where(eq(schema.actions.id, actionId));
 }
 
+/** VIL-423 · a watch a parent's link created: no catalog row, its own clock, approved.
+ * Nothing on the ladder ever asks it a question yet, so no reply reader may hear one
+ * for it — the pins below hold that in a household that also has a catalog ladder. */
+async function seedLinkWatch(courseOpensAt: Date): Promise<string> {
+  const [event] = await db.database
+    .insert(schema.events)
+    .values({
+      familyId,
+      source: 'test',
+      eventType: 'registration_shortlist',
+      dedupHash: `two-parents-link-${Math.random()}`,
+    })
+    .returning({ id: schema.events.id });
+  const [action] = await db.database
+    .insert(schema.actions)
+    .values({
+      eventId: event?.id as string,
+      familyId,
+      actionType: 'send_message',
+      payload: {},
+      userVisibleState: 'autonomous',
+      reviewerVerdict: 'approved',
+      draftedAt: new Date('2026-09-08T10:00:00.000Z'),
+      executedAt: new Date('2026-09-08T10:05:00.000Z'),
+    })
+    .returning({ id: schema.actions.id });
+  const [row] = await db.database
+    .insert(schema.registrationSequences)
+    .values({
+      familyId,
+      windowId: null,
+      parentUserId: primaryUserId,
+      actionId: action?.id as string,
+      courseUrl: 'https://register.example.org/courses/swim-a',
+      courseOpensAt,
+    })
+    .returning({ id: schema.registrationSequences.id });
+  return row?.id as string;
+}
+
 async function auditRows(verb: string) {
   return db.database
     .select()
@@ -171,28 +208,8 @@ async function auditRows(verb: string) {
 }
 
 describe('one shortlist card, both parents answering', () => {
-  it('accepts a naturally resolved chat confirmation through the real approval spine', async () => {
-    const { defaultApprovalSpine } = await import('~/lib/channel/router/wiring');
-    const body = 'Please go ahead with those registration reminders for us.';
-    expect(matchFastPath(body)).toBeNull();
-    const result = await approvalHandler(defaultApprovalSpine()).handle(db.database, {
-      familyId,
-      parentUserId: coParentUserId,
-      conversationId: 'local-chat',
-      body,
-      now: PRE_OPEN_NOW,
-      inboundChannelMessageId: null,
-      openQuestions: async () => [],
-      send: async () => {
-        throw new Error('approval handler does not send directly');
-      },
-      resolved: { kind: 'approval', questionId: actionId, polarity: 'yes', confidence: 'high' },
-    });
-    expect(result).toMatchObject({ claimed: true, outcome: 'approved' });
-    expect(queued).toEqual([{ actionId, approvedBy: coParentUserId }]);
-  });
   it('lets the co-parent’s YES approve it, stamped with them', async () => {
-    const outcome = await say('yes', coParentUserId);
+    const outcome = await say({ verb: 'yes', index: null }, coParentUserId);
 
     expect(outcome.status).toBe('approved');
     expect(queued).toEqual([{ actionId, approvedBy: coParentUserId }]);
@@ -208,11 +225,11 @@ describe('one shortlist card, both parents answering', () => {
    * registered for.
    */
   it('does not let the primary parent’s later YES claim the executed row', async () => {
-    await say('yes', coParentUserId);
+    await say({ verb: 'yes', index: null }, coParentUserId);
     await executeTheDraft();
     queued.length = 0;
 
-    const second = await say('yes', primaryUserId);
+    const second = await say({ verb: 'yes', index: null }, primaryUserId);
 
     expect(second).toEqual({ status: 'declined_to_claim', reply: null, actionId: null });
     expect(queued).toEqual([]);
@@ -246,6 +263,29 @@ describe('one shortlist card, both parents answering', () => {
     expect(
       await approvedShortlistAskedOf(db.database, familyId, coParentUserId, PRE_OPEN_NOW),
     ).toBeNull();
+  });
+
+  /** VIL-423 pin: an approved link watch with an EARLIER clock must not stand in front
+   * of the catalog heads-up this parent was actually asked. Fails under a LEFT JOIN that
+   * still takes the earliest anchor alone. */
+  it('still finds the catalog heads-up when an earlier link watch exists', async () => {
+    await executeTheDraft();
+    await seedLinkWatch(new Date('2026-09-15T09:00:00.000Z'));
+    await db.database.insert(schema.channelMessages).values({
+      familyId,
+      parentUserId: primaryUserId,
+      channel: 'sms',
+      direction: 'out',
+      category: 'registration_sequence',
+      templateKey: 'registration_sequence:heads_up',
+      dedupeKey: legDedupeKey(familyId, windowId, 'heads_up', primaryUserId),
+      status: 'delivered',
+      createdAt: new Date('2026-09-08T14:00:00.000Z'),
+    });
+
+    expect(
+      await approvedShortlistAskedOf(db.database, familyId, primaryUserId, PRE_OPEN_NOW),
+    ).toEqual({ sequenceId });
   });
 
   it('says nothing while the card is still waiting — an unapproved shortlist is a real question', async () => {
@@ -311,6 +351,26 @@ describe('one registration morning, both parents reporting it', () => {
     const [audit] = await auditRows('registration_outcome_recorded');
     expect(audit?.actor).toBe(coParentUserId);
     expect(audit?.actor).not.toBe(primaryUserId);
+  });
+
+  /** VIL-423 pin: a newer link watch, never asked anything, must not take the catalog
+   * morning's report. Fails under a LEFT JOIN of `loadAwaitingSequence` that picks the
+   * newest anchor. */
+  it('files a catalog report against the catalog row when a newer link watch exists', async () => {
+    const linkId = await seedLinkWatch(new Date('2026-09-15T11:00:00.000Z'));
+
+    const outcome = await reply('we got in', coParentUserId);
+
+    expect(outcome.status).toBe('recorded');
+    const rows = await db.database
+      .select({
+        id: schema.registrationSequences.id,
+        outcome: schema.registrationSequences.outcome,
+      })
+      .from(schema.registrationSequences)
+      .where(eq(schema.registrationSequences.familyId, familyId));
+    expect(rows.find((row) => row.id === sequenceId)?.outcome).toBe('registered');
+    expect(rows.find((row) => row.id === linkId)?.outcome).toBeNull();
   });
 
   /**

@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
-import { MARKETING_SITE_URL, PRIVACY_URL, TERMS_URL } from './lib/legal-links';
+import { MARKETING_SITE_URL, TERMS_URL } from './lib/legal-links';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
@@ -9,21 +9,25 @@ const repoRoot = join(here, '..', '..');
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Browser source maps exist only on a build that will upload them to PostHog and then
+  // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
+  // every build today — this is false and nothing changes.
+  productionBrowserSourceMaps: Boolean(process.env.POSTHOG_PERSONAL_API_KEY),
   typedRoutes: true,
-  // The policies moved to the marketing site (D20). These forwards are permanent
-  // (308) and are kept FOREVER, not until a cleanup: sent emails, stored consent
+  // The policies moved to the marketing site (D20). The /terms forward is permanent
+  // (308) and is kept FOREVER, not until a cleanup: sent emails, stored consent
   // records and already-shipped mobile builds still point at the app's legal URLs,
   // and none of those can be rewritten after the fact. Declared here rather than in
   // the middleware so a policy link never costs an Edge invocation, and so the
-  // forward survives independently of the auth middleware's matcher.
+  // forward survives independently of the auth middleware's matcher. The app's
+  // /privacy is the signed-in data-rights page (VIL-432), which links the policy.
   async redirects() {
     return [
       { source: '/terms', destination: TERMS_URL, permanent: true },
-      { source: '/privacy', destination: PRIVACY_URL, permanent: true },
       // F14: the web onboarding wizard is deleted, not disabled. Its output was a
       // family with no phone number, and Hale cannot run a week for a family it
       // cannot text — so joining starts on the marketing site, which says exactly
-      // that. Permanent and kept FOREVER for the same reason as the two above: the
+      // that. Permanent and kept FOREVER for the same reason as the one above: the
       // live "Get started" buttons on the marketing site, already-sent emails and a
       // year of bookmarks all still point here, and none of them can be rewritten.
       // Both spellings are listed rather than relying on `:path*` to match zero
@@ -46,12 +50,14 @@ const config: NextConfig = {
       // Next appends the request query when the destination has none (same
       // as /signin). The email doors are NOT here: a token must not ride
       // along, and this seam cannot drop one.
-      { source: '/coach', destination: '/home', permanent: true },
-      { source: '/coach/:path*', destination: '/home', permanent: true },
-      { source: '/companion', destination: '/home', permanent: true },
-      { source: '/companion/:path*', destination: '/home', permanent: true },
-      { source: '/saved', destination: '/home', permanent: true },
-      { source: '/saved/:path*', destination: '/home', permanent: true },
+      { source: '/coach', destination: '/family', permanent: true },
+      { source: '/coach/:path*', destination: '/family', permanent: true },
+      { source: '/companion', destination: '/family', permanent: true },
+      { source: '/companion/:path*', destination: '/family', permanent: true },
+      { source: '/saved', destination: '/family', permanent: true },
+      { source: '/saved/:path*', destination: '/family', permanent: true },
+      { source: '/plan', destination: '/family', permanent: true },
+      { source: '/plan/:path*', destination: '/family', permanent: true },
       { source: '/family/members', destination: '/family', permanent: true },
       { source: '/family/members/:path*', destination: '/family', permanent: true },
     ];
@@ -69,6 +75,10 @@ const config: NextConfig = {
     // Authorized signup loads Playwright at runtime when the flag is on.
     // Absent in a runtime that did not install it — the runner hands back
     // browser_unavailable rather than bundling a browser into the function.
+    // playwright-core is the exception: a real dependency, traced into the
+    // function (see outputFileTracingIncludes) so the Browser Use engine can
+    // attach to its remote browser over CDP. External, because webpack cannot
+    // bundle it; it needs no local browser binary.
     '@playwright/test',
     'playwright',
     'playwright-core',
@@ -92,6 +102,9 @@ const config: NextConfig = {
       '../worker/prompts/**',
       '../worker/src/anthropic/client.ts',
       '../../packages/agent/skills/**',
+      '../../node_modules/playwright-core/**',
+      './lib/registration/pdf-worker.mjs',
+      '../../node_modules/unpdf/**',
     ],
   },
   webpack: (config) => {
