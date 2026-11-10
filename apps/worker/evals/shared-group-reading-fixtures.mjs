@@ -1,7 +1,8 @@
 /**
  * VIL-456 — inference and opt-out. Judges score meaning, not wording.
  * VIL-459 — a find-time ask. `covers` are instants the chat ruled out (some span must
- * hold each); `open` are instants nobody ruled out (no span may hold them).
+ * hold each); `open` are instants nobody ruled out (no span may hold them). `titled`: the
+ * reading names what the group is planning. `picked`: the offered start a pick must name.
  */
 export const SHARED_GROUP_READING_FIXTURES = [
   {
@@ -87,6 +88,7 @@ export const SHARED_GROUP_READING_FIXTURES = [
   {
     id: 'find-time-not-saturday-morning',
     accept: ['find_time'],
+    titled: true,
     covers: ['2026-10-31T10:00:00-04:00'],
     open: ['2026-10-31T15:00:00-04:00', '2026-10-29T18:00:00-04:00'],
     input: {
@@ -140,6 +142,87 @@ export const SHARED_GROUP_READING_FIXTURES = [
         },
       ],
       clock: { now: '2026-10-28T11:00:00-04:00', timeZone: 'America/New_York' },
+    },
+  },
+  {
+    id: 'pick-offered-saturday',
+    accept: ['pick_time'],
+    picked: '2026-10-31T12:00:00.000Z',
+    input: {
+      text: "Saturday at 8 works for us, let's do that one",
+      reaction: null,
+      language: 'en',
+      people: [
+        { firstName: 'Mei', knownCustomer: true, familyLinked: true },
+        { firstName: 'Ada', knownCustomer: true, familyLinked: true },
+      ],
+      recent: [],
+      clock: { now: '2026-10-28T11:00:00-04:00', timeZone: 'America/New_York' },
+      offered: [
+        { start: '2026-10-29T23:00:00.000Z', local: 'Thu, Oct 29 19:00' },
+        { start: '2026-10-31T12:00:00.000Z', local: 'Sat, Oct 31 08:00' },
+        { start: '2026-11-01T13:00:00.000Z', local: 'Sun, Nov 1 08:00' },
+      ],
+    },
+  },
+  {
+    id: 'pick-spanish-first-option',
+    accept: ['pick_time'],
+    picked: '2026-10-31T15:00:00.000Z',
+    input: {
+      text: 'Vamos con la primera opción, nos va perfecto',
+      reaction: null,
+      language: 'es',
+      people: [
+        { firstName: 'Lucía', knownCustomer: true, familyLinked: true },
+        { firstName: 'Ana', knownCustomer: true, familyLinked: true },
+      ],
+      recent: [],
+      clock: { now: '2026-10-28T10:00:00-05:00', timeZone: 'America/Chicago' },
+      offered: [
+        { start: '2026-10-31T15:00:00.000Z', local: 'sáb, 31 oct 10:00' },
+        { start: '2026-11-01T16:00:00.000Z', local: 'dom, 1 nov 10:00' },
+      ],
+    },
+  },
+  {
+    id: 'offered-none-work-looks-again',
+    accept: ['find_time'],
+    input: {
+      text: 'None of those work for us, what about the weekend after?',
+      reaction: null,
+      language: 'en',
+      people: [
+        { firstName: 'Mei', knownCustomer: true, familyLinked: true },
+        { firstName: 'Priya', knownCustomer: true, familyLinked: true },
+      ],
+      recent: [],
+      clock: { now: '2026-10-28T11:00:00-04:00', timeZone: 'America/New_York' },
+      offered: [
+        { start: '2026-10-29T23:00:00.000Z', local: 'Thu, Oct 29 19:00' },
+        { start: '2026-10-31T12:00:00.000Z', local: 'Sat, Oct 31 08:00' },
+        { start: '2026-11-01T13:00:00.000Z', local: 'Sun, Nov 1 08:00' },
+      ],
+    },
+  },
+  {
+    id: 'offered-liked-not-picked',
+    accept: ['yes', 'chatter'],
+    input: {
+      text: 'ooh nice, any of those could work for us',
+      reaction: null,
+      language: 'en',
+      people: [
+        { firstName: 'Mei', knownCustomer: true, familyLinked: true },
+        { firstName: 'Ada', knownCustomer: true, familyLinked: true },
+      ],
+      recent: [],
+      clock: { now: '2026-10-28T11:00:00-04:00', timeZone: 'America/New_York' },
+      offered: [
+        { start: '2026-10-29T23:00:00.000Z', local: 'Thu, Oct 29 19:00' },
+        { start: '2026-10-31T12:00:00.000Z', local: 'Sat, Oct 31 08:00' },
+        { start: '2026-11-01T13:00:00.000Z', local: 'Sun, Nov 1 08:00' },
+      ],
     },
   },
   {
