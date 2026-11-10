@@ -155,6 +155,10 @@
     "file": "coach-nearby-find.md",
     "sha256": "dc699d224aca4924699a2c2497ab07774e68984f71e199f9f139470c8dd8c246"
   },
+  "coach-no-group-relay.md": {
+    "file": "coach-no-group-relay.md",
+    "sha256": "bc0d8f6c88462276068e3fcc73ac074aa9a0fe3bca8427911ce5240ece512483"
+  },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
     "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
