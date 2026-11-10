@@ -9,10 +9,26 @@ describe('requiredCheckPasses', () => {
     tests: 'success',
     evals: 'success',
     workerEvals: 'true',
+    allEvals: 'success',
   };
 
   it('passes when workspace checks and worker evals passed', () => {
     expect(requiredCheckPasses(ok)).toMatchObject({ ok: true });
+  });
+
+  it('fails when the every-suite eval job did not succeed, site-only diff or not', () => {
+    for (const allEvals of ['failure', 'cancelled', 'skipped', '']) {
+      expect(requiredCheckPasses({ ...ok, allEvals }).ok).toBe(false);
+      expect(
+        requiredCheckPasses({ ...ok, allEvals, evals: 'skipped', workerEvals: 'false' }).ok,
+      ).toBe(false);
+    }
+    expect(requiredCheckPasses({ ...ok, allEvals: 'failure' }).reason).toBe(
+      'every eval suite (cached-only) failure',
+    );
+    expect(requiredCheckPasses({ ...ok, allEvals: '' }).reason).toBe(
+      'every eval suite (cached-only) missing',
+    );
   });
 
   it('passes a site-only diff when evals were skipped', () => {
