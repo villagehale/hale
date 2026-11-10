@@ -37,6 +37,7 @@ const PROVIDER_TOKENS = [
   'createLinqChat(',
   'createLinqPhoneTransport(',
   'sendLinqParts(',
+  'sendLinqEffect(',
   'reactToLinqMessage(',
   'shareLinqContactCard(',
   'requestLinqLocation(',
@@ -64,6 +65,8 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
     'Hale Name and Photo share at most once per Toronto day per chat after the first outbound; the claim and the linq_contact_card_shared audit sit beside the share',
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
+  'apps/web/lib/channel/linq/effect.ts':
+    "an iMessage effect on Hale's reply when the model chooses one; the ledger row is written by moments.ts when the send is accepted",
   'apps/web/lib/channel/linq/link-preview.ts':
     'a link part after a text that does not carry the URL; writes its own channel_messages row and linq_link_preview audit when a family id is passed, and sendLinkOnce ledgers its URL-as-text fallback (linq:link_text, sms_reply_sent)',
   'apps/web/lib/channel/linq/group.ts':

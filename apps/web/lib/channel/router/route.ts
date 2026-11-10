@@ -50,6 +50,7 @@ import { queueActivityDecisionFromReply } from '~/lib/channel/linq/activity-deci
 import { sendLinqAppCard } from '~/lib/channel/linq/app-card';
 import { linqFromE164 } from '~/lib/channel/linq/config';
 import { parseCoParentNumberReply } from '~/lib/channel/linq/coparent-invite';
+import { sharedLinqEffectDecider } from '~/lib/channel/linq/effect';
 import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import {
   type GroupActivityDecision,
@@ -68,7 +69,7 @@ import {
   releaseGroupOnLeave,
 } from '~/lib/channel/linq/group-leave';
 import { captureLogisticsText } from '~/lib/channel/linq/household-calendar';
-import { considerLinqReply } from '~/lib/channel/linq/moments';
+import { LinqMomentDeliveredError, considerLinqReply } from '~/lib/channel/linq/moments';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
@@ -1251,6 +1252,10 @@ async function routeChannelMessageInner(
         // A chat Linq did not say is 1:1 might be a group, so it is read as one.
         audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
         parentAttachments: (context.media ?? []).map((part) => part.kind),
+      },
+      effectRead: {
+        // A chat Linq did not say is 1:1 might be a group, so it is read as one.
+        audience: inGroup || job.in_group === undefined ? 'group' : 'direct',
       },
     });
 
@@ -3257,6 +3262,8 @@ async function sendReply(
       audience: 'direct' | 'group';
       parentAttachments: readonly InboundMediaPart['kind'][];
     };
+    /** What the VIL-473 effect read sees beside the two bodies. Absent: no effect. */
+    effectRead?: { audience: 'direct' | 'group' };
   },
 ): Promise<string> {
   assertTurnLive();
@@ -3307,11 +3314,17 @@ async function sendReply(
         inboundBody: args.inboundBody,
         outboundBody: args.body,
         templateKey: args.templateKey ?? null,
+        medicalReplySource: args.medicalSource ?? null,
+        replySource: args.replySource ?? null,
+        relatedConversationId: args.conversationId,
         familyId: args.job.family_id,
         parentUserId: args.job.parent_user_id,
         now: deps.now(),
         ...(args.stickerRead
           ? { sticker: { decider: sharedLinqStickerDecider(), ...args.stickerRead } }
+          : {}),
+        ...(args.effectRead
+          ? { effect: { decider: sharedLinqEffectDecider(), ...args.effectRead } }
           : {}),
       });
       if (moment.handled) {
@@ -3325,12 +3338,51 @@ async function sendReply(
         return moment.channelMessageId;
       }
     } catch (err) {
+      // The deadline already ended this attempt. A plain send here would be a
+      // second reply once the drain re-drives the turn.
+      if (isTurnTimeout(err) || turnSignalAborted()) throw err;
+      // Linq already has the reply (or may), and its outbound row and audit row
+      // did not land. Another POST would put a plain copy beside it. The turn is
+      // claimed and threaded, then the error goes on up: like a plain reply whose
+      // ledger insert throws, the turn is recorded as broke_after_answering and
+      // never answered twice.
+      if (err instanceof LinqMomentDeliveredError) {
+        deps.log.error(
+          { providerMessageId: err.providerMessageId },
+          'linq moment: the reply landed; the ledger did not',
+        );
+        if (args.claim) {
+          try {
+            await args.claim();
+          } catch (claimErr) {
+            deps.log.warn(
+              { code: claimErr instanceof Error ? claimErr.name : 'unknown' },
+              'linq moment: the reply landed; the answer was not claimed',
+            );
+          }
+        }
+        if (args.conversationId && err.threadBody) {
+          try {
+            await appendMessage(args.conversationId, 'assistant', err.threadBody, deps.database);
+          } catch (threadErr) {
+            deps.log.warn(
+              { code: threadErr instanceof Error ? threadErr.name : 'unknown' },
+              'linq moment: the reply landed; the thread was not updated',
+            );
+          }
+        }
+        await mirrorActivityDecision(deps, args);
+        throw err;
+      }
       deps.log.warn(
         { code: err instanceof Error ? err.name : 'unknown' },
         'linq moment: fell through to the text',
       );
     }
   }
+  // A moment that declined, or never ran, still must not send after the deadline.
+  // A voice memo already posted is the reply; do not throw away its claim.
+  if (!voiced) assertTurnLive();
   const sent = voiced ?? (await deps.transport.send({ route: args.route, body: args.body }));
   // The claim is a transaction (auditTurnLedger.recordAnswered). It can fail
   // after the carrier has already accepted the reply — UNSAFE_TRANSACTION did,

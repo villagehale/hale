@@ -164,6 +164,16 @@ export function linqGroupLeaveEnabled(): boolean {
 }
 
 /**
+ * iMessage screen and bubble effects (VIL-473). Exactly `true` (trimmed)
+ * enables it. Unset, empty, `on`, and `false` stay dark. Default off.
+ * Production may light it the same way as any other environment.
+ * Off means the model is never asked and every send stays a plain bubble.
+ */
+export function linqEffectsEnabled(): boolean {
+  return trimmed('LINQ_EFFECTS_ENABLED') === 'true';
+}
+
+/**
  * VIL-459 — in a group several families share, "when can we all do it?" gets times read
  * from each consenting family's free/busy. Exactly `true` enables it. Default off: off,
  * the ask is an ordinary shared-group answer and no family's calendar is read.

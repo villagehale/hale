@@ -120,6 +120,7 @@ Redeploy steps, same for every flag:
 | `LINQ_GROUP_MENTIONS_ENABLED` | empty | Inbound iMessage mentions are parsed and unused. Group replies go out without a `mention` field. Trimmed `true` enables them only when `VERCEL_ENV` is `preview`. Production stays dark. |
 | `LINQ_MULTI_FAMILY_GROUPS_ENABLED` | empty | Shared groups that hold more than one family stay dark. Trimmed `true` enables them. |
 | `LINQ_GROUP_POLLS_ENABLED` | empty | Parent-made group polls stay dark. Trimmed `true` enables them. Native cards also need `LINQ_POLLS=on`. |
+| `LINQ_EFFECTS_ENABLED` | empty | iMessage screen and bubble effects stay dark. Trimmed `true` lets the model attach one to a rare celebratory reply in any environment, including production. |
 
 To close the Linq door, clear `LINQ_API_KEY` or `LINQ_WEBHOOK_SECRET` on hale-web Production and redeploy with the steps above. The route returns 503 `linq_not_configured` and writes nothing. Linq retries that 503, so put the secret back and redeploy to accept the retries.
 
