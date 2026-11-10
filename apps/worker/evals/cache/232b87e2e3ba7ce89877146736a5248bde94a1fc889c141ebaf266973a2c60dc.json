@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Clarify moment asks which session to try first, using only the given sessions, prices and opening time; no booking or spot claimed, no link, no invented details, warm and short. Minor gap: maxPriceCents is null, but the text doesn't assert a limit, so no fault.",
+    "score": 5
+  }
+}

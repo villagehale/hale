@@ -4,7 +4,7 @@ import { linqGroupPlanRsvpEnabled, linqGroupPollsEnabled, linqPollsEnabled } fro
 import { sendChoicePoll } from '../poll';
 import { primaryParentId } from '../roster-ask';
 import type { LinqTapback } from '../transport';
-import { memberKeyFromHandle, memberKeyFromName } from './member-key';
+import { senderMemberKey } from './member-key';
 import {
   GROUP_POLL_CHOICE_KIND,
   GROUP_POLL_KIND,
@@ -156,8 +156,13 @@ export async function considerGroupPollCardVote(
   const store = createPostgresGroupPlanRsvpStore(ports.database);
   const seated = await store.seatedExpected(input.chatId);
   const senderName = await senderNameOf(ports.database, input.senderUserId ?? null);
-  const memberKey =
-    memberKeyFromHandle(input.senderHandle) ?? memberKeyFromName(senderName ?? input.senderHandle);
+  const memberKey = await senderMemberKey(
+    { handle: input.senderHandle, name: senderName },
+    async () => {
+      const poll = await store.pollForCard(input.chatId, input.card.providerMessageId);
+      return poll ? store.pollVoterKeys(poll.id) : [];
+    },
+  );
   const seat = seated.find((person) => person.memberKey === memberKey);
   return takeGroupPollCardVote(
     {

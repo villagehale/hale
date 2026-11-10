@@ -38,6 +38,7 @@ import type {
   SentinelClassification,
 } from '~/lib/sentinel';
 import { falseBookingSignal } from '~/lib/sentinel/booking-guard';
+import { namesTeenChild } from '~/lib/sentinel/teen-named';
 import { bookedDetectionEnabledFor } from './booked';
 import {
   BOOKING_CONFIDENCE_FLOOR,
@@ -87,11 +88,11 @@ import { readRecentNotices } from './recent-notices';
  * WHAT IT MAY NOT DO, and the reasons are not stylistic:
  *   - Barton's rule (2026-10-12): in the parent's 1:1 chat Hale may say what the email
  *     says; in a group chat only what is relevant to the group, and never a quote of a
- *     private email. This alert goes to the 1:1. The thread row keeps the snippet for the
- *     coach as a separate untrusted turn, not as Hale's own text, and the coach's
- *     `read_email` reads the body of a message this thread named (coach/read-email-tool).
- *     A group turn gets neither. The snippet and the body never reach an audit row or a
- *     log (rule #1), and a 13+ child's snippet is stored null.
+ *     private email. This alert goes to the 1:1. The thread row keeps the email's ids and
+ *     no sender words (VIL-619), and the coach's `read_email` reads the body of a message
+ *     this thread named (coach/read-email-tool). A group turn gets neither. The snippet
+ *     and the body never reach an audit row or a log (rule #1), and a 13+ child's email
+ *     is marked private.
  *   - A 13+ child's mail is category-only. The pipeline has already genericized the title
  *     by the time this sees it, and the facts additionally drop the sender, subject, time
  *     and place, because a therapist's domain and a Thursday 4pm are the disclosure.
@@ -581,7 +582,7 @@ export interface EmailAlertPorts {
   classify(envelope: InboxEnvelope, familyTimezone: string): Promise<SentinelClassification>;
   /** This family's children, the notice writer's context for "is this about them". */
   familyChildren(): Promise<readonly FamilyChildRef[]>;
-  /** The language this parent texts Hale in (`readNoticeLanguage`): the notice is written in it. */
+  /** The parent's one proactive language (`readParentLanguage`): the notice is written in it. */
   parentLanguage(parentUserId: string, now: Date): Promise<string>;
   /** The notice writer: one model call that decides and writes, or sends nothing. Its
    * quality is the eval's job (rule #8); a port here, like `classify`. */
@@ -769,12 +770,20 @@ export async function alertParentForEmail(
   // Gated on `draft.ok`, which is gated on `booked`: a dark-booked family's sweep never
   // reads other families' bookings.
   const counted = await readGoingFor(database, familyId, draft);
+  // VIL-619 · CODE DECIDES THE TEEN MARKER TOO. The model's attribution can miss a child; the
+  // age gate over the subject and snippet cannot. Read once here, for the offer and the
+  // thread row's private flag.
+  const children = await ports.familyChildren();
+  const teenAttributed =
+    extraction.teenAttributed ||
+    namesTeenChild([input.envelope.subject, input.envelope.snippet], children);
   // The one pure decision the offer row is written from. The writer is told whether it may
   // ask, and the refusals hold its question to this answer.
   const offer = emailAlertOfferDraft({
     kind,
     event: extraction.event,
     teenContent: extraction.teenContent,
+    teenAttributed,
     matchedEventRef: extraction.matchedEventRef,
     booked,
     from: input.envelope.from,
@@ -788,7 +797,7 @@ export async function alertParentForEmail(
     // place Hale is not recording (`effectiveKind`).
     kind: kind === 'booking_confirmation' && !booked ? 'new_event' : kind,
     extraction,
-    children: await ports.familyChildren(),
+    children,
     fromParentsOwnCalendar: fromParentsCalendar(input.envelope.from),
     offer:
       offer === null
@@ -996,9 +1005,9 @@ export async function alertParentForEmail(
   await passport.afterSend();
 
   // The written text. The opt-out line is not appended, so this is also the wire body.
-  // The coach re-reads this row next turn (channel/thread.ts). The snippet is stored
-  // beside it and replayed as a tool turn, never as Hale's own text, and never for a
-  // 13+ child.
+  // The coach re-reads this row next turn (channel/thread.ts). Beside it are the email's
+  // ids and nothing the sender wrote (VIL-619), replayed as a tool turn so `read_email`
+  // can open it, never for a 13+ child.
   await ports.threadMessage(database, {
     familyId,
     parentUserId,
@@ -1007,8 +1016,7 @@ export async function alertParentForEmail(
       kind: 'gmail',
       eventId: extraction.matchedEventRef?.id ?? null,
       gmailMessageId: messageId,
-      snippet:
-        extraction.teenContent || extraction.teenAttributed ? null : input.envelope.snippet,
+      private: extraction.teenContent || teenAttributed,
     },
   });
 
@@ -1130,6 +1138,7 @@ function bookingDraftFor(
     titleIsFallback: title === '',
     // The same fold the offer row's place goes through, and the same function.
     location: foldedPlace(extraction.event.location),
+    address: foldedAddress(extraction.event.address ?? null),
     now,
   });
 }
@@ -1752,13 +1761,21 @@ export function emailAlertOfferDraft(input: {
   kind: ExtractionKind;
   event: ExtractedEvent;
   teenContent: boolean;
+  /** A 13+ child's email read as plain logistics keeps its title for the text, but an
+   * offer row would hold a teen's occasion past it (VIL-619). */
+  teenAttributed: boolean;
   matchedEventRef: CorrelatedEventRef | null;
   booked: boolean;
   /** The envelope's From. A Google Calendar notification is not an offer. */
   from: string;
   now: Date;
 }): EmailAlertOfferDraft | null {
-  if (input.teenContent || input.matchedEventRef !== null || fromParentsCalendar(input.from)) {
+  if (
+    input.teenContent ||
+    input.teenAttributed ||
+    input.matchedEventRef !== null ||
+    fromParentsCalendar(input.from)
+  ) {
     return null;
   }
   const kind = effectiveKind(input.kind, input.booked);
@@ -1783,6 +1800,16 @@ export function emailAlertOfferDraft(input: {
 function foldedPlace(location: string | null): string | null {
   const place = clamp(gsm7(location ?? ''), TITLE_MAX);
   return place === '' ? null : place;
+}
+
+/** Longer than any street line a receipt gives with its city and postal code. */
+const ADDRESS_MAX = 120;
+
+/** The street address through the place's fold, but never clamped: an address cut short is
+ * a different address, so one too long to keep is none. */
+function foldedAddress(address: string | null): string | null {
+  const folded = gsm7(address ?? '').trim();
+  return folded === '' || folded.length > ADDRESS_MAX ? null : folded;
 }
 
 /** WHICH time field is the occasion, per kind. A move's destination, a new date's date,

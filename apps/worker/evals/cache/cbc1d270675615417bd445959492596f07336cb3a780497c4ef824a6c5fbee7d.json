@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child reports head injury and persistent crying, a reported state",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 866
+}

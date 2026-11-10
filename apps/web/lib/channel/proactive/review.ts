@@ -46,6 +46,7 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { eventKeyFromWeekdayBreakDedupe } from '~/lib/channel/weekday-care/key';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -1116,13 +1117,19 @@ async function sendChosen(
       const key = `${item.kind}\n${item.what}`;
       if (!distinct.has(key)) distinct.set(key, writerItem(item));
     }
-    const setKey = [...distinct.keys()].sort().join('\n\n');
+    // VIL-572 · a parent's own copy is written in that parent's proactive language. The
+    // household's one group copy stays in the family's.
+    const language =
+      target.channel === 'group'
+        ? (input.language ?? null)
+        : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
+    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}`;
     let written = writtenFor.get(setKey);
     if (!written) {
       written = await deps.compose({
         items: [...distinct.values()],
         client: deps.client,
-        language: input.language ?? null,
+        language,
       });
       writtenFor.set(setKey, written);
     }

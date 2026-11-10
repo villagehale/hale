@@ -365,3 +365,181 @@ describe('watched_spots any-page columns', () => {
     ]);
   });
 });
+
+/** VIL-303 · the stale-denial record, found by suffix so it survives renumbering at merge. */
+describe('capability_denials', () => {
+  const DENIALS_FILE = migrationFiles().find((f) => f.endsWith('_capability_denials.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(DENIALS_FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string }>(
+        "SELECT column_name, is_nullable FROM information_schema.columns WHERE table_name = 'capability_denials' ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and creates the table with one open denial per parent and capability', async () => {
+    expect(DENIALS_FILE).toMatch(/^\d{4}_capability_denials\.sql$/);
+    // Positive control: the table is absent before the file.
+    expect(await columns()).toEqual([]);
+
+    await db.applyMigration(DENIALS_FILE as string);
+    await expect(db.applyMigration(DENIALS_FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'capability', is_nullable: 'NO' },
+      { column_name: 'corrected_at', is_nullable: 'YES' },
+      { column_name: 'corrected_by', is_nullable: 'YES' },
+      { column_name: 'denied_at', is_nullable: 'NO' },
+      { column_name: 'denied_in', is_nullable: 'NO' },
+      { column_name: 'family_id', is_nullable: 'NO' },
+      { column_name: 'id', is_nullable: 'NO' },
+      { column_name: 'user_id', is_nullable: 'NO' },
+    ]);
+  });
+});
+
+/** VIL-602 · the sealed crisis read, found by suffix so it survives renumbering at merge. */
+describe('opt_out_held_messages sealed crisis read', () => {
+  const SEALED_FILE = migrationFiles().find((f) =>
+    f.endsWith('_opt_out_held_crisis_read_sealed.sql'),
+  );
+  const files = migrationFiles();
+  const before = files[files.indexOf(SEALED_FILE as string) - 1];
+  let db: TestDb;
+  const column = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'opt_out_held_messages' AND column_name = 'crisis_read_encrypted'",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice and adds one nullable text column', async () => {
+    expect(SEALED_FILE).toMatch(/^\d{4}_opt_out_held_crisis_read_sealed\.sql$/);
+    // Positive control: the column is not there before the file.
+    expect(await column()).toEqual([]);
+
+    await db.applyMigration(SEALED_FILE as string);
+    await expect(db.applyMigration(SEALED_FILE as string)).resolves.toBeUndefined();
+
+    expect(await column()).toEqual([
+      { column_name: 'crisis_read_encrypted', is_nullable: 'YES', data_type: 'text' },
+    ]);
+  });
+});
+
+/** VIL-599 · who said a memory fact, found by suffix so it survives renumbering at merge. */
+describe('family_memory_facts source user', () => {
+  const FILE = migrationFiles().find((f) => f.endsWith('_family_memory_facts_source_user.sql'));
+  const files = migrationFiles();
+  const before = files[files.indexOf(FILE as string) - 1];
+  let db: TestDb;
+  const columns = async () =>
+    (
+      await db.client.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        "SELECT column_name, is_nullable, data_type FROM information_schema.columns WHERE table_name = 'family_memory_facts' AND column_name IN ('source_audience', 'source_user_id') ORDER BY column_name",
+      )
+    ).rows;
+
+  beforeAll(async () => {
+    db = await createTestDb(before);
+  });
+
+  afterAll(async () => {
+    await db.close();
+  });
+
+  it('applies twice, and a row saved before it records no speaker', async () => {
+    expect(FILE).toMatch(/^\d{4}_family_memory_facts_source_user\.sql$/);
+    // Positive control: the columns are absent before the file, and 0084's index stands.
+    expect(await columns()).toEqual([]);
+    expect(
+      (
+        await db.client.query(
+          "SELECT 1 FROM pg_indexes WHERE indexname = 'memory_facts_one_live_per_key_idx'",
+        )
+      ).rows,
+    ).toHaveLength(1);
+    const { familyId } = await seedFamily(db.database);
+    await db.exec(
+      `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value) VALUES ('${familyId}', 'preference', 'before', '"x"')`,
+    );
+
+    await db.applyMigration(FILE as string);
+    await expect(db.applyMigration(FILE as string)).resolves.toBeUndefined();
+
+    expect(await columns()).toEqual([
+      { column_name: 'source_audience', is_nullable: 'NO', data_type: 'text' },
+      { column_name: 'source_user_id', is_nullable: 'YES', data_type: 'uuid' },
+    ]);
+    const legacy = await db.client.query(
+      "SELECT source_audience, source_user_id FROM family_memory_facts WHERE fact_key = 'before'",
+    );
+    expect(legacy.rows).toEqual([{ source_audience: 'unrecorded', source_user_id: null }]);
+    await expect(
+      db.exec(
+        `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value, source_audience) VALUES ('${familyId}', 'preference', 'bad', '"x"', 'everyone')`,
+      ),
+    ).rejects.toThrow(/source_audience_chk/);
+  });
+
+  it('a live fact’s identity names whose private fact it is', async () => {
+    const indexes = async () =>
+      (
+        await db.client.query<{ indexname: string }>(
+          "SELECT indexname FROM pg_indexes WHERE tablename = 'family_memory_facts' AND indexname LIKE 'memory_facts_one_live_per_%' ORDER BY indexname",
+        )
+      ).rows.map((row) => row.indexname);
+    expect(await indexes()).toEqual(['memory_facts_one_live_per_scope_idx']);
+
+    const { familyId, parentUserId: a } = await seedFamily(db.database);
+    const [other] = (
+      await db.client.query<{ id: string }>(
+        "INSERT INTO users (email, name) VALUES ('other-parent@example.test', 'Other') RETURNING id",
+      )
+    ).rows;
+    const b = other?.id as string;
+    const put = (key: string, audience: string, user: string | null, type = 'preference') =>
+      db.exec(
+        `INSERT INTO family_memory_facts (family_id, fact_type, fact_key, fact_value, source_audience, source_user_id) VALUES ('${familyId}', '${type}', '${key}', '"x"', '${audience}', ${user ? `'${user}'` : 'NULL'})`,
+      );
+
+    // Two adults' private facts and the household's on one key are all live.
+    await put('swim', 'one_to_one', a);
+    await put('swim', 'one_to_one', b);
+    await put('swim', 'family', null);
+    // An unrecorded (nightly) row has its own scope, so it never supersedes the household's.
+    await put('swim', 'unrecorded', null);
+    // One live row per scope still holds: the same adult, the household, the nightly
+    // writer, a shared type.
+    await expect(put('swim', 'one_to_one', a)).rejects.toThrow(/one_live_per_scope/);
+    await expect(put('swim', 'family', a)).rejects.toThrow(/one_live_per_scope/);
+    await expect(put('swim', 'unrecorded', null)).rejects.toThrow(/one_live_per_scope/);
+    await put('pickup', 'one_to_one', a, 'logistic');
+    await expect(put('pickup', 'one_to_one', b, 'logistic')).rejects.toThrow(/one_live_per_scope/);
+
+    // Deleting B sets B's speaker to null; that row stays clear of the household's.
+    await db.exec(`DELETE FROM users WHERE id = '${b}'`);
+    const swim = await db.client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM family_memory_facts WHERE family_id = '${familyId}' AND fact_key = 'swim' AND valid_until IS NULL`,
+    );
+    expect(swim.rows[0]?.n).toBe(4);
+  });
+});

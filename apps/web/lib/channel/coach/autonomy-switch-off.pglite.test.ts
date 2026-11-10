@@ -104,6 +104,9 @@ function switchOffTool(
       noop,
       noop,
       createTurnOfferLedger(),
+      undefined,
+      undefined,
+      'CA',
     )
     .find((candidate) => candidate.name === 'turn_off_autonomy');
   if (!tool) throw new Error('production buildTools registers no turn_off_autonomy');

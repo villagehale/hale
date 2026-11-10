@@ -293,6 +293,14 @@ jobs:
       - name: Group turn read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-turn-read
 
+      # VIL-459 find a common time across families.
+      - name: Common time composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:common-time
+
+      # VIL-456 shared-group reading, with the VIL-459 find-time ask.
+      - name: Shared-group reading classifier eval (cached-only)
+        run: pnpm --filter @hale/worker eval:shared-group-reading
+
       - name: Group mention read classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:group-mention-read
 
@@ -314,8 +322,16 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Group shared lists eval (cached-only)
+        run: pnpm --filter @hale/worker eval:group-lists
+
       - name: Coach local day eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-local-day
+
+      - name: Coach capability correction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-capability-correction
+      - name: Coach voice-memo choice eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-voice-memo
 
       - name: Proactive decider eval (cached-only)
         run: pnpm --filter @hale/worker eval:proactive-decider
@@ -343,6 +359,9 @@ jobs:
 
       - name: Registration date-unconfirmed text eval (cached-only)
         run: pnpm --filter @hale/worker eval:registration-date-unconfirmed
+
+      - name: Registration date-moved text eval (cached-only)
+        run: pnpm --filter @hale/worker eval:registration-date-moved
 
       - name: Spot-opened text eval (cached-only)
         run: pnpm --filter @hale/worker eval:spot-open-voice
@@ -471,6 +490,9 @@ jobs:
 
       - name: Calendar cancel composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-cancel-voice
+
+      - name: Calendar kid notice writer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-kid-notice
 
       # Hard cache gate. A miss fails the job.
       - name: Name take-back eval (cached-only)

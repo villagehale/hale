@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgtS81kJ9nH92rsetfkAW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSlAcKEAgTGAI4AUIIdGhpbmtpbmcSDEdCBGaFc2bxaF3ALRoMjqZfiRivC2cQpyhnIjCO59BBrKwfdfLEhMMQcHWT5wAo2wP3FPa5BOZIV1hyJiB6hmLfopqc33EPwnhMrGIqsQaTQkcy/fIeY1vIrXg3QBCuPtmVpiFn4xuOc+nNfxU7KOUA4QmdFFTNdXd0TbLKER4E4l3aXFdMoDrzeNMbHNG6ALdSZZ8uYRxKss3EGZtK6lBVpSlrNyjZcIAYxOzFtZUGAWnSddE6ERefmmdpAYWyvyZHWAziJffWQ0rKJF0DrNS+0vA5QOTliEMVZONrFPF+vHnUuokgz6loQqoYUCQEV2q/9fCsLdGc98e41TdRls4xonMNXyIW/bcSyRWnssjNawvNvB4xMUXN4IaV4EvlmaiFctJAHtgKngCOCo9iiu3soOlu6utr/qThcrCcVkFZJCr23pzqT+LI0zZ6gsMQd4ZwaM8QLWEn3aJ5Qn2oBDaDjTrk/WrfiF0iqpfHo1yl1xGzerxy90dkasw6Z2ZE/t6H1TCusQgmwa8lhTF5FR4uo0JQurWvazwZ6a0BsVxIl/hkZGgZwkhIN93aTFTiD88SGsltDvb0SGcXaNCqmwgLq2TzN8kdO7bba8QK6+3wqcGySrIV4iEn3GmlPfLTRQWCY95TTcZs49EGkyraNCsaXTLp5v5BTs+yzYvq0LG07NLMwUiCSWJDjvEvqLgJwKJq1XGfyZ9y5wuBNhmTlklh2ESnE0aCfZ9xU4/lsE+n7qB1Ay/v+gNbFalV+YCgznvUE7qbOHf1xxb4zUjnkQU3k+Ukke3PPHh9At4mXDtecEFcaid8deSkGAQmZko6chZTBBe7ZB76naG0ZfJMNAlHbCGC1i8LiufsyTg8v1BJPPqo7GRZcJELG2lo2/hrKRMInwSznXSW/9gw//ofnX3S4ZqTALPxqgUd5RHtPDwmF1UzKN7nJSkGMnyDuZ/uSRwIgQUIHzJhkU0Mo6704PUvsy3HJD+oh+SEkcUmQPKXUs6M+3ukGCKBmnJVRYs1xxfyDAX6QoH6nW8B/JnkTvAUvGIb6S+GZ/nUovaDxYV+DznrOCns9T9rBa+WSfX9ex1xa7byfAoPskA/tytqIqjNdfRqJ6+X2xc0un2UjyzpuIVkXt24fNfRgdWnirDdd9bU9tJtfUBhR65zmI6BLTlctl//hqW6i9RsNy3yRAUMGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01ScBzs24KoEFf2hGEz673Vc",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep",
+          "childId": "kid-ada",
+          "offer": "Want me to send the full plan for Ada's night waking?"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1210,
+      "cache_read_input_tokens": 22908,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1210,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 239,
+      "output_tokens_details": {
+        "thinking_tokens": 119
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3085
+}

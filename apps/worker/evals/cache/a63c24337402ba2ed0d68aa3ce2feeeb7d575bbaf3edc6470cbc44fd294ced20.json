@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message attributes the yes to the parent (\"You've let me know\") and does not verify it. It asks nothing, keeps the portal, account and child exactly as handed, adds no claims, and is in English. The tone is friendly. It is slightly stiff but otherwise correct.",
+    "score": 5
+  }
+}

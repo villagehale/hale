@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message names three real Naperville venues, each sourced from its own page, and leads with Naperville Gymnastics by name. All fit the toddler stage. Attribution is mostly explicit (\"their site says\", \"per Naperville Park District's open gym page\", \"not confirmed for winter\"); The Little Gym claim is stated without its own attribution, a minor lapse. The Fort Hill day and time match the picks, and no price or time is invented. The null when/price gap uses the form no_page_read earns (\"I could not get into their pages today\") rather than \"not posted yet\". Since watch is true, the first-person \"I'll keep watching and text you what I find\" is a real commitment. Plain text, no link, no question.",
+    "score": 5
+  }
+}

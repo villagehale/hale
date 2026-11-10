@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "asking Hale to find swim classes, a family activity search",
+    "language": "fr",
+    "language_request": null
+  },
+  "latencyMs": 943
+}

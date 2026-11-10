@@ -101,6 +101,7 @@ async function linkBooking(
     title: opts.title ?? 'Swim Level 2',
     firstSessionAt: opts.firstSessionAt ?? START,
     location: 'The pool',
+    address: null,
     eventId,
     sessionKey: `k-${eventId}`,
   };

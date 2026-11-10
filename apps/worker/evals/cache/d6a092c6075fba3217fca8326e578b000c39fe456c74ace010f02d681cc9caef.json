@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011Cgs9TMh97vuB8o6P1C2w8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I don't have what their reply said. Nothing from Maple Tree Montessori is on my side beyond that it came in, and there's no tour on your week either. If you paste their message here, I'll pull out the date and time and put the tour on the calendar."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 704,
+      "cache_read_input_tokens": 18163,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 704,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 79,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

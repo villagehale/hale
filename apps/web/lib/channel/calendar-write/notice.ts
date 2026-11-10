@@ -7,6 +7,7 @@ import type {
 import { z } from 'zod';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkBeyond, hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 
 /**
@@ -115,7 +116,6 @@ export function calendarWriteNoticeUserMessage(input: CalendarWriteNoticeInput):
 }
 
 export const CALENDAR_WRITE_NOTICE_MAX_CHARS = 480;
-const URL_SHAPE = /https?:\/\/\S+/gi;
 
 /**
  * Structural refusals only, never wording: empty, too long, a link that is not the one
@@ -129,12 +129,11 @@ export function calendarWriteNoticeRefusals(
   if (text === '') return ['empty'];
   const found: string[] = [];
   if (text.length > CALENDAR_WRITE_NOTICE_MAX_CHARS) found.push('over_char_cap');
-  const urls = text.match(URL_SHAPE) ?? [];
   if (input.connectLink === null) {
-    if (urls.length > 0) found.push('carries_link');
+    if (hasLinkShape(text)) found.push('carries_link');
   } else {
     if (!text.includes(input.connectLink)) found.push('link_missing');
-    if (urls.some((url) => !url.startsWith(input.connectLink as string))) found.push('other_link');
+    if (hasLinkBeyond(text, [input.connectLink])) found.push('other_link');
   }
   return found;
 }

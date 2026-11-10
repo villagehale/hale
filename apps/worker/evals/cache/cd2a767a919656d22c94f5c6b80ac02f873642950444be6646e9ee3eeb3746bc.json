@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The turn-off is backed: turnedOffThisTurn lists send_email, so saying it is done is true and not an unbacked claim. The reply confirms the change plainly and stops. It has no greeting, no machinery talk and no question. \"Send emails on your behalf\" slightly undersells replies, but it does not mislead, and the parent asked about emails generally. It is short, exact and does the job.",
+    "score": 5
+  }
+}

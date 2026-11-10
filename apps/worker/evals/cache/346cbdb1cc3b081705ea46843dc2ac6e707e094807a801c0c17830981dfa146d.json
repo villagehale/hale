@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message answers about the venue the parent named, Cartwheels Gym Centre, which is a real local gym. It names its toddler class, Tiny Gym: ages 1 (walking) to 3 with a parent, 45 minutes. Those facts come from the gym's own programs page and the message attributes them with 'their site says'. The schedule and price are behind a registration login, so leaving them null is correct. With page_has_schedule, the message rightly states the gap in first person ('I could not pin down the day or the price') and does not say 'not posted yet'. watch is true, so the first-person promise to keep watching and text back is backed by a real commitment. There is no link, no question and no invented time or price. Leaving out Rock n' Roll is a minor omission, not withholding.",
+    "score": 5
+  }
+}

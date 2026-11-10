@@ -1658,3 +1658,66 @@ export async function sendLinqVoiceMemo(input: {
   }
   return { providerMessageId: readLinqMessageId(result.payload) };
 }
+
+/**
+ * VIL-495 · Pre-upload Hale's own audio so a voice memo can name it by `attachment_id`
+ * instead of a public URL Hale would have to host:
+ * POST /attachments `{ filename, content_type, size_bytes }` → `{ attachment_id,
+ * upload_url, required_headers }`, then PUT the raw bytes to `upload_url` with exactly
+ * those headers. Dark, it refuses before any fetch. The presigned URL is never logged.
+ *
+ * https://docs.linqapp.com/channel/imessage/guides/messaging/attachments/
+ */
+export async function uploadLinqAttachment(input: {
+  bytes: Uint8Array;
+  contentType: string;
+  filename: string;
+  fetch?: typeof fetch;
+}): Promise<{ attachmentId: string }> {
+  if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  if (input.bytes.byteLength === 0) throw new LinqSendError('empty_attachment', 0, true);
+  const result = await linqRequest({
+    method: 'POST',
+    path: '/attachments',
+    body: {
+      filename: input.filename,
+      content_type: input.contentType,
+      size_bytes: input.bytes.byteLength,
+    },
+    fetch: input.fetch,
+  });
+  if (!result.ok) {
+    throw new LinqSendError(result.code, result.status, result.permanent, result.retryAfterMs);
+  }
+  const payload = result.payload;
+  const attachmentId =
+    isRecord(payload) && typeof payload.attachment_id === 'string' ? payload.attachment_id : '';
+  const uploadUrl =
+    isRecord(payload) && typeof payload.upload_url === 'string' ? payload.upload_url : '';
+  if (!attachmentId || !uploadUrl.startsWith('https://')) {
+    throw new LinqSendError('upload_malformed', result.status, true);
+  }
+  const headers: Record<string, string> = {};
+  if (isRecord(payload) && isRecord(payload.required_headers)) {
+    for (const [name, value] of Object.entries(payload.required_headers)) {
+      if (typeof value === 'string') headers[name] = value;
+    }
+  }
+  // The one fetch outside linqRequest: the presigned PUT, reached only after the POST
+  // above passed linqRequest's capture gate (preview-capture-every-door.test.ts).
+  const putFetch = input.fetch ?? globalThis.fetch;
+  let put: Response;
+  try {
+    put = await putFetch(uploadUrl, {
+      method: 'PUT',
+      headers,
+      body: input.bytes as Uint8Array<ArrayBuffer>,
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    throw new LinqSendError(timedOut ? 'timeout' : 'network', 0, false);
+  }
+  if (!put.ok) throw new LinqSendError(`upload_http_${put.status}`, put.status, put.status < 500);
+  return { attachmentId };
+}

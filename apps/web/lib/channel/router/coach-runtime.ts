@@ -1,4 +1,5 @@
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
+import type { CapabilityNotes } from '~/lib/channel/capabilities/ledger';
 import type { ExperienceCardIntent } from '~/lib/channel/coach/experience-card-tool';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
@@ -113,11 +114,30 @@ export interface ChannelTurnResult {
    */
   groupLeave?: { ifLeaveFails: string } | null;
   /**
+   * VIL-303 · what this reply said about a deferred capability: a no it gave, or an
+   * earlier no it corrected. Rides out for the reason the promises above do, and the
+   * router writes it only once the reply is sent. Null or absent means neither.
+   */
+  capabilityNotes?: CapabilityNotes | null;
+  /**
+   * VIL-495 — the model chose to say this reply as a voice memo. Only ever true while
+   * `LINQ_VOICE_MEMOS_ENABLED` is lit on a 1:1 turn. The router sends the SAME reply as a
+   * memo when every send-time gate holds (linq/voice-reply.ts), and as text otherwise.
+   */
+  voiceMemo?: boolean;
+  /**
    * VIL-581 · the actions this turn's tools drafted, so a turn that breaks AFTER the
    * coach returned (the claim read) can still send the drafts receipt. The production
    * runtime always sets it; absent means none.
    */
   draftedActionIds?: readonly string[];
+  /**
+   * VIL-616 · the reply was written after `read_email` handed this turn an email's text,
+   * so it may repeat a stranger's name, number or code. The router marks the thread row
+   * it lands in, and the nightly memory writer never learns from that row. The
+   * production runtime always sets it; absent means no email was read.
+   */
+  emailRead?: boolean;
 }
 
 export interface ChannelCoachRuntime {

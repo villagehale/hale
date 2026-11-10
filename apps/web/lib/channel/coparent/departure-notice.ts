@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import type { ReplyLanguage } from '~/lib/channel/language';
+import { type ReplyLanguage, copyLanguage } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import {
   deliverFamilyOutbound,
@@ -20,6 +20,7 @@ import {
   holdStatus,
 } from '~/lib/channel/outbound-gate';
 import { failedSendPatch, readSendRefusal } from '~/lib/channel/outbound-transport';
+import { readParentLanguage } from '~/lib/channel/parent-language';
 import { handOffProactive, isQueuedForDecider } from '~/lib/channel/proactive/queue';
 import type { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -120,18 +121,20 @@ export async function stayingParent(database: Database, familyId: string): Promi
 }
 
 /**
- * Which language the sentence goes out in, off the recipient's own `users.locale`.
+ * Which language the sentence goes out in: the recipient's one proactive language
+ * (VIL-572, `readParentLanguage`), as English or French.
  *
  * `replyLanguage` cannot serve here: it reads the message in front of it, and the parent
- * being told wrote nothing this turn. The stored locale is the only honest source, and
- * it fails toward English — the house default, and the cheaper error (language.ts).
+ * being told wrote nothing this turn. It fails toward English — the house default, and
+ * the cheaper error (language.ts).
  */
-async function parentLanguage(database: Database, userId: string): Promise<ReplyLanguage> {
-  const rows = await database
-    .select({ id: schema.users.id, locale: schema.users.locale })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId));
-  return rows.find((row) => row.id === userId)?.locale?.startsWith('fr') ? 'fr' : 'en';
+async function parentLanguage(
+  database: Database,
+  familyId: string,
+  userId: string,
+): Promise<ReplyLanguage> {
+  const language = await readParentLanguage(database, { familyId, parentUserId: userId });
+  return copyLanguage(language) === 'fr' ? 'fr' : 'en';
 }
 
 export async function tellStayingParent(
@@ -191,7 +194,7 @@ export async function tellStayingParent(
     language = speech.language;
     message = await groupDepartureNotice(language, speech.name);
   } else {
-    language = await parentLanguage(database, parentUserId);
+    language = await parentLanguage(database, familyId, parentUserId);
     message = await coParentDepartedNotice(language);
   }
   if (!message) {

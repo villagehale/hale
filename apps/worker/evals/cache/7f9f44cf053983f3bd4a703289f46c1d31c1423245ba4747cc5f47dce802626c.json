@@ -1,0 +1,43 @@
+{
+  "response": {
+    "id": "msg_011CgsFaeKQnVNGYfjiW9CUW",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS+QUKEAgTGAI4AUIIdGhpbmtpbmcSDLF5rnWWIxiwSet1qRoM+f7JJVhb3bBEUWvvIjBBSZqUU3+IngPyyUxGFQsre7iv8ROWQbB9acmiy3SttWQ1IuRgqlqvQRrWD8/2KK4qlgXQkio8qOAI2JRGStCZ3QUAL+r2vkZb0V5jxhUVcCcKPdI4qJt0M0g13iBczseSbI0Tumoy+u21PrQ8wgkrs+gN9aq8LmoyCD1/jVAl7oJHFClBc2oCRJWDoctavuz9CJD7JzgxhYUjIYn7jWVUGqvxGEO5ObvVX05aU/0qOLTRAk7di/wkEa2FM8xmJ1O/+lZwV/mND2b2q2YHttuL81S3G2Nrrcqn0BKc10ZpwapAuR9E4mwDeRToTEO4HUv5xp2slvgymRv92dULS0UvdsRmzv6lHrXAa/CqZrFSptQrX83Soo7Zm5svvmJrDFyL8BGhUiESxaUd0rG5KNJfPu4QSoop7+tHiklFl0B4fipIac1m4v1SOEgwHg2hE3oMNVqlPusiE1g8xF0ha0b5kqdm/RWByRl261RyS0pa0w+lLuP76fShC4IpVI6347XXOHSaYeIbIKgvnyJf7PLJqG1bvMdBS5Xo/cKit+9SaEMcj3g+6hMdwpQJgeVYBxEPKikhB69xgu4zlQ92rF90eizFe0Yt8yomnxijR/hMnjLIge5BZlsfl6l5tGBxit/6Q5hw+FwVk0JQcDo3h7CvkJPAOmDV1Uc2VlLH08EvrUDhLlSHZ2oBqMF0BiqZibW/osXcDfjAp8zJnAoSF32eXIFQbQmyOSSHOksA2Qr/r9GxW0awG1wCd+4V/r5lVyJFG1V7CgNvBdtvsYUqND059saHi5hAghIzep5HI3YA154id4HGdyxyJOS2+gaXZiUH/NYa7yef7vFqDx7Q5jQrIbcNa1HQa/DZGz3kg3E0TMh9mkjt6YqTVJe1S2BX3El5/2t9bg5fymFuw1gmNu75V3XGIse+ZBaDpRPV6Aww1UgJR/4elX2noBgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01LSgkcrnLMkTKu3ccAqMr5P",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 475,
+      "cache_creation_input_tokens": 22585,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 22585,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 91,
+      "output_tokens_details": {
+        "thinking_tokens": 62
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2757
+}

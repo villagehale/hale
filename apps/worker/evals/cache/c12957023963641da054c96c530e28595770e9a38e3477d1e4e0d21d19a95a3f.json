@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Mostly swimming, music, art and play groups for little kids, the kind that run near you on a weekday. I haven't looked yet, though, and I need one thing first: how old are Mia and Leo? How old is each of them?",
+    "asks": true,
+    "parentQuestion": true,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1789
+}

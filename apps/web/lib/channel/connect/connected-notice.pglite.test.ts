@@ -99,8 +99,10 @@ describe('sendConnectorConnectedText', () => {
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
     expect(transport.sent[0]).toEqual({ to: PHONE, body: expect.any(String) });
-    expect(transport.sent[1]?.body).toContain('to=gcal');
-    expect(transport.sent).toHaveLength(2);
+    // The calendar card: its prose, then its link once, as its own text.
+    expect(transport.sent[1]?.body).not.toMatch(/https?:\/\//);
+    expect(transport.sent[2]?.body).toMatch(/^https:\/\/\S+to=gcal\S*$/);
+    expect(transport.sent).toHaveLength(3);
   });
 
   it('writes the ledger row the dedupe key hangs on, and threads what it said', async () => {
@@ -149,7 +151,7 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'already_sent',
     ]);
-    expect(transport.sent).toHaveLength(2);
+    expect(transport.sent).toHaveLength(3);
     expect(threaded).toHaveLength(2);
   });
 
@@ -171,8 +173,8 @@ describe('sendConnectorConnectedText', () => {
       'sent',
       'sent',
     ]);
-    // The calendar card is one per family. The reconnect texts the receipt again.
-    expect(transport.sent).toHaveLength(3);
+    // The calendar card (prose, then link) is one per family. The reconnect texts the receipt again.
+    expect(transport.sent).toHaveLength(4);
     expect(threaded).toHaveLength(3);
   });
 
@@ -254,14 +256,16 @@ describe('sendConnectorConnectedText', () => {
 
     expect(connectedNoticeLabel(outcome)).toBe('sent');
     expect(transport.sent).toEqual([]);
-    expect(imessage).toHaveBeenCalledTimes(2);
+    // No Linq key here, so the preview is not configured and the link goes as its own text.
+    expect(imessage).toHaveBeenCalledTimes(3);
     const calls = imessage.mock.calls as unknown as Array<[{ chatId: string; body: string }]>;
     expect(calls[0]?.[0]).toMatchObject({
       chatId,
       body: expect.any(String),
     });
-    expect(calls[1]?.[0]?.body).toContain('to=gcal');
-    expect(calls[1]?.[0]?.chatId).toBe(chatId);
+    expect(calls[1]?.[0]?.body).not.toMatch(/https?:\/\//);
+    expect(calls[2]?.[0]?.body).toMatch(/^https:\/\/\S+to=gcal\S*$/);
+    expect(calls[2]?.[0]?.chatId).toBe(chatId);
   });
 
   it('sends an iMessage family the receipt in the stored Linq chat, not over Twilio', async () => {

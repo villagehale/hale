@@ -1,0 +1,42 @@
+{
+  "response": {
+    "id": "msg_011CgsStdWKWA3bbLdQyUg3q",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSjwUKEAgTGAI4AUIIdGhpbmtpbmcSDLLQu71tHImP8673OBoMW31UMSG+KnFM4XjzIjDYeRwinqnqL1oDXXwIXcxNKBQawf9KC0FlLYgld8Fu1Ux9C657JV1RWAmW583cgMMqrARcHVQ6WMegtpmF1rY3M8mQ+dUenOkE2XH+E9FJPhSFas/p5uTYcJKX15m4b9eel9v0fn+WZAdtOlOOTLWWy88X5wn2X3VitGAVDxkXLTPW/NdHHpwbz8Xtcn9k1nabsfI6irH5VCsywyJcckdCzllJ/6O3sjrWgA4Ix4VJR3S3A4Ln6k2QTvpp0W2h9W1jZFf5lMwqLaViW+34ndXZRZAM37LKD8u6r10rlPZDq2Bm+hf4dfaLOXePhS6mUZvn8rb8Kkok1mUSll7YaVM5c26vYYXaRiKGYV2eftCTmAXiUML3lUJm4Z/ry88deFmAhOInsg+MSxMQYF7LdVi54Y6o/Z5VgNu6n/5xkB1TYzsbE2FZmiofm0lprzpsPRG7qcs66bMkFJg3C8tRNpWVD9ZPrBYxav8aZs3cn0qhArP70unGGCwZwjyp79JsQeYk1QkvDbSZNPhoC00FYxgS0Ldvw77u5AtY6VhZTiyNayJLJhpo4iObhZ0UHDoWrkaJgKtI5YbGhmLkV7+IKl4Ah5yPSirmSp1fsx8H6QoBaFEnao5mhSdGNpjlsppJzBbLA7xd6pwt6Vr3g1DhfE2QCyvIwVlL9Ea3kpjs/Tg4NsqsRsIGQF0H1Cgba6jbLyizx6qG1erGR+qGLRgkylZiJs33tfXITtqpgk+9kfuf2tuhzlft20Cy/M/fnLi/VDn+ntEYiBDN5kEfuy8LfiypNeFXN84Tt5/RoNpXfC2BGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_019F8NbGXC4YWTAHbJDTbEsr",
+        "name": "list_group_lists",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 372,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 19916,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 51,
+      "output_tokens_details": {
+        "thinking_tokens": 21
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

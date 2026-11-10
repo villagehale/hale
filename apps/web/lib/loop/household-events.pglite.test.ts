@@ -138,6 +138,7 @@ describe('propose_calendar_cancel cannot reach a mirror', () => {
     const draft = vi.fn<ChannelDraftPort['draft']>(async () => ({ actionId: 'action-1' }));
     const tools = buildChannelCoachTools({
       familyId,
+      familyCountry: 'CA',
       reader: channelScheduleReader(db.database, NOW),
       draftPort: { draft },
       villageTool: null,

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_bound. It acknowledges the replacement page and correctly says the course name, day and time could not be read, since they are null. It carries the right opening date, time and recipient, plus the clock name. It warns about the prerequisite with a leave-time note, and has no link and no question. No invented claims. The tone is friendly English, and the phrase \"using the residents date\" is only slightly stiff.",
+    "score": 5
+  }
+}

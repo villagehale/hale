@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "Sounds good. What should I call you? Just a first name is fine.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 2520
+}
