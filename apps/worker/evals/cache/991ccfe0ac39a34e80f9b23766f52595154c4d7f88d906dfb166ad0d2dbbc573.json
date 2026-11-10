@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Correct readiness_answer for a yes. The setup is attributed to the parent (\"You told me\", \"I'll take your word for it\") and never verified. It restates the four checklist items for Max on Springfield's portal, asks no question, invents nothing, and reads as a friendly English text.",
+    "score": 5
+  }
+}
