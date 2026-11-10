@@ -85,6 +85,7 @@ describe('lookup_week reads the connected calendar and processed mail', () => {
     };
     const tools = buildChannelCoachTools({
       familyId: forFamily,
+      familyCountry: 'CA',
       reader: channelScheduleReader(db.database, NOW),
       draftPort,
       villageTool: null,

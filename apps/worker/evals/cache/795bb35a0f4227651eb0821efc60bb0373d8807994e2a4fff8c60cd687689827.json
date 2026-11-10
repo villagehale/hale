@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "All three picks (Biodôme, Insectarium and the Montréal Science Centre) are real, named Montreal venues a visiting family can drop in to across Dec 27–30. None is a term, session or class. There are three picks, and each source_name is the venue's own organisation, not a guide or aggregator. Null prices are correct. The times are not invented: each figure traces to a snippet the notes quote and is hedged as unconfirmed. The Dec 28 Monday closure is flagged honestly. I'm holding back from a 5 for two reasons. First, the `when` fields lean partly on a listings site's hours rather than the venues' own current postings. Second, pagesRead is 0, yet the notes say Hale opened Espace pour la vie's schedule page, which is a provenance inconsistency.",
+    "score": 4
+  }
+}

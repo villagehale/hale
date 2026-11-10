@@ -1,9 +1,13 @@
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
-import { judgeFollowUpProcess } from '~/lib/channel/coach/find-reasoning-judge';
+import {
+  followUpProcessViolation,
+  judgeFollowUpProcess,
+} from '~/lib/channel/coach/find-reasoning-judge';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PageVerdict } from './evidence';
 import type { EmptySearch } from './lane';
@@ -51,8 +55,6 @@ export const MAX_FOLLOWUP_ATTEMPTS = 3;
 
 const MAX_TOKENS = 1000;
 
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|io|co|tv)\b/i;
-
 /**
  * Told to the model only when options were held back. It is an instruction, not a
  * sentence to send: the parent-facing words are the model's, in whatever language the
@@ -71,8 +73,12 @@ export type FollowUpFallback =
   | 'quiet_hours'
   | 'coparent_ask';
 
+/**
+ * `mentionsWatch` is the model's own `commits_to_return` for the text it wrote: whether it
+ * tells the parent Hale will come back. Delivery logs a watch row whose text does not.
+ */
 export type FollowUpComposeOutcome =
-  | { status: 'composed'; message: string }
+  | { status: 'composed'; message: string; mentionsWatch: boolean }
   | { status: 'deferred'; reason: FollowUpFallback; violations: readonly string[] };
 
 /**
@@ -438,7 +444,7 @@ export function followUpViolations(
   const text = plainText(body);
 
   if (text === '') return ['The message was empty.'];
-  if (LINK_SHAPE.test(text)) {
+  if (hasLinkShape(text)) {
     violations.push('The message contains a link or a web address. Never send one.');
   }
   if (claimsVerification(text)) {
@@ -478,12 +484,6 @@ export function followUpViolations(
     );
   }
   return violations;
-}
-
-function processViolation(sentences: readonly string[]): string {
-  return `These sentences tell the parent how Hale searched, not what it found or what happens next: ${sentences
-    .map((sentence) => JSON.stringify(sentence))
-    .join(' ')}. Take them out and change nothing else.`;
 }
 
 export function createFollowUpComposer(client: () => AgentClient): FollowUpComposer {
@@ -532,8 +532,10 @@ export function createFollowUpComposer(client: () => AgentClient): FollowUpCompo
           const body = plainText(value.message);
           const judged = await judgeFollowUpProcess(() => resolved, body);
           if (judged.verdict === 'unjudged') return deferred('process_unjudged', [judged.reason]);
-          if (judged.verdict === 'clean') return { status: 'composed', message: body };
-          violations = [processViolation(judged.sentences)];
+          if (judged.verdict === 'clean') {
+            return { status: 'composed', message: body, mentionsWatch: value.commits_to_return };
+          }
+          violations = [followUpProcessViolation(judged.sentences)];
         }
         console.error(
           { attempt, picks: grounding.picks.length, violations: violations.length },

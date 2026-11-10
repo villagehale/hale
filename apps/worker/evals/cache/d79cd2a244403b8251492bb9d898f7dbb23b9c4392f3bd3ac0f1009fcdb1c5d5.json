@@ -1,0 +1,56 @@
+{
+  "response": {
+    "id": "msg_011CgsKEsM98bAuuYQKmg3YS",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS7AkKEAgTGAI4AUIIdGhpbmtpbmcSDHduLh33a9r5URnR0BoMp254T4Vrly4ZnCTzIjCJhPCu1JQzhoCSZE+NayGEebqEplwU2+6TvozlV1noBMpOcwvgZiB8OMmwRpLzA6kqiQno84g+zPARcDfWKd90qsviwm0CPPc4LeaospTuL4uI4868AVEghllxP04h/JuTnPlLDlEfo2hs2bLjnry6Gxxg/rHmPdgYdIJjitFEtgl3OsyHnex1NJbwIi/rH4cMXD/nv+hV33zgffnYqQIE7iSCloLXU8hxLoHbMGygx6WVgwBJt/969XOw+i3pkxyx3k9FkREvXP2YhAKsLd7dLKsnvFP6y2NCdRFpRgE6FOMfnmo4UaMuFsQLtk8DfE8IUKAsO/Af4x67t8xvlVTS8aBBUuMpic/irnMcJT6CJiVyxgxG3FgktppC4se8s0ifn+pkKXN9OvhzRIMHS+bR2b47f+xd5LxerMsbn9W2njPiTyuZqtLhNlrPgWOAVvOcMqFvLQhdOjtFG8hKEa4vFZCXUQnCtj/2ppxWDdvDo7zdOLbsYyxULc2zDZbqeunWyfgJZxwYuxVRoJSt0MTUOxsPurB7PFRirWnwhZF0dcs6PbFy6Ar9JDkV7GWqf08MU9hEnzKtfq5nqUl5dtZUllBty3daU2Ypjueikk0veXcaI29O8oIY6YiZLCi580SOmMm4ViNjd+tyq68hpTkURifj4bheEZoubKDne/7DJ3ZJZKyIqpWwiDNDx0Jvm6IXqDLZZVB8FMHeQZxX5ztZf+LaEdJFUBMaRynLZwgSRZgFn5hwZW2+Op5Kyjxz1/fricJpn8XJVd2NnM8o00vnOf+XoVXR/arB3a5d4G2Ita4N7L+G1jaJy5N2eLLKq3oNHfOmTTrIQ01kAWu/G83w5fOvnW7jNru/2oBq9SzLIE4Y7Si1tKm1e/0SaOTGfcVYnnXhdN/wnx4uwv82WPyowohMPx50bGW+R8hAzNJlF1o3t4dIGxhj+sZX9vO7m8ooB0TPCYaRIkolYykr7hM1YJ48PBQXBpvic2ToeYS4pGn48DqDlf8qGeNE0vsTUvbZa5kH/9LrO19A9HHBI//lEtBstvoCRsqpC4CCEqfvGsSC7x0Ai0msx82pFogpTXpyaVk+bZ/PEM/b26mCvZ5Ri8QZ3qLrJYoU87BdI0R0mBHZR7LBc9J56gUBY62j7CZRZ8WiOWVOD3CSPITkPynOzRyeGH7seO/Kk3/d1psp803bO+vqDViOAcoqle2wBOvRPRhZM+zz9IHfTSx3g9L4lCoTKGhd/5CdNfmiWvSm0EPS3zuF0AlUnnenDfebZ2kmkEHoArGYbQSz45X4xfWSX1wVVOcVgZNk/Q1qZo+89MSTW6rpK/Ib7d8ilZaOvB9Kmg+B5lyklHtyUPADdfdAWEGXBxKsDgrUwfT9vwqIy5xuUZfQerqIgrsJUjCKGEvxtuQOK15cwuKHycGbpOC05tZ100oyrNZDOvmVHFaoEuhviRRVp354d0w1ty/QM2naBvoUbhJl0N/mThZClXaNB+FjikYJTBj8XCySlNOl726047sBTwz+ByIWtVp5Zghn/Rh0C1ghHQFx1cJysp1Tk8vvEiI4CCxpGHCu5xkbicoytsC2PKAvSt715IYqYTepgQWmGGDU2yUyhV4YAQ=="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FqMKaX7XgYsttMjFuoteC4",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "toddler",
+          "ageMonths": 28
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01FgrUCQGeQT2d9j5nNFEoKU",
+        "name": "offer_full_plan",
+        "input": {
+          "topic": "sleep"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 397,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 20468,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 400,
+      "output_tokens_details": {
+        "thinking_tokens": 261
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

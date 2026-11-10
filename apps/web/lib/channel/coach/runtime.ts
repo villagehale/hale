@@ -12,6 +12,8 @@ import {
 } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
+import { type FamilyCountry, familyCountryOf } from '@hale/types';
+import type { FactReader } from '@hale/worker/memory-context';
 import { familyHasAutonomyGrant, revokeAutonomyForKind } from '@hale/worker/memory-writer';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
@@ -279,9 +281,11 @@ export interface ChannelCoachPorts {
     /** The turn's offer ledger, owned by the runtime so the provenance match and the
      * nearby count read the same list. */
     offered: TurnOfferLedger,
-    onGmailNotice?: (notice: GmailDraftNoticeBox) => void,
+    onGmailNotice: ((notice: GmailDraftNoticeBox) => void) | undefined,
     /** VIL-447: a tool registers how to undo a write it made; a failed turn runs them. */
-    onUndo?: (undo: () => Promise<void>) => void,
+    onUndo: ((undo: () => Promise<void>) => void) | undefined,
+    /** The family row's country, read off the turn's own context (familyCountryOf). */
+    familyCountry: FamilyCountry | null,
   ): RegisteredTool[];
   /**
    * WHAT OTHER FAMILIES NEARBY SAID about one of the activities this turn offered, or
@@ -335,12 +339,12 @@ export interface ChannelCoachPorts {
   client(): AgentClient;
   /**
    * VIL-524. On a nearby-find turn, after the model writes, this decides whether
-   * the whole reply is internal reasoning. Production always sets it. Absent is
-   * named `not_configured` and the draft is sent, so a scripted coach is not
-   * silenced. A wired judge that withholds or fails sends nothing. The judge
-   * does not rewrite parent text.
+   * the whole reply is internal reasoning. Required: production wires the model
+   * judge, and a scripted coach passes `findReplyNotJudged`, which sends the draft
+   * and logs `not_configured` (rule #11). A judge that withholds or fails sends
+   * nothing. The judge does not rewrite parent text.
    */
-  judgeFindReply?(draft: string): Promise<FindReplyGate>;
+  judgeFindReply(draft: string): Promise<FindReplyGate>;
   /**
    * Fetch this turn's images into content blocks. Absent is a named gap: the
    * parts are still told to the model as unwatched, and nothing is fetched.
@@ -492,6 +496,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
         transcript,
         sourceNote: null,
         readerUserId: turn.parentUserId,
+        inGroup: turn.audience === 'group',
       });
       // VIL-566: the household-group addendum rides only when the fact does, so every
       // other turn keeps its system bytes. VIL-429's fact-source addendum is the same:
@@ -621,6 +626,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
               (undo) => {
                 undos.push(undo);
               },
+              familyCountryOf(familyContext.location.country),
             );
             // VIL-439 (T18): no inbox, memory or Gmail tools in a group, and calendar reads
             // are busy-only, on every group turn. VIL-615: once read_email returns text,
@@ -792,36 +798,28 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             }
             // VIL-524. The judge is the gate on a find reply: a nearby-find ask, or a
             // turn whose tools handed over a find (any language). It does not edit the
-            // draft. withhold, or a judge that failed, sends nothing.
-            // A runtime built without the port (scripted journey coaches) names that
-            // and sends the draft: production always wires the judge.
+            // draft. withhold, or a judge that failed, sends nothing. It reads the
+            // draft with teen names already redacted, as the parent would (rule #1).
             const handedOverFind =
               offeredThisTurn.read().length > 0 || offeredThisTurn.links().length > 0;
             if (!noticeReady && (findTurn || handedOverFind)) {
-              if (!ports.judgeFindReply) {
+              const gate = await ports.judgeFindReply(redactTeenNames(spoken, children, now));
+              if (gate.verdict !== 'send') {
                 console.error(
-                  { reason: 'not_configured' },
-                  'channel coach: find-reasoning judge absent - draft sent unjudged',
+                  {
+                    reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
+                  },
+                  'channel coach: find reply withheld - nothing sent',
                 );
-              } else {
-                const gate = await ports.judgeFindReply(spoken);
-                if (gate.verdict !== 'send') {
-                  console.error(
-                    {
-                      reason: gate.verdict === 'withhold' ? 'find_reasoning' : gate.reason,
-                    },
-                    'channel coach: find reply withheld - nothing sent',
-                  );
-                  await ports.recordRun(record('failed'));
-                  // A failed turn, not a deliberate silence (Devin #983): the router's
-                  // failed-turn path keeps the drafts receipt and the failed-turn ledger.
-                  // The withheld draft itself is never sent.
-                  throw failed(
-                    gate.verdict === 'withhold'
-                      ? 'channel coach: find reply withheld (find_reasoning)'
-                      : `channel coach: find reply judge failed (${gate.reason})`,
-                  );
-                }
+                await ports.recordRun(record('failed'));
+                // A failed turn, not a deliberate silence (Devin #983): the router's
+                // failed-turn path keeps the drafts receipt and the failed-turn ledger.
+                // The withheld draft itself is never sent.
+                throw failed(
+                  gate.verdict === 'withhold'
+                    ? 'channel coach: find reply withheld (find_reasoning)'
+                    : `channel coach: find reply judge failed (${gate.reason})`,
+                );
               }
             }
             // VIL-434: the model's answer goes out whole. Length is the model's judgment
@@ -979,8 +977,11 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       offered,
       onGmailNotice,
       onUndo,
+      familyCountry,
     ) => {
       const listJournal = createGroupListJournal();
+      const factReader: FactReader =
+        turn.audience === 'group' ? 'every_adult' : { adult: turn.parentUserId };
       const listsLit = turn.audience === 'group' && groupSharedListsEnabled();
       if (listsLit && onUndo) {
         onUndo(() =>
@@ -992,6 +993,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
       }
       return buildChannelCoachTools({
         familyId: turn.familyId,
+        familyCountry,
         reader: channelScheduleReader(database, turn.now),
         // VIL-443: a calendar_add drafted in the family group records that origin, so its
         // placement is reported back to the group. Code writes it; the model never sees it.
@@ -1014,7 +1016,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // loop's — a turn that could reach Anthropic for the loop and not for the search
         // is not a state worth being able to represent.
         activity: {
-          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
           // NOT the coach's client. A web-grounded search is a different job with a
           // different duration, and running it on the coach's 30s-plus-a-retry budget
           // meant the calls that needed forty seconds were killed twice before the lane
@@ -1028,7 +1030,7 @@ export function productionChannelCoachPorts(database: Database): ChannelCoachPor
         // the gate would then refuse to text.
         spots: {
           fetchBody: createFetchBody(MINT_FETCH_TIMEOUT_MS),
-          reader: bindActivityReader(database, productionActivityFamilyReader()),
+          reader: bindActivityReader(database, productionActivityFamilyReader(), factReader),
           watchConsentGranted: buildOutboundGatePorts(database).watchConsentGranted,
           readClassAvailability: createLiveClassAvailabilityReader(
             anthropicClient(),

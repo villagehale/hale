@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { factsForContext } from '@hale/worker/memory-context';
+import { type FactReader, factsForContext } from '@hale/worker/memory-context';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { readFamilyTimezone } from '../dashboard/trail-query';
 import { promptKind, readDisposition, readObservedAt } from './classify-write';
@@ -255,6 +255,7 @@ function digestLineOf(summary: unknown): string | null {
 export async function assembleMemoryBrief(
   database: Database,
   familyId: string,
+  reader: FactReader,
   now: Date = new Date(),
 ): Promise<MemoryBrief> {
   try {
@@ -265,7 +266,7 @@ export async function assembleMemoryBrief(
         .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
         .from(schema.children)
         .where(eq(schema.children.familyId, familyId)),
-      factsForContext(database, familyId, { now, limit: BRIEF_FACT_LIMIT }),
+      factsForContext(database, familyId, { now, reader, limit: BRIEF_FACT_LIMIT }),
       database
         .select({
           kind: schema.agentCommitments.commitmentKind,

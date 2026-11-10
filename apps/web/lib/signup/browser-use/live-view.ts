@@ -33,10 +33,11 @@ export function liveViewUrl(value: unknown): string | null {
 const HOST_PATTERN = [...BROWSER_USE_LIVE_VIEW_HOST]
   .map((c) => c.replace(/\./, '\\.'))
   .join('[\\t\\n\\r]*');
-// The host with or without a scheme, then any URL characters (RFC 3986 plus `%`).
-// Text in other scripts right after the link is kept.
+// The host with or without a scheme, then any URL characters (RFC 3986 plus `%`), and
+// the tab, CR and LF the parser drops from anywhere in a link. Text in other scripts
+// right after the link is kept.
 const LIVE_VIEW_LINK = new RegExp(
-  `(?:https?://)?${HOST_PATTERN}(?::\\d+)?[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%]*`,
+  `(?:https?://)?${HOST_PATTERN}(?::\\d+)?[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%\\t\\r\\n]*`,
   'gi',
 );
 

@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_011CgsF66WSLr9VVcDGFRzm8",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQS5AUKEAgTGAI4AUIIdGhpbmtpbmcSDDqi6ooRuARe6gGYYxoM9QkLZHLH/m+zQAKXIjBIV5r8SvJf6ImMnxRd3yLqWlsPgkwoZSL7WDyLJxaBM6Sc/ICuYDl4oT8Zo6cFoy8qgQUaihB1G1C5K/Vgbex/edNCOn6yYbwaCDKS2lfKEMHGHYtlTIQfiAWdYnj8iFPyVd0pLLHROEoFrbVbm5Vp2ozxFX02z4aZFF5ZhqwbiyjCRxuEsy8oc4Ru4AA2hb9HP21M2ia5MZtBxqFSYzCmVgi3p6g9WBD/Z7CkGv4ev/ulLveNdq/BkD2Pix7jHhFdDjH5oG0f5PmAU6q2pgsXBJg9bvtFgLS8xzHnIvUndVtSBq9e+8366hBLW5FjuBE/GqASItpVjZdFKefmvnaFXPbU3MTQpxuOFQuKO04vUMFcd9O0h+40jvit8euJ8ouBiXgY4GKjUrzXgOmobxflaf7dhW+H61oJ2oK3v0yCubnCy9aOoia/kI7YcNeqboMmDKlEYFOptSidAg0Tszh7TfO7SHLxSq4/SASrmBVLPSEdcb1P+DhpJ8mFixBfiZ+bxtr1C+2TJSdItD5h1p6nF8oEj8l07xU3C4HLqXzzHSjUzdW55S9HBGXRbBvYebnCJ8846yNxhJ2Wyqx3ll8swt5lHKMPkAT9RTsNYoO4DslN1jh4bphxBn0YQapbwDg1oF42CswukAmN20sINwcsJebo4NmSUZ5Wsk7AhXx5zDDidkQw9sgxi1kZ7DqvitjmHo8nJHiAANjC6QNkzkeAd8vgYZuaRaKLF70aMw5DHnovphSI/T/QObi10Tzg4FyqOxpH9nbhGURouL0rsdP8MQbIwzKdFTdVOegme1XI+IVQvrRwsDh4is2DPXddlxZYIeeX+yYISNpGrHf2l3A3qkD1HXUx+U0gXTk8DWX6rx+vt0kGXl1G5sP9dT6vDLLD+0+f4iJkXiqcXg9YNkCSEZgLFBgB"
+      },
+      {
+        "type": "text",
+        "text": "Halton Hills fall registration opens Sep 1, 7:00 a.m. for residents, and I'm on it. I'll text you before it opens. For Remy, there's Tiny Tumblers parent & tot, Saturday mornings this fall, for walking to 3 years. That's per the venue's own program page, and it didn't list a price. It doesn't fit Milo or Ada. [link-7ad114]"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 183,
+      "cache_read_input_tokens": 22967,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 183,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 195,
+      "output_tokens_details": {
+        "thinking_tokens": 60
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2182
+}

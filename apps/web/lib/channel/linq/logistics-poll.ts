@@ -85,9 +85,15 @@ interface LogisticsFactValue {
 
 export function whoTakesPrompt(
   language: ReplyLanguage | null,
-  input: { kid: string; event: string; day: string; time: string },
+  input: { kid: string; event: string | null; day: string; time: string },
 ): Promise<string | null> {
-  return speak({ purpose: 'who_takes_prompt', language, facts: input });
+  // No event when its title is not one the group may hear (VIL-651).
+  const { event, ...rest } = input;
+  return speak({
+    purpose: 'who_takes_prompt',
+    language,
+    facts: event === null ? rest : { ...rest, event },
+  });
 }
 
 export function bothFreePrompt(language: ReplyLanguage | null): Promise<string | null> {
@@ -381,6 +387,7 @@ export async function writeLogisticsDecision(
     factValue: input.value,
     confidence: 1,
     inferredBy: INFERRED_BY[input.value.source],
+    heard: { in: 'family' as const, userId: input.parentUserId },
     validFrom: input.now,
   };
   const audit = {

@@ -214,6 +214,7 @@ describe('closeFacts — retiring a fact by id', () => {
       factValue: { summary: factKey },
       confidence: 0.9,
       inferredBy: 'chat_distiller',
+      heard: 'unrecorded',
       validFrom,
     });
     return factId;

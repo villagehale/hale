@@ -11,6 +11,7 @@ import {
   inArray,
   like,
   lt,
+  or,
   sql,
 } from 'drizzle-orm';
 import { canaryChannel, notCanaryTraffic } from '~/lib/channel/canary/config';
@@ -207,8 +208,12 @@ type OpsPageFacts<S extends OpsPageSite> = {
     : never;
 };
 
-/** A page's facts, from its site's vocabulary: never a body, phone or name. */
-export type OpsPage = { [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S> } }[OpsPageSite];
+/** A page's facts, from its site's vocabulary: never a body, phone or name. `ref` is the
+ * id of the one row ops resolves the page from; anything but a row id travels as
+ * `redacted`. */
+export type OpsPage = {
+  [S in OpsPageSite]: { site: S; facts: OpsPageFacts<S>; ref?: string };
+}[OpsPageSite];
 
 /** Same vocabulary as CrisisPageOutcome. A page that did not leave is its own outcome,
  * never folded into `paged` (rule #11). */
@@ -494,6 +499,7 @@ export function composeOpsPageAlert(page: OpsPage): string {
     'Hale: ops page.',
     `site ${failureCategory(page.site)}.`,
     ...opsPageFacts(page).map(([key, value]) => `${key} ${value}.`),
+    ...(page.ref === undefined ? [] : [`ref ${uuidOr(page.ref, 'redacted')}.`]),
   ].join(' ');
 }
 
@@ -716,22 +722,29 @@ async function releaseStaleClaims(database: Database, now: Date): Promise<void> 
 
 /**
  * An erasure's crisis claims and reply marks: every one keyed by an inbound text the erased
- * families sent. Run BEFORE the family cascade (rights/delete.ts): it deletes the ledger rows
- * whose provider ids are the keys. A claim still owed goes too: the parent it would page
- * about asked for everything to go.
+ * families sent, by their ledger or, for a text no ledger row names (one sent before the
+ * family existed), by their intake transcripts. Run BEFORE the family cascade
+ * (rights/delete.ts): it deletes the ledger rows whose provider ids are the keys. A claim
+ * still owed goes too: the parent it would page about asked for everything to go.
  */
 export async function releaseErasedCrisisMarks(
   database: Database,
   familyIds: readonly string[],
+  intakeInboundIds: readonly string[],
 ): Promise<void> {
   if (familyIds.length === 0) return;
   const inbound = schema.channelMessages;
+  const key = sql`split_part(${schema.rateLimits.identifier}, ':', 1)`;
+  const intakeKeys = intakeInboundIds.filter((id) => id.trim() !== '').map(crisisInboundKey);
   await database
     .delete(schema.rateLimits)
     .where(
       and(
         inArray(schema.rateLimits.route, [CRISIS_UNANSWERED_PAGE_ROUTE, CRISIS_ANSWERED_ROUTE]),
-        sql`split_part(${schema.rateLimits.identifier}, ':', 1) in (select ${crisisInboundKeySql(inbound.providerMessageId)} from ${inbound} where ${inArray(inbound.familyId, [...familyIds])} and ${inbound.direction} = 'in' and ${inbound.providerMessageId} is not null)`,
+        or(
+          sql`${key} in (select ${crisisInboundKeySql(inbound.providerMessageId)} from ${inbound} where ${inArray(inbound.familyId, [...familyIds])} and ${inbound.direction} = 'in' and ${inbound.providerMessageId} is not null)`,
+          intakeKeys.length === 0 ? undefined : inArray(key, intakeKeys),
+        ),
       ),
     );
 }

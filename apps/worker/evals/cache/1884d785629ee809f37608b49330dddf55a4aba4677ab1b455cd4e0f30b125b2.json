@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named Ottawa venues with their own source pages. Both suit a toddler and run on Tuesday, the day in question. The message leads with Village Playgroup by name, and every time and price matches the picks exactly. Each find is attributed ('their site says', 'Global Child Care Services says') rather than presented as confirmed. Under no_page_read it uses the earned first-person form, 'I could not get into their page today to confirm', instead of claiming nothing is posted. With watch=false it rightly makes no promise to come back. It is plain text with no link and no question, and dropping the Inuit-only third option matches the extracted picks.",
+    "score": 5
+  }
+}

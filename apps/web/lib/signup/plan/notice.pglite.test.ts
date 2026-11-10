@@ -1,11 +1,12 @@
 import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { recordSignupOffer } from '../store';
+import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV } from './flag';
 import { PLAN_NOTICE_TEMPLATE, createPlanNotifier } from './notice';
 import type { PlanOutcomeNotice } from './run';
 import { approveSignupPlan } from './store';
@@ -50,8 +51,11 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
-async function plannedFamily(options: { enrolled?: boolean } = {}) {
+async function plannedFamily(options: { enrolled?: boolean; url?: string } = {}) {
   const seeded = await seedFamily(db.database);
   seq += 1;
   const phone = `+1202555${String(150 + seq).padStart(4, '0')}`;
@@ -71,7 +75,7 @@ async function plannedFamily(options: { enrolled?: boolean } = {}) {
     childId,
     parentUserId: seeded.parentUserId,
     activityKey: 'swim-preschool',
-    registrationUrl: URL,
+    registrationUrl: options.url ?? URL,
     sessions: SESSIONS,
     approvedPriceCents: null,
     planOpensAt: OPENS,
@@ -177,6 +181,34 @@ describe('the parent notice after a plan run', () => {
       );
     expect(ledger).toMatchObject({ direction: 'out', providerMessageId: 'prov-1' });
     expect(ledger?.sentAt).not.toBeNull();
+  });
+
+  it('hands an ActiveNet parent the filled registration: told as assisted, the live browser after the text, never in history', async () => {
+    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
+    const f = await plannedFamily({
+      url: 'https://anc.ca.apm.activecommunities.com/exampleville/activity/search/detail/7',
+    });
+    const { notify, facts, sent } = rig('Ada is filled in for Sunday: check it, submit and pay.');
+    expect(
+      await notify(
+        notice(f, {
+          outcome: 'ready_for_parent',
+          detail: 'none',
+          holdExpiresAt: new Date(NOW.getTime() + 15 * 60_000),
+        }),
+      ),
+    ).toBe('sent');
+
+    expect(sent[0]?.body).toBe(`Ada is filled in for Sunday: check it, submit and pay.\n${LIVE}`);
+    expect(facts[0]).toMatchObject({
+      moment: 'run_finished',
+      mode: 'assisted',
+      run: { outcome: 'ready_for_parent', liveBrowser: true, holdMinutes: 15, confirmed: false },
+    });
+    expect(JSON.stringify(facts)).not.toContain(TOKEN);
+    const thread = await storedThread(f.familyId);
+    expect(thread[0]).toContain('Ada is filled in for Sunday');
+    expect(thread[0]).not.toContain(TOKEN);
   });
 
   it('a live view on any other host is never sent: the registration page is', async () => {

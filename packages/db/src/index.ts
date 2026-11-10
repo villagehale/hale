@@ -9,6 +9,7 @@ export type {
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type {
+  CalendarStanding,
   FamilyEvent,
   FamilyEventNotes,
   NewFamilyEvent,
@@ -43,6 +44,7 @@ export type {
   CivicVenueKind,
 } from './schema/civic.js';
 export type { CandidateAccess } from './schema/village.js';
+export type { AuthorizedSignupPlanResume } from './schema/authorized-signup-offers.js';
 export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';
 export type {
   FamilyWorkstream,

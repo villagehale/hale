@@ -1,0 +1,25 @@
+{
+  "value": {
+    "picks": [
+      {
+        "name": "Biodôme, Espace pour la vie",
+        "age_fit": "Not stated on the pages read; described as a family attraction with no toddler age band given",
+        "when": "Regular winter hours per a listings site: closed Mondays (so Dec 28), open Tuesday to Sunday 9:00-17:00; Espace pour la vie's own page showed 9am-5pm for a week in October, not these dates, so the Dec 27-30 hours could not be confirmed",
+        "source_name": "Espace pour la vie"
+      },
+      {
+        "name": "Insectarium, Espace pour la vie",
+        "age_fit": "Not stated on the pages read; no age band given",
+        "when": "Regular winter hours per a listings site: closed Mondays (so Dec 28), open Tuesday to Sunday 9:00-17:00; Espace pour la vie's own page showed 9am-5pm for a week in October, not these dates, so the Dec 27-30 hours could not be confirmed",
+        "source_name": "Espace pour la vie"
+      },
+      {
+        "name": "Centre des sciences de Montréal (Montréal Science Centre)",
+        "age_fit": "Not stated on the pages read; hands-on exhibits aimed at children generally",
+        "when": "Earlier years' holiday pages on the Centre's own site show 10am to 5 or 6pm from Dec 26 to 30; a listings site shows Dec 27 to 30, 10:00-17:00; the Centre's own 2026 posting was not found, so the Dec 27-30 hours could not be confirmed",
+        "source_name": "Montréal Science Centre"
+      }
+    ]
+  },
+  "latencyMs": 13259
+}

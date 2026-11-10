@@ -1,0 +1,32 @@
+{
+  "response": {
+    "id": "msg_011CgsKDvJUKtsezF6QKWX6J",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Pretty normal at 28 months. Lots of toddlers get wary of green food right about now. Try putting a tiny portion of something green on his plate next to a food he already likes, and don't ask him to eat it. Seeing it again and again with no pressure is what usually works, and it can take a lot of tries. Let him touch it, smell it, or watch you eat it. Blending spinach into a smoothie or pancakes is a fine side route too.\n\nAlso, I can try signing him up for classes now if you say yes. I used to tell you I couldn't. Want me to look for something near Columbus?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 1121,
+      "cache_read_input_tokens": 20468,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 1121,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 189,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

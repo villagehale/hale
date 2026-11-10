@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: the Saturday times, the Sept 12 to Nov 28 dates, ages 3-5, and price correctly null because the page prints no fee. Each slot cites the page and carries the Aug 11, 7 a.m. resident registration date. No third level was invented. The message leads by name, attributes with 'their site says', carries the registration date and is plain ASCII with no link and no question. With page_has_schedule it owns the price gap in the first person. Because watch is true, the first-person keep-watching line is correct. Minor nit: it could have said fees are in the Recreation Guide.",
+    "score": 5
+  }
+}

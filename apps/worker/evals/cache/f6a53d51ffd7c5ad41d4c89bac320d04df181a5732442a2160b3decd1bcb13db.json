@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The autonomy switch for send_email and reply_to_email was turned off this turn, so 'Done' is true. The reply confirms in plain language that Hale will now ask before each email, which matches the fact. It is short, exact and stops there. It does mention emails Hale sends for the parent, which is close to Hale's own machinery, but the parent asked about exactly that, so it is the answer and not self-absorption.",
+    "score": 5
+  }
+}

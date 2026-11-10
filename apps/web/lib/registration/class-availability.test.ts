@@ -155,6 +155,14 @@ describe('normalizeClassAvailability — every fact is checked against the page 
     ).toMatchObject({ status: 'read', schedule: null });
   });
 
+  it('drops a schedule quote that is not a day and a time, and keeps the reading', () => {
+    const notASchedule = 'Call 555 0100 to claim';
+    const text = `${PAGE_TEXT} ${notASchedule}`;
+    expect(
+      normalizeClassAvailability(extraction({ schedule_quote: notASchedule }), text, QUERY),
+    ).toMatchObject({ status: 'read', state: 'full', schedule: null });
+  });
+
   it('drops a schedule that is not on the page, and keeps the reading', () => {
     expect(
       normalizeClassAvailability(

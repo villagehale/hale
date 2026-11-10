@@ -222,6 +222,9 @@ export const AUDIT_VERBS = [
   'linq_multi_family_reply_sent',
   'linq_multi_family_common_time_proposed',
   'linq_multi_family_common_time_unsent',
+  'linq_multi_family_common_time_picked',
+  'linq_multi_family_common_time_placed',
+  'linq_multi_family_common_time_place_failed',
   'linq_multi_family_free_busy_shared',
   'linq_multi_family_ask_sent',
   'linq_multi_family_ask_capped',
@@ -488,6 +491,10 @@ export const AUDIT_VERBS = [
   'registration_morning_unwritten',
   'registration_heads_up_unwritten',
   'registration_leg_unwritten',
+  'registration_date_moved',
+  'registration_date_moved_sent',
+  'registration_date_moved_unwritten',
+  'registration_date_moved_dropped',
   'registration_outcome_recorded',
   'registration_course_bound',
   'registration_readiness_stated',
@@ -972,6 +979,18 @@ const VERBS: Record<AuditVerb, Verb> = {
   linq_multi_family_common_time_unsent: {
     sentence:
       'Hale held its suggested times for a shared thread because it could not write them well',
+    family: 'problem',
+  },
+  linq_multi_family_common_time_picked: {
+    sentence: 'Someone in a shared thread picked one of the times Hale suggested',
+    family: 'note',
+  },
+  linq_multi_family_common_time_placed: {
+    sentence: 'Hale updated a plan from a shared thread on your calendar',
+    family: 'done',
+  },
+  linq_multi_family_common_time_place_failed: {
+    sentence: 'Hale could not update a plan from a shared thread on your calendar',
     family: 'problem',
   },
   linq_multi_family_free_busy_shared: {
@@ -1805,6 +1824,23 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale did not send a registration reminder text',
     family: 'note',
   },
+  registration_date_moved: {
+    sentence: 'Hale saw the registration page move an opening date and moved its reminders',
+    family: 'note',
+  },
+  registration_date_moved_sent: {
+    sentence: 'Hale texted you that a registration opening date moved',
+    family: 'done',
+  },
+  registration_date_moved_unwritten: {
+    sentence: 'Hale did not send the text about a moved registration date',
+    family: 'note',
+  },
+  registration_date_moved_dropped: {
+    sentence:
+      'Hale did not text you about a moved registration date, because the reminders had stopped',
+    family: 'note',
+  },
   registration_outcome_recorded: {
     sentence: 'you told Hale how a registration went',
     family: 'done',
@@ -2052,8 +2088,8 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   // ── stale denials (VIL-303) ─────────────────────────────────────────────
-  // The whole family reads these, and the no was said to one parent: the sentence names
-  // neither the parent nor what was asked. Both are written only once the text was sent.
+  // The no was said to one parent, so History hides both (INTERNAL_TRAIL_VERBS). The
+  // sentences stay for the access export, which still lists every family audit row.
   capability_denial_recorded: {
     sentence: 'told a parent it could not do something yet, and noted it to follow up',
     family: 'note',
@@ -2145,6 +2181,9 @@ export const INTERNAL_TRAIL_VERBS = [
   'group_decision_sync_closed_unsent',
   // VIL-156. About one adult's Google account, which another household may share.
   'integration_google_revoke_cancelled',
+  // VIL-303. A no Hale said to one parent, and its correction to that same parent.
+  'capability_denial_recorded',
+  'capability_denial_corrected',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

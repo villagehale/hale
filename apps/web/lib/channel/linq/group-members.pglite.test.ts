@@ -374,6 +374,68 @@ describe('linq group members', () => {
     expect(other).toEqual({ outcome: 'group_member_refused', reason: 'other_family' });
     expect(await liveRoles(home.familyId)).toEqual([]);
     expect(wire.texts).toEqual([]);
+    // Own-household reasons stay; another household's reaches this row only as unavailable.
+    const refusals = await db.database
+      .select({ after: schema.auditLog.after })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, home.familyId));
+    expect(refusals.map((row) => row.after)).toEqual([
+      { reason: 'actor' },
+      { reason: 'number_unavailable' },
+    ]);
+  });
+
+  it('a number seated in another household or chat is refused there, and named here only as unavailable', async () => {
+    const home = await seedFamily(PARENT, 'Barton');
+    const elsewhere = await seedFamily('+14165550888', 'Other');
+    const wire = sender();
+    const gran = '+14165550144';
+    const granUserId = await seedMember(home.familyId, gran, 'grandparent');
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: home.familyId,
+      chatId: 'chat-home-second',
+      userId: granUserId,
+      phoneE164Encrypted: encryptString(gran),
+      phoneE164Hash: phoneBlindIndex(gran),
+      role: 'caregiver',
+    });
+    const neighbour = '+14165550155';
+    const [neighbourUser] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: `sms:${phoneBlindIndex(neighbour)}` })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.linqGroupMembers).values({
+      familyId: elsewhere.familyId,
+      chatId: 'chat-elsewhere',
+      userId: neighbourUser?.id as string,
+      phoneE164Encrypted: encryptString(neighbour),
+      phoneE164Hash: phoneBlindIndex(neighbour),
+      role: 'other_family',
+    });
+    const add = (participantHandle: string) =>
+      seatParticipantAdded(db.database, {
+        chatId: CHAT,
+        participantHandle,
+        actorHandle: PARENT,
+        isFromMe: false,
+        now: NOW,
+        send: wire.send,
+        voice: fakeGroupOnboardingComposer({ body: WELCOME }),
+      });
+
+    expect(await add(gran)).toEqual({ outcome: 'group_member_refused', reason: 'other_chat' });
+    expect(await add(neighbour)).toEqual({
+      outcome: 'group_member_refused',
+      reason: 'other_family',
+    });
+    const refusals = await db.database
+      .select({ after: schema.auditLog.after, targetId: schema.auditLog.targetId })
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.familyId, home.familyId));
+    expect(refusals).toEqual([
+      { after: { reason: 'number_unavailable' }, targetId: home.familyId },
+      { after: { reason: 'number_unavailable' }, targetId: home.familyId },
+    ]);
   });
 
   it('a co-parent group seat with no family role is not a household parent; the family role is', async () => {

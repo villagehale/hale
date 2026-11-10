@@ -2004,7 +2004,12 @@ describe('a withheld find on the failed-turn path (VIL-524)', () => {
       loadSkill: async () => skill,
       loadTranscript: async () => [],
       loadContext: async (ctx) =>
-        ({ question: ctx.question, transcript: ctx.transcript, memoryFacts: [] }) as never,
+        ({
+          question: ctx.question,
+          transcript: ctx.transcript,
+          memoryFacts: [],
+          location: { city: null, province: null, country: 'Canada' },
+        }) as never,
       loadChildren: async () => [],
       loadRegistrationWindows: async () => [],
       buildTools: (_turn, onDraft) => {
@@ -7194,5 +7199,27 @@ describe('capability notes ride out with the reply', () => {
 
     expect(h.transport.sent).toHaveLength(0);
     expect(noted).toEqual([]);
+  });
+
+  it('records nothing when the reconcile cuts part of the reply, and names the drop', async () => {
+    const noted: unknown[] = [];
+    const h = harness({
+      coach: notingCoach(
+        'Watching a full class is not something I can do yet. Thursday swim is booked at 5:15.',
+      ),
+      recordCapabilityNotes: async (_db, input) => {
+        noted.push(input);
+        return { status: 'recorded' as const, declined: 1, corrected: 1 };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // Positive control: the cut happened and the surviving half was sent.
+    expect(h.transport.sent.map((m) => m.body)).toEqual([
+      'Watching a full class is not something I can do yet.',
+    ]);
+    expect(noted).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain('capability_notes_cut');
   });
 });

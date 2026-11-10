@@ -270,6 +270,7 @@ describe('handleSequenceReply', () => {
       kind: 'outcome_waitlisted',
       position: 15,
       responseHours: 36,
+      clockFrom: { date: 'Tuesday, September 15, 2026', time: '11:00 a.m.' },
       deadline: { date: 'Wednesday, September 16, 2026', time: '11:00 p.m.' },
     });
   });
@@ -310,6 +311,7 @@ describe('handleSequenceReply', () => {
     expect(recorded.notes[0]).toMatchObject({
       kind: 'outcome_waitlisted',
       responseHours: null,
+      clockFrom: null,
       deadline: null,
     });
   });

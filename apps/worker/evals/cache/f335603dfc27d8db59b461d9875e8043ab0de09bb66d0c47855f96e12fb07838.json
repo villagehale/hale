@@ -1,0 +1,21 @@
+{
+  "value": {
+    "reply": "Done, Mia's Swim Kids 3 goes on your calendar every Saturday at 11, starting this Saturday, November 7. Quick one: would a group chat with Mia's other parent help, so you both see the same kid plans and reminders, and nothing private?",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": true,
+    "scheduleAdds": [
+      {
+        "line": 1,
+        "child": "Mia",
+        "cadence": "weekly",
+        "date": "2026-11-07",
+        "time": "11:00",
+        "weeks": 8
+      }
+    ]
+  },
+  "latencyMs": 1710
+}

@@ -58,6 +58,15 @@ export const familyMemoryFacts = pgTable(
      * positive feedback). The inference itself does not increment this.
      */
     signalCount: integer('signal_count').notNull().default(0),
+    /**
+     * VIL-599 · where the fact was said (decision R7). `one_to_one`: in that adult's own
+     * thread, so a non-logistics fact stays theirs. `family`: where every adult heard it.
+     * `unrecorded`: saved before this was kept, or by a writer that cannot say; held back
+     * from every adult while another adult is on record (migration 0218).
+     */
+    sourceAudience: text('source_audience').notNull().default('unrecorded'),
+    /** The adult who said it. Null when no one adult did, or once that user is erased. */
+    sourceUserId: uuid('source_user_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (table) => ({
     // Hot path: agent reads facts by (family, type, key) where still valid
@@ -73,18 +82,28 @@ export const familyMemoryFacts = pgTable(
       'family_memory_facts_source_chk',
       sql`${table.memorySource} IN ('parent_message', 'calendar', 'receipt', 'inferred', 'legacy')`,
     ),
+    sourceAudienceCheck: check(
+      'family_memory_facts_source_audience_chk',
+      sql`${table.sourceAudience} IN ('one_to_one', 'family', 'unrecorded')`,
+    ),
     temporaryExpiryCheck: check(
       'family_memory_facts_temporary_expiry_chk',
       sql`${table.memoryKind} <> 'temporary' OR ${table.expiresAt} IS NOT NULL`,
     ),
-    // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_key_idx` (migration
-    // 0084) is a partial UNIQUE index on (family_id, child_id, fact_type, fact_key)
-    // WHERE valid_until IS NULL, with NULLS NOT DISTINCT so family-wide facts are
-    // covered too. Drizzle's index builder cannot express NULLS NOT DISTINCT (only
-    // `unique()` constraints can, and those cannot be partial), so declaring it as a
-    // plain uniqueIndex would MISdescribe the live object — nulls-distinct, which
-    // exempts most of the table. It lives in hand-written SQL; `writeFact`
-    // (apps/web/lib/memory/facts.ts) is the writer that satisfies it.
+    // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_scope_idx` (migration
+    // 0218, replacing 0084's `memory_facts_one_live_per_key_idx`) is a partial UNIQUE
+    // index on (family_id, child_id, fact_type, fact_key, scope) WHERE valid_until IS
+    // NULL, with NULLS NOT DISTINCT so family-wide and household facts are covered too.
+    // The scope is the speaker of a private fact (said in their 1:1 and not shared by
+    // R7), coalesced to the row's own id once that user is deleted; 'unrecorded' for a
+    // row no adult is recorded saying (the nightly writer); and NULL for every household
+    // fact. `liveScopeSql` (apps/worker/src/services/memory-context.ts) is the same
+    // expression. So two adults' private facts on one key are both live, the nightly
+    // writer never supersedes a household fact, and each scope holds one live row. Drizzle's index builder cannot express
+    // NULLS NOT DISTINCT (only `unique()` constraints can, and those cannot be partial),
+    // so declaring it as a plain uniqueIndex would MISdescribe the live object —
+    // nulls-distinct, which exempts most of the table. It lives in hand-written SQL;
+    // `writeFact` (apps/web/lib/memory/facts.ts) is the writer that satisfies it.
   }),
 );
 

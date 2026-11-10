@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "reason": "Text correctly says login failed, no registration and no spot held, no charge, and points to the link that follows. Chinese language used. Minor: it says the session has no held spot which is accurate. No promise of retry. Fits watchFor well.",
-    "score": 5
-  }
-}

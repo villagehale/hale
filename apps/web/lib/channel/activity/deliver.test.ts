@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { watchWarranted } from './deliver';
+import { textSlots, watchWarranted } from './deliver';
 import type { FollowUpPick } from './followup-note';
 
 /**
@@ -72,5 +72,41 @@ describe('watchWarranted', () => {
     // and the sentence that promises one stops meaning anything.
     expect(watchWarranted([pick({ when: 'Sundays', price: '$124' })])).toBe(false);
     expect(watchWarranted([pick({ when: 'Starts Sept 14', price: '$124 per term' })])).toBe(false);
+  });
+});
+
+/**
+ * THE SLOTS THE TEXT CARRIES. On 2026-11-09 the live extract put the registration row
+ * third, behind two class rows for the same programme, and the text — which carried the
+ * first two — never told the parent the date the pass had opened a page to read.
+ */
+describe('textSlots', () => {
+  const classRow = pick({ registration: 'Availability and pricing only show after login' });
+  const scheduleRow = pick({ name: 'Tiny Gym (schedule at a glance)', price: null });
+  const registrationRow = pick({
+    name: 'Fall registration (covers Tiny Gym)',
+    when: null,
+    price: null,
+    registration: 'Fall registration opened Wednesday July 22 at 8:00am, online',
+  });
+  const otherClass = pick({ name: 'Kinderfun', registration: null });
+
+  it('carries a later registration date alongside the two best slots', () => {
+    const { picks, held } = textSlots([classRow, scheduleRow, otherClass, registrationRow]);
+    expect(picks).toEqual([classRow, scheduleRow, registrationRow]);
+    expect(held).toEqual([otherClass]);
+  });
+
+  it('leaves the cut alone when a slot in the text already states a registration date', () => {
+    const dated = pick({ registration: 'Registration opens Aug 11 at 7 a.m.' });
+    const { picks, held } = textSlots([dated, scheduleRow, registrationRow]);
+    expect(picks).toEqual([dated, scheduleRow]);
+    expect(held).toEqual([registrationRow]);
+  });
+
+  it('does not count registration prose with no date as a registration fact', () => {
+    const { picks, held } = textSlots([classRow, scheduleRow, otherClass]);
+    expect(picks).toEqual([classRow, scheduleRow]);
+    expect(held).toEqual([otherClass]);
   });
 });

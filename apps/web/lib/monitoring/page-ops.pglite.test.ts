@@ -256,6 +256,27 @@ describe('pageOps: the one primitive', () => {
     expect(posted[1]).toContain('reason write_failed.');
   });
 
+  it('a reference travels only as a row id: anything else is redacted', async () => {
+    const ref = '0b7e8a52-4f1c-4d7e-9a3b-2c6d5e4f3a21';
+    await pageOps(
+      db.database,
+      { site: 'erasure_intake_undecodable', facts: { number: 'released' }, ref },
+      { post, now: new Date(BASE.getTime() + 90 * HOUR) },
+    );
+    await pageOps(
+      db.database,
+      offList({
+        site: 'erasure_intake_undecodable',
+        facts: { number: 'released' },
+        ref: '+15555550199',
+      }),
+      { post, now: new Date(BASE.getTime() + 91 * HOUR) },
+    );
+    expect(posted[0]).toContain(`ref ${ref}.`);
+    expect(posted[1]).not.toContain('5555550199');
+    expect(posted[1]).toContain('ref redacted.');
+  });
+
   it("a key outside its site's list never travels, and is counted", async () => {
     await pageOps(
       db.database,

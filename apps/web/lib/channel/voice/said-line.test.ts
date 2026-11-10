@@ -43,6 +43,41 @@ describe('said-line · code checks the facts, the model writes the words', () =>
   });
 });
 
+describe('a required fact counts only as a whole word, never as part of a host', () => {
+  const identity: SaidLineInput = {
+    purpose: 'identity',
+    language: 'en',
+    facts: { site: 'villagehale.com', contact: 'aloha@villagehale.com' },
+    mustInclude: ['villagehale.com', 'aloha@villagehale.com'],
+  };
+
+  it('accepts the facts standing as themselves', () => {
+    const text = 'See villagehale.com or write aloha@villagehale.com.';
+    expect(acceptSaidLine(text, identity)).toBe(text);
+  });
+
+  it.each([
+    ['a look-alike host around the site', 'See evilvillagehale.com or aloha@villagehale.com.'],
+    ['a look-alike address around the email', 'See villagehale.com or xaloha@villagehale.com'],
+    ['a host glued on after the site', 'See villagehale.com.evil.app or aloha@villagehale.com'],
+    ['a look-alike joined by a zero-width space', 'See evil\u200Bvillagehale.com or aloha@villagehale.com'],
+    ['a title-case host beside the facts', 'See villagehale.com, aloha@villagehale.com or evil.Com'],
+  ])('refuses %s', (_label, text) => {
+    expect(acceptSaidLine(text, identity)).toBeNull();
+  });
+
+  it('refuses a host built around a fact that is not itself a link', () => {
+    const club: SaidLineInput = {
+      purpose: 'health',
+      language: 'en',
+      facts: { club: 'kidsclub' },
+      mustInclude: ['kidsclub'],
+    };
+    expect(acceptSaidLine('Ask kidsclub at the desk.', club)).toBe('Ask kidsclub at the desk.');
+    expect(acceptSaidLine('See kidsclub.evil.app tonight.', club)).toBeNull();
+  });
+});
+
 describe('#919: mustConvey keys are structural; meaning is the convey judge', () => {
   const off: SaidLineInput = {
     purpose: 'intro_reply',

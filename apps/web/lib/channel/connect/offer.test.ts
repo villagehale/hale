@@ -277,7 +277,7 @@ describe('connectorLinkHandler', () => {
     expect(verdict.outcome).toBe('sent');
     expect(verdict.reply).toContain('https://app.villagehale.com/connect?t=');
     expect(verdict.reply).toContain('Google Calendar');
-    expect(verdict.reply).toContain('minutesValid=15');
+    expect(verdict.reply).toContain('minutesValid: 15');
   });
 
   it('asks the model for a French line when the household is French', async () => {
@@ -343,9 +343,9 @@ describe('connectorLinkHandler', () => {
       );
       if (!verdict.claimed) throw new Error('expected the handler to claim');
       expect(verdict.outcome).toBe('sent');
-      expect(verdict.reply).toContain('service=Gmail');
+      expect(verdict.reply).toContain('service: Gmail');
       expect(verdict.reply).toContain('to=gmail');
-      expect(verdict.reply).toContain('minutesValid=15');
+      expect(verdict.reply).toContain('minutesValid: 15');
       expect(verdict.reply).not.toMatch(/text me the words/i);
       expect(verdict.reply).not.toContain('old-gmail');
       const tokens = await db.database.select().from(schema.channelSigninTokens);
@@ -365,7 +365,7 @@ describe('connectorLinkHandler', () => {
       turn('give me a fresh one', conversationId),
     );
     if (!verdict.claimed) throw new Error('expected the handler to claim');
-    expect(verdict.reply).toContain('service=Google Calendar');
+    expect(verdict.reply).toContain('service: Google Calendar');
     expect(verdict.reply).toContain('to=gcal');
     expect(verdict.reply).not.toContain('old-gcal');
   });

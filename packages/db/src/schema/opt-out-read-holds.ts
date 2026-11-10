@@ -33,7 +33,7 @@ export const optOutHeldMessages = pgTable(
     heldAt: timestamp('held_at', { withTimezone: true }).notNull(),
     nextReadAt: timestamp('next_read_at', { withTimezone: true }).notNull(),
     readAttempts: integer('read_attempts').notNull().default(0),
-    /** What the row holds (0219). `message`: a text, released once it is read. Any other
+    /** What the row holds (0225). `message`: a text, released once it is read. Any other
      * value, `id_collision` or one this code does not know, is kept until an operator
      * clears it (opt-out-hold.ts). */
     kind: text('kind').notNull().default('message'),

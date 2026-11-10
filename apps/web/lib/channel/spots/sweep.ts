@@ -24,7 +24,7 @@ import {
 } from '~/lib/registration/class-availability';
 import { type FetchPage, createFetchBody } from '~/lib/registration/verify-sweep';
 import { STATE_TOLD, readSpot } from './availability';
-import { composeSpotOpen } from './compose';
+import { composeSpotOpen, spotOpenCall } from './compose';
 import { type SpotOpenFacts, spotOpenBody } from './copy';
 import { resettleSpotWatchPromise } from './promise';
 import {
@@ -323,7 +323,7 @@ export function defaultWatchedSpotsSweepDeps(): WatchedSpotsSweepDeps {
         console.error({ familyId, outcome: 'no_client' }, 'watched spots: no writer, nothing sent');
         return null;
       }
-      return composeSpotOpen(client, facts, familyId);
+      return composeSpotOpen(spotOpenCall(client), facts, familyId);
     },
     random: Math.random,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
