@@ -73,6 +73,11 @@ describe('SMS candidate eval fixtures', () => {
 
       const failures = Object.values(fixture.checkPolicy).filter((ok) => !ok);
       expect(failures).toHaveLength(fixture.expect === 'approve' ? 0 : 1);
+      // VIL-79: a kid clash passes its check, reports the clash, and is approved.
+      if (fixture.id.includes('kid_clash')) {
+        expect(fixture.expect).toBe('approve');
+        expect(fixture.checkResults.check_calendar_conflict.hasConflict).toBe(true);
+      }
     }
   });
 });

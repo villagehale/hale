@@ -9,6 +9,7 @@ export * from './memory.js';
 export * from './agent.js';
 export * from './entitlements.js';
 export * from './gcal-classify.js';
+export * from './kid-clash-flag.js';
 export * from './village.js';
 export * from './onboarding-intents.js';
 export * from './child-gender.js';

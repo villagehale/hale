@@ -1,0 +1,47 @@
+{
+  "response": {
+    "id": "msg_011CgrqCmkV8LxE98xmhLSLn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSswcKEAgTGAI4AUIIdGhpbmtpbmcSDDMYJbvVsBQ5mWV1fxoMRt7Zmp0yLYqDR0fcIjB9WawA8edcIAbza0eyaly3uLyre4TY66PdQJ2SPJdZ0A6b8RhUZ5BiUdupgcLL8FUq0AZRpvwNOsJl66IsTERcjYJwzQasvZvyVo8LziYrR3asP79f0p10BJnbQz1dY8BHWaiGyBqqez7L9jywQiDOLwuy8/0pK+GtSRu+h2B1OvAQKYM31FKGn47A+2f7vSCur+FK2sDUSFZKt7T1SWlKA9VpXzwBA3FOtmscgtYX5j5RvIyE89fyYI+ysbk/HsO+MHa23rTxTcjo8eLewP/JuFa7DnMyXL2qyoLffYj8rk1PIraYIWWp122OW42w+TVSqSg5czBshrNi6o6v/kzkJ5cLPvScd7mJWg1xhfmOp40PFWdkLePT5zDMwEMwjdmkG02vxg9Gw0SPM+0LcaUlSyTwQq6mXf/wXhmoQf/u+Uw3ASjNSIksOoUKrqpVzmvAjD4VlpEKgC5BtGphNXSJbQbteGC4XJewl6Rh90vcCWGSgX01krKx7+zu4yQ22XtzrHoa742PRoKUDIl7+xIQov1a2JNDm6LHSHjLdyjjP43hMNMINp/agEGHVbHmNdKu2xu0R313LFiEo5p7OJ3kd15ta0tP7QVd9ohQAwRhxHhKNWTtTtZcJo19hiDyn6ax0vjRppP6tDCf3o4XzJNMTk0INhUeusA/YsGEAyfYGTs1lnzgZakaAzWhEyRaaLEkgoIa0L7rB9x7EX6bgT5uahnHy4pPt4XlLBL9siNvNG7x/h3hPwyykvIBlwZYFYLr3lGHQKIUH2mxNNE2Ecwpw2I03FlXP2rH6APmte5YT9FfhqjcSl5Kf9D4981KSk3Ll9MS/iIeXfg32AUbIWBnEL7S/YlsRnkNIfQKUQOvIIliULbHPMB29OdcmU5eirHNST/7RydnGzwZiz7CFk9EFc/xlTNa1Q7AnyuWlpmmGGZESnyY7qXfbHVARAjdo2n88vnLLWgxx80ZjCubK9e3VYWNzotdZvPyeHz+D0hCEs4UouV5G+pQtvq4BS28p1HF8RZeq3SVCC8YPzhucGOZgY3yzH8kMUN0OAnM2MgoD+Mx0VWVLuvMt5A+36M2AYA40E2uL2vaTxwFyrgmPvJBPTjgzgoPx/ypu0FiDaSAzukZs2PrpOtpV+XTHeNef7RkSX4yBKImuxSX+qSzWVD5eKrjb0W4SqhjEK7sJD00jussphgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01R8HzrqW4VQQHGg4ZUS9b33",
+        "name": "submit_verdict",
+        "input": {
+          "verdict": "reject",
+          "rationale": "The idempotency check (check_action_idempotency) returned ok:false for this action_hash. That means the action is probably a duplicate of a recent action for this family. The result had no other detail, such as which earlier action matched. Policy says to reject when a tool returns red and when an action duplicates a recent one. This was the only required check, and it did not pass, so I can't approve.",
+          "remediation": "Check whether this EarlyON drop-in is already in the family's routine or has a pending add_to_routine draft. If it isn't, re-submit the draft and re-run the idempotency check. If the check still fails, send it to a human for review."
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 474,
+      "cache_read_input_tokens": 1453,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 474,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 411,
+      "output_tokens_details": {
+        "thinking_tokens": 122
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 3726
+}

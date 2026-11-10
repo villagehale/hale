@@ -188,6 +188,9 @@ export interface ActivityPick {
   placeId?: string;
   civicVenueId?: string;
   evidence?: ActivityFactEvidence;
+  /** VIL-79 · a real session instant, set ONLY by a source that publishes one. The
+   * free-text `when` is never parsed into this. No producer sets it yet. */
+  session?: { startsAt: string; endsAt: string | null };
 }
 
 /**

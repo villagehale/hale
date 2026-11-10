@@ -421,8 +421,8 @@
   },
   "reviewer": {
     "name": "reviewer",
-    "version": 1,
-    "sha256": "d7cb3b908395a69a90f70de37c61e690f55d5090440970ab4102d521ba945c94"
+    "version": null,
+    "sha256": "8570b61c9110a90780ac527d0a622461bbe48383ddf0a20471f0b60bf42b2443"
   },
   "routine": {
     "name": "routine",

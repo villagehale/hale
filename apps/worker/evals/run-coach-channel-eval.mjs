@@ -179,6 +179,10 @@ import {
 import { expandSyntheticFixtures } from './lib/model-matrix-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Clash-case recordings were taken with the notice on. Exact `true` so a live
+// re-record still returns kid-clash facts (CI cached-only replays the cache).
+process.env.KID_CLASH_NOTICE_ENABLED = 'true';
 const REPO_ROOT = join(HERE, '..', '..', '..');
 /** The REAL framework-guidance tool (pure, no DB) — imported rather than replicated
  * because the skill's frontmatter now requires it and a replica would drift from the
