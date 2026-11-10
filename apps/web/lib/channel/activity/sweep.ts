@@ -41,6 +41,7 @@ import {
   deliverFollowUp,
   learnedSomethingNew,
   noEvidence,
+  textSlots,
 } from './deliver';
 import type { PageVerdict } from './evidence';
 import { type FollowUpPick, createFollowUpComposer } from './followup-note';
@@ -430,8 +431,7 @@ async function keepOne(
       // The text carries the best one or two. The rest stay in the chat until the parent
       // asks. Slicing here, rather than asking the model for a shortlist, is what makes
       // "there are more" true of a real remainder.
-      picks = deep.slots.slice(0, SLOTS_IN_TEXT);
-      held = deep.slots.slice(SLOTS_IN_TEXT);
+      ({ picks, held } = textSlots(deep.slots));
     } else if (deep.status === 'unread') {
       // It reached the web and could not open one page — every fetch refused or
       // unreachable, which the live probe showed is a real and common shape. It knows

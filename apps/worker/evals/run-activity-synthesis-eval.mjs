@@ -406,8 +406,12 @@ function score(fixture, rows) {
   }
 
   const kept = keptText(slots);
+  // An entry that is a list is one fact in the spellings a value may give it ("Dec 7").
   for (const term of fixture.mustCarry ?? []) {
-    if (!kept.includes(term.toLowerCase())) failures.push(`dropped a fact on the page: ${term}`);
+    const spellings = Array.isArray(term) ? term : [term];
+    if (!spellings.some((spelling) => kept.includes(spelling.toLowerCase()))) {
+      failures.push(`dropped a fact on the page: ${spellings.join(' or ')}`);
+    }
   }
   // Read against what was ASSERTED, not what survived: the party-room rental and the
   // invented registration date are both claims the skill must not make, and both would
