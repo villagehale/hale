@@ -14,6 +14,7 @@ import type { OfferedCandidate } from '~/lib/coach/tools';
 import { ACTIVITY_REVIEWS_SURFACE_ENV } from '~/lib/reviews/aggregate';
 import { ACTIVITY_REVIEWS_ENABLED_ENV, runReviewCapture } from '~/lib/reviews/capture';
 import type { VerdictOutcome, VerdictReader } from '~/lib/reviews/verdict';
+import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 
 /**
@@ -43,9 +44,9 @@ import { type TestDb, createTestDb } from '~/lib/testing/pglite';
  */
 
 const TZ = 'America/Toronto';
-/** Halton Hills — a municipality `matchAreaKey` resolves to one bucket, so "near you"
- * means a town rather than an FSA. */
-const AREA = 'L7G';
+/** Documented in lib/testing/fixture-postal.ts. Unmapped in the GTA table, so
+ * `matchAreaKey` keeps the FSA itself. */
+const AREA = FIXTURE_FSA;
 /** The activity itself: Saturday morning, two days before the sweep runs. */
 const PLACED_AT = new Date('2026-09-12T14:00:00.000Z');
 /** Monday 10:00 Toronto — outside quiet hours, inside the 1–4 day ask window. */
@@ -53,10 +54,10 @@ const ASK_AT = new Date('2026-09-14T14:00:00.000Z');
 
 /** The registry venue three households are about to agree on. */
 const VENUE_ID = '9f1c2b6a-7d31-4c2e-9a54-0a2b3c4d5e6f';
-const TITLE = 'Georgetown EarlyON drop-in';
+const TITLE = 'Riverside family drop-in';
 /** The branch itself — what the three households actually answered about, and so what
  * the clause names (founder decision 2: venue grain, silent about the programme). */
-const VENUE = 'Georgetown Library';
+const VENUE = 'Riverside Library';
 
 /**
  * `activity-verdict-fixtures.mjs#two-clauses`, verbatim — the reply and the answer the
@@ -230,7 +231,7 @@ async function anotherFamilySays(
     sourceMessageId: message?.id as string,
     subjectSource: 'civic_venue',
     subjectRef: VENUE_ID,
-    areaKey: 'halton_hills',
+    areaKey: AREA,
     childAgeBand: 'toddler',
     verdict,
     tags: [],
@@ -327,7 +328,7 @@ describe('a review reaches the next parent', () => {
     }).toEqual({
       subjectSource: 'civic_venue',
       subjectRef: VENUE_ID,
-      areaKey: 'halton_hills',
+      areaKey: AREA,
       childAgeBand: 'toddler',
       verdict: 'worth_it',
     });

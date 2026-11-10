@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { namesAVenue } from '~/lib/channel/activity/evidence';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
 import { hasLinkShape } from '~/lib/format/link-shape';
+import { FIXTURE_CITY, FIXTURE_FSA } from '~/lib/testing/fixture-postal';
 import { ACTIVITY_CATEGORIES } from './activity-map';
 import { WEEK_FIND_SUBJECT } from './first-touch-find';
 import { type WeekendPick, YEAR_FIND_CAP } from './radar-decide';
@@ -23,8 +24,8 @@ describe('the search seeds', () => {
 });
 
 describe('yearOpenQuery', () => {
-  it('asks for the kids year in Halton Hills, with the stage beside the subject', () => {
-    const query = yearOpenQuery({ children: [SEB], town: 'Halton Hills' });
+  it('asks for the kids year in the fixture town, with the stage beside the subject', () => {
+    const query = yearOpenQuery({ children: [SEB], town: FIXTURE_CITY });
     expect(query.ok).toBe(true);
     if (!query.ok) return;
     expect(query.query.subject).toBe(YEAR_OPEN_SUBJECT);
@@ -32,12 +33,12 @@ describe('yearOpenQuery', () => {
     expect(YEAR_OPEN_SUBJECT).toContain('examples not a limit');
     expect(namesAVenue(YEAR_OPEN_SUBJECT)).toBe(false);
     expect(query.query.stage).toBe('toddler');
-    expect(query.query.town).toBe('Halton Hills');
+    expect(query.query.town).toBe(FIXTURE_CITY);
     expect(query.query.window).toBe('this year');
     expect(query.query.subject).not.toMatch(/toddler|baby|teenager|preschool/);
     expect(JSON.stringify(query.query)).not.toContain('Seb');
     expect(JSON.stringify(query.query)).not.toContain('17');
-    expect(JSON.stringify(query.query)).not.toContain('L7G');
+    expect(JSON.stringify(query.query)).not.toContain(FIXTURE_FSA);
   });
 
   it('keeps the same subject at the edges of 0-18 and still names the stage', () => {
@@ -65,7 +66,7 @@ describe('yearOpenQuery', () => {
   it('sends every household stage when siblings do not share one', () => {
     const query = yearOpenQuery({
       children: [SEB, { name: 'Jo', ageMonths: 96 }],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
     });
     expect(query.ok).toBe(true);
     if (!query.ok) return;
@@ -119,7 +120,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time'), pick('Music')],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: { find },
       familyId: 'fam',
       today: TODAY,
@@ -146,7 +147,7 @@ describe('collectYearOpenLines', () => {
         },
       ],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: { find },
       familyId: 'fam',
       today: TODAY,
@@ -162,7 +163,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: null,
       familyId: 'fam',
       today: TODAY,
@@ -180,7 +181,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time')],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder,
       familyId: 'fam',
       today: TODAY,
@@ -198,7 +199,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [pick('Story time')],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: {
         async find() {
           return {
@@ -226,7 +227,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB, { name: 'Jo', ageMonths: 96, dobPrecision: 'derived' }],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: {
         async find() {
           return {
@@ -314,7 +315,7 @@ describe('collectYearOpenLines', () => {
     const opened = await collectYearOpenLines({
       civic: [],
       children: [SEB],
-      town: 'Halton Hills',
+      town: FIXTURE_CITY,
       finder: {
         async find() {
           return { found: true, picks: [webPick('Lantern festival', 'all ages')] };

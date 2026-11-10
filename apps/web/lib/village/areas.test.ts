@@ -1,5 +1,6 @@
 import { schema } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import { FIXTURE_FSA, FIXTURE_POSTAL } from '~/lib/testing/fixture-postal';
 import {
   addArea,
   hasCoordinateFields,
@@ -345,15 +346,15 @@ describe('resolveActiveAreaCoarse — active area drives village content, legacy
       createdAt: new Date(),
     };
     // Legacy field is a DIFFERENT area — the active row must win.
-    const { db } = fakeDb({ limitRows: [active], family: { areaCoarse: 'L7G' } });
+    const { db } = fakeDb({ limitRows: [active], family: { areaCoarse: FIXTURE_FSA } });
     const coarse = await resolveActiveAreaCoarse(db, FAMILY_ID);
     expect(coarse).toBe('K1P');
   });
 
   it('falls back to the legacy families.area_coarse when the family has NO active row (backfill-equivalent)', async () => {
-    const { db } = fakeDb({ limitRows: [], family: { areaCoarse: 'L7G' } });
+    const { db } = fakeDb({ limitRows: [], family: { areaCoarse: FIXTURE_FSA } });
     const coarse = await resolveActiveAreaCoarse(db, FAMILY_ID);
-    expect(coarse).toBe('L7G');
+    expect(coarse).toBe(FIXTURE_FSA);
   });
 
   it('returns null when there is neither an active row nor a legacy area', async () => {
@@ -396,7 +397,7 @@ describe('listAreas — the switcher list', () => {
         city: 'Burlington',
         province: 'ON',
         note: 'home',
-        postalCode: 'L7G 0A1',
+        postalCode: FIXTURE_POSTAL,
         isActive: true,
         createdAt: new Date('2026-07-01T00:00:00Z'),
       },
@@ -409,7 +410,7 @@ describe('listAreas — the switcher list', () => {
         city: 'Burlington',
         province: 'ON',
         note: 'home',
-        postalCode: 'L7G 0A1',
+        postalCode: FIXTURE_POSTAL,
         isActive: true,
         createdAt: '2026-07-01T00:00:00.000Z',
       },
