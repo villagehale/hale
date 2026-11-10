@@ -1,5 +1,7 @@
 import { howItWentAsk } from '~/lib/channel/how-it-went-copy';
 import type { ReplyLanguage } from '~/lib/channel/language';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { speak } from '~/lib/channel/spoken-line';
 
 /**
@@ -157,4 +159,11 @@ const BOTH_FREE_ASK =
 
 export function matchBothFreeAsk(body: string): boolean {
   return BOTH_FREE_ASK.test(body);
+}
+
+/** Production matcher. Off, the regex. On, a Haiku read; unread is a miss. */
+export async function matchBothFreeAskSweep(body: string): Promise<boolean> {
+  if (!modelReadSweepEnabled()) return matchBothFreeAsk(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'both_free', text: body });
+  return reading?.hit === true;
 }

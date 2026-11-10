@@ -61,6 +61,8 @@ const PLACE_JUDGE_TIER = 'sonnet';
 const JUDGE_ESTIMATE_OUTPUT_TOKENS = 4096;
 
 process.env.LINQ_GROUP_ONBOARDING_V2_ENABLED = 'false';
+// Regex judge path: the meaning-screen sweep is its own eval.
+process.env.MODEL_READ_SWEEP_ENABLED = 'false';
 
 register({ tsconfig: WEB_TSCONFIG });
 const importTs = (absPath) => import(pathToFileURL(absPath).href);

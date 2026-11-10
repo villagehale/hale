@@ -85,6 +85,8 @@
     "eval:reply-resolver": "node evals/run-reply-resolver-eval.mjs --cached-only",
     "eval:calendar-offer-read": "node evals/run-calendar-offer-read-eval.mjs --cached-only",
     "eval:connector-disconnect-read": "node evals/run-connector-disconnect-read-eval.mjs --cached-only",
+    "eval:meaning-screen": "node evals/run-meaning-screen-eval.mjs --cached-only",
+    "eval:meaning-screen:dry": "node evals/run-meaning-screen-eval.mjs --dry",
     "eval:rec-morning-read": "node evals/run-rec-morning-read-eval.mjs --cached-only",
     "eval:rec-morning-topic": "node evals/rec-morning-topic-eval.mjs --cached-only",
     "eval:rec-morning-topic:estimate": "node evals/rec-morning-topic-eval.mjs --estimate",

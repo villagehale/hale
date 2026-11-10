@@ -436,6 +436,9 @@
   "match-team-schedule.md": {
     "file": "match-team-schedule.md",
     "sha256": "ed9f91ba8b0dc45106ee55a095b2ae2814d8498f499456f2a223758fb3f18af3"
+  "meaning-screen.md": {
+    "file": "meaning-screen.md",
+    "sha256": "094fb65d060c1744c45119aa04137fb70d8326c8b4e5d9bd34abb976babb5e9e"
   },
   "medical-answer.md": {
     "file": "medical-answer.md",

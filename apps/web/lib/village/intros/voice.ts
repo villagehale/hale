@@ -2,6 +2,8 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickLane } from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { OPT_OUT_LINE } from '~/lib/channel/opt-out';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -114,7 +116,7 @@ export type IntroAskRefusal =
  * an interrogative makes the copy worse, and what has to be stopped is the interrogation.
  * Whether it actually asks is held by the required-word refusals.
  */
-export function introAskRefusals(body: string, request: IntroAskRequest): IntroAskRefusal[] {
+function shapeIntroAskRefusals(body: string, request: IntroAskRequest): IntroAskRefusal[] {
   const found: IntroAskRefusal[] = [];
   if (body === '') return ['empty'];
   if (body.length > MAX_INTRO_ASK_CHARS) found.push('over_char_cap');
@@ -122,7 +124,6 @@ export function introAskRefusals(body: string, request: IntroAskRequest): IntroA
   if (hasLinkShape(body)) found.push('carries_link');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');
   if (!/^\p{Lu}/u.test(body)) found.push('not_a_sentence');
-  if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
 
   const lower = body.toLowerCase();
   if (!lower.includes('introduc') && !lower.includes('intro')) {
@@ -148,6 +149,31 @@ export function introAskRefusals(body: string, request: IntroAskRequest): IntroA
   if (body.includes('@')) found.push('carries_address');
   if (/\d/.test(residue)) found.push('invented_number');
   return found;
+}
+
+export function introAskRefusals(body: string, request: IntroAskRequest): IntroAskRefusal[] {
+  const found = shapeIntroAskRefusals(body, request);
+  if (KEYWORD_INSTRUCTION.test(body)) found.push('instructs_keyword');
+  return found;
+}
+
+/** Production gate. Off, the keyword-instruction regex. On, a Haiku read; unread refuses. */
+export async function introAskRefusalsSweep(
+  body: string,
+  request: IntroAskRequest,
+): Promise<IntroAskRefusal[]> {
+  const shape = shapeIntroAskRefusals(body, request);
+  if (shape.includes('empty')) return shape;
+  if (!modelReadSweepEnabled()) {
+    if (KEYWORD_INSTRUCTION.test(body)) shape.push('instructs_keyword');
+    return shape;
+  }
+  const reading = await sharedMeaningScreen().read({
+    screen: 'copy_keyword_instruction',
+    text: body,
+  });
+  if (!reading || reading.hit) shape.push('instructs_keyword');
+  return shape;
 }
 
 /**
@@ -273,7 +299,7 @@ export function createIntroVoice(client: () => AgentClient): IntroVoice {
         }
 
         const body = plainText(raw);
-        const problems = introAskRefusals(body, request);
+        const problems = await introAskRefusalsSweep(body, request);
         if (problems.length === 0) return { status: 'composed', body };
         rejected.push({ ask: body, problems });
       }

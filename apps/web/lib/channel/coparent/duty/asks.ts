@@ -9,6 +9,8 @@ import {
   type FamilyOutboundTarget,
   familyOutboundTarget,
 } from '~/lib/channel/linq/family-outbound';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
 import { splitKidEvent, spokenBlockTitle, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { LinqSendError } from '~/lib/channel/linq/transport';
@@ -90,6 +92,13 @@ export const DUTY_STOP_ASKING_MS = 30 * 24 * 60 * 60 * 1000;
 /** A parent said "stop asking". Not a bare STOP, which is the CASL keyword. */
 export function matchDutyStopAsking(text: string): boolean {
   return /\bstop asking\b/i.test(text.trim().replace(/[’]/g, "'"));
+}
+
+/** Production matcher. Off, the phrase. On, a Haiku read; unread is a miss. */
+export async function matchDutyStopAskingSweep(text: string): Promise<boolean> {
+  if (!modelReadSweepEnabled()) return matchDutyStopAsking(text);
+  const reading = await sharedMeaningScreen().read({ screen: 'duty_stop_asking', text });
+  return reading?.hit === true;
 }
 
 export function dutyStopAskingActive(value: unknown, now: Date): boolean {
@@ -1573,7 +1582,7 @@ export async function answerParentDutyAsk(
   | { delivery: DutyDelivery }
 > {
   if (!coparentDutySendsActive(input.familyId)) return { skipped: 'flag_off' };
-  if (matchDutyStopAsking(input.text)) {
+  if (await matchDutyStopAskingSweep(input.text)) {
     await writeFact(database, {
       familyId: input.familyId,
       childId: null,

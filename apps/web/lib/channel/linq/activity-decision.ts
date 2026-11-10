@@ -1,5 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { type GroupActivityDecision, queueGroupActivityDecision } from './family-outbound';
 
 /**
@@ -59,6 +61,25 @@ export function readGroupActivityDecision(body: string): GroupActivityDecision |
   return null;
 }
 
+async function activityDecisionForQueue(body: string): Promise<GroupActivityDecision | null> {
+  if (!modelReadSweepEnabled()) return readGroupActivityDecision(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'activity_decision', text: body });
+  if (!reading) return null;
+  if (reading.decision === 'picked' && reading.activity && reading.kid && reading.day && reading.time) {
+    return {
+      decision: 'picked',
+      activity: reading.activity,
+      kid: reading.kid,
+      day: reading.day,
+      time: reading.time,
+    };
+  }
+  if (reading.decision === 'passed' && reading.activity && reading.kid) {
+    return { decision: 'passed', activity: reading.activity, kid: reading.kid };
+  }
+  return null;
+}
+
 /**
  * Queue a 1:1 decision for the household group. The kid must be a child on
  * this family (given name, case-insensitive). Anything else is skipped.
@@ -73,7 +94,7 @@ export async function queueActivityDecisionFromReply(
     now: Date;
   },
 ): Promise<'queued' | 'skipped'> {
-  const decision = readGroupActivityDecision(input.body);
+  const decision = await activityDecisionForQueue(input.body);
   if (!decision) return 'skipped';
   if (typeof database.select !== 'function') return 'skipped';
   const kids = await database
