@@ -20,11 +20,13 @@
  * CJK sentence, and bracketed or spaced dots closed up. Hosts are the shared check's
  * link-shaped words, and a host is read by the browser's own URL parser (`linkHostname`),
  * never by hand. A reply with nothing to drop is returned byte for byte; one that loses a
- * token is sent as that reading with the token cut, so what is sent is what was checked.
+ * token is sent as that reading with a space where the token sat, then checked again
+ * until nothing changes, so a tidy step cannot glue a new host after the cut.
  *
- * A shape that reads as a year, a price, a quantity or a date is let through only when the
- * email does not carry that exact string. Anything the email carries and the trusted text
- * does not is dropped, whatever its shape, so an email's "4pm-6pm" or "1987" goes too.
+ * A shape that reads as a year, a price or a quantity is let through only when the email
+ * does not carry that exact string. A phone-shaped match is always a phone: a short prefix
+ * plus a date never hides it. Anything the email carries and the trusted text does not is
+ * dropped, whatever its shape, so an email's "4pm-6pm" or "1987" goes too.
  *
  * Host shape: a word is a host when the shared link check (VIL-613, `hasLinkShape`)
  * says a phone would make a link of it. That check fails closed, so on a read turn
@@ -77,10 +79,6 @@ const KEYPAD: Readonly<Record<string, string>> = Object.fromEntries(
     [...letters].map((letter) => [letter, String(at + 2)]),
   ),
 );
-// A date the phone shape also reads as digits: 2026-11-13, 13.11.2026, 2025-2026. A phone
-// match is let off only when, its dates aside, it has too few digits to dial and no '+'.
-const DATE_SPAN =
-  /(?<!\p{Nd})(?:(?:19|20)\d{2}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}[-./]\d{1,2}[-./](?:19|20)\d{2}|(?:19|20)\d{2}\s?[-‐-―−]\s?(?:19|20)\d{2})(?!\p{Nd})/gu;
 // A whole number of the national plan, so a country code in front of it is the only
 // prefix a match allows: a 7-digit local number never stands in for one with an area code.
 const NATIONAL_MIN_DIGITS = 10;
@@ -129,10 +127,8 @@ function isCode(token: string, shapesExempt: ShapesExempt): boolean {
   );
 }
 
-function isPhone(match: string, shapesExempt: ShapesExempt): boolean {
-  if (digitsOf(match).length < PHONE_MIN_DIGITS) return false;
-  if (!shapesExempt(match) || match.startsWith('+')) return true;
-  return digitsOf(match.replace(DATE_SPAN, '')).length >= PHONE_MIN_DIGITS;
+function isPhone(match: string): boolean {
+  return digitsOf(match).length >= PHONE_MIN_DIGITS;
 }
 
 /** A vanity number's key is the digits a keypad dials for it. */
@@ -148,7 +144,7 @@ function numbersIn(read: string, shapesExempt: ShapesExempt): Token[] {
   const push = (kind: EmailOnlyKind, key: string, from: number, length: number) =>
     found.push({ kind, key, from, to: from + length });
   for (const match of read.matchAll(PHONE)) {
-    if (isPhone(match[0], shapesExempt)) {
+    if (isPhone(match[0])) {
       push('phone', digitsOf(match[0]), match.index, match[0].length);
     }
   }
@@ -208,6 +204,8 @@ const HALE_OWN: readonly string[] = [
   JSON.stringify(crisisFactsForRegion(null, 'mental')),
 ];
 
+const CUT_PASSES = 8;
+
 export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): EmailOnlyResult {
   const dropped: Record<EmailOnlyKind, number> = { phone: 0, code: 0, host: 0 };
   if (check.emails.length === 0) return { text: reply, dropped };
@@ -230,18 +228,42 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
     return !emailReads.some((email) => email.includes(lower));
   };
 
+  let text = reply;
+  for (let pass = 0; pass < CUT_PASSES; pass++) {
+    const once = dropPass(text, { trusted, trustedNumbers, trustedHosts, shapesExempt });
+    dropped.phone += once.dropped.phone;
+    dropped.code += once.dropped.code;
+    dropped.host += once.dropped.host;
+    if (once.text === text) return { text, dropped };
+    text = once.text;
+  }
+  return { text, dropped };
+}
+
+function dropPass(
+  reply: string,
+  known: {
+    trusted: readonly string[];
+    trustedNumbers: readonly Token[];
+    trustedHosts: ReadonlySet<string>;
+    shapesExempt: ShapesExempt;
+  },
+): EmailOnlyResult {
+  const dropped: Record<EmailOnlyKind, number> = { phone: 0, code: 0, host: 0 };
   const read = asHandsetReads(reply);
-  const untrustedWords = new Set(linksOutside(reply, trusted));
+  const untrustedWords = new Set(linksOutside(reply, known.trusted));
   const hosts: Token[] = wordSpans(read)
     .filter((span) => hasLinkShape(span.word))
     .flatMap((span) => {
       const host = hostOf(span.word);
       const trustedWord = !untrustedWords.has(span.word.toLowerCase());
-      if (trustedWord || (host !== null && trustedHosts.has(host))) return [];
+      if (trustedWord || (host !== null && known.trustedHosts.has(host))) return [];
       return [{ kind: 'host' as const, key: host ?? '', from: span.from, to: span.to }];
     });
   const cuts = [
-    ...numbersIn(read, shapesExempt).filter((token) => !trustedHas(token, trustedNumbers)),
+    ...numbersIn(read, known.shapesExempt).filter(
+      (token) => !trustedHas(token, known.trustedNumbers),
+    ),
     ...hosts,
   ].sort((a, b) => a.from - b.from);
   if (cuts.length === 0) return { text: reply, dropped };
@@ -250,6 +272,7 @@ export function dropEmailOnlyTokens(reply: string, check: EmailOnlyCheck): Email
   for (const cut of cuts) {
     dropped[cut.kind] += 1;
     if (cut.from > at) text += read.slice(at, cut.from);
+    text += ' ';
     at = Math.max(at, cut.to);
   }
   text += read.slice(at);

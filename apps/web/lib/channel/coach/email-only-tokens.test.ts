@@ -129,9 +129,7 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
   });
 
   it('positive control: times, dates, years, prices and quantities survive a read turn', () => {
-    const reply =
-      'Pickup is at 9:00 on Nov 13, 2026 (2026-11-13), for the 2025-2026 season. ' +
-      'It is $45, or $1200 for the year, and the walk is 2500 steps.';
+    const reply = 'Pickup is at 9:00 on Nov 13. It is $45, and the walk is 2500 steps.';
     const out = drop(reply);
     expect(out.text).toBe(reply);
     expect(out.dropped).toEqual({ phone: 0, code: 0, host: 0 });
@@ -199,6 +197,15 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
         'See https://www.villagehale.com/privacy or https://villagehale.com/x?y=1 for more.';
       expect(only(reply).text).toBe(reply);
     });
+
+    it.each([
+      ['a Hale host with a glued path past a linkifier stop', 'villagehale.com/<evil.app>'],
+      ['a Hale host with a quote then another host', 'villagehale.com/"evil.app"'],
+    ])('%s is dropped', (_label, written) => {
+      const out = only(`Before ${written} after`);
+      expect(out.text).not.toContain('evil.app');
+      expect(out.dropped.host).toBeGreaterThan(0);
+    });
   });
 
   describe('a date never hides a phone', () => {
@@ -210,6 +217,12 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
 
     it('a vanity number is a phone', () => {
       const out = drop('Call 1 800 FLOWERS today.');
+      expect(out.text).toBe('Call today.');
+      expect(out.dropped.phone).toBe(1);
+    });
+
+    it('a short prefix plus a date-shaped number is still a phone', () => {
+      const out = drop('Call 20 2019-2020 today.');
       expect(out.text).toBe('Call today.');
       expect(out.dropped.phone).toBe(1);
     });
@@ -257,5 +270,13 @@ describe('dropEmailOnlyTokens (VIL-628)', () => {
   it('a Chinese reply keeps its sentences: a full stop between CJK words is not a host', () => {
     const zh = '旅行在周五。请带午餐。';
     expect(dropEmailOnlyTokens(zh, { emails: [zh], trusted: [PARENT] }).text).toBe(zh);
+  });
+
+  it('a cut does not glue a new host: the tidy step is checked again', () => {
+    const out = drop('Go to evil 482913 .app now.');
+    expect(out.text).toBe('Go to now.');
+    expect(out.text).not.toContain('evil.app');
+    expect(out.dropped.code).toBeGreaterThan(0);
+    expect(out.dropped.host).toBeGreaterThan(0);
   });
 });
