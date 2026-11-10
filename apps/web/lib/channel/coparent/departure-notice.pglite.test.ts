@@ -85,7 +85,7 @@ interface Household {
   departedPhone: string;
 }
 
-async function seedHousehold(options: { locale?: string; watchConsent?: boolean } = {}) {
+async function seedHousehold(options: { language?: string; watchConsent?: boolean } = {}) {
   households += 1;
   const stayingPhone = `+1416555${4000 + households}`;
   const departedPhone = `+1647555${5000 + households}`;
@@ -101,7 +101,7 @@ async function seedHousehold(options: { locale?: string; watchConsent?: boolean 
       externalAuthId: `sms:stay-${households}`,
       name: 'Ana',
       timezone: 'America/Toronto',
-      ...(options.locale ? { locale: options.locale } : {}),
+      ...(options.language ? { proactiveLanguage: options.language } : {}),
     })
     .returning({ id: schema.users.id });
   const [departed] = await db.database
@@ -343,7 +343,7 @@ describe('telling the parent who stayed', () => {
    */
   it('puts no child name and no parent name on the wire, in either language', async () => {
     const english = await seedHousehold();
-    const french = await seedHousehold({ locale: 'fr-CA' });
+    const french = await seedHousehold({ language: 'fr-CA' });
     const transport = new FakeTransport();
     for (const household of [english, french]) {
       await departCoParent(db.database, {
@@ -384,7 +384,7 @@ describe('telling the parent who stayed', () => {
   });
 
   it('writes the French sentence to a parent whose account is in French', async () => {
-    const household = await seedHousehold({ locale: 'fr-CA' });
+    const household = await seedHousehold({ language: 'fr-CA' });
     await departCoParent(db.database, {
       familyId: household.familyId,
       actorUserId: household.departedUserId,

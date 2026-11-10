@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both events keep day (tomorrow), start, end, venue name and address; the Montessori tour is 10 to 11 and storytime 1:30 to 2:15, with AM/PM implied naturally by context and not wrong. However, the text says 'Those two clash' when neither event has `overlaps` and their times (10-11 AM vs 1:30-2:15 PM) do not overlap; this is an invented detail, which is a LOW score. Bold is none, which is fine.",
+    "score": 1
+  }
+}

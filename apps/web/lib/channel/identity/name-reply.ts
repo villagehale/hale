@@ -1,9 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
-import { EMPTY_ONBOARDING_CAPTURE, dropTakeBackName } from '~/lib/channel/intake/onboarding-turn';
+import {
+  EMPTY_ONBOARDING_CAPTURE,
+  type OnboardingChecklist,
+  dropTakeBackName,
+  storedChecklist,
+} from '~/lib/channel/intake/onboarding-turn';
 import { optOutIntentOf } from '~/lib/channel/intake/opt-out-reader';
+import { loadOpenSessionByFamily } from '~/lib/channel/intake/session';
 import { type ReplyLanguage, acceptReplyLanguage } from '~/lib/channel/language';
 import { SENT_STATUSES } from '~/lib/channel/ledger';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { IDENTITY_ASK_TEMPLATE_KEYS } from './asked';
 import { defaultCallNameComposer, readModelParentName } from './call-name-voice';
 
@@ -36,8 +43,6 @@ const MAX_NAME_WORDS = 3;
 /** A display name Hale would put in a greeting. Long enough for a real double-barrelled
  * name, short enough that a sentence fragment cannot pass as one. */
 const MAX_NAME_CHARS = 40;
-
-const LINK_SHAPE = /https?:\/\/|www\./i;
 
 /**
  * A name token: letters (any script, so `Zoé`, `Søren` and `Ng` all pass), plus the
@@ -126,7 +131,7 @@ const NOT_A_NAME: ReadonlySet<string> = new Set([
 export function soleGivenName(body: string): string | null {
   const trimmed = body.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_NAME_CHARS) return null;
-  if (LINK_SHAPE.test(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
+  if (hasLinkShape(trimmed) || trimmed.includes('@') || /\d/.test(trimmed)) return null;
 
   const stripped = stripLeadIn(trimmed);
   const words = stripped.split(/\s+/).filter(Boolean);
@@ -196,7 +201,7 @@ export interface NameCaptureDeps {
   /** The onboarding model reads the message. Code stores only `parentName`. */
   read(
     database: Database,
-    input: { familyId: string; parentWords: string },
+    input: { familyId: string; parentUserId: string; parentWords: string },
   ): Promise<NameCaptureRead>;
 }
 
@@ -227,6 +232,7 @@ export async function handleNameCaptureReply(
 
   const read = await deps.read(database, {
     familyId: input.familyId,
+    parentUserId: input.parentUserId,
     parentWords: input.body,
   });
   const kept = dropTakeBackName(input.body, {
@@ -350,6 +356,20 @@ async function captureParentName(
   return 'stored';
 }
 
+/**
+ * What this parent's onboarding stored, for the reply to the name ask. Null when
+ * it cannot be read: no open session, or a session that is another parent's
+ * (a co-parent's Gmail answer is not in it).
+ */
+export async function nameAskChecklist(
+  database: Database,
+  input: { familyId: string; parentUserId: string },
+): Promise<OnboardingChecklist | null> {
+  const session = await loadOpenSessionByFamily(database, input.familyId);
+  if (!session || session.userId !== input.parentUserId) return null;
+  return storedChecklist(session, null, false);
+}
+
 export function defaultNameCaptureDeps(): NameCaptureDeps {
   const composer = defaultCallNameComposer();
   return {
@@ -359,6 +379,7 @@ export function defaultNameCaptureDeps(): NameCaptureDeps {
       readModelParentName(composer, {
         parentWords: input.parentWords,
         language: await familyReplyLanguage(database, input.familyId),
+        stored: await nameAskChecklist(database, input),
       }),
   };
 }

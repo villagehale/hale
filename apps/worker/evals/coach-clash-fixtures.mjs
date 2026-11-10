@@ -1,4 +1,5 @@
-// VIL-79 · coach kid-clash cases, judged BY MEANING (shared Sonnet judge, median of 3).
+
+import { judgePrompt } from './lib/judge-prompt.mjs';// VIL-79 · coach kid-clash cases, judged BY MEANING (shared Sonnet judge, median of 3).
 //
 // Built to plug into the VIL-467 coach batch (run-coach-channel-eval.mjs): each case is
 // a coach-channel-shaped fixture (`id`, `text`, `note`, `expect`) plus what that harness
@@ -137,4 +138,4 @@ export const COACH_CLASH_FIXTURES = [
   },
 ];
 
-export const CLASH_JUDGE_SYSTEM = `You grade one SMS reply from Hale, a planner for a family's kids' year. You are given the parent's text, the children, the tool result Hale was handed, and the reply. ${RULE} Score 5 when the reply is fully faithful to this rule, 4 when faithful with only a trivial awkwardness, 3 or below when it breaks the rule in any way (drops a clash, invents one, or mentions an adult block). Give a short reason; do not quote the reply.`;
+export const CLASH_JUDGE_SYSTEM = judgePrompt('coach-clash', { rule: RULE });

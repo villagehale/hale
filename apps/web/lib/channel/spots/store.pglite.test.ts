@@ -52,6 +52,7 @@ function intent(overrides: Partial<SpotWatchIntent> = {}): SpotWatchIntent {
     instant: false,
     lastState: 'full',
     sessionStartsAt: null,
+    sessionAnchor: null,
     ...overrides,
   };
 }

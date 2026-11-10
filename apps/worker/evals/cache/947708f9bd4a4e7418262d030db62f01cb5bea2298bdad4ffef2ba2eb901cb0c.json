@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking how to translate a class term from a flyer, which is part of the family's activity planning",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 2879
+}

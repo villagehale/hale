@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { loadCronSkill } from '~/lib/cron/skill';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { AddRole } from './parse';
 
@@ -22,7 +23,6 @@ export const MAX_ADD_THEM_YOURSELF_CHARS = 300;
 const MAX_COMPOSE_ATTEMPTS = 2;
 const MAX_TOKENS = 200;
 
-const LINK_SHAPE = /https?:\/\/|www\./i;
 /** A phone number, or any piece of one. The model was handed no digits. */
 const NUMBER_SHAPE = /\d{3,}/;
 /** Hale saying it reached the person, or will. It reaches nobody first. */
@@ -58,7 +58,7 @@ export function addThemYourselfRefusals(
   if (body.trim() === '') return ['empty'];
   const found: AddThemYourselfRefusal[] = [];
   if (body.length > MAX_ADD_THEM_YOURSELF_CHARS) found.push('over_char_cap');
-  if (LINK_SHAPE.test(body)) found.push('carries_link');
+  if (hasLinkShape(body)) found.push('carries_link');
   if (NUMBER_SHAPE.test(body)) found.push('carries_number');
   if (CONTACT_CLAIM.test(body)) found.push('claims_contact');
   if ((body.match(/\?/g) ?? []).length > 1) found.push('too_many_questions');

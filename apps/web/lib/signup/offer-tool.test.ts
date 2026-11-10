@@ -5,12 +5,25 @@ import { authorizedSignupEnabled } from './flag';
 import {
   OFFER_SIGNUP_TOOL,
   augmentCoachSkillForSignupOffer,
+  planOpensAtFromModel,
   quotesParent,
   signupOfferToolEnabled,
   urlSeenThisTurn,
 } from './offer-tool';
 
 describe('offer_signup tool guards', () => {
+  it('takes an open time only with its zone', () => {
+    expect(planOpensAtFromModel('2026-12-01T19:00:00-05:00')?.toISOString()).toBe(
+      '2026-12-02T00:00:00.000Z',
+    );
+    expect(planOpensAtFromModel('2026-12-01T19:00Z')?.toISOString()).toBe(
+      '2026-12-01T19:00:00.000Z',
+    );
+    for (const raw of ['2026-12-01T19:00:00', 'Dec 1 at 7pm', '2026-13-45T19:00:00Z', null]) {
+      expect(planOpensAtFromModel(raw)).toBeNull();
+    }
+  });
+
   it('accepts a URL Hale already saw this turn, not one the model invented', () => {
     const href = 'https://harbor-rec.example/register';
     expect(urlSeenThisTurn(href, `can you try ${href}`, [])).toBe(href);

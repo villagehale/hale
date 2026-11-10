@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Every slot is real and cited to the page it came from. Tiny Gym's ages and length come from programs.php. The Term 1 and Term 2 dates and the Tiny Gym and Rock n' Roll times come from the schedule PDF, which was actually opened, and the slots honestly flag that weekdays could not be matched from the grid text. The July 22, 2026 8:00am registration date comes from the home page. No borrowed figures appear: the $45 Gymnastics Ontario fee is correctly kept out of the slots. The message leads with Tiny Gym by name, attributes the facts with 'their site says' and carries the registration date. Under page_has_schedule it correctly uses the first person 'I could not pin down the weekday or the price'. With watch=true it correctly makes the first-person 'I'll keep watching' commitment. It is ASCII, has no link and asks no question. Deductions: it drops the Rock n' Roll find (0+, fits a toddler), which the slots carried, and that is mild withholding. 'Opened July 22' also asserts a past tense the page does not print; the page says registration 'is' July 22.",
+    "score": 4
+  }
+}

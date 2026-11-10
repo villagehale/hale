@@ -5,8 +5,12 @@ import type { BrowserUseEngineDeps } from './engine';
 import {
   type BrowserUsePlanInput,
   type PlanEngineStep,
+  type PlanPayingToken,
+  type PlanResumeToken,
   planFacts,
+  releasePlanRun,
   runBrowserUsePlanSignup,
+  settleBrowserUsePlanPayment,
 } from './plan-engine';
 
 // Fake Browser Use responses only, in the shape the recorded v4 fixtures carry.
@@ -46,7 +50,15 @@ const PAID = {
 
 type Logged = { method: string; path: string; body: Record<string, unknown> };
 
-function fakeFetch(outputs: { plan: Record<string, unknown>; payment?: Record<string, unknown> }) {
+type Outputs = { plan: Record<string, unknown>; payment?: Record<string, unknown> };
+
+/** `runningUntil`: a run reports `running` until the clock reaches that time (a long queue). */
+function fakeFetch(
+  outputs: Outputs,
+  clock: { now: () => number; runningUntil?: Partial<Record<string, number>> } = {
+    now: () => 0,
+  },
+) {
   const log: Logged[] = [];
   let runs = 0;
   const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
@@ -63,7 +75,12 @@ function fakeFetch(outputs: { plan: Record<string, unknown>; payment?: Record<st
       return Response.json({ id: `run-${runs}`, sessionId: 'bu-session-1' });
     }
     const run = /^\/runs\/(run-\d)/.exec(path)?.[1];
-    if (run && path.endsWith('/status')) return Response.json({ status: 'completed' });
+    if (run && path.endsWith('/status')) {
+      const busy = clock.runningUntil?.[run];
+      return Response.json({
+        status: busy !== undefined && clock.now() < busy ? 'running' : 'completed',
+      });
+    }
     if (run && path.includes('/events')) {
       return Response.json({
         events: [
@@ -97,9 +114,9 @@ function fakeFetch(outputs: { plan: Record<string, unknown>; payment?: Record<st
   return { fetchImpl, log };
 }
 
-function setup(outputs: { plan: Record<string, unknown>; payment?: Record<string, unknown> }) {
-  const { fetchImpl, log } = fakeFetch(outputs);
+function setup(outputs: Outputs, runningUntil?: Partial<Record<string, number>>) {
   let clock = NOW.getTime();
+  const { fetchImpl, log } = fakeFetch(outputs, { now: () => clock, runningUntil });
   const deps: BrowserUseEngineDeps = {
     api: browserUseApi({ apiKey: 'test-key', fetch: fetchImpl }),
     seeder: null,
@@ -109,13 +126,21 @@ function setup(outputs: { plan: Record<string, unknown>; payment?: Record<string
     },
     now: () => new Date(clock),
   };
-  return { deps, log };
+  return {
+    deps,
+    log,
+    setClock: (at: number) => {
+      clock = at;
+    },
+  };
 }
 
 function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
   const steps: PlanEngineStep[] = [];
+  const checkpoints: PlanResumeToken[] = [];
   const cap = vi.fn(async (_cents: number) => ({ ok: true, reason: 'within' }));
   const input: BrowserUsePlanInput = {
+    mode: 'auto',
     correlationId: 'offer-fixture',
     registrationUrl: URL_,
     identity: IDENTITY,
@@ -145,9 +170,15 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
     onStep: async (step) => {
       steps.push(step);
     },
+    resume: null,
+    waitUntil: new Date(NOW.getTime() + 60 * 60_000),
+    onCheckpoint: async (token) => {
+      checkpoints.push(token);
+      return true;
+    },
     ...overrides,
   };
-  return { input, steps, cap };
+  return { input, steps, cap, checkpoints };
 }
 
 const runPosts = (log: Logged[]) => log.filter((r) => r.method === 'POST' && r.path === '/runs');
@@ -271,6 +302,176 @@ describe('day-before plan engine', () => {
     });
     const result = await runBrowserUsePlanSignup(plan().input, deps);
     expect(result).toMatchObject({ outcome: 'sold_out', liveViewUrl: null, choiceIndex: null });
+  });
+});
+
+const MIN = 60_000;
+const cancels = (log: Logged[]) => log.filter((r) => r.path.endsWith('/cancel'));
+const browserStops = (log: Logged[]) => log.filter((r) => r.method === 'PATCH');
+
+describe('a plan run longer than one sweep', () => {
+  it('checkpoints at the sweep budget without cancelling, and the next sweep finishes the same run', async () => {
+    // The town's queue holds the run for 25 minutes; each sweep may wait 10.
+    const { deps, log, setClock } = setup(
+      { plan: CHECKOUT, payment: PAID },
+      { 'run-1': NOW.getTime() + 25 * MIN },
+    );
+    const first = plan({ waitUntil: new Date(NOW.getTime() + 10 * MIN) });
+    const paused = await runBrowserUsePlanSignup(first.input, deps);
+
+    expect(paused).toEqual({
+      outcome: 'checkpointed',
+      resume: {
+        phase: 'signup',
+        runId: 'run-1',
+        sessionId: 'bu-session-1',
+        browserId: 'browser-1',
+      },
+    });
+    // The run keeps its place: nothing cancelled, the browser left running.
+    expect(cancels(log)).toEqual([]);
+    expect(browserStops(log)).toEqual([]);
+    expect(first.steps).toEqual([]);
+    // Written as soon as the run existed, so a sweep the platform kills still resumes it.
+    expect(first.checkpoints[0]).toEqual({
+      phase: 'signup',
+      runId: 'run-1',
+      sessionId: 'bu-session-1',
+      browserId: null,
+    });
+
+    setClock(NOW.getTime() + 11 * MIN);
+    if (paused.outcome !== 'checkpointed') throw new Error('not checkpointed');
+    const second = plan({ resume: paused.resume, waitUntil: new Date(NOW.getTime() + 21 * MIN) });
+    expect(await runBrowserUsePlanSignup(second.input, deps)).toMatchObject({
+      outcome: 'checkpointed',
+    });
+    setClock(NOW.getTime() + 22 * MIN);
+    const third = plan({ resume: paused.resume, waitUntil: new Date(NOW.getTime() + 32 * MIN) });
+    const done = await runBrowserUsePlanSignup(third.input, deps);
+
+    expect(done).toMatchObject({ outcome: 'completed', confirmationNumber: 'R-55120' });
+    // One signup run and one payment run across all three sweeps.
+    expect(runPosts(log).map((r) => String(r.body.task).split('\n')[0])).toEqual([
+      '# skill browser-use-plan-signup',
+      '# skill browser-use-saved-card-payment',
+    ]);
+    expect(third.steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap', 'payment']);
+  });
+
+  it('writes the paying checkpoint before it creates the payment run', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const order: string[] = [];
+    const { input } = plan({
+      onCheckpoint: async (token) => {
+        order.push(`${token.phase}:${token.runId ?? 'none'} after ${runPosts(log).length} runs`);
+        return true;
+      },
+    });
+    await runBrowserUsePlanSignup(input, deps);
+
+    expect(order).toEqual([
+      'signup:run-1 after 1 runs',
+      'paying:none after 1 runs',
+      'paying:run-2 after 2 runs',
+    ]);
+  });
+
+  it('a plan taken back before its paying checkpoint is stored is never paid', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const { input, steps } = plan({
+      onCheckpoint: async (token) => token.phase !== 'paying',
+    });
+    const result = await runBrowserUsePlanSignup(input, deps);
+
+    expect(result).toMatchObject({
+      outcome: 'cancelled',
+      detail: 'authorization_lapsed',
+      liveViewUrl: null,
+      confirmationNumber: null,
+      amountChargedCents: null,
+    });
+    expect(runPosts(log)).toHaveLength(1);
+    expect(steps.map((s) => s.step)).toEqual(['checkout', 'spending_cap']);
+    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
+  });
+
+  it('a resumed payment waits on its own run and never creates another', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const resume: PlanPayingToken = {
+      phase: 'paying',
+      runId: 'run-2',
+      sessionId: 'bu-session-1',
+      browserId: 'browser-1',
+      choiceIndex: 1,
+      cartTotalCents: 9800,
+      holdExpiresAt: null,
+      costUsd: '0.0400',
+    };
+    const steps: PlanEngineStep[] = [];
+    // No identity, consent or saved session: a payment under way is read before any of them.
+    const result = await settleBrowserUsePlanPayment(
+      {
+        resume,
+        waitUntil: new Date(NOW.getTime() + 60 * MIN),
+        onStep: async (step) => {
+          steps.push(step);
+        },
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'completed',
+      confirmationNumber: 'R-55120',
+      amountChargedCents: 9800,
+      choiceIndex: 1,
+      costUsd: '0.0500',
+    });
+    expect(runPosts(log)).toEqual([]);
+    expect(cancels(log)).toEqual([]);
+    expect(steps.map((s) => s.step)).toEqual(['payment']);
+  });
+
+  it('a payment whose run id was never written is not paid again: unconfirmed, for the parent', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT, payment: PAID });
+    const result = await settleBrowserUsePlanPayment(
+      {
+        resume: {
+          phase: 'paying',
+          runId: null,
+          sessionId: 'bu-session-1',
+          browserId: 'browser-1',
+          choiceIndex: 1,
+          cartTotalCents: 9800,
+          holdExpiresAt: null,
+          costUsd: '0.0400',
+        },
+        waitUntil: new Date(NOW.getTime() + 60 * MIN),
+        onStep: async () => undefined,
+      },
+      deps,
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'needs_human',
+      detail: 'unconfirmed',
+      confirmationNumber: null,
+      cartTotalCents: 9800,
+      choiceIndex: 1,
+    });
+    expect(runPosts(log)).toEqual([]);
+  });
+
+  it('releasing a checkpointed run cancels it and stops its browser', async () => {
+    const { deps, log } = setup({ plan: CHECKOUT });
+    const cost = await releasePlanRun(
+      { phase: 'signup', runId: 'run-1', sessionId: 'bu-session-1', browserId: 'browser-1' },
+      deps,
+    );
+    expect(cost).toBe('0.090000');
+    expect(cancels(log).map((r) => r.path)).toEqual(['/runs/run-1/cancel']);
+    expect(browserStops(log).map((r) => r.path)).toEqual(['/browsers/browser-1']);
   });
 });
 

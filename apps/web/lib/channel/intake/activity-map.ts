@@ -1,6 +1,7 @@
 import { STAGE_BOUNDARIES_MONTHS, stageFromAgeInMonths } from '@hale/types';
 import { type ActivityQuery, deidentifyActivityQuery } from '~/lib/channel/activity/deidentify';
 import type { ActivityFinder, ActivityPick } from '~/lib/channel/activity/lane';
+import { withoutLinks } from '~/lib/format/link-shape';
 import { activityRecommendationKey } from '~/lib/village/live';
 import { fitsHouseholdAges, onlyDatedBefore } from './pick-fit';
 import { type RadarChild, type WeekendPick, asciiCopy } from './radar-decide';
@@ -161,13 +162,13 @@ export interface ActivityMap {
 function webLine(pick: ActivityPick): string {
   const when = pick.when ? ` - ${pick.when}` : '';
   const price = pick.price ? ` - ${pick.price}` : '';
-  return asciiCopy(`${pick.name} (${pick.ageFit})${when}${price}`);
+  return asciiCopy(withoutLinks(`${pick.name} (${pick.ageFit})${when}${price}`));
 }
 
 function civicLine(pick: WeekendPick): string {
   const where = pick.candidateRef.venueName ? ` at ${pick.candidateRef.venueName}` : '';
   const day = pick.day.charAt(0).toUpperCase() + pick.day.slice(1);
-  return asciiCopy(`${day}: ${pick.candidateRef.title}${where}`);
+  return asciiCopy(withoutLinks(`${day}: ${pick.candidateRef.title}${where}`));
 }
 
 function categoryQuery(

@@ -163,7 +163,7 @@ describe('VIL-443 groupPlanReportRefusals (the link only, never wording)', () =>
       'link_repeated',
     );
     expect(groupPlanReportRefusals([`Add it: ${LINK} or https://evil.test/x`], input())).toContain(
-      'other_link',
+      'other_link: https://evil.test/x',
     );
   });
 
@@ -185,13 +185,38 @@ describe('VIL-443 groupPlanReportRefusals (the link only, never wording)', () =>
     ]);
     expect(
       groupPlanReportRefusals(['Swim is set.', 'See you there: https://evil.test/x'], input()),
-    ).toEqual(['link_missing', 'other_link']);
+    ).toEqual(['link_missing', 'other_link: https://evil.test/x']);
   });
 
   it('refuses any link on a cancel', () => {
     const cancelled = input({ change: 'cancelled', link: null, onCalendarOf: [], notYet: [] });
     expect(groupPlanReportRefusals(['Swim is off.'], cancelled)).toEqual([]);
-    expect(groupPlanReportRefusals(['Swim is off.', LINK], cancelled)).toEqual(['carries_link']);
+    expect(groupPlanReportRefusals(['Swim is off.', LINK], cancelled)).toEqual([
+      `carries_link: ${LINK}`,
+    ]);
+  });
+
+  it("reads a group member's name after a Chinese full stop as a new sentence", () => {
+    const zh = input({ language: 'zh', onCalendarOf: [], notYet: ['Ana', 'Sam'] });
+    const draft = `游泳课已经放到日历上。Ana、Sam,点这里加到你们的日历:${LINK}`;
+    expect(groupPlanReportRefusals([draft], zh)).toEqual([]);
+    expect(groupPlanReportRefusals([draft], { ...zh, notYet: ['Rosa'] })).toEqual([
+      'other_link: 游泳课已经放到日历上.Ana',
+    ]);
+  });
+
+  it('never trusts a member name that is itself link-shaped', () => {
+    const draft = `Swim is on the calendar for Ana. evil.app has not added it yet: ${LINK}`;
+    expect(
+      groupPlanReportRefusals([draft], input({ onCalendarOf: ['Ana'], notYet: ['Rosa'] })),
+    ).toEqual(['other_link: evil.app']);
+    expect(
+      groupPlanReportRefusals([draft], input({ onCalendarOf: ['Ana'], notYet: ['evil.app'] })),
+    ).toEqual(['other_link: evil.app']);
+    const named = `Swim is on the calendar for Ana. Rosa has not added it yet: ${LINK}`;
+    expect(
+      groupPlanReportRefusals([named], input({ onCalendarOf: ['Ana'], notYet: ['Rosa'] })),
+    ).toEqual([]);
   });
 
   it('leaves length, how many messages, punctuation and emoji to the judge', () => {

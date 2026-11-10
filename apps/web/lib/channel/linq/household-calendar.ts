@@ -1,5 +1,5 @@
-import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
+import { type CalendarStanding, type Database, householdFamilyEvent, schema } from '@hale/db';
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { type ReplyLanguage, localeFor } from '~/lib/channel/language';
 import { acceptedStatus, dedupeActive } from '~/lib/channel/ledger';
 import { withOptOut } from '~/lib/channel/opt-out';
@@ -36,6 +36,7 @@ import { groupTurnReadContext } from './group-turn-reader';
 import {
   classifyKidCalendarItem,
   splitKidEvent,
+  spokenBlockTitle,
   titleForStorage,
   withoutTeenTitles,
 } from './kid-event';
@@ -126,7 +127,15 @@ export interface BusyBlock {
   end: Date | null;
   allDay: boolean;
   kidRelated: boolean;
+  /** The title the group may hear: the parent's own or organized event only (VIL-651). */
   title: string | null;
+  /** The child a kid row is about, by name, from Hale's records: how a row with no title
+   * is still named. */
+  kid: string | null;
+  /** Where the parent stands on it. Null on a row stored before it was kept. */
+  standing: CalendarStanding | null;
+  /** About a teenager: it keeps its time and nothing else (rule #1). */
+  teen: boolean;
   status: string;
   announced: boolean;
   followupSent: boolean;
@@ -137,7 +146,8 @@ export interface WhoTakesAsk {
   startIso: string;
   titleNorm: string;
   kid: string;
-  event: string;
+  /** Null when the event's title is not one the group may hear (VIL-651). */
+  event: string | null;
   day: string;
   time: string;
 }
@@ -234,7 +244,7 @@ export async function planAmbiguousWhoTakes(
   const tomorrow = addDays(zonedParts(input.now, input.timeZone), 1);
   let best: BusyBlock | null = null;
   for (const block of input.blocks) {
-    if (!upcomingKid(block, input.now) || !block.start || !block.title) continue;
+    if (!upcomingKid(block, input.now) || !block.start) continue;
     const local = zonedParts(block.start, input.timeZone);
     if (
       local.year !== tomorrow.year ||
@@ -246,7 +256,7 @@ export async function planAmbiguousWhoTakes(
     const memory = rememberedWhoTakes(
       input.remembered ?? [],
       block.start.toISOString(),
-      normalizeTitle(block.title),
+      subjectNorm(block),
     );
     if (memory) continue;
     if (statedOwner(block, input.statements ?? [], input.blocks)) continue;
@@ -258,8 +268,8 @@ export async function planAmbiguousWhoTakes(
     if (busy) continue;
     if (!best || block.start.getTime() < (best.start?.getTime() ?? 0)) best = block;
   }
-  if (!best?.title || !best.start) return null;
-  const parts = splitKidEvent(best.title, input.childNames);
+  if (!best?.start) return null;
+  const parts = blockParts(best, input.childNames);
   const recipient = otherParent(best.userId, first, second) ?? best.userId;
   if (!parts || !best.start) return null;
   const startIso = best.start.toISOString();
@@ -285,8 +295,7 @@ function otherParent(userId: string, first: string, second: string): string | nu
 }
 
 function upcomingKid(block: BusyBlock, now: Date): boolean {
-  if (!block.kidRelated || !block.title || block.status === 'cancelled' || !block.start)
-    return false;
+  if (!speakable(block) || block.status === 'cancelled' || !block.start) return false;
   if (block.start.getTime() < now.getTime() - FOLLOWUP_MS) return false;
   return block.start.getTime() <= now.getTime() + LOOKAHEAD_MS;
 }
@@ -298,14 +307,7 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
   for (const block of input.blocks) {
     if (!upcomingKid(block, input.now) || !block.start || !block.end) continue;
     if (block.start.getTime() < input.now.getTime()) continue;
-    if (!block.title) continue;
-    if (
-      rememberedWhoTakes(
-        input.remembered ?? [],
-        block.start.toISOString(),
-        normalizeTitle(block.title),
-      )
-    ) {
+    if (rememberedWhoTakes(input.remembered ?? [], block.start.toISOString(), subjectNorm(block))) {
       continue;
     }
     const busy = input.blocks.some(
@@ -316,8 +318,8 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
     const at = block.start.getTime();
     if (!best || at < best.at) best = { block, at };
   }
-  if (!best?.block.title || !best.block.start) return null;
-  const parts = splitKidEvent(best.block.title, input.childNames);
+  if (!best?.block.start) return null;
+  const parts = blockParts(best.block, input.childNames);
   const recipient = otherParent(best.block.userId, first, second);
   if (!parts || !recipient) return null;
   const startIso = best.block.start.toISOString();
@@ -348,15 +350,11 @@ async function soonestConflict(input: NoticePlanInput): Promise<HouseholdNotice 
 }
 
 /** The locked who-takes prompt fields. Parent names are never filled in here. */
-function whoTakesAsk(
-  block: BusyBlock,
-  parts: { kid: string; event: string },
-  input: NoticePlanInput,
-): WhoTakesAsk {
+function whoTakesAsk(block: BusyBlock, parts: KidParts, input: NoticePlanInput): WhoTakesAsk {
   const start = block.start ?? input.now;
   return {
     startIso: start.toISOString(),
-    titleNorm: normalizeTitle(block.title ?? ''),
+    titleNorm: subjectNorm(block),
     kid: parts.kid,
     event: parts.event,
     day: formatDay(start, input.timeZone, input.language),
@@ -385,7 +383,7 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
   let best: BusyBlock | null = null;
   let ownerId: string | null = null;
   for (const block of input.blocks) {
-    if (!upcomingKid(block, input.now) || !block.start || !block.title) continue;
+    if (!upcomingKid(block, input.now) || !block.start) continue;
     const local = zonedParts(block.start, input.timeZone);
     if (
       local.year !== tomorrow.year ||
@@ -395,13 +393,11 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
       continue;
     }
     const stated = statedOwner(block, input.statements ?? [], input.blocks);
-    const memory = block.title
-      ? rememberedWhoTakes(
-          input.remembered ?? [],
-          block.start.toISOString(),
-          normalizeTitle(block.title),
-        )
-      : null;
+    const memory = rememberedWhoTakes(
+      input.remembered ?? [],
+      block.start.toISOString(),
+      subjectNorm(block),
+    );
     // An open ask or a stored pass is not a taker. "We'll figure it out" stores none.
     // A stored vote names one. Otherwise the event on exactly one calendar does.
     if (memory?.status === 'declined' || memory?.status === 'open') continue;
@@ -413,9 +409,9 @@ async function soonestHandoff(input: NoticePlanInput): Promise<HouseholdNotice |
       ownerId = owner;
     }
   }
-  if (!best?.title || !best.start || !ownerId) return null;
+  if (!best?.start || !ownerId) return null;
   const name = input.parentNames[ownerId]?.trim();
-  const parts = splitKidEvent(best.title, input.childNames);
+  const parts = blockParts(best, input.childNames);
   const recipient = otherParent(ownerId, first, second) ?? ownerId;
   if (!name || !parts) return null;
   const text = await groupHandoffText(input.language, {
@@ -447,8 +443,8 @@ async function batchedKidEvents(input: NoticePlanInput): Promise<HouseholdNotice
   let recipient: string | null = null;
   for (const block of fresh) {
     if (lines.length >= KID_LINES_MAX) break;
-    if (!block.title || !block.start) continue;
-    const parts = splitKidEvent(block.title, input.childNames);
+    if (!block.start) continue;
+    const parts = blockParts(block, input.childNames);
     const name = input.parentNames[block.userId]?.trim();
     const other = otherParent(block.userId, first, second);
     if (!parts || !name || !other) continue;
@@ -515,31 +511,27 @@ function statedOwner(
   statements: readonly HandoffStatement[],
   blocks: readonly BusyBlock[],
 ): string | null {
-  if (!block.title) return null;
-  const title = normalizeTitle(block.title);
   const claimants = statements.filter((statement) => HANDOFF_CLAIM.test(statement.text));
   if (claimants.length === 0) return null;
-  const named = claimants.find((statement) => normalizeTitle(statement.text).includes(title));
+  const title = block.title === null ? null : normalizeTitle(block.title);
+  const named = title
+    ? claimants.find((statement) => normalizeTitle(statement.text).includes(title))
+    : undefined;
   if (named) return named.userId;
-  const open = blocks.filter(
-    (row) => row.kidRelated && row.title && row.status !== 'cancelled' && row.start,
-  );
+  const open = blocks.filter((row) => speakable(row) && row.status !== 'cancelled' && row.start);
   if (open.length === 1 && open[0]?.eventId === block.eventId) return claimants[0]?.userId ?? null;
   return null;
 }
 
 /** The event lives on exactly one parent's calendar. Two copies are not a handoff. */
 function soleCalendarOwner(block: BusyBlock, blocks: readonly BusyBlock[]): string | null {
-  if (!block.title) return null;
-  const title = normalizeTitle(block.title);
   const holders = new Set(
     blocks
       .filter(
         (row) =>
-          row.kidRelated &&
-          row.title &&
+          speakable(row) &&
           row.status !== 'cancelled' &&
-          normalizeTitle(row.title) === title &&
+          sameEvent(block, row) &&
           overlaps(block, row),
       )
       .map((row) => row.userId),
@@ -552,6 +544,39 @@ function normalizeTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+/** The kid and the event a block is about, as the group may hear them. */
+type KidParts = { kid: string; event: string | null };
+
+/**
+ * A kid block the group may hear about (VIL-651): not an unanswered invite, and named either
+ * by a title the parent controls or by its kid from Hale's records.
+ */
+function speakable(block: BusyBlock): boolean {
+  return (
+    block.kidRelated && block.standing !== 'invited' && (block.title !== null || block.kid !== null)
+  );
+}
+
+/** The title's kid and event when the group may hear the title; else its kid alone. */
+function blockParts(block: BusyBlock, childNames: readonly string[]): KidParts | null {
+  if (block.title !== null) return splitKidEvent(block.title, childNames);
+  return block.kid === null ? null : { kid: block.kid, event: null };
+}
+
+/** What a who-takes decision about this block is keyed by: its title, or its kid with none.
+ * Never empty, since a stored decision's key must carry one to be read back. */
+function subjectNorm(block: BusyBlock): string {
+  return normalizeTitle(block.title ?? block.kid ?? '');
+}
+
+/** The same event: one Google id on two calendars, or two copies with one title. */
+function sameEvent(a: BusyBlock, b: BusyBlock): boolean {
+  if (a.eventId === b.eventId) return true;
+  return (
+    a.title !== null && b.title !== null && normalizeTitle(a.title) === normalizeTitle(b.title)
+  );
+}
+
 function overlaps(a: BusyBlock, b: BusyBlock): boolean {
   const aStart = a.start?.getTime();
   const bStart = b.start?.getTime();
@@ -559,6 +584,20 @@ function overlaps(a: BusyBlock, b: BusyBlock): boolean {
   const aEnd = (a.end ?? new Date(aStart + (a.allDay ? 24 : 1) * 60 * 60 * 1000)).getTime();
   const bEnd = (b.end ?? new Date(bStart + (b.allDay ? 24 : 1) * 60 * 60 * 1000)).getTime();
   return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * Free/busy only (VIL-459, VIL-439): the time span of each live block, never its title,
+ * place or event id. This is all a cross-family find may read from a parent's calendar.
+ */
+export function freeBusyOnly(blocks: readonly BusyBlock[]): { start: Date; end: Date }[] {
+  return blocks
+    .filter((block) => block.status !== 'cancelled' && block.start !== null)
+    .map((block) => {
+      const start = block.start as Date;
+      const end = block.end ?? new Date(start.getTime() + (block.allDay ? 24 : 1) * 60 * 60 * 1000);
+      return { start: new Date(start.getTime()), end: new Date(end.getTime()) };
+    });
 }
 
 /** Earliest 60-minute waking slot in the next 7 days when neither parent is busy. */
@@ -773,19 +812,37 @@ export async function rememberCalendarChanges(
     familyId: string;
     userId: string;
     changes: readonly CalendarChange[];
-    childNames: readonly string[];
+    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
     seeding: boolean;
     bothCalendars: boolean;
     now: Date;
   },
 ): Promise<void> {
+  const childNames = input.children.map((child) => child.name);
+  const teens = teenChildIds(input.children, input.now);
+  const teenNames = input.children
+    .filter((child) => teens.has(child.id))
+    .map((child) => child.name);
   for (const change of input.changes) {
     const stamp = changeStamp(change);
-    const kidRelated = classifyKidCalendarItem({
-      title: change.title,
-      childNames: input.childNames,
-    });
-    const title = titleForStorage(kidRelated, change.title);
+    // The teen check reads the arriving title, because someone else's title is dropped below
+    // and a reader could no longer see that it named a teenager (rule #1).
+    const [screened] = withoutTeenTitles(
+      [
+        {
+          title: change.title ?? null,
+          kidRelated: classifyKidCalendarItem({ title: change.title, childNames }),
+        },
+      ],
+      childNames,
+      teenNames,
+    );
+    const kidRelated = screened?.kidRelated === true;
+    // The arriving title is read here to find the kid and is stored only when it is the
+    // parent's own (VIL-651). An unanswered invite is kept, unannounced, so a later yes can be.
+    const title = titleForStorage(kidRelated, spokenBlockTitle(change.standing, change.title));
+    const kid = kidRelated && change.title ? splitKidEvent(change.title, childNames)?.kid : null;
+    const childId = input.children.find((child) => child.name.trim() === kid)?.id ?? null;
     const [prev] = await database
       .select({
         startAt: schema.parentCalendarBlocks.startAt,
@@ -831,6 +888,8 @@ export async function rememberCalendarChanges(
         allDay: stamp.allDay,
         kidRelated,
         title,
+        calendarStanding: change.standing,
+        childId,
         recurringEventId: change.recurringEventId ?? null,
         status: change.status,
         updatedStamp: change.updated,
@@ -846,6 +905,8 @@ export async function rememberCalendarChanges(
           allDay: stamp.allDay,
           kidRelated,
           title,
+          calendarStanding: change.standing,
+          childId,
           recurringEventId: change.recurringEventId ?? null,
           status: change.status,
           updatedStamp: change.updated,
@@ -1330,13 +1391,17 @@ async function planClashes(
   return { parents, people, plans: calendar.plans, busy: calendar.busy, kids };
 }
 
+/**
+ * Every stored block of one family, as the group may hear it (VIL-651). A title is kept only
+ * on the parent's own or organized event: anyone else's, and a row stored before its standing
+ * was kept, is named by its kid alone. The kid is the child the row was stored against, or,
+ * on an older row, the child its title names. A block about a teenager keeps its time and
+ * nothing else (rule #1).
+ */
 async function loadSweepBlocks(
   database: Database,
   familyId: string,
-  context: {
-    childNames: readonly string[];
-    children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>;
-  },
+  context: { children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }> },
   now: Date,
 ): Promise<{ blocks: BusyBlock[]; teens: Set<string> }> {
   const rows = await database
@@ -1344,24 +1409,37 @@ async function loadSweepBlocks(
     .from(schema.parentCalendarBlocks)
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
   const teens = teenChildIds(context.children, now);
-  const blocks: BusyBlock[] = withoutTeenTitles(
-    rows.map((row) => ({
+  const childNames = context.children.map((child) => child.name);
+  const teenNames = context.children
+    .filter((child) => teens.has(child.id))
+    .map((child) => child.name);
+  const blocks = rows.map((row): BusyBlock => {
+    const teen =
+      (row.childId !== null && teens.has(row.childId)) ||
+      (row.title !== null &&
+        withoutTeenTitles([{ title: row.title, kidRelated: true }], childNames, teenNames)[0]
+          ?.title === null);
+    const kidRelated = row.kidRelated && !teen;
+    const recorded = context.children.find((child) => child.id === row.childId)?.name;
+    const named = row.title ? splitKidEvent(row.title, childNames)?.kid : undefined;
+    return {
       integrationId: row.integrationId,
       userId: row.userId,
       eventId: row.eventId,
       start: row.startAt,
       end: row.endAt,
       allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
+      kidRelated,
+      title: kidRelated ? spokenBlockTitle(row.calendarStanding, row.title) : null,
+      kid: kidRelated ? (recorded ?? named ?? null) : null,
+      standing: row.calendarStanding,
+      teen,
       status: row.status,
       announced: row.announcedAt !== null,
       followupSent: row.followupAt !== null,
       recurringEventId: row.recurringEventId,
-    })),
-    context.childNames,
-    context.children.filter((child) => teens.has(child.id)).map((child) => child.name),
-  );
+    };
+  });
   return { blocks, teens };
 }
 
@@ -1813,26 +1891,7 @@ export async function answerBothFreeOffer(
   input: { familyId: string; now: Date; language: ReplyLanguage },
 ): Promise<{ text: string; slot1: string; slot2: string } | null> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  const rows = await database
-    .select()
-    .from(schema.parentCalendarBlocks)
-    .where(eq(schema.parentCalendarBlocks.familyId, input.familyId));
-  const blocks: BusyBlock[] = rows
-    .filter((row) => row.familyId === input.familyId)
-    .map((row) => ({
-      integrationId: row.integrationId,
-      userId: row.userId,
-      eventId: row.eventId,
-      start: row.startAt,
-      end: row.endAt,
-      allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
-      status: row.status,
-      announced: row.announcedAt !== null,
-      followupSent: row.followupAt !== null,
-      recurringEventId: row.recurringEventId,
-    }));
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   return await sharedFreeOffer({
     requested: true,
     blocks,
@@ -1888,7 +1947,7 @@ export async function planBothFreeAsk(
   input: { familyId: string; now: Date; language: ReplyLanguage | null },
 ): Promise<BothFreeDelivery> {
   const context = await loadFamilyCalendarContext(database, input.familyId);
-  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const day = bothFreeDay(input.now, context.timeZone);
   const remembered = await loadRememberedLogistics(database, input.familyId);
   if (remembered.some((row) => row.factKey === bothFreeFactKey(day))) return { mode: 'none' };
@@ -1979,7 +2038,7 @@ export async function captureLogisticsText(
     name: names.find((row) => row.id === userId)?.name ?? '',
   }));
   const remembered = await loadRememberedLogistics(database, input.familyId);
-  const blocks = await loadFamilyBlocks(database, input.familyId);
+  const { blocks } = await loadSweepBlocks(database, input.familyId, context, input.now);
   const who = readWhoTakesReply(input.body, parents, input.parentUserId);
   const saidAt =
     input.sentAt && input.sentAt.getTime() < input.now.getTime() ? input.sentAt : input.now;
@@ -2068,50 +2127,104 @@ function matchWhoTakesTarget(
   blocks: readonly BusyBlock[],
   now: Date,
   childNames: readonly string[],
-): { startIso: string; titleNorm: string; kid: string; event: string } | null {
-  const open = blocks.filter((block) => upcomingKid(block, now) && block.title && block.start);
+): { startIso: string; titleNorm: string; kid: string; event: string | null } | null {
+  const open = blocks.filter((block) => upcomingKid(block, now) && block.start);
   const normalized = body.trim().toLowerCase();
-  const named = open.filter((block) => normalized.includes(normalizeTitle(block.title as string)));
+  const named = open.filter(
+    (block) => block.title !== null && normalized.includes(normalizeTitle(block.title)),
+  );
   const pool = named.length > 0 ? named : open;
   const unique = new Map<string, BusyBlock>();
   for (const block of pool) {
-    const key = `${(block.start as Date).toISOString()}/${normalizeTitle(block.title as string)}`;
-    unique.set(key, block);
+    unique.set(`${(block.start as Date).toISOString()}/${subjectNorm(block)}`, block);
   }
   if (unique.size !== 1) return null;
   const block = [...unique.values()][0];
-  if (!block?.title || !block.start) return null;
-  const parts = splitKidEvent(block.title, childNames);
+  if (!block?.start) return null;
+  const parts = blockParts(block, childNames);
   if (!parts) return null;
   return {
     startIso: block.start.toISOString(),
-    titleNorm: normalizeTitle(block.title),
+    titleNorm: subjectNorm(block),
     kid: parts.kid,
     event: parts.event,
   };
 }
 
-async function loadFamilyBlocks(database: Database, familyId: string): Promise<BusyBlock[]> {
-  const rows = await database
-    .select()
-    .from(schema.parentCalendarBlocks)
-    .where(eq(schema.parentCalendarBlocks.familyId, familyId));
-  return rows
-    .filter((row) => row.familyId === familyId)
-    .map((row) => ({
-      integrationId: row.integrationId,
-      userId: row.userId,
-      eventId: row.eventId,
-      start: row.startAt,
-      end: row.endAt,
-      allDay: row.allDay,
-      kidRelated: row.kidRelated,
-      title: row.title,
-      status: row.status,
-      announced: row.announcedAt !== null,
-      followupSent: row.followupAt !== null,
-      recurringEventId: row.recurringEventId,
-    }));
+/**
+ * VIL-459: a family's free/busy from the calendars of `userIds` only (each parent who
+ * said Hale may use their own calendar here), or null when none of them has a Google
+ * Calendar syncing now (Hale cannot see their time and asks them instead). Spans only.
+ * A private plan's calendar copy (sensitive, or a teen's) and a block about a teen are
+ * left out, the same rows the household slice keeps private.
+ */
+export async function familyFreeBusy(
+  database: Database,
+  familyId: string,
+  userIds: readonly string[],
+  now: Date,
+): Promise<{ start: Date; end: Date }[] | null> {
+  if (userIds.length === 0) return null;
+  const live = await database
+    .select({ id: schema.integrations.id })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        eq(schema.integrations.provider, 'gcal'),
+        eq(schema.integrations.status, 'active'),
+        inArray(schema.integrations.userId, [...userIds]),
+      ),
+    );
+  if (live.length === 0) return null;
+  const syncing = new Set(live.map((row) => row.id));
+  const children = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const [{ blocks, teens }, placed] = await Promise.all([
+    loadSweepBlocks(database, familyId, { children }, now),
+    database
+      .select({
+        placedGoogleEventId: schema.familyEvents.placedGoogleEventId,
+        title: schema.familyEvents.title,
+        childId: schema.familyEvents.childId,
+        sensitive: schema.familyEvents.sensitive,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, familyId),
+          householdFamilyEvent(),
+          isNotNull(schema.familyEvents.placedGoogleEventId),
+        ),
+      ),
+  ]);
+  const childNames = children.map((child) => child.name);
+  const teenNames = children.filter((child) => teens.has(child.id)).map((child) => child.name);
+  const aboutTeen = (title: string) =>
+    withoutTeenTitles([{ title, kidRelated: true }], childNames, teenNames)[0]?.title === null;
+  const privateCopies = new Set(
+    placed
+      .filter(
+        (row) =>
+          row.sensitive || (row.childId !== null && teens.has(row.childId)) || aboutTeen(row.title),
+      )
+      .map((row) => row.placedGoogleEventId),
+  );
+  return freeBusyOnly(
+    blocks.filter(
+      (block) =>
+        syncing.has(block.integrationId) &&
+        userIds.includes(block.userId) &&
+        !privateCopies.has(block.eventId) &&
+        !block.teen,
+    ),
+  );
 }
 
 export async function familyHasTwoCalendars(
@@ -2145,7 +2258,7 @@ export async function rememberHouseholdCalendar(
     familyId: input.familyId,
     userId: input.userId,
     changes: input.changes,
-    childNames: context.childNames,
+    children: context.children,
     seeding: input.seeding,
     bothCalendars: context.chatId !== null || context.bothCalendars,
     now: input.now,

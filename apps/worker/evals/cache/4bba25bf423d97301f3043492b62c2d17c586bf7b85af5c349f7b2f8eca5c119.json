@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position, the town, the 36-hour window, the deadline (Wed Sep 16, 11:00 p.m.) and the promised reminder all match the facts, and the message asks nothing. However, it never says the clock runs from the parent's own message (Tue 11:00 a.m.). Instead it frames the 36 hours as a 'window to accept an offer' and then mentions an offer that may still come through. That ties the deadline to a future offer, which is a required failure for outcome_waitlisted with a deadline.",
+    "score": 2
+  }
+}

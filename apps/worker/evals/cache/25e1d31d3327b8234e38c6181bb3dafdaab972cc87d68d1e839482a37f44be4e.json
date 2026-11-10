@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Text says Reminder set! but facts show no time was given and nothing is set; it fails to ask Ruth when she wants the reminder, which is a mustSay item."
+  }
+}

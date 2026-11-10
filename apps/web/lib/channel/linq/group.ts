@@ -18,6 +18,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { linqGroupBackgroundEnabled } from './config';
 import { haleContactImageUrl } from './contact-card';
 import { type GroupLineClass, groupAudienceAllows } from './group-audience';
+import { resolveGroupMention } from './group-mention-reader';
 import type { ListChatHandles } from './roster';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
@@ -304,9 +305,17 @@ export async function deliverLinqGroupNotice(
   }
   let sent: { providerMessageId: string };
   try {
+    const mention = input.send
+      ? undefined
+      : await resolveGroupMention({ database, chatId: input.chatId, text: input.text });
     sent = input.send
       ? await input.send({ chatId: input.chatId, text: input.text })
-      : await sendLinqChatMessage({ chatId: input.chatId, text: input.text, fetch: input.fetch });
+      : await sendLinqChatMessage({
+          chatId: input.chatId,
+          text: input.text,
+          ...(mention ? { mention } : {}),
+          fetch: input.fetch,
+        });
   } catch (err) {
     const code = err instanceof LinqSendError ? err.code : 'unknown';
     console.warn(

@@ -65,7 +65,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/tapback.ts':
     'a tapback that replaces a throwaway ack; the ledger row is written by moments.ts when the reaction is accepted',
   'apps/web/lib/channel/linq/link-preview.ts':
-    'a follow-up link part beside locked text; writes its own channel_messages row and linq_link_preview audit when a family id is passed',
+    'a link part after a text that does not carry the URL; writes its own channel_messages row and linq_link_preview audit when a family id is passed, and sendLinkOnce ledgers its URL-as-text fallback (linq:link_text, sms_reply_sent)',
   'apps/web/lib/channel/linq/group.ts':
     'opens or extends the household group and writes linq:group_open / linq:group_unreachable plus linq_group_opened or linq_group_held; the unknown-sender hold is the one unledgered text because that sender has no family row to attach it to',
   'apps/web/lib/village/intros/group.ts':
@@ -73,7 +73,7 @@ const ONE_DOOR_ALLOWLIST: Record<string, string> = {
   'apps/web/lib/channel/linq/group-coparent.ts':
     'the seated co-parent ladder and the noted-number instruction in a claimed group; sendLine inserts the channel_messages row (reply, dedupe key) before the Linq send and audits sms_reply_sent',
   'apps/web/lib/channel/linq/group-members.ts':
-    'seats and unseats household group members; sendOnce inserts the channel_messages row (reply, template linq:group_member_welcome or linq:group_unknown_hold, dedupe key) on the primary parent before sendLinqChatMessage, and audits sms_reply_sent only after the send lands',
+    'seats and unseats household group members; the welcome goes through sendGroupOnboardingLine (template linq:group_member_welcome) and sendOnce inserts the unknown-sender hold row (reply, template linq:group_unknown_hold, dedupe key) on the primary parent before sendLinqChatMessage, audits sms_reply_sent only after the send lands, and a refusal releases the key',
   'apps/web/lib/channel/linq/group-onboarding-voice.ts':
     "group onboarding v2 who's-who lines; sendGroupOnboardingLine inserts the channel_messages row (reply, template linq:roster_ask, linq:member_ask, linq:role_reask, linq:role_confirmed, linq:text_me_directly or linq:group_stop_ack, dedupe key) on the primary parent before sendLinqChatMessage and audits sms_reply_sent after it lands. RESIDUE: sendUnledgeredGroupLine (linq:no_family_yet) speaks into a chat that belongs to no family, so no family_id exists for a ledger row; it is claimed once on linq_group_rosters.asked_at and every outcome is logged by name",
   'apps/web/lib/channel/linq/connect-link-1to1.ts':

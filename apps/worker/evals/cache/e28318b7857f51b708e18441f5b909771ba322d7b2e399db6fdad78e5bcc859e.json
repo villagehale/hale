@@ -1,0 +1,44 @@
+{
+  "response": {
+    "id": "msg_011CgsFfaDynN1e3epAgpbkA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "CAQSggYKEAgTGAI4AUIIdGhpbmtpbmcSDEH0OhzGSu1Fs2L/9BoMgeUKT1+B5UCY4/PpIjCprtmtVZC6D6XDOD9OGdNV7PZy3XPe/pHnQQ5ahpRVaCI2uPlCZqZjm/za4BjRTusqnwWQ9admzJJ4dYMyhmBiqQT688x5n9CdfwAhwszvwm6/GHTfHkk0V1cbfkhhIHQjCpw+yGyZ5kBFz8zRIe0sF4bCt9q1rtKfXVPvGuL4nmdYyJ7TKfQIBRYomGjlQWWWPwkzM3Elu8s0zKHHUWGNLVi45PLIAjxyqna8lNCG/2oAv+CtEeig6sHw+3qoTAnSxJMlcdLnHqW7CbnSmxHtCriXm473UWKaiWFMYxM52U3JOu6PtehnR04J28ZOcaH4SBEu8LvZWa/hn+RsSL5jppeKK0OAmAG5nj+y37MYS1g792aH2h/uOBy+3Wa7K30+OXVEmPrN58XlvAs7gKA8eLxQk3ywpyIKlhMCjXAsDEE44TR29vXHMrRcmapwtauM/idZfTdOSG44Z/peeO05EwThawneMCddThwGGEleYUKjCDVgwXblLCEajOFzlpWQ0vqTv5KJcApsennmn7x1lnWD4vPJByZcHFFnaJ8S29EBTjVoG8e0j665tecW6OFCsEBmXTEuUDfM4+zMYmaFfBls02/qBypMs0kORoVcidBmzR+rI1GxYYtRLZaxxddCeEL5b5O1ylZ4z002OIOj91BNvQZFWYk8ztjc05c6Q7iRmLbYtpPmacmBBcxYGrCScDjvKJMMW/LyXOYRBDTDLHqjDDIROCvyJKkt4mu89BepSDmMCjUV7znap7FKRr9hLJPpraO/L1FjN+H0IB1GLvWnm59gwAw9vaG3EzE4NnQ6tqXLyYxxiH9p4PIy3GHSzMDIN/RDMWzM8uEKzq+E+rCwUI+04ZUfiOQs0SWXITHw5L42wmc1piMsRNvKRCQc3lPuLcsVt+VTeoEN8ZCG38dOGl97RUe25C2Cm4EZgPnsMO+aq/nCLMktor/421C3dhgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01MCXYddpqj8QN8BwDqqCYeS",
+        "name": "search_village",
+        "input": {
+          "window": "today"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 444,
+      "cache_creation_input_tokens": 20060,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 20060,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 128,
+      "output_tokens_details": {
+        "thinking_tokens": 80
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  }
+}

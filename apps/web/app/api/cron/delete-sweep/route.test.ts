@@ -20,9 +20,12 @@ vi.mock('~/lib/rights/delete', async (importOriginal) => ({
   runDeletionSweep: (...args: unknown[]) => runDeletionSweepMock(...args),
   sweepMessageRetention: async () => ({ messages: 0 }),
 }));
+vi.mock('~/lib/rights/record-retention', () => ({
+  sweepRecordRetention: async () => ({ removedEpisodesBlanked: 0, proactiveCandidatesDeleted: 0 }),
+}));
 vi.mock('~/lib/channel/checkin/notes', () => ({ purgeExpiredCheckInNotes: async () => 0 }));
 vi.mock('~/lib/channel/linq/roster-retention', () => ({
-  sweepRosterRetention: async () => ({ outcome: 'flag_off' }),
+  sweepRosterRetention: async () => ({ outcome: 'not_migrated' }),
 }));
 vi.mock('~/lib/signup/browser-use/runner', () => ({ remoteProfileDeleterFromEnv: () => null }));
 vi.mock('~/lib/signup/browser-use/vault', () => ({
@@ -38,6 +41,7 @@ function summaryWithGoogleRow(): DeletionSweepSummary {
     googleEndFailed: 0,
     pastGoogleWait: { unconfirmed: 0, endFailed: 0, page: 'nothing_to_page' },
     google: [{ integrationId: INTEGRATION_ID, provider: 'gcal', google: 'revoked' }],
+    undecodableIntake: { sessions: 0, page: 'nothing_to_page' },
   };
 }
 

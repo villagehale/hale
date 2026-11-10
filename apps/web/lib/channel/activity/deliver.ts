@@ -20,6 +20,7 @@ import {
 } from './followup-note';
 import type { EmptySearch } from './lane';
 import { factKeys, statesAFigure, statesNoCost } from './quote-match';
+import { SLOTS_IN_TEXT } from './share-page';
 import { ACTIVITY_HELD_TOPIC, heldOptionsNote, venuePage, withVenuePages } from './venue-pages';
 
 /**
@@ -117,10 +118,30 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * turned into an open question, on one of this product's beachhead subjects. Which field
  * is being read decides whether "free" means anything, so the field says which it is.
  */
-function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
+function carriesFact(field: string | null, kind: 'when' | 'price' | 'registration'): boolean {
   if (field === null || field.trim() === '') return false;
   if (kind === 'price' && statesNoCost(field)) return true;
   return statesAFigure(field);
+}
+
+/**
+ * THE SLOTS THE TEXT CARRIES, and the ones held for when the parent asks.
+ *
+ * The best {@link SLOTS_IN_TEXT} lead. A registration date is the fact that decides
+ * whether a parent acts today, so when none of them states one and a held slot does, the
+ * first such slot rides in the text as well. The extract is asked to put that row second;
+ * on 2026-11-09 a live extract put it third, and the date it had opened a page to read
+ * never reached the parent.
+ */
+export function textSlots<T extends FollowUpPick>(
+  slots: readonly T[],
+): { picks: T[]; held: T[] } {
+  const picks = slots.slice(0, SLOTS_IN_TEXT);
+  const held = slots.slice(SLOTS_IN_TEXT);
+  const dated = (slot: T) => carriesFact(slot.registration ?? null, 'registration');
+  const at = picks.some(dated) ? -1 : held.findIndex(dated);
+  if (at === -1) return { picks, held };
+  return { picks: [...picks, held[at]!], held: held.filter((_, index) => index !== at) };
 }
 
 /**
@@ -171,7 +192,7 @@ export interface FollowUpRecipient {
   /** The conversation the promise was made in, so the answer lands where the question was
    * asked. Null when the carrying message was not threaded. */
   conversationId: string | null;
-  /** `users.locale` for this parent, unchanged. The follow-up is written in this language. */
+  /** The parent's one proactive language (`parentLanguage`). The follow-up is written in it. */
   language: string;
 }
 
@@ -462,7 +483,18 @@ export async function deliverFollowUp(
     heardFacts: [...new Set([...(input.heardFacts ?? []), ...followUpFacts(input.picks)])].sort(),
     now,
   });
-  if (recorded.status === 'recorded') return { ...sent, watchRecorded: true };
+  if (recorded.status === 'recorded') {
+    // A SILENT WATCH: Hale will text again on this, and the text that just went out never
+    // told the parent so. Not refused (whether to mention it is the model's call), but
+    // counted, because an unannounced later text strains "the parent opens the thread".
+    if (!composed.mentionsWatch) {
+      console.warn(
+        { code: 'silent_watch', picks: input.picks.length },
+        'activity follow-up: silent watch - row written, sent text never mentions it',
+      );
+    }
+    return { ...sent, watchRecorded: true };
+  }
   console.error(
     { commitmentId: input.commitmentId, reason: recorded.reason },
     'activity follow-up: the parent was told Hale is still watching and no row was written',

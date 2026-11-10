@@ -1,0 +1,11 @@
+{
+  "value": {
+    "reply": "That's completely fine, no need to share it. Could you give me just the first three characters of your postal code or ZIP instead? That's enough for me to find things by area, not street. Or if you'd rather not, we can carry on and I'll tell you what your kids can do nearby another way.",
+    "asks": true,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": null,
+    "claimsSaved": false
+  },
+  "latencyMs": 1605
+}

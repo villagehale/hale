@@ -1,0 +1,10 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "sleep/nap routine coaching question, guidance not symptom",
+    "language": "en",
+    "language_request": null
+  },
+  "latencyMs": 932
+}

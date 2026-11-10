@@ -1,0 +1,33 @@
+{
+  "response": {
+    "id": "msg_011CgsFCGB33YcLLebLJDRbt",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5-5",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Almost. Most babies start solids around 6 months, and Theo's 5 months now. A month from now, look for the readiness signs: sitting up with little help, good head control, and reaching for your food. Until then, breast milk or formula is still all he needs. Start with one iron-rich food, like iron-fortified cereal or well-mashed meat, once a day. Confirm the timing with your provider or public health."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 139,
+      "cache_read_input_tokens": 23614,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 139,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 131,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+    }
+  },
+  "latencyMs": 2196
+}

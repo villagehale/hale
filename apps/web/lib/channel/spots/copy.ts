@@ -1,4 +1,6 @@
+import { hasLinkShape } from '../../format/link-shape';
 import { type BookMe4Model, type SpotTransitionKind, fragment } from './availability';
+import { checkedSchedule } from './schedule';
 
 /**
  * VIL-337 · what a spot-opened text may rest on, and what it may not say.
@@ -53,7 +55,8 @@ export interface SpotOpenFactsInput {
 /**
  * The schedule the page publishes, or nothing. Two ways to get nothing, and both cost the
  * schedule rather than the send: bytes that do not carry the model's own schedule fields,
- * and a value carrying anything but letters, digits, spaces and a colon.
+ * and a value that is not a day and a clock time (`checkedSchedule`, the check the other
+ * reader shares).
  */
 function schedulePhrase(model: BookMe4Model, evidence: readonly string[]): string | null {
   const day = model.StartDay;
@@ -61,8 +64,7 @@ function schedulePhrase(model: BookMe4Model, evidence: readonly string[]): strin
   if (!day || !time) return null;
   if (!evidence.includes(fragment('StartDay', day))) return null;
   if (!evidence.includes(fragment('StartTime', time))) return null;
-  const phrase = `${day.trim()} ${time.trim()}`.replace(/\s+/g, ' ');
-  return /^[A-Za-z0-9 :]+$/.test(phrase) ? phrase : null;
+  return checkedSchedule(`${day} ${time}`);
 }
 
 /**
@@ -102,13 +104,12 @@ export function spotOpenFacts(
   };
 }
 
-/** A link with or without a scheme. Clock words such as "a.m." never match: no TLD here
- * is one letter. */
-const LINK_SHAPE = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ca|org|net|gov|us)\b/i;
-
-/** Every number a draft may print, as numbers, so "05:00 PM" backs a written "5". */
+/** Every number a draft may print, as numbers, so "05:00 PM" backs a written "5". The
+ * schedule is checked again here, so its digits back nothing unless it is a schedule,
+ * whichever reader built the facts. */
 function backedNumbers(facts: SpotOpenFacts): Set<number> {
-  const sources = [facts.label, facts.schedule ?? '', String(facts.spotsLeft ?? '')];
+  const schedule = facts.schedule === null ? null : checkedSchedule(facts.schedule);
+  const sources = [facts.label, schedule ?? '', String(facts.spotsLeft ?? '')];
   return new Set(sources.flatMap((text) => (text.match(/\d+/g) ?? []).map(Number)));
 }
 
@@ -121,7 +122,7 @@ export function spotOpenRefusals(text: string, facts: SpotOpenFacts): string[] {
   const body = text.trim();
   if (body === '') return ['empty'];
   const refusals: string[] = [];
-  if (LINK_SHAPE.test(body)) refusals.push('link');
+  if (hasLinkShape(body)) refusals.push('link');
   if (body.includes('?')) refusals.push('asks_a_question');
   const backed = backedNumbers(facts);
   if ((body.match(/\d+/g) ?? []).some((run) => !backed.has(Number(run)))) {

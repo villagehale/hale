@@ -103,7 +103,8 @@ export const linqSharedGroupPeople = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     chatId: text('chat_id').notNull(),
-    phoneE164Encrypted: text('phone_e164_encrypted').notNull(),
+    // Null on a STOP tombstone: the hash alone holds the stop, and no number is kept.
+    phoneE164Encrypted: text('phone_e164_encrypted'),
     phoneE164Hash: text('phone_e164_hash').notNull(),
     familyId: uuid('family_id').references(() => families.id, { onDelete: 'set null' }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),

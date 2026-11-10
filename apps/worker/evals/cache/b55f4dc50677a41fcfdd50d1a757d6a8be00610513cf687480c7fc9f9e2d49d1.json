@@ -1,0 +1,12 @@
+{
+  "value": {
+    "reply": "Good, I'm glad it would help, Dana. When you're ready, the number and phrase for the group are right below. Start a group text with the other parent, add that number, and send the phrase in it, and we'll be in the same loop on the kids' plans and reminders.",
+    "asks": false,
+    "parentQuestion": false,
+    "connectorsOffered": [],
+    "joinPointer": "below",
+    "claimsSaved": false,
+    "coparentGroup": true
+  },
+  "latencyMs": 1599
+}

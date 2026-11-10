@@ -223,6 +223,10 @@ describe('teen access grants never reach an outbound channel', () => {
  */
 const FAMILY_EVENTS_DOORS: Array<[string, string]> = [
   [
+    'lib/channel/activity/calendar-check.ts',
+    "the VIL-564 watch calendar read — a 13+ child's row, a row whose title names a 13+ child and a sensitive row are dropped before a title reaches the model; the answer only closes a watch and nothing is sent to a recipient",
+  ],
+  [
     'lib/channel/coach/tools.ts',
     'the schedule reader — it PROJECTS a private row to the placeholder title with no location before anything in this tree sees it',
   ],

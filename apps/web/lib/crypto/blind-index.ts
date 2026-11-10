@@ -30,6 +30,9 @@ const GOOGLE_ACCOUNT_BLIND_INDEX_INFO = 'hale-google-account-blind-index-v1';
 const KID_RELEVANCE_INPUT_INFO = 'hale-kid-relevance-input-v1';
 /** A Linq chat id. Its own label: chat ids are a provider's identifiers, not a person's. */
 const LINQ_CHAT_BLIND_INDEX_INFO = 'hale-linq-chat-blind-index-v1';
+/** A Linq group handle that is not a phone, such as an Apple-ID address. Its own label: an
+ * address hashed here must not be probeable against the email index. */
+const LINQ_HANDLE_BLIND_INDEX_INFO = 'hale-linq-handle-blind-index-v1';
 /** What an email-alert claim was about (an instant, an event ref or a message id). Its own
  * label: an instant is low-entropy, so an unkeyed digest of it is a lookup table. */
 const EMAIL_ALERT_ANCHOR_INFO = 'hale-email-alert-anchor-v1';
@@ -101,6 +104,16 @@ export function kidRelevanceInputIndex(input: string): string {
 export function linqChatBlindIndex(chatId: string): string {
   return createHmac('sha256', blindIndexKey(LINQ_CHAT_BLIND_INDEX_INFO))
     .update(chatId)
+    .digest('hex');
+}
+
+/**
+ * Equality key for a group chat handle that is not a phone number. Callers trim and
+ * lowercase first, so one Apple ID keys one row however Linq spelled it.
+ */
+export function linqHandleBlindIndex(handleNormalized: string): string {
+  return createHmac('sha256', blindIndexKey(LINQ_HANDLE_BLIND_INDEX_INFO))
+    .update(handleNormalized)
     .digest('hex');
 }
 

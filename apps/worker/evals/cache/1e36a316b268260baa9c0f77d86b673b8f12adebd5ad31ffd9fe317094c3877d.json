@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message fits course_link_refused with reason wrong_municipality. It says plainly that the link is from another town while the registration is in Springfield. It says the link was not taken and nothing was saved. It asks once for the course page from Springfield's portal, which this reason calls for. It carries no link, invents nothing, names no child, and is in English with a casual tone. 'The registration morning I'm holding for you' is a mild paraphrase of context, not a claim that anything is booked.",
+    "score": 5
+  }
+}
