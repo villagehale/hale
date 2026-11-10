@@ -1,4 +1,6 @@
 import type { Database } from '@hale/db';
+import { modelReadSweepEnabled } from '~/lib/channel/meaning-screen/flag';
+import { sharedMeaningScreen } from '~/lib/channel/meaning-screen/read';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 
 /**
@@ -281,12 +283,19 @@ export type StatedStateOutcome =
  * within the window the nudge treats its own question as live. A reader that let the
  * message name its own key would be a reader any sentence could aim at any reminder.
  */
+async function statedStateForRecord(body: string): Promise<StatedState | null> {
+  if (!modelReadSweepEnabled()) return readStatedState(body);
+  const reading = await sharedMeaningScreen().read({ screen: 'stated_state', text: body });
+  if (!reading) return null;
+  return reading.hit ? 'health_visit_handled' : null;
+}
+
 export async function recordStatedState(
   database: Database,
   input: { familyId: string; parentUserId: string; body: string; now: Date },
   deps: HealthReplyDeps,
 ): Promise<StatedStateOutcome> {
-  const state = readStatedState(input.body);
+  const state = await statedStateForRecord(input.body);
   if (state === null) return { status: 'nothing_stated' };
 
   const outcome = await handleHealthCheckpointReply(

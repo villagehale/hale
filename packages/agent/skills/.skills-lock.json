@@ -379,6 +379,10 @@
     "file": "linq-sticker.md",
     "sha256": "058703a76f47c7021790ae4e2c8248b065c00937a439943af13f35df4121602d"
   },
+  "meaning-screen.md": {
+    "file": "meaning-screen.md",
+    "sha256": "094fb65d060c1744c45119aa04137fb70d8326c8b4e5d9bd34abb976babb5e9e"
+  },
   "medical-answer.md": {
     "file": "medical-answer.md",
     "sha256": "42c9056d114af9f096468fb555c325359c42d220365cae592abdc4d864feceb9"
