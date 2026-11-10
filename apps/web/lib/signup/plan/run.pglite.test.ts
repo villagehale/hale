@@ -14,7 +14,7 @@ import type {
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import { isOneSubmittingViolation, recordSignupOffer } from '../store';
-import { REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
+import { REGISTRATION_ASSISTED_RUN_ENABLED_ENV, REGISTRATION_PLAN_RUN_ENABLED_ENV } from './flag';
 import {
   PLAN_JOIN_LEAD_MS,
   PLAN_LEASE_MS,
@@ -32,6 +32,7 @@ const OPENS = new Date('2026-12-01T12:00:00.000Z');
 const AUTO_HOST = 'register.example-rec.test';
 const AUTO_URL = `https://${AUTO_HOST}/Clients/BookMe4LandingPages/CoursesLandingPage`;
 const ASSISTED_URL = 'https://anc.ca.apm.activecommunities.com/exampleville/activity/detail/1';
+const LIVE = 'https://live.browser-use.com/s/fixture-live-view-token';
 const SESSIONS = [
   {
     id: 'sat-0900',
@@ -348,7 +349,7 @@ describe('carrying out plans at the open', () => {
       'Preschool Swim Sat 9:00',
       'Preschool Swim Sun 10:00',
     ]);
-    expect(input).toMatchObject({ maxPriceCents: 10000, waiverAccepted: true });
+    expect(input).toMatchObject({ mode: 'auto', maxPriceCents: 10000, waiverAccepted: true });
     expect(caps).toEqual([{ ok: true, reason: expect.any(String) }]);
     expect((await offerRow(family.offerId))?.status).toBe('completed');
     expect((await offerRow(family.offerId))?.browserUseCostUsd).toBe('0.090000');
@@ -396,7 +397,7 @@ describe('carrying out plans at the open', () => {
     expect((await offerRow(family.offerId))?.status).toBe('planned');
   });
 
-  it('hands an assisted town back to the parent without opening a browser', async () => {
+  it('hands an ActiveNet town back to the parent without a browser while the assisted switch is off', async () => {
     const family = await plannedFamily({ url: ASSISTED_URL });
     const { runner, inputs } = engineLike(PAID);
     const { deps: d, notices } = deps(runner);
@@ -406,13 +407,61 @@ describe('carrying out plans at the open', () => {
     expect((await offerRow(family.offerId))?.status).toBe('handed_back');
     expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
       outcome: 'needs_human',
-      detail: 'assisted_town',
+      detail: 'parent_town',
     });
     expect((await steps(family.offerId)).map((s) => s.step)).toEqual([
       'plan_approved',
       'plan_started',
       'plan_finished',
     ]);
+  });
+
+  it('on an ActiveNet town with the assisted switch on, fills and hands the parent the live browser: no cap, no payment', async () => {
+    vi.stubEnv(REGISTRATION_ASSISTED_RUN_ENABLED_ENV, 'true');
+    const family = await plannedFamily({ url: ASSISTED_URL });
+    const { runner, inputs, caps } = engineLike(PAID);
+    runner.run.mockImplementationOnce(async (input: BrowserUsePlanInput) => {
+      inputs.push(input);
+      await input.onStep({ step: 'ready', choiceIndex: 0, feeCents: 9800 });
+      return {
+        ...PAID,
+        outcome: 'ready_for_parent',
+        detail: 'none',
+        choiceIndex: 0,
+        liveViewUrl: LIVE,
+        holdExpiresAt: new Date(NOW.getTime() + 15 * 60_000),
+        confirmationNumber: null,
+        amountChargedCents: null,
+        sessionCostUsd: null,
+      };
+    });
+    const { deps: d, notices } = deps(runner);
+    const result = await runDueSignupPlans(db.database, { now: NOW }, d);
+
+    expect(result.plans.find((p) => p.offerId === family.offerId)).toEqual({
+      offerId: family.offerId,
+      outcome: 'ready_for_parent',
+      detail: 'none',
+      notice: 'sent',
+    });
+    expect(inputs.find((i) => i.correlationId === family.offerId)?.mode).toBe('assisted');
+    expect(caps).toEqual([]);
+    expect((await offerRow(family.offerId))?.status).toBe('handed_back');
+    expect(notices.find((n) => n.offerId === family.offerId)).toMatchObject({
+      outcome: 'ready_for_parent',
+      liveViewUrl: LIVE,
+      choiceIndex: 0,
+      amountChargedCents: null,
+    });
+    const audit = await steps(family.offerId);
+    expect(audit.map((s) => s.step)).toEqual([
+      'plan_approved',
+      'plan_started',
+      'plan_ready',
+      'plan_finished',
+    ]);
+    expect(audit[1]).toMatchObject({ mode: 'assisted' });
+    expect(JSON.stringify(audit)).not.toContain('fixture-live-view-token');
   });
 
   it('asks the parent to sign in again when no saved session is left', async () => {

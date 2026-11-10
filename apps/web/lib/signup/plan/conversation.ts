@@ -14,6 +14,7 @@ import {
   loadConversablePlan,
   writePlanAudit,
 } from './store';
+import { planReplyMode } from './towns';
 import {
   type PlanReplyFacts,
   type PlanReplyMoment,
@@ -189,6 +190,7 @@ async function reply(
     : plan.sessions;
   const facts: PlanReplyFacts = {
     moment,
+    mode: planReplyMode(plan.registrationUrl),
     childFirstName: await childFirstName(database, {
       familyId: input.familyId,
       childId: plan.childId,

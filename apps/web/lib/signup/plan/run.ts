@@ -84,7 +84,8 @@ export type PlanRunOutcome = PlanEngineOutcome;
 export type PlanRunDetail =
   | PlanEngineDetail
   | 'missed_open'
-  | 'assisted_town'
+  /** A town with no plan mode: the parent registers. */
+  | 'parent_town'
   | 'url_refused'
   | 'missing_detail'
   | 'choices_gone'
@@ -136,6 +137,8 @@ export type PlanSweepResult =
  * line, and the next sweep picks it up before it claims any new plan. A payment already
  * under way is read before any check: the card may be charged, so it is recorded and
  * reported, never cancelled unread. A plan the parent took back while it ran is let go.
+ * On an assisted town (ActiveNet) the engine only fills the registration and the parent gets the
+ * live browser to submit and pay: no cap is asked because Hale moves no money there.
  */
 export async function runDueSignupPlans(
   database: Database,
@@ -204,7 +207,7 @@ async function runOnePlan(
     });
   const allowed = registrationUrlAllowed(plan.registrationUrl);
   const host = allowed.ok ? new URL(allowed.href).hostname : null;
-  const mode = host ? planModeFor(host, deps.autoHosts) : 'assisted';
+  const mode = host ? planModeFor(host, deps.autoHosts) : 'parent';
   await audit(
     plan.resume
       ? { step: 'plan_resumed', phase: plan.resume.phase, held: held !== null, host }
@@ -361,7 +364,7 @@ async function runOnePlan(
   if (now.getTime() - plan.opensAt.getTime() > PLAN_MAX_LATE_MS) {
     return held ? handBack('open_window_passed', 'not_open') : handBack('missed_open');
   }
-  if (mode === 'assisted') return handBack('assisted_town');
+  if (mode === 'parent') return handBack('parent_town');
   const choices = plan.choiceIds.flatMap((id) => plan.sessions.filter((s) => s.id === id));
   if (choices.length !== plan.choiceIds.length) return handBack('choices_gone');
   const identity = await loadSignupIdentity(database, {
@@ -404,6 +407,7 @@ async function runOnePlan(
   const cap = deps.checkSpendingCap ?? signupSpendingCap(plan.maxPriceCents);
   return carry(() =>
     runner.run({
+      mode,
       correlationId: plan.offerId,
       registrationUrl: allowed.href,
       identity,

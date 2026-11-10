@@ -106,20 +106,23 @@ export async function offerSignupFromFacts(
   }
 
   const host = new URL(allowed.href).hostname;
+  const mode = planModeFor(host, deps.autoHosts);
   const planOpensAt =
     input.planOpensAt &&
     input.planOpensAt.getTime() > input.now.getTime() &&
     registrationPlanRunEnabled() &&
-    planModeFor(host, deps.autoHosts) === 'auto'
+    mode !== 'parent'
       ? input.planOpensAt
       : null;
-  const text = planOpensAt
-    ? await writePlanOffer(database, input, deps, {
-        opensAt: planOpensAt,
-        childName: input.facts.childFirstName ?? child.name,
-        registrationUrl: allowed.href,
-      })
-    : await writeOffer(input, deps, { childName: child.name, registrationUrl: allowed.href });
+  const text =
+    planOpensAt && mode !== 'parent'
+      ? await writePlanOffer(database, input, deps, {
+          mode,
+          opensAt: planOpensAt,
+          childName: input.facts.childFirstName ?? child.name,
+          registrationUrl: allowed.href,
+        })
+      : await writeOffer(input, deps, { childName: child.name, registrationUrl: allowed.href });
   if (!text) {
     await writeAudit(database, input, null, { step: 'offer', reason: 'unwritten' });
     return { ok: false, reason: 'unwritten' };
@@ -170,18 +173,20 @@ async function writeOffer(
 
 /**
  * VIL-558 · an offer Hale can carry out at the open is offered as a plan: the sessions to
- * rank, a maximum price, the waiver question, and the two-places note. The model writes
- * it; code adds the registration link after it.
+ * rank, a maximum price, the waiver question (auto towns only: on an assisted town the
+ * parent ticks it), and the two-places note. The model writes it; code adds the
+ * registration link after it.
  */
 async function writePlanOffer(
   database: Database,
   input: OfferSignupInput,
   deps: OfferSignupDeps,
-  known: { opensAt: Date; childName: string; registrationUrl: string },
+  known: { mode: 'auto' | 'assisted'; opensAt: Date; childName: string; registrationUrl: string },
 ): Promise<string | null> {
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write({
     moment: 'offer',
+    mode: known.mode,
     childFirstName: known.childName,
     opensAt: planOpensAtLocal(known.opensAt, await parentTimeZone(database, input.parentUserId)),
     sessions: replySessions(input.facts.sessions),

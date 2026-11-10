@@ -140,6 +140,7 @@ function plan(overrides: Partial<BrowserUsePlanInput> = {}) {
   const checkpoints: PlanResumeToken[] = [];
   const cap = vi.fn(async (_cents: number) => ({ ok: true, reason: 'within' }));
   const input: BrowserUsePlanInput = {
+    mode: 'auto',
     correlationId: 'offer-fixture',
     registrationUrl: URL_,
     identity: IDENTITY,

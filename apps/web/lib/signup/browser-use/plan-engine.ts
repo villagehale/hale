@@ -43,7 +43,12 @@ import {
 export const PLAN_SIGNUP_SKILL = 'browser-use-plan-signup';
 export const SAVED_CARD_PAYMENT_SKILL = 'browser-use-saved-card-payment';
 
-export type PlanEngineOutcome = BrowserUseEngineOutcome | 'not_open' | 'cancelled';
+export type PlanEngineOutcome =
+  | BrowserUseEngineOutcome
+  | 'not_open'
+  | 'cancelled'
+  /** Assisted mode: the registration is filled on the live browser for the parent to submit. */
+  | 'ready_for_parent';
 
 /**
  * Where a plan's run stands when a sweep ends before the run does. A town's queue can
@@ -65,10 +70,13 @@ export type PlanEngineDetail =
   | 'security_code'
   | 'spending_cap'
   /** The parent's yes no longer stood at the moment of payment (rule #4). */
-  | 'authorization_lapsed';
+  | 'authorization_lapsed'
+  /** Assisted mode: the agent said it added to the cart or submitted, which it must never do. */
+  | 'submit_boundary';
 
 export type PlanEngineStep =
   | { step: 'checkout'; choiceIndex: number; cartTotalCents: number | null }
+  | { step: 'ready'; choiceIndex: number; feeCents: number | null }
   | { step: 'spending_cap'; amountCents: number; ok: boolean }
   | {
       step: 'payment';
@@ -89,6 +97,11 @@ export interface BrowserUsePlanInput
     | 'onProfileCreated'
     | 'proxyCountryCode'
   > {
+  /**
+   * `auto`: Hale pays with the saved card at the open. `assisted`: Hale only fills, and the
+   * parent submits and pays on the live browser (`runBrowserUseAssistedSignup`).
+   */
+  mode: 'auto' | 'assisted';
   /** The parent's ranked choices, best first. Never empty. */
   choices: BrowserUseSignupInput['session'][];
   maxPriceCents: number;

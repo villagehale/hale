@@ -8,16 +8,17 @@ import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { runBrowserUsePlanForMode } from '../browser-use/assisted-engine';
 import { liveViewUrl } from '../browser-use/live-view';
 import {
   releasePlanRun,
-  runBrowserUsePlanSignup,
   settleBrowserUsePlanPayment,
 } from '../browser-use/plan-engine';
 import { browserUseSignupRunnerFromEnv } from '../browser-use/runner';
 import { childFirstName, parentTimeZone, replySessions } from './conversation';
 import type { PlanNotice, PlanOutcomeNotice, PlanRunDeps } from './run';
 import { planLapse } from './store';
+import { planReplyMode } from './towns';
 import {
   type PlanReplyWriter,
   createPlanReplyWriter,
@@ -80,6 +81,7 @@ export function createPlanNotifier(
         : null;
     const text = await deps.writer.write({
       moment: 'run_finished',
+      mode: planReplyMode(offer.registrationUrl),
       childFirstName: await childFirstName(database, {
         familyId: notice.familyId,
         childId: offer.childId,
@@ -194,7 +196,7 @@ export function signupPlanDepsFromEnv(database: Database): PlanRunDeps {
   return {
     runner: engine
       ? {
-          run: (input) => runBrowserUsePlanSignup(input, engine),
+          run: (input) => runBrowserUsePlanForMode(input, engine),
           release: (resume) => releasePlanRun(resume, engine),
           settlePayment: (input) => settleBrowserUsePlanPayment(input, engine),
         }
