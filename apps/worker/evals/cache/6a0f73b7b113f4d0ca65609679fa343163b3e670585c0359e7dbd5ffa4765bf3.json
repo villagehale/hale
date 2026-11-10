@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message is in French and correctly acknowledges the waitlist outcome for Riverton. It says the town publishes no response window, so there is no clock to set, which is right since deadline and responseHours are null. It invents no position number. It gives the handed tip to watch email for an offer and asks nothing. The tone is natural and friendly, with vous acceptable.",
+    "score": 5
+  }
+}

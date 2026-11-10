@@ -76,8 +76,9 @@ export async function judgeWholeFindReply(
 /**
  * Whether an activity follow-up carries sentences that report Hale's own search instead of
  * a find or the next step (VIL-571). `reports_process` names them so the composer can be
- * told which to drop; the judge does not rewrite. `unjudged` is a named fault (rule #11):
- * the gate did not run, so the draft does not go out.
+ * told which to drop, and each is a trimmed substring of the draft. The judge does not
+ * rewrite. `unjudged` is a named fault (rule #11): the gate did not run, or it named only
+ * sentences the draft does not contain, so the draft does not go out.
  */
 export type FollowUpProcessGate =
   | { verdict: 'clean' }
@@ -127,11 +128,47 @@ export async function judgeFollowUpProcess(
     draft,
   );
   if (!judged.ok) return { verdict: 'unjudged', reason: judged.reason };
-  const sentences = judged.value.process_sentences.filter((sentence) => sentence.trim() !== '');
-  return sentences.length === 0 ? { verdict: 'clean' } : { verdict: 'reports_process', sentences };
+  return followUpProcessVerdict(draft, judged.value.process_sentences);
 }
 
-type JudgeFault = 'client_unavailable' | 'skill_unavailable' | 'judge_failed';
+/**
+ * The judge's named sentences, bound to the draft. Only text already in the draft goes
+ * back to the composer: the draft carries words read off venue pages, so a quote the
+ * judge did not copy is text nobody checked. Shared with the finder and deep evals.
+ */
+export function followUpProcessVerdict(
+  draft: string,
+  named: readonly string[],
+): FollowUpProcessGate {
+  const trimmed = named.map((sentence) => sentence.trim()).filter((sentence) => sentence !== '');
+  if (trimmed.length === 0) return { verdict: 'clean' };
+  const sentences = trimmed.filter((sentence) => draft.includes(sentence));
+  return sentences.length === 0
+    ? { verdict: 'unjudged', reason: 'not_verbatim' }
+    : { verdict: 'reports_process', sentences };
+}
+
+/** The correction the composer is handed for named sentences. Shared with the evals. */
+export function followUpProcessViolation(sentences: readonly string[]): string {
+  return `These sentences tell the parent how Hale searched, not what it found or what happens next: ${sentences
+    .map((sentence) => JSON.stringify(sentence))
+    .join(' ')}. Take them out and change nothing else.`;
+}
+
+/**
+ * The find-reply port for a coach built without a model (the scripted journey coaches).
+ * It sends the draft and logs that it went unjudged (rule #11). Production wires
+ * {@link judgeWholeFindReply}.
+ */
+export async function findReplyNotJudged(): Promise<FindReplyGate> {
+  console.error(
+    { reason: 'not_configured' },
+    'channel coach: find-reasoning judge not wired - draft sent unjudged',
+  );
+  return { verdict: 'send' };
+}
+
+type JudgeFault = 'client_unavailable' | 'skill_unavailable' | 'judge_failed' | 'not_verbatim';
 
 async function runJudge<T>(
   client: () => AgentClient,

@@ -124,4 +124,42 @@ export const FOLLOWUP_PROCESS_JUDGE_FIXTURES = [
       'Little Movers tiene gimnasia para niños de 1 a 3 años los sábados a las 9:30, 120 $ - según su sitio. Hay más opciones; pídemelas aquí cuando quieras.',
     expect: 'clean',
   },
+  // From real follow-ups, scrubbed (the repo is public): invented venues and towns, no
+  // names. The raw 2026-11-03 phone-audit texts are not in the repo; these keep the shapes
+  // it reported (VIL-571 bookkeeping tail, VIL-564 gap-and-watch, VIL-572 a follow-up in
+  // Chinese). The first is the finder eval's own empty-search draft, which this judge
+  // flagged whole when it first ran inside the compose loop.
+  {
+    id: 'audit-empty-first-person-where-looked',
+    draft:
+      "I searched for toddler underwater basket weaving and went through Brookfield's fall recreation pages. There is nothing running for that age, only novelty and joke results. I'll keep watching and text you if one turns up.",
+    expect: 'clean',
+  },
+  {
+    id: 'audit-empty-with-page-count-and-ranking',
+    draft:
+      "I opened eleven pages across four sites and ranked what was left by distance. Nothing near you runs for two-year-olds this fall. I'll keep watching and text you if that changes.",
+    expect: 'flag',
+    flagged: 'eleven pages',
+  },
+  {
+    id: 'audit-find-then-listings-left-out',
+    draft:
+      "Tumble Tots at the Brookfield rec centre runs Wednesdays at 10, $96 for eight weeks - their site says. The other two listings I found were last spring's and a private studio with no toddler class, so I left them out.",
+    expect: 'flag',
+    flagged: 'left them out',
+  },
+  {
+    id: 'audit-gap-and-watch',
+    draft:
+      "Little Sprouts Gym has a parent-and-tot class for under-3s - their site says. I couldn't pin down the days or times, so I'll keep watching and text you when I can get to them.",
+    expect: 'clean',
+  },
+  {
+    id: 'audit-zh-find-then-other-pools',
+    draft:
+      'Riverbend 社区中心的亲子游泳课每周六上午10点，八节课120元，这是他们网站上写的。我还查看了另外三个泳池的页面，但都没有适合这个年龄的课程。',
+    expect: 'flag',
+    flagged: '另外三个泳池',
+  },
 ];

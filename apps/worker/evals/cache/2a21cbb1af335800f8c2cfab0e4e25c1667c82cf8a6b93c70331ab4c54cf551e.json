@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Fits a readiness_answer yes. It attributes readiness to the parent (\"You've said\") without claiming Hale checked anything, and it correctly restates the handed portal, Max and the four setup items. It asks no question and invents no reminder, booking or date. The English is casual and friendly. The only quibble is the small assumption in \"his birthday\".",
+    "score": 5
+  }
+}
