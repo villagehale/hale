@@ -44,7 +44,7 @@ import { removeDocument } from '../docs/storage.js';
  *
  * | Table | Approach | Why |
  * | --- | --- | --- |
- * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Outbound rows store no body. |
+ * | `channel_messages` | REDACT `body` to null | Bookings, reviews, offers, and check-in notes reference the row, some NOT NULL, and the cap index counts rows. Migration 0121 forbids deleting one. Most outbound rows store no body. A reminder keeps its model-written text (`recordBody`). A calendar invite, when `CALENDAR_INVITE_LINK_HASH_ENABLED` is on, stores a sha256 of the event id instead of the signed ICS URL. |
  * | `channel_pending_asks` | DELETE the row | The question a general answer left open, de-identified, beside its reply's row (migration 0167). The next reply the router sends that parent already deletes it. This sweep deletes one that any newer word from Hale has closed (a holding line included), one whose reply is a year old, and one whose own row is a year old. |
  * | `messages` | DELETE the row | The Ask Hale transcript. Soft-delete leaves `content` in place; the retention promise removes it. Audit rows store the id as text, not a foreign key. |
  * | `chat_attachments` | DELETE the bytes, then the row | The file, its path, and `original_name`. Bytes are purged before the row so a cascade cannot drop the path first. Unlinked uploads are included. |

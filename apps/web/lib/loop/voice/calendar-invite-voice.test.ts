@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { AgentClient } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import type { LoopMessage } from '~/lib/channel/types';
 import {
@@ -282,6 +282,10 @@ describe('calendarInviteUserMessage', () => {
 });
 
 describe('splitInviteSms', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('sends a short line whole and splits a long one without cutting the link', () => {
     const short = `Swim class. ${LINK}`;
     expect(splitInviteSms(short)).toEqual([short]);
@@ -293,6 +297,61 @@ describe('splitInviteSms', () => {
       parts.find((part) => part.includes(LINK)),
     ]);
     expect(parts.some((part) => part.includes(LINK))).toBe(true);
+  });
+
+  it('flag off: keeps the sent words on the ledger', () => {
+    const eventId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const url = `https://app.villagehale.com/api/ics/event/${eventId}.sig`;
+    const line = `Swim class on Thu, Jul 23 at 10:30 AM. ${url}`;
+    const rendered = calendarInviteSmsRenderer.render(
+      {
+        templateKey: 'calendar_invite_sms',
+        familyId: 'fam',
+        parentUserId: 'parent',
+        category: 'approval',
+        urgency: 'time_sensitive',
+        channel: 'sms',
+        payload: {
+          summary: 'Swim class',
+          when: 'Thu, Jul 23 at 10:30 AM',
+          url,
+          line,
+        },
+      } satisfies LoopMessage,
+      'sms',
+      'generic',
+    );
+    expect(rendered.recordBody).toBe(true);
+    expect(rendered.linkHash).toBeUndefined();
+  });
+
+  it('flag on: asks the dispatch to store a hash on the part that carries the link', () => {
+    vi.stubEnv('CALENDAR_INVITE_LINK_HASH_ENABLED', 'true');
+    const eventId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const url = `https://app.villagehale.com/api/ics/event/${eventId}.sig`;
+    const line = `Swim class on Thu, Jul 23 at 10:30 AM. ${url}`;
+    const rendered = calendarInviteSmsRenderer.render(
+      {
+        templateKey: 'calendar_invite_sms',
+        familyId: 'fam',
+        parentUserId: 'parent',
+        category: 'approval',
+        urgency: 'time_sensitive',
+        channel: 'sms',
+        payload: {
+          summary: 'Swim class',
+          when: 'Thu, Jul 23 at 10:30 AM',
+          url,
+          line,
+        },
+      } satisfies LoopMessage,
+      'sms',
+      'generic',
+    );
+    expect(rendered.recordBody).toBe(false);
+    expect(rendered.linkHashFor).toBe(url);
+    expect(rendered.linkHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(rendered.linkHash).not.toContain('http');
   });
 
   it('does not fold the model line on the way out', () => {
