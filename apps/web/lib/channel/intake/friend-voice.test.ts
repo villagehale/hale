@@ -80,6 +80,9 @@ describe('friend voice brief', () => {
     expect((await friendVoiceSystem({ step: 'ack', householdGroup: 'claimed' }, true)).system).toBe(
       `${short}\n\n${group}`,
     );
+    const pending = await friendVoiceSystem({ step: 'ack', householdGroup: 'pending' }, false);
+    expect(pending.extras).toEqual([group]);
+    expect(pending.skill.instructions).toBe(base);
   });
 
   it("hands a stored language tag only to Hale's own messages; beside their words it is left out (VIL-538)", () => {

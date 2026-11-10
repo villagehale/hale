@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
-import { estimateCostUsd, pickLane } from '@hale/agent';
+import { SPARSE_CACHE_TTL, estimateCostUsd, pickLane, promptCacheHitFromRead } from '@hale/agent';
 import type { FamilyEventNotes } from '@hale/db';
 import { ZodError, z } from 'zod';
 import type { RecordAgentRunInput } from '~/lib/agent-run';
@@ -416,6 +416,7 @@ export async function composeReminderTexts(
         client,
         lane,
         system: skill.instructions,
+        cacheTtl: SPARSE_CACHE_TTL,
         userMessage: reminderUserMessage(facts),
         toolName: 'reminder_texts',
         toolDescription: 'The texts Hale sends the parent, in order.',
@@ -455,6 +456,7 @@ export async function composeReminderTexts(
         : 0,
       cacheReadTokens: cacheRead,
       cacheWriteTokens: cacheCreation,
+      promptCacheHit: promptCacheHitFromRead(usage ? cacheRead : undefined),
       latencyMs: Date.now() - startedAt,
       status: result.kind === 'written' ? 'completed' : 'failed',
     });

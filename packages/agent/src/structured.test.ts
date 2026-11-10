@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AgentClient } from './agent.js';
 import { HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL, pickLane } from './model.js';
+import { cachedSystem } from './prompt-cache.js';
 import {
   StructuredOutputError,
-  cachedSystem,
   forceToolJson,
   strictToolSchema,
   structuredRequest,
@@ -745,6 +745,48 @@ describe('prompt caching', () => {
       'VARIABLE PER-RUN PAYLOAD',
     );
     expect(req?.messages).toEqual([{ role: 'user', content: 'VARIABLE PER-RUN PAYLOAD' }]);
+  });
+
+  it('puts optional extras after the breakpoint and keeps the 1h ttl on the prefix', async () => {
+    const { client, create } = fakeClient(ANSWER);
+    await forceToolJson({
+      client,
+      lane: pickLane('classify'),
+      system: 'STABLE AGENT INSTRUCTIONS',
+      systemExtras: ['household-group addendum'],
+      cacheTtl: '1h',
+      userMessage: 'VARIABLE PER-RUN PAYLOAD',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_SCHEMA,
+      schema: SCHEMA,
+      maxTokens: 20,
+    });
+    const req = create.mock.calls[0]?.[0];
+    expect(req?.system).toEqual(
+      cachedSystem('STABLE AGENT INSTRUCTIONS', '1h', ['household-group addendum']),
+    );
+    const prefix = JSON.stringify((req?.system as { cache_control?: unknown }[])?.[0]);
+    expect(prefix).toContain('"ttl":"1h"');
+    expect(prefix).not.toContain('household-group addendum');
+  });
+
+  it('builds a byte-identical prefix for two different user payloads', () => {
+    const common = {
+      lane: pickLane('classify'),
+      system: 'STABLE AGENT INSTRUCTIONS',
+      toolName: TOOL,
+      toolDescription: 'desc',
+      inputJsonSchema: JSON_SCHEMA,
+      maxTokens: 20,
+    };
+    const a = structuredRequest({ ...common, userMessage: 'today is 2026-11-10; the Parkers' });
+    const b = structuredRequest({ ...common, userMessage: 'today is 2026-03-01; another family' });
+    expect(JSON.stringify({ tools: a.tools ?? null, system: a.system })).toBe(
+      JSON.stringify({ tools: b.tools ?? null, system: b.system }),
+    );
+    expect(JSON.stringify(a.system)).not.toContain('Parkers');
+    expect(a.messages).not.toEqual(b.messages);
   });
 
   it('sends the same request on the streamed transport', async () => {

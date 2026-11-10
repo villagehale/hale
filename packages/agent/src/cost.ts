@@ -55,14 +55,19 @@ const CACHE_READ_RATE_MULTIPLIER = 0.1;
 /** Writing the 5-minute prompt cache bills at 1.25x the base input rate. */
 const CACHE_WRITE_RATE_MULTIPLIER = 1.25;
 
+/** Writing the 1-hour prompt cache bills at 2x the base input rate. */
+const CACHE_WRITE_1H_RATE_MULTIPLIER = 2;
+
 /**
  * One call's tokens, split the way Anthropic bills them: fresh prompt tokens at
- * the full input rate, cache writes at 1.25x, cache reads at 0.1x, output at the
- * output rate. The tiers are disjoint — a token is counted in exactly one.
+ * the full input rate, cache writes at 1.25x (5m) or 2x (1h), cache reads at 0.1x,
+ * output at the output rate. The tiers are disjoint — a token is counted in exactly one.
  */
 export interface TokenUsage {
   inputTokens: number;
   cacheCreationTokens: number;
+  /** Slice of `cacheCreationTokens` written at the 1h TTL (2x). Remainder is 5m (1.25x). */
+  cacheCreation1hTokens?: number;
   cacheReadTokens: number;
   outputTokens: number;
 }
@@ -81,9 +86,12 @@ export function estimateCostUsd(model: string, usage: TokenUsage): number {
   const cacheReadPerMTok = rate.cacheReadPerMTok ?? rate.inputPerMTok * CACHE_READ_RATE_MULTIPLIER;
   const cacheWritePerMTok =
     rate.cacheWritePerMTok ?? rate.inputPerMTok * CACHE_WRITE_RATE_MULTIPLIER;
+  const oneHour = Math.min(usage.cacheCreation1hTokens ?? 0, usage.cacheCreationTokens);
+  const fiveMin = usage.cacheCreationTokens - oneHour;
   return (
     (usage.inputTokens * rate.inputPerMTok) / PER_MTOK +
-    (usage.cacheCreationTokens * cacheWritePerMTok) / PER_MTOK +
+    (fiveMin * cacheWritePerMTok) / PER_MTOK +
+    (oneHour * rate.inputPerMTok * CACHE_WRITE_1H_RATE_MULTIPLIER) / PER_MTOK +
     (usage.cacheReadTokens * cacheReadPerMTok) / PER_MTOK +
     (usage.outputTokens * rate.outputPerMTok) / PER_MTOK
   );
@@ -95,6 +103,7 @@ export function agentRunCostUsd(model: string, usage: AgentUsage): number {
   return estimateCostUsd(model, {
     inputTokens: usage.promptTokens - usage.cacheCreationTokens,
     cacheCreationTokens: usage.cacheCreationTokens,
+    cacheCreation1hTokens: usage.cacheCreation1hTokens,
     cacheReadTokens: usage.cacheReadTokens,
     outputTokens: usage.completionTokens,
   });

@@ -1,7 +1,7 @@
 import type { PostHog } from 'posthog-node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captureSafeException } from './exceptions.js';
-import { traceAnthropic } from './llm-trace.js';
+import { buildGenerationProperties, traceAnthropic } from './llm-trace.js';
 import { projectClient, resetPosthogClientForTests } from './posthog.js';
 
 const MARKER = 'worker-marker-44e1';
@@ -52,5 +52,22 @@ describe('worker PostHog: privacy mode with a key', () => {
     expect(sent.properties).not.toHaveProperty('$ai_input');
     expect(sent.properties).not.toHaveProperty('$ai_output_choices');
     expect(JSON.stringify(sent)).not.toContain(MARKER);
+  });
+
+  it('reports cache hit rate from the three token fields', () => {
+    const props = buildGenerationProperties({
+      ctx: { stage: 'reviewer' },
+      model: 'm',
+      latencyMs: 100,
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 80,
+        cache_creation_input_tokens: 10,
+      },
+    });
+    expect(props.$ai_cache_read_input_tokens).toBe(80);
+    expect(props.$ai_cache_creation_input_tokens).toBe(10);
+    expect(props.$ai_input_tokens).toBe(10);
+    expect(props.hale_cache_hit_rate).toBe(0.8);
   });
 });

@@ -805,9 +805,20 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             // A tool that throws, a provider that times out, a step that runs long: the
             // loop can break anywhere, and by then the drafts it made are already rows.
             // Re-thrown rather than handled — the router owns what a parent is told.
+            const prefix = loadedSkill.instructions;
+            const extraText =
+              skillForTurn.instructions === prefix
+                ? ''
+                : skillForTurn.instructions.startsWith(`${prefix}\n\n`)
+                  ? skillForTurn.instructions.slice(prefix.length + 2)
+                  : '';
+            const systemExtras = extraText.length > 0 ? [extraText] : undefined;
+            const skillForAgent =
+              systemExtras !== undefined ? { ...skillForTurn, instructions: prefix } : skillForTurn;
             const result = await ports
               .runAgent({
-                skill: skillForTurn,
+                skill: skillForAgent,
+                ...(systemExtras ? { systemExtras } : {}),
                 context: turnContext,
                 tools,
                 client: ports.client(),

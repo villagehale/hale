@@ -4,5 +4,6 @@ export * from './skill.js';
 export * from './agent.js';
 export * from './cost.js';
 export * from './json-schema.js';
+export * from './prompt-cache.js';
 export * from './structured.js';
 export * from './untrusted.js';

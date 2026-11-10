@@ -1,5 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { forceToolJson, markUntrusted, pickLane, untrustedSourceFor } from '@hale/agent';
+import {
+  SPARSE_CACHE_TTL,
+  forceToolJson,
+  markUntrusted,
+  pickLane,
+  untrustedSourceFor,
+} from '@hale/agent';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { z } from 'zod';
 import { anthropicClient } from '../anthropic/client.js';
@@ -166,7 +172,7 @@ export async function runClassifier(
   const basePrompt = await loadPrompt('classifier');
   await loadStagePacks();
   const pack = stagePackFor(input.stages ?? ['newborn']);
-  const instructions = pack ? `${basePrompt}\n\n${pack}` : basePrompt;
+  const extras = pack ? [pack] : [];
 
   // The dedup key is the ORIGINAL content's, so a signal that arrives twice
   // still probes to the same row whether or not the family's names changed
@@ -188,7 +194,9 @@ export async function runClassifier(
   const { value: parsed, usage } = await forceToolJson({
     client: deps.client ?? anthropicClient('classify_event'),
     lane,
-    system: instructions,
+    system: basePrompt,
+    systemExtras: extras,
+    cacheTtl: SPARSE_CACHE_TTL,
     userMessage,
     toolName: 'classification',
     toolDescription: 'Return the structured classification of the inbound signal.',

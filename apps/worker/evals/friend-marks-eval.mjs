@@ -170,12 +170,15 @@ async function record() {
     cost,
   );
 
-  // The system and the tool the live composer builds for this turn.
-  const draw = async (turn, prompt, tag) =>
-    cachedToolCall({
+  // Prefix before the cache breakpoint, per-turn addendums after it (as the live composer).
+  const draw = async (turn, prompt, tag) => {
+    const { skill, extras } = await voice.friendVoiceSystem(turn, prompt === 'short');
+    return cachedToolCall({
       tag,
       lane,
-      system: (await voice.friendVoiceSystem(turn, prompt === 'short')).system,
+      system: skill.instructions,
+      systemExtras: extras,
+      cacheTtl: '1h',
       userMessage: JSON.stringify(voice.friendVoiceContext(turn)),
       toolName: voice.ONBOARDING_REPLY_TOOL,
       toolDescription: voice.ONBOARDING_REPLY_TOOL_DESCRIPTION,
@@ -185,6 +188,7 @@ async function record() {
       getClient,
       cost,
     });
+  };
 
   let failed = 0;
   // A metric, not a gate: how often speakFriend refused the first draft and rewrote it.

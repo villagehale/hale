@@ -1,4 +1,10 @@
-import { type AgentClient, HAIKU_MODEL, type LaneConfig, pickLane } from '@hale/agent';
+import {
+  type AgentClient,
+  HAIKU_MODEL,
+  type LaneConfig,
+  SPARSE_CACHE_TTL,
+  pickLane,
+} from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
@@ -96,6 +102,7 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
             client: client(),
             lane,
             system: skill.instructions,
+            cacheTtl: SPARSE_CACHE_TTL,
             userMessage: spokenLineUserMessage(request),
             toolName: SPOKEN_LINE_TOOL,
             toolDescription: SPOKEN_LINE_TOOL_DESCRIPTION,
@@ -128,7 +135,9 @@ export function createSpokenLineWriter(client: () => AgentClient): SpokenLineWri
 let shared: SpokenLineWriter | null = null;
 
 export function sharedSpokenLineWriter(): SpokenLineWriter {
-  shared ??= createSpokenLineWriter(() => budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS));
+  shared ??= createSpokenLineWriter(() =>
+    budgetedAnthropic(HOT_SMS_CLIENT_OPTIONS, { stage: 'spoken_line' }),
+  );
   return shared;
 }
 

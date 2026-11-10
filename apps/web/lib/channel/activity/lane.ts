@@ -1,5 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickLane, pickModel, withoutThinking } from '@hale/agent';
+import {
+  type AgentClient,
+  cachedSystemBlocks,
+  layoutTools,
+  pickLane,
+  pickModel,
+  withoutThinking,
+} from '@hale/agent';
 import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -435,7 +442,7 @@ function groundTools(query: ActivityQuery, readPages = false): Anthropic.ToolUni
       max_uses: MAX_INLINE_FETCHES,
     } as unknown as Anthropic.ToolUnion);
   }
-  return tools;
+  return layoutTools(tools);
 }
 
 /**
@@ -608,6 +615,8 @@ async function runActivityOnce(
   }
 
   let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+  let bodies: string[];
+  let extras: string[] = [];
   try {
     const [base, events] = await Promise.all([
       loadCronSkill('activity-finder'),
@@ -615,12 +624,15 @@ async function runActivityOnce(
     ]);
     // VIL-510: the dated-event / venue-name addendum rides the inline research + extract
     // only; activity-finder.md bytes (and the eval recordings keyed on them) stay put.
-    skill = { ...base, instructions: `${base.instructions}\n\n${events.instructions}` };
+    bodies = [base.instructions, events.instructions];
     // VIL-435: the day check rides only when the query carries the family-local day.
+    // After the cache breakpoint, so a dated query does not bust the finder prefix.
+    extras = [];
     if (query.today) {
       const day = await loadCronSkill('activity-finder-day');
-      skill = { ...skill, instructions: `${skill.instructions}\n\n${day.instructions}` };
+      extras.push(day.instructions);
     }
+    skill = { ...base, instructions: [...bodies, ...extras].join('\n\n') };
   } catch (err) {
     throw new ActivityUnresolvable('skill_unavailable', message(err));
   }
@@ -651,7 +663,7 @@ async function runActivityOnce(
         .stream({
           model: pickModel(skill.meta.task),
           max_tokens: GROUND_MAX_TOKENS,
-          system: skill.instructions,
+          system: cachedSystemBlocks(bodies, '5m', undefined, extras),
           tools: groundTools(query, readPages),
           messages: [{ role: 'user', content: groundUserMessage(query) }],
         })

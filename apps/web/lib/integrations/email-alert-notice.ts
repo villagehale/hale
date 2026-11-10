@@ -1,6 +1,7 @@
-import { type AgentClient, markUntrusted, pickLane } from '@hale/agent';
+import { type AgentClient, SPARSE_CACHE_TTL, markUntrusted, pickLane } from '@hale/agent';
 import { senderLabel } from '@hale/worker/sender-label';
 import { z } from 'zod';
+import { withLlmContext } from '~/lib/analytics/llm-trace';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
@@ -270,17 +271,20 @@ export async function composeEmailAlertNotice(
   }
   for (let attempt = 1; attempt <= EMAIL_ALERT_NOTICE_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const { value } = await forceToolJson({
-        client,
-        lane: pickLane(skill.meta.task),
-        system: skill.instructions,
-        userMessage: emailAlertNoticeUserMessage(facts),
-        toolName: EMAIL_ALERT_NOTICE_TOOL,
-        toolDescription: EMAIL_ALERT_NOTICE_TOOL_DESCRIPTION,
-        inputJsonSchema: EMAIL_ALERT_NOTICE_TOOL_SCHEMA,
-        schema: emailAlertNoticeOutputSchema,
-        maxTokens: EMAIL_ALERT_NOTICE_MAX_TOKENS,
-      });
+      const { value } = await withLlmContext({ stage: 'notice' }, () =>
+        forceToolJson({
+          client,
+          lane: pickLane(skill.meta.task),
+          system: skill.instructions,
+          cacheTtl: SPARSE_CACHE_TTL,
+          userMessage: emailAlertNoticeUserMessage(facts),
+          toolName: EMAIL_ALERT_NOTICE_TOOL,
+          toolDescription: EMAIL_ALERT_NOTICE_TOOL_DESCRIPTION,
+          inputJsonSchema: EMAIL_ALERT_NOTICE_TOOL_SCHEMA,
+          schema: emailAlertNoticeOutputSchema,
+          maxTokens: EMAIL_ALERT_NOTICE_MAX_TOKENS,
+        }),
+      );
       const read = readEmailAlertNotice(value, facts);
       if ('notice' in read) return read.notice;
       console.warn({ familyId, attempt, refusals: read.refused }, 'email alert: notice refused');
