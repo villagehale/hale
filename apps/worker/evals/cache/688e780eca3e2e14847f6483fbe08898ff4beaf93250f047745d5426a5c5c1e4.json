@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message gets the deadline wrong. It says the window runs out \"tomorrow at 9 a.m.\" The facts give tonight, Wednesday at 11:00 p.m., which is 2 hours after now (Wednesday 9:00 p.m.). It also never says the clock is the town's 36-hour response window counted from the parent's own message on Tuesday at 11:00 a.m. Calling it a \"waitlist offer\" that runs out suggests the clock is tied to an offer. The reminder to check email and the portal is right, but the wrong day and time and the missing clock start are disqualifying.",
+    "score": 1
+  }
+}

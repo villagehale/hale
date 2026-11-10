@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what course_link_refused asks for not_https. It plainly says the link wasn't taken because it isn't secure, says nothing was saved, and includes no link. It asks exactly once for the course page from Springfield's portal, and the language is English. \"I'll pick it up from there\" falls within the handed instruction about what to send, and the message makes no other claims.",
+    "score": 5
+  }
+}

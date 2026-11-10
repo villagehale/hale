@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message correctly names both dates, pageOpens (Oct 27, 7:00 a.m.) and haleHas (Sep 15, 7:00 a.m.), and explains the different-season reason. However, different_season must ask nothing. The closing line, \"tell me and I'll update it,\" invites a reply and promises an update the facts do not give.",
+    "score": 2
+  }
+}

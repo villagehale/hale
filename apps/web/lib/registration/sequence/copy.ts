@@ -5,6 +5,7 @@ import { dayKeyIn } from '~/lib/plan/spine';
 import type { DateMovedFacts } from './date-moved-compose.js';
 import type { DateUnconfirmedFacts } from './date-unconfirmed-compose.js';
 import type { Moment, RegistrationNoteFacts } from './note-compose.js';
+import type { CourseBindRefusal } from './prepare-reply.js';
 import {
   type ApplicableClock,
   type CoursePage,
@@ -680,6 +681,54 @@ export function courseBoundFacts(input: CourseBindAckInput): RegistrationNoteFac
       drift > WINDOW_DRIFT_TOLERANCE_MINUTES ? moment(input.opensForFamilyAt, timeZone) : null,
     regForm: facts.RegFormId != null,
     prerequisite: facts.PrerequisiteEvents === true,
+  };
+}
+
+export interface CourseRefusedInput {
+  portal: SpotPortal;
+  municipality: string;
+  reason: CourseBindRefusal;
+  /** The page's own clock, read only on `different_season`. */
+  pageOpensAt: Date | null;
+  opensForFamilyAt: Date;
+  timeZone: string;
+  now: Date;
+}
+
+/**
+ * Facts for the answer to a course link Hale would not bind. No link is handed: the
+ * parent has one. Both mornings travel only on a different season, the one reason whose
+ * answer is a comparison.
+ */
+export function courseRefusedFacts(input: CourseRefusedInput): RegistrationNoteFacts {
+  const pageOpensAt = input.reason === 'different_season' ? input.pageOpensAt : null;
+  return {
+    kind: 'course_link_refused',
+    now: moment(input.now, input.timeZone),
+    reason: input.reason,
+    portal: input.portal.portalLabel,
+    town: townLabel(input.municipality),
+    pageOpens: pageOpensAt === null ? null : moment(pageOpensAt, input.timeZone),
+    haleHas: pageOpensAt === null ? null : moment(input.opensForFamilyAt, input.timeZone),
+  };
+}
+
+/**
+ * Facts for the answer to a paste inside a spent read window. Hale does not come back to
+ * the link later, so the only time handed is the slot's own remainder — and none for the
+ * link already bound, which has nothing to resend.
+ */
+export function courseThrottledFacts(input: {
+  alreadyBound: boolean;
+  retryMinutes: number;
+  timeZone: string;
+  now: Date;
+}): RegistrationNoteFacts {
+  return {
+    kind: 'course_link_throttled',
+    now: moment(input.now, input.timeZone),
+    alreadyBound: input.alreadyBound,
+    retryMinutes: input.alreadyBound ? null : input.retryMinutes,
   };
 }
 
