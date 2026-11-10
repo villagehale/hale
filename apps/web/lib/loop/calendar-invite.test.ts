@@ -20,6 +20,7 @@ import {
   createCalendarInviteVoice,
 } from '~/lib/loop/voice/calendar-invite-voice';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
+import { inviteLinkHash } from './calendar-invite-link-hash';
 import {
   CANCEL_RETRY_MAX_ATTEMPTS,
   CANCEL_RETRY_MAX_EVENTS,
@@ -1005,6 +1006,119 @@ describe('the tap-to-add link a text-only family gets', () => {
     });
     expect(sms.calls.length).toBeGreaterThan(0);
     expect(inviteCalls).toHaveLength(1);
+  });
+
+  describe('VIL-588 · the ledger stores a hash of the link, not the signed URL', () => {
+    beforeEach(() => {
+      vi.stubEnv('CALENDAR_INVITE_LINK_HASH_ENABLED', 'true');
+    });
+
+    it('keeps the signed URL off the ledger and still on the wire', async () => {
+      const { familyId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+
+      await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+      const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.some((row) => row.body?.includes('/api/ics/event/'))).toBe(false);
+      expect(rows.some((row) => row.body === inviteLinkHash(familyEventId))).toBe(true);
+      expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+    });
+
+    it('re-driving the same placement texts nothing twice', async () => {
+      const { familyId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const invites = sender();
+
+      await invites.send({ familyId, familyEventId, method: 'REQUEST' });
+      const before = sms.calls.length;
+      const second = await invites.send({ familyId, familyEventId, method: 'REQUEST' });
+
+      expect(second).toMatchObject({
+        parents: [expect.objectContaining({ channel: 'sms', outcome: 'already_sent' })],
+      });
+      expect(sms.calls).toHaveLength(before);
+    });
+
+    it('a cancel still finds a parent who got the hashed link', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+      await softDelete(familyEventId);
+
+      const report = await sender().send({ familyId, familyEventId, method: 'CANCEL' });
+
+      expect(report).toEqual({
+        status: 'reported',
+        parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+      });
+      expect(cancelCalls).toHaveLength(1);
+    });
+
+    it('a row that still holds the signed URL (flag was off) is still the invite', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      const url = `https://app.villagehale.com/api/ics/event/${familyEventId}.legacy`;
+      await db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms`,
+        status: 'sent',
+        body: `Swim class. ${url}`,
+        sentAt: NOON,
+      });
+
+      const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+      expect(report).toMatchObject({
+        parents: [expect.objectContaining({ channel: 'sms', outcome: 'already_sent' })],
+      });
+      expect(sms.calls).toHaveLength(0);
+    });
+
+    it('a first part with no hash and no url is not the invite', async () => {
+      const { familyId, parentUserId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      await db.database.insert(schema.channelMessages).values({
+        familyId,
+        parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'approval',
+        templateKey: CALENDAR_INVITE_SMS_TEMPLATE_KEY,
+        dedupeKey: `${CALENDAR_INVITE_SMS_TEMPLATE_KEY}:${familyEventId}:0:${parentUserId}:sms:0`,
+        status: 'sent',
+        sentAt: NOON,
+      });
+
+      const report = await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+      expect(report).toMatchObject({
+        parents: [{ parentUserId, channel: 'sms', outcome: 'sent' }],
+      });
+      expect(sentTranscript()).toContain('https://app.villagehale.com/api/ics/event/');
+    });
+
+    it('only the part that carries the link stores the hash', async () => {
+      const { familyId } = await textOnlyFamily();
+      const familyEventId = await seedPlacement(familyId);
+      linkFirst = true;
+
+      await sender().send({ familyId, familyEventId, method: 'REQUEST' });
+
+      const rows = await ledger(familyId, CALENDAR_INVITE_SMS_TEMPLATE_KEY);
+      expect(rows.length).toBeGreaterThan(1);
+      const hashed = rows.filter((row) => row.body === inviteLinkHash(familyEventId));
+      const empty = rows.filter((row) => row.body == null);
+      expect(hashed).toHaveLength(1);
+      expect(empty.length).toBe(rows.length - 1);
+      expect(rows.some((row) => row.body?.includes('/api/ics/event/'))).toBe(false);
+    });
   });
 
   it('re-driving the same placement texts nothing twice', async () => {

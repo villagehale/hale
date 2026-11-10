@@ -71,7 +71,8 @@ export interface LedgerWrite {
   relatedActionId?: string | null;
   relatedConversationId?: string | null;
   sentAt?: Date | null;
-  /** The sent text, only for a rendered message that asks for it (`recordBody`). */
+  /** The sent text, only for a rendered message that asks for it (`recordBody`),
+   * or the invite link hash when the renderer asked for that instead. */
   body?: string | null;
 }
 
@@ -336,7 +337,7 @@ async function dispatchLeg(
         providerMessageId: result.providerMessageId,
         providerChatId: result.providerChatId ?? null,
         sentAt: now,
-        ...(rendered.recordBody ? { body: rendered.text } : {}),
+        ...ledgerBodyWrite(rendered, rendered.text),
       },
     );
     // THE VERB IS WHO IT WENT TO, not what it was. A caregiver leg is a DISCLOSURE of
@@ -444,7 +445,7 @@ async function dispatchTexts(
           providerMessageId: result.providerMessageId,
           providerChatId: result.providerChatId ?? null,
           sentAt: now,
-          ...(rendered.recordBody ? { body: text } : {}),
+          ...ledgerBodyWrite(rendered, text),
         },
       );
       await ports.audit({
@@ -499,6 +500,23 @@ function claimText(rendered: RenderedContent): string {
  * site remembering both halves. `reason` carries the full ledger status (not just
  * a boolean) so the founder digest's suppression breakdown can distinguish WHY a
  * leg failed — safe to send (an enum, not user content). */
+/**
+ * What `channel_messages.body` holds for this send. The reminder keeps the sent
+ * words (`recordBody`). A calendar invite, when the hash flag is on, stores the
+ * hash only on the part that actually carries the link — a first bubble with no
+ * url is not the invite.
+ */
+function ledgerBodyWrite(
+  rendered: RenderedContent,
+  text: string,
+): { body: string } | Record<string, never> {
+  if (rendered.linkHash && rendered.linkHashFor && text.includes(rendered.linkHashFor)) {
+    return { body: rendered.linkHash };
+  }
+  if (rendered.recordBody) return { body: text };
+  return {};
+}
+
 async function writeLedgerRow(
   ports: DispatchPorts,
   msg: LoopMessage,

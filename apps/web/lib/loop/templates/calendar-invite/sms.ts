@@ -5,6 +5,11 @@ import type {
   RenderedContent,
   TemplateRenderer,
 } from '~/lib/channel/types';
+import {
+  calendarInviteLinkHashEnabled,
+  familyEventIdFromInviteUrl,
+  inviteLinkHash,
+} from '~/lib/loop/calendar-invite-link-hash';
 
 /**
  * The calendar invite as a TEXT: one line, one link, tap to add.
@@ -110,15 +115,23 @@ export const calendarInviteSmsRenderer: TemplateRenderer = {
     if (channel !== 'sms') {
       throw new Error(`calendar invite sms: no ${channel} form of the tap-to-add link`);
     }
-    const line = asCalendarInviteSmsPayload(message.payload).line.trim();
+    const payload = asCalendarInviteSmsPayload(message.payload);
+    const line = payload.line.trim();
     const texts = splitInviteSms(line);
+    const eventId = familyEventIdFromInviteUrl(payload.url);
+    const hashLink = calendarInviteLinkHashEnabled();
     return {
       kind: 'sms',
       text: texts.join('\n\n'),
       modelWritten: true,
-      // The sent words stay on the ledger so a later pass can see whether the
-      // part that carries the link actually went out.
-      recordBody: true,
+      // Flag off: the sent words stay on the ledger so a later pass can see
+      // whether the part that carries the link actually went out. Flag on: that
+      // pass reads a hash of the event id instead, so the signed URL is not kept.
+      // A URL we cannot parse never goes on the ledger either.
+      recordBody: !hashLink,
+      ...(hashLink && eventId
+        ? { linkHash: inviteLinkHash(eventId), linkHashFor: payload.url }
+        : {}),
       ...(texts.length > 1 ? { texts } : {}),
     };
   },
