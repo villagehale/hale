@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both slots match the page exactly: names, ages 3-5, Saturday times, Sept 12 to Nov 28. Each is cited to the Oakville page. Price is correctly null because the page sends fees to the Recreation Guide, and no outside figure is borrowed. Registration (Tue Aug 11, 7 a.m., residents) is in the slots and the message. The message is in Arabic as required, which overrides plain ASCII here. It leads with PRESCHOOL A by name, attributes the facts with 'according to their site' (حسب موقعهم), and has no link or question. The price gap is stated in the first person ('I could not pin down the price', لم أستطع تحديد السعر), which fits page_has_schedule. The first-person promise to keep watching is backed, since watch is true.",
+    "score": 5
+  }
+}

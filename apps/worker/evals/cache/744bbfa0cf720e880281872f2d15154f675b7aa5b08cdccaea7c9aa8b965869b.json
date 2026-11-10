@@ -1,0 +1,35 @@
+{
+  "value": {
+    "slots": [
+      {
+        "name": "Parent/Child Swim (Tue, course 41207), Lakeview Family Aquatic Center",
+        "age_fit": "6 mos - 3 yrs, adult in water",
+        "when": "Tuesdays 9:30-10:00 AM, Winter 2027 Session 1 (Jan 11 - Feb 19)",
+        "when_quote": "Session 1: Jan 11 - Feb 19\nParent/Child Swim | Tue | 9:30-10:00 AM | 6 mos - 3 yrs, adult in water | course 41207",
+        "price": "$64 residents / $96 non-residents, for 6 classes",
+        "price_quote": "Parent/Child Swim (6 classes) ........ R $64 / NR $96",
+        "price_source": "https://lakeviewparks.example/brochure/winter-2027-fees",
+        "registration": "Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents; Monday, December 14 at 8:00 a.m. for non-residents",
+        "registration_quote": "Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents and Monday, December 14 at 8:00 a.m. for non-residents.",
+        "registration_source": "https://lakeviewparks.example/register",
+        "source_name": "Lakeview Family Aquatic Center",
+        "source_url": "https://lakeviewparks.example/aquatics/winter-lessons"
+      },
+      {
+        "name": "Parent/Child Swim (Sat, course 41208), Lakeview Family Aquatic Center",
+        "age_fit": "6 mos - 3 yrs, adult in water",
+        "when": "Saturdays 9:00-9:30 AM, Winter 2027 Session 1 (Jan 11 - Feb 19)",
+        "when_quote": "Session 1: Jan 11 - Feb 19\nParent/Child Swim | Tue | 9:30-10:00 AM | 6 mos - 3 yrs, adult in water | course 41207\nParent/Child Swim | Sat | 9:00-9:30 AM | 6 mos - 3 yrs, adult in water | course 41208",
+        "price": "$64 residents / $96 non-residents, for 6 classes",
+        "price_quote": "Parent/Child Swim (6 classes) ........ R $64 / NR $96",
+        "price_source": "https://lakeviewparks.example/brochure/winter-2027-fees",
+        "registration": "Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents; Monday, December 14 at 8:00 a.m. for non-residents",
+        "registration_quote": "Winter registration opens Monday, December 7 at 8:00 a.m. for park district residents and Monday, December 14 at 8:00 a.m. for non-residents.",
+        "registration_source": "https://lakeviewparks.example/register",
+        "source_name": "Lakeview Family Aquatic Center",
+        "source_url": "https://lakeviewparks.example/aquatics/winter-lessons"
+      }
+    ]
+  },
+  "latencyMs": 22287
+}

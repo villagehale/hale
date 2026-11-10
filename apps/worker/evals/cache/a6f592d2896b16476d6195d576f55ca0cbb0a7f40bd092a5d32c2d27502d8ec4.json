@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "Both picks are real, named Oakville programmes, each sourced from the venue's own site, so neither comes from an aggregator. The message leads with a named pick and attributes it correctly (\"Town of Oakville's site lists\"). Under no_page_read it uses the earned phrasing \"I could not get into their pages today\" rather than claiming nothing was posted. With watch=true it correctly makes a first-person promise (\"I'll keep watching and text you\"). It has no link, no question and no invented day, time or price. One gap: it drops useful found details, notably the December 1 winter registration date and the YMCA's 12-week sessions. watchFor specifically expects a registration date.",
+    "score": 4
+  }
+}

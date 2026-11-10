@@ -14,20 +14,28 @@ import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import { DEFAULT_TIMEZONE, formatDateTime } from '~/lib/format/datetime';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import { type FamilyAvailability, composeCommonTime, familyClock } from './common-time';
-import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
 import {
-  type PrivateAsideModel,
-  type PrivateAsideOutcome,
-  type SendOneToOne,
-  runPrivateAside,
-} from './group-private-aside';
+  type CommonTimePlanPorts,
+  type CommonTimeProposal,
+  latestCommonTimeProposal,
+  placePickedTime,
+} from './common-time-plan';
+import { linqGroupCommonTimeEnabled, linqMultiFamilyGroupsEnabled } from './config';
+import { linqChatAuditKey } from './family-audit';
 import {
   FREE_BUSY_CONSENT,
   freeBusyScope,
   latestFreeBusyRows,
   withdrawFreeBusyConsent,
 } from './free-busy-consent';
-import { familyFreeBusy } from './household-calendar';
+import type { GroupFamilyDirectory } from './group-plan-invites';
+import {
+  type PrivateAsideModel,
+  type PrivateAsideOutcome,
+  type SendOneToOne,
+  runPrivateAside,
+} from './group-private-aside';
+import { familyFreeBusy, formatWhen } from './household-calendar';
 import type { ListChatHandles } from './roster';
 import type { SharedGroupVoiceRequest } from './shared-group-line-input';
 import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
@@ -112,6 +120,8 @@ export interface MultiFamilyTurnPorts {
   language?: string;
   /** VIL-459: writes the common-time line. Production: the spoken-line writer. */
   commonTimeWriter?: (request: SpokenLineRequest) => Promise<string | null>;
+  /** VIL-459: a picked time becomes a plan with per-family invites. Production: inbound. */
+  commonTimePlan?: CommonTimePlanPorts;
 }
 
 const LEFT_TEMPLATE = 'linq:multi_family_left';
@@ -188,6 +198,7 @@ async function audit(
     targetTable: string;
     targetId: string;
     after?: Record<string, unknown>;
+    occurredAt?: Date;
   },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({
@@ -197,6 +208,7 @@ async function audit(
     targetTable: input.targetTable,
     targetId: input.targetId,
     after: input.after,
+    ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
   });
 }
 
@@ -1066,6 +1078,8 @@ async function proposeCommonTime(
     verbatim: string;
     people: readonly PersonRow[];
     ruledOut: readonly RuledOutSpan[];
+    /** What the group is planning, read from the ask; the plan's title when a time is picked. */
+    planTitle: string | null;
     ports: MultiFamilyTurnPorts;
   },
 ): Promise<Extract<MultiFamilyTurnResult, { handled: true }> | null> {
@@ -1158,7 +1172,14 @@ async function proposeCommonTime(
     actionTaken: 'linq_multi_family_common_time_proposed',
     targetTable: 'linq_multi_family_joins',
     targetId: input.host.familyId,
-    after: { ...counts, slots: composed.slots.map((slot) => slot.toISOString()), notice },
+    after: {
+      ...counts,
+      ...linqChatAuditKey(input.chatId),
+      slots: composed.slots.map((slot) => slot.toISOString()),
+      ...(input.planTitle ? { title: input.planTitle } : {}),
+      notice,
+    },
+    occurredAt: input.now,
   });
   return { handled: true, outcome: 'common_time_proposed', count: 'intake', notice };
 }
@@ -1170,6 +1191,90 @@ async function proposeCommonTime(
 function familyLabel(people: readonly PersonRow[], familyId: string, index: number): string {
   const named = people.find((row) => row.familyId === familyId && row.firstName?.trim());
   return named?.firstName?.trim() || `family ${index + 1}`;
+}
+
+/**
+ * VIL-459 — the families a plan made in this chat can reach: each live join that still
+ * carries that family's own consent for this chat. A family that left, or whose consent
+ * is gone, is not here, so its calendar is never touched.
+ */
+function joinedFamiliesDirectory(
+  database: Database,
+  people: readonly PersonRow[],
+): GroupFamilyDirectory {
+  return {
+    async familiesInGroup(chatId) {
+      const seen = new Set<string>();
+      const families: Awaited<ReturnType<GroupFamilyDirectory['familiesInGroup']>> = [];
+      for (const join of await liveJoins(database, chatId)) {
+        if (seen.has(join.familyId)) continue;
+        seen.add(join.familyId);
+        if (!(await joinConsent(database, chatId, join.familyId)).allowed) continue;
+        families.push({
+          familyId: join.familyId,
+          label: familyLabel(people, join.familyId, families.length),
+          memberFirstNames: people
+            .filter((row) => row.familyId === join.familyId && !row.stoppedAt && row.firstName)
+            .map((row) => row.firstName as string),
+        });
+      }
+      return families;
+    },
+  };
+}
+
+/**
+ * VIL-459 — someone in a linked family settled on one of the times Hale offered. The
+ * proposal becomes a plan at that time and each family that said it is in gets its own
+ * calendar copy and invite (VIL-455). Hale says nothing more in the group: the invites
+ * are the answer.
+ */
+async function pickCommonTime(
+  database: Database,
+  input: {
+    chatId: string;
+    proposal: CommonTimeProposal;
+    picked: Date;
+    planTitle: string | null;
+    asker: { familyId: string; userId: string };
+    people: readonly PersonRow[];
+    ports: MultiFamilyTurnPorts;
+  },
+): Promise<Extract<MultiFamilyTurnResult, { handled: true }>> {
+  const title = input.proposal.title ?? input.planTitle;
+  if (!title) {
+    console.warn({ outcome: 'common_time_pick_untitled' }, 'linq multi-family: pick not placed');
+    return { handled: true, outcome: 'common_time_pick_untitled', count: 'ignored' };
+  }
+  if (!input.ports.commonTimePlan) {
+    console.warn({ outcome: 'common_time_pick_unwired' }, 'linq multi-family: pick not placed');
+    return { handled: true, outcome: 'common_time_pick_unwired', count: 'ignored' };
+  }
+  const report = await placePickedTime(
+    database,
+    {
+      chatId: input.chatId,
+      proposal: input.proposal,
+      picked: input.picked,
+      title,
+      picker: input.asker,
+      directory: joinedFamiliesDirectory(database, input.people),
+      names: new Map(
+        input.people.flatMap((row) => (row.userId ? [[row.userId, row.firstName]] : [])),
+      ),
+      stopped: new Set(
+        input.people.flatMap((row) => (row.userId && row.stoppedAt ? [row.userId] : [])),
+      ),
+    },
+    input.ports.commonTimePlan,
+  );
+  if (report.status === 'picker_not_joined') {
+    return { handled: true, outcome: 'common_time_pick_not_joined', count: 'ignored' };
+  }
+  if (report.status === 'picker_stopped') {
+    return { handled: true, outcome: 'common_time_pick_stopped', count: 'ignored' };
+  }
+  return { handled: true, outcome: 'common_time_picked', count: 'intake', notice: report.status };
 }
 
 /**
@@ -1384,6 +1489,14 @@ export async function takeMultiFamilyTurn(
   const opt = wired.optOut ? await wired.optOut(input.text) : null;
   const commonTimeOn = linqGroupCommonTimeEnabled();
   const askerZone = commonTimeOn ? await knownHouseholdTimezone(database, familyId) : null;
+  const proposal =
+    commonTimeOn && channel
+      ? await latestCommonTimeProposal(database, {
+          chatId: input.chatId,
+          familyIds: (await liveJoins(database, input.chatId)).map((join) => join.familyId),
+          now: input.now,
+        })
+      : null;
   const reader = wired.reader ?? sharedGroupReader();
   const reaction = input.targetIsHale === false ? null : reactionAsVote(input.reactionType ?? null);
   const reading: SharedGroupReading = reader
@@ -1398,6 +1511,16 @@ export async function takeMultiFamilyTurn(
         })),
         recent: context.threadTexts.map((text) => ({ from: 'member' as const, text })),
         ...(askerZone ? { clock: { now: input.now.toISOString(), timeZone: askerZone } } : {}),
+        ...(proposal
+          ? {
+              offered: proposal.slots.map((slot) => ({
+                start: slot.toISOString(),
+                local: askerZone
+                  ? formatWhen(slot, askerZone, acceptReplyLanguage(wired.language ?? 'en') ?? 'en')
+                  : null,
+              })),
+            }
+          : {}),
       })
     : {
         intent:
@@ -1563,12 +1686,27 @@ export async function takeMultiFamilyTurn(
       verbatim: input.text,
       people: live,
       ruledOut: reading.ruledOut ?? [],
+      planTitle: reading.planTitle ?? null,
       ports: wired,
     });
     if (proposed) {
       const aside = await runAside();
       return aside ? { ...proposed, aside: aside.outcome } : proposed;
     }
+  }
+
+  if (intent === 'pick_time' && commonTimeOn && channel && proposal && reading.picked) {
+    const picked = await pickCommonTime(database, {
+      chatId: input.chatId,
+      proposal,
+      picked: reading.picked,
+      planTitle: reading.planTitle ?? null,
+      asker: channel,
+      people: live,
+      ports: wired,
+    });
+    const aside = await runAside();
+    return aside ? { ...picked, aside: aside.outcome } : picked;
   }
 
   if (intent === 'question' || intent === 'find_time' || intent === 'yes' || intent === 'no') {
