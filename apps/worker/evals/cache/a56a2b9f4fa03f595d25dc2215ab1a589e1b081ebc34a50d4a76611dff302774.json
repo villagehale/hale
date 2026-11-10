@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The follow-up announces a new appointment that the editable bubble never mentioned, so it is not a correction of that bubble. Keeping edit null and sending it as its own message is correct, and avoids publishing a private fact into a group-visible bubble.",
+    "score": 5
+  }
+}

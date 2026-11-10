@@ -5435,6 +5435,36 @@ describe('a reply the model chose to say as a voice memo (VIL-495)', () => {
     expect(h.transport.bodies()).toEqual([SPOKEN]);
   });
 
+  describe('with message edit on (VIL-479)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VERCEL_ENV', 'preview');
+      vi.stubEnv('LINQ_MESSAGE_EDIT_ENABLED', 'true');
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('a memo is not an editable bubble: its thread turn carries no provider id', async () => {
+      const { h } = voiceHarness(true, { sent: 'voice_memo', providerMessageId: 'vm-1' });
+
+      await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      const assistant = messageRows(h.fake).filter((row) => row.role === 'assistant');
+      expect(assistant).toEqual([expect.objectContaining({ content: SPOKEN })]);
+      expect(assistant[0]?.providerMessageId).toBeUndefined();
+    });
+
+    it('the same reply sent as text keeps its bubble id for a later edit', async () => {
+      const { h } = voiceHarness(true, { sent: 'text', why: 'capability' });
+
+      await routeChannelMessage(h.deps, job({ in_group: false }));
+
+      expect(messageRows(h.fake).filter((row) => row.role === 'assistant')).toEqual([
+        expect.objectContaining({ content: SPOKEN, providerMessageId: 'fake-out-1' }),
+      ]);
+    });
+  });
+
   it('the model did not choose voice: the voice send is never asked', async () => {
     const { h, calls } = voiceHarness(false, { sent: 'voice_memo', providerMessageId: 'vm-1' });
 
@@ -5792,6 +5822,8 @@ describe('the reply row, written to a real database', () => {
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS inbound_media jsonb');
       // Likewise the group bit (0185, VIL-463), which the ledger row now carries.
       await db.exec('ALTER TABLE channel_messages ADD COLUMN IF NOT EXISTS in_group boolean');
+      // VIL-479 · drizzle names every messages column, including this one (0201).
+      await db.exec('ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider_message_id text');
     });
 
     afterAll(async () => {
