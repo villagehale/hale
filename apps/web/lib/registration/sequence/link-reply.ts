@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import type { LiveRegistrationReading } from '../live-reading';
+import {
+  type LiveRegistrationReading,
+  readingPartialDates,
+  readingTimeZone,
+} from '../live-reading';
 import { registrationDate, unclassifiedRegistrationDate } from '../read';
 import { hasEncodingCorruption } from './encoding';
 import { openingFact, verifyMessageDates } from './message-dates';
@@ -38,9 +42,10 @@ export function registrationLinkReplyContext(input: RegistrationLinkReplyInput) 
     sourceUrl: input.sourceUrl,
     sourceStatus: input.reading?.status ?? null,
     sourceReason: input.reading && 'reason' in input.reading ? input.reading.reason : null,
-    ...(input.reading?.partialDates?.length ? { partialDates: input.reading.partialDates } : {}),
-    ...(input.reading?.note ? { note: input.reading.note } : {}),
-    opening: openingFact(date, input.reading?.timeZone ?? null),
+    ...(readingPartialDates(input.reading).length
+      ? { partialDates: readingPartialDates(input.reading) }
+      : {}),
+    opening: openingFact(date, readingTimeZone(input.reading)),
     eligibility: date?.kind ?? null,
     dateRemindersPaused: unclassified || (input.reading !== null && !date),
     nextStep:
@@ -91,15 +96,18 @@ export async function composeRegistrationLinkReply(
       !(await verifyMessageDates(
         value.message,
         input.reading?.checkedAt ?? new Date(),
-        openingFact(date, input.reading?.timeZone ?? null),
+        openingFact(date, readingTimeZone(input.reading)),
         input.reading?.status === 'verified'
-          ? input.reading.dates.map((date) => openingFact(date, input.reading!.timeZone)!)
+          ? input.reading.dates.flatMap((d) => {
+              const fact = openingFact(d, readingTimeZone(input.reading));
+              return fact ? [fact] : [];
+            })
           : [],
         client ?? pipelineClient(),
-        input.reading?.partialDates?.map((item) => ({
-          dateText: item.dateText,
-          timeZone: input.reading?.timeZone ?? null,
-        })) ?? [],
+        readingPartialDates(input.reading).map((item) => ({
+          dateText: item.quote,
+          timeZone: readingTimeZone(input.reading),
+        })),
       ))
     )
       return null;

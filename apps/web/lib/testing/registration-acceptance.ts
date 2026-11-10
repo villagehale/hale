@@ -79,10 +79,9 @@ export function registrationAcceptanceInput(
       ? {
           sourceUrl,
           checkedAt: now,
-          timeZone,
-          reader: 'perfectmind',
-          status: 'unreadable',
-          reason: 'fetch_failed',
+          reader: 'perfectmind' as const,
+          status: 'unreadable' as const,
+          reason: 'network_error' as const,
         }
       : reading,
     change: unavailable
@@ -108,7 +107,13 @@ export function registrationAcceptanceInput(
       readinessReady: null,
       prep: unavailable ? null : { courseUrl: sourceUrl, verdict },
       ...(state === 'closing-soon'
-        ? { waitlist: { position: 2, deadlineAt: new Date('2026-08-12T11:00:00Z') } }
+        ? {
+            shortlist: {
+              ...courseShortlist('local-test-watch', sourceUrl, now),
+              waitlistResponseHours: 24,
+            },
+            waitlist: { position: 2, startedAt: new Date('2026-08-11T11:00:00Z') },
+          }
         : {}),
     },
   };

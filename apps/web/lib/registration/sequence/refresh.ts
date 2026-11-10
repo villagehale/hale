@@ -3,7 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import type { LiveRegistrationDate, LiveRegistrationReading } from '../live-reading';
-import { registrationAnchor } from '../live-reading';
+import { readingTimeZone, registrationAnchor } from '../live-reading';
 import { registrationDate, unclassifiedRegistrationDate } from '../read';
 import { openLegWindows } from './schedule';
 
@@ -67,7 +67,7 @@ export function decideRegistrationRefresh(
           reading.sourceUrl,
           candidate?.toISOString(),
           date?.time,
-          reading.timeZone,
+          readingTimeZone(reading),
           ...(kind === 'eligibility_unverified' && unclassified
             ? [unclassified.date, unclassified.time]
             : []),
@@ -83,7 +83,7 @@ export function decideRegistrationRefresh(
       previousAt: state.anchor?.toISOString() ?? null,
       candidateAt: candidate?.toISOString() ?? null,
       date: candidate ? date : kind === 'eligibility_unverified' ? (unclassified ?? null) : null,
-      timeZone: reading.timeZone,
+      timeZone: readingTimeZone(reading),
       status: reading.status,
       notified: false,
     };
@@ -104,8 +104,8 @@ export function decideRegistrationRefresh(
   if (
     state.anchor &&
     date?.time === null &&
-    reading.timeZone &&
-    new Intl.DateTimeFormat('en-CA', { timeZone: reading.timeZone }).format(state.anchor) ===
+    readingTimeZone(reading) &&
+    new Intl.DateTimeFormat('en-CA', { timeZone: readingTimeZone(reading)! }).format(state.anchor) ===
       date.date
   ) {
     return {
@@ -119,7 +119,7 @@ export function decideRegistrationRefresh(
   if (
     review?.candidateAt === candidate.toISOString() &&
     review.date?.time === date?.time &&
-    review.timeZone === reading.timeZone
+    review.timeZone === readingTimeZone(reading)
   ) {
     if (!state.reviewApproved)
       return { ...base, nextCheckAt: hourly, anchor: state.anchor, paused: true, pending: review };
@@ -210,13 +210,6 @@ export async function refreshRegistrationWatch(
     parentTimeZone?: string;
   },
 ): Promise<boolean> {
-  if (input.reading.status === 'unreadable' && input.reading.reason === 'read_budget') {
-    console.info(
-      { sequenceId: input.sequenceId },
-      'registration: live read deferred by run budget',
-    );
-    return false;
-  }
   return database.transaction(async (tx) => {
     const [row] = await tx
       .select()

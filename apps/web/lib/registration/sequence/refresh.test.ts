@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveRegistrationReading } from '../live-reading';
+import type { LiveRegistrationReading, VerifiedRegistrationReading } from '../live-reading';
 import { registrationAnchor } from '../live-reading';
 import { decideRegistrationRefresh, registrationChangeFacts } from './refresh';
 
@@ -9,7 +9,7 @@ function reading(
   date: string,
   time: string | null = '09:00',
   timeZone = 'America/New_York',
-): LiveRegistrationReading {
+): VerifiedRegistrationReading {
   return {
     sourceUrl: 'https://example.com/swim',
     checkedAt: now,
@@ -17,6 +17,7 @@ function reading(
     timeZone,
     status: 'verified',
     dates: [{ kind: 'general_open', date, time, evidence: ['published registration date'] }],
+    partialDates: [],
   };
 }
 const state = {
@@ -89,11 +90,13 @@ describe('registration refresh decisions', () => {
     expect(decideRegistrationRefresh(state, reading('2026-10-12'), false, now).nextCheckAt).toEqual(
       new Date('2026-10-10T13:00:00Z'),
     );
-    const failed = {
-      ...reading('2026-10-12'),
+    const failed: LiveRegistrationReading = {
+      sourceUrl: 'https://example.com/swim',
+      checkedAt: now,
+      reader: 'ai',
       status: 'unreadable',
-      reason: 'fetch_failed',
-    } as LiveRegistrationReading;
+      reason: 'network_error',
+    };
     expect(decideRegistrationRefresh(state, failed, false, now)).toMatchObject({
       paused: true,
       nextCheckAt: new Date('2026-10-10T13:00:00Z'),
@@ -125,11 +128,13 @@ describe('registration refresh decisions', () => {
   });
   it('a failed read preserves the date candidate and its approval, and retries hourly', () => {
     const later = decideRegistrationRefresh(state, reading('2026-10-22'), false, now);
-    const failed = {
-      ...reading('2026-10-22'),
+    const failed: LiveRegistrationReading = {
+      sourceUrl: 'https://example.com/swim',
+      checkedAt: now,
+      reader: 'ai',
       status: 'unreadable',
-      reason: 'fetch_failed',
-    } as LiveRegistrationReading;
+      reason: 'network_error',
+    };
     const unavailable = decideRegistrationRefresh(
       { ...state, pending: later.pending, pausedAt: now },
       failed,

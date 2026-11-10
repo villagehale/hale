@@ -4,7 +4,7 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import { dayKeyIn } from '~/lib/plan/spine';
-import type { LiveRegistrationReading } from '../live-reading';
+import { type LiveRegistrationReading, readingPartialDates, readingTimeZone } from '../live-reading';
 import { registrationDate } from '../read';
 import type { LegCopyInput } from './copy';
 import { hasEncodingCorruption } from './encoding';
@@ -12,23 +12,6 @@ import { openingFact, verifyMessageDates } from './message-dates';
 import { courseSignInUrl } from './prepare';
 import type { RegistrationChange } from './refresh';
 import { type SequenceLeg, waitlistDeadline } from './schedule';
-import type { PartialRegistrationDate } from '../verify-window';
-
-function readingTimeZone(reading: LiveRegistrationReading): string | undefined {
-  return reading.status === 'verified' ? reading.timeZone : undefined;
-}
-
-function readingPartialDates(
-  reading: LiveRegistrationReading,
-): readonly PartialRegistrationDate[] {
-  return reading.status === 'verified' || reading.status === 'unverified'
-    ? reading.partialDates
-    : [];
-}
-
-function readingNote(reading: LiveRegistrationReading): string | undefined {
-  return 'note' in reading && typeof reading.note === 'string' ? reading.note : undefined;
-}
 
 export interface RegistrationReminderInput {
   leg: SequenceLeg;
@@ -50,11 +33,10 @@ export function registrationReminderContext(input: RegistrationReminderInput) {
     language: input.language ?? 'en',
     now: copy.now.toISOString(),
     parentTimeZone: copy.timeZone,
-    opening: openingFact(date, timeZone),
+    opening: openingFact(date, timeZone ?? null),
     sourceUrl: change?.sourceUrl ?? reading.sourceUrl,
     sourceStatus: reading.status,
     ...(readingPartialDates(reading).length ? { partialDates: readingPartialDates(reading) } : {}),
-    ...(readingNote(reading) ? { note: readingNote(reading) } : {}),
     eligibility: date?.kind ?? null,
     optIn: copy.optIn,
     readinessReportedByParent: copy.readinessReady,
@@ -123,14 +105,19 @@ export async function composeRegistrationReminder(
     const date = input.change ? input.change.date : registrationDate(input.reading, input.resident);
     const zone = input.change ? input.change.timeZone : readingTimeZone(input.reading);
     const waitlist = input.leg === 'waitlist_half' || input.leg === 'waitlist_final';
+    const published =
+      input.reading.status === 'verified'
+        ? input.reading.dates.flatMap((d) => {
+            const fact = openingFact(d, zone);
+            return fact ? [fact] : [];
+          })
+        : [];
     if (
       !(await verifyMessageDates(
         body,
         input.copy.now,
-        waitlist ? null : openingFact(date, zone),
-        input.reading.status === 'verified'
-          ? input.reading.dates.map((date) => openingFact(date, input.reading.timeZone)!)
-          : [],
+        waitlist ? null : openingFact(date, zone ?? null),
+        published,
         client ?? pipelineClient(),
         readingPartialDates(input.reading).map((item) => ({
           dateText: item.quote,

@@ -35,7 +35,7 @@ export function createActivityPageFetch(
           ? 'redirect loop'
           : 'reason' in result
             ? result.reason
-            : result.outcome;
+            : 'unknown';
       throw new Error(`activity page: ${detail}`);
     }
     throw new Error('activity page: redirect loop');

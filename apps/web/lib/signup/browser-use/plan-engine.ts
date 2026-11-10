@@ -360,6 +360,7 @@ async function drivePlan(
     if (chargedCartMustStop(total) || freeCartMaySubmit(total)) return checkout;
     if (!output.saved_card_on_file) return { ...checkout, detail: 'no_saved_card' };
     if (output.security_code_required) return { ...checkout, detail: 'security_code' };
+    if (total === null) return checkout;
     const cap = await input.checkSpendingCap(total);
     await input.onStep({ step: 'spending_cap', amountCents: total, ok: cap.ok });
     if (!cap.ok) return { ...checkout, detail: 'spending_cap' };

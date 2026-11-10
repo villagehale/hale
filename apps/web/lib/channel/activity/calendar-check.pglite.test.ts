@@ -175,7 +175,7 @@ function sweepDeps(
     },
     transport: new FakeTransport(),
     ...overrides,
-  };
+  } as ActivityFollowUpDeps;
 }
 
 async function watchRow() {

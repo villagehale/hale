@@ -78,6 +78,7 @@ function reading(sourceUrl: string, checkedAt = NOW): LiveRegistrationReading {
         evidence: ['Registration opens 20 October 2026'],
       },
     ],
+    partialDates: [],
   };
 }
 
@@ -308,10 +309,9 @@ describe('registration watch storage migration', () => {
       reading: {
         sourceUrl,
         checkedAt: NOW,
-        timeZone: null,
         reader: 'ai',
         status: 'unreadable',
-        reason: 'fetch_failed',
+        reason: 'network_error',
       },
       nextCheckAt: new Date('2026-10-10T13:00:00Z'),
     });
@@ -319,7 +319,7 @@ describe('registration watch storage migration', () => {
       courseOpensAt: new Date('2026-10-20T08:00:00Z'),
       pausedAt: NOW,
       pendingChange,
-      lastReading: { status: 'unreadable', reason: 'fetch_failed' },
+      lastReading: { status: 'unreadable', reason: 'network_error' },
     });
   });
 

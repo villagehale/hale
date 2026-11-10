@@ -187,11 +187,7 @@ describe('the payloads', () => {
           seen,
         ),
       ).find(query);
-      return seen.map((s) =>
-        typeof s.system === 'string'
-          ? s.system
-          : (s.system as Array<{ text: string }>).map((block) => block.text).join(''),
-      );
+      return seen.map((s) => (typeof s.system === 'string' ? s.system : ''));
     };
 
     const dated = await systems({ ...QUERY, today: '2026-10-12 (Monday)' });

@@ -151,7 +151,8 @@ describe('extractInboundPhotoFacts', () => {
     const facts = await extractInboundPhotoFacts(input);
     expect(facts?.title).toBe('Fall swim');
     expect(facts?.registrationUrl).toBe('https://harbor-rec.example/register');
-    const content = requests[0]?.messages?.[0]?.content as unknown[];
+    const content = (requests[0]?.messages as { content?: unknown }[] | undefined)?.[0]
+      ?.content as unknown[];
     expect(content[0]).toEqual({
       type: 'text',
       text: inboundPhotoFactsUserMessage(input),

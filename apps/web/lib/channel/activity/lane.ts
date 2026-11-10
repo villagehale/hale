@@ -770,7 +770,8 @@ async function runActivityOnce(
     }
     return {
       picks,
-      ...(finderSourceBindingEnabled() ? { references, checkedSources } : {}),
+      references,
+      checkedSources,
       searchResults: evidence.searchResults,
       notes: researchNotes,
     };

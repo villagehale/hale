@@ -27,6 +27,7 @@ const input: RegistrationLinkReplyInput = {
         evidence: ['Registration opens November 10, 2026 at 9am'],
       },
     ],
+    partialDates: [],
   },
 };
 const when = '2026-11-10 at 09:00 America/Toronto';

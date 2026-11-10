@@ -118,10 +118,28 @@ export function watchWarranted(picks: readonly FollowUpPick[]): boolean {
  * turned into an open question, on one of this product's beachhead subjects. Which field
  * is being read decides whether "free" means anything, so the field says which it is.
  */
-function carriesFact(field: string | null, kind: 'when' | 'price'): boolean {
+function carriesFact(field: string | null, kind: 'when' | 'price' | 'registration'): boolean {
   if (field === null || field.trim() === '') return false;
   if (kind === 'price' && statesNoCost(field)) return true;
   return statesAFigure(field);
+}
+
+/**
+ * THE SLOTS THE TEXT CARRIES, and the ones held for when the parent asks.
+ *
+ * The best two lead. A registration date is the fact that decides whether a parent acts
+ * today, so when none of them states one and a held slot does, that slot rides in the
+ * text as well.
+ */
+export function textSlots<T extends FollowUpPick>(
+  slots: readonly T[],
+): { picks: T[]; held: T[] } {
+  const picks = slots.slice(0, 2);
+  const held = slots.slice(2);
+  const dated = (slot: T) => carriesFact(slot.registration ?? null, 'registration');
+  const at = picks.some(dated) ? -1 : held.findIndex(dated);
+  if (at === -1) return { picks, held };
+  return { picks: [...picks, held[at]!], held: held.filter((_, index) => index !== at) };
 }
 
 /** Who the promise is owed to, and the thread it was made in. */
@@ -302,10 +320,7 @@ export async function deliverFollowUp(
     familyId: input.familyId,
     body,
     now,
-    // The model said this message comes back, and this send is about to arm that
-    // page watch. A registration date in the same sentence is a fact from the page,
-    // not a municipal registration-watch row this path has to hold.
-    activityContinuation: composed.commitsToReturn === true && watch,
+    lane: 'activity_followup',
   });
   if (unbacked.length > 0) {
     console.error(

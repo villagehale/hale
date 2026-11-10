@@ -30,6 +30,7 @@ const input: RegistrationReminderInput = {
         evidence: ['October 23, 2026 at 6:30am'],
       },
     ],
+    partialDates: [],
   },
   copy: {
     shortlist: courseShortlist('private-sequence-id', source, now),
@@ -155,7 +156,11 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
     const waitlist: RegistrationReminderInput = {
       ...input,
       leg: 'waitlist_final',
-      copy: { ...input.copy, waitlist: { position: 2, deadlineAt: new Date('2026-10-24T11:00Z') } },
+      copy: {
+        ...input.copy,
+        shortlist: { ...input.copy.shortlist, waitlistResponseHours: 24 },
+        waitlist: { position: 2, startedAt: new Date('2026-10-23T11:00Z') },
+      },
     };
     const message = `Registration opened ${when}. Your deadline is 2026-10-24 at 07:00 America/Toronto.`;
     const fact = (date: string, time: string) => ({
@@ -275,16 +280,18 @@ describe('AI registration reminders (mechanics, not model quality)', () => {
         },
       ],
     };
-    expect(registrationReminderContext({ ...input, reading }).opening).toEqual({
+    expect(registrationReminderContext({ ...input, reading: reading as typeof input.reading }).opening).toEqual({
       date: '2026-10-23',
       time: null,
       timeZone: 'America/Toronto',
       timePublished: false,
     });
     const unavailable = {
-      ...input.reading,
+      sourceUrl: input.reading.sourceUrl,
+      checkedAt: input.reading.checkedAt,
+      reader: input.reading.reader,
       status: 'unreadable' as const,
-      reason: 'fetch_failed' as const,
+      reason: 'network_error' as const,
     };
     expect(registrationReminderContext({ ...input, reading: unavailable }).opening).toBeNull();
   });

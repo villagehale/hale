@@ -93,6 +93,21 @@ export type LiveRegistrationReading =
         | { status: 'gone' }
       ));
 
+/** Verified reads own the zone; every other status has none. */
+export function readingTimeZone(reading: LiveRegistrationReading | null | undefined): string | null {
+  return reading?.status === 'verified' ? reading.timeZone : null;
+}
+
+/** Partial dates exist on verified and unverified reads only. */
+export function readingPartialDates(
+  reading: LiveRegistrationReading | null | undefined,
+): readonly PartialRegistrationDate[] {
+  if (!reading) return [];
+  return reading.status === 'verified' || reading.status === 'unverified'
+    ? reading.partialDates
+    : [];
+}
+
 function validCalendarDate(date: string, time: string | null): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const day = new Date(`${date}T00:00:00Z`);

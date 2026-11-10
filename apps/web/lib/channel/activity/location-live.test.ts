@@ -43,14 +43,16 @@ const cases = [
 it.runIf(process.env.VIL423_LIVE_LOCATION_EVAL === 'true').each(cases)(
   'finds $city, $province, Canada ($library) through the production finder',
   async ({ city, province, library, host }) => {
-    const fetchPage = sourcePage.createRegistrationPageFetch();
+    const fetchPage = sourcePage.createRegistrationPageBytesFetch();
     const pages: { url: string; text: string }[] = [];
     const fetch = vi
-      .spyOn(sourcePage, 'createRegistrationPageFetch')
+      .spyOn(sourcePage, 'createRegistrationPageBytesFetch')
       .mockReturnValue(async (url) => {
-        const html = await fetchPage(url);
-        pages.push({ url, text: stripHtml(html).slice(0, 20_000) });
-        return html;
+        const result = await fetchPage(url);
+        if (result.outcome === 'fetched') {
+          pages.push({ url, text: stripHtml(result.body.toString('utf8')).slice(0, 20_000) });
+        }
+        return result;
       });
     const start = Date.now();
     try {
