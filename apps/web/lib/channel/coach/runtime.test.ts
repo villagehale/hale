@@ -14,6 +14,7 @@ import { watchForOpeningTool } from '~/lib/channel/spots/tool';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { findReplyNotJudged } from './find-reasoning-judge';
 import {
+  CHANNEL_COACH_MAX_TOKENS,
   type ChannelCoachPorts,
   channelCoachRuntime,
   productionChannelCoachPorts,
@@ -120,6 +121,23 @@ describe('channelCoachRuntime', () => {
     const { reply } = await channelCoachRuntime(ports()).respond(turn(), []);
 
     expect(reply).toBe('Move swim to Tue 4:30? YES to confirm.');
+  });
+
+  /** VIL-536: thinking and tool calls share this ceiling with the reply. 400 was spent
+   * before the model spoke on a broad grouped-map ask; 2000 is the room the reply keeps. */
+  it('hands the loop a completion budget thinking and tools cannot spend alone', async () => {
+    let seen: number | undefined;
+    const p = ports({
+      runAgent: async (args) => {
+        seen = args.maxTokens;
+        return answering('Move swim to Tue 4:30? YES to confirm.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn(), []);
+
+    expect(seen).toBe(CHANNEL_COACH_MAX_TOKENS);
+    expect(CHANNEL_COACH_MAX_TOKENS).toBe(2000);
   });
 
   /**

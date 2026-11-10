@@ -608,51 +608,39 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     });
     meter(response.usage);
 
-    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH THINKING OFF, AT THE SAME BUDGET.
+    // THE STEP THAT SAID NOTHING, ASKED AGAIN WITH THINKING OFF AND NO TOOLS.
     //
-    // `max_tokens` is the ceiling on thinking PLUS text, and on a thinking lane the model
-    // spends it in that order. So a hard turn can hit the ceiling having produced one
-    // empty thinking block and no text and no dispatchable tool call — a completion that
-    // cost a full budget and carries nothing. Until now that fell through as
-    // `answer: null`, which is the same value the loop returns for "ran out of steps":
-    // two different failures in one bucket, and downstream the SMS router turned both
-    // into "nothing was changed" (rule #11). It is prod's only failed coach-channel-sms
-    // run, 2026-08-22 17:41, 399 thinking tokens of 400 on a follow-up whose answer was
-    // sitting in the thread.
+    // `max_tokens` is the ceiling on thinking PLUS tool calls PLUS text, spent in that
+    // order. A hard turn can hit it having produced one empty thinking block — or a
+    // clipped tool call — and no text: a completion that cost a full budget and carries
+    // nothing. That used to fall through as `answer: null`, the same value as "ran out
+    // of steps", and the SMS router sent the failed-turn apology for both (rule #11).
+    // Prod's 2026-08-22 coach-channel-sms run spent 399 of 400 thinking. VIL-536
+    // (Preview 2026-11-01) spent the 400 on tools and reasoning, re-asked once WITH
+    // tools still offered, truncated again, and the parent got the apology on a
+    // "show me everything you found, grouped" follow-up whose finds were already in
+    // the thread (`draftedThisTurn` 0).
     //
     // RE-ASKED, not continued: the messages are byte-identical, so this is the same step
     // in a different SHAPE rather than a new turn — the model has nothing to continue
     // FROM, since it never said anything.
     //
-    // Thinking off, not a bigger number. Sonnet 5 has no field that bounds the thinking
-    // half (`budget_tokens` is a 400), so more room is the same bet with more chips: the
-    // old ×3 leg is 2/2 on the committed corpus but was still swallowed once at 1,200
-    // (cache `3b023db4…`: 1,169 tokens spent thinking, then `propose_calendar_add {}`),
-    // and its swallow rate moved with skill length (round 4, VIL-337). `disabled` is the
-    // one request on which the budget cannot be spent reasoning, so the lane's ceiling is
-    // its reply ruler again on this leg.
+    // Thinking off AND tools dropped. Sonnet 5.5's thinking-off shape is
+    // `between_tools`; offering tools on that leg lets a greedy or clipped call spend
+    // the budget that was supposed to become text. With tools omitted, the lane's
+    // ceiling is a reply ceiling again. The coach lane itself is 2000 so the first
+    // attempt can think, call, and still answer (CHANNEL_COACH_MAX_TOKENS).
     //
     // Bounded to ONE re-ask per step, because a parent is waiting. A leg that is still
     // cut returns `truncated: true` rather than dispatching a clipped call. A lane that
     // was not thinking has no second shape to buy and does not re-ask at all.
     //
     // Ordinary turns keep their shape and their prompt-cache keys; this leg pays a cold
-    // messages-cache read (toggling thinking invalidates it on every model; whether the
-    // tools/system prefix also re-writes is model-specific — read
-    // `usage.cache_creation_input_tokens` on the leg, which the eval report prints).
-    // Measured on the coach corpus: the first thinking-off leg writes the ~18k prefix
-    // once, every later one reads it back warm.
-    //
-    // A re-ask at step 2 or later sends history that already carries a SIGNED thinking
-    // block from the adaptive step before it. That is accepted under
-    // `thinking: {type:'disabled'}` — probed live against Sonnet 5, 200 not 400 — so the
-    // history needs no stripping.
-    //
-    // Raising the LANE budget instead was the obvious alternative and it is the wrong
-    // trade: measured on the coach corpus, more room for every turn makes the model
-    // reason its way past its second tool (see the note on MAX_TOKENS in
-    // apps/web/lib/channel/coach/runtime.ts). The room belongs to the turn that proved
-    // it needed it.
+    // messages-cache read (toggling thinking invalidates it on every model; dropping
+    // tools does too). A re-ask at step 2 or later sends history that already carries a
+    // SIGNED thinking block from the adaptive step before it, and any tool_result
+    // already on the thread — that is accepted under thinking-off, so the history
+    // needs no stripping.
     if (isTruncatedBeforeSpeaking(response, toolByName)) {
       if (reaskLane !== null) {
         truncatedRetries += 1;
@@ -660,21 +648,33 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
           ...(laneRequestFields(reaskLane) as WireLaneFields),
           max_tokens: maxTokens,
           system,
-          ...(tools.length > 0 && { tools }),
+          // No tools: this leg is the reply. Tools already had their turn on this step.
           messages: withHistoryBreakpoint(messages),
         });
         meter(response.usage);
+        const recovered = textFrom(response.content);
+        // A cut reply is still not sendable (VIL-434). Anything else this leg produced
+        // — including a hallucinated tool call — is ignored: tools were not offered,
+        // so nothing here is dispatched. The parent gets the text, or nothing.
+        if (recovered !== null && !isTruncatedBeforeSpeaking(response, toolByName)) {
+          return {
+            answer: recovered,
+            steps,
+            hitMaxSteps: false,
+            truncatedRetries,
+            truncated: false,
+            usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+          };
+        }
       }
-      if (reaskLane === null || isTruncatedBeforeSpeaking(response, toolByName)) {
-        return {
-          answer: null,
-          steps,
-          hitMaxSteps: false,
-          truncatedRetries,
-          truncated: true,
-          usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
-        };
-      }
+      return {
+        answer: null,
+        steps,
+        hitMaxSteps: false,
+        truncatedRetries,
+        truncated: true,
+        usage: { promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens },
+      };
     }
 
     const toolUses = response.content.filter(
