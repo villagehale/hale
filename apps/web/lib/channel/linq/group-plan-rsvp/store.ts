@@ -525,7 +525,6 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
           )
           .limit(1);
         if (sent[0]?.sentAt) continue;
-        const cover = await this.coveringFamily(row.chatId);
         due.push({
           plan: {
             id: row.id,
@@ -537,7 +536,7 @@ export function createPostgresGroupPlanRsvpStore(database: Database): GroupPlanR
             rsvpDeadlineAt: row.rsvpDeadlineAt,
             expectedCount: row.expectedCount,
           },
-          timeZone: cover?.timeZone ?? 'America/Toronto',
+          timeZone: (await this.householdTimeZone(row.familyId)) ?? 'America/Toronto',
           waitingNames: tally.waitingNames,
         });
       }

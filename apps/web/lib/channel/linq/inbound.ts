@@ -594,6 +594,8 @@ async function tryGroupPlanRsvpTurn(
       reader: deps.groupPlanRsvpReader,
       composer: deps.groupPlanRsvpComposer,
       pollCard: deps.groupPollCard,
+      consentReader: deps.groupPlanCalendarConsentReader,
+      oneToOne: deps.oneToOne,
     },
     {
       chatId: input.chatId,
@@ -684,6 +686,16 @@ export function handleLinqGroupMessage(
 }
 
 async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Promise<Response> {
+  // A plan ask in a multi-family chat must run before the shared-group reader,
+  // or it is handed back as a question and falls into the mixed-family hold.
+  const rsvpFirst = await tryGroupPlanRsvpTurn(deps, {
+    chatId: message.chatId,
+    senderHandle: message.senderHandle,
+    text: message.text,
+    tapback: null,
+  });
+  if (rsvpFirst) return rsvpFirst;
+
   if (linqMultiFamilyGroupsEnabled()) {
     const shared = await takeMultiFamilyTurn(
       deps.database,
@@ -762,16 +774,6 @@ async function handleLinqGroup(deps: LinqDoorDeps, message: LinqInboundText): Pr
 
   // #868: stop/start read by the model in any wording; one cached read for this turn.
   const optOut = await optOutIntentOf(message.text);
-  if (optOut !== 'stop') {
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
-    if (rsvp) return rsvp;
-  }
-
   if (!linqGroupOnboardingV2Enabled() && (await shouldHoldGroupStranger(deps.database, message))) {
     if (optOut === 'stop') {
       deps.log.info({ outcome: 'group_opt_out' }, 'linq inbound: group opt-out, no reply');
@@ -842,15 +844,6 @@ async function routeClaimedGroup(deps: LinqDoorDeps, message: LinqInboundText): 
     if (welcome.outcome === 'welcome_retried') {
       deps.log.info(welcome, 'linq inbound: group member welcome');
     }
-  }
-  if (!stopping) {
-    const rsvp = await tryGroupPlanRsvpTurn(deps, {
-      chatId: message.chatId,
-      senderHandle: message.senderHandle,
-      text: message.text,
-      tapback: null,
-    });
-    if (rsvp) return rsvp;
   }
   const mapped = await mapGroupHandlesToFamily(deps.database, {
     sender: message.senderHandle,

@@ -208,6 +208,28 @@ export interface GroupPlanHouseholdResolver {
 }
 
 /**
+ * Household that may host a new plan in this chat.
+ *
+ * A resolved seat wins. Two matches create nothing — never pick one family's
+ * id for a parent who sits in two. A claimed household chat still falls back
+ * to the covering family (Instinct, or a sender with no parent seat). A
+ * shared chat with no covering family hosts only the sender's resolved
+ * household.
+ */
+export async function hostFamilyIdForPlan(
+  resolver: GroupPlanHouseholdResolver | undefined,
+  covering: { familyId: string } | null,
+  input: { chatId: string; userId: string | null | undefined },
+): Promise<string | null> {
+  if (input.userId && resolver) {
+    const home = await resolver.resolve({ chatId: input.chatId, userId: input.userId });
+    if (home.status === 'one') return home.familyId;
+    if (home.status === 'ambiguous') return null;
+  }
+  return covering?.familyId ?? null;
+}
+
+/**
  * The household whose calendar an OK may touch.
  *
  * A parent of the family that claimed the chat, or a parent of another family
@@ -242,7 +264,10 @@ export function postgresGroupPlanHouseholds(database: Database): GroupPlanHouseh
       const eligible = parentFamilies.filter((id) => {
         if (removed.has(id) && !seated.has(id)) return false;
         if (id === covering?.id) return true;
-        return seated.has(id) && joined.has(id);
+        if (seated.has(id) && joined.has(id)) return true;
+        // Shared chat (no covering family): a live seat is this household, even
+        // before a join row. Two seats stay ambiguous.
+        return !covering && seated.has(id);
       });
       if (eligible.length === 1) {
         const familyId = eligible[0];

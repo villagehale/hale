@@ -81,6 +81,41 @@ async function parent(input: { name: string; phone: string; chat?: string; langu
   return { familyId, userId };
 }
 
+async function seatInSharedChat(input: {
+  chatId: string;
+  familyId: string;
+  userId: string;
+  phone: string;
+}): Promise<void> {
+  const [consent] = await db.database
+    .insert(schema.consentRecords)
+    .values({
+      userId: input.userId,
+      familyId: input.familyId,
+      consentType: 'multi_family_group',
+      granted: true,
+      consentScope: input.chatId,
+      policyVersion: 'test',
+    })
+    .returning({ id: schema.consentRecords.id });
+  await db.database.insert(schema.linqMultiFamilyJoins).values({
+    chatId: input.chatId,
+    familyId: input.familyId,
+    joinedByUserId: input.userId,
+    consentRecordId: consent?.id,
+    joinedAt: NOW,
+  });
+  await db.database.insert(schema.linqMultiFamilyMembers).values({
+    chatId: input.chatId,
+    familyId: input.familyId,
+    userId: input.userId,
+    phoneE164Encrypted: encryptString(input.phone),
+    phoneE164Hash: phoneBlindIndex(input.phone),
+    role: 'parent',
+    seatedAt: NOW,
+  });
+}
+
 /** A line Hale sent this parent, as the 1:1 door ledgers it. */
 async function haleLine(input: {
   familyId: string;
@@ -1454,6 +1489,210 @@ describe('a private reply among calendar asks', () => {
     expect(chosen.handled).toBe(true);
     expect((await store.loadCalendarConsent(museum.id, otherId))?.status).toBe('written');
     expect((await store.loadCalendarConsent(picnic.id, priya.familyId))?.status).toBe('asked');
+  });
+});
+
+describe('a multi-family chat with no covering family', () => {
+  const SHARED = 'chat-multi-plan';
+
+  function startTracking() {
+    return {
+      intent: 'start_tracking' as const,
+      planTitle: 'Riverdale Farm pumpkin walk',
+      startsAt: '2026-11-07T14:00:00.000Z',
+      location: 'Riverdale Farm',
+      deadline: null,
+      response: null,
+      headcount: 1,
+      householdLabel: null,
+      coversNames: [] as string[],
+      confidence: 'high' as const,
+    };
+  }
+
+  it('opens a plan on the asking household and never writes the other family calendar', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA });
+    const sam = await parent({ name: 'Sam', phone: SAM });
+    await seatInSharedChat({
+      chatId: SHARED,
+      familyId: priya.familyId,
+      userId: priya.userId,
+      phone: PRIYA,
+    });
+    await seatInSharedChat({
+      chatId: SHARED,
+      familyId: sam.familyId,
+      userId: sam.userId,
+      phone: SAM,
+    });
+    const composer = fakeGroupPlanRsvpComposer();
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    const started = await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: NOW,
+        composer,
+        send: async () => ({ providerMessageId: 'plan-open' }),
+        reader: { read: async () => startTracking() },
+      },
+      {
+        chatId: SHARED,
+        senderHandle: PRIYA,
+        senderUserId: priya.userId,
+        text: 'Hale, can you set up a plan for all of us: Riverdale Farm pumpkin walk',
+        tapback: null,
+      },
+    );
+    expect(started).toMatchObject({ handled: true, outcome: 'group_plan_spoken' });
+    const plans = await db.database
+      .select({ familyId: schema.linqGroupPlans.familyId, title: schema.linqGroupPlans.title })
+      .from(schema.linqGroupPlans);
+    expect(plans).toEqual([
+      { familyId: priya.familyId, title: 'Riverdale Farm pumpkin walk' },
+    ]);
+    expect(
+      await db.database.select({ id: schema.familyEvents.id }).from(schema.familyEvents),
+    ).toEqual([]);
+
+    await considerGroupPlanRsvp(
+      {
+        database: db.database,
+        now: new Date(NOW.getTime() + 60_000),
+        composer,
+        send: async () => ({ providerMessageId: 'tally' }),
+        reader: {
+          read: async () => ({
+            intent: 'rsvp',
+            planTitle: null,
+            startsAt: null,
+            location: null,
+            deadline: null,
+            response: 'yes',
+            headcount: 1,
+            householdLabel: null,
+            coversNames: [],
+            confidence: 'high',
+          }),
+        },
+        consentReader: { read: async () => ({ decision: 'ok', confidence: 'high' }) },
+        oneToOne: {
+          text: async () => ({ providerMessageId: 'priv-ask', chatId: null }),
+          link: async () => ({ providerMessageId: 'link' }),
+        },
+      },
+      {
+        chatId: SHARED,
+        senderHandle: PRIYA,
+        senderUserId: priya.userId,
+        text: 'yes, the whole house',
+        tapback: null,
+      },
+    );
+    const copies = await db.database
+      .select({ familyId: schema.familyEvents.familyId })
+      .from(schema.familyEvents);
+    expect(copies).toEqual([]);
+    const asked = await createPostgresGroupPlanRsvpStore(db.database).listOpenCalendarAsks(
+      priya.userId,
+    );
+    const otherAsks = await createPostgresGroupPlanRsvpStore(db.database).listOpenCalendarAsks(
+      sam.userId,
+    );
+    expect(asked.map((row) => row.consent.familyId)).toEqual([priya.familyId]);
+    expect(otherAsks).toEqual([]);
+  });
+
+  it('a mixed-family inbound plan ask is not held', async () => {
+    const priya = await parent({ name: 'Priya', phone: PRIYA });
+    const sam = await parent({ name: 'Sam', phone: SAM });
+    await seatInSharedChat({
+      chatId: SHARED,
+      familyId: priya.familyId,
+      userId: priya.userId,
+      phone: PRIYA,
+    });
+    await seatInSharedChat({
+      chatId: SHARED,
+      familyId: sam.familyId,
+      userId: sam.userId,
+      phone: SAM,
+    });
+    const key = Buffer.alloc(32, 9);
+    const secret = `whsec_${key.toString('base64')}`;
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    vi.stubEnv('LINQ_WEBHOOK_SECRET', secret);
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_ENABLED', 'true');
+    vi.stubEnv('LINQ_MULTI_FAMILY_GROUPS_ENABLED', 'true');
+    const body = JSON.stringify({
+      api_version: 'v3',
+      webhook_version: '2026-02-03',
+      event_type: 'message.received',
+      event_id: 'evt_plan',
+      created_at: NOW.toISOString(),
+      data: {
+        chat: {
+          id: SHARED,
+          is_group: true,
+          handles: [
+            { handle: PRIYA, is_me: false },
+            { handle: SAM, is_me: false },
+          ],
+        },
+        id: 'msg-plan-ask',
+        direction: 'inbound',
+        sender_handle: { handle: PRIYA, is_me: false },
+        parts: [
+          {
+            type: 'text',
+            value: 'Hale, can you set up a plan for all of us: Riverdale Farm pumpkin walk',
+          },
+        ],
+        sent_at: NOW.toISOString(),
+        service: 'iMessage',
+      },
+    });
+    const ts = String(Math.floor(NOW.getTime() / 1000));
+    const mac = createHmac('sha256', key).update(`evt_plan.${ts}.${body}`).digest('base64');
+    const sent: string[] = [];
+    const res = await handleLinqInboundRequest(
+      new Request('https://app.villagehale.com/api/channels/linq/inbound?version=2026-02-03', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'webhook-id': 'evt_plan',
+          'webhook-timestamp': ts,
+          'webhook-signature': `v1,${mac}`,
+        },
+        body,
+      }),
+      {
+        database: db.database,
+        intake: () => {
+          throw new Error('routeOneToOne must not run');
+        },
+        enqueue: async () => {},
+        log: { info: () => {}, warn: () => {}, error: () => {} },
+        countOutcome: async () => {},
+        now: () => NOW,
+        markRead: async () => ({ status: 'accepted' }),
+        sendGroupText: async (input) => {
+          sent.push(input.text);
+          return { providerMessageId: 'plan-open' };
+        },
+        groupPlanRsvpComposer: fakeGroupPlanRsvpComposer(),
+        groupPlanRsvpReader: { read: async () => startTracking() },
+      },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ outcome: 'group_plan_spoken' });
+    expect(sent).toHaveLength(1);
+    const plans = await db.database
+      .select({ familyId: schema.linqGroupPlans.familyId })
+      .from(schema.linqGroupPlans);
+    expect(plans).toEqual([{ familyId: priya.familyId }]);
   });
 });
 

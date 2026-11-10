@@ -6,11 +6,12 @@ import {
 } from '../config';
 import type { GroupHoldReason } from '../group-audience';
 import type { LinqTapback } from '../transport';
-import type {
-  CalendarConsentReader,
-  CalendarPrivateSender,
-  GroupPlanCalendarWriter,
-  GroupPlanHouseholdResolver,
+import {
+  type CalendarConsentReader,
+  type CalendarPrivateSender,
+  type GroupPlanCalendarWriter,
+  type GroupPlanHouseholdResolver,
+  hostFamilyIdForPlan,
 } from './calendar';
 import {
   type CalendarEffect,
@@ -297,16 +298,20 @@ export async function takeGroupPlanRsvpTurn(
   if (reading.intent === 'start_tracking') {
     if (!plan) {
       const cover = await deps.store.coveringFamily(input.chatId);
+      const familyId = await hostFamilyIdForPlan(deps.households, cover, {
+        chatId: input.chatId,
+        userId: input.senderUserId,
+      });
       const title = reading.planTitle?.trim();
-      if (!cover || !title) return { handled: false };
+      if (!familyId || !title) return { handled: false };
       plan = await deps.store.createPlan({
         chatId: input.chatId,
-        familyId: cover.familyId,
+        familyId,
         title,
         startsAt: reading.startsAt ? new Date(reading.startsAt) : null,
         location: reading.location,
         rsvpDeadlineAt: reading.deadline ? new Date(reading.deadline) : null,
-        createdByUserId: null,
+        createdByUserId: input.senderUserId ?? null,
         expected: seated,
         now: input.now,
       });

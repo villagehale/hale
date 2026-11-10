@@ -17,6 +17,7 @@ import {
   type CalendarConsentReading,
   postgresGroupPlanCalendarWriter,
   postgresGroupPlanHouseholds,
+  hostFamilyIdForPlan,
   sharedCalendarConsentReader,
 } from './calendar';
 import { answerPendingCalendarAsk } from './calendar-turn';
@@ -198,7 +199,12 @@ export async function considerGroupPlanRsvp(
   const live = linqGroupPlanRsvpEnabled() ? await store.loadLivePlan(input.chatId) : null;
   const livePoll = linqGroupPollsEnabled() ? await store.loadLivePoll(input.chatId) : null;
   const cover = await store.coveringFamily(input.chatId);
-  if (!live && !livePoll && !cover) return { handled: false };
+  const hostFamilyId = await hostFamilyIdForPlan(
+    postgresGroupPlanHouseholds(ports.database),
+    cover,
+    { chatId: input.chatId, userId: input.senderUserId },
+  );
+  if (!live && !livePoll && !hostFamilyId) return { handled: false };
 
   return takeGroupPlanRsvpTurn(
     {
