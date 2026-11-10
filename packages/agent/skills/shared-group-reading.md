@@ -17,6 +17,7 @@ You read one turn from a multi-family group chat. Hale is already in the chat. P
 - `people` — who Hale already placed in this chat: first name when said here, whether they are a known Hale parent, and the family Hale already tied to their number (never a guess). Use this to see who is speaking. Do not reassign a known family.
 - `recent` — the last few lines in this chat, each `from` Hale or a member.
 - `clock` — when present, `now` (an ISO time with its offset) and the `timeZone` of the person speaking. Use it only to place `ruledOut` times.
+- `offered` — when present, the times Hale last proposed in this chat that are still ahead: each `start` (ISO) and `local`, that time on the speaker's clock (null when unknown).
 
 ## Output
 
@@ -29,17 +30,20 @@ One JSON object, nothing else:
   "familyLabel": null,
   "kidName": null,
   "confidence": "high",
-  "ruledOut": []
+  "ruledOut": [],
+  "picked": null,
+  "planTitle": null
 }
 ```
 
-`intent` is exactly one of: `who_i_am`, `join`, `leave`, `stop_me`, `find_time`, `question`, `yes`, `no`, `chatter`, `unclear`.
+`intent` is exactly one of: `who_i_am`, `join`, `leave`, `stop_me`, `find_time`, `pick_time`, `question`, `yes`, `no`, `chatter`, `unclear`.
 
 - `who_i_am` — they said who they are, which kid they are with, or their role, in any wording.
 - `join` — they want their family counted in this chat (any wording). A known Hale parent who is already linked by number does not need this; still return `join` if they clearly said they are in.
 - `leave` — they want their whole family out of what Hale tracks here, such as a carpool, a team or a season this chat runs ("we are out of the carpool this season").
 - `stop_me` — they want Hale to stop writing to them, only them, in any wording. The rest of the chat keeps Hale. A tapback is never `stop_me` by itself.
-- `find_time` — they want Hale to find when the families here can all do something together ("when can we all do the zoo?", "¿qué día nos viene bien a todos?"), in any wording. A reply to times Hale just proposed that rules some out or says when they can do it is also `find_time`, so Hale looks again.
+- `find_time` — they want Hale to find when the families here can all do something together ("when can we all do the zoo?", "¿qué día nos viene bien a todos?"), in any wording. A reply to times Hale just proposed that rules them out or names a different time is also `find_time`, so Hale looks again.
+- `pick_time` — they settle on one of the `offered` times, or say one of them works for their family ("Saturday works for us", "let's do the first one", "el domingo nos va bien"). Only when `offered` is present and you can tell which one they mean. Agreeing with someone else's pick is `pick_time` for that same time. Liking the times without choosing one is `yes` or `chatter`.
 - `question` — they asked Hale something, or the group needs Hale to answer (what's on, who is in, can you keep track).
 - `yes` — a yes to Hale's last ask, in words or a yes tapback on Hale's line.
 - `no` — a no to Hale's last ask, in words or a no tapback on Hale's line.
@@ -55,7 +59,11 @@ Non-null only when they claimed a role for themselves, or `who_i_am` is the inte
 
 `ruledOut` lists the times this message (or `recent`) says do not work for someone here, each as `{ "start": ISO, "end": ISO }` with the offset of `clock.timeZone`. "Not Saturday morning" is that Saturday from 08:00 to 12:00; "Tuesday is out" is all of that Tuesday; "only after 5 on weekdays" is each weekday in the next week before 17:00. A "no" to a day Hale proposed rules out that whole day, not only the hour Hale named. Read them from what people said, never from a guess. Empty when nobody ruled anything out, when there is no `clock`, and for every intent other than `find_time`.
 
-`confidence` is `high`, `low`. A state change (`join`, `leave`, `stop_me`, a new role) must be `high` or you return `unclear` / `chatter` instead.
+`picked` is the `start` of the offered time they chose, copied exactly from `offered`, on `pick_time` only. Otherwise null. Never a time that is not in `offered`.
+
+`planTitle` is a short calendar title for what the group is planning, in the group's own language and words ("Zoo trip", "Parque con los niños"), on `find_time` and `pick_time` only. When they never said what it is, a plain one in their language ("Get-together"). Never a name, a child, or anything private. Otherwise null.
+
+`confidence` is `high`, `low`. A state change (`join`, `leave`, `stop_me`, `pick_time`, a new role) must be `high` or you return `unclear` / `chatter` instead.
 
 ## Hard rules
 
