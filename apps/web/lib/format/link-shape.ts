@@ -15,9 +15,12 @@
  * a parent's text. So "the page.Check it", "St.Mary pool", "Mr.Smith" and "请拨打988.你"
  * are refused. What still passes: one-letter endings ("a.m.", "e.g.", "U.S."), a dot
  * before digits ("10.30am"), a dot before a space ("St. Mary's"), a doubled-letter plural
- * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 after a CJK
- * character or a digit and before a CJK run with no '/' after it ("你好。我们", "988。全天").
+ * ("EE.UU."), and one carve-out, the Chinese and Japanese full stop: U+3002 before a CJK
+ * run with no '/' after it ends a sentence ("你好。我们", "7:00 AM。到时候"), unless the root
+ * zone delegates exactly that run as an ending ("evil。在线", "例子。中国").
  */
+
+import { ROOT_ZONE_TLDS } from './root-zone-tlds';
 
 const SCHEME = /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\//i;
 const WWW = /(?<![\p{L}\p{N}])www\./iu;
@@ -27,8 +30,7 @@ const DOTTED_QUAD = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?!\p{N}|\.\p{N})/u;
 const CJK = String.raw`\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}`;
 // NFKC folds U+FF0E and U+FE52 to '.', and U+FF61 to U+3002, which it leaves alone.
 const IDEOGRAPHIC_DOT = /\u3002/gu;
-const CJK_OR_DIGITS = new RegExp(`^[${CJK}\\p{N}]+$`, 'u');
-const CJK_RUN_WITHOUT_PATH = new RegExp(`[${CJK}]+(?![${CJK}/])`, 'uy');
+const CJK_RUN = new RegExp(`[${CJK}]+`, 'uy');
 const BRACKETED_OR_SPACED_DOT = /\s*[[({]\s*\.\s*[\])}]\s*|\s+\.\s+/g;
 // 'EE.UU.' (Spanish for the US) when nothing name-like follows it.
 const DOUBLED_PAIR_ABBREVIATION = /(?<!\p{L})(\p{Lu})\1\.(\p{Lu})\2\.(?![\p{L}\p{N}])/gu;
@@ -45,7 +47,7 @@ function readAsHandset(text: string, trusted: ReadonlySet<string>): string {
     .normalize('NFKC')
     .replace(/\p{Cf}/gu, '')
     .replace(IDEOGRAPHIC_DOT, (dot, at: number, whole: string) =>
-      endsACjkSentence(whole, at, trusted) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
+      endsBeforeCjkProse(whole, at) || endsBeforeTrustedWord(whole, at, trusted) ? dot : '.',
     )
     .replace(BRACKETED_OR_SPACED_DOT, '.')
     .replace(DOUBLED_PAIR_ABBREVIATION, ' ');
@@ -70,16 +72,20 @@ function nameBefore(text: string, at: number): string {
   return text.slice(start, at);
 }
 
-const LATIN_RUNS = /[\p{Script=Latin}\p{M}]+/gu;
+const DELEGATED = new Set(ROOT_ZONE_TLDS.trim().split(/\s+/));
 
-/** A trusted word inside the CJK run before the stop ("Hale这边不会代办。") is no host label;
- * one right before it ("我是Hale。") still is. */
-function endsACjkSentence(text: string, at: number, trusted: ReadonlySet<string>): boolean {
-  const name = nameBefore(text, at);
-  const last = [...name].pop() ?? '';
-  const rest = name.replace(LATIN_RUNS, (run) => (trusted.has(run.toLowerCase()) ? '' : run));
-  CJK_RUN_WITHOUT_PATH.lastIndex = at + 1;
-  return CJK_OR_DIGITS.test(last) && CJK_OR_DIGITS.test(rest) && CJK_RUN_WITHOUT_PATH.test(text);
+function isDelegatedEnding(label: string): boolean {
+  return DELEGATED.has(label.toLowerCase());
+}
+
+/** The stop ends a sentence before a CJK run ("AM。到时候"), taken up to the next other
+ * character, unless that run is itself a delegated ending or a path follows it
+ * ("例子。在线", "你好。我们/x"). */
+function endsBeforeCjkProse(text: string, at: number): boolean {
+  CJK_RUN.lastIndex = at + 1;
+  const run = CJK_RUN.exec(text)?.[0];
+  if (run === undefined) return false;
+  return text[at + 1 + run.length] !== '/' && !isDelegatedEnding(run);
 }
 
 const CJK_CHAR = new RegExp(`^[${CJK}]$`, 'u');
@@ -89,7 +95,8 @@ const HOST_CONTINUES = /^[\p{L}\p{M}\p{N}._@/:'’-]$/u;
 
 /**
  * "日历上。Ana、Sam" or "没有空位了。Hale不会": a full stop after a CJK character and before
- * exactly one trusted word ends the sentence. "例子。app" and "evil。app" stay dots.
+ * exactly one trusted word ends the sentence. "例子。app" and "evil。app" stay dots, and so
+ * does a trusted name that is itself a delegated ending ("例子。Ai").
  */
 function endsBeforeTrustedWord(text: string, at: number, trusted: ReadonlySet<string>): boolean {
   if (trusted.size === 0) return false;
@@ -97,7 +104,7 @@ function endsBeforeTrustedWord(text: string, at: number, trusted: ReadonlySet<st
   if (!CJK_CHAR.test(before)) return false;
   LATIN_RUN.lastIndex = at + 1;
   const run = LATIN_RUN.exec(text)?.[0];
-  if (run === undefined || !trusted.has(run.toLowerCase())) return false;
+  if (run === undefined || !trusted.has(run.toLowerCase()) || isDelegatedEnding(run)) return false;
   const next = [...text.slice(at + 1 + run.length, at + 3 + run.length)][0] ?? '';
   return next === '' || CJK_CHAR.test(next) || !HOST_CONTINUES.test(next);
 }
@@ -174,6 +181,8 @@ export function withoutLinks(text: string): string {
 // character, which keeps Chinese or Japanese written right after a link out of it.
 const SCHEME_TOKEN = /https?:\/\/[\x21-\x7E]+/gi;
 const TRAILING_PROSE = /[.,;:!?)\]}>'"]+$/;
+// What could carry a URL on into another host, port, path, query or fragment.
+const CONTINUES_A_LINK = /[A-Za-z0-9.@/:?#&=%~_-]/;
 
 function sameLink(token: string, handed: readonly string[]): boolean {
   const bare = token.replace(TRAILING_PROSE, '');
@@ -187,14 +196,29 @@ function sameLink(token: string, handed: readonly string[]): boolean {
 }
 
 /**
- * Whether a draft carries any link other than the ones code handed it. A handed link
- * counts only as itself, compared as a parsed URL, so '<link>.evil.tld' or '<link>@host'
- * is another link; everything left after the handed links is read with
- * {@link hasLinkShape}, so a scheme-less domain beside them is caught too.
+ * The text with each handed link set aside, read as a handset reads its characters. A
+ * handed link counts only as itself, compared as a parsed URL, and only where nothing
+ * after it could carry it on: '<link>(场次' and '<link>。' are the link, while
+ * '<link>.evil.tld', '<link>．app' and '<link>@host' are another link.
+ */
+function withoutHanded(text: string, handed: readonly string[]): string {
+  const read = text.normalize('NFKC').replace(/\p{Cf}/gu, '');
+  return read.replace(SCHEME_TOKEN, (token) => {
+    for (let end = 1; end <= token.length; end += 1) {
+      if (end < token.length && CONTINUES_A_LINK.test(token.charAt(end))) continue;
+      if (sameLink(token.slice(0, end), handed)) return ` ${token.slice(end)}`;
+    }
+    return token;
+  });
+}
+
+/**
+ * Whether a draft carries any link other than the ones code handed it. Everything left
+ * after the handed links is read with {@link hasLinkShape}, so a scheme-less domain beside
+ * them is caught too.
  */
 export function hasLinkBeyond(text: string, handed: readonly string[]): boolean {
-  const rest = text.replace(SCHEME_TOKEN, (token) => (sameLink(token, handed) ? ' ' : token));
-  return hasLinkShape(rest);
+  return hasLinkShape(withoutHanded(text, handed));
 }
 
 /** Hale's own name, which every writer may say. */
@@ -240,10 +264,7 @@ export function foreignLinks(text: string, trusted: TrustedFacts): string[] {
   const names = new Set(trustedNames(trusted.words));
   const email = trusted.email?.trim().toLowerCase();
   const known = email ? new Set([...names, email]) : names;
-  const rest = text.replace(SCHEME_TOKEN, (token) =>
-    sameLink(token, trusted.handed) ? ' ' : token,
-  );
-  const found = wordsOf(readAsHandset(rest, names))
+  const found = wordsOf(readAsHandset(withoutHanded(text, trusted.handed), names))
     .filter((word) => readHasLinkShape(word) && !isTrustedWord(word, known))
     .flatMap(namedPart);
   return [...new Set(found)];
