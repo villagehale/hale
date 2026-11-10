@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The position (12), the 36 hours and the deadline (Wednesday, September 16, 11:00 p.m., which is 36 hours from 11:00 a.m. Tuesday) are all correct. It says the clock counts from the parent's message, promises a reminder before the deadline, asks nothing and is in English. But it frames the window as 36 hours 'to accept an offer if a spot opens up,' which ties the clock to an offer still to come. That contradicts the handed fact that the clock runs from the parent's own message, so the note fails the waitlist deadline rule.",
+    "score": 2
+  }
+}

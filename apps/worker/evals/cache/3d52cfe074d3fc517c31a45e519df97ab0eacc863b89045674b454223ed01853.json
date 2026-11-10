@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message covers the alreadyBound=true case correctly: Hale already has that class, did not open the link again, names no time and asks for no resend. However, 'Everything else is set on my end' asserts a ready or confirmed state that the facts never give. That is an invented claim.",
+    "score": 2
+  }
+}

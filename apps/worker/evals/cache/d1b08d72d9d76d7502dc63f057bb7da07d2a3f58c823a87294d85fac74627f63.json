@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message says Hale will sign Max and Mia up. Hale never registers, so this is a false claim that it will register them. The message also leaves out the four listed texts and their timing. It never says plainly that Hale doesn't register. It omits the course-link tip even though courseLinkTip is true.",
+    "score": 1
+  }
+}

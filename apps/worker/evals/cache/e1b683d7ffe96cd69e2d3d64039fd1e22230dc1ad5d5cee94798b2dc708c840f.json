@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a course_link_throttled message with alreadyBound false, and it fails the brief. It says Hale is 'reading another page right now' instead of saying Hale just tried an earlier page. It promises to open this link later and text what it says, which is an invented follow-up that contradicts 'will not come back to it.' It never asks the parent to send the link again in 7 minutes, and it never says Hale has not opened this link.",
+    "score": 1
+  }
+}

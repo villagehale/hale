@@ -6,6 +6,8 @@ import {
   battlePlanDecision,
   checkInOutcomeFacts,
   courseBoundFacts,
+  courseRefusedFacts,
+  courseThrottledFacts,
   headsUpFacts,
   legNoteFacts,
   morningFacts,
@@ -944,5 +946,64 @@ describe('VIL-543 · the approval card is facts for the model', () => {
         null,
       ),
     ).toMatchObject({ ageBand: { published: false }, who: 'Max' });
+  });
+});
+
+describe('VIL-543 · a refused course link is facts for the model', () => {
+  const refusedInput = (over: Partial<Parameters<typeof courseRefusedFacts>[0]> = {}) => ({
+    portal: OAKVILLE,
+    municipality: 'oakville',
+    reason: 'not_https' as const,
+    pageOpensAt: null,
+    opensForFamilyAt: ANCHOR,
+    timeZone: TZ,
+    now: NOW,
+    ...over,
+  });
+
+  it('hands the reason, the portal and the town the morning is in', () => {
+    expect(courseRefusedFacts(refusedInput())).toEqual({
+      kind: 'course_link_refused',
+      now: { date: 'Monday, September 14, 2026', time: '6:00 p.m.' },
+      reason: 'not_https',
+      portal: OAKVILLE.portalLabel,
+      town: 'Oakville',
+      pageOpens: null,
+      haleHas: null,
+    });
+  });
+
+  it('hands both mornings on a different season, and neither on any other reason', () => {
+    const pageOpensAt = new Date('2026-10-27T14:30:00.000Z');
+    expect(
+      courseRefusedFacts(refusedInput({ reason: 'different_season', pageOpensAt })),
+    ).toMatchObject({
+      reason: 'different_season',
+      pageOpens: { date: 'Tuesday, October 27, 2026', time: '10:30 a.m.' },
+      haleHas: { date: 'Tuesday, September 15, 2026', time: '10:30 a.m.' },
+    });
+    expect(courseRefusedFacts(refusedInput({ reason: 'course_gone' }))).toMatchObject({
+      pageOpens: null,
+      haleHas: null,
+    });
+  });
+});
+
+describe('VIL-543 · a throttled course link is facts for the model', () => {
+  it('hands the minutes until the next read is theirs', () => {
+    expect(
+      courseThrottledFacts({ alreadyBound: false, retryMinutes: 1, timeZone: TZ, now: NOW }),
+    ).toEqual({
+      kind: 'course_link_throttled',
+      now: { date: 'Monday, September 14, 2026', time: '6:00 p.m.' },
+      alreadyBound: false,
+      retryMinutes: 1,
+    });
+  });
+
+  it('hands no minutes for the link already bound: there is nothing to resend', () => {
+    expect(
+      courseThrottledFacts({ alreadyBound: true, retryMinutes: 10, timeZone: TZ, now: NOW }),
+    ).toMatchObject({ alreadyBound: true, retryMinutes: null });
   });
 });

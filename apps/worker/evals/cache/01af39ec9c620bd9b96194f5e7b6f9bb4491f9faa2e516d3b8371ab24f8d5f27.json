@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message restates what the page showed: it replaces the earlier page, the course name, day and time couldn't be read (correct, since they are null), and the opening is Tuesday, September 15 at 7:00 a.m. under the residents date. It warns to leave time for the prerequisite, carries no link, asks nothing, and names no child. One minor flaw: \"I'm going by what's on the portal\" is extra and slightly misleading. haleHad is null, and the phrase hints that Hale checked the portal. \"Opens ... on the residents date\" is also a bit awkward.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The kind is course_link_refused with reason wrong_municipality. The message says plainly that the link is from another town while the family's registration is in Springfield. It says Hale did not take the link and saved nothing. It carries no link, and it asks once for the course page from Springfield's portal, which this reason requires. 'The registration morning I'm holding for you' is a light framing of the Springfield registration Hale is helping with, not a claim that a spot is held. The English reads naturally, and no child is named.",
+    "score": 5
+  }
+}

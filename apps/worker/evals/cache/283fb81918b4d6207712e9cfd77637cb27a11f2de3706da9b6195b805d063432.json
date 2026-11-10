@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a readiness_answer where ready is true. The message credits the setup to the parent (\"You've let me know\") and does not claim Hale verified it. It names Springfield's portal, the Springfield recreation account and Max correctly, and names no other child. It asks no question, invents no reminder, and is in English with a friendly tone. Restating the account as being in place is a plain-words version of the parent's yes, not a new claim.",
+    "score": 5
+  }
+}

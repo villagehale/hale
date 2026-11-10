@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message states a price of $120, but price is null in the facts, so the price is invented. The rest is right: replaced is restated as 'Swapped', the date and time are correct, and the prerequisite warning is there. The course details are null, so the message should have said they could not be read. The invented price alone puts it at 2 or below.",
+    "score": 2
+  }
+}

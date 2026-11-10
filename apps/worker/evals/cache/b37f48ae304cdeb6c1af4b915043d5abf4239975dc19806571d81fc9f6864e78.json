@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message does what check_in_ask requires. It asks how registration went and gives the three outcomes: got in, waitlisted with their number, or missed. It is in French, as the facts specify. It names no child and invents no dates, prices or links, and the window name matches the facts. The tone is a bit formal, with the vous form and a fairly long sentence, but it still reads naturally enough.",
+    "score": 5
+  }
+}

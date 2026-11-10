@@ -1,7 +1,7 @@
 // VIL-543 · every registration message that is not the heads-up, the evening or the
 // morning-of text: the readiness checklist, the check-in, the waitlist guards, the
-// answers to what a parent reported, the course-link ack, the second parent's yes and
-// the approval card.
+// answers to what a parent reported, the course-link ack, refusal and throttle, the
+// second parent's yes and the approval card.
 //
 // The subject is the REAL skill (packages/agent/skills/registration-note.md) run through
 // the REAL request the web composer builds (apps/web/lib/registration/sequence/
@@ -220,6 +220,78 @@ export const NOTE_FIXTURES = [
     },
   },
   {
+    id: 'course-refused-not-https',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'not_https',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: null,
+      haleHas: null,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-refused-wrong-town',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'wrong_municipality',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: null,
+      haleHas: null,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-refused-unreadable-fr',
+    facts: {
+      kind: 'course_link_refused',
+      now: NOW,
+      reason: 'page_unreadable',
+      portal: 'le portail de Riverton',
+      town: 'Riverton',
+      pageOpens: null,
+      haleHas: null,
+      language: 'fr',
+    },
+  },
+  {
+    id: 'course-refused-different-season',
+    facts: {
+      kind: 'course_link_refused',
+      now: { date: 'Tuesday, September 1, 2026', time: '8:00 a.m.' },
+      reason: 'different_season',
+      portal: PORTAL,
+      town: 'Springfield',
+      pageOpens: { date: 'Tuesday, October 27, 2026', time: '7:00 a.m.' },
+      haleHas: { date: 'Tuesday, September 15, 2026', time: '7:00 a.m.' },
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-throttled',
+    facts: {
+      kind: 'course_link_throttled',
+      now: NOW,
+      alreadyBound: false,
+      retryMinutes: 7,
+      language: 'en',
+    },
+  },
+  {
+    id: 'course-throttled-already-bound',
+    facts: {
+      kind: 'course_link_throttled',
+      now: NOW,
+      alreadyBound: true,
+      retryMinutes: null,
+      language: 'en',
+    },
+  },
+  {
     id: 'approval-card-portal',
     facts: {
       kind: 'approval_card',
@@ -295,6 +367,16 @@ export const NOTE_BROKEN = [
     text: 'About 2 hours left on the Springfield waitlist offer: it runs out tomorrow at 9 a.m. Check your email and the portal.',
   },
   {
+    id: 'broken-throttled-comes-back',
+    facts: BY_ID['course-throttled'],
+    text: "I'm reading another page for you right now. I'll open this one as soon as I'm free and text you what it says.",
+  },
+  {
+    id: 'broken-season-wrong-date',
+    facts: BY_ID['course-refused-different-season'],
+    text: "That course opens Tuesday, November 3 at 7 a.m., and the Springfield morning I'm holding is Tuesday, September 15. That looks like a different season, so I've left it as it was.",
+  },
+  {
     // Scored 5 under the rubric before it judged where the clock starts.
     id: 'broken-waitlisted-clock-unsaid',
     facts: BY_ID['outcome-waitlisted-clock'],
@@ -306,10 +388,12 @@ export const NOTE_BROKEN = [
 function brokenOffline(note) {
   const card = BY_ID['approval-card-portal'];
   const checkIn = BY_ID['check-in-ask-fr'];
+  const courseRefused = BY_ID['course-refused-not-https'];
   const refused = [
     note.noteRefusals('   ', checkIn),
     note.noteRefusals("Comment ça s'est passé? https://evil.example/phish", checkIn),
     note.noteRefusals('Opens Tuesday: https://evil.example/phish', card),
+    note.noteRefusals('Send me the secure one instead: https://evil.example/phish', courseRefused),
   ];
   const kept = [
     note.noteRefusals("Comment ça s'est passé ce matin?", checkIn),

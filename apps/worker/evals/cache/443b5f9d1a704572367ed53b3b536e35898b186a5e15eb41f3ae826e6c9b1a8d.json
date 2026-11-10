@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This is a course_link_refused message with reason wrong_municipality. It states the reason plainly: the page is from another town's portal and the registration is in Springfield. It carries no link and says nothing was saved. It asks once for the course page from Springfield's portal, which is the handed ask for this reason. \"The registration morning I'm holding for you\" restates the family's registration context; it does not claim anything is booked. The text is in English and reads naturally.",
+    "score": 5
+  }
+}

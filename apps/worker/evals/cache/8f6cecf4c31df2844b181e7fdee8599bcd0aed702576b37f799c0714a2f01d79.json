@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "For alreadyBound false, the message has to say three things: Hale just tried an earlier page, Hale has not opened this link and will not come back to it, and the parent should send it again in 7 minutes. This message gets it wrong. It promises Hale will open the link later and text the result, which is the opposite of 'will not come back to it' and is a later message the facts do not promise. It never asks for a resend in 7 minutes. It also says Hale is reading another page 'right now', which goes beyond 'just tried'.",
+    "score": 1
+  }
+}

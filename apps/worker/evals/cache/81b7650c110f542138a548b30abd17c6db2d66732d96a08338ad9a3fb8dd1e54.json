@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message gets the page's opening date wrong. The facts give pageOpens as Tuesday, October 27, 2026 at 7:00 a.m., but the text says Tuesday, November 3. That is a wrong date, which caps the score at 2. Otherwise it does what the kind asks: it names the haleHas date correctly, explains the different-season reason, includes no link, saves nothing and asks nothing.",
+    "score": 2
+  }
+}

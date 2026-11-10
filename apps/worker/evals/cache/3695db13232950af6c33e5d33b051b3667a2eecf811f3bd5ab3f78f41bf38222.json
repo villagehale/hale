@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The message misses what the kind asks. With alreadyBound false it should say Hale just tried an earlier page, has not opened this link and will not come back to it, and ask the parent to send it again in 7 minutes. Instead it claims Hale is reading another page \"right now\" (a claim the facts do not make). It also promises to open this link later and text the result, a later action and message the facts do not promise. It never tells the parent to resend after 7 minutes.",
+    "score": 1
+  }
+}
