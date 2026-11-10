@@ -9,9 +9,6 @@ import { setSharedRecMorningReader } from '~/lib/channel/rec-morning/read';
 import { scriptedRecMorningReader } from '~/lib/channel/rec-morning/scripted-reader.fixture';
 import { setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import type { SpotPortal } from '~/lib/channel/spots/url';
-import { checkpointById, parseCheckpointRef } from '~/lib/health/checkpoints';
-import type { OpenCheckupOffer } from '~/lib/health/offer';
-import type { HealthReplyDeps } from '~/lib/health/reply';
 import type { RegistrationNoteFacts } from '~/lib/registration/sequence/note-compose';
 import type {
   BindReadClaimResult,
@@ -19,7 +16,6 @@ import type {
   PreparingSequence,
 } from '~/lib/registration/sequence/prepare-reply';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
-import { askWriter, writtenAsk } from '~/lib/testing/consent-double';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
@@ -163,64 +159,6 @@ function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] }
   };
 }
 
-/**
- * The offer the nudge WOULD have registered for this ref — production's own rule, which
- * is `checkpoint.booking` and nothing else (lib/health/offer.ts). A paperwork checkpoint
- * offers nothing, so a "yes" after one has nothing to accept.
- */
-function offerFrom(ref: string | null): OpenCheckupOffer | null {
-  const parsed = ref === null ? null : parseCheckpointRef(ref);
-  const checkpoint = parsed ? checkpointById(parsed.checkpointId) : null;
-  if (!checkpoint?.booking) return null;
-  return {
-    id: 'commitment-1',
-    checkpoint,
-    childId: parsed?.childId ?? null,
-    summary: 'Whether to put booking this on your week',
-    askedAt: new Date('2026-08-20T14:00:00.000Z'),
-  };
-}
-
-/**
- * M8's deps, scripted: `ref` is the checkpoint the family was last nudged about, and
- * `offer` is the standing booking offer the nudge registered when it sent.
- */
-function healthDeps(
-  ref: string | null,
-  offer: OpenCheckupOffer | null = offerFrom(ref),
-): HealthReplyDeps & { done: string[]; drafted: string[]; closed: string[] } {
-  const done: string[] = [];
-  const drafted: string[] = [];
-  const closed: string[] = [];
-  return {
-    done,
-    drafted,
-    closed,
-    loadLastCheckpointRef: async () =>
-      ref === null ? null : { ref, toldAt: new Date('2026-07-30T12:00:00.000Z') },
-    loadOpenOffer: async () => offer,
-    recordDone: async (_db, input) => {
-      done.push(input.checkpointId);
-    },
-    draftCheckup: async (_db, input) => {
-      drafted.push(input.intentKind);
-      return { actionId: 'drafted-1' };
-    },
-    fulfillOffer: async (_db, input) => {
-      closed.push(input.channelMessageId ?? 'none');
-      return { status: 'closed', commitmentIds: ['commitment-1'] };
-    },
-    ask: askWriter(),
-  };
-}
-
-/** A real checkpoint ref, so M8's own parser accepts it. */
-const CHILD = '44444444-4444-4444-8444-444444444444';
-/** A real ref (`checkpointId:scope:occurrence`) whose task is NOT a booking. */
-const PAPERWORK_CHECKPOINT = `dental_school_screening:${CHILD}:1`;
-/** A real ref whose task IS booking a visit — the only kind that may offer a draft. */
-const BOOKING_CHECKPOINT = `well_baby_18_months:${CHILD}:1`;
-
 describe('approvalHandler', () => {
   it('claims an approval and executes it through the spine', async () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
@@ -251,38 +189,11 @@ describe('approvalHandler', () => {
 });
 
 describe('healthReplyHandler', () => {
-  it('claims "done" and files it as handled — no model, no verification', async () => {
-    const deps = healthDeps(PAPERWORK_CHECKPOINT);
-    const verdict = await healthReplyHandler(deps).handle(DB, turn('done'));
-
-    expect(verdict.claimed).toBe(true);
-    expect(deps.done).toEqual(['dental_school_screening']);
-  });
-
-  it('does not claim "not done yet" — the substring trap', async () => {
-    const deps = healthDeps(PAPERWORK_CHECKPOINT);
-    const verdict = await healthReplyHandler(deps).handle(DB, turn('not done yet'));
-
-    expect(verdict.claimed).toBe(false);
-    expect(deps.done).toEqual([]);
-  });
-
-  it('does not claim anything when no checkpoint is open', async () => {
-    const deps = healthDeps(null);
-    expect((await healthReplyHandler(deps).handle(DB, turn('done'))).claimed).toBe(false);
-  });
-
-  /** Rule #4: a "yes" on a booking checkpoint DRAFTS, it never books. */
-  it('drafts for approval rather than acting, and says so', async () => {
-    const deps = healthDeps(BOOKING_CHECKPOINT);
-    const verdict = await healthReplyHandler(deps).handle(
-      DB,
-      turn('yes', { resolved: placed('checkup_offer', 'offer-1') }),
-    );
-
-    expect(deps.drafted).toEqual(['book_checkup']);
-    expect(verdict.claimed && verdict.reply).toBe(writtenAsk({ kind: 'checkup_drafted' }));
-    expect(verdict.claimed && verdict.reply).not.toMatch(/https?:/);
+  it('claims nothing — Hale sends no health checkpoint reminder', async () => {
+    expect((await healthReplyHandler().handle(DB, turn('done'))).claimed).toBe(false);
+    expect(
+      (await healthReplyHandler().handle(DB, turn('yes', { resolved: placed('checkup_offer', 'offer-1') }))).claimed,
+    ).toBe(false);
   });
 });
 
@@ -294,7 +205,6 @@ describe('who owns "yes"', () => {
    */
   it('goes to the approval handler when an action is waiting', async () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
-    const health = healthDeps(BOOKING_CHECKPOINT);
 
     const first = await approvalHandler(s).handle(
       DB,
@@ -302,7 +212,6 @@ describe('who owns "yes"', () => {
     );
     expect(first.claimed).toBe(true);
     expect(s.approved).toEqual(['a-1']);
-    expect(health.drafted).toEqual([]);
   });
 
   /**
@@ -310,14 +219,11 @@ describe('who owns "yes"', () => {
    * declines and the health nudge's own offer gets its answer. This is why the order
    * cannot starve the handler behind it.
    */
-  it('falls through to the health nudge when nothing is waiting', async () => {
+  it('does not claim a checkup yes once health reminders are gone', async () => {
     const s = spine([]);
-    const health = healthDeps(BOOKING_CHECKPOINT);
-
     const answered = turn('yes', { resolved: placed('checkup_offer', 'offer-1') });
     expect((await approvalHandler(s).handle(DB, answered)).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, answered)).claimed).toBe(true);
-    expect(health.drafted).toEqual(['book_checkup']);
+    expect((await healthReplyHandler().handle(DB, answered)).claimed).toBe(false);
   });
 });
 
@@ -448,15 +354,10 @@ describe('handler order — registration last', () => {
    * open registration window. M7 cannot read "done", so ahead of M8 it would answer with
    * the check-in menu and the paperwork would go unfiled.
    */
-  it('gives "done" to the health handler even with an open registration window', async () => {
-    const health = healthDeps(PAPERWORK_CHECKPOINT);
+  it('does not give "done" to the health handler', async () => {
     const sequence = sequenceDeps();
-
-    const healthVerdict = await healthReplyHandler(health).handle(DB, turn('done'));
-
-    expect(healthVerdict.claimed).toBe(true);
-    expect(health.done).toEqual(['dental_school_screening']);
-    // Never consulted, so the family's one re-ask is still theirs to spend.
+    const healthVerdict = await healthReplyHandler().handle(DB, turn('done'));
+    expect(healthVerdict.claimed).toBe(false);
     expect(sequence.reasks).toBe(0);
   });
 
@@ -475,15 +376,12 @@ describe('handler order — registration last', () => {
 
   /** With nothing drafted, the health nudge's own offer still gets its "yes" — the
    * registration re-ask does not reach it. */
-  it('gives a bare "yes" to the health nudge before the registration re-ask', async () => {
+  it('does not give a checkup yes to the health handler', async () => {
     const s = spine([]);
-    const health = healthDeps(BOOKING_CHECKPOINT);
     const sequence = sequenceDeps();
-
     const answered = turn('yes', { resolved: placed('checkup_offer', 'offer-1') });
     expect((await approvalHandler(s).handle(DB, answered)).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, answered)).claimed).toBe(true);
-    expect(health.drafted).toEqual(['book_checkup']);
+    expect((await healthReplyHandler().handle(DB, answered)).claimed).toBe(false);
     expect(sequence.reasks).toBe(0);
   });
 
@@ -491,13 +389,10 @@ describe('handler order — registration last', () => {
    * reaches M7 untouched. */
   it('lets a waitlist report fall through the two handlers ahead of it', async () => {
     const s = spine([{ actionId: 'a-1', actionType: 'calendar_add', reviewerApproved: true }]);
-    const health = healthDeps(PAPERWORK_CHECKPOINT);
     const sequence = sequenceDeps();
 
     expect((await approvalHandler(s).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
-    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(
-      false,
-    );
+    expect((await healthReplyHandler().handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
     expect(
       (await sequenceReplyHandler(sequence, NO_PREPARE).handle(DB, turn('waitlisted #3'))).claimed,
     ).toBe(true);
@@ -1002,27 +897,12 @@ describe('a bare affirmative with more than one kind of question open', () => {
     expect(verdict.claimed).toBe(false);
   });
 
-  it('holds the health nudge back too - its question is not even a yes/no one', async () => {
-    const health = healthDeps(BOOKING_CHECKPOINT);
-    const verdict = await healthReplyHandler(health).handle(
+  it('holds the health handler back — it claims nothing', async () => {
+    const verdict = await healthReplyHandler().handle(
       DB,
       turn('yes', { open: [INTRO_QUESTION] }),
     );
-
     expect(verdict.claimed).toBe(false);
-    expect(health.drafted).toEqual([]);
-  });
-
-  it('never holds back an EXACT word - "done" is not ambiguous', async () => {
-    // Only the bare affirmative waits. The vocabulary each handler owns exactly is free
-    // and instant, which is the whole reason it runs first.
-    const health = healthDeps(PAPERWORK_CHECKPOINT);
-    const verdict = await healthReplyHandler(health).handle(
-      DB,
-      turn('done', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
-    );
-
-    expect(verdict.claimed).toBe(true);
   });
 });
 

@@ -68,7 +68,7 @@ import { weekdayFinderDedupeKey, weekdayFinderTemplateKey } from '~/lib/channel/
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import type { HealthChild } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';

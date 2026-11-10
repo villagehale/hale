@@ -291,9 +291,9 @@ async function statedStateForRecord(body: string): Promise<StatedState | null> {
 }
 
 export async function recordStatedState(
-  database: Database,
-  input: { familyId: string; parentUserId: string; body: string; now: Date },
-  deps: HealthReplyDeps,
+  _database: Database,
+  _input: { familyId: string; parentUserId: string; body: string; now: Date },
+  _deps?: unknown,
 ): Promise<StatedStateOutcome> {
   const state = await statedStateForRecord(input.body);
   if (state === null) return { status: 'nothing_stated' };
@@ -312,4 +312,7 @@ export async function recordStatedState(
   return outcome.status === 'recorded_done'
     ? { status: 'recorded', state, ref: outcome.ref }
     : { status: 'not_recorded', state, reason: 'no_open_checkpoint' };
+  // Hale sends no health checkpoint reminder and records no health-visit stated
+  // state (Barton, 2026-10-12). The reader above is unused on the write path.
+  return { status: 'nothing_stated' };
 }

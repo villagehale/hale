@@ -16,7 +16,6 @@ import {
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
-import { matchHealthCheckpoints } from '~/lib/health/match';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type ProactiveReviewDeps, runProactiveReview } from './review';
 
@@ -452,25 +451,10 @@ describe('no health checkpoint from the sweep', () => {
     };
   }
 
-  async function insideSixMonthWindow(): Promise<string[]> {
-    const [infant] = await db.database
+  async function insideSixMonthWindow(): Promise<void> {
+    await db.database
       .insert(schema.children)
-      .values({ familyId, name: 'Wren', dateOfBirth: '2026-02-10' })
-      .returning({ id: schema.children.id });
-    return matchHealthCheckpoints({
-      children: [
-        {
-          id: infant?.id as string,
-          name: 'Wren',
-          ageMonths: 6,
-          dobPrecision: 'exact',
-          isTeen: false,
-        },
-      ],
-      areaCoarse: AREA,
-      suppressedRefs: new Set(),
-      now: MONDAY,
-    }).map((found) => found.checkpoint.id);
+      .values({ familyId, name: 'Wren', dateOfBirth: '2026-02-10' });
   }
 
   async function healthRows() {
@@ -486,7 +470,7 @@ describe('no health checkpoint from the sweep', () => {
   }
 
   it('with the flag unset, sends the find and no health checkpoint', async () => {
-    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    await insideSixMonthWindow();
     const transport = new FakeTransport();
 
     const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
@@ -499,7 +483,7 @@ describe('no health checkpoint from the sweep', () => {
 
   it('when live, queues the find and sends no health checkpoint', async () => {
     vi.stubEnv('PROACTIVE_CADENCE', 'live');
-    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    await insideSixMonthWindow();
     const transport = new FakeTransport();
 
     const result = await runNudgeCron(db.database, areaDeps(transport), MONDAY);
@@ -511,7 +495,7 @@ describe('no health checkpoint from the sweep', () => {
   });
 
   it('says nothing to a family whose only news is the checkpoint', async () => {
-    expect(await insideSixMonthWindow()).toEqual(['immunization_6_months']);
+    await insideSixMonthWindow();
     livePicks = [];
     vi.stubEnv(WEEKDAY_CARE_ENABLED_ENV, 'false');
     const transport = new FakeTransport();

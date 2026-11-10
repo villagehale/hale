@@ -2,7 +2,7 @@ import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { WeekdayCareFact } from '~/lib/care/weekday';
 import type { RadarCandidate, RadarChild } from '~/lib/channel/intake/radar-decide';
-import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { emptyHouseholdFindBias } from '~/lib/reviews/household-bias';
 import { FIXTURE_FSA } from '~/lib/testing/fixture-postal';
@@ -423,20 +423,13 @@ describe('decideNudge — silence', () => {
 
 /**
  * Hale sends no health checkpoint, vaccine or checkup reminder (Barton, 2026-10-12): it is
- * not a homepage promise. The matcher still finds the window in every case below (the
- * positive control), so each absence is the ladder's choice and not an empty table.
+ * not a homepage promise. The ladder never decides one, even when the household is inside
+ * an Ontario administrative window.
  */
 describe('decideNudge — no health checkpoint', () => {
   const health = { healthChildren: [healthChild()], areaCoarse: 'M4C' };
-  const inWindow = (children: readonly HealthChild[], areaCoarse: string) =>
-    matchHealthCheckpoints({ children, areaCoarse, suppressedRefs: new Set(), now: FRIDAY }).map(
-      (found) => found.checkpoint.id,
-    );
 
   it('says nothing for a family whose only news is a checkpoint window they are inside', () => {
-    expect(inWindow(health.healthChildren, health.areaCoarse)).toContain(
-      'immunization_4_to_6_years',
-    );
     expect(decideAll(health)).toEqual({ nudge: null, skips: {} });
   });
 
@@ -444,11 +437,11 @@ describe('decideNudge — no health checkpoint', () => {
     const toddler = [healthChild({ ageMonths: 18 })];
     expect(inWindow(toddler, FIXTURE_FSA)).toContain('immunization_18_months');
     expect(decide({ healthChildren: toddler, areaCoarse: FIXTURE_FSA })).toBeNull();
+    expect(decide({ healthChildren: toddler, areaCoarse: 'L7G' })).toBeNull();
   });
 
   it('says nothing to a household whose only child is 13 or older', () => {
     const teen = [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })];
-    expect(inWindow(teen, 'M4C')).toContain('immunization_14_to_16_years');
     expect(decide({ healthChildren: teen, areaCoarse: 'M4C' })).toBeNull();
   });
 

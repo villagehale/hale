@@ -58,8 +58,6 @@ import { searchWeekdaysForFamily } from '~/lib/channel/weekday-care/search';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { loadOpenCommitment } from '~/lib/commitments/ledger';
 import { childBelongsToFamily } from '~/lib/companion/log-write';
-import { loadOpenCheckupOffer } from '~/lib/health/offer';
-import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { createCalendarOfferReader } from '~/lib/integrations/calendar-offer-read';
 import {
   emailAlertOfferSubject,
@@ -495,7 +493,7 @@ export function defaultHandlers(ports: DefaultHandlerPorts = {}): DeterministicH
     // And its sibling, for the same reason and with the same freedom of position: it
     // owns the daycare check-in's kind and claims nothing.
     daycareFollowupHandler(),
-    healthReplyHandler({ ...defaultHealthReplyDeps(), ask }),
+    healthReplyHandler(),
     emailAlertAddHandler({ writeReceipt: createOfferReceiptWriter(screenClient) }),
     planReplyHandler(defaultPlanReplyDeps()),
     // A reply to a pending sign-up offer, read by the consent model (no word list). Placed before the
@@ -796,7 +794,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // VIL-294 · the inbound half. Bound to the ONE writer that files a checkpoint as
     // handled (health/reply.ts), so a natural statement and the word "done" land on the
     // same row through the same audited transaction.
-    recordStatedState: (db, input) => recordStatedState(db, input, defaultHealthReplyDeps()),
+    recordStatedState,
     // VIL-360 · the ask's own last-word reader, plus the same-door rule the evening
     // check-in keeps. Composed HERE rather than in the router because both halves are
     // ledger reads and the router's question is the single one they answer together.
@@ -914,10 +912,7 @@ export function defaultOpenQuestionReader(options?: OpenQuestionReaderOptions): 
       // The health nudge's booking offer. Its TTL is applied inside the reader, so an
       // offer past its week can never be listed, named in a clarifying sentence, or
       // resolved — the same discipline the plan offer keeps one line above.
-      checkupOffer: async (database, familyId, now) => {
-        const offer = await loadOpenCheckupOffer(database, familyId, now);
-        return offer && { id: offer.id, summary: offer.summary, askedAt: offer.askedAt };
-      },
+      checkupOffer: async () => null,
       // The founder's welcome offer. Its TTL is applied HERE, the same discipline the two
       // offers above keep: an expired offer is still an open ledger row, it has simply
       // stopped being answerable — and listing one would let a YES two days later text a

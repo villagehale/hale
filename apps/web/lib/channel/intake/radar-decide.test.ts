@@ -1,6 +1,6 @@
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
-import type { HealthChild } from '~/lib/health/match';
+import type { HealthChild } from '~/lib/channel/child-roster';
 import type {
   PastRegistrationCycle,
   RegistrationMatch,
@@ -570,6 +570,7 @@ describe('decideRadar — honest degradation', () => {
 describe('decideRadar — the age checkpoint', () => {
   it('names an Ontario checkpoint for a family with no window and no candidate at all', () => {
     // An Ontario FSA outside every civic adapter, no registration windows.
+  it('never names a health checkpoint, even when the household is inside an Ontario window', () => {
     const decision = decide({
       candidates: [],
       windows: [],
@@ -642,9 +643,31 @@ describe('decideRadar — the age checkpoint', () => {
     expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_grade_7');
     expect(decision.checkpoint?.task).toBe('A school immunization consent form is due.');
     expect(decision.checkpoint?.kidNames).toEqual([]);
+    expect(decision.checkpoint).toBeNull();
   });
 
-  it('yields to the two leads when a family has all three — two blocks reach a parent, never three', () => {
+  it('stays silent across infant, school-age and teen households', () => {
+    expect(
+      decide({ healthChildren: [healthChild({ ageMonths: 23 })], areaCoarse: 'L7G' }).checkpoint,
+    ).toBeNull();
+    expect(
+      decide({
+        healthChildren: [
+          healthChild({ id: 'kid-1', name: 'Leo', ageMonths: 60 }),
+          healthChild({ id: 'kid-2', name: 'Maya', ageMonths: 18 }),
+        ],
+        areaCoarse: 'M5V',
+      }).checkpoint,
+    ).toBeNull();
+    expect(
+      decide({
+        healthChildren: [healthChild({ id: 'kid-1', name: null, ageMonths: 156, isTeen: true })],
+        areaCoarse: 'M5V',
+      }).checkpoint,
+    ).toBeNull();
+  });
+
+  it('still yields two blocks, never a checkpoint, when a family has a window and a weekend pick', () => {
     const decision = decide({
       candidates: [candidate()],
       windows: [match()],
@@ -654,11 +677,6 @@ describe('decideRadar — the age checkpoint', () => {
 
     expect(decision.registrationLine).not.toBeNull();
     expect(decision.weekendPick).not.toBeNull();
-    // A date that closes and a weekend that passes beat a window open for months, so the
-    // ceiling drops this one — and it drops it HERE rather than in the render, because a
-    // checkpoint that survives into the decision is one the SEND marks told for every
-    // other surface (lib/health/told.ts). A block the message never carried must never
-    // silence the 48h nudge.
     expect(decision.checkpoint).toBeNull();
   });
 

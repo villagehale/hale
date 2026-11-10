@@ -5,7 +5,6 @@ import { f14EnabledFor } from '~/lib/channel/f14';
 import { readWindows } from '~/lib/channel/intake/radar';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { loadOpenCommitments } from '~/lib/commitments/ledger';
-import { loadStatedBookings } from '~/lib/health/reply';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import type { ReconcileView } from './reconcile';
 
@@ -41,15 +40,11 @@ export async function loadReconcileView(
   input: { familyId: string; now: Date },
 ): Promise<ReconcileView> {
   const { familyId, now } = input;
-  const [openCommitments, laddered, scheduled, mintableWindow, statedBookings] = await Promise.all([
+  const [openCommitments, laddered, scheduled, mintableWindow] = await Promise.all([
     loadOpenCommitments(database, familyId, now),
     hasLiveSequence(database, familyId),
     loadScheduledTitles(database, familyId, now),
     loadMintableWindow(database, familyId, now),
-    // VIL-294. The parent's own statements, read from the SAME rows the health sweep
-    // reads to decide whether to raise a checkpoint again — one reader per question, so
-    // a turn cannot acknowledge a booking the sweep is about to ask about.
-    loadStatedBookings(database, familyId, now),
   ]);
   return {
     openKinds: new Set(openCommitments.map((commitment) => commitment.kind)),
@@ -60,7 +55,7 @@ export async function loadReconcileView(
     registrationLaddered: laddered,
     mintableWindow,
     scheduledTitles: scheduled,
-    statedBookings,
+    statedBookings: [],
   };
 }
 
