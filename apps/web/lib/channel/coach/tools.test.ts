@@ -1,6 +1,7 @@
 import type { GuardDeps } from '@hale/agent';
 import { invokeTool } from '@hale/agent';
-import { describe, expect, it } from 'vitest';
+import { KID_CLASH_NOTICE_ENABLED_ENV } from '@hale/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OfferedCandidate } from '~/lib/coach/tools';
 import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 import {
@@ -751,6 +752,13 @@ describe('watch_for_opening — registered only when the whole wiring is there',
 });
 
 describe('propose_calendar_add · live kid clash facts (VIL-79)', () => {
+  beforeEach(() => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const MAYA = '66666666-6666-4666-8666-666666666666';
   // Sat Aug 1 2026, 10:00–11:00 Toronto.
   const SAT_CLASS = scheduleEvent({
@@ -780,6 +788,7 @@ describe('propose_calendar_add · live kid clash facts (VIL-79)', () => {
     const port = fakePort();
     const tools = buildChannelCoachTools({
       familyId: FAMILY,
+      familyCountry: 'CA',
       reader,
       draftPort: port,
       villageTool: null,
@@ -832,9 +841,61 @@ describe('propose_calendar_add · live kid clash facts (VIL-79)', () => {
     expect(result.clashes).toEqual([]);
     expect(JSON.stringify(result)).not.toContain('busy');
   });
+
+  it('omits clash facts and does not read the calendar when the flag is off', async () => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'false');
+    const reader = fakeReader([SAT_CLASS]);
+    let weekReads = 0;
+    let connectedReads = 0;
+    reader.eventsInWeek = async () => {
+      weekReads += 1;
+      return [SAT_CLASS];
+    };
+    reader.connectedWeek = async () => {
+      connectedReads += 1;
+      return {
+        calendarSync: 'connected',
+        blocks: [],
+        mailSync: 'not_connected',
+        processedCount: 0,
+        since: null,
+        activities: [],
+        trips: [],
+      };
+    };
+    const tools = buildChannelCoachTools({
+      familyId: FAMILY,
+      familyCountry: 'CA',
+      reader,
+      draftPort: fakePort(),
+      villageTool: null,
+      activity: null,
+      spots: null,
+      now: NOW,
+    });
+    const tool = tools.find((t) => t.name === 'propose_calendar_add');
+    if (!tool) throw new Error('no propose_calendar_add');
+    const result = await invokeTool(
+      tool,
+      { title: 'Soccer', date: '2026-08-01', time: '10:30', weekday: 'sat' },
+      { familyId: FAMILY, actor: PARENT },
+      guardDeps([], new Set()),
+    );
+    expect(result).toMatchObject({ drafted: true });
+    expect(result).not.toHaveProperty('clashes');
+    expect(weekReads).toBe(0);
+    expect(connectedReads).toBe(0);
+  });
 });
 
 describe('propose_calendar_move / add · clash window = saved window (Devin #927)', () => {
+  beforeEach(() => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   const MAYA = '66666666-6666-4666-8666-666666666666';
 
   function harness(events: ScheduleEvent[], blocks: { startsAt: Date; endsAt: Date }[]) {
@@ -856,6 +917,7 @@ describe('propose_calendar_move / add · clash window = saved window (Devin #927
     const port = fakePort();
     const tools = buildChannelCoachTools({
       familyId: FAMILY,
+      familyCountry: 'CA',
       reader,
       draftPort: port,
       villageTool: null,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { KID_CLASH_NOTICE_ENABLED_ENV } from '@hale/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarBlockView, ScheduleEvent } from '~/lib/channel/coach/tools';
 import { attachKidClashes } from './tools';
 
@@ -33,6 +34,13 @@ const reader = async () => ({
 });
 
 describe('search_village · kid clash facts only on a structured session (VIL-79)', () => {
+  beforeEach(() => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'true');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('a structured session overlapping a kid event carries the clash fact', async () => {
     const [c] = await attachKidClashes(reader, 'fam', [
       {
@@ -60,6 +68,19 @@ describe('search_village · kid clash facts only on a structured session (VIL-79
         title: string;
         when: string;
         session?: undefined;
+      },
+    ]);
+    expect(c).not.toHaveProperty('clashes');
+    expect(reads).toBe(0);
+  });
+
+  it('does not attach clash facts or read when the flag is off', async () => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'false');
+    reads = 0;
+    const [c] = await attachKidClashes(reader, 'fam', [
+      {
+        title: 'Art',
+        session: { startsAt: '2026-10-31T14:30:00.000Z', endsAt: '2026-10-31T15:30:00.000Z' },
       },
     ]);
     expect(c).not.toHaveProperty('clashes');

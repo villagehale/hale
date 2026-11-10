@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { type CalendarConflictOutput, calendarConflictOutput } from '@hale/tools-contracts';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { KID_CLASH_NOTICE_ENABLED_ENV } from '@hale/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TestDb, createTestDb, seedFamily } from '../testing/pglite.js';
 import { invokeReviewerTool } from './registry.js';
 
@@ -31,11 +32,13 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
   // Booted in a hook, not the test body: pglite boot + migrations exceed the 5s test
   // timeout, and hooks carry their own budget.
   beforeEach(async () => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'true');
     db = await createTestDb();
     ({ familyId, parentUserId } = await seedFamily(db.database));
   }, 120_000);
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await db.close();
   });
 
@@ -143,5 +146,20 @@ describe('check_calendar_conflict — the overlap, not the item', () => {
     await seedEvent('Before', new Date(START.getTime() - HOUR), START);
     const { parsed } = await conflicts();
     expect(parsed.hasConflict).toBe(false);
+  });
+
+  it('flag off keeps a family-event overlap as a failed check and ignores Google kid blocks', async () => {
+    vi.stubEnv(KID_CLASH_NOTICE_ENABLED_ENV, 'false');
+    const eventId = await seedEvent(TEEN_TITLE, new Date(START.getTime() + 15 * 60 * 1000), null);
+    await seedBlock(
+      'g-kid',
+      new Date(START.getTime() + 30 * 60 * 1000),
+      new Date(START.getTime() + 90 * 60 * 1000),
+      true,
+    );
+    const { ok, parsed } = await conflicts();
+    expect(ok).toBe(false);
+    expect(parsed.hasConflict).toBe(true);
+    expect(parsed.conflictingEvents.map((e) => e.id)).toEqual([eventId]);
   });
 });

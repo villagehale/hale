@@ -1,10 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
-import {
-  type KidClashFact,
-  type KidClashReader,
-  sessionKidClashFacts,
-} from '~/lib/channel/coach/kid-clash';
 import type { Database } from '@hale/db';
+import { kidClashNoticeEnabled } from '@hale/types';
 import { z } from 'zod';
 import type { ActivityQuery } from '~/lib/channel/activity/deidentify';
 import {
@@ -13,6 +9,11 @@ import {
   createActivityFinder,
 } from '~/lib/channel/activity/lane';
 import { linkRef } from '~/lib/channel/coach/activity-links';
+import {
+  type KidClashFact,
+  type KidClashReader,
+  sessionKidClashFacts,
+} from '~/lib/channel/coach/kid-clash';
 import { topUpShortRadar } from '~/lib/channel/coach/radar-top-up';
 import type { NamedAreaReader } from '~/lib/channel/named-area';
 import { activityClient } from '~/lib/pipeline/client';
@@ -315,6 +316,7 @@ export async function attachKidClashes<
   familyId: string,
   candidates: T[],
 ): Promise<(T & { clashes?: KidClashFact[] })[]> {
+  if (!kidClashNoticeEnabled()) return candidates;
   if (!candidates.some((c) => c.session)) return candidates;
   try {
     const read = await reader();

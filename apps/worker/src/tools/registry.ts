@@ -1,7 +1,7 @@
-import { and, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
-import type { ToolResult } from '@hale/types';
+import { type ToolResult, kidClashNoticeEnabled } from '@hale/types';
+import { and, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -171,13 +171,16 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // Calendar conflict (VIL-219, VIL-79) — does the proposed placement's window
   // [startsAt, startsAt+durationMinutes) overlap a KID item, read live at decision
   // time: Hale's household family_events rows (soft-deleted and Google mirrors
-  // excluded) plus the connected Google Calendar blocks whose stored kid-relevance
-  // verdict is kid. An adult block never surfaces. Nothing is stored.
+  // excluded). With KID_CLASH_NOTICE_ENABLED exactly `true`, connected Google
+  // Calendar blocks whose stored kid-relevance verdict is kid join that read, the
+  // check stays ok:true, and the overlap is a fact for the parent. An adult block
+  // never surfaces. Nothing is stored. Unset, the check is the pre-VIL-79 one:
+  // family_events only, and an overlap is a failed check.
   //
-  // NON-BLOCKING (VIL-79): a clash is a fact for the parent, not a failed check, so
-  // this always returns ok:true and reports the overlap in `hasConflict` /
-  // `conflictingEvents`. The parent sees the clash and decides; a double-booked kid
-  // is their call, not the reviewer's.
+  // NON-BLOCKING when the flag is on: a clash is a fact for the parent, not a
+  // failed check, so the tool returns ok:true and reports the overlap in
+  // `hasConflict` / `conflictingEvents`. The parent sees the clash and decides;
+  // a double-booked kid is their call, not the reviewer's.
   //
   // Half-open interval semantics: a timed item conflicts iff it truly overlaps
   // (back-to-back does not); an item with no end conflicts iff its instant falls
@@ -187,57 +190,59 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
     const input = REVIEWER_TOOLS.check_calendar_conflict.input.parse(raw);
     const newStart = new Date(input.startsAt);
     const newEnd = new Date(newStart.getTime() + input.durationMinutes * 60 * 1000);
+    const noticeOn = kidClashNoticeEnabled();
 
-    const [overlapping, kidBlocks] = await Promise.all([
-      database
-        .select({
-          id: schema.familyEvents.id,
-          startsAt: schema.familyEvents.startsAt,
-          endsAt: schema.familyEvents.endsAt,
-        })
-        .from(schema.familyEvents)
-        .where(
-          and(
-            eq(schema.familyEvents.familyId, input.familyId),
-            householdFamilyEvent(),
-            lt(schema.familyEvents.startsAt, newEnd),
-            or(
-              and(
-                sql`${schema.familyEvents.endsAt} IS NOT NULL`,
-                gt(schema.familyEvents.endsAt, newStart),
-              ),
-              and(isNull(schema.familyEvents.endsAt), gte(schema.familyEvents.startsAt, newStart)),
+    const overlapping = await database
+      .select({
+        id: schema.familyEvents.id,
+        startsAt: schema.familyEvents.startsAt,
+        endsAt: schema.familyEvents.endsAt,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, input.familyId),
+          householdFamilyEvent(),
+          lt(schema.familyEvents.startsAt, newEnd),
+          or(
+            and(
+              sql`${schema.familyEvents.endsAt} IS NOT NULL`,
+              gt(schema.familyEvents.endsAt, newStart),
             ),
+            and(isNull(schema.familyEvents.endsAt), gte(schema.familyEvents.startsAt, newStart)),
           ),
-        )
-        .limit(20),
-      database
-        .select({
-          id: schema.parentCalendarBlocks.eventId,
-          startsAt: schema.parentCalendarBlocks.startAt,
-          endsAt: schema.parentCalendarBlocks.endAt,
-        })
-        .from(schema.parentCalendarBlocks)
-        .where(
-          and(
-            eq(schema.parentCalendarBlocks.familyId, input.familyId),
-            eq(schema.parentCalendarBlocks.kidRelated, true),
-            eq(schema.parentCalendarBlocks.status, 'confirmed'),
-            lt(schema.parentCalendarBlocks.startAt, newEnd),
-            or(
-              and(
-                sql`${schema.parentCalendarBlocks.endAt} IS NOT NULL`,
-                gt(schema.parentCalendarBlocks.endAt, newStart),
-              ),
-              and(
-                isNull(schema.parentCalendarBlocks.endAt),
-                gte(schema.parentCalendarBlocks.startAt, newStart),
+        ),
+      )
+      .limit(20);
+
+    const kidBlocks = noticeOn
+      ? await database
+          .select({
+            id: schema.parentCalendarBlocks.eventId,
+            startsAt: schema.parentCalendarBlocks.startAt,
+            endsAt: schema.parentCalendarBlocks.endAt,
+          })
+          .from(schema.parentCalendarBlocks)
+          .where(
+            and(
+              eq(schema.parentCalendarBlocks.familyId, input.familyId),
+              eq(schema.parentCalendarBlocks.kidRelated, true),
+              eq(schema.parentCalendarBlocks.status, 'confirmed'),
+              lt(schema.parentCalendarBlocks.startAt, newEnd),
+              or(
+                and(
+                  sql`${schema.parentCalendarBlocks.endAt} IS NOT NULL`,
+                  gt(schema.parentCalendarBlocks.endAt, newStart),
+                ),
+                and(
+                  isNull(schema.parentCalendarBlocks.endAt),
+                  gte(schema.parentCalendarBlocks.startAt, newStart),
+                ),
               ),
             ),
-          ),
-        )
-        .limit(20),
-    ]);
+          )
+          .limit(20)
+      : [];
 
     const conflictingEvents = [
       ...overlapping.map((e) => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt })),
@@ -248,7 +253,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
 
     return {
       tool: 'check_calendar_conflict',
-      ok: true,
+      ok: noticeOn || overlapping.length === 0,
       result: {
         hasConflict: conflictingEvents.length > 0,
         // Ids and windows only — never the rows' titles (VIL-270). The moved row's own

@@ -71,6 +71,7 @@ Owners: Noah (Head of Eng) for flow and infra. Eugene for model-routing and eval
 | `HOLDING_LINE_ENABLED` | `apps/web/lib/channel/router/holding-line.ts:36` | `true` (no trim) | OFF | unset | Barton |
 | `INTEREST_PASSPORT_DEMO` | `apps/web/lib/passport/demo.ts:26` (also needs `INTEREST_PASSPORT_ENABLED` to be `true`) | `true` | OFF | unset | Noah |
 | `INTEREST_PASSPORT_ENABLED` | `apps/web/lib/passport/flag.ts:12` | `true` | OFF | `false` | Noah |
+| `KID_CLASH_NOTICE_ENABLED` | `packages/types/src/kid-clash-flag.ts:14` (read from `apps/web/lib/channel/coach/tools.ts`, `apps/web/lib/coach/tools.ts`, `apps/worker/src/tools/registry.ts`) | `true` | OFF | `false` | Sloane |
 | `LINQ_GROUP_CARPOOL_ENABLED` | `apps/web/lib/channel/linq/config.ts:107` | `true` (trimmed) | OFF | empty, or `false` | unassigned |
 | `LINQ_GROUP_CONFLICT_ALERTS_ENABLED` | `apps/web/lib/channel/linq/config.ts:117` | `true` (trimmed) | OFF | empty, or `false` | Noah (voice: Sloane) |
 | `LINQ_GROUP_COPARENT` | `apps/web/lib/channel/linq/config.ts:72` (trimmed, `!== 'off'`) | unset (anything except `off`) | ON | `off` | Noah |
@@ -228,6 +229,7 @@ Code is merged for every row.
 | `HALE_REPLY_INTENT_MODEL_MODE` | `candidate` uses JEV for reply intent. Assent still goes through Sonnet. | A yes/no stored for a reply the parent did not mean. | `current` | Eugene |
 | `HALE_TRIAGE_MODEL_MODE` | `candidate` uses JEV for sentinel triage, with Haiku when confidence is low. | Triage latency and low-confidence retries. | `current` | Eugene |
 | `INTEREST_PASSPORT_ENABLED` | Family and kid pages show the interest passport. Gmail and Calendar can infer a stamp (a Calendar stamp also needs `CALENDAR_ALERT_ENABLED`). A stamp line rides a text that is already going out. | A stamp with no source, a second stamp for the same activity and season, or a text sent only to ask about a stamp. | `false` | Noah |
+| `KID_CLASH_NOTICE_ENABLED` | Before a parent confirms a kid calendar add or move, Hale mentions an overlapping kid item (household `family_events` plus connected Google blocks judged kid at sync). Facts only; the model writes the sentence. Off, the coach and village find omit clash facts, and `check_calendar_conflict` stays the pre-VIL-79 family-events check (an overlap is a failed check). Not preview-only. | A clash mention when times do not overlap, or a mention of a parent's own adult calendar. | `false` | Sloane |
 | `LINQ_GROUP_CARPOOL_ENABLED` | Hale reads who is driving from the group and reminds the night before (`apps/web/lib/channel/linq/config.ts:103-104`). | The common checks above. | empty, or `false` | unassigned |
 | `LINQ_GROUP_MEMBERS_ENABLED` | A household group can hold more seats. | A seat added with no opt-in from that phone. | `false` | Noah |
 | `LINQ_GROUP_MENTIONS_ENABLED` | In a group, Hale's reply can mention the one seated member it addresses, and an inbound mention of Hale counts as addressed. Preview only: the code also needs `VERCEL_ENV=preview`. | A mention in a 1:1 chat, or on a member the reply does not address. | `false` | Noah |

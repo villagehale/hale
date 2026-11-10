@@ -1,13 +1,17 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
-import type { CalendarPlacementPayload, FamilyCountry } from '@hale/types';
+import {
+  type CalendarPlacementPayload,
+  type FamilyCountry,
+  kidClashNoticeEnabled,
+} from '@hale/types';
 import { and, asc, count, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import {
   type SaidSignupToolPorts,
   noteActivitySignupTool,
@@ -502,8 +506,10 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
    * lookup_week (Hale's household events + connected Google blocks), nothing stored.
    * Facts only — the coach words any mention itself. A failed read is logged and gives
    * no facts rather than blocking the draft (a clash never blocks; see kid-clash.ts).
+   * Dark unless KID_CLASH_NOTICE_ENABLED is exactly `true`.
    */
   async function liveKidClashes(date: string, timeZone: string, candidate: KidClashCandidate) {
+    if (!kidClashNoticeEnabled()) return [];
     try {
       // The readers select by START inside the window, so an overnight item that began
       // the evening before (or a candidate running past midnight) would be missed. Read a
@@ -653,7 +659,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         actionId,
         newWhen: localWhen(startsAt, timeZone),
         when: longWhen(startsAt, timeZone),
-        clashes,
+        ...(kidClashNoticeEnabled() ? { clashes } : {}),
         ...(await approvalPlace('calendar_move')),
       };
     },
@@ -786,7 +792,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         drafted: true as const,
         actionId,
         when: longWhen(startsAt, timeZone),
-        clashes,
+        ...(kidClashNoticeEnabled() ? { clashes } : {}),
         ...(await approvalPlace('calendar_add')),
       };
     },
