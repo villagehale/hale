@@ -1,5 +1,5 @@
 import { type Database, householdFamilyEvent, schema } from '@hale/db';
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { type SQL, and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { knownHouseholdTimezone } from '~/lib/channel/household-timezone';
 import { acceptReplyLanguage } from '~/lib/channel/language';
 import { acceptedStatus } from '~/lib/channel/ledger';
@@ -627,16 +627,34 @@ export async function unseatMultiFamilyMember(
  */
 export async function forgetSharedGroupPresence(
   database: Database,
-  input: { chatId: string; participantHandle: string | null; haleRemoved: boolean; now: Date },
+  input: { chatId: string; participantHandle: string | null; participantIsMe: boolean; now: Date },
 ): Promise<number> {
   const people = schema.linqSharedGroupPeople;
+  const removedPhone = input.participantHandle ? normalizePhoneE164(input.participantHandle) : null;
+  // Only Linq's own mark on the participant, or Hale's own line: one member's removal that
+  // carries `is_from_me` must never forget the whole chat.
+  const haleRemoved = input.participantIsMe || (removedPhone !== null && haleLine(removedPhone));
   const phone = input.participantHandle ? seatablePhone(input.participantHandle) : null;
-  const scope = input.haleRemoved
+  const scope = haleRemoved
     ? eq(people.chatId, input.chatId)
     : phone
       ? and(eq(people.chatId, input.chatId), eq(people.phoneE164Hash, phoneBlindIndex(phone)))
       : null;
   if (!scope) return 0;
+  return forgetSharedGroupPeople(database, scope, input.now);
+}
+
+/**
+ * Forgets the shared-chat people rows `scope` matches: a row with no stop is deleted, and a
+ * stopped row keeps only its chat, number hash and stop time, so the STOP still holds when
+ * the number comes back. Presence leaving and family erasure both forget through here.
+ */
+export async function forgetSharedGroupPeople(
+  database: Database,
+  scope: SQL,
+  now: Date,
+): Promise<number> {
+  const people = schema.linqSharedGroupPeople;
   const forgotten = await database
     .delete(people)
     .where(and(scope, isNull(people.stoppedAt)))
@@ -650,7 +668,7 @@ export async function forgetSharedGroupPresence(
       inferredKidName: null,
       inferredFamilyLabel: null,
       inferredRole: null,
-      updatedAt: input.now,
+      updatedAt: now,
     })
     .where(and(scope, isNotNull(people.stoppedAt)))
     .returning({ id: people.id });
@@ -770,13 +788,19 @@ export async function readFamilySliceForAudience(
     });
     return { reason: 'not_present', slice: empty };
   }
+  return { reason: 'present', slice: await readFamilyPrivateSlice(database, input.dataFamilyId) };
+}
 
-  // Present path only: the owning family's live calendar rows, rendered as
-  // clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone so
-  // the private aside can compare plan times (privateTimesOf). This list is read
-  // for the family's own 1:1 aside and for the shared-thread deny list; a
-  // shared-thread send never carries it (shared_thread / other_family above get
-  // an empty slice before any table is touched).
+/**
+ * One family's private terms, ungated. Its callers gate it: the family's own aside reads it
+ * only while the family is present, and the deny list reads it only to refuse those terms.
+ * Calendar rows are clock-bearing strings ("Swim lesson · Nov 7, 10:00") in the family's zone
+ * so the private aside can compare plan times (privateTimesOf).
+ */
+async function readFamilyPrivateSlice(
+  database: Database,
+  familyId: string,
+): Promise<FamilyPrivateSlice> {
   const [kids, facts, mail, bookings, events, zoneRows] = await Promise.all([
     database
       .select({
@@ -786,28 +810,28 @@ export async function readFamilySliceForAudience(
         dateOfBirth: schema.children.dateOfBirth,
       })
       .from(schema.children)
-      .where(eq(schema.children.familyId, input.dataFamilyId)),
+      .where(eq(schema.children.familyId, familyId)),
     database
       .select({
         familyId: schema.familyMemoryFacts.familyId,
         factKey: schema.familyMemoryFacts.factKey,
       })
       .from(schema.familyMemoryFacts)
-      .where(eq(schema.familyMemoryFacts.familyId, input.dataFamilyId)),
+      .where(eq(schema.familyMemoryFacts.familyId, familyId)),
     database
       .select({
         familyId: schema.emailForwardsPending.familyId,
         subject: schema.emailForwardsPending.subject,
       })
       .from(schema.emailForwardsPending)
-      .where(eq(schema.emailForwardsPending.familyId, input.dataFamilyId)),
+      .where(eq(schema.emailForwardsPending.familyId, familyId)),
     database
       .select({
         familyId: schema.activityBookings.familyId,
         title: schema.activityBookings.title,
       })
       .from(schema.activityBookings)
-      .where(eq(schema.activityBookings.familyId, input.dataFamilyId)),
+      .where(eq(schema.activityBookings.familyId, familyId)),
     database
       .select({
         familyId: schema.familyEvents.familyId,
@@ -817,12 +841,12 @@ export async function readFamilySliceForAudience(
         sensitive: schema.familyEvents.sensitive,
       })
       .from(schema.familyEvents)
-      .where(and(eq(schema.familyEvents.familyId, input.dataFamilyId), householdFamilyEvent())),
+      .where(and(eq(schema.familyEvents.familyId, familyId), householdFamilyEvent())),
     database
       .select({ timezone: schema.users.timezone })
       .from(schema.familyMembers)
       .innerJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
-      .where(eq(schema.familyMembers.familyId, input.dataFamilyId))
+      .where(eq(schema.familyMembers.familyId, familyId))
       .limit(1),
   ]);
   // `users.timezone` defaults to UTC (migration 0178) and that value means "never
@@ -834,39 +858,45 @@ export async function readFamilySliceForAudience(
       : DEFAULT_TIMEZONE;
 
   return {
-    reason: 'present',
-    slice: {
-      familyId: input.dataFamilyId,
-      children: kids.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.name),
-      memory: facts.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.factKey),
-      // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
-      // one parent's own Google mirror is excluded by the household-row predicate.
-      calendar: events
-        .filter((row) => row.familyId === input.dataFamilyId)
-        .filter(
-          (row) =>
-            !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
-        )
-        .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
-      email: mail.filter((row) => row.familyId === input.dataFamilyId).map((row) => row.subject),
-      signups: bookings
-        .filter((row) => row.familyId === input.dataFamilyId)
-        .map((row) => row.title),
-    },
+    familyId: familyId,
+    children: kids.filter((row) => row.familyId === familyId).map((row) => row.name),
+    memory: facts.filter((row) => row.familyId === familyId).map((row) => row.factKey),
+    // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
+    // one parent's own Google mirror is excluded by the household-row predicate.
+    calendar: events
+      .filter((row) => row.familyId === familyId)
+      .filter(
+        (row) =>
+          !isPrivateEvent({ childId: row.childId, sensitive: row.sensitive }, kids, new Date()),
+      )
+      .map((row) => `${row.title} · ${formatDateTime(row.startsAt, zone)}`),
+    email: mail.filter((row) => row.familyId === familyId).map((row) => row.subject),
+    signups: bookings.filter((row) => row.familyId === familyId).map((row) => row.title),
   };
 }
 
+/**
+ * Every household whose terms must stay out of the group line: anyone present, any live join
+ * (present or not), and the family whose group this chat is. A union, so losing one source
+ * (a forgotten presence row, an ended seat) never narrows it.
+ */
 async function denyListForChat(database: Database, chatId: string): Promise<string[]> {
+  const [present, joins, hosts] = await Promise.all([
+    presentHouseholds(database, chatId, { includeStopped: true, includeLeft: true }),
+    liveJoins(database, chatId),
+    database
+      .select({ id: schema.families.id })
+      .from(schema.families)
+      .where(eq(schema.families.linqGroupChatId, chatId)),
+  ]);
+  const households = new Set([
+    ...present,
+    ...joins.map((join) => join.familyId),
+    ...hosts.map((host) => host.id),
+  ]);
   const tokens: string[] = [];
-  for (const familyId of await presentHouseholds(database, chatId, {
-    includeStopped: true,
-    includeLeft: true,
-  })) {
-    const { slice } = await readFamilySliceForAudience(database, {
-      chatId,
-      dataFamilyId: familyId,
-      audience: familyId,
-    });
+  for (const familyId of households) {
+    const slice = await readFamilyPrivateSlice(database, familyId);
     tokens.push(...slice.children, ...slice.memory, ...slice.email, ...slice.signups);
     // Calendar titles block leaks too; the clock suffix is not a deny token.
     tokens.push(...slice.calendar.map((entry) => entry.split(' · ')[0] ?? ''));

@@ -675,3 +675,70 @@ describe('VIL-399: presence, not an auto-join', () => {
     expect(await db.database.select().from(schema.linqMultiFamilyJoins)).toEqual([]);
   });
 });
+
+describe('VIL-399: the deny list never narrows below live joins and the host', () => {
+  async function askWith(body: string, id: string) {
+    const wire = sender();
+    await takeMultiFamilyTurn(
+      db.database,
+      {
+        chatId: CHAT,
+        senderHandle: MEI,
+        text: 'who is coming Saturday?',
+        providerMessageId: id,
+        receivedAt: NOW,
+        now: NOW,
+        send: wire.send,
+      },
+      {
+        listHandles: listOf([MEI, TOM, PRIYA]),
+        reader: reading('question'),
+        composer: fakeSharedGroupComposer({ body }),
+      },
+    );
+    return wire.texts;
+  }
+
+  async function absentAdaJoin(leftAt: Date | null) {
+    const homes = await threeFamilies();
+    await db.database.insert(schema.linqMultiFamilyJoins).values({
+      chatId: CHAT,
+      familyId: homes.ada.familyId,
+      joinedByUserId: homes.ada.userId,
+      joinedAt: NOW,
+      leftAt,
+    });
+    return homes;
+  }
+
+  async function presentFamilies() {
+    const rows = await db.database
+      .select({ familyId: schema.linqSharedGroupPeople.familyId })
+      .from(schema.linqSharedGroupPeople);
+    return rows.map((row) => row.familyId);
+  }
+
+  it("refuses a live-join household's child name though nobody from it is present", async () => {
+    const homes = await absentAdaJoin(null);
+    expect(await askWith(`${CHILD} is coming Saturday`, 'in-live-join')).toEqual([]);
+    expect(await presentFamilies()).not.toContain(homes.ada.familyId);
+  });
+
+  it("lets the same line go once that household's join ended and it is absent", async () => {
+    const homes = await absentAdaJoin(NOW);
+    expect(await askWith(`${CHILD} is coming Saturday`, 'in-ended-join')).toEqual([
+      `${CHILD} is coming Saturday`,
+    ]);
+    expect(await presentFamilies()).not.toContain(homes.ada.familyId);
+  });
+
+  it("refuses the host family's child name though it has no join and nobody present", async () => {
+    const homes = await threeFamilies();
+    await db.database
+      .update(schema.families)
+      .set({ linqGroupChatId: CHAT })
+      .where(eq(schema.families.id, homes.ada.familyId));
+    expect(await askWith(`${CHILD} is coming Saturday`, 'in-host')).toEqual([]);
+    expect(await presentFamilies()).not.toContain(homes.ada.familyId);
+  });
+});

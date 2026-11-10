@@ -1278,7 +1278,7 @@ async function handleLinqSignal(deps: LinqDoorDeps, signal: LinqSignal): Promise
     await forgetSharedGroupPresence(deps.database, {
       chatId: signal.chatId,
       participantHandle: signal.participantHandle,
-      haleRemoved: signal.isFromMe,
+      participantIsMe: signal.participantIsMe,
       now: deps.now?.() ?? new Date(),
     });
   }

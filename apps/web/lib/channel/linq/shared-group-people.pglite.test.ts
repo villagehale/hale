@@ -169,6 +169,36 @@ describe('shared-group presence rows', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('a member removal Linq marks is_from_me forgets only that member, never the chat', async () => {
+    await seedChat();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({})),
+    );
+    const event = removed(GUEST, false);
+
+    await handleLinqInboundRequest(
+      signed({ ...event, data: { ...event.data, is_from_me: true } }),
+      deps(),
+    );
+
+    expect(await present()).toEqual(
+      [at(CHAT, PARENT_A), at(CHAT, PARENT_B), at(OTHER_CHAT, GUEST)].sort(),
+    );
+  });
+
+  it("Hale's own line removed forgets the chat even when Linq does not mark it is_me", async () => {
+    await seedChat();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({})),
+    );
+
+    await handleLinqInboundRequest(signed(removed(HALE, false)), deps());
+
+    expect(await present()).toEqual([at(OTHER_CHAT, GUEST)]);
+  });
+
   it('erasing a family deletes its people rows; another family and a guest stay', async () => {
     const erased = await seedFamily({ scheduledDeletionAt: new Date(NOW.getTime() - DAY_MS) });
     const staying = await seedFamily();

@@ -4,15 +4,16 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { runDeletionSweep } from '~/lib/rights/delete';
 import { type TestDb, createTestDb } from '~/lib/testing/pglite';
 import { type OneToOneSend, privateAsideOneToOne } from './connect-link-1to1';
+import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import {
   PRIVATE_ASIDE_AUDIT,
   type PrivateAsideDraftInput,
   type PrivateAsideModel,
   type PrivateAsideReadInput,
 } from './group-private-aside';
-import { fakeGroupOnboardingComposer } from './group-onboarding-voice-fake';
 import { handleLinqInboundRequest } from './inbound';
 import { takeMultiFamilyTurn } from './multi-family';
 import type { SharedGroupReader } from './shared-group-reading';
@@ -524,6 +525,18 @@ const stopReader: SharedGroupReader = {
   },
 };
 
+const joinReader: SharedGroupReader = {
+  async read() {
+    return {
+      intent: 'join',
+      role: 'unclear',
+      familyLabel: null,
+      kidName: null,
+      confidence: 'high',
+    };
+  },
+};
+
 async function personRow(phone: string) {
   const rows = await db.database
     .select()
@@ -606,6 +619,90 @@ describe('a STOP in a shared chat outlives leaving it', () => {
       expect(m.reads.flatMap((read) => read.families.flatMap((f) => f.kids))).not.toContain(CHILD);
     });
   }
+
+  it('erasing the household keeps only the stop: re-added, the parent is still stopped and nameless; the unstopped row is gone', async () => {
+    const PARENT_C = '+12025550133';
+    const BAO_COPARENT = '+12025550144';
+    const { bao, wire } = await twoPresent();
+    await seedFamily(PARENT_C, 'Cai');
+    const [coParent] = await db.database
+      .insert(schema.users)
+      .values({ externalAuthId: 'imessage:Bao-coparent', name: 'Bao co-parent' })
+      .returning({ id: schema.users.id });
+    await db.database.insert(schema.familyMembers).values({
+      familyId: bao.familyId,
+      userId: coParent?.id as string,
+      role: 'co_parent',
+    });
+    await db.database.insert(schema.parentChannels).values({
+      userId: coParent?.id as string,
+      familyId: bao.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(BAO_COPARENT),
+      phoneE164Hash: phoneBlindIndex(BAO_COPARENT),
+      verifiedAt: NOW,
+    });
+    const everyone = [PARENT_A, PARENT_C, BAO_COPARENT];
+    const stopped = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-stop'),
+        senderHandle: PARENT_B,
+        otherHandles: everyone,
+        text: 'stop',
+      },
+      { reader: stopReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+    );
+    expect(stopped).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'intake' });
+    await baoNamed();
+    expect(await personRow(BAO_COPARENT)).toHaveLength(1);
+    // Ada's household joins, so the chat keeps a host once Bao's household is gone.
+    const joined = await takeMultiFamilyTurn(
+      db.database,
+      { ...turnInput(wire, 'in-join'), otherHandles: everyone, text: 'count us in' },
+      { reader: joinReader, composer: fakeSharedGroupComposer({ body: SHARED_REPLY }) },
+    );
+    expect(joined).toMatchObject({ handled: true, outcome: 'joined' });
+
+    await db.database
+      .update(schema.families)
+      .set({ scheduledDeletionAt: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) })
+      .where(eq(schema.families.id, bao.familyId));
+    const summary = await runDeletionSweep(db.database, NOW, async () => {});
+    expect(summary.erased).toBe(1);
+
+    // Control: the household's unstopped row goes with it.
+    expect(await personRow(BAO_COPARENT)).toEqual([]);
+    const [tombstone, ...extra] = await personRow(PARENT_B);
+    expect(extra).toEqual([]);
+    expect(tombstone).toMatchObject({
+      chatId: CHAT,
+      familyId: null,
+      userId: null,
+      firstName: null,
+      inferredKidName: null,
+      inferredFamilyLabel: null,
+      inferredRole: null,
+    });
+    expect(tombstone?.stoppedAt).toEqual(NOW);
+
+    const groupBefore = wire.texts.length;
+    const again = await takeMultiFamilyTurn(
+      db.database,
+      {
+        ...turnInput(wire, 'in-back'),
+        senderHandle: PARENT_B,
+        otherHandles: [PARENT_A, PARENT_C],
+        text: 'Hale is anyone free Saturday?',
+      },
+      ports(),
+    );
+    expect(again).toMatchObject({ handled: true, outcome: 'member_stopped', count: 'ignored' });
+    expect(wire.texts.length).toBe(groupBefore);
+    const [back] = await personRow(PARENT_B);
+    expect(back).toMatchObject({ familyId: null, firstName: null, inferredKidName: null });
+    expect(back?.stoppedAt).toEqual(NOW);
+  });
 
   it('positive control: a parent who never stopped is forgotten when removed, and live again when re-added', async () => {
     const { wire } = await twoPresent();
